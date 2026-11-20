@@ -1,11 +1,11 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openUnderTabs } from './open-demo';
 import { androidDevice, type AndroidNode } from '@lingxia/test/showcase/helpers/android-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: AndroidNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
 const sum = (rgb: number[]) => rgb[0] + rgb[1] + rgb[2];
 
-spec.configure({ requires: { args: ['androidDevice'] } });
+test.configure({ requires: { args: ['androidDevice'] } });
 
 const area = ({ bounds: [l, t, r, b] }: AndroidNode) => (r - l) * (b - t);
 
@@ -37,7 +37,7 @@ async function screenBox(t: Fixture, surface: AndroidNode, testId: string) {
 
 // Around a GPU page the nav bar takes the page palette's surface colour, which a card on the page
 // also uses, in either scheme; the page config names no colour, so its defaults would differ in dark.
-spec('the nav bar takes the GPU page palette in light and in dark on Android', {
+test('the nav bar takes the GPU page palette in light and in dark on Android', {
   id: 'CHROME-NAV-PALETTE-ANDROID-001', covers: ['lx.host.control.appearance.setPreference'],
   reason: 'reads the composited screen through the Android device fixture',
   start: openUnderTabs('dialog'),
@@ -73,7 +73,7 @@ spec('the nav bar takes the GPU page palette in light and in dark on Android', {
 
 // A page dialog's backdrop covers the host's bars as well as the page: a bar point dims as much as
 // a page point, and the bars' own text stays visible through it.
-spec('a page dialog dims the nav and tab bars as it dims the page on Android', {
+test('a page dialog dims the nav and tab bars as it dims the page on Android', {
   id: 'TOP-LAYER-BARS-ANDROID-001', covers: ['view:dialog'],
   reason: 'reads the composited screen through the Android device fixture',
   start: openUnderTabs('dialog'),

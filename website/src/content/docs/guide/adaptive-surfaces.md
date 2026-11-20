@@ -98,7 +98,7 @@ only when the size class does; exact widths are CSS and container queries.
 - `openPage(page)` opens one of **this** lxapp's pages as a chrome-less `float` or a desktop `window`. A page cannot become an `aside` — declare an lxapp surface for your own side panel.
 - Ask `lx.supports('surface.window.fullChrome')` before offering an edge-to-edge window. Pad custom chrome with `var(--lx-page-chrome-top-inset)`.
 - `hide()` preserves state; `close()` destroys the surface. Page-overlay form is chosen when opened, while declared surfaces continue to adapt with the shell.
-- `lx.surface.getByKey(key)` returns a handle only for surfaces this lxapp opened **with a `key`**.
+- `lx.surface.getByKey(key)` returns a handle only for pages and URLs this lxapp opened **with a `key`**. The Control app finds a live app with `lx.shell.getApp(appId)` and a declared surface with `lx.shell.getDeclared(id, key?)`; handles carry no runtime id.
 
 `lx.openSurface` and `lx.onSurfaceContext` no longer exist.
 

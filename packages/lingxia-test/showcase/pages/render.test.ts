@@ -1,6 +1,6 @@
 import type { TestView } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 
 import { waitForCurrentPage } from '../helpers/page.js';
 import { attachShot, eventually } from '../helpers/poll.js';
@@ -64,7 +64,7 @@ async function waitForRenderedFeature(
   return state;
 }
 
-spec('page manifest matches the running lxapp', async (t) => {
+test('page manifest matches the running lxapp', async (t) => {
   const pages = await t.automation.lxapp(SHOWCASE_APP_ID).pages();
   expect(pages.map((page) => page.name)).toEqual([...SHOWCASE_PAGES]);
   expect(pages.every((page) => (
@@ -73,7 +73,7 @@ spec('page manifest matches the running lxapp', async (t) => {
 });
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
-  spec(`renders showcase feature: ${expectation.page}`, async (t) => {
+  test(`renders showcase feature: ${expectation.page}`, async (t) => {
     const app = t.automation.lxapp(SHOWCASE_APP_ID);
     // Until the page is bound, a failure shot takes whatever page is current.
     let view: TestView = app.view;

@@ -17,6 +17,8 @@ import { onCallback } from 'liblingxia.so';
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.File';
 const ACTION_VIEW = 'ohos.want.action.viewData';
+// Business code 6000: surfaces to JS as E_NOT_SUPPORTED.
+const ERR_FEATURE_NOT_SUPPORTED = '6000';
 
 interface UriCreator {
   createUriFromPath?(path: string): string | undefined;
@@ -166,16 +168,33 @@ export class LxAppFile {
       });
     }
 
+    // FOLDER mode needs this syscap, which only 2-in-1 devices have. Elsewhere
+    // select() shows nothing and resolves [] at once, indistinguishable from a
+    // user cancel, so refuse up front.
+    if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+      LxLog.w(TAG, 'chooseDirectory: system folder picker unsupported on this device');
+      onCallback(id, false, ERR_FEATURE_NOT_SUPPORTED);
+      return false;
+    }
+
     const options = new picker.DocumentSelectOptions();
     options.selectMode = picker.DocumentSelectMode.FOLDER;
     options.maxSelectNumber = 1;
 
     const viewPicker = new picker.DocumentViewPicker(context);
     viewPicker.select(options)
-      .then((paths: Array<string>) => {
+      .then((uris: Array<string>) => {
+        if (!uris || uris.length === 0) {
+          onCallback(id, true, JSON.stringify({ canceled: true, paths: [] }));
+          return;
+        }
+        // The runtime grants and reads directories by filesystem path; the
+        // picker's temporary authorization covers that path.
+        const folder = new fileUri.FileUri(uris[0]);
         onCallback(id, true, JSON.stringify({
-          canceled: !paths || paths.length === 0,
-          paths: paths ?? []
+          canceled: false,
+          paths: [folder.path],
+          names: [folder.name]
         }));
       })
       .catch((rawError: Object) => {

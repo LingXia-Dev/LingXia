@@ -7,7 +7,7 @@ sidebar:
 
 LingXia 的测试跑在**真正运行的应用上**，而不是模拟环境里。`lingxia dev` 持有会话，`lxdev test` 把用例装载进去，驱动真实的 Logic 运行时和真实的页面 webview。所以用例通过意味着该行为在那个平台上确实可用，而不是一个 mock 和自己达成了一致。
 
-用例用 `@lingxia/test` 编写。spec body 跑在**目标设备**上的 JavaScript worker 里（真机或桌面 Runner），不在开发机上。因此 `fetch('http://127.0.0.1:...')` 打到的是设备回环，不是开发机。
+用例用 `@lingxia/test` 编写。用例体跑在**目标设备**上的 JavaScript worker 里（真机或桌面 Runner），不在开发机上。因此 `fetch('http://127.0.0.1:...')` 打到的是设备回环，不是开发机。
 
 ## 安装
 
@@ -19,12 +19,12 @@ npm install --save-dev @lingxia/test
 
 ## 写一个用例
 
-一个用例是带标题的 `spec`，异步函数体收到测试句柄 `t`。用 locator 驱动应用，用可重试断言检查结果：
+一个用例是带标题的 `test`，异步函数体收到测试句柄 `t`。用 locator 驱动应用，用可重试断言检查结果：
 
 ```ts
-import { spec, expect } from '@lingxia/test';
+import { test, expect } from '@lingxia/test';
 
-spec('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
+test('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
   await t.app.nav.relaunch({ page: 'home' });
   await expect(t.app.view.testId('home-page')).toBeVisible();
 
@@ -87,7 +87,7 @@ lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=htt
 明知还没就绪的用例，声明出来比让它消失更有用 —— 它让缺口留在报告里：
 
 ```ts
-spec.skip('恢复中断的上传', {
+test.skip('恢复中断的上传', {
   reason: '需要重试 API',
 });
 ```
@@ -95,17 +95,17 @@ spec.skip('恢复中断的上传', {
 只有运行时才知道用例是否适用时，在用例体内跳过。`t.skip(reason)` 立即结束该用例，并以该原因报告为 skipped —— 既不算通过也不算失败：
 
 ```ts
-spec('重连离线客户端', async (t) => {
+test('重连离线客户端', async (t) => {
   const offline = await findOfflineClient(t);
   if (!offline) t.skip('该账号没有离线客户端');
   // …
 });
 ```
 
-`spec.fail` 声明已知有问题的用例：用例体的失败 —— 断言失败或产品抛出的错误 —— 报告为预期失败（`xfail`）；用例体顺利完成则是意外通过（`xpass`），会让运行失败。写明预期的失败，其他失败（选择器写错、测试服务没启动）仍然算失败：
+`test.fail` 声明已知有问题的用例：用例体的失败 —— 断言失败或产品抛出的错误 —— 报告为预期失败（`xfail`）；用例体顺利完成则是意外通过（`xpass`），会让运行失败。写明预期的失败，其他失败（选择器写错、测试服务没启动）仍然算失败：
 
 ```ts
-spec.fail('拒绝超出配额的上传', { expected: { code: 'E_QUOTA' } }, async (t) => {
+test.fail('拒绝超出配额的上传', { expected: { code: 'E_QUOTA' } }, async (t) => {
   await uploadLargeFile(t);
 });
 ```

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 
 const upright = async (view: { viewport(): Promise<{ width: number; height: number }> }) => {
   const area = await view.viewport();
@@ -6,7 +6,7 @@ const upright = async (view: { viewport(): Promise<{ width: number; height: numb
 };
 
 // A phone turns for a wide full-screen picture; a tall one keeps it upright, and leaving changes nothing.
-spec('a portrait full-screen video keeps the window upright', { start: { page: 'video' }, requires: { input: ['touch'] } }, async (t) => {
+test('a portrait full-screen video keeps the window upright', { start: { page: 'video' }, requires: { input: ['touch'] } }, async (t) => {
   const view = t.app.view;
   expect(await upright(view)).toBe(true);
   await view.testId('video-portrait-controls-play').click();

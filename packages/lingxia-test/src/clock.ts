@@ -57,7 +57,7 @@ export class ClockScope {
         const result: ClockUninstallResult = await automation().lxapp(id).clock.uninstall();
         this.dropped += result.dropped;
         // The spec installed this clock: removing it is expected, not a warning.
-        if (result.dropped > 0) await diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`), "info");
+        if (result.dropped > 0) await diagnostic("clock", droppedNote(result.dropped, `the test's end uninstalled the test clock of ${id} and`), "info");
         this.apps.delete(id);
       } catch (error) {
         // A closed app took its Logic, and the clock with it.

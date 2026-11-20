@@ -113,7 +113,7 @@ export function renderHtml(report: JsonReport): string {
 
   const flags = [
     report.partial ? flag("partial", "The run ended early; results below are incomplete.") : "",
-    report.filtered ? flag("filtered", "A --grep, --tag, --id, --shard or spec.only selection was in effect.") : "",
+    report.filtered ? flag("filtered", "A --grep, --tag, --id, --shard or test.only selection was in effect.") : "",
   ].filter(Boolean).join("");
 
   return `<!DOCTYPE html>
@@ -140,7 +140,7 @@ export function renderHtml(report: JsonReport): string {
   </header>
 
   <section class="metrics" aria-label="Run totals">
-    ${metric("specs", String(report.total), "registered and selected")}
+    ${metric("tests", String(report.total), "registered and selected")}
     ${metric("assertions", String(stats.assertions), `${stats.failedAssertions} failed`)}
     ${metric("steps", String(stats.steps), "recorded")}
     ${stats.surface
@@ -151,7 +151,7 @@ export function renderHtml(report: JsonReport): string {
   ${renderBar(report)}
 
   <div class="toolbar" role="search">
-    <input id="q" type="search" placeholder="Search id, title, suite, cover tag, matcher…" aria-label="Filter specs">
+    <input id="q" type="search" placeholder="Search id, title, suite, cover tag, matcher…" aria-label="Filter tests">
     <div class="pills" role="group" aria-label="Filter by status">
       ${renderPill("all", `all ${report.total}`, true, "")}
       ${STATUS_ORDER.filter((status) => countOf(report, status) > 0)
@@ -192,7 +192,7 @@ function groupSuites(cases: CaseRecord[]): Suite[] {
   const suites: Suite[] = [];
   const index = new Map<string, Suite>();
   for (const item of cases) {
-    const name = item.suite ?? "specs";
+    const name = item.suite ?? "tests";
     let suite = index.get(name);
     if (!suite) {
       suite = { name, cases: [] };
@@ -261,7 +261,7 @@ function verdictOf(report: JsonReport): { label: string; detail: string; tone: s
   if (report.partial) {
     return {
       label: "Incomplete",
-      detail: `The run stopped before every spec reported. ${report.passed} of ${report.total} specs passed so far.`,
+      detail: `The run stopped before every test reported. ${report.passed} of ${report.total} tests passed so far.`,
       tone: "tone-warn",
     };
   }
@@ -269,19 +269,19 @@ function verdictOf(report: JsonReport): { label: string; detail: string; tone: s
     return {
       label: "Failed",
       detail: broken === 1
-        ? "1 spec did not hold its contract."
-        : `${broken} specs did not hold their contract.`,
+        ? "1 test did not hold its contract."
+        : `${broken} tests did not hold their contract.`,
       tone: "tone-fail",
     };
   }
   if (report.total === 0) {
-    return { label: "Empty", detail: "No spec matched this selection.", tone: "tone-warn" };
+    return { label: "Empty", detail: "No test matched this selection.", tone: "tone-warn" };
   }
   return {
     label: "Passed",
     detail: report.skipped > 0
-      ? `${report.passed} specs held their contract; ${report.skipped} stay pending.`
-      : `All ${report.passed} specs held their contract.`,
+      ? `${report.passed} tests held their contract; ${report.skipped} stay pending.`
+      : `All ${report.passed} tests held their contract.`,
     tone: "tone-pass",
   };
 }
@@ -308,7 +308,7 @@ function renderDonut(report: JsonReport): string {
   const circumference = 2 * Math.PI * 52;
   const dash = (rate * circumference).toFixed(2);
   const percent = graded > 0 ? `${Math.round(rate * 100)}%` : "—";
-  return `<div class="donut" role="img" aria-label="${escapeHtml(percent)} of graded specs passed">
+  return `<div class="donut" role="img" aria-label="${escapeHtml(percent)} of graded tests passed">
     <svg viewBox="0 0 120 120" width="132" height="132">
       <circle class="donut-track" cx="60" cy="60" r="52"></circle>
       <circle class="donut-value" cx="60" cy="60" r="52"
@@ -331,7 +331,7 @@ function renderBar(report: JsonReport): string {
     .join("");
   return `<div class="bar" role="img" aria-label="${escapeHtml(
     segments.map((entry) => `${entry.count} ${STATUS_LABEL[entry.status]}`).join(", "),
-  )}">${parts}</div><p class="bar-caption">${total} spec${total === 1 ? "" : "s"} &middot; ${formatDuration(report.duration_ms)}</p>`;
+  )}">${parts}</div><p class="bar-caption">${total} test${total === 1 ? "" : "s"} &middot; ${formatDuration(report.duration_ms)}</p>`;
 }
 
 function renderPill(filter: string, label: string, pressed: boolean, toneClass: string): string {
@@ -477,16 +477,16 @@ function renderCoverage(report: JsonReport): string {
       <span class="panel-sub">${logic.behaviour}/${logic.total} Logic capabilities behaviour-proven
       (${percent(logic.behaviour, logic.total)}), ${percent(logic.shape, logic.total)} shape-proven</span>`
     : `<span class="panel-title">Capability coverage</span>
-      <span class="panel-sub">${proven}/${declared.length} declared capabilities proven by a passing spec</span>`;
+      <span class="panel-sub">${proven}/${declared.length} declared capabilities proven by a passing test</span>`;
   return `<details class="panel" open>
     <summary>${heading}</summary>
     <div class="panel-body">
       <ul class="legend">
-        <li><span class="cover cover-ok">behaviour</span> a passing spec asserted it</li>
+        <li><span class="cover cover-ok">behaviour</span> a passing test asserted it</li>
         <li><span class="cover cover-shape">shape</span> proven only to exist</li>
-        <li><span class="cover cover-claimed">claimed</span> a passing spec declared it but never called it</li>
-        <li><span class="cover cover-pending">declared</span> claimed by a pending or failing spec</li>
-        ${surface ? `<li><span class="cover cover-none">uncovered</span> no spec at all</li>` : ""}
+        <li><span class="cover cover-claimed">claimed</span> a passing test declared it but never called it</li>
+        <li><span class="cover cover-pending">declared</span> claimed by a pending or failing test</li>
+        ${surface ? `<li><span class="cover cover-none">uncovered</span> no test at all</li>` : ""}
       </ul>
       ${sections}
     </div>
@@ -522,10 +522,10 @@ function renderCoverageSection(
               ? "cover-pending"
               : "cover-none";
       const hint = state.claimedOnly && !state.behaviour
-        ? `declared by ${state.specs.join(", ")}, but no eval in those specs reached it`
+        ? `declared by ${state.specs.join(", ")}, but no eval in those tests reached it`
         : state.specs.length > 0
           ? `covered by ${state.specs.join(", ")}`
-          : "no spec declares this tag";
+          : "no test declares this tag";
       return `<span class="cover ${klass}" title="${escapeHtml(hint)}"
         data-search="${escapeHtml(`${name} ${state.specs.join(" ")}`)}">${escapeHtml(name)}</span>`;
     }).join("");
@@ -554,7 +554,7 @@ function renderSlowest(report: JsonReport): string {
       <td class="spark"><span style="width:${Math.max(2, Math.round((item.duration_ms / max) * 100))}%"></span></td>
     </tr>`).join("");
   return `<details class="panel">
-    <summary><span class="panel-title">Slowest specs</span>
+    <summary><span class="panel-title">Slowest tests</span>
       <span class="panel-sub">where the wall clock went</span></summary>
     <div class="panel-body"><table class="slowest"><tbody>${rows}</tbody></table></div>
   </details>`;
@@ -593,7 +593,7 @@ function renderCase(item: CaseRecord, suiteName: string): string {
   const empty = assertions.length === 0 && item.steps.length === 0
     ? item.status === "skipped"
       ? `<p class="empty">Pending: registered as a known hole, no assertions run.</p>`
-      : `<p class="empty">No assertion was recorded for this spec.</p>`
+      : `<p class="empty">No assertion was recorded for this test.</p>`
     : "";
   const shots = renderAttachments(item);
   const files = "";
@@ -632,7 +632,7 @@ function renderCase(item: CaseRecord, suiteName: string): string {
       ${renderTimeline(item)}
       ${item.attempts && item.attempts.length > 1 ? `<details><summary>${item.attempts.length} attempts</summary>${item.attempts.map(attempt => `<section><h4>Attempt ${(attempt.attempt ?? 0) + 1}: ${escapeHtml(attempt.status)}</h4>${renderError(attempt)}${renderTimeline(attempt)}${renderSteps(attempt.steps, attempt)}${renderAttachments(attempt)}</section>`).join("")}</details>` : ""}
       ${renderSteps(item.steps, item)}
-      ${renderAssertions(item.assertions ?? [], "spec assertions")}
+      ${renderAssertions(item.assertions ?? [], "test assertions")}
       ${empty}
       ${shots}
       ${files}

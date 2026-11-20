@@ -1,10 +1,10 @@
-import { expect, spec, type Fixture, type TestView } from '@lingxia/test';
+import { expect, test, type Fixture, type TestView } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
+test.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 
 // A host the probe's allow-list does not name; `.invalid` never resolves.
 const OUTSIDE = 'https://outside.invalid/';
@@ -69,7 +69,7 @@ async function openDocument(t: Fixture, id: string) {
   return { host, opened, inDocument, shows, blocked };
 }
 
-spec('an embedded document has no bridge object and no bridge transport', {
+test('an embedded document has no bridge object and no bridge transport', {
   id: 'EMBEDDED-DOCUMENT-001', app: SHOWCASE_APP_ID, timeout: 60_000,
 }, async (t) => {
   const { host, opened, inDocument } = await openDocument(t, 'EMBEDDED-DOCUMENT-001');
@@ -100,7 +100,7 @@ spec('an embedded document has no bridge object and no bridge transport', {
   expect(await host.eval(({ window }) => typeof (window as unknown as { LingXiaBridge?: unknown }).LingXiaBridge)).toBe('object');
 });
 
-spec('an embedded document cannot download: the response is cancelled and reported', {
+test('an embedded document cannot download: the response is cancelled and reported', {
   id: 'EMBEDDED-DOCUMENT-002', app: SHOWCASE_APP_ID, timeout: 60_000,
 }, async (t) => {
   const { inDocument, blocked, shows } = await openDocument(t, 'EMBEDDED-DOCUMENT-002');
@@ -115,7 +115,7 @@ spec('an embedded document cannot download: the response is cancelled and report
   await shows('embedded-a');
 });
 
-spec('window.open in an embedded document loads in place and is judged as a navigation', {
+test('window.open in an embedded document loads in place and is judged as a navigation', {
   id: 'EMBEDDED-DOCUMENT-003', app: SHOWCASE_APP_ID, timeout: 60_000,
 }, async (t) => {
   const { inDocument, blocked, shows } = await openDocument(t, 'EMBEDDED-DOCUMENT-003');
@@ -132,7 +132,7 @@ spec('window.open in an embedded document loads in place and is judged as a navi
   expect(await blocked()).toEqual(refused);
 });
 
-spec('JS dialogs in an embedded document are answered without UI', {
+test('JS dialogs in an embedded document are answered without UI', {
   id: 'EMBEDDED-DOCUMENT-004', app: SHOWCASE_APP_ID, timeout: 60_000,
 }, async (t) => {
   const { inDocument } = await openDocument(t, 'EMBEDDED-DOCUMENT-004');
@@ -148,7 +148,7 @@ spec('JS dialogs in an embedded document are answered without UI', {
   expect(answers.ms).toBeLessThan(3_000);
 });
 
-spec('an embedded document cannot navigate its top level outside the allow-list', {
+test('an embedded document cannot navigate its top level outside the allow-list', {
   id: 'EMBEDDED-DOCUMENT-005', app: SHOWCASE_APP_ID, timeout: 60_000,
 }, async (t) => {
   const { host, inDocument, blocked, shows } = await openDocument(t, 'EMBEDDED-DOCUMENT-005');

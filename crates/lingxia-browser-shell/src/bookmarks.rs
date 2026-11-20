@@ -11,7 +11,7 @@ use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_service::file::{ChooseFileRequest, FileDialogFilter};
+use lingxia_service::file::{FileDialogFilter, PickFileRequest};
 use lxapp::LxApp;
 use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
@@ -391,6 +391,24 @@ pub fn is_bookmarked(url: &str) -> bool {
         Ok(snapshot) => find_entry(&snapshot, &normalize_url(url)).is_some(),
         Err(_) => false,
     }
+}
+
+/// The pinned bookmark for `url`, if the sidebar Pin grid holds one: what a
+/// tab menu's Pin / Unpin reads.
+pub fn pinned_entry_for_url(url: &str) -> Option<BookmarkEntry> {
+    let normalized = normalize_url(url);
+    let pinned = lingxia_shell::pins()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|pin| match pin.0 {
+            lingxia_shell::ShellPinTarget::Bookmark { key } => Some(key),
+            lingxia_shell::ShellPinTarget::Lxapp { .. } => None,
+        })
+        .collect::<std::collections::HashSet<_>>();
+    snapshot()?
+        .entries
+        .into_iter()
+        .find(|entry| pinned.contains(&entry.id) && normalize_url(&entry.url) == normalized)
 }
 
 /// Full snapshot as JSON for native chrome (sidebar bookmarks section).
@@ -1069,9 +1087,9 @@ async fn import_html_bookmarks(
     let app_for_picker = app.clone();
     let is_chinese = display_locale_is_chinese();
     let selected = await_or_cancel(&mut cancel, async move {
-        lingxia_service::file::choose_file(
+        lingxia_service::file::pick_file(
             &*app_for_picker.runtime,
-            ChooseFileRequest {
+            PickFileRequest {
                 multiple: false,
                 filters: vec![FileDialogFilter {
                     name: Some(
@@ -1093,6 +1111,7 @@ async fn import_html_bookmarks(
                     .to_string(),
                 ),
                 default_path: None,
+                owner: app_for_picker.dialog_owner(),
             },
         )
         .await
@@ -1102,7 +1121,7 @@ async fn import_html_bookmarks(
     if selected.canceled {
         return Ok(None);
     }
-    let path = selected.paths.first().ok_or_else(|| {
+    let path = selected.paths().next().ok_or_else(|| {
         LxAppError::InvalidParameter("bookmark import did not return a file".to_string())
     })?;
     let metadata = std::fs::metadata(path)

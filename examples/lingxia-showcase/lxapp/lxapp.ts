@@ -115,7 +115,7 @@ async function applyHostChrome(os: string, tag: string) {
         .catch((error) => console.warn("language action failed", error));
     },
   });
-  lx.shell.sidebarActions.replace(sidebarActions);
+  await lx.shell.sidebarActions.replace(sidebarActions);
   lx.setMoreActions([
     {
       icon: "public/showcase-icon.png",

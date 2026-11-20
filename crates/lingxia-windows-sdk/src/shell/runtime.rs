@@ -49,8 +49,15 @@ use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
-const MIN_SIDEBAR_WIDTH: i32 = 184;
+/// Expanded sidebar width bounds, in 96-DPI units (the same as macOS).
+const MIN_SIDEBAR_WIDTH: i32 = 148;
 const MAX_SIDEBAR_WIDTH: i32 = 400;
+/// Dragging the sidebar edge below this width collapses it to the icon rail
+/// (and dragging a rail past it expands the sidebar), as on macOS.
+const SIDEBAR_RAIL_THRESHOLD: i32 = 128;
+/// The width of an in-progress edge drag, in 96-DPI units; the persisted
+/// width takes over once the drag ends.
+static SIDEBAR_DRAG_WIDTH: Mutex<Option<i32>> = Mutex::new(None);
 /// Bottom tab bar height (icons + labels) outside a simulated phone, whose
 /// host's bar comes from its device frame.
 const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
@@ -161,6 +168,25 @@ static TABBAR_POSITION_OVERRIDES: OnceLock<Mutex<HashMap<String, WindowsShellTab
 /// Stable shared order of main lxapp and browser tabs. The currently selected
 /// lxapp expands in place instead of jumping above every web tab.
 static MAIN_TAB_ORDER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+/// The main-area rows the sidebar last laid out, in order: the close family
+/// of any row counts them all.
+static MAIN_AREA_ROWS: OnceLock<Mutex<Vec<MainAreaRow>>> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct MainAreaRow {
+    /// Sidebar row id (`AUX_SURFACE_PREFIX`, `AUX_LXAPP_PREFIX`, or a
+    /// browser tab id).
+    row_id: String,
+    closable: bool,
+}
+
+impl MainAreaRow {
+    /// The id the core menus know the row by: a surface id for a graph main,
+    /// the tab id for a browser tab.
+    fn menu_id(&self) -> &str {
+        auxiliary_surface_id(&self.row_id).unwrap_or(&self.row_id)
+    }
+}
 
 #[cfg(feature = "browser-runtime")]
 #[derive(Default)]
@@ -485,6 +511,7 @@ mod chrome_command {
     pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const NAVIGATION_REFRESH: &str = "navigation.refresh";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TAB_CLICK: &str = "browser.tab.click";
@@ -496,10 +523,13 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
+    pub(super) const ASIDE_PANEL_TAB_OVERFLOW: &str = "aside-panel.tab.overflow";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_NAV_REFRESH: &str = "aside-panel.nav.refresh";
     pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
     pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
     pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
@@ -591,85 +621,71 @@ fn persist_sidebar_chrome(rail: bool) {
     }
 }
 
-/// A sidebar width drag's live state: 0 none, `RAIL_LIVE` the icon rail, else
-/// the expanded 96-DPI width.
-static LIVE_SIDEBAR_WIDTH: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-const RAIL_LIVE: i32 = -1;
-/// A drag that ends narrower than this snaps the sidebar to its icon rail.
-const RAIL_SNAP_WIDTH: f64 = 160.0;
-
-fn live_sidebar_rail() -> Option<bool> {
-    match LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire) {
-        0 => None,
-        live => Some(live == RAIL_LIVE),
-    }
+/// The persisted width is a 96-DPI value; the layout it feeds is physical.
+/// An edge drag in progress overrides it until it ends.
+fn persisted_expanded_sidebar_width() -> i32 {
+    let dragging = SIDEBAR_DRAG_WIDTH.lock().ok().and_then(|width| *width);
+    let logical =
+        dragging.unwrap_or_else(|| lingxia_shell::sidebar_chrome().expanded_width.round() as i32);
+    crate::dpi::px(logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH))
 }
 
-/// Drag the sidebar to `width` (96-DPI, `None` keeps the dragged one); `done`
-/// ends the drag and settles on the icon rail or the expanded width.
-pub(crate) fn resize_sidebar(width: Option<f64>, done: bool) {
-    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
-    let next = match width {
-        Some(width) if width < RAIL_SNAP_WIDTH => RAIL_LIVE,
-        Some(width) => width
-            .round()
-            .min(f64::from(MAX_SIDEBAR_WIDTH))
-            .max(f64::from(MIN_SIDEBAR_WIDTH)) as i32,
-        None if live != 0 => live,
-        None => return,
-    };
-    LIVE_SIDEBAR_WIDTH.store(if done { 0 } else { next }, Ordering::Release);
-    let Some(owner) = shell_owner_appid() else {
+/// The user drags the sidebar's inner edge: `width` is the proposed column
+/// width in physical pixels. While the drag runs the layout follows it live,
+/// showing the icon rail below the threshold so the expanded layout never
+/// renders squished; on release the width (or the rail) is the user's own
+/// choice and is persisted, like a macOS sidebar drag.
+pub(crate) fn set_sidebar_drag_width(width: i32, done: bool) {
+    let Some(group) = preferred_sidebar_group_appid(
+        shell_owner_appid(),
+        presented_browser_group_appid(),
+        active_main_lxapp_id(),
+    ) else {
         return;
     };
+    let logical = (f64::from(width) / crate::dpi::chrome_scale()).round() as i32;
+    let rail = logical < SIDEBAR_RAIL_THRESHOLD;
+    let clamped = logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+    update_sidebar_ui_state(&group, |state| {
+        state.collapsed = false;
+        state.medium_expanded = !rail;
+        state.icon_rail = rail;
+        state.seeded = true;
+    });
+    if let Ok(mut dragging) = SIDEBAR_DRAG_WIDTH.lock() {
+        *dragging = (!done).then_some(clamped);
+    }
     if done {
-        let rail = next == RAIL_LIVE;
-        let medium = resolved_shell_size_class(None) == SizeClass::Medium;
-        update_sidebar_ui_state(&owner, |state| {
-            state.collapsed = false;
-            if medium {
-                // Medium already projects a rail; the drag only reveals or
-                // dismisses the full sidebar for this session.
-                state.medium_expanded = !rail;
-                state.icon_rail = false;
-            } else {
-                state.medium_expanded = false;
-                state.icon_rail = rail;
-                state.seeded = true;
-            }
-        });
-        let remembered = lingxia_shell::sidebar_chrome();
-        let chrome = if rail {
-            lingxia_shell::SidebarChrome::with_expanded(
-                medium && remembered.expanded,
-                remembered.expanded_width,
-            )
+        // A rail keeps the last expanded width for the next expand.
+        let expanded_width = if rail {
+            lingxia_shell::sidebar_chrome().expanded_width
         } else {
-            lingxia_shell::SidebarChrome::with_expanded(
-                !medium || remembered.expanded,
-                f64::from(next),
-            )
+            f64::from(clamped)
         };
-        if let Err(error) = lingxia_shell::set_sidebar_chrome(chrome) {
+        if let Err(error) = lingxia_shell::set_sidebar_chrome(
+            lingxia_shell::SidebarChrome::with_expanded(!rail, expanded_width),
+        ) {
             log::warn!("could not persist the sidebar width: {error}");
         }
     }
-    if done || next != live {
-        sync_shell_layout(&owner);
+    sync_shell_layout(&group);
+}
+
+/// A drag that lost capture: the layout returns to `origin_width` (physical
+/// pixels) without persisting it.
+pub(crate) fn cancel_sidebar_drag(origin_width: i32) {
+    set_sidebar_drag_width(origin_width, false);
+    if let Ok(mut dragging) = SIDEBAR_DRAG_WIDTH.lock() {
+        *dragging = None;
     }
 }
 
-/// The persisted width is a 96-DPI value; the layout it feeds is physical.
-fn persisted_expanded_sidebar_width() -> i32 {
-    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
-    if live > 0 {
-        return crate::dpi::px(live);
-    }
-    let logical = lingxia_shell::sidebar_chrome()
-        .expanded_width
-        .round()
-        .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH)) as i32;
-    crate::dpi::px(logical)
+/// Whole-sidebar state (rail, scroll) is read from the shell owner, not the
+/// guest whose `group_id` the chrome command carries.
+fn sidebar_owner_group(group: &str) -> String {
+    shell_owner_appid()
+        .filter(|owner| lxapp::try_get(owner).is_some())
+        .unwrap_or_else(|| group.to_string())
 }
 
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
@@ -1260,6 +1276,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
         request_lxapp_main_activation,
     ));
+    lingxia_platform::set_windows_lxapp_region_move_handler(Arc::new(move_lxapp_region_for_api));
     // hide_lxapp on Windows is synchronous (HWND hide only). Apple/Android/
     // Harmony ack close from the native container; without this, restart
     // always waits out the 1.5s Closed timeout and logs `forcing recreate`.
@@ -1344,10 +1361,10 @@ fn sync_related_shell_layouts(appid: &str) {
 /// The app, the shell owner, the visible main, and the stack-top app.
 ///
 /// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
-/// stack top — sidebar focus does not push it — so a later `navigateToApp`
-/// leaves the on-screen guest out of the set. Toggling that guest then
-/// rebuilds home's hidden webtag and the last-opened guest, never the one
-/// the user is looking at.
+/// stack top, which can lag the on-screen main (a later `navigateToApp`, a
+/// presented browser tab), so the visible main is added separately; without
+/// it, toggling that guest rebuilds home's hidden webtag and the last-opened
+/// guest, never the one the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
     let stack_top = lxapp::get_current_lxapp().0;
     merge_related_shell_appids(
@@ -2145,7 +2162,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         items: Vec::new(),
         overflow_start_index: -1,
         collapsed: ui_state.collapsed,
-        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail),
+        icon_rail: ui_state.icon_rail,
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
         items_api_hidden: false,
         items_collapsed: false,
@@ -2347,9 +2364,7 @@ fn refresh_aside_panel_nav_state() {
         changed
     });
     if changed.unwrap_or(false) {
-        lingxia_windows_contract::refresh_aside_panel(
-            lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID,
-        );
+        lingxia_windows_contract::refresh_aside_panel(lingxia_windows_contract::ASIDE_PANEL_ID);
     }
 }
 
@@ -2394,6 +2409,7 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
         text_color,
         show_back_button: navbar.show_back_button,
         show_home_button: navbar.home_button_visible(),
+        show_refresh_button: navbar.show_navbar && app.is_pull_down_refresh_enabled(path),
         height: crate::dpi::px(DEFAULT_NAV_BAR_HEIGHT),
     }
 }
@@ -2466,9 +2482,11 @@ fn build_tab_bar_layout(
                 if app_id == &app.appid
         )
     });
-    let group_active = this_item.map(|item| item.active).unwrap_or_else(|| {
-        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
-    });
+    // A presented browser tab is the main: no lxapp group reads as active.
+    let group_active = presented_browser_tab().is_none()
+        && this_item
+            .map(|item| item.active)
+            .unwrap_or_else(|| active_main_lxapp_id().as_deref() == Some(&app.appid));
     // Show this lxapp's own tab pages. The root-only filter hid a guest
     // main's items after navigateToApp, so the sidebar kept drawing home.
     // A terminal/browser root with no matching lxapp item still hides them.
@@ -2517,6 +2535,14 @@ fn build_tab_bar_layout(
     );
     main_rows.extend(build_browser_tab_items(browser_tabs));
     let (group_order_index, main_rows) = order_main_tab_rows(&group_target_id, main_rows);
+    record_main_area_rows(
+        &main_rows,
+        group_order_index,
+        &group_target_id,
+        this_item
+            .map(|item| item.closable)
+            .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
+    );
     auxiliary_items.extend(main_rows);
     // The global "+" follows the active main provider: browser opens a tab,
     // while a terminal root opens another main workspace. A device-framed
@@ -2627,18 +2653,19 @@ fn build_tab_bar_layout(
         app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
-        app_icon_path: if is_home_lxapp(&app.appid) {
-            host_app_icon_path().unwrap_or_else(|| {
-                this_item
-                    .map(|item| surface_switcher_icon_path(switcher_app, item))
-                    .unwrap_or_else(|| {
-                        lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()
-                    })
-            })
-        } else {
-            this_item
-                .map(|item| surface_switcher_icon_path(switcher_app, item))
-                .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default())
+        app_icon_path: {
+            let item_icon = || this_item.map(|item| surface_switcher_icon_path(switcher_app, item));
+            match lxapp::lxapp_display_icon(&app.appid) {
+                // Home is the product: the icon it chose ranks above its row item.
+                lxapp::LxAppIcon::File(path) if is_home_lxapp(&app.appid) => path,
+                lxapp::LxAppIcon::Product { fallback } => host_app_icon_path()
+                    .or_else(item_icon)
+                    .or(fallback)
+                    .unwrap_or_default(),
+                icon => item_icon()
+                    .or_else(|| icon.file().map(str::to_string))
+                    .unwrap_or_default(),
+            }
         },
         group_id: app.appid.clone(),
         group_target_id,
@@ -2648,7 +2675,7 @@ fn build_tab_bar_layout(
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
-        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail || force_icon_rail),
+        icon_rail: ui_state.icon_rail || force_icon_rail,
         rail_expand_disabled: size_class == SizeClass::Compact,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
@@ -2958,6 +2985,106 @@ fn declared_browser_tab_ids() -> HashSet<String> {
     HashSet::new()
 }
 
+fn record_main_area_rows(
+    rows: &[WindowsShellAuxiliaryItemLayout],
+    group_index: usize,
+    group_id: &str,
+    group_closable: bool,
+) {
+    let mut recorded = rows
+        .iter()
+        .map(|row| MainAreaRow {
+            row_id: row.id.clone(),
+            closable: row.closable,
+        })
+        .collect::<Vec<_>>();
+    recorded.insert(
+        group_index.min(recorded.len()),
+        MainAreaRow {
+            row_id: group_id.to_string(),
+            closable: group_closable,
+        },
+    );
+    if let Ok(mut state) = MAIN_AREA_ROWS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        *state = recorded;
+    }
+}
+
+fn main_area_rows() -> Vec<MainAreaRow> {
+    MAIN_AREA_ROWS
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| state.clone())
+        .unwrap_or_default()
+}
+
+/// The rows in the core menus' terms.
+fn main_area_menu_rows() -> Vec<lingxia_shell::MainRow> {
+    main_area_rows()
+        .iter()
+        .map(|row| lingxia_shell::MainRow {
+            id: row.menu_id().to_string(),
+            closable: row.closable,
+        })
+        .collect()
+}
+
+/// Close one main-area row through its own provider.
+fn close_main_area_row(appid: &str, row_id: &str) {
+    if let Some(surface_id) = auxiliary_surface_id(row_id) {
+        handle_main_surface_close(appid, surface_id);
+    } else if let Some(target_appid) = auxiliary_lxapp_id(row_id) {
+        handle_lxapp_auxiliary_close(appid, target_appid);
+    } else {
+        handle_browser_tab_close(appid, row_id);
+    }
+}
+
+/// Show one main-area row, as a click on it does.
+fn show_main_area_row(appid: &str, row_id: &str) {
+    if let Some(surface_id) = auxiliary_surface_id(row_id) {
+        handle_main_surface_click(appid, surface_id);
+    } else if auxiliary_lxapp_id(row_id).is_none() {
+        handle_browser_tab_click(appid, row_id);
+    }
+}
+
+/// "Close Others" (`below == false`) or "Close Tabs Below" on the row the
+/// core menus know as `menu_id`: graph mains and browser tabs alike close
+/// through their own providers. A closed main presents its successor even
+/// under a browser tab that stays, so the row that was showing comes back if
+/// it stays, else the menu's own row.
+fn close_main_area_rows(appid: &str, menu_id: &str, below: bool) {
+    let rows = main_area_rows();
+    let menu_rows = main_area_menu_rows();
+    let Some((others, after)) = lingxia_shell::main_rows_close_targets(&menu_rows, menu_id) else {
+        return;
+    };
+    let targets = if below { after } else { others };
+    if targets.is_empty() {
+        return;
+    }
+    let row_id = |menu_id: &str| {
+        rows.iter()
+            .find(|row| row.menu_id() == menu_id)
+            .map(|row| row.row_id.clone())
+    };
+    let shown = presented_browser_tab().or_else(|| {
+        lxapp::try_get(appid).and_then(|owner| owner.surface_switcher_snapshot().active_surface_id)
+    });
+    for target in &targets {
+        if let Some(target_row) = row_id(target) {
+            close_main_area_row(appid, &target_row);
+        }
+    }
+    let keep = shown
+        .filter(|shown| !targets.contains(shown))
+        .unwrap_or_else(|| menu_id.to_string());
+    if let Some(keep_row) = row_id(&keep) {
+        show_main_area_row(appid, &keep_row);
+    }
+}
+
 fn order_main_tab_rows(
     group_id: &str,
     rows: Vec<WindowsShellAuxiliaryItemLayout>,
@@ -3201,6 +3328,16 @@ fn lxapp_rail_tabs(appid: &str) -> Option<WindowsShellAuxiliaryTabs> {
     })
 }
 
+/// An lxapp's icon file as `lxapp_display_icon` ranks it, with the host
+/// product icon drawn for home; `None` leaves the host / LingXia mark.
+pub(crate) fn lxapp_icon_path(appid: &str) -> Option<String> {
+    match lxapp::lxapp_display_icon(appid) {
+        lxapp::LxAppIcon::File(path) => Some(path),
+        lxapp::LxAppIcon::Product { fallback } => host_app_icon_path().or(fallback),
+        lxapp::LxAppIcon::Default => None,
+    }
+}
+
 fn host_app_icon_path() -> Option<String> {
     if let Some(path) = crate::app_icon::current_chrome_icon_path() {
         return Some(path.to_string_lossy().into_owned());
@@ -3210,17 +3347,11 @@ fn host_app_icon_path() -> Option<String> {
         .filter(|path| !path.is_empty())
 }
 
-/// Sidebar row icon for an open lxapp: the host product icon for home, else
-/// the registry's cached artwork, else the icon of its configured surface/panel
-/// slot (matching the panel footer action), else empty so the row falls back to
-/// the host / LingXia mark.
+/// Sidebar row icon for an open lxapp: [`lxapp_icon_path`], else the icon of
+/// its configured surface/panel slot (matching the panel footer action), else
+/// empty so the row falls back to the host / LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
-    if is_home_lxapp(appid)
-        && let Some(icon) = host_app_icon_path()
-    {
-        return icon;
-    }
-    if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
+    if let Some(icon) = lxapp_icon_path(appid) {
         return icon;
     }
     let panel_icon = lingxia_app_context::app_config()
@@ -3846,17 +3977,22 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
             }
         }
         WindowsAsidePanelEvent::NavBack { panel_id }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             lxapp_aside_navigation_click("back");
         }
         WindowsAsidePanelEvent::NavHome { panel_id }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             lxapp_aside_navigation_click("home");
         }
+        WindowsAsidePanelEvent::NavRefresh { panel_id }
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
+        {
+            lxapp_aside_navigation_click("refresh");
+        }
         WindowsAsidePanelEvent::TabBarClick { panel_id, index }
-            if panel_id == lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID =>
+            if panel_id == lingxia_windows_contract::ASIDE_PANEL_ID =>
         {
             if let Some(app) = lxapp_aside_active_app() {
                 let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
@@ -3864,6 +4000,7 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
         }
         WindowsAsidePanelEvent::NavBack { .. }
         | WindowsAsidePanelEvent::NavHome { .. }
+        | WindowsAsidePanelEvent::NavRefresh { .. }
         | WindowsAsidePanelEvent::TabBarClick { .. }
         | WindowsAsidePanelEvent::NavForward { .. }
         | WindowsAsidePanelEvent::NavReload { .. } => {}
@@ -3894,7 +4031,7 @@ fn lxapp_aside_active_app() -> Option<Arc<LxApp>> {
     let slot = plan
         .aside_slots
         .iter()
-        .find(|slot| slot.kind == SlotKind::Lxapp && slot.visible)?;
+        .find(|slot| slot.kind == SlotKind::Panel && slot.visible)?;
     let surface_id = slot
         .active_child
         .as_deref()
@@ -3915,7 +4052,8 @@ fn lxapp_aside_navigation_click(action: &str) {
 
 /// Publish the lxapp aside's navigation bar for the page its active child
 /// shows. Like the macOS aside bar it shows only while Back or Home has
-/// somewhere to go: at the stack root the slot tab already names the app.
+/// somewhere to go, or the page offers Refresh: at the stack root the slot
+/// tab already names the app.
 fn sync_lxapp_aside_navigation() {
     let app = lxapp_aside_active_app();
     let navigation = app.as_deref().and_then(|app| {
@@ -3928,29 +4066,60 @@ fn sync_lxapp_aside_navigation() {
                 background_color: navbar.background_color,
                 text_color: navbar.text_color,
                 show_back_button: navbar.show_back_button,
+                show_refresh_button: navbar.show_refresh_button,
             },
         )
     });
     let tabbar = app.as_deref().and_then(lxapp_aside_tabbar);
     let tabbar_changed = lingxia_windows_contract::set_aside_panel_tabbar(
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        lingxia_windows_contract::ASIDE_PANEL_ID,
         tabbar,
     );
     if lingxia_windows_contract::set_aside_panel_navigation(
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
+        lingxia_windows_contract::ASIDE_PANEL_ID,
         navigation,
     ) | tabbar_changed
     {
         // The bar's height moves the aside's webview, not just its chrome.
         crate::window_host::sync_active_host_layout();
-        lingxia_windows_contract::refresh_aside_panel(
-            lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID,
-        );
+        lingxia_windows_contract::refresh_aside_panel(lingxia_windows_contract::ASIDE_PANEL_ID);
     }
 }
 
 /// The narrow form of the lxapp aside's tabBar row: every item in a menu,
 /// the current one checked.
+/// The side panel tabs that did not fit its strip; picking one shows it.
+fn show_aside_tab_overflow_menu(
+    panel_id: &str,
+    surface_ids: Vec<String>,
+    titles: Vec<String>,
+    screen_x: i32,
+    screen_y: i32,
+) {
+    if surface_ids.is_empty() || surface_ids.len() != titles.len() {
+        return;
+    }
+    let Some(window) = shell_owner_appid().and_then(|appid| owner_window_handle(&appid)) else {
+        return;
+    };
+    let checked = vec![false; titles.len()];
+    let panel_id = panel_id.to_string();
+    super::context_menu::show_context_menu_checked(
+        window,
+        (screen_x, screen_y),
+        titles,
+        checked,
+        Arc::new(move |slot| {
+            if let Some(surface_id) = surface_ids.get(slot).cloned() {
+                dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClick {
+                    panel_id: panel_id.clone(),
+                    surface_id,
+                });
+            }
+        }),
+    );
+}
+
 fn show_lxapp_aside_tabbar_menu(panel_id: &str, screen_x: i32, screen_y: i32) {
     let Some(tabbar) = lingxia_windows_contract::aside_panel_tabbar(panel_id) else {
         return;
@@ -4059,15 +4228,29 @@ fn aside_tabbar_item_label(app: &LxApp, item: &lxapp::tabbar::TabBarItem) -> Str
 }
 
 fn lxapp_aside_shows_navigation(navbar: &WindowsShellNavigationBarLayout) -> bool {
-    navbar.visible && (navbar.show_back_button || navbar.show_home_button)
+    navbar.visible
+        && (navbar.show_back_button || navbar.show_home_button || navbar.show_refresh_button)
 }
 
-/// Slot kind behind a well-known aside panel id.
+/// Slot kind behind a well-known aside panel id. The lxapp and browser
+/// panels are two hosts of the ONE side panel slot.
 fn aside_slot_kind(panel_id: &str) -> &'static str {
     match panel_id {
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => "browser",
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "lxapp",
+        lingxia_windows_contract::ASIDE_PANEL_ID => "panel",
         _ => "native",
+    }
+}
+
+/// Whether `surface_id` is a URL tab of the side panel (not an lxapp child).
+fn is_browser_aside_surface(surface_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    {
+        lingxia_platform::windows::windows_aside_browser_tab_id(surface_id).is_some()
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = surface_id;
+        false
     }
 }
 
@@ -4104,15 +4287,288 @@ fn close_managed_aside_child(surface_id: &str) {
     }
 }
 
+#[derive(Clone)]
+enum AsideTabMenuAction {
+    OpenInMain,
+    #[cfg(feature = "browser-shell")]
+    TogglePin,
+    #[cfg(feature = "browser-runtime")]
+    CopyLink,
+    More {
+        token: String,
+    },
+    Close,
+}
+
+/// The menu behind an aside tab's "···" and right-click (spec §4.6): the
+/// content's identity, Open in Main Area (what dropping the tab on the
+/// sidebar does), the content's own section (a browser tab's pin and copy
+/// link; an lxapp's MoreActions), then Close. Collapse and Maximize stay
+/// out: they are slot controls, already on the header. The same shape for
+/// both slots so the two kinds of tab read alike.
+fn show_aside_tab_context_menu(panel_id: &str, surface_id: &str, screen_x: i32, screen_y: i32) {
+    use super::context_menu::ContextMenuEntry;
+    use crate::WindowsDesignIcon;
+    use lingxia_logic::{I18nKey, i18n::t};
+
+    let Some(window) = shell_owner_appid().and_then(|appid| owner_window_handle(&appid)) else {
+        return;
+    };
+    let mut entries: Vec<(ContextMenuEntry, Option<AsideTabMenuAction>)> = Vec::new();
+    let header = |label: String| {
+        (
+            ContextMenuEntry {
+                label,
+                enabled: false,
+                checked: false,
+                separator: false,
+                icon: None,
+            },
+            None,
+        )
+    };
+    let plain = |label: String, action: AsideTabMenuAction| {
+        (
+            ContextMenuEntry {
+                label,
+                enabled: true,
+                checked: false,
+                separator: false,
+                icon: None,
+            },
+            Some(action),
+        )
+    };
+    let separator = || (ContextMenuEntry::separator(), None);
+
+    if panel_id != lingxia_windows_contract::ASIDE_PANEL_ID {
+        return;
+    }
+    match is_browser_aside_surface(surface_id) {
+        false => {
+            let appid = match panel_target_for_id(surface_id) {
+                Some(PanelTarget::LxApp { appid, .. }) => appid,
+                Some(PanelTarget::Terminal(_)) => return,
+                None => surface_id.to_string(),
+            };
+            let target = lxapp::try_get(&appid);
+            let info = target.as_ref().map(|target| target.get_lxapp_info());
+            let display_name = lxapp::lxapp_display_name(&appid)
+                .or_else(|| info.as_ref().map(|info| info.app_name.clone()));
+            entries.push(header(lxapp_context_menu_header(
+                &appid,
+                display_name.as_deref(),
+                info.as_ref().map(|info| info.version.as_str()),
+                info.as_ref().map(|info| info.release_type.as_str()),
+            )));
+            entries.push(separator());
+            entries.push(plain(
+                t(I18nKey::AsideOpenInMain),
+                AsideTabMenuAction::OpenInMain,
+            ));
+            if let Some(snapshot) = target.as_ref().map(|target| target.more_actions())
+                && !snapshot.items.is_empty()
+            {
+                entries.push(separator());
+                for (index, item) in snapshot.items.into_iter().enumerate() {
+                    entries.push(plain(
+                        item.label,
+                        AsideTabMenuAction::More {
+                            token: format!("more:{}:{index}", snapshot.generation),
+                        },
+                    ));
+                }
+            }
+        }
+        #[cfg(feature = "browser-runtime")]
+        true => {
+            let tab = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id)
+                .and_then(|tab_id| browser_tab_summary(&tab_id));
+            let url = tab
+                .as_ref()
+                .and_then(|tab| tab.current_url.as_deref())
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_string();
+            let title = tab
+                .as_ref()
+                .and_then(|tab| tab.title.as_deref())
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| url.clone());
+            if !title.is_empty() {
+                entries.push(header(title));
+                entries.push(separator());
+            }
+            if aside_tab_promotable(surface_id) {
+                entries.push(plain(
+                    t(I18nKey::AsideOpenInMain),
+                    AsideTabMenuAction::OpenInMain,
+                ));
+            }
+            if url.starts_with("http://") || url.starts_with("https://") {
+                entries.push(separator());
+                #[cfg(feature = "browser-shell")]
+                {
+                    let pinned = pinned_bookmark_for_url(&url).is_some();
+                    entries.push((
+                        ContextMenuEntry::item(
+                            t(if pinned {
+                                I18nKey::BrowserUnpin
+                            } else {
+                                I18nKey::BrowserPinToSidebar
+                            }),
+                            true,
+                            if pinned {
+                                WindowsDesignIcon::Unpin
+                            } else {
+                                WindowsDesignIcon::Pin
+                            },
+                        ),
+                        Some(AsideTabMenuAction::TogglePin),
+                    ));
+                }
+                entries.push((
+                    ContextMenuEntry::item(
+                        t(I18nKey::BrowserCopyLink),
+                        true,
+                        WindowsDesignIcon::Link,
+                    ),
+                    Some(AsideTabMenuAction::CopyLink),
+                ));
+            }
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        true => return,
+    }
+
+    entries.push(separator());
+    entries.push((
+        ContextMenuEntry::item(t(I18nKey::CommonClose), true, WindowsDesignIcon::CloseX),
+        Some(AsideTabMenuAction::Close),
+    ));
+
+    let (items, actions): (Vec<_>, Vec<_>) = entries.into_iter().unzip();
+    let panel_id = panel_id.to_string();
+    let surface_id = surface_id.to_string();
+    super::context_menu::show_context_menu_entries(
+        window,
+        (screen_x, screen_y),
+        items,
+        Arc::new(move |index| {
+            handle_aside_tab_menu_action(
+                &panel_id,
+                &surface_id,
+                actions.get(index).cloned().flatten(),
+            );
+        }),
+    );
+}
+
+fn handle_aside_tab_menu_action(
+    panel_id: &str,
+    surface_id: &str,
+    action: Option<AsideTabMenuAction>,
+) {
+    match action {
+        Some(AsideTabMenuAction::OpenInMain) => {
+            promote_aside_tab(panel_id, surface_id);
+        }
+        #[cfg(feature = "browser-shell")]
+        Some(AsideTabMenuAction::TogglePin) => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(tab) =
+                    lingxia_platform::windows::windows_aside_browser_tab_id(surface_id)
+                        .and_then(|tab_id| browser_tab_summary(&tab_id))
+            {
+                toggle_browser_tab_pin(&owner_appid, &tab);
+            }
+        }
+        #[cfg(feature = "browser-runtime")]
+        Some(AsideTabMenuAction::CopyLink) => {
+            if let Some(url) = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id)
+                .and_then(|tab_id| browser_tab_summary(&tab_id))
+                .and_then(|tab| tab.current_url)
+            {
+                super::clipboard::set_clipboard_text(url.trim());
+            }
+        }
+        Some(AsideTabMenuAction::More { token }) => {
+            let appid = match panel_target_for_id(surface_id) {
+                Some(PanelTarget::LxApp { appid, .. }) => appid,
+                Some(PanelTarget::Terminal(_)) => return,
+                None => surface_id.to_string(),
+            };
+            if let Some(target) = lxapp::try_get(&appid) {
+                let _ = target.on_lxapp_event(LxAppUiEventType::CapsuleClick, token);
+            }
+        }
+        Some(AsideTabMenuAction::Close) if is_browser_aside_surface(surface_id) => {
+            // A URL tab closes through the panel bridge, which owns the
+            // browser group; an lxapp child closes through the graph.
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::TabClose {
+                panel_id: panel_id.to_string(),
+                surface_id: surface_id.to_string(),
+            });
+        }
+        Some(AsideTabMenuAction::Close) => close_managed_aside_child(surface_id),
+        None => {}
+    }
+}
+
+/// The lxapp a press on a sidebar group header belongs to, when dragging the
+/// header toward the main's edge may move the live app into the side panel
+/// (the reverse of the aside tab's drop on the sidebar). Home, the root
+/// main, never moves.
+pub(crate) fn sidebar_main_drag_source(command: &WindowsChromeCommand) -> Option<String> {
+    let appid = match command.id.as_str() {
+        chrome_command::SIDEBAR_GROUP_TOGGLE => command.payload.get("group")?.as_str()?.to_string(),
+        chrome_command::BROWSER_TAB_CLICK => {
+            auxiliary_lxapp_id(command.payload.get("tab_id")?.as_str()?)?.to_string()
+        }
+        _ => return None,
+    };
+    (!is_home_lxapp(&appid)).then_some(appid)
+}
+
+/// The name a dragged aside tab shows under the pointer: its strip title.
+pub(crate) fn aside_tab_drag_label(panel_id: &str, surface_id: &str) -> String {
+    lingxia_windows_contract::aside_panel_tabs(panel_id)
+        .into_iter()
+        .find(|tab| tab.surface_id == surface_id)
+        .map(|tab| tab.title)
+        .unwrap_or_default()
+}
+
+/// The name a dragged sidebar group shows under the pointer: its app's.
+pub(crate) fn sidebar_main_drag_label(appid: &str) -> String {
+    lxapp::lxapp_display_name(appid).unwrap_or_else(|| appid.to_string())
+}
+
+/// Whether an aside tab may become a main (spec §4.2): URL-callback and
+/// ephemeral browser tabs stay with their opener, so they neither drag nor
+/// offer Open in Main Area.
+pub(crate) fn aside_tab_promotable(surface_id: &str) -> bool {
+    #[cfg(feature = "browser-runtime")]
+    if let Some(tab_id) = lingxia_platform::windows::windows_aside_browser_tab_id(surface_id) {
+        return lingxia_browser::can_promote_standalone_tab(&tab_id);
+    }
+    let _ = surface_id;
+    true
+}
+
 /// An aside tab dropped on the sidebar (spec §4.2): its live content becomes
 /// a main. Returns whether it moved.
 pub(crate) fn promote_aside_tab(panel_id: &str, surface_id: &str) -> bool {
-    match panel_id {
-        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => promote_lxapp_aside(surface_id),
-        #[cfg(feature = "browser-runtime")]
-        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => promote_browser_aside(surface_id),
-        _ => false,
+    if panel_id != lingxia_windows_contract::ASIDE_PANEL_ID {
+        return false;
     }
+    #[cfg(feature = "browser-runtime")]
+    if is_browser_aside_surface(surface_id) {
+        return promote_browser_aside(surface_id);
+    }
+    promote_lxapp_aside(surface_id)
 }
 
 /// Re-host a live lxapp aside as the active main: Logic, the page stack and
@@ -4147,6 +4603,63 @@ fn promote_lxapp_aside(surface_id: &str) -> bool {
     }
     if let Some(owner_appid) = shell_owner_appid() {
         reveal_and_sync_sidebar(&owner_appid, &appid);
+    }
+    true
+}
+
+/// Re-host a live lxapp main in the aside slot (the sidebar menu's "Open in
+/// Side Panel"): the mirror of `promote_lxapp_aside`. Logic, the page stack
+/// and the current page's WebView are kept; the plan sync docks the page.
+pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
+    demote_lxapp_main_at(appid, "")
+}
+
+/// `lx.shell.openApp` asking a live app to change role: the same moves as a
+/// sidebar drag.
+fn move_lxapp_region_for_api(appid: &str, to_main: bool, edge: &str) -> bool {
+    if to_main {
+        let surface_id = lxapp::try_get(appid)
+            .and_then(|app| app.open_panel_id())
+            .unwrap_or_else(|| appid.to_string());
+        promote_lxapp_aside(&surface_id)
+    } else {
+        demote_lxapp_main_at(appid, edge)
+    }
+}
+
+/// [`demote_lxapp_main`] onto the panel at `edge`; empty keeps its edge.
+fn demote_lxapp_main_at(appid: &str, edge: &str) -> bool {
+    let Some(app) = lxapp::try_get(appid) else {
+        return false;
+    };
+    if lxapp::open_region(appid) != Some(lxapp::LxAppOpenRegion::Main) {
+        return false;
+    }
+    let Some(page) = app
+        .current_page()
+        .ok()
+        .or_else(|| app.get_page(&app.initial_route()))
+    else {
+        return false;
+    };
+    let title = lxapp::lxapp_display_name(appid).unwrap_or_else(|| appid.to_string());
+    // Before the commit: the plan sync that follows must already know which
+    // page the slot shows.
+    lingxia_platform::windows::adopt_windows_lxapp_main_as_aside(appid, page.webtag(), title);
+    if let Err(err) = app.demote_main_to_aside(edge) {
+        log::warn!("main demotion refused for {appid}: {err}");
+        let _ = lingxia_platform::windows::release_windows_lxapp_aside(appid);
+        return false;
+    }
+    if let Some(owner_appid) = shell_owner_appid()
+        && let Some(owner) = lxapp::try_get(&owner_appid)
+    {
+        if let Some(active) = owner.surface_switcher_snapshot().active_surface_id
+            && let Err(error) = present_successor_main(&owner, &active)
+        {
+            log::warn!("failed to present successor main surface {active}: {error}");
+        }
+        sync_shell_layout(&owner_appid);
     }
     true
 }
@@ -4249,6 +4762,9 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
         }
         chrome_command::NAVIGATION_BACK => {
             app.on_lxapp_event(LxAppUiEventType::NavigationClick, "back".to_string())
+        }
+        chrome_command::NAVIGATION_REFRESH => {
+            app.on_lxapp_event(LxAppUiEventType::NavigationClick, "refresh".to_string())
         }
         chrome_command::NAVIGATION_HOME => {
             let returning_from_browser = clear_browser_presentation();
@@ -4386,13 +4902,25 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                     screen_y,
                 );
             } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
-                show_lxapp_auxiliary_context_menu(
-                    appid,
-                    target_appid,
-                    payload_isize(&event, "source_window"),
-                    screen_x,
-                    screen_y,
-                );
+                // A live lxapp main reads the same core menu as every other
+                // main-area row; the local builder covers an lxapp without one.
+                if let Some(surface_id) = lxapp_main_surface_id(appid, target_appid) {
+                    show_main_surface_context_menu(
+                        appid,
+                        &surface_id,
+                        payload_isize(&event, "source_window"),
+                        screen_x,
+                        screen_y,
+                    );
+                } else {
+                    show_lxapp_auxiliary_context_menu(
+                        appid,
+                        target_appid,
+                        payload_isize(&event, "source_window"),
+                        screen_x,
+                        screen_y,
+                    );
+                }
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
                 show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
             } else {
@@ -4457,6 +4985,47 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             });
             return;
         }
+        chrome_command::ASIDE_PANEL_TAB_MENU => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let Some(surface_id) = payload_string(&event, "surface_id") else {
+                return;
+            };
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_aside_tab_context_menu(&panel_id, &surface_id, screen_x, screen_y);
+            return;
+        }
+        chrome_command::ASIDE_PANEL_TAB_OVERFLOW => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            let strings = |field: &str| -> Vec<String> {
+                event
+                    .payload
+                    .get(field)
+                    .and_then(serde_json::Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(ToString::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_aside_tab_overflow_menu(
+                &panel_id,
+                strings("surface_ids"),
+                strings("titles"),
+                screen_x,
+                screen_y,
+            );
+            return;
+        }
         chrome_command::ASIDE_PANEL_COLLAPSE => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
@@ -4483,6 +5052,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 return;
             };
             dispatch_aside_panel_event(WindowsAsidePanelEvent::NavHome { panel_id });
+            return;
+        }
+        chrome_command::ASIDE_PANEL_NAV_REFRESH => {
+            let Some(panel_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::NavRefresh { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_RESTORE => {
@@ -4680,7 +5256,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(offset) = payload_i32(&event, "offset") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.main_scroll_offset = offset.max(0);
             });
             sync_shell_layout(appid);
@@ -4693,7 +5269,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(row) = payload_usize(&event, "row") else {
                 return;
             };
-            update_sidebar_ui_state(&group, |state| {
+            update_sidebar_ui_state(&sidebar_owner_group(&group), |state| {
                 state.footer_action_scroll_row = row;
             });
             sync_shell_layout(appid);
@@ -4775,6 +5351,7 @@ fn chrome_command_is_page_scoped(command: &str) -> bool {
         command,
         chrome_command::NAVIGATION_BACK
             | chrome_command::NAVIGATION_HOME
+            | chrome_command::NAVIGATION_REFRESH
             | chrome_command::TAB_BAR_CLICK
             | chrome_command::TAB_BAR_MORE_CLICK
     )
@@ -5258,88 +5835,98 @@ fn reset_browser_only_last_tab(tab_id: &str, aside: bool) -> bool {
     true
 }
 
-#[derive(Debug, Clone, Copy)]
-enum BrowserTabContextAction {
-    #[cfg(feature = "browser-shell")]
-    TogglePin,
-    Close,
-    CloseOtherTabs,
-    CloseTabsBelow,
-}
-
+/// A main-area browser tab's right-click menu: the core's row menu (page
+/// actions, Open in Side Panel, the close family) run over Windows' tabs.
+#[cfg(feature = "browser-runtime")]
 fn show_browser_tab_context_menu(appid: &str, tab_id: &str, screen_x: i32, screen_y: i32) {
-    let tabs = browser_tabs();
-    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
+    let Some(snapshot) = lingxia::browser_tab_menu(&main_area_menu_rows(), tab_id) else {
         return;
     };
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
-    use super::context_menu::ContextMenuEntry;
-    use crate::WindowsDesignIcon;
-    use lingxia_logic::I18nKey;
+    let mut entries = Vec::new();
     let mut actions = Vec::new();
-    let mut items = Vec::new();
-    #[cfg(feature = "browser-shell")]
-    if let Some(url) = tabs[index]
-        .current_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
-    {
-        let pinned = pinned_bookmark_for_url(url).is_some();
-        actions.extend([Some(BrowserTabContextAction::TogglePin), None]);
-        items.extend([
-            ContextMenuEntry::item(
-                lingxia_logic::i18n::t(if pinned {
-                    I18nKey::BrowserUnpin
-                } else {
-                    I18nKey::BrowserPinToSidebar
-                }),
-                true,
-                if pinned {
-                    WindowsDesignIcon::Unpin
-                } else {
-                    WindowsDesignIcon::Pin
-                },
-            ),
-            ContextMenuEntry::separator(),
-        ]);
-    }
-    actions.push(Some(BrowserTabContextAction::Close));
-    items.push(ContextMenuEntry::item(
-        lingxia_logic::i18n::t(I18nKey::CommonClose),
-        true,
-        WindowsDesignIcon::CloseX,
-    ));
-    if tabs.len() > 1 {
-        actions.push(Some(BrowserTabContextAction::CloseOtherTabs));
-        items.push(ContextMenuEntry::item(
-            lingxia_logic::i18n::t(I18nKey::BrowserCloseOtherTabs),
-            true,
-            WindowsDesignIcon::CloseOtherTabs,
-        ));
-    }
-    if index + 1 < tabs.len() {
-        actions.push(Some(BrowserTabContextAction::CloseTabsBelow));
-        items.push(ContextMenuEntry::item(
-            lingxia_logic::i18n::t(I18nKey::BrowserCloseTabsBelow),
-            true,
-            WindowsDesignIcon::CloseTabsBelow,
-        ));
+    for section in &snapshot.sections {
+        if !entries.is_empty() && !section.items.is_empty() {
+            entries.push(super::context_menu::ContextMenuEntry::separator());
+            actions.push(None);
+        }
+        for item in &section.items {
+            entries.push(surface_menu_entry(item));
+            actions.push(Some(item.action.clone()));
+        }
     }
     let appid = appid.to_string();
     let tab_id = tab_id.to_string();
     super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
-        items,
+        entries,
         Arc::new(move |index| {
-            if let Some(action) = actions.get(index).copied().flatten() {
-                handle_browser_tab_context_action(&appid, &tab_id, action);
+            if let Some(action) = actions.get(index).cloned().flatten() {
+                handle_browser_tab_menu_action(&appid, &tab_id, action);
             }
         }),
     );
+}
+
+#[cfg(not(feature = "browser-runtime"))]
+fn show_browser_tab_context_menu(_appid: &str, _tab_id: &str, _screen_x: i32, _screen_y: i32) {}
+
+#[cfg(feature = "browser-runtime")]
+fn handle_browser_tab_menu_action(
+    appid: &str,
+    tab_id: &str,
+    action: lingxia_shell::SurfaceMenuAction,
+) {
+    use lingxia_shell::{BrowserSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    match action {
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::Pin | BrowserSurfaceMenuAction::Unpin,
+        } =>
+        {
+            #[cfg(feature = "browser-shell")]
+            if let Some(tab) = browser_tab_summary(tab_id) {
+                toggle_browser_tab_pin(appid, &tab);
+            }
+        }
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::CopyLink,
+        } => {
+            if let Some(url) = browser_tab_summary(tab_id).and_then(|tab| tab.current_url) {
+                let _ = super::clipboard::set_clipboard_text(&url);
+            }
+        }
+        SurfaceMenuAction::Browser {
+            action: BrowserSurfaceMenuAction::OpenInSide,
+        } => move_browser_tab_to_side_panel(appid, tab_id),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::Close | SurfaceMenuBuiltinAction::CloseApp,
+        } => handle_browser_tab_close(appid, tab_id),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseOthers,
+        } => close_main_area_rows(appid, tab_id, false),
+        SurfaceMenuAction::Switcher {
+            action: SurfaceMenuBuiltinAction::CloseAfter,
+        } => close_main_area_rows(appid, tab_id, true),
+        _ => {}
+    }
+}
+
+/// Move a main-area tab into the side panel, keeping its WebView: the main
+/// area presents a neighbour first, then the side panel takes the tab over.
+#[cfg(feature = "browser-runtime")]
+fn move_browser_tab_to_side_panel(appid: &str, tab_id: &str) {
+    if presented_browser_tab().as_deref() == Some(tab_id) {
+        let successor = adjacent_main_tab(tab_id, &HashSet::from([tab_id]));
+        activate_main_tab(appid, successor.as_deref());
+    }
+    if let Err(err) = lingxia::move_browser_tab_to_side_panel(tab_id) {
+        log::warn!("moving browser tab {tab_id} into the side panel refused: {err}");
+        present_browser_tab_when_ready(appid, tab_id.to_string());
+    }
+    sync_shell_layout(appid);
 }
 
 #[cfg(feature = "browser-shell")]
@@ -5390,71 +5977,20 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
 #[cfg(not(feature = "browser-shell"))]
 fn show_pinned_bookmark_context_menu(_appid: &str, _row_id: &str, _screen_x: i32, _screen_y: i32) {}
 
-#[cfg(feature = "browser-runtime")]
-fn handle_browser_tab_context_action(appid: &str, tab_id: &str, action: BrowserTabContextAction) {
-    match action {
-        #[cfg(feature = "browser-shell")]
-        BrowserTabContextAction::TogglePin => {
-            if let Some(tab) = browser_tab_summary(tab_id) {
-                toggle_browser_tab_pin(appid, &tab);
-            }
-        }
-        BrowserTabContextAction::Close => handle_browser_tab_close(appid, tab_id),
-        BrowserTabContextAction::CloseOtherTabs => close_other_browser_tabs(appid, tab_id),
-        BrowserTabContextAction::CloseTabsBelow => close_browser_tabs_below(appid, tab_id),
-    }
-}
-
-#[cfg(not(feature = "browser-runtime"))]
-fn handle_browser_tab_context_action(
-    _appid: &str,
-    _tab_id: &str,
-    _action: BrowserTabContextAction,
-) {
-}
-
-#[cfg(feature = "browser-runtime")]
-fn close_other_browser_tabs(appid: &str, keeping_tab_id: &str) {
-    let tab_ids: Vec<String> = browser_tabs()
+/// The main surface showing `target_appid`, if it has one.
+fn lxapp_main_surface_id(owner_appid: &str, target_appid: &str) -> Option<String> {
+    let owner = lxapp::try_get(owner_appid)?;
+    owner
+        .surface_switcher_snapshot()
+        .items
         .into_iter()
-        .map(|tab| tab.tab_id)
-        .filter(|tab_id| tab_id != keeping_tab_id)
-        .collect();
-    close_browser_tab_batch(appid, tab_ids);
-}
-
-#[cfg(feature = "browser-runtime")]
-fn close_browser_tabs_below(appid: &str, tab_id: &str) {
-    let tabs = browser_tabs();
-    let Some(index) = tabs.iter().position(|tab| tab.tab_id == tab_id) else {
-        return;
-    };
-    let tab_ids = tabs
-        .into_iter()
-        .skip(index + 1)
-        .map(|tab| tab.tab_id)
-        .collect();
-    close_browser_tab_batch(appid, tab_ids);
-}
-
-#[cfg(feature = "browser-runtime")]
-fn close_browser_tab_batch(appid: &str, tab_ids: Vec<String>) {
-    let presented_closed = presented_browser_tab()
-        .map(|presented| tab_ids.iter().any(|tab_id| tab_id == &presented))
-        .unwrap_or(false);
-    let closing: HashSet<&str> = tab_ids.iter().map(String::as_str).collect();
-    let successor = presented_browser_tab()
-        .filter(|_| presented_closed)
-        .and_then(|presented| adjacent_main_tab(&presented, &closing));
-    for tab_id in tab_ids {
-        if let Err(err) = lingxia_browser::close(&tab_id) {
-            log::error!("failed to close browser tab {tab_id}: {err}");
-        }
-    }
-    if presented_closed {
-        activate_main_tab(appid, successor.as_deref());
-    }
-    sync_shell_layout(appid);
+        .map(|item| item.surface_id)
+        .find(|surface_id| {
+            matches!(
+                owner.main_surface_content(surface_id),
+                Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) if app_id == target_appid
+            )
+        })
 }
 
 fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
@@ -5531,7 +6067,8 @@ fn show_main_surface_context_menu(
     let Some(owner) = lxapp::try_get(owner_appid) else {
         return;
     };
-    let Some(snapshot) = owner.shell_surface_menu(surface_id) else {
+    let Some(snapshot) = owner.shell_surface_menu_in_rows(surface_id, &main_area_menu_rows())
+    else {
         return;
     };
     let Some(window) = source_window.or_else(|| owner_window_handle(owner_appid)) else {
@@ -5622,7 +6159,10 @@ fn surface_menu_entry(
     item: &lingxia_shell::SurfaceMenuItem,
 ) -> super::context_menu::ContextMenuEntry {
     use lingxia_logic::I18nKey;
-    use lingxia_shell::{LxappSurfaceMenuAction, SurfaceMenuAction, SurfaceMenuBuiltinAction};
+    use lingxia_shell::{
+        BrowserSurfaceMenuAction, LxappSurfaceMenuAction, SurfaceMenuAction,
+        SurfaceMenuBuiltinAction,
+    };
     let (label, icon) = match &item.action {
         SurfaceMenuAction::Information {} => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
@@ -5631,6 +6171,18 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::CapsuleRestart),
                 Some(crate::WindowsDesignIcon::Restart),
             ),
+            LxappSurfaceMenuAction::OpenInSide => (
+                lingxia_logic::i18n::t(I18nKey::AsideOpenInSide),
+                Some(crate::WindowsDesignIcon::AsideCollapse),
+            ),
+            LxappSurfaceMenuAction::Pin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserPinToSidebar),
+                Some(crate::WindowsDesignIcon::Pin),
+            ),
+            LxappSurfaceMenuAction::Unpin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserUnpin),
+                Some(crate::WindowsDesignIcon::Unpin),
+            ),
             LxappSurfaceMenuAction::CleanCacheRestart => (
                 lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
                 Some(crate::WindowsDesignIcon::CleanCache),
@@ -5638,6 +6190,24 @@ fn surface_menu_entry(
             LxappSurfaceMenuAction::Uninstall => (
                 lingxia_logic::i18n::t(I18nKey::CapsuleUninstall),
                 Some(crate::WindowsDesignIcon::Uninstall),
+            ),
+        },
+        SurfaceMenuAction::Browser { action } => match action {
+            BrowserSurfaceMenuAction::Pin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserPinToSidebar),
+                Some(crate::WindowsDesignIcon::Pin),
+            ),
+            BrowserSurfaceMenuAction::Unpin => (
+                lingxia_logic::i18n::t(I18nKey::BrowserUnpin),
+                Some(crate::WindowsDesignIcon::Unpin),
+            ),
+            BrowserSurfaceMenuAction::CopyLink => (
+                lingxia_logic::i18n::t(I18nKey::BrowserCopyLink),
+                Some(crate::WindowsDesignIcon::Link),
+            ),
+            BrowserSurfaceMenuAction::OpenInSide => (
+                lingxia_logic::i18n::t(I18nKey::AsideOpenInSide),
+                Some(crate::WindowsDesignIcon::AsideCollapse),
             ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
@@ -5649,6 +6219,10 @@ fn surface_menu_entry(
             }
             SurfaceMenuBuiltinAction::Close => (
                 lingxia_logic::i18n::t(I18nKey::SurfaceClose),
+                Some(crate::WindowsDesignIcon::CloseX),
+            ),
+            SurfaceMenuBuiltinAction::CloseApp => (
+                lingxia_logic::i18n::t(I18nKey::CommonClose),
                 Some(crate::WindowsDesignIcon::CloseX),
             ),
             SurfaceMenuBuiltinAction::CloseOthers => (
@@ -5721,6 +6295,53 @@ fn handle_main_surface_menu_action(
                 return;
             }
             log::warn!("sidebar row is unavailable for inline surface rename");
+        }
+        // The close family spans every main-area row, browser tabs included.
+        SurfaceMenuAction::Switcher {
+            action:
+                action @ (SurfaceMenuBuiltinAction::CloseOthers | SurfaceMenuBuiltinAction::CloseAfter),
+        } => close_main_area_rows(
+            owner_appid,
+            surface_id,
+            action == SurfaceMenuBuiltinAction::CloseAfter,
+        ),
+        // Pin runs here so a full Pin grid can say so.
+        SurfaceMenuAction::Lxapp {
+            action:
+                action @ (lingxia_shell::LxappSurfaceMenuAction::Pin
+                | lingxia_shell::LxappSurfaceMenuAction::Unpin),
+        } => {
+            let appid = lxapp::try_get(owner_appid)
+                .and_then(|owner| owner.main_surface_content(surface_id))
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id),
+                    _ => None,
+                });
+            if let Some(appid) = appid
+                && set_lxapp_pin_with_limit(
+                    owner_appid,
+                    &appid,
+                    action == lingxia_shell::LxappSurfaceMenuAction::Pin,
+                )
+            {
+                sync_shell_layout(owner_appid);
+            }
+        }
+        // Windows re-hosts the page itself (adopt the WebView as a runtime
+        // aside, present the successor main), which the core's own handler
+        // cannot do; route the intent to that path.
+        SurfaceMenuAction::Lxapp {
+            action: lingxia_shell::LxappSurfaceMenuAction::OpenInSide,
+        } => {
+            let appid = lxapp::try_get(owner_appid)
+                .and_then(|owner| owner.main_surface_content(surface_id))
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id),
+                    _ => None,
+                });
+            if let Some(appid) = appid {
+                demote_lxapp_main(&appid);
+            }
         }
         action => perform_main_surface_menu_intent(
             owner_appid,
@@ -6132,6 +6753,7 @@ fn panel_startup_options(
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum LxappContextMenuAction {
     TogglePin,
+    OpenInSide,
     Restart,
     CleanCacheRestart,
     Uninstall,
@@ -6183,6 +6805,15 @@ fn build_lxapp_context_menu(
         Some(LxappContextMenuAction::CleanCacheRestart),
     );
     if !is_home {
+        // The mirror of the aside tab's "Open in Main Area": the live app
+        // moves beside the main without restarting. Home is the root main.
+        push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::AsideOpenInSide),
+            Some(LxappContextMenuAction::OpenInSide),
+        );
         push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
         push_lxapp_context_menu_item(
             &mut items,
@@ -6289,6 +6920,9 @@ fn show_lxapp_auxiliary_context_menu(
                 sync_shell_layout(&owner_appid);
             }
             Some(LxappContextMenuAction::TogglePin) => {}
+            Some(LxappContextMenuAction::OpenInSide) => {
+                demote_lxapp_main(&target_appid);
+            }
             Some(LxappContextMenuAction::Restart) => {
                 schedule_lxapp_cold_restart(target_appid.clone(), false);
             }
@@ -6587,7 +7221,11 @@ fn present_browser_tab_when_ready_inner(
                         if !owner.set_active_main_surface(surface_id) {
                             set_presented_browser_tab(previous_tab.clone());
                             set_presented_browser_group_appid(previous_group.clone());
-                            if let Some(previous_tab) = previous_tab.clone() {
+                            // A tab moved into the side panel meanwhile stays there.
+                            if let Some(previous_tab) = previous_tab
+                                .clone()
+                                .filter(|tab| !lingxia_browser::tab_is_standalone(tab))
+                            {
                                 present_browser_tab_when_ready(&owner_appid, previous_tab);
                             } else if let Err(error) = restore_presented_group_main() {
                                 log::warn!(
@@ -6911,7 +7549,7 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
         let icon_path = crate::app_icon::current_app_icon_path()
             .map(|path| path.to_string_lossy().into_owned())
             .filter(|path| !path.is_empty())
-            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default());
+            .unwrap_or_else(|| lxapp_icon_path(&app.appid).unwrap_or_default());
         let about_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout);
         let exit_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonExit);
         let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);
@@ -8522,11 +9160,13 @@ mod tests {
         let (_, home_actions) =
             build_lxapp_context_menu(true, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(!home_actions.contains(&Some(LxappContextMenuAction::OpenInSide)));
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
 
         let (_, app_actions) =
             build_lxapp_context_menu(false, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(app_actions.contains(&Some(LxappContextMenuAction::OpenInSide)));
         assert!(app_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
     }
 

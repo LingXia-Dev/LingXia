@@ -1,8 +1,8 @@
-import { spec } from '@lingxia/test';
+import { test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // `reveal(id)`: page code scrolls a child of a <scroll> into view.
-spec('reveal scrolls a row into its scroll and back', { covers: ['view:scroll'], start: openDemo('jump') }, async (t) => {
+test('reveal scrolls a row into its scroll and back', { covers: ['view:scroll'], start: openDemo('jump') }, async (t) => {
   const view = t.app.view;
   const scroll = view.testId('lab-reveal-scroll');
   const inside = async (id: string) => {

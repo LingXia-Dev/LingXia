@@ -5,6 +5,5 @@
   "description": "LingXia WebView HAR library for HarmonyOS",
   "dependencies": {
   },
-  "devDependencies": {
-  }
+  "devDependencies": {}
 }

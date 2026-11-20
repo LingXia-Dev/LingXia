@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 pub enum SurfaceMenuBuiltinAction {
     Rename,
     ResetTitle,
+    /// Closes a tab-like row: "Close Tab".
     Close,
+    /// Closes an app's row: "Close". Runs exactly like `Close`.
+    CloseApp,
     CloseOthers,
     CloseAfter,
 }
@@ -19,9 +22,29 @@ pub enum SurfaceMenuBuiltinAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LxappSurfaceMenuAction {
+    /// Pin the lxapp to the sidebar, or remove its Pin. The platform runs
+    /// these: a full Pin grid is reported in platform UI.
+    Pin,
+    Unpin,
+    /// Move the live lxapp main into the side panel (the reverse of an aside
+    /// tab's "Open in Main Area"); never offered for the root main.
+    OpenInSide,
     Restart,
     CleanCacheRestart,
     Uninstall,
+}
+
+/// Actions on a main-area browser tab. A browser tab is not a graph surface:
+/// its menu is keyed by the browser tab id, and the platform runs every
+/// action, the close family included, over its browser tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserSurfaceMenuAction {
+    Pin,
+    Unpin,
+    CopyLink,
+    /// Move the live tab into the side panel, keeping its WebView.
+    OpenInSide,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +60,9 @@ pub enum SurfaceMenuAction {
     },
     Lxapp {
         action: LxappSurfaceMenuAction,
+    },
+    Browser {
+        action: BrowserSurfaceMenuAction,
     },
     External {
         namespace: String,
@@ -88,6 +114,16 @@ impl SurfaceMenuItem {
         }
     }
 
+    pub fn browser(action: BrowserSurfaceMenuAction) -> Self {
+        Self {
+            action: SurfaceMenuAction::Browser { action },
+            label: None,
+            icon: None,
+            enabled: true,
+            role: SurfaceMenuItemRole::Normal,
+        }
+    }
+
     pub fn external(
         namespace: impl Into<String>,
         generation: u64,
@@ -124,7 +160,11 @@ impl SurfaceMenuItem {
 pub enum SurfaceMenuSectionKind {
     Content,
     Management,
+    /// Where the content shows: "Open in Side Panel".
+    Placement,
     Lifecycle,
+    /// Leaves the app for good (Uninstall), after every close.
+    Removal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,6 +182,36 @@ pub struct SurfaceMenuSnapshot {
     pub sections: Vec<SurfaceMenuSection>,
 }
 
+/// One main-area row as the sidebar lists it. The close family counts every
+/// row the user sees there - graph mains and browser tabs alike - in this
+/// order, so a platform passes all of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MainRow {
+    pub id: String,
+    pub closable: bool,
+}
+
+/// What "Close Others" and "Close Tabs Below" on `id` would close: every
+/// other closable row, and the closable rows after it. `None` when `id` is
+/// not a row.
+pub fn main_rows_close_targets(rows: &[MainRow], id: &str) -> Option<(Vec<String>, Vec<String>)> {
+    let index = rows.iter().position(|row| row.id == id)?;
+    let closable = |row: &&MainRow| row.closable;
+    let others = rows
+        .iter()
+        .filter(|row| row.id != id)
+        .filter(closable)
+        .map(|row| row.id.clone())
+        .collect();
+    let after = rows[index + 1..]
+        .iter()
+        .filter(closable)
+        .map(|row| row.id.clone())
+        .collect();
+    Some((others, after))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceMenuContext {
     pub revision: u64,
@@ -154,12 +224,53 @@ pub struct SurfaceMenuContext {
     pub has_closable_after: bool,
 }
 
+impl SurfaceMenuContext {
+    /// Count the close family over the sidebar's main-area `rows` instead
+    /// of whatever list the context was built from. Rows that do not list
+    /// the subject leave the context as it is.
+    pub fn with_rows(mut self, rows: &[MainRow]) -> Self {
+        if let Some(index) = rows.iter().position(|row| row.id == self.surface_id) {
+            self.has_other_closable = rows
+                .iter()
+                .any(|row| row.id != self.surface_id && row.closable);
+            self.has_closable_before = rows[..index].iter().any(|row| row.closable);
+            self.has_closable_after = rows[index + 1..].iter().any(|row| row.closable);
+        }
+        self
+    }
+}
+
+/// Provider items around the shell's own sections. Every main-area row reads
+/// the same way: what the content offers, where it shows, how it closes, and
+/// last what removes it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SurfaceMenuParts {
+    pub content: Vec<Vec<SurfaceMenuItem>>,
+    pub placement: Vec<SurfaceMenuItem>,
+    pub removal: Vec<SurfaceMenuItem>,
+    /// The row is an app, not a tab: its close reads "Close".
+    pub close_app: bool,
+}
+
 pub fn compose_surface_menu(
     context: SurfaceMenuContext,
     content_groups: Vec<Vec<SurfaceMenuItem>>,
 ) -> SurfaceMenuSnapshot {
-    let mut sections = Vec::with_capacity(3);
-    for items in content_groups.into_iter().filter(|items| !items.is_empty()) {
+    compose_surface_menu_parts(
+        context,
+        SurfaceMenuParts {
+            content: content_groups,
+            ..SurfaceMenuParts::default()
+        },
+    )
+}
+
+pub fn compose_surface_menu_parts(
+    context: SurfaceMenuContext,
+    parts: SurfaceMenuParts,
+) -> SurfaceMenuSnapshot {
+    let mut sections = Vec::with_capacity(5);
+    for items in parts.content.into_iter().filter(|items| !items.is_empty()) {
         sections.push(SurfaceMenuSection {
             kind: SurfaceMenuSectionKind::Content,
             items,
@@ -186,10 +297,21 @@ pub fn compose_surface_menu(
         });
     }
 
+    if !parts.placement.is_empty() {
+        sections.push(SurfaceMenuSection {
+            kind: SurfaceMenuSectionKind::Placement,
+            items: parts.placement,
+        });
+    }
+
     let mut lifecycle = Vec::new();
     if context.closable {
         lifecycle.push(SurfaceMenuItem::built_in(
-            SurfaceMenuBuiltinAction::Close,
+            if parts.close_app {
+                SurfaceMenuBuiltinAction::CloseApp
+            } else {
+                SurfaceMenuBuiltinAction::Close
+            },
             SurfaceMenuItemRole::Destructive,
         ));
     }
@@ -199,7 +321,10 @@ pub fn compose_surface_menu(
             SurfaceMenuItemRole::Destructive,
         ));
     }
-    if context.has_closable_before && context.has_closable_after {
+    // Shown whenever a closable row sits below, even where it closes what
+    // "Close Others" closes (the first row under the root): users find menu
+    // items by position, and browsers list it the same way.
+    if context.has_closable_after {
         lifecycle.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::CloseAfter,
             SurfaceMenuItemRole::Destructive,
@@ -209,6 +334,12 @@ pub fn compose_surface_menu(
         sections.push(SurfaceMenuSection {
             kind: SurfaceMenuSectionKind::Lifecycle,
             items: lifecycle,
+        });
+    }
+    if !parts.removal.is_empty() {
+        sections.push(SurfaceMenuSection {
+            kind: SurfaceMenuSectionKind::Removal,
+            items: parts.removal,
         });
     }
 
@@ -243,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn root_deduplicates_equivalent_batch_actions() {
+    fn root_keeps_close_below_beside_close_others() {
         let snapshot = compose_surface_menu(
             SurfaceMenuContext {
                 revision: 7,
@@ -265,7 +396,7 @@ mod tests {
         assert!(actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseOthers,
         }));
-        assert!(!actions.contains(&SurfaceMenuAction::Switcher {
+        assert!(actions.contains(&SurfaceMenuAction::Switcher {
             action: SurfaceMenuBuiltinAction::CloseAfter,
         }));
     }
@@ -382,5 +513,91 @@ mod tests {
             snapshot.sections[2].items[0].action,
             SurfaceMenuAction::External { .. }
         ));
+    }
+
+    #[test]
+    fn placement_sits_between_content_and_closes_and_removal_comes_last() {
+        let mut uninstall = SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::Uninstall);
+        uninstall.role = SurfaceMenuItemRole::Destructive;
+        let snapshot = compose_surface_menu_parts(
+            SurfaceMenuContext {
+                revision: 4,
+                surface_id: "guest".into(),
+                closable: true,
+                renameable: false,
+                title_overridden: false,
+                has_other_closable: true,
+                has_closable_before: true,
+                has_closable_after: true,
+            },
+            SurfaceMenuParts {
+                content: vec![vec![SurfaceMenuItem::lxapp(
+                    LxappSurfaceMenuAction::Restart,
+                )]],
+                placement: vec![SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::OpenInSide)],
+                removal: vec![uninstall],
+                close_app: true,
+            },
+        );
+
+        assert_eq!(
+            snapshot
+                .sections
+                .iter()
+                .map(|section| section.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                SurfaceMenuSectionKind::Content,
+                SurfaceMenuSectionKind::Placement,
+                SurfaceMenuSectionKind::Lifecycle,
+                SurfaceMenuSectionKind::Removal,
+            ]
+        );
+    }
+
+    #[test]
+    fn browser_action_serializes_under_its_own_owner() {
+        let item = SurfaceMenuItem::browser(BrowserSurfaceMenuAction::CopyLink);
+        let json = serde_json::to_value(&item).unwrap();
+
+        assert_eq!(json["action"]["owner"], "browser");
+        assert_eq!(json["action"]["action"], "copyLink");
+    }
+
+    fn row(id: &str, closable: bool) -> MainRow {
+        MainRow {
+            id: id.into(),
+            closable,
+        }
+    }
+
+    #[test]
+    fn close_family_counts_every_main_area_row() {
+        // The root, an lxapp main, then two browser tabs.
+        let rows = [
+            row("home", false),
+            row("app", true),
+            row("tab-1", true),
+            row("tab-2", true),
+        ];
+        let context = SurfaceMenuContext {
+            revision: 1,
+            surface_id: "app".into(),
+            closable: true,
+            renameable: false,
+            title_overridden: false,
+            has_other_closable: false,
+            has_closable_before: false,
+            has_closable_after: false,
+        }
+        .with_rows(&rows);
+        assert!(context.has_other_closable);
+        assert!(!context.has_closable_before);
+        assert!(context.has_closable_after);
+
+        let (others, after) = main_rows_close_targets(&rows, "tab-1").unwrap();
+        assert_eq!(others, vec!["app".to_string(), "tab-2".to_string()]);
+        assert_eq!(after, vec!["tab-2".to_string()]);
+        assert!(main_rows_close_targets(&rows, "gone").is_none());
     }
 }

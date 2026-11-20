@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 
 afterEach(() => {
@@ -52,11 +52,11 @@ test("restoreProfile rolls a spec's writes back before the next spec", async () 
   let seenByBodyDefer;
   let seenBySecond;
 
-  spec("writes", { restoreProfile: true }, async (t) => {
+  lxTest("writes", { restoreProfile: true }, async (t) => {
     profile.data.value = 42;
     t.defer(() => { seenByBodyDefer = profile.data.value; });
   });
-  spec("reads", async () => {
+  lxTest("reads", async () => {
     seenBySecond = profile.data.value;
   });
 
@@ -79,7 +79,7 @@ test("restoreProfile relaunches on the spec's start page, after the checkpoint",
   const profile = fakeProfile(world);
   installFakeHost(world);
   let landed;
-  spec("on detail", { restoreProfile: true, start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+  lxTest("on detail", { restoreProfile: true, start: { page: "detail", query: { id: "d1" } } }, async (t) => {
     landed = (await t.app.nav.current()).name;
   });
   const report = await run();
@@ -96,8 +96,8 @@ test("a failed rollback stops the run instead of leaking data", async () => {
   const { events } = installFakeHost(world);
   let secondRan = false;
 
-  spec("writes", { restoreProfile: true }, async () => {});
-  spec("would see stale data", async () => { secondRan = true; });
+  lxTest("writes", { restoreProfile: true }, async () => {});
+  lxTest("would see stale data", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
@@ -105,11 +105,11 @@ test("a failed rollback stops the run instead of leaking data", async () => {
   assert.equal(report.cases[0].status, "failed");
   assert.equal(report.cases[0].error.phase, "defer");
   assert.equal(report.cases[1].status, "skipped");
-  assert.match(report.cases[1].reason, /^Not run: "writes" could not roll the app's data back \(restoreProfile\); a later spec would run on its data\. Restart the run\.$/);
+  assert.match(report.cases[1].reason, /^Not run: "writes" could not roll the app's data back \(restoreProfile\); a later test would run on its data\. Restart the run\.$/);
   assert.equal(profile.checkpoints.size, 0, "the failed rollback's checkpoint is dropped too");
   const stopped = events.filter((event) => event.type === "diagnostic" && event.phase === "run_stopped");
   assert.equal(stopped.length, 1, JSON.stringify(events.filter((event) => event.type === "diagnostic")));
-  assert.equal(stopped[0].message, `"writes" could not roll the app's data back (restoreProfile); a later spec would run on its data. The remaining specs are not run.`);
+  assert.equal(stopped[0].message, `"writes" could not roll the app's data back (restoreProfile); a later test would run on its data. The remaining tests are not run.`);
 });
 
 test("an abandoned restoreProfile spec stops the run with the abandon reason, not a rollback failure", async () => {
@@ -118,11 +118,11 @@ test("an abandoned restoreProfile spec stops the run with the abandon reason, no
   const { events } = installFakeHost(world);
   let secondRan = false;
 
-  spec("hangs", { restoreProfile: true, timeout: 40, forensics: false }, async () => {
+  lxTest("hangs", { restoreProfile: true, timeout: 40, forensics: false }, async () => {
     setInterval(() => {}, 100);
     await new Promise(() => {});
   });
-  spec("would see its data", async () => { secondRan = true; });
+  lxTest("would see its data", async () => { secondRan = true; });
 
   const report = await run();
   assert.equal(secondRan, false);
@@ -148,7 +148,7 @@ test("restoreProfile outside an isolated run fails before the body", async () =>
   installFakeHost(world);
   let bodyRan = false;
 
-  spec("needs isolation", { restoreProfile: true }, async () => { bodyRan = true; });
+  lxTest("needs isolation", { restoreProfile: true }, async () => { bodyRan = true; });
 
   const report = await run();
   assert.equal(bodyRan, false);
@@ -168,7 +168,7 @@ test("t.app.profile re-selects the app after a switch", async () => {
     return { ...root, lxapp: (...args) => { selections += 1; return root.lxapp(...args); } };
   };
 
-  spec("manual", async (t) => {
+  lxTest("manual", async (t) => {
     const before = selections;
     const checkpoint = await t.app.profile.checkpoint();
     assert.deepEqual(checkpoint, { id: "cp-1" });
@@ -222,7 +222,7 @@ test("a saved t.app, and any part of it, follows the app a profile switch reopen
   };
   const seen = {};
 
-  spec("follows", async (t) => {
+  lxTest("follows", async (t) => {
     const app = t.app;
     const { view, logic, nav } = app;
     const save = view.testId("save");
@@ -251,11 +251,11 @@ test("restoreProfile keep carries chosen keys over the rollback", async () => {
   installFakeHost(world);
   let seen;
 
-  spec("rotates the token", { restoreProfile: { keep: ["token"] } }, async () => {
+  lxTest("rotates the token", { restoreProfile: { keep: ["token"] } }, async () => {
     profile.data.value = 42;
     profile.data.token = "t1";
   });
-  spec("reads", async () => {
+  lxTest("reads", async () => {
     seen = { ...profile.data };
   });
 
@@ -268,7 +268,7 @@ test("restoreProfile keep carries chosen keys over the rollback", async () => {
 });
 
 test("restoreProfile rejects a malformed keep at registration", () => {
-  assert.throws(() => spec("bad", { restoreProfile: { keep: "auth.*" } }, async () => {}), TypeError);
-  assert.throws(() => spec("bad", { restoreProfile: { keep: [""] } }, async () => {}), TypeError);
-  assert.throws(() => spec("bad", { restoreProfile: {} }, async () => {}), TypeError);
+  assert.throws(() => lxTest("bad", { restoreProfile: { keep: "auth.*" } }, async () => {}), TypeError);
+  assert.throws(() => lxTest("bad", { restoreProfile: { keep: [""] } }, async () => {}), TypeError);
+  assert.throws(() => lxTest("bad", { restoreProfile: {} }, async () => {}), TypeError);
 });

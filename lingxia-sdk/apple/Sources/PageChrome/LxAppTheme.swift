@@ -48,7 +48,11 @@ struct LxAppTheme {
         public static let navigationBarHeight: CGFloat = platformNavigationHeight
 
         // Tab bar
+        #if os(iOS)
+        public static let tabBarHeight: CGFloat = 50
+        #else
         public static let tabBarHeight: CGFloat = 64
+        #endif
         public static let tabIconSize: CGFloat = 24
 
         // Spacing

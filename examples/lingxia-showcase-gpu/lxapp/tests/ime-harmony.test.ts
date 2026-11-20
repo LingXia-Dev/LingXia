@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // Typed text keeps reaching a text field after a numeric one held the input method: each
 // focus attaches afresh with that field's keyboard, through real taps and key presses.
-spec('a text field after a numeric one still takes typed letters', {
+test('a text field after a numeric one still takes typed letters', {
   id: 'IME-HARMONY-001', covers: ['view:input'],
   reason: 'taps and types through the Harmony device fixture',
   start: { page: 'view-input', query: { lang: 'en' } },

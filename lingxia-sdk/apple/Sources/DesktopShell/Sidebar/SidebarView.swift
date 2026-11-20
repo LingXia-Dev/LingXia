@@ -415,7 +415,7 @@ private final class SidebarRailTooltip {
     private func makeFloat() -> SidebarRailFloatWindow {
         let content = NSView()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 12)
+        label.font = .systemFont(ofSize: 14)
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
         content.addSubview(label)
@@ -504,7 +504,7 @@ private final class SidebarRailPagePanel {
         // that group pulled out of the rail rather than a different control.
         let titleLabel = NSTextField(labelWithString: label.uppercased())
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
@@ -696,17 +696,17 @@ class SidebarView: NSView {
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
         static let footerHeight: CGFloat = 48
         /// sidebar action row height — matches the tabbar item rhythm above.
-        static let footerButtonSize: CGFloat = 30
+        static let footerButtonSize: CGFloat = 34
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
         /// Vertical inset of the sidebar action flow. Horizontally it is
         /// `footerHInset`, leaving 130pt of flow width in the standard 148pt rail.
         static let footerInset: CGFloat = 6
-        /// iconAxis − row internal padding (7) − half icon (9): footer button
-        /// icons center on the shared first-column axis. Horizontal only —
+        /// iconAxis − half the square row cell (17): footer button icons
+        /// center on the shared first-column axis. Horizontal only —
         /// the vertical insets keep `footerInset` so rows still fit the
         /// fixed `footerHeight`.
-        static let footerHInset: CGFloat = iconAxis - 16
+        static let footerHInset: CGFloat = iconAxis - footerButtonSize / 2
         /// Rows shown before the sidebar action area caps and scrolls internally.
         static let footerMaxRows: CGFloat = 5
     }
@@ -917,6 +917,8 @@ class SidebarView: NSView {
     var onBrowserTabCloseOtherRequested: ((String) -> Void)?
     /// Called when browser tabs visually below the given tab should close.
     var onBrowserTabCloseTabsBelowRequested: ((String) -> Void)?
+    /// Move a main-area browser tab into the side panel, keeping its page.
+    var onBrowserTabMoveToSidePanelRequested: ((String) -> Void)?
     /// Called when a pin tile with no open tab is clicked (open its URL)
     var onBookmarkOpen: ((String) -> Void)?
     /// Called from tile menus to open the bookmarks manager page
@@ -1419,8 +1421,7 @@ class SidebarView: NSView {
             switch pin.kind {
             case "lxapp":
                 let info = getLxAppInfo(pin.key)
-                let iconPath = getLxAppDisplayIconPath(pin.key).toString()
-                let image = LxIcon.lxappImage(appId: pin.key, path: iconPath)
+                let image = LxIcon.lxappImage(appId: pin.key)
                 let name = info.app_name.toString()
                 let key = "pin-lxapp:\(pin.key)"
                 let button = makeRailButton(
@@ -1489,12 +1490,11 @@ class SidebarView: NSView {
                 tooltip = group.managedLabel ?? group.appId
                 let iconAppId = group.contentAppId ?? group.appId
                 image = group.managedIcon
-                    ?? LxIcon.lxappImage(appId: iconAppId, path: "")
+                    ?? LxIcon.lxappImage(appId: iconAppId)
             } else {
                 let info = getLxAppInfo(group.appId)
-                let iconPath = getLxAppDisplayIconPath(group.appId).toString()
                 tooltip = info.app_name.toString()
-                image = LxIcon.lxappImage(appId: group.appId, path: iconPath)
+                image = LxIcon.lxappImage(appId: group.appId)
             }
             let key = "app:\(group.appId)"
             let isTemplate = group.isManagedMain && group.contentAppId == nil
@@ -1759,97 +1759,63 @@ class SidebarView: NSView {
         onPanelItemToggled?(item.generation, item.id, item.source)
     }
 
+    /// The browser tab's "···" and right-click menu: the core's main-area
+    /// row menu (page actions, Open in Side Panel, the close family), run
+    /// here over the sidebar's tabs.
     private func browserContextMenu(for id: String) -> NSMenu? {
         closeRailHoverPanel()
-        guard let tab = model.browserTabs.first(where: { $0.id == id }) else { return nil }
-        let menu = NSMenu()
-
-        // Page actions first (Arc keeps pin/copy on the tab row itself).
-        let url = tab.url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if BrowserPageMenu.isBookmarkActionable(url) {
-            let pinnedEntry = pinnedBookmarkEntries.first {
-                SidebarBookmarksSnapshot.normalize($0.url)
-                    == SidebarBookmarksSnapshot.normalize(url)
-            }
-            let pin = NSMenuItem(
-                title: L10n.string(
-                    pinnedEntry == nil ? "lx_browser_pin_to_sidebar" : "lx_browser_unpin"
-                ),
-                action: #selector(togglePinBrowserMenuItemClicked(_:)),
-                keyEquivalent: ""
-            )
-            pin.image = LxIcon.image(
-                named: pinnedEntry == nil ? "icon_pin" : "icon_unpin",
-                size: CGSize(width: 16, height: 16)
-            )
-            pin.target = self
-            pin.representedObject = id
-            menu.addItem(pin)
-
-            let copyLink = NSMenuItem(
-                title: L10n.string("lx_browser_copy_link"),
-                action: #selector(copyLinkBrowserMenuItemClicked(_:)),
-                keyEquivalent: ""
-            )
-            copyLink.image = LxIcon.image(
-                named: "icon_link", size: CGSize(width: 16, height: 16))
-            copyLink.target = self
-            copyLink.representedObject = id
-            menu.addItem(copyLink)
-
-            menu.addItem(.separator())
+        guard let snapshot = SurfaceMenuBridge.browserTabSnapshot(
+            rows: mainAreaRows(),
+            tabId: id
+        ) else { return nil }
+        let menu = SurfaceMenuPresenter.makeMenu(snapshot) { [weak self] _, tabId, action in
+            self?.performBrowserTabMenuAction(action, tabId: tabId)
         }
-
-        let close = NSMenuItem(
-            title: L10n.string("lx_common_close"),
-            action: #selector(closeBrowserMenuItemClicked(_:)),
-            keyEquivalent: ""
-        )
-        close.target = self
-        close.representedObject = id
-        close.image = LxIcon.image(
-            named: "icon_close_x", size: CGSize(width: 16, height: 16))
-        menu.addItem(close)
-
-        if let index = model.browserTabs.firstIndex(where: { $0.id == id }) {
-            if model.browserTabs.count > 1 {
-                let closeOther = NSMenuItem(
-                    title: L10n.string("lx_browser_close_other_tabs"),
-                    action: #selector(closeOtherBrowserMenuItemClicked(_:)),
-                    keyEquivalent: ""
-                )
-                closeOther.target = self
-                closeOther.representedObject = id
-                closeOther.image = LxIcon.image(
-                    named: "icon_close_other_tabs", size: CGSize(width: 16, height: 16))
-                menu.addItem(closeOther)
-            }
-
-            if index < model.browserTabs.index(before: model.browserTabs.endIndex) {
-                let closeBelow = NSMenuItem(
-                    title: L10n.string("lx_browser_close_tabs_below"),
-                    action: #selector(closeTabsBelowBrowserMenuItemClicked(_:)),
-                    keyEquivalent: ""
-                )
-                closeBelow.target = self
-                closeBelow.representedObject = id
-                closeBelow.image = LxIcon.image(
-                    named: "icon_close_tabs_below", size: CGSize(width: 16, height: 16))
-                menu.addItem(closeBelow)
-            }
-        }
-
-        return menu
+        return menu.items.isEmpty ? nil : menu
     }
 
-    @objc private func closeBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseRequested?(id)
+    /// Every main-area row in sidebar order: the managed mains, then the
+    /// browser tabs. The close family of either kind of row counts them all.
+    func mainAreaRows() -> [MainAreaRow] {
+        model.appGroups.filter(\.isManagedMain).map {
+            MainAreaRow(id: $0.appId, closable: $0.closable)
+        } + model.browserTabs.map { MainAreaRow(id: $0.id, closable: true) }
     }
 
-    @objc private func togglePinBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
+    /// The main-area row shown now, if the selection is one.
+    func selectedMainAreaRowId() -> String? {
+        switch model.selection {
+        case .browser(let id):
+            return id
+        case .app(let appId, _):
+            return model.appGroups.contains { $0.appId == appId && $0.isManagedMain } ? appId : nil
+        case .none:
+            return nil
+        }
+    }
+
+    private func performBrowserTabMenuAction(_ action: SurfaceMenuSnapshot.Item.Action, tabId: String) {
+        switch (action.owner, action.action) {
+        case ("browser", "pin"), ("browser", "unpin"):
+            toggleBrowserTabPin(tabId)
+        case ("browser", "copyLink"):
+            guard let tab = model.browserTabs.first(where: { $0.id == tabId }) else { return }
+            BrowserPageMenu.copyLink(tab.url, toastHost: self)
+        case ("browser", "openInSide"):
+            onBrowserTabMoveToSidePanelRequested?(tabId)
+        case ("switcher", "close"):
+            onBrowserTabCloseRequested?(tabId)
+        case ("switcher", "closeOthers"):
+            onBrowserTabCloseOtherRequested?(tabId)
+        case ("switcher", "closeAfter"):
+            onBrowserTabCloseTabsBelowRequested?(tabId)
+        default:
+            break
+        }
+    }
+
+    private func toggleBrowserTabPin(_ id: String) {
+        guard let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
         if let pinnedEntry = pinnedBookmarkEntries.first(where: {
             SidebarBookmarksSnapshot.normalize($0.url)
                 == SidebarBookmarksSnapshot.normalize(tab.url)
@@ -1862,22 +1828,6 @@ class SidebarView: NSView {
                 showShellPinLimitAlert()
             }
         }
-    }
-
-    @objc private func copyLinkBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let tab = model.browserTabs.first(where: { $0.id == id }) else { return }
-        BrowserPageMenu.copyLink(tab.url, toastHost: self)
-    }
-
-    @objc private func closeOtherBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseOtherRequested?(id)
-    }
-
-    @objc private func closeTabsBelowBrowserMenuItemClicked(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        onBrowserTabCloseTabsBelowRequested?(id)
     }
 
     /// Hover affordance for one collapsed-rail icon: the page panel when the
@@ -2738,7 +2688,7 @@ class SidebarView: NSView {
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
         let hostIcon = LxIcon.hostAppImage()
-        icon.image = hostIcon.map { TabBarHelper.appTileIcon($0, size: 16) }
+        icon.image = hostIcon.map { TabBarHelper.appTileIcon($0, size: SidebarGroupView.Layout.appIconSize) }
             ?? Self.designIcon("icon_globe")
             ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         icon.imageScaling = .scaleProportionallyDown
@@ -2746,7 +2696,7 @@ class SidebarView: NSView {
 
         let label = NSTextField(labelWithString: L10n.string("lx_browser_label").uppercased())
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = LxAppHostTheme.foreground
         browserRootHeader.addSubview(label)
 
@@ -2756,8 +2706,8 @@ class SidebarView: NSView {
                 constant: SidebarGroupView.Layout.headerHPadding
             ),
             icon.centerYAnchor.constraint(equalTo: browserRootHeader.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
+            icon.widthAnchor.constraint(equalToConstant: SidebarGroupView.Layout.appIconSize),
+            icon.heightAnchor.constraint(equalToConstant: SidebarGroupView.Layout.appIconSize),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             label.trailingAnchor.constraint(
                 lessThanOrEqualTo: browserRootHeader.trailingAnchor,
@@ -3232,7 +3182,7 @@ private final class SidebarActionFlowView: NSView {
     static let gap: CGFloat = 4
     /// Between icon buttons in a row; the header's action spacing.
     private static let iconGap: CGFloat = 2
-    private static let rowHeight: CGFloat = 30
+    private static let rowHeight: CGFloat = SidebarView.Layout.footerButtonSize
 
     private var entries: [SidebarActionRowView] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -3361,7 +3311,7 @@ private enum SidebarActionChromePalette {
 @MainActor
 final class SidebarActionRowView: NSView {
     private static let iconSize: CGFloat = 18
-    private static let cellHeight: CGFloat = 30
+    private static let cellHeight: CGFloat = SidebarView.Layout.footerButtonSize
 
     var onClick: (() -> Void)?
     /// The sidebar draws the name above the cell; the system tooltip opens
@@ -3443,7 +3393,7 @@ final class SidebarActionRowView: NSView {
         }
 
         titleLabel.font = NSFont.systemFont(
-            ofSize: 13,
+            ofSize: 15,
             weight: self.active ? .medium : .regular
         )
         titleLabel.textColor = disabled

@@ -186,8 +186,6 @@ Signing, publishing, and store credentials:
   with what each Apple team can sign, upload, and read (build status)
 - `lingxia auth forget --platform <channel>` — re-resolve this checkout's
   credential selection
-- `lingxia auth runner [set <LINGXIA_ID> --dev <URL> [--prod <URL>] | clear]`
-  — the cloud identity the Runner signs in with
 
 ## `lingxia store`
 

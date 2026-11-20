@@ -1,14 +1,14 @@
-//! `--changed` / `--changed-since REF`: run only the specs a change can
+//! `--changed` / `--changed-since REF`: run only the tests a change can
 //! affect.
 //!
-//! The unit is the spec module, the file whose `spec(…)` calls register
-//! specs: the runtime's `locations` control selects by it, so the run keeps
+//! The unit is the test module, the file whose `test(…)` calls register
+//! tests: the runtime's `locations` control selects by it, so the run keeps
 //! its entries (their order, hooks and platform subset) and only narrows
-//! whose specs run. A spec module is affected when a changed file is in its
+//! whose tests run. A test module is affected when a changed file is in its
 //! import graph, belongs to a page its test code names, is an entry that
 //! includes it, or is a non-script file its test code names. A project-wide
 //! file, or one the graph cannot attribute (an asset, a nested config),
-//! affects every spec: missing a spec is the failure to avoid. Only script
+//! affects every test: missing a test is the failure to avoid. Only script
 //! modules nothing imports and docs affect none.
 
 use crate::test_bundle::source_name;
@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-/// Files that change every spec's outcome, by name in the project root or an
+/// Files that change every test's outcome, by name in the project root or an
 /// lxapp's directory.
 const PROJECT_WIDE: &[&str] = &[
     "lxdev.json",
@@ -49,7 +49,7 @@ const INERT_CONFIGS: &[&str] = &["eslint", "prettier", "stylelint", "commitlint"
 
 const SCRIPT_EXTENSIONS: &[&str] = &["js", "mjs", "cjs", "ts", "mts", "cts", "jsx", "tsx"];
 
-/// Why a spec module is affected.
+/// Why a test module is affected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reason {
     /// A changed file is in its import graph (or is the module itself).
@@ -62,12 +62,12 @@ pub enum Reason {
     Names(PathBuf),
 }
 
-/// Why every spec is affected.
+/// Why every test is affected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Everything {
     /// lxdev.json, lxapp.json, the app entry, a package or build file.
     ProjectWide(PathBuf),
-    /// No import, page or name ties it to a spec, and it may matter.
+    /// No import, page or name ties it to a test, and it may matter.
     Unattributed(PathBuf),
 }
 
@@ -85,15 +85,15 @@ pub struct Changes {
 #[derive(Debug, Default)]
 pub struct ChangedSelection {
     pub changes: Changes,
-    /// The spec modules of the run.
+    /// The test modules of the run.
     pub spec_modules: usize,
-    /// Set when every spec is affected; `selected` is then empty.
+    /// Set when every test is affected; `selected` is then empty.
     pub everything: Option<Everything>,
-    /// Affected spec modules, each with one reason.
+    /// Affected test modules, each with one reason.
     pub selected: Vec<(PathBuf, Reason)>,
-    /// Changed files that affect no spec of the run.
+    /// Changed files that affect no test of the run.
     pub unaffected: Vec<PathBuf>,
-    /// The entries that reach an affected spec module.
+    /// The entries that reach an affected test module.
     entries: Vec<PathBuf>,
 }
 
@@ -200,7 +200,7 @@ fn canonical(path: &Path) -> PathBuf {
     }
 }
 
-/// Select, among the spec modules `entries` reach, those `changed` can
+/// Select, among the test modules `entries` reach, those `changed` can
 /// affect. `extra_wide` adds project-wide files (the run's `--openapi`
 /// documents).
 pub fn select(
@@ -251,7 +251,7 @@ pub fn select(
         .iter()
         .map(|module| (module.clone(), graph.closure(std::slice::from_ref(module))))
         .collect();
-    // A changed test-side module reselects every spec module it includes.
+    // A changed test-side module reselects every test module it includes.
     let included: Vec<(PathBuf, BTreeSet<PathBuf>)> = changed
         .iter()
         .filter(|file| run.contains(*file) && !product.contains(*file))
@@ -495,7 +495,7 @@ fn lxdev_config(root: &Path) -> Option<serde_json::Value> {
     serde_json::from_str(&text).ok()
 }
 
-/// Files only a run's report reads (`--covers-manifest`): no spec's outcome
+/// Files only a run's report reads (`--covers-manifest`): no test's outcome
 /// depends on them.
 fn report_inputs(root: &Path) -> BTreeSet<PathBuf> {
     lxdev_config(root)
@@ -506,7 +506,7 @@ fn report_inputs(root: &Path) -> BTreeSet<PathBuf> {
         .collect()
 }
 
-/// One page of an lxapp: its files and how a spec names it.
+/// One page of an lxapp: its files and how a test names it.
 #[derive(Debug)]
 struct Page {
     name: String,
@@ -768,8 +768,8 @@ impl<'a> Visit<'a> for Found {
     }
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        // The bundle only accepts direct `spec(…)` / `spec.x(…)` calls
-        // (test_spec_check), so the callee tells a spec module.
+        // The bundle only accepts direct `test(…)` / `test.x(…)` calls
+        // (test_spec_check), so the callee tells a test module.
         let callee = match &it.callee {
             Expression::Identifier(id) => Some(id.name.as_str()),
             Expression::StaticMemberExpression(member) => match &member.object {
@@ -779,7 +779,7 @@ impl<'a> Visit<'a> for Found {
             _ => None,
         };
         match callee {
-            Some("spec") => self.registers_specs = true,
+            Some("test") => self.registers_specs = true,
             Some("require") if matches!(&it.callee, Expression::Identifier(_)) => {
                 if let Some(Argument::StringLiteral(source)) = it.arguments.first() {
                     self.specifiers.push(source.value.to_string());
@@ -806,7 +806,7 @@ impl<'a> Visit<'a> for Found {
     }
 }
 
-/// Narrow `selection` to the spec modules the change affects: its entries
+/// Narrow `selection` to the test modules the change affects: its entries
 /// stay (dropping those that reach none), and the `locations` control names
 /// the affected modules. An empty result is for the caller to report; it
 /// starts nothing.
@@ -851,7 +851,7 @@ pub fn narrow(
 /// Changed files the report names before it only counts the rest.
 const UNAFFECTED_SHOWN: usize = 8;
 
-/// The text report of `--changed`: what changed, which spec modules run and
+/// The text report of `--changed`: what changed, which test modules run and
 /// why, and what affects none.
 pub fn describe(found: &ChangedSelection, cwd: &Path) -> String {
     let show = |path: &Path| display_path(path, cwd);
@@ -874,13 +874,13 @@ pub fn describe(found: &ChangedSelection, cwd: &Path) -> String {
                 }
             };
             out.push_str(&format!(
-                ", all {} spec files run: {why}",
+                ", all {} test files run: {why}",
                 found.spec_modules
             ));
         }
         None => {
             out.push_str(&format!(
-                ", {} of {} spec files affected",
+                ", {} of {} test files affected",
                 found.selected.len(),
                 found.spec_modules
             ));
@@ -917,7 +917,7 @@ pub fn describe(found: &ChangedSelection, cwd: &Path) -> String {
                 found.unaffected.len() - UNAFFECTED_SHOWN
             ));
         }
-        out.push_str(&format!("\n  affects no spec: {}", names.join(", ")));
+        out.push_str(&format!("\n  affects no test: {}", names.join(", ")));
     }
     if changes.outside > 0 {
         out.push_str(&format!(
@@ -940,8 +940,8 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
-    /// Two pages, a shared module one of them imports, three spec modules
-    /// (one per page, one unit spec of the shared module) and an aggregator
+    /// Two pages, a shared module one of them imports, three test modules
+    /// (one per page, one unit test of the shared module) and an aggregator
     /// entry that includes them, as `test.entry` would name it.
     fn project() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -992,7 +992,7 @@ mod tests {
             "export const fmt = (n: number) => `${n}`;\n",
         );
         write(root, "shared/unused.ts", "export const nobody = 1;\n");
-        // A helper in a directory no spec lives in names the page.
+        // A helper in a directory no test lives in names the page.
         write(
             root,
             "tests/helpers/nav.ts",
@@ -1002,17 +1002,17 @@ mod tests {
         write(
             root,
             "tests/pages/home.test.ts",
-            "import { spec } from '@lingxia/test';\nimport { openHome } from '../helpers/nav';\nspec('home', async () => { openHome(); });\n",
+            "import { test } from '@lingxia/test';\nimport { openHome } from '../helpers/nav';\ntest('home', async () => { openHome(); });\n",
         );
         write(
             root,
             "tests/pages/ask.test.ts",
-            "import { spec } from '@lingxia/test';\nspec('ask', async (t) => { await t.app.nav.relaunch({ page: 'ask' }); await t.fixture('fixtures/answer.json'); });\n",
+            "import { test } from '@lingxia/test';\ntest('ask', async (t) => { await t.app.nav.relaunch({ page: 'ask' }); await t.fixture('fixtures/answer.json'); });\n",
         );
         write(
             root,
             "tests/unit/fmt.test.ts",
-            "import { spec } from '@lingxia/test';\nimport { fmt } from '../../shared/fmt';\nspec('fmt', () => { fmt(1); });\n",
+            "import { test } from '@lingxia/test';\nimport { fmt } from '../../shared/fmt';\ntest('fmt', () => { fmt(1); });\n",
         );
         write(
             root,
@@ -1032,8 +1032,8 @@ mod tests {
         }
     }
 
-    /// The affected spec modules through the aggregator entry, and the
-    /// changed files that affect none; `None` when every spec runs.
+    /// The affected test modules through the aggregator entry, and the
+    /// changed files that affect none; `None` when every test runs.
     fn picked(root: &Path, changed: &[&str]) -> Option<(Vec<String>, Vec<String>)> {
         let entries = [canonical(&root.join("tests/all.test.ts"))];
         let found = select(root, &entries, changes(root, changed), &[]);
@@ -1080,7 +1080,7 @@ mod tests {
         // A changed aggregator reselects what it includes.
         let (selected, _) = picked(dir.path(), &["tests/all.test.ts"]).unwrap();
         assert_eq!(selected.len(), 3);
-        // A fixture selects the specs whose test code names it.
+        // A fixture selects the tests whose test code names it.
         let (selected, _) = picked(dir.path(), &["tests/fixtures/answer.json"]).unwrap();
         assert_eq!(selected, ["tests/pages/ask.test.ts"]);
     }
@@ -1146,7 +1146,7 @@ mod tests {
         );
         assert_eq!(found.entries, [root.join("tests/all.test.ts")]);
         let text = describe(&found, &root);
-        assert!(text.contains("1 of 3 spec files affected"), "{text}");
+        assert!(text.contains("1 of 3 test files affected"), "{text}");
         assert!(
             text.contains("tests/pages/ask.test.ts  page ask: pages/ask/index.ts"),
             "{text}"

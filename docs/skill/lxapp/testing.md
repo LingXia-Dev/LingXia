@@ -1,18 +1,18 @@
 # Testing
 
-`lxdev test` runs `@lingxia/test` specs inside the running app or Runner, on a
-test worker separate from Logic and WebViews. Specs drive the UI through
+`lxdev test` runs `@lingxia/test` tests inside the running app or Runner, on a
+test worker separate from Logic and WebViews. Tests drive the UI through
 `t.app.view` (the current page) and `t.app.page()` (one fixed page), and reach
 into Logic with `t.app.logic.eval` only for what the UI cannot show. Flags and
 exit codes: `lxdev test --help`.
 
-## First spec
+## First test
 
 ```ts
 // tests/pages/notes.test.ts
-import { spec, expect } from '@lingxia/test';
+import { test, expect } from '@lingxia/test';
 
-spec('saving a note lists it', { start: { page: 'notes' } }, async (t) => {
+test('saving a note lists it', { start: { page: 'notes' } }, async (t) => {
   await t.app.view.testId('note-title').fill('Groceries');
   await t.app.view.testId('note-save').click();
   await expect(t.app.view.testId('note-list')).toContainText('Groceries');
@@ -26,22 +26,22 @@ lxdev test tests/pages/notes.test.ts
 
 - `testId('x')` matches `[data-testid="x"]` on the current page and must match
   exactly one element (narrow with `.nth(i)`).
-- `spec(title, { start: { page, query? } }, body)` relaunches the app on that
-  page before the body, like `t.app.nav.relaunch({ page })` mid-spec: the stack
+- `test(title, { start: { page, query? } }, body)` relaunches the app on that
+  page before the body, like `t.app.nav.relaunch({ page })` mid-test: the stack
   is cleared and a fresh instance opens, ready after its `onReady`. Neither
   resets app or backend data.
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
   the matcher passes; `expect(value)` checks once; `expect(fn)` takes only
   `toThrow`. Every `expect` needs a matcher: `await expect(x)` alone is a
-  type error and fails the spec. Actions and retries wait
-  5 s (`{ timeout }` per call); a spec has 30 s (`spec(title, { timeout },
+  type error and fails the test. Actions and retries wait
+  5 s (`{ timeout }` per call); a test has 30 s (`test(title, { timeout },
   body)`). Await every action: a body that returns while one still runs fails,
   and so does one whose `fetch` call does not settle soon after it returns.
 - Text matchers compare whitespace-normalised text.
-- Import `spec` by that name and call it directly — `spec(…)`, `spec.skip(…)`.
-  The bundle refuses an alias (`const s = cond ? spec.skip : spec`), a
+- Import `test` by that name and call it directly — `test(…)`, `test.skip(…)`.
+  The bundle refuses an alias (`const s = cond ? test.skip : test`), a
   rename, or a re-export, because `FILE:LINE`, `lxdev test list` and `Rerun:`
-  lines read spec calls from the source.
+  lines read test calls from the source.
 - Setup: `@lingxia/test` on the project's LingXia line and a test tsconfig
   with `lib: ["ES2020"]` (`lingxia new` writes `tsconfig.tests.json`). The test
   context has `console`, timers, and `fetch`; no app `lx.*`, DOM, filesystem,
@@ -51,33 +51,38 @@ lxdev test tests/pages/notes.test.ts
 
 ```bash
 lxdev test                        # everything (lxdev.json test.entry; else tests/ if it exists)
-lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
+lxdev test tests/cart.test.ts:42  # the one test at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
-lxdev test --changed              # specs the uncommitted work can affect (--changed-since main: since branching)
-lxdev test list                   # list specs; no spec bodies or hooks run
+lxdev test --changed              # tests the uncommitted work can affect (--changed-since main: since branching)
+lxdev test list                   # list tests; no test bodies or hooks run
 lxdev test presets                # presets in lxdev.json
 lxdev test args --preset ci       # the arguments a run would use
 lxdev test cancel                 # release a run left by a dead client (--cancel-active: then run)
 lxdev test report --failures      # reprint the last run, no session needed
 ```
 
-Iterate with `--changed` or a file path; run everything at handoff and in CI.
+Iterate with `--changed` or a file path, and fix with `--last-failed`. Run
+everything once before pushing; CI runs it again.
 
 - Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
   `junit.xml`); `test-results/latest` is the last run, set after its reports.
+- In `junit.xml` a test's `covers` is a `covers` property, and a `test.fail`
+  that failed as declared is `<skipped type="xfail">`, never a pass.
 - A failure after the cases (`--profile-save`, `--record-network`, a failed
   return of the app to its own data) keeps each case's verdict but exits 1
   and is listed as a run error in every report.
-- A failed spec prints a `Rerun:` line.
+- A failed test prints a `Rerun:` line.
 - Each case is tagged with the page renderers its locators read (`[gpu]`, `[webview]`; `renderers` in `report.json`), and the run prints a `renderers:` count.
-- `--changed` picks specs that import a changed file or name its page
+- `--changed` picks tests that import a changed file or name its page
   (`'home'`); it prints why. A page reached only by tapping is missed: name it.
-- `lxdev test list` with a session loads the spec modules in the app (their
+- `--changed` ignores files outside the test project (host Rust,
+  `lingxia.yaml`): after a host change, pick tests with `--grep` or `--tag`.
+- `lxdev test list` with a session loads the test modules in the app (their
   top-level code runs) and holds the session like a run. Without one, or with
-  `--offline`, it reads the specs from the source; `~` marks a computed title,
-  id or tag, or a spec registered in a loop, which a run may list differently.
-- `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
+  `--offline`, it reads the tests from the source; `~` marks a computed title,
+  id or tag, or a test registered in a loop, which a run may list differently.
+- `--retries N` needs `test.reset`; `--shard 1/3` needs separate sessions.
 - A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
   generates outside the watched project.
 - The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
@@ -92,12 +97,12 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 
 | Task | API |
 |---|---|
-| Relaunch mid-spec | `t.app.nav.relaunch({ page, query? })` |
+| Relaunch mid-test | `t.app.nav.relaunch({ page, query? })` |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
-| Hover | `locator.hover()` moves a mouse onto it on macOS/Windows (into the app window: the system cursor and window order stay put; `E_UNSUPPORTED` elsewhere); `locator.pin({ hover: true })` holds `hover:` styles and `interestFor` hints with no pointer, on every platform, until `{ hover: false }` or the spec's end; it sends no `pointerenter`/`pointerleave` |
+| Hover | `locator.hover()` moves a mouse onto it on macOS/Windows (into the app window: the system cursor and window order stay put; `E_UNSUPPORTED` elsewhere); `locator.pin({ hover: true })` holds `hover:` styles and `interestFor` hints with no pointer, on every platform, until `{ hover: false }` or the test's end; it sends no `pointerenter`/`pointerleave` |
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.touchTarget()` (the box a finger reaches) / `.selection()` (a focused GPU editor's `[start, end]`, else `null`) / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Bring an element wholly on screen | `locator.scrollIntoView()`; actions do it themselves, so use it before a `swipe` or a box check |
 | Native window input | `t.app.window.pointer` / `.key`; independent of pages |
@@ -108,20 +113,20 @@ Iterate with `--changed` or a file path; run everything at handoff and in CI.
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode` or one the app declared in `AppErrorCodes` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
-| Load a scenario file | `t.scenario.use`; [Scenarios in specs](#scenarios-in-specs) |
+| Load a scenario file | `t.scenario.use`; [Scenarios in tests](#scenarios-in-tests) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
-| Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, start, tags, requires, skip, … })` |
+| Tag tests, file defaults | `test(title, { tags }, body)`, `test.configure({ timeout, start, tags, requires, skip, … })` |
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
 | Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | GPU page frame pacing | `t.app.metrics({ windowMs? })`: frame time p50/p95/p99 ms, `dropped`, `jank`, `inputToPresent`, `firstPresentMs`, `revealMs`, `firstPresentAt`, `reveal` counters; `t.app.hud(true)` draws them over the page |
 | Compare screens against baselines | `t.visual.shot(name, { mask })`; [Visual baselines](#visual-baselines) |
-| GPU page look for screenshots | `t.app.view.environment({ theme: 'dark', still: true })` pins theme and stills motion for this spec only (device settings untouched; `null` clears); `textScale: 1.3` (0.5 up to the lxapp's `maxTextScale`, default 2; above it fails) and `contrast: 'high'` pin the system text size and contrast the same way; `t.app.view.settled()` waits until no frame presents for 500 ms |
+| GPU page look for screenshots | `t.app.view.environment({ theme: 'dark', still: true })` pins theme and stills motion for this test only (device settings untouched; `null` clears); `textScale: 1.3` (0.5 up to the lxapp's `maxTextScale`, default 2; above it fails) and `contrast: 'high'` pin the system text size and contrast the same way; `t.app.view.settled()` waits until no frame presents for 500 ms |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
-| Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
-| Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
-| Skip | `spec.skip`, `spec.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `spec.configure({ skip })`); found mid-spec `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
-| Run another lxapp's specs | import its spec files from your entry; skip the ones this app cannot run with `skipSpecFiles({ '../other/lxapp/tests/x.test.ts': 'why' })` from `@lingxia/test/runner` (names as reports print them); for specs from a package, `skipSpecFiles({ 'pages/x.test.ts': 'why' }, { root: ['pkg-dir/specs', '@scope/pkg/specs'] })` matches under that directory wherever it resolves (linked or installed) |
-| Expect a failure | `spec.fail(title, { expected: { code, message } }, body)`; found mid-spec `t.fail(reason)` (xfail) — e.g. a frame budget missed when `(await t.app.metrics()).profile === 'debug'` |
+| Cleanup | `t.defer(fn)` (LIFO, always runs); `test.afterEach` |
+| Restore state before each attempt | `test.reset(async (t) => { ... })` (required by `--retries`) |
+| Skip | `test.skip`, `test.fixme`; on a condition `{ skip: cond ? 'why' : undefined }` (whole file: `test.configure({ skip })`); found mid-test `t.skip(reason)`; without an input `{ requires: { args: ['PASSWORD'], openapi: true } }` |
+| Run another lxapp's tests | import its test files from your entry; skip the ones this app cannot run with `skipTestFiles({ '../other/lxapp/tests/x.test.ts': 'why' })` from `@lingxia/test/runner` (names as reports print them); for tests from a package, `skipTestFiles({ 'pages/x.test.ts': 'why' }, { root: ['pkg-dir/specs', '@scope/pkg/specs'] })` matches under that directory wherever it resolves (linked or installed) |
+| Expect a failure | `test.fail(title, { expected: { code, message } }, body)`; found mid-test `t.fail(reason)` (xfail) — e.g. a frame budget missed when `(await t.app.metrics()).profile === 'debug'` |
 | Group trace, add evidence | `t.step(name, fn)` (await one at a time; nest through the callback's `step`), `t.attach(name, data)` |
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
@@ -136,8 +141,8 @@ Read runtime info and element snapshots with camelCase fields (`appId`,
 `currentPage`, `navigationBar`, `rect.centerX`); CLI JSON keeps its wire names.
 Element boxes are where the element is drawn, mid-transition included: after a
 layout change, read a box with `expect.poll` until it settles.
-Restore shell pins or device settings a spec changes. Routes, `t.scenario.use`
-scenarios, test clocks and dialog answers a spec installs are removed when it
+Restore shell pins or device settings a test changes. Routes, `t.scenario.use`
+scenarios, test clocks and dialog answers a test installs are removed when it
 ends; its leftover timers are cancelled.
 
 ## Gestures
@@ -148,7 +153,7 @@ pull to refresh, scroll edges, flings — handles it as it would a user's.
 Points are `[x, y]` in page CSS pixels or a locator (its center).
 
 ```ts
-spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t) => {
+test('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t) => {
   const pull = await t.app.view.pullToRefresh();            // distance 160, hold 300 ms, release
   expect(pull.refreshed).toBe(true);
   await expect(t.app.view.testId('feed-status')).toHaveText('Refreshing…');
@@ -175,7 +180,7 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
   `{ input, delivered, events, durationMs }`; `delivered: 'view'` means the
   host fell back past its input dispatcher, and `report.json` lists every
   gesture's `delivered`.
-- `requires: { input: ['touch', 'trackpad'] }` skips the spec, with the
+- `requires: { input: ['touch', 'trackpad'] }` skips the test, with the
   reason, on a host that has none of those devices.
 - iOS takes page gestures on GPU pages only (`delivered: 'view'`); a WebView
   app there reports no input, so `requires.input` skips. HarmonyOS behaves the same.
@@ -225,9 +230,9 @@ await expect(devices.view.testId('device-name').first()).toHaveText('Office');
   bridge, as the View does, and resolves when Logic settles it. Actions take at
   most one JSON payload; streamed (generator) actions are for the View.
 - `page.invoke('rename', { payload: { id, name }, timeout: 2_000 })` gives one
-  action its own timeout (default: the spec's remaining budget). A timed-out
-  action may still run, so the spec fails even if it catches the timeout, and
-  the next spec starts from a relaunched app.
+  action its own timeout (default: the test's remaining budget). A timed-out
+  action may still run, so the test fails even if it catches the timeout, and
+  the next test starts from a relaunched app.
 - A name open more than once rejects; select it by `{ instanceId }`
   (`t.app.nav.stack()` lists them).
 
@@ -241,8 +246,8 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
 
 - `logic.eval(fn, ...args)` runs in Logic with `{ lx, getApp,
   getCurrentPages, getPage }`; `view.eval` runs in the page with `{ document,
-  window }`. Reach for them when the UI cannot show what a spec checks.
-- `fn` is sent as source: it cannot use spec variables, imports, or helpers
+  window }`. Reach for them when the UI cannot show what a test checks.
+- `fn` is sent as source: it cannot use test variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
   arguments and results must be JSON (interfaces work without an index signature).
   Top-level void is allowed; nested undefined, Date, methods and DOM handles reject
@@ -250,8 +255,8 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   with `E_EVAL_SCRIPT`; an `lx.*` error keeps its own `code` for `t.reject` and
   `expected.code`, and its `data` (e.g. `bizCode`) is readable inside `fn`.
 - Options go first: `{ timeout }`. An eval may take 10 s by default, clamped
-  to what the spec has left. A timed-out eval fails the spec even if caught
-  (its script may still run); the next spec starts from a relaunched app.
+  to what the test has left. A timed-out eval fails the test even if caught
+  (its script may still run); the next test starts from a relaunched app.
 - `t.waitFor` and `expect.poll` retry failed reads, including a page eval's
   `TypeError` (the DOM not rendered yet) and nested locator timeouts. A Logic
   `TypeError`, other programming errors and invalid JSON fail immediately
@@ -260,7 +265,7 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
 
 ## Faking the network
 
-`t.app.network` answers the app's Logic `fetch` and `Rong.SSE`, so specs reach
+`t.app.network` answers the app's Logic `fetch` and `Rong.SSE`, so tests reach
 error, loading, and streaming states through the real data layer; never add
 test hooks to product code. WebView requests are not routed, and hosts outside
 the app's [network grant](../native/permissions.md) are never faked.
@@ -268,7 +273,7 @@ the app's [network grant](../native/permissions.md) are never faked.
 ### Routes
 
 ```ts
-spec('rename shows the not-implemented error', async (t) => {
+test('rename shows the not-implemented error', async (t) => {
   const patch = await t.app.network.route(
     { url: '**/v1/devices/*', method: 'PATCH', times: 1 },
     { status: 501, json: { error: 'not_implemented' }, delay: 300 },
@@ -296,7 +301,7 @@ spec('rename shows the not-implemented error', async (t) => {
   records are `{ seq, time, kind, method, url, status, body, headers,
   answeredBy, rule? }`. `waitForCall({ timeout? })` resolves with the next
   call not yet returned, including one made before the wait.
-- Routes last one spec. A failed spec's report lists the app's last 20 Logic
+- Routes last one test. A failed test's report lists the app's last 20 Logic
   network calls.
 
 ```ts
@@ -321,7 +326,7 @@ units `ms s m h d`) and `{{nowMs}}`. They read real time, not the
 
 `{ sse: [...] }` plays events `{ event?, data, id?, retry? }`, `{ comment }`,
 `{ delayMs }`, and a final `{ drop: true }` that closes the stream (without it,
-the stream stays open until the spec ends).
+the stream stays open until the test ends).
 
 ```ts
 const live = await t.app.network.route('**/v1/events', {
@@ -338,15 +343,15 @@ expect(reconnect.headers?.['last-event-id']).toBe('e1');
 `Rong.SSE` reconnects after a `drop` with `Last-Event-ID`, served by the next
 answer of the sequence ([consuming SSE](./lx-api.md#web-globals)).
 
-### Scenarios in specs
+### Scenarios in tests
 
-A [scenario file](./mock.md#scenarios) serves specs too, on top of the
+A [scenario file](./mock.md#scenarios) serves tests too, on top of the
 session's [mock selection](./mock.md):
 
 ```ts
 import checkout from '../scenarios/checkout.json';
 
-spec('an unknown payment result settles as paid', async (t) => {
+test('an unknown payment result settles as paid', async (t) => {
   const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
   await t.app.nav.relaunch({ page: 'checkout' });
   await t.app.view.testId('pay').click();
@@ -356,8 +361,8 @@ spec('an unknown payment result settles as paid', async (t) => {
 });
 ```
 
-- One scenario per spec; a second call replaces it. Routes take precedence
-  over its rules. Each spec starts with fresh mock handler state.
+- One scenario per test; a second call replaces it. Routes take precedence
+  over its rules. Each test starts with fresh mock handler state.
 - `t.scenario.use(checkout, { app: 'other-app' })` installs the scenario's
   `http` rules for that app; a scenario with `function` rules rejects.
 - It returns `{ name, variant, rules, calls(filter?), waitForCall(target),
@@ -365,8 +370,8 @@ spec('an unknown payment result settles as paid', async (t) => {
   or `{ rule: n }`.
 - Import JSON with `resolveJsonModule` in the test tsconfig.
 
-`lxdev test --record-network DIR` records each spec's real traffic as
-`DIR/<spec id>.json`; credentials, tokens, and `--secret-arg` values are
+`lxdev test --record-network DIR` records each test's real traffic as
+`DIR/<test id>.json`; credentials, tokens, and `--secret-arg` values are
 redacted. Review recordings before committing.
 
 ## Contract checks
@@ -376,16 +381,16 @@ lxdev test tests/ --tag routed --openapi api/openapi.yaml
 ```
 
 - A routed (or `patchJson`-patched) response that breaks its OpenAPI 3.x schema
-  fails the spec with `E_OPENAPI_CONTRACT`; a real server's break is a warning.
+  fails the test with `E_OPENAPI_CONTRACT`; a real server's break is a warning.
 - Only JSON responses are checked; `$ref`s must be local.
-- A response that cannot be attributed to the spec (still in flight, or from
-  an earlier one) fails that spec.
+- A response that cannot be attributed to the test (still in flight, or from
+  an earlier one) fails that test.
 
 ```ts
 const { devices } = await (await t.app.page<DevicesPage>()).data();
 expect(devices[0]).toMatchSchema('Device');                      // #/components/schemas/Device
 expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
-spec.configure({ requires: { openapi: true } });   // skip the file without --openapi
+test.configure({ requires: { openapi: true } });   // skip the file without --openapi
 ```
 
 ## Tags and coverage
@@ -414,8 +419,8 @@ assert.equal(textOf(screen.getByTestId('value')), 'Taps: 1');
 ```
 
 ```ts
-spec.configure({ tags: ['routed'] });            // every spec in this file
-spec('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // routed + smoke
+test.configure({ tags: ['routed'] });            // every test in this file
+test('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // routed + smoke
 ```
 
 ```bash
@@ -423,18 +428,21 @@ lxdev test tests/ --tag '!live'                # everything except live
 lxdev test tests/ --tag routed --tag smoke   # routed and smoke
 ```
 
-- Tag every file with `spec.configure`: an untagged spec matches no `--tag`.
-  A spec's own options win; `tags`, `covers`, `requires` add to the file's.
-- `spec(title, { covers: ['DEV-RENAME'] }, body)` with
+- Tag every file with `test.configure`: an untagged test matches no `--tag`.
+  A test's own options win; `tags`, `covers`, `requires` add to the file's.
+- `test(title, { covers: ['DEV-RENAME'] }, body)` with
   `--covers-manifest tests/coverage.yaml` reports which requirement ids have a
-  passing spec and which have none.
+  passing test and which have none.
+- `covers` lists the requirement ids a test proves (`AC-OPEN-01`,
+  `lx.getStorage`), not `tags`. `id` is the test's own unique stable id: never
+  put a requirement or acceptance id in `id`.
 
 ## Test clock
 
 `t.app.clock` puts Logic on test time:
 
 ```ts
-spec('status refreshes every 3 s', async (t) => {
+test('status refreshes every 3 s', async (t) => {
   await t.app.network.route('**/v1/status', { json: { online: true } });
   await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
   await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
@@ -450,15 +458,15 @@ spec('status refreshes every 3 s', async (t) => {
 - Install before opening the page: timers started earlier stay real. The
   WebView, native work, real requests, route delays, and `setData` delivery
   keep real time. Wait for real I/O with `expect.poll`, then tick again.
-- A spec's clock is removed when it ends. `install` twice rejects with
+- A test's clock is removed when it ends. `install` twice rejects with
   `E_CLOCK_INSTALLED`; `tick` without one with `E_CLOCK_NOT_INSTALLED`.
 
 ## Dialogs
 
-During a spec, `t.app.dialogs` sees the dialogs the app's Logic opens:
+During a test, `t.app.dialogs` sees the dialogs the app's Logic opens:
 
 ```ts
-spec('deleting asks first', async (t) => {
+test('deleting asks first', async (t) => {
   await t.app.dialogs.answerNextModal({ confirm: true });  // before the tap
   await t.app.view.testId('delete').click();
   await expect.poll(() => t.app.dialogs.toasts())
@@ -471,18 +479,18 @@ spec('deleting asks first', async (t) => {
 - Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
   never stub `lx.showToast` in Logic.
 - Modals (`lx.showModal` / `alert` / `confirm`) and `lx.showActionSheet` are
-  drawn unless the spec queues an answer for the next one, so a spec can tap them
+  drawn unless the test queues an answer for the next one, so a test can tap them
   (`.lx-modal-btn-confirm`); `modals()` / `actionSheets()` record them with
   `drawn: true` and the user's choice as `answer`.
 - `answerNextModal({ confirm })` and `answerNextActionSheet({ index } |
   { cancel: true })` each answer the next dialog only; later ones are drawn.
-  An unused answer fails the spec when it ends.
+  An unused answer fails the test when it ends.
 - `setAnswerMode({ modals: 'strict', actionSheets: 'strict' })` makes a dialog
-  with no queued answer fail the spec at once; `withAnswerMode(mode, body)`
+  with no queued answer fail the test at once; `withAnswerMode(mode, body)`
   applies it only while `body` runs.
 - Another app's dialogs (`t.automation.lxapp(appId).dialogs`) are recorded
   from the first call on it.
-- Each spec starts with nothing recorded or queued. Outside a test run
+- Each test starts with nothing recorded or queued. Outside a test run
   dialogs draw as usual.
 
 ## Visual baselines
@@ -499,7 +507,7 @@ A shot of a page with a `<webview>` waits up to 4 s for it to draw and fails
   fold, a resized layout) fails as a size mismatch, one with none is `new`.
 - `lxdev test --visual accept` makes each pinned shot the baseline (the old one
   is kept as `.prev`); an unpinned shot is refused.
-- `--only SHOT` limits either to a shot name or `<spec id>/<name>`;
+- `--only SHOT` limits either to a shot name or `<test id>/<name>`;
   `--baseline-dir DIR` replaces `~/.lingxia/visual` (`<app>/<device>/<WxH>/` below it).
 - `visual.html` and the end of `report.html` show before | after | diff, changed first.
 
@@ -516,14 +524,14 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 - `--profile-save` writes the data back after a passing run (`=always` after
   any run). With it, a missing snapshot starts empty; so does one taken by
   another install of the host, which is moved to `<file>.stale`.
-- `spec(title, { restoreProfile: true }, body)` rolls data back after that
-  spec and starts it on `start` (or home); `t.app.profile.checkpoint()` / `restore(cp)` / `drop(cp)` do it by
+- `test(title, { restoreProfile: true }, body)` rolls data back after that
+  test and starts it on `start` (or home); `t.app.profile.checkpoint()` / `restore(cp)` / `drop(cp)` do it by
   hand. Both need `--profile` and reopen the app.
 - An app that rotates refresh tokens keeps its session through a rollback with
   `keep` (storage-key globs):
 
 ```ts
-spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
+test('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
 ```
 
 ## Secrets
@@ -564,7 +572,7 @@ lxdev test args --preset ci                 # show the effective arguments
 - `lxdev.json` sits in the project root. A preset's arguments come first;
   repeatable flags add up and other command-line flags win.
 - Paths in `lxdev.json` are relative to it.
-- `test.setup` (or `--setup`) names modules evaluated before any test file, so a spec run
+- `test.setup` (or `--setup`) names modules evaluated before any test file, so a test run
   alone with `--id` sees the globals its imports read.
 - Presets are committed, so they may not hold `--secret-arg` or credential
   args; name a gitignored `--secrets-file` instead.
@@ -592,19 +600,19 @@ lxdev test args --preset ci                 # show the effective arguments
   text assertions wait until the row draws.
 - **Nav waits for `onReady`** and rejects if the app replaces the page first;
   pass `waitUntil: 'commit'`, then assert the landing page.
-- **Specs share app state.** Nothing resets storage or backend between specs;
-  seed and clean up with `t.defer` / `spec.reset`, or use `restoreProfile`.
-- **Hooks are file-scoped**: `spec.reset`, `beforeEach`, `afterEach` apply to
+- **Tests share app state.** Nothing resets storage or backend between tests;
+  seed and clean up with `t.defer` / `test.reset`, or use `restoreProfile`.
+- **Hooks are file-scoped**: `test.reset`, `beforeEach`, `afterEach` apply to
   the file that registers them.
-- **Specs run on the device.** `fetch('http://127.0.0.1:…')` reaches the
+- **Tests run on the device.** `fetch('http://127.0.0.1:…')` reaches the
   device's loopback; pass reachable fixture URLs with `--arg`.
 - **`t.arg('k')` throws** when missing; pass `{ default }` or
   `{ required: false }`.
-- **An abandoned spec stops the run**: the rest are skipped, since its
-  leftover promises could resume inside the next spec. Await all work, or
+- **An abandoned test stops the run**: the rest are skipped, since its
+  leftover promises could resume inside the next test. Await all work, or
   raise `timeout`.
 - **Live `lxdev mock` changes** (scenarios and selections) stand aside
-  during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
+  during a run; tests see `mocks/config.json` and `lingxia dev --mock`.
 
 ## Layout
 

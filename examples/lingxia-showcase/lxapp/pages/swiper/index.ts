@@ -47,7 +47,7 @@ Page({
     if (this.data.busy) return;
     this.setData({ busy: true });
     try {
-      const result = await lx.chooseMedia({
+      const result = await lx.pickMedia({
         mediaType,
         sourceType: ["album", "camera"],
         count,
@@ -72,7 +72,7 @@ Page({
     } catch (error) {
       this.setData({ busy: false });
       lx.showToast({
-        title: errorMessage(error, "chooseMedia failed"),
+        title: errorMessage(error, "pickMedia failed"),
         icon: "none",
       });
     }

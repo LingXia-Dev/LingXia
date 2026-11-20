@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
 import { requirePhone, requireTurn, turn } from '../helpers/orientation.js';
@@ -8,7 +8,7 @@ const wide = async (view: { viewport(): Promise<{ width: number; height: number 
   return width > height;
 };
 
-spec('a page that follows the device turns with it', {
+test('a page that follows the device turns with it', {
   id: 'ORIENT-AUTO-001',
   covers: ['page:pageOrientation=auto'],
   app: SHOWCASE_APP_ID,
@@ -31,7 +31,7 @@ spec('a page that follows the device turns with it', {
   await expect(view.testId('home-page')).toBeVisible();
 });
 
-spec('a landscape page lies down while the phone is upright, and the next page stands up again', {
+test('a landscape page lies down while the phone is upright, and the next page stands up again', {
   id: 'ORIENT-LANDSCAPE-001',
   covers: ['page:pageOrientation=landscape'],
   app: SHOWCASE_APP_ID,

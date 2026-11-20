@@ -53,10 +53,9 @@ use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POI
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
-    CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect,
-    GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC, RestoreDC, SRCCOPY, SaveDC,
-    ScreenToClient, SelectObject,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, GetDC, GetMonitorInfoW, HDC,
+    HGDIOBJ, IntersectClipRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    PAINTSTRUCT, ReleaseDC, RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
 };
 use windows::Win32::Graphics::Gdi::{
     HMONITOR, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect,
@@ -479,6 +478,21 @@ struct AttachedPanelResizeDrag {
     origin: (i32, i32),
     origin_size: i32,
 }
+
+/// A drag of the sidebar column's inner edge (shell chrome only).
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone, Copy)]
+struct SidebarResizeDrag {
+    origin_x: i32,
+    origin_width: i32,
+    /// The sidebar docks on the left, so dragging right widens it.
+    left: bool,
+    /// Past the drag threshold; until then the press changes nothing.
+    moved: bool,
+}
+
+#[cfg(feature = "shell-chrome")]
+static SIDEBAR_RESIZE_DRAG: Mutex<Option<SidebarResizeDrag>> = Mutex::new(None);
 
 #[cfg(feature = "shell-chrome")]
 #[derive(Clone)]
@@ -2179,26 +2193,9 @@ fn upload_drill_back_button(hwnd: HWND) {
             return;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-        // Black disc backdrop; the chevron in white 2px strokes.
-        let brush = CreateSolidBrush(COLORREF(0));
-        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
-        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
-        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
-        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
-        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
-        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 17, 8, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 11, 14);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 17, 20);
-        let _ = SelectObject(dc, old_pen);
-        let _ = SelectObject(dc, old_brush);
-        let _ = DeleteObject(HGDIOBJ(white_pen.0));
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-        let _ = DeleteObject(HGDIOBJ(brush.0));
-
         let pixel_count = (size * size) as usize;
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        apply_drill_back_alpha(pixels, size);
+        paint_round_glyph_button(pixels, size, 0x59, &[&DRILL_BACK_CHEVRON]);
         let dib_size = SIZE { cx: size, cy: size };
         let origin = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {
@@ -2227,30 +2224,62 @@ fn upload_drill_back_button(hwnd: HWND) {
     }
 }
 
-/// Circular alpha: the disc is a 35% black wash, the white chevron strokes
-/// stay opaque; outside the circle is fully transparent.
-fn apply_drill_back_alpha(pixels: &mut [u32], size: i32) {
-    apply_circular_button_alpha(pixels, size, 0x59);
-}
+/// Back chevron and close cross, as polylines in units of the button side.
+/// Proportional coordinates keep the glyph centred at every DPI; fixed pixel
+/// coordinates drew it into the top-left of a scaled button.
+const DRILL_BACK_CHEVRON: [(f32, f32); 3] = [(0.607, 0.286), (0.393, 0.5), (0.607, 0.714)];
+const SURFACE_CLOSE_CROSS: [[(f32, f32); 2]; 2] = [
+    [(0.3125, 0.3125), (0.6875, 0.6875)],
+    [(0.6875, 0.3125), (0.3125, 0.6875)],
+];
 
-fn apply_circular_button_alpha(pixels: &mut [u32], size: i32, dim: u32) {
-    let radius = size as f32 / 2.0;
+/// A translucent black disc (`dim` alpha) with white, round-capped,
+/// anti-aliased strokes, as premultiplied BGRA. Outside the disc is clear.
+fn paint_round_glyph_button(pixels: &mut [u32], size: i32, dim: u32, strokes: &[&[(f32, f32)]]) {
+    let side = size as f32;
+    let radius = side / 2.0;
+    let half_width = side / 32.0;
+    let segments: Vec<((f32, f32), (f32, f32))> = strokes
+        .iter()
+        .flat_map(|stroke| stroke.windows(2))
+        .map(|pair| {
+            (
+                (pair[0].0 * side, pair[0].1 * side),
+                (pair[1].0 * side, pair[1].1 * side),
+            )
+        })
+        .collect();
     for y in 0..size {
         for x in 0..size {
-            let index = (y * size + x) as usize;
-            let pixel = pixels[index] & 0x00ff_ffff;
-            let dx = x as f32 + 0.5 - radius;
-            let dy = y as f32 + 0.5 - radius;
-            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
-            let base = if pixel > 0x00f0_f0f0 { 255 } else { dim };
-            let alpha = (base as f32 * coverage) as u32;
-            let premultiply = |channel: u32| (channel * alpha + 127) / 255;
-            pixels[index] = (alpha << 24)
-                | (premultiply((pixel >> 16) & 0xff) << 16)
-                | (premultiply((pixel >> 8) & 0xff) << 8)
-                | premultiply(pixel & 0xff);
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            let (dx, dy) = (px - radius, py - radius);
+            let disc = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let distance = segments
+                .iter()
+                .map(|&(a, b)| segment_distance((px, py), a, b))
+                .fold(f32::MAX, f32::min);
+            let glyph = (half_width - distance + 0.5).clamp(0.0, 1.0) * disc;
+            let backdrop = dim as f32 / 255.0 * disc;
+            // White glyph over black backdrop: alpha composites, and the
+            // premultiplied colour is the glyph's coverage alone.
+            let alpha = glyph + backdrop * (1.0 - glyph);
+            let a = (alpha * 255.0).round() as u32;
+            let c = (glyph * 255.0).round() as u32;
+            pixels[(y * size + x) as usize] = (a << 24) | (c << 16) | (c << 8) | c;
         }
     }
+}
+
+fn segment_distance(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (abx, aby) = (b.0 - a.0, b.1 - a.1);
+    let length = abx * abx + aby * aby;
+    let t = if length == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * abx + (p.1 - a.1) * aby) / length).clamp(0.0, 1.0)
+    };
+    let (cx, cy) = (a.0 + t * abx, a.1 + t * aby);
+    ((p.0 - cx).powi(2) + (p.1 - cy).powi(2)).sqrt()
 }
 
 fn surface_close_size() -> i32 {
@@ -2435,25 +2464,13 @@ fn upload_surface_close_button(hwnd: HWND) {
             return;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-        let brush = CreateSolidBrush(COLORREF(0));
-        let pen = CreatePen(PS_SOLID, 0, COLORREF(0));
-        let old_brush = SelectObject(dc, HGDIOBJ(brush.0));
-        let old_pen = SelectObject(dc, HGDIOBJ(pen.0));
-        let _ = windows::Win32::Graphics::Gdi::Rectangle(dc, 0, 0, size, size);
-        let white_pen = CreatePen(PS_SOLID, 2, COLORREF(0x00ffffff));
-        let _ = SelectObject(dc, HGDIOBJ(white_pen.0));
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 10, 10, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 22, 22);
-        let _ = windows::Win32::Graphics::Gdi::MoveToEx(dc, 22, 10, None);
-        let _ = windows::Win32::Graphics::Gdi::LineTo(dc, 10, 22);
-        let _ = SelectObject(dc, old_pen);
-        let _ = SelectObject(dc, old_brush);
-        let _ = DeleteObject(HGDIOBJ(white_pen.0));
-        let _ = DeleteObject(HGDIOBJ(pen.0));
-        let _ = DeleteObject(HGDIOBJ(brush.0));
-
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (size * size) as usize);
-        apply_circular_button_alpha(pixels, size, 0x73);
+        paint_round_glyph_button(
+            pixels,
+            size,
+            0x73,
+            &[&SURFACE_CLOSE_CROSS[0], &SURFACE_CLOSE_CROSS[1]],
+        );
         let dib_size = SIZE { cx: size, cy: size };
         let origin = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {
@@ -3259,6 +3276,8 @@ fn sync_window_layout(hwnd: HWND) {
         }
         return;
     }
+    // A frame can have been created/re-scaled during this same window message.
+    let _scale = crate::dpi::enter_window_message(hwnd);
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
         #[cfg(feature = "shell-chrome")]
         sync_chrome_overlays(hwnd, None);
@@ -5507,8 +5526,8 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
 }
 
 /// Physical pixels per CSS pixel for the page in `hwnd`: the device-frame
-/// fit when simulated (frame geometry is physical by design), else the
-/// monitor scale.
+/// display scale when simulated (monitor DPI limited by the work area),
+/// else the monitor scale.
 fn window_css_scale(hwnd: HWND) -> f64 {
     #[cfg(feature = "device-frame")]
     if let Some(fit) = crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)) {
@@ -6115,20 +6134,16 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
+    // A restart may present the successor before the retiring host is
+    // destroyed; hand its frame over now, WM_DESTROY is only the fallback.
+    if let Some(previous) = stored_primary_host_window()
+        && previous != hwnd
+        && !is_window_visible(previous)
+    {
+        hand_over_primary_window_frame(previous);
+    }
+    restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
-    let previous = slot
-        .lock()
-        .ok()
-        .and_then(|slot| *slot)
-        .filter(|previous| *previous != hwnd_handle(hwnd));
-    // A relaunch moves the workspace to a new window: the frame the user (or a resize)
-    // gave the old one comes along instead of the first-launch default.
-    if let Some(previous) = previous {
-        remember_primary_frame(hwnd_from_handle(previous));
-    }
-    if previous.is_none() || !adopt_primary_frame(hwnd, previous.map(hwnd_from_handle)) {
-        restore_primary_window_frame(hwnd);
-    }
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
     }
@@ -6138,77 +6153,6 @@ fn set_primary_host_window(hwnd: HWND) {
     // default until the user manually resizes the window.
     #[cfg(feature = "shell-chrome")]
     report_shell_surface_width(hwnd);
-}
-
-/// The last primary host's screen frame, while it was neither maximized nor minimized.
-static PRIMARY_FRAME: Mutex<Option<RECT>> = Mutex::new(None);
-
-fn frame_follows_workspace(hwnd: HWND) -> bool {
-    #[cfg(feature = "device-frame")]
-    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
-        return false;
-    }
-    !DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
-        && TRAY_POPOVER_HWND.load(Ordering::Relaxed) != hwnd_handle(hwnd)
-}
-
-fn remember_primary_frame(hwnd: HWND) {
-    let is_window = unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() };
-    if !is_window || !frame_follows_workspace(hwnd) {
-        return;
-    }
-    let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
-        length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
-        ..Default::default()
-    };
-    let mut rect = RECT::default();
-    let read = unsafe {
-        WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_ok()
-            && WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_ok()
-    };
-    let normal = read
-        && !placement_is_maximized(&placement)
-        && placement.showCmd as i32 != WindowsAndMessaging::SW_SHOWMINIMIZED.0
-        && rect.right > rect.left
-        && rect.bottom > rect.top;
-    if let Ok(mut frame) = PRIMARY_FRAME.lock() {
-        *frame = normal.then_some(rect);
-    }
-}
-
-/// Takes the old primary's frame and, while it is still up, its place in the z-order: a
-/// window shown at the top from a background process can land under the foreground app.
-fn adopt_primary_frame(hwnd: HWND, previous: Option<HWND>) -> bool {
-    if !frame_follows_workspace(hwnd) {
-        return false;
-    }
-    let Some(rect) = PRIMARY_FRAME.lock().ok().and_then(|frame| *frame) else {
-        return false;
-    };
-    let above = previous
-        .filter(|previous| unsafe { WindowsAndMessaging::IsWindow(Some(*previous)).as_bool() })
-        .map(|previous| {
-            unsafe { WindowsAndMessaging::GetWindow(previous, WindowsAndMessaging::GW_HWNDPREV) }
-                .ok()
-                .filter(|above| *above != hwnd)
-                .unwrap_or(WindowsAndMessaging::HWND_TOP)
-        });
-    let mut flags = WindowsAndMessaging::SWP_NOACTIVATE;
-    if above.is_none() {
-        flags |= WindowsAndMessaging::SWP_NOZORDER;
-    }
-    unsafe {
-        WindowsAndMessaging::SetWindowPos(
-            hwnd,
-            above,
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
-            flags,
-        )
-        .is_ok()
-    }
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
@@ -6555,6 +6499,97 @@ fn attached_panel_resize_hit(hwnd: HWND, point: (i32, i32)) -> Option<AttachedPa
         });
     }
     None
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_hit(hwnd: HWND, point: (i32, i32)) -> Option<SidebarResizeDrag> {
+    let state = chrome_state_for_window(hwnd)?;
+    let (width, left) = crate::shell::sidebar_resize_edge(&state, point)?;
+    Some(SidebarResizeDrag {
+        origin_x: point.0,
+        origin_width: width,
+        left,
+        moved: false,
+    })
+}
+
+#[cfg(feature = "shell-chrome")]
+fn begin_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let Some(drag) = sidebar_resize_hit(hwnd, point) else {
+        return false;
+    };
+    if let Ok(mut active) = SIDEBAR_RESIZE_DRAG.lock() {
+        *active = Some(drag);
+    }
+    true
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_drag_width(drag: SidebarResizeDrag, point: (i32, i32)) -> i32 {
+    let delta = if drag.left {
+        point.0 - drag.origin_x
+    } else {
+        drag.origin_x - point.0
+    };
+    (drag.origin_width + delta).max(0)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn update_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let drag = {
+        let Ok(mut active) = SIDEBAR_RESIZE_DRAG.lock() else {
+            return false;
+        };
+        let Some(drag) = active.as_mut() else {
+            return false;
+        };
+        drag.moved |= (point.0 - drag.origin_x).abs() >= PANE_DRAG_THRESHOLD;
+        *drag
+    };
+    if !drag.moved {
+        return true;
+    }
+    crate::shell::set_sidebar_drag_width(sidebar_resize_drag_width(drag, point), false);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+    true
+}
+
+/// Capture was lost mid-drag: the column goes back to its width before the
+/// drag, and nothing is persisted.
+#[cfg(feature = "shell-chrome")]
+fn cancel_sidebar_resize_drag(hwnd: HWND) {
+    let Some(drag) = SIDEBAR_RESIZE_DRAG
+        .lock()
+        .ok()
+        .and_then(|mut active| active.take())
+        .filter(|drag| drag.moved)
+    else {
+        return;
+    };
+    crate::shell::cancel_sidebar_drag(drag.origin_width);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn end_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let Some(drag) = SIDEBAR_RESIZE_DRAG
+        .lock()
+        .ok()
+        .and_then(|mut active| active.take())
+    else {
+        return false;
+    };
+    // A click on the edge is not a choice of width: in a Medium window it
+    // would persist the forced rail as the user's own.
+    if !drag.moved {
+        return true;
+    }
+    crate::shell::set_sidebar_drag_width(sidebar_resize_drag_width(drag, point), true);
+    sync_window_layout(hwnd);
+    invalidate_window_chrome(hwnd);
+    true
 }
 
 fn begin_attached_panel_resize_drag(hwnd: HWND, point: (i32, i32)) -> Option<bool> {
@@ -7829,10 +7864,6 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     if is_full_chrome_window(hwnd) && point.y < full_chrome_drag_strip_pixels(hwnd) {
         return LRESULT(WindowsAndMessaging::HTCAPTION as isize);
     }
-    #[cfg(feature = "shell-chrome")]
-    if sidebar_resize_anchor_at(hwnd, point_tuple).is_some() {
-        return LRESULT(WindowsAndMessaging::HTCLIENT as isize);
-    }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
         // Windows 11 discovers custom-titlebar snap layouts through
@@ -7849,6 +7880,14 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
 
 fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
     if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        return None;
+    }
+    // A collapsed aside's handle sits flush with the window edge, inside the
+    // resize border: a click there restores the panel, not a resize.
+    #[cfg(feature = "shell-chrome")]
+    if chrome_state_for_window(hwnd)
+        .is_some_and(|state| crate::shell::collapsed_aside_handle_hit(&state, point))
+    {
         return None;
     }
     let mut client = RECT::default();
@@ -8262,9 +8301,6 @@ pub fn center_host_window_on_work_area(window: isize) {
 /// for the resize cursor.
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
-/// A sidebar width drag: the sidebar's fixed edge x and whether it sits on the left.
-#[cfg(feature = "shell-chrome")]
-static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
 
 #[cfg(feature = "shell-chrome")]
 pub(crate) fn chrome_elements_for_window(
@@ -8321,52 +8357,6 @@ pub(crate) fn chrome_elements_for_window(
     (elements, opening)
 }
 
-#[cfg(feature = "shell-chrome")]
-fn sidebar_resize_anchor_at(hwnd: HWND, point: (i32, i32)) -> Option<(i32, bool)> {
-    crate::shell::sidebar_resize_anchor(&chrome_state_for_window(hwnd)?, point)
-}
-
-#[cfg(feature = "shell-chrome")]
-fn sidebar_resize_cursor_wanted(hwnd: HWND) -> bool {
-    if SIDEBAR_DRAG
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .is_some()
-    {
-        return true;
-    }
-    let mut cursor = POINT::default();
-    unsafe {
-        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err()
-            || !ScreenToClient(hwnd, &mut cursor).as_bool()
-        {
-            return false;
-        }
-    }
-    sidebar_resize_anchor_at(hwnd, (cursor.x, cursor.y)).is_some()
-}
-
-/// Apply a sidebar width drag at `point`; `done` ends it. False when none is running.
-#[cfg(feature = "shell-chrome")]
-fn drive_sidebar_drag(hwnd: HWND, point: Option<(i32, i32)>, done: bool) -> bool {
-    let mut drag = SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner());
-    let Some((anchor, left)) = *drag else {
-        return false;
-    };
-    if done {
-        *drag = None;
-    }
-    drop(drag);
-    let width = point.map(|point| {
-        f64::from(if left {
-            point.0 - anchor
-        } else {
-            anchor - point.0
-        }) / crate::dpi::window_scale(hwnd)
-    });
-    crate::shell::resize_sidebar(width, done);
-    true
-}
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "shell-chrome")]
@@ -8438,10 +8428,14 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
     if dragging {
         let over = point_over_sidebar(hwnd, point);
         set_aside_tab_drop_target(hwnd, over);
-        if over {
-            set_pane_handle_cursor();
-        } else {
-            set_pane_drag_cursor();
+        set_shell_drop_cursor(over);
+        let source = aside_tab_drags()
+            .get(&hwnd_handle(hwnd))
+            .map(|drag| (drag.panel_id.clone(), drag.surface_id.clone()));
+        if let Some((panel_id, surface_id)) = source {
+            track_drag_ghost(hwnd, point, || {
+                crate::shell::aside_tab_drag_label(&panel_id, &surface_id)
+            });
         }
     }
     true
@@ -8453,6 +8447,7 @@ fn update_aside_tab_drag(hwnd: HWND, point: (i32, i32)) -> bool {
 fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
     let drag = aside_tab_drags().remove(&hwnd_handle(hwnd))?;
     set_aside_tab_drop_target(hwnd, false);
+    end_drag_ghost();
     if !drag.dragging {
         return Some(false);
     }
@@ -8466,6 +8461,124 @@ fn finish_aside_tab_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> 
     }
     Some(true)
 }
+
+/// A pressed sidebar group header, which may become a drag toward the
+/// main's edge that moves the lxapp into the side panel.
+#[cfg(feature = "shell-chrome")]
+struct MainAsideDrag {
+    appid: String,
+    start: (i32, i32),
+    dragging: bool,
+}
+#[cfg(feature = "shell-chrome")]
+static MAIN_ASIDE_DRAGS: OnceLock<Mutex<HashMap<isize, MainAsideDrag>>> = OnceLock::new();
+
+#[cfg(feature = "shell-chrome")]
+fn main_aside_drags() -> std::sync::MutexGuard<'static, HashMap<isize, MainAsideDrag>> {
+    MAIN_ASIDE_DRAGS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn point_over_main_aside_zone(hwnd: HWND, point: (i32, i32)) -> bool {
+    chrome_state_for_window(hwnd)
+        .and_then(|state| crate::shell::main_aside_drop_rect(&state))
+        .is_some_and(|rect| point_in_rect(&rect, point))
+}
+
+/// Track a pressed sidebar group header. Returns whether the move belongs
+/// to it.
+#[cfg(feature = "shell-chrome")]
+fn update_main_aside_drag(hwnd: HWND, point: (i32, i32)) -> bool {
+    let dragging = {
+        let mut drags = main_aside_drags();
+        let Some(drag) = drags.get_mut(&hwnd_handle(hwnd)) else {
+            return false;
+        };
+        if !drag.dragging
+            && ((point.0 - drag.start.0).abs() >= PANE_DRAG_THRESHOLD
+                || (point.1 - drag.start.1).abs() >= PANE_DRAG_THRESHOLD)
+        {
+            drag.dragging = true;
+        }
+        drag.dragging
+    };
+    if dragging {
+        set_shell_drop_cursor(point_over_main_aside_zone(hwnd, point));
+        let appid = main_aside_drags()
+            .get(&hwnd_handle(hwnd))
+            .map(|drag| drag.appid.clone());
+        if let Some(appid) = appid {
+            track_drag_ghost(hwnd, point, || {
+                crate::shell::sidebar_main_drag_label(&appid)
+            });
+        }
+    }
+    true
+}
+
+/// End a pressed sidebar group header. `Some(true)` when it was dragged and
+/// handled here; `Some(false)` when the press never moved and is a click.
+#[cfg(feature = "shell-chrome")]
+fn finish_main_aside_drag(hwnd: HWND, point: Option<(i32, i32)>) -> Option<bool> {
+    let drag = main_aside_drags().remove(&hwnd_handle(hwnd))?;
+    end_drag_ghost();
+    if !drag.dragging {
+        return Some(false);
+    }
+    unsafe {
+        let _ = ReleaseCapture();
+    }
+    if let Some(point) = point
+        && point_over_main_aside_zone(hwnd, point)
+    {
+        let _ = crate::shell::demote_lxapp_main(&drag.appid);
+    }
+    Some(true)
+}
+
+/// The cursor of a shell drag-and-drop (an aside tab, a sidebar group): the
+/// plain arrow throughout, as on macOS. The drag chip under it says what is
+/// moving, and the drop target lights up (the sidebar) or the chip does
+/// (the main's edge); neither the four-way move cursor nor a "not allowed"
+/// sign while crossing the window.
+#[cfg(feature = "shell-chrome")]
+fn set_shell_drop_cursor(_over_target: bool) {
+    unsafe {
+        if let Ok(cursor) = WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW) {
+            let _ = WindowsAndMessaging::SetCursor(Some(cursor));
+        }
+    }
+}
+
+/// Show or move the drag chip for a shell drag at client `point`.
+#[cfg(feature = "shell-chrome")]
+fn track_drag_ghost(hwnd: HWND, point: (i32, i32), label: impl FnOnce() -> String) {
+    let mut screen = POINT {
+        x: point.0,
+        y: point.1,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut screen);
+    }
+    if DRAG_GHOST_SHOWN.swap(true, Ordering::AcqRel) {
+        crate::drag_ghost::move_to(screen);
+    } else {
+        crate::drag_ghost::show(hwnd, &label(), crate::shell::drag_ghost_colors(), screen);
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn end_drag_ghost() {
+    if DRAG_GHOST_SHOWN.swap(false, Ordering::AcqRel) {
+        crate::drag_ghost::hide();
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+static DRAG_GHOST_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Sets the east-west / north-south resize cursor for a divider.
 fn set_divider_cursor(vertical: bool) {
@@ -8584,6 +8697,10 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         return true;
     }
     #[cfg(feature = "shell-chrome")]
+    if update_main_aside_drag(hwnd, point) {
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
     if let Some(pending) = pending_pane_drag(hwnd) {
         let crossed_threshold = (point.0 - pending.start.0).abs() >= PANE_DRAG_THRESHOLD
             || (point.1 - pending.start.1).abs() >= PANE_DRAG_THRESHOLD;
@@ -8624,6 +8741,18 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
         return true;
     }
+    #[cfg(feature = "shell-chrome")]
+    {
+        if update_sidebar_resize_drag(hwnd, point) {
+            set_divider_cursor(true);
+            return true;
+        }
+        if sidebar_resize_hit(hwnd, point).is_some() {
+            clear_chrome_hover(hwnd);
+            set_divider_cursor(true);
+            return true;
+        }
+    }
     if update_attached_panel_resize_drag(hwnd, point) {
         if let Some(vertical) = attached_panel_resize_drag_vertical() {
             set_divider_cursor(vertical);
@@ -8634,18 +8763,6 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         clear_chrome_hover(hwnd);
         set_divider_cursor(panel_resize_is_vertical(drag.position));
         return true;
-    }
-    #[cfg(feature = "shell-chrome")]
-    {
-        if drive_sidebar_drag(hwnd, Some(point), false) {
-            set_divider_cursor(true);
-            return true;
-        }
-        if sidebar_resize_anchor_at(hwnd, point).is_some() {
-            clear_chrome_hover(hwnd);
-            set_divider_cursor(true);
-            return true;
-        }
     }
     #[cfg(feature = "shell-chrome")]
     {
@@ -8815,20 +8932,21 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
     // The owner only sees presses outside the peek.
     #[cfg(feature = "shell-chrome")]
     sidebar_peek::close(hwnd);
+    #[cfg(feature = "shell-chrome")]
+    {
+        if begin_sidebar_resize_drag(hwnd, point) {
+            unsafe {
+                let _ = SetCapture(hwnd);
+            }
+            set_divider_cursor(true);
+            return true;
+        }
+    }
     if let Some(vertical) = begin_attached_panel_resize_drag(hwnd, point) {
         unsafe {
             let _ = SetCapture(hwnd);
         }
         set_divider_cursor(vertical);
-        return true;
-    }
-    #[cfg(feature = "shell-chrome")]
-    if let Some(anchor) = sidebar_resize_anchor_at(hwnd, point) {
-        *SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner()) = Some(anchor);
-        unsafe {
-            let _ = SetCapture(hwnd);
-        }
-        set_divider_cursor(true);
         return true;
     }
     let Some(hit) = chrome_hit_for_window(hwnd, point) else {
@@ -8944,6 +9062,20 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
                     let _ = SetCapture(hwnd);
                 }
             }
+            #[cfg(feature = "shell-chrome")]
+            if let Some(appid) = crate::shell::sidebar_main_drag_source(&command) {
+                main_aside_drags().insert(
+                    hwnd_handle(hwnd),
+                    MainAsideDrag {
+                        appid,
+                        start: point,
+                        dragging: false,
+                    },
+                );
+                unsafe {
+                    let _ = SetCapture(hwnd);
+                }
+            }
             #[cfg(not(feature = "shell-chrome"))]
             let _ = command;
             true
@@ -8955,6 +9087,10 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
 fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
     #[cfg(feature = "shell-chrome")]
     if finish_aside_tab_drag(hwnd, Some(point)) == Some(true) {
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if finish_main_aside_drag(hwnd, Some(point)) == Some(true) {
         return true;
     }
     #[cfg(feature = "shell-chrome")]
@@ -8980,6 +9116,15 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
         }
         return true;
     }
+    #[cfg(feature = "shell-chrome")]
+    {
+        if end_sidebar_resize_drag(hwnd, point) {
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            return true;
+        }
+    }
     if attached_panel_resize_drag_vertical().is_some() {
         update_attached_panel_resize_drag(hwnd, point);
         end_attached_panel_resize_drag();
@@ -8994,13 +9139,6 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             let _ = ReleaseCapture();
         }
         crate::shell::end_divider_drag();
-        return true;
-    }
-    #[cfg(feature = "shell-chrome")]
-    if drive_sidebar_drag(hwnd, Some(point), true) {
-        unsafe {
-            let _ = ReleaseCapture();
-        }
         return true;
     }
     let webtag_key = active_webtag_key_for_window(hwnd);
@@ -10963,10 +11101,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     let _ = finish_terminal_selection_drag(hwnd, None);
                     let _ = cancel_pane_drag(hwnd, false);
                     let _ = finish_aside_tab_drag(hwnd, None);
+                    let _ = finish_main_aside_drag(hwnd, None);
+                    cancel_sidebar_resize_drag(hwnd);
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }
-                    let _ = drive_sidebar_drag(hwnd, None, true);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
@@ -10974,14 +11113,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 snap_window_after_caption_drag(hwnd);
                 persist_primary_window_frame(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
-            }
-            #[cfg(feature = "shell-chrome")]
-            WindowsAndMessaging::WM_SETCURSOR
-                if (lparam.0 & 0xffff) as u32 == WindowsAndMessaging::HTCLIENT
-                    && sidebar_resize_cursor_wanted(hwnd) =>
-            {
-                set_divider_cursor(true);
-                LRESULT(1)
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
                 if update_window_resize_drag(hwnd) {
@@ -11064,9 +11195,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_DESTROY => {
-                if stored_primary_host_window() == Some(hwnd) {
-                    remember_primary_frame(hwnd);
-                }
+                hand_over_primary_window_frame(hwnd);
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -11874,18 +12003,45 @@ fn apply_pending_restore_maximize(hwnd: HWND) {
 }
 
 fn persist_primary_window_frame(hwnd: HWND) {
-    if !is_top_level_window(hwnd)
-        || !is_window_visible(hwnd)
-        || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
+    if !is_window_visible(hwnd) {
+        return;
+    }
+    persist_window_frame_if_primary(hwnd);
+}
+
+/// An lxapp restart destroys the primary host and presents its successor in a
+/// new one. Save the outgoing frame (already hidden by then) and re-arm the
+/// restore, or the successor opens at the centered default size.
+fn hand_over_primary_window_frame(hwnd: HWND) {
+    if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
+        || stored_primary_host_window() != Some(hwnd)
+        || TRAY_POPOVER_HWND.load(Ordering::Relaxed) == hwnd_handle(hwnd)
     {
         return;
+    }
+    if persist_window_frame_if_primary(hwnd) {
+        RESTORED_WINDOW_FRAME.store(false, Ordering::Release);
+    }
+    let _ = PENDING_RESTORE_MAXIMIZE.compare_exchange(
+        hwnd_handle(hwnd),
+        0,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
+}
+
+fn persist_window_frame_if_primary(hwnd: HWND) -> bool {
+    if !is_top_level_window(hwnd)
+        || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
+    {
+        return false;
     }
     // The simulator's frame-spec size is not a user-chosen shell size; saving
     // it would feed the min-width clamp a phone-sized rect on the next
     // restore.
     #[cfg(feature = "device-frame")]
     if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
-        return;
+        return false;
     }
 
     let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
@@ -11893,7 +12049,7 @@ fn persist_primary_window_frame(hwnd: HWND) {
         ..Default::default()
     };
     if unsafe { WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement) }.is_err() {
-        return;
+        return false;
     }
     let mut rect = placement.rcNormalPosition;
     // Tool windows already report screen coordinates.
@@ -11911,14 +12067,21 @@ fn persist_primary_window_frame(hwnd: HWND) {
         f64::from(rect.top),
         f64::from(rect.right - rect.left),
         f64::from(rect.bottom - rect.top),
-        placement_is_maximized(&placement),
+        // A restored-maximized window maximizes on first show; one retired
+        // before that is still the user's maximized window.
+        placement_is_maximized(&placement)
+            || PENDING_RESTORE_MAXIMIZE.load(Ordering::Acquire) == hwnd_handle(hwnd),
     ) else {
-        return;
+        return false;
     };
     match lingxia_shell::set_window_frame(frame) {
+        Ok(()) => true,
         // A host-api-only build never opens the shell store.
-        Ok(()) | Err(lingxia_shell::ShellError::NotInitialized) => {}
-        Err(error) => log::warn!("could not persist the app window frame: {error}"),
+        Err(lingxia_shell::ShellError::NotInitialized) => false,
+        Err(error) => {
+            log::warn!("could not persist the app window frame: {error}");
+            false
+        }
     }
 }
 

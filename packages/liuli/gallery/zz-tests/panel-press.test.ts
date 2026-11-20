@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { tap } from './finger.js';
 
 // An open dialog or popover panel takes every press over it; only a press outside dismisses it.
@@ -10,7 +10,7 @@ const panels: Panel[] = [
 ];
 
 for (const p of panels) {
-  spec(`${p.name}: a tap on its panel text or padding keeps it open; outside closes it`, {
+  test(`${p.name}: a tap on its panel text or padding keeps it open; outside closes it`, {
     id: `PANEL-PRESS-${p.name.toUpperCase()}-001`, start: { page: p.page }, timeout: 90_000,
   }, async (t) => {
     const view = t.app.view;

@@ -9,7 +9,9 @@ use windows::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HGDIOBJ};
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON, ICONINFO};
 use windows::core::BOOL;
 
-type IconCacheKey = (PathBuf, u32);
+/// (path, size, template tint). A tint recolours an SVG glyph; raster icons
+/// ignore it, so the same file may be cached once per tint.
+type IconCacheKey = (PathBuf, u32, Option<u32>);
 /// (mtime, len) of the source file when the handle was created. Favicon
 /// cache files are rewritten in place on refresh, so a path-only key would
 /// serve the old icon (or a memoized failure) forever.
@@ -21,11 +23,18 @@ static PANEL_ICON_HANDLES: OnceLock<Mutex<IconHandleCache>> = OnceLock::new();
 static BYTES_ICON_HANDLES: OnceLock<Mutex<BytesIconCache>> = OnceLock::new();
 
 pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
+    cached_icon_handle(path, size, None)
+}
+
+/// An icon from `path`; an SVG is a template whose glyph takes `tint`
+/// (0xRRGGBB), as on macOS. Raster icons keep their own colours.
+pub(super) fn cached_icon_handle(path: &str, size: u32, tint: Option<u32>) -> Option<isize> {
     let path = PathBuf::from(path);
     // A missing file (e.g. mid-replace during a favicon refresh) is never
     // memoized — the next repaint retries.
     let stamp = file_stamp(&path)?;
-    let key = (path.clone(), size);
+    let tint = tint.filter(|_| is_svg_path(&path));
+    let key = (path.clone(), size, tint);
     let handles = PANEL_ICON_HANDLES.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut handles) = handles.lock() {
         if let Some((cached_stamp, handle)) = handles.get(&key)
@@ -33,7 +42,10 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         {
             return *handle;
         }
-        let handle = create_icon_from_path(&path, size).ok();
+        // A failure is memoized until the file changes, so it logs once.
+        let handle = create_icon_from_path(&path, size, tint)
+            .inspect_err(|err| log::warn!("{err}"))
+            .ok();
         if let Some((_, Some(previous))) = handles.insert(key, (stamp, handle))
             && Some(previous) != handle
         {
@@ -41,7 +53,13 @@ pub(super) fn cached_png_icon_handle(path: &str, size: u32) -> Option<isize> {
         }
         return handle;
     }
-    create_icon_from_path(&path, size).ok()
+    create_icon_from_path(&path, size, tint).ok()
+}
+
+fn is_svg_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
 }
 
 fn file_stamp(path: &Path) -> Option<IconStamp> {
@@ -79,31 +97,60 @@ pub(super) fn cached_png_bytes_icon_handle(
     create_icon_from_png_bytes(png, size).ok()
 }
 
-fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
-    let is_svg = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
-    if is_svg {
-        let data = std::fs::read(path)
-            .map_err(|err| format!("Failed to read SVG icon {}: {err}", path.display()))?;
-        let image = rasterize_svg(&data, size)?;
+fn create_icon_from_path(path: &Path, size: u32, tint: Option<u32>) -> Result<isize, String> {
+    let data = std::fs::read(path)
+        .map_err(|err| format!("Failed to read icon {}: {err}", path.display()))?;
+    let source = path.display().to_string();
+    // The filename is not the container. A brand logo is often WebP bytes
+    // behind a `.png` URL, and the lxapp caches that suffix. `image::open`
+    // trusts the suffix, so the PNG decoder rejects the file and the slot
+    // stays empty. macOS ImageIO sniffs, which is why the same file shows
+    // there. Sniff here too; the suffix still decides an SVG template.
+    if let Some(image) = decode_raster(&data) {
+        // Raster tiles get an anti-aliased 22% corner in the bitmap. GDI
+        // `CreateRoundRectRgn` clip aliases that arc into a staircase at 16px.
+        return create_icon_from_image(image, size, &source, true);
+    }
+    if is_svg_path(path) || looks_like_svg(&data) {
+        let mut image = rasterize_svg(&data, size)?;
+        if let Some(tint) = tint {
+            let [_, r, g, b] = tint.to_be_bytes();
+            for pixel in image.pixels_mut() {
+                pixel.0 = [r, g, b, pixel.0[3]];
+            }
+        }
         return create_icon_from_image(
             image::DynamicImage::ImageRgba8(image),
             size,
-            &path.display().to_string(),
+            &source,
             false,
         );
     }
-    let image = image::open(path).map_err(|err| {
-        format!(
-            "Failed to load Windows shell icon {}: {err}",
-            path.display()
-        )
-    })?;
-    // Raster tiles get an anti-aliased 22% corner in the bitmap. GDI
-    // `CreateRoundRectRgn` clip aliases that arc into a staircase at 16px.
-    create_icon_from_image(image, size, &path.display().to_string(), true)
+    Err(format!(
+        "Failed to load Windows shell icon {source}: unrecognized image"
+    ))
+}
+
+/// Raster containers, identified from the bytes. `None` when this is not a
+/// raster the shell can decode (an SVG, or something we do not support).
+fn decode_raster(data: &[u8]) -> Option<image::DynamicImage> {
+    image::ImageReader::new(std::io::Cursor::new(data))
+        .with_guessed_format()
+        .ok()
+        .and_then(|reader| reader.decode().ok())
+}
+
+fn looks_like_svg(data: &[u8]) -> bool {
+    let mut start = 0;
+    if data.len() >= 3 && data[0] == 0xef && data[1] == 0xbb && data[2] == 0xbf {
+        start = 3;
+    }
+    while start < data.len() && matches!(data[start], b' ' | b'\t' | b'\n' | b'\r') {
+        start += 1;
+    }
+    let end = data.len().min(start.saturating_add(64));
+    let head = data[start..end].to_ascii_lowercase();
+    head.starts_with(b"<svg") || head.starts_with(b"<?xml") || head.starts_with(b"<!doctype")
 }
 
 /// Rasterizes an SVG (icons may be SVG, as on macOS) to an `size`x`size`
@@ -177,6 +224,19 @@ fn create_icon_from_image(
     source: &str,
     tile_corners: bool,
 ) -> Result<isize, String> {
+    // A non-square raster is centre-cropped to a square first, as macOS
+    // does, instead of being squashed.
+    let side = image.width().min(image.height());
+    let image = if image.width() != image.height() {
+        image.crop_imm(
+            (image.width() - side) / 2,
+            (image.height() - side) / 2,
+            side,
+            side,
+        )
+    } else {
+        image
+    };
     let mut image = image
         .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
         .into_rgba8();
@@ -245,6 +305,29 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn webp_bytes_decode_even_when_a_url_named_them_png() {
+        let pixel = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2,
+            2,
+            image::Rgba([12, 34, 56, 255]),
+        ));
+        let mut webp = Vec::new();
+        pixel
+            .write_to(
+                &mut std::io::Cursor::new(&mut webp),
+                image::ImageFormat::WebP,
+            )
+            .expect("webp encoder");
+        let decoded = decode_raster(&webp).expect("sniffed webp").to_rgba8();
+        assert_eq!(decoded.dimensions(), (2, 2));
+        assert_eq!(decoded.get_pixel(0, 0).0, [12, 34, 56, 255]);
+
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"></svg>"#;
+        assert!(decode_raster(svg).is_none());
+        assert!(looks_like_svg(svg));
+    }
 
     #[test]
     fn app_tile_corners_are_transparent_and_center_stays_opaque() {

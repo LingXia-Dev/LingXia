@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { reveal } from './finger.js';
 
 // An authored size sets a single-line control's height over its default padding and minimum.
@@ -8,7 +8,7 @@ const sized: Array<[string, 'textbox' | 'combobox']> = [
   ['text-input', 'textbox'], ['date-input', 'textbox'], ['time-input', 'textbox'], ['select', 'combobox'],
 ];
 for (const [page, role] of sized) {
-  spec(`${page}: Small, Medium and Large are 32, 40 and 48 pt border to border`, {
+  test(`${page}: Small, Medium and Large are 32, 40 and 48 pt border to border`, {
     id: `FIELD-HEIGHT-${page.toUpperCase()}-001`, start: { page }, timeout: 60_000,
   }, async (t) => {
     const view = t.app.view;

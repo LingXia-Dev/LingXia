@@ -165,6 +165,10 @@ pub mod product_cli;
 pub mod app;
 mod terminal_automation;
 pub use app::{home_app_id, lingxia_id, product_version};
+pub use lxapp::lingxia_surface::SizeClass;
+/// Where an lxapp is presented (main or aside) and whether the user can see
+/// it there, read from the window's surface graph at call time.
+pub use lxapp::{LxAppOpenRegion, ShellPresence, ShellPresentation, shell_presence};
 mod appearance_host;
 mod applink;
 /// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).
@@ -322,6 +326,10 @@ pub mod harmony;
 pub mod windows;
 
 pub(crate) mod browser;
+#[cfg(feature = "browser-runtime")]
+mod browser_menu;
+#[cfg(feature = "browser-runtime")]
+pub use browser_menu::{browser_tab_menu, move_browser_tab_to_side_panel};
 #[cfg(feature = "browser-runtime")]
 pub mod embedded_browser;
 pub(crate) mod push;

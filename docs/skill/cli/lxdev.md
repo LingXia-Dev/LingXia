@@ -60,15 +60,19 @@ The lxapps and pages in the session. Commands target the current lxapp
 
 ## `lxdev runner`
 
-The simulated device (Runner sessions only).
+The simulated device and display language (Runner sessions only).
 
 - `presets` — the device presets: viewport in points and pixel ratio
-- `get` — current preset, orientation, appearance, text scale, contrast
-- `set` — partial update of preset, orientation and `--appearance
-  system|light|dark`. The capsule follows the host: none on its home lxapp,
-  always on every other.
+- `get` — current preset, orientation, appearance, effective language, text
+  scale, contrast
+- `set` — partial update of preset, orientation, `--appearance
+  system|light|dark`, and `--language TAG|auto`. The capsule follows the host:
+  none on its home lxapp, always on every other.
 - `set --text-scale 1.3` / `--contrast standard|high` — the simulated system text size (0.5 to 3)
   and contrast, which GPU pages read as `env`'s; macOS Runner only.
+
+`--language` shadows `lx.host.displayLanguage` until the session ends and is
+not saved.
 
 Switching between desktop and handheld presets restarts Logic, so app state
 resets.
@@ -140,8 +144,8 @@ Everything else: [Mocks](../lxapp/mock.md).
 ## `lxdev test`
 
 Runs the project's `tests/*.test.ts` in the session (`lingxia dev` starts it).
-`lxdev test list` lists specs, `presets` and `args` show `lxdev.json`, `cancel`
-releases a run left behind, `report` reprints one. Writing specs, presets,
+`lxdev test list` lists tests, `presets` and `args` show `lxdev.json`, `cancel`
+releases a run left behind, `report` reprints one. Writing tests, presets,
 profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 ## `lxdev logs`

@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { androidDevice } from '@lingxia/test/showcase/helpers/android-device.js';
 
-spec.configure({ requires: { args: ['androidDevice'] } });
+test.configure({ requires: { args: ['androidDevice'] } });
 
 // Platform convention: a swipe from inside the system's edge zone is back, even across a
 // horizontal control; a drag that starts on the control past that zone moves the control.
-spec('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
+test('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
   id: 'EDGE-BACK-CLAIM-ANDROID-001', covers: ['view:scroll', 'lx.navigateBack'],
   reason: 'swipes through the OS input path of the Android device fixture',
   start: { page: 'view' },

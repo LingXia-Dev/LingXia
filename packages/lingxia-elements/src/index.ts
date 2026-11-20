@@ -1,13 +1,4 @@
 export {
-  registerVideoComponent,
-  LxVideoElement,
-  type LxVideoAttributes,
-  type LxVideoEventPayloads,
-  type LxVideoEventHandlers,
-  type LxVideoQuality,
-} from "./video.js";
-
-export {
   registerMediaSwiperComponent,
   LxMediaSwiperElement,
   type LxMediaSwiperAttributes,
@@ -62,13 +53,11 @@ export {
 } from "./navigator.js";
 
 export {
-  buildVideoNativeAttrs,
   buildMediaSwiperNativeAttrs,
   buildNavigatorNativeAttrs,
   buildPickerNativeAttrs,
   getPickerDisplayText,
   getPickerValueFromIndex,
-  VIDEO_DOM_EVENT_MAP,
   MEDIA_SWIPER_DOM_EVENT_MAP,
 } from "./native_component_wrapper_shared.js";
 
@@ -88,57 +77,5 @@ export {
   type Rect,
 } from "./component.js";
 
-export {
-  INLINE_NATIVE_SCHEMA,
-  NATIVE_ERROR_CODES,
-  PUBLIC_COMPONENT_NAMES,
-  PUBLIC_ELEMENT_TAGS,
-  CORE_KINDS,
-  HOST_FACTORY_KINDS,
-  compileInlineNativeRoot,
-  compileInlineNativeForest,
-  identifyCompiledRoot,
-  buildRootCommit,
-  buildGeometrySnapshot,
-  publishCompiledRoot,
-  applyHostLeaseMessage,
-  createRootRuntimeState,
-  viewCanShowFallback,
-  collectVideoResourceUrls,
-  buildVideoCommandRequest,
-  collectAuthorTreeFromElement,
-  normalizeAuthorType,
-  parseBooleanAttr,
-  unwrapNativeEventPayload,
-  bindPayloadHandler,
-  nativeError,
-  registerInlineNativeComponents,
-  registerInlineNativeAuthorComponents,
-  registerNativeRootComponent,
-  registerNativeViewComponent,
-  registerNativeCoverComponent,
-  registerNativeTextComponent,
-  registerNativeButtonComponent,
-  LxNativeRootElement,
-  LxNativeViewElement,
-  LxNativeCoverElement,
-  LxNativeTextElement,
-  LxNativeButtonElement,
-  EMPTY_ROOT_REF,
-  type NativeErrorCode,
-  type PublicComponentName,
-  type RootRef,
-  type NodeRef,
-  type NativeError,
-  type AuthorNode,
-  type CoreNode,
-  type CompiledNativeRoot,
-  type CompileInlineNativeResult,
-  type PressPayload,
-  type ValuePayload,
-  type FocusPayload,
-  type PointerPayload,
-  type NativeHandler,
-  type NativeActionIcon,
-  type NativeStyleProperty,
-} from "./inline-native/index.js";
+
+export { unwrapNativeEventPayload } from "./event-payload.js";

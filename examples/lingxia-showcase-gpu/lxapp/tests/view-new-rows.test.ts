@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // A popover placed beside its anchor: at the inline end, on the other side when that has no
 // room, and under the anchor when neither side has.
-spec('a popover opens beside its button, flips sides, and falls back under a wide one', { covers: ['view:popover'], start: openDemo('beside') }, async (t) => {
+test('a popover opens beside its button, flips sides, and falls back under a wide one', { covers: ['view:popover'], start: openDemo('beside') }, async (t) => {
   const view = t.app.view;
   const note = view.testId('lab-beside-note');
   const state = view.testId('lab-beside-state');
@@ -37,7 +37,7 @@ spec('a popover opens beside its button, flips sides, and falls back under a wid
   expect(near(box.x + box.width / 2, anchor.x + anchor.width / 2)).toBe(true);
 });
 
-spec('a parent checkbox reads mixed while some of its boxes are checked, and a tap checks them all', { covers: ['view:checkbox'], start: openDemo('partly') }, async (t) => {
+test('a parent checkbox reads mixed while some of its boxes are checked, and a tap checks them all', { covers: ['view:checkbox'], start: openDemo('partly') }, async (t) => {
   const view = t.app.view;
   const all = view.testId('lab-partly-all');
   const state = view.testId('lab-partly-state');
@@ -53,7 +53,7 @@ spec('a parent checkbox reads mixed while some of its boxes are checked, and a t
   await expect(state).toHaveAttribute('data-state', 'checked=0 of=3');
 });
 
-spec('a page with a disabled link becomes ready; the link takes no press and its neighbour does', { covers: ['view:link'], start: openDemo('linkOff') }, async (t) => {
+test('a page with a disabled link becomes ready; the link takes no press and its neighbour does', { covers: ['view:link'], start: openDemo('linkOff') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-link-state');
   await expect(view.testId('lab-link-disabled')).toBeDisabled();
@@ -62,7 +62,7 @@ spec('a page with a disabled link becomes ready; the link takes no press and its
   await expect(state).toHaveAttribute('data-state', 'taps=1');
 });
 
-spec('a small control reports the box a finger reaches', { covers: ['view:touch-target'], start: openDemo('small') }, async (t) => {
+test('a small control reports the box a finger reaches', { covers: ['view:touch-target'], start: openDemo('small') }, async (t) => {
   const view = t.app.view;
   const button = view.testId('lab-small-button');
   const [box, target] = [await button.boundingBox(), await button.touchTarget()];

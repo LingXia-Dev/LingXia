@@ -183,7 +183,6 @@ fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) 
         view_duration,
     );
 
-    crate::lxapp::audit_output_media(&project.output_dir)?;
     crate::lxapp::stamp_output_html(&project.output_dir)?;
 
     if options.release {

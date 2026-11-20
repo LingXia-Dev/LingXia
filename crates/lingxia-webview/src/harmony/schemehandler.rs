@@ -201,6 +201,7 @@ unsafe fn send_response(
     if !headers_map.contains_key(http::header::CONTENT_LENGTH) {
         let content_len = match &body {
             WebResourceBody::Path(path) => std::fs::metadata(path).ok().map(|m| m.len()),
+            WebResourceBody::FileRange { len, .. } => Some(*len),
             WebResourceBody::Bytes(data) => Some(data.len() as u64),
             WebResourceBody::Pipe(_) => None,
         };
@@ -234,8 +235,23 @@ unsafe fn send_response(
     }
 
     match body {
-        WebResourceBody::Path(path) => {
-            let mut file = match File::open(&path) {
+        body @ (WebResourceBody::Path(_) | WebResourceBody::FileRange { .. }) => {
+            let (path, range) = match body {
+                WebResourceBody::FileRange { path, offset, len } => (path, Some((offset, len))),
+                WebResourceBody::Path(path) => (path, None),
+                _ => unreachable!(),
+            };
+            let opened = File::open(&path).and_then(|mut f| {
+                use std::io::Seek as _;
+                Ok::<Box<dyn std::io::Read>, std::io::Error>(match range {
+                    Some((offset, len)) => {
+                        f.seek(std::io::SeekFrom::Start(offset))?;
+                        Box::new(std::io::Read::take(f, len))
+                    }
+                    None => Box::new(f),
+                })
+            });
+            let mut file = match opened {
                 Ok(f) => f,
                 Err(e) => {
                     log::error!(

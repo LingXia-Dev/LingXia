@@ -1,7 +1,7 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
-spec('a long list filters as its field is typed in, takes a tap on a row and a fling to its end', { covers: ['view:input', 'view:list'], start: openDemo('filter') }, async (t) => {
+test('a long list filters as its field is typed in, takes a tap on a row and a fling to its end', { covers: ['view:input', 'view:list'], start: openDemo('filter') }, async (t) => {
   const view = t.app.view;
   const values = view.testId('lab-filter-values');
   await expect(values).toHaveAttribute('data-state', 'query= picked=');
@@ -25,7 +25,7 @@ spec('a long list filters as its field is typed in, takes a tap on a row and a f
   await expect(view.testId('lab-controls-row-40')).toBeInViewport({ timeout: 3_000 });
 });
 
-spec('a scroll reports the edges it is at: the start on mount, neither mid-way, the end, both when its rows fit', { covers: ['view:scroll'], start: openDemo('edges') }, async (t) => {
+test('a scroll reports the edges it is at: the start on mount, neither mid-way, the end, both when its rows fit', { covers: ['view:scroll'], start: openDemo('edges') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-edges-state');
   // Already twelve rows: the press only brings the demo on screen.

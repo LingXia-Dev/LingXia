@@ -15,7 +15,6 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, ImageFormat};
-use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,10 +22,14 @@ use std::thread;
 use std::time::Duration;
 
 mod doctor;
+mod ds_store;
 pub use doctor::doctor_checks;
 
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
 const MACOS_X86_TARGET: &str = "x86_64-apple-darwin";
+const DEFAULT_MACOS_ARCH: &str = "arm64";
+/// Info.plist key holding the declared `macos.arch`; read by `lingxia publish`.
+pub(crate) const DECLARED_ARCH_PLIST_KEY: &str = "LingXiaMacosArch";
 
 /// macOS platform implementation
 pub struct MacosPlatform;
@@ -50,6 +53,12 @@ impl MacosPlatform {
         format!("{arch}-apple-macosx{deployment_target}")
     }
 
+    fn swift_scratch_dir(macos_dir: &Path, arch: &str) -> PathBuf {
+        // SwiftPM shares its build database and plan across --triple values.
+        // Switching architectures can reuse commands from the previous plan.
+        macos_dir.join(".build").join("lingxia").join(arch)
+    }
+
     /// Resolve the macOS-specific section of the project config, if any.
     fn macos_config<'a>(&self, config: &'a BuildConfig) -> Option<&'a MacosConfig> {
         config
@@ -58,30 +67,40 @@ impl MacosPlatform {
             .and_then(|c| c.macos.as_ref())
     }
 
-    /// Validate the requested macOS arch (falling back to host arch) and
-    /// derive the deployment target. Single source of truth shared by
-    /// `build` (Phase 3) and `build_rust_library` (Phase 1).
-    fn resolve_macos_params<'a>(&self, config: &'a BuildConfig) -> Result<(Cow<'a, str>, String)> {
-        let host_arch: &'static str = if cfg!(target_arch = "aarch64") {
+    /// Resolve the architectures to build and the deployment target. Single
+    /// source of truth shared by `build` (Phase 3) and `build_rust_library`
+    /// (Phase 1).
+    fn resolve_macos_params(&self, config: &BuildConfig) -> Result<(Vec<&'static str>, String)> {
+        let host_arch = if cfg!(target_arch = "aarch64") {
             "arm64"
         } else {
             "x86_64"
         };
-        let arch: Cow<'a, str> = match config.macos_arch.as_deref() {
-            Some(a) => Cow::Borrowed(a),
-            None => Cow::Borrowed(host_arch),
+        let declared = if (config.package || config.dmg) && config.lingxia_config.is_some() {
+            Some(self.declared_macos_arch(config)?)
+        } else {
+            None
         };
-        if arch != "arm64" && arch != "x86_64" {
-            return Err(anyhow!(
-                "Unsupported macOS arch '{}'. Supported values: arm64, x86_64",
-                arch
-            ));
-        }
+        let archs = resolve_macos_archs(config.macos_arch.as_deref(), declared, host_arch)?;
         let deployment_target = self
             .macos_config(config)
             .and_then(|c| c.deployment_target.clone())
             .unwrap_or_else(|| "14.0".to_string());
-        Ok((arch, deployment_target))
+        Ok((archs, deployment_target))
+    }
+
+    /// The `macos.arch` a project supports; recorded in the bundle so publish
+    /// can hold the package to it.
+    fn declared_macos_arch(&self, config: &BuildConfig) -> Result<&'static str> {
+        let arch = self.macos_config(config).and_then(|c| c.arch.as_deref());
+        match arch.unwrap_or(DEFAULT_MACOS_ARCH) {
+            "arm64" => Ok("arm64"),
+            "x86_64" => Ok("x86_64"),
+            "universal" => Ok("universal"),
+            other => Err(anyhow!(
+                "macos.arch '{other}' is not supported; use arm64, x86_64, or universal"
+            )),
+        }
     }
 
     /// Compute the path cargo will produce for the macOS static library
@@ -153,6 +172,7 @@ impl MacosPlatform {
         let is_release = matches!(profile, BuildProfile::Release);
         let build_config = if is_release { "release" } else { "debug" };
         let triple = Self::swift_triple(arch, deployment_target);
+        let scratch_dir = Self::swift_scratch_dir(macos_dir, arch);
         let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         let mut build_cmd = Command::new("swift");
@@ -163,7 +183,9 @@ impl MacosPlatform {
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env("LINGXIA_NATIVE_FEATURES", native_features.join(","))
             .env("RUNNER_TARGET_TRIPLE", &triple)
-            .args(["build", "--disable-sandbox", "--triple", &triple]);
+            .args(["build", "--disable-sandbox", "--triple", &triple])
+            .arg("--scratch-path")
+            .arg(&scratch_dir);
 
         if is_release {
             build_cmd.args(["-c", "release"]);
@@ -185,6 +207,7 @@ impl MacosPlatform {
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--show-bin-path"]);
         cmd.args(["--triple", &triple]);
+        cmd.arg("--scratch-path").arg(&scratch_dir);
 
         if is_release {
             cmd.args(["-c", "release"]);
@@ -216,6 +239,45 @@ impl MacosPlatform {
 
         println!("  {} Swift build complete", "✓".green());
         Ok(bin_dir)
+    }
+
+    /// Swift-build one arch, relinking from scratch when the executable is
+    /// older than that arch's native library.
+    #[allow(clippy::too_many_arguments)]
+    fn swift_build_arch(
+        &self,
+        macos_dir: &Path,
+        config: &BuildConfig,
+        arch: &str,
+        deployment_target: &str,
+        preferred: &[String],
+        explicit_executable: Option<&str>,
+        native_lib_path: &Path,
+    ) -> Result<(PathBuf, PathBuf)> {
+        let build = || {
+            let bin_dir = self.swift_build_and_get_bin_dir(
+                macos_dir,
+                &config.project_root,
+                config.profile,
+                arch,
+                deployment_target,
+                &config.native_features,
+            )?;
+            let executable =
+                self.find_executable_in_bin_dir(&bin_dir, preferred, explicit_executable)?;
+            Ok::<_, anyhow::Error>((bin_dir, executable))
+        };
+        let (bin_dir, executable) = build()?;
+        if !executable_needs_native_relink(&executable, native_lib_path) {
+            return Ok((bin_dir, executable));
+        }
+        println!(
+            "  {} Swift executable is older than native library; forcing relink",
+            "ℹ".blue()
+        );
+        fs::remove_dir_all(Self::swift_scratch_dir(macos_dir, arch))
+            .context("Failed to clear SwiftPM cache for native relink")?;
+        build()
     }
 
     fn find_executable_in_bin_dir(
@@ -313,8 +375,14 @@ impl Platform for MacosPlatform {
         apple::ensure_macos()?;
 
         let macos_config = self.macos_config(config);
-        let (arch, deployment_target) = self.resolve_macos_params(config)?;
-        let arch: &str = &arch;
+        let (archs, deployment_target) = self.resolve_macos_params(config)?;
+        if archs.len() > 1 {
+            println!(
+                "{} Building universal binary ({})",
+                "[macOS]".cyan(),
+                archs.join(" + ")
+            );
+        }
 
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
@@ -367,21 +435,29 @@ impl Platform for MacosPlatform {
         // Build Rust static library + refresh SwiftPM relink stamp.
         // Skipped when the orchestrator already ran Phase 1 via
         // `build_rust_library`.
-        let native_lib_path = if !config.skip_native_build {
-            let lib =
-                self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-            if config.lingxia_config.is_some() {
-                apple::update_spm_rust_link_stamp(
+        let mut native_lib_paths = Vec::with_capacity(archs.len());
+        for &arch in &archs {
+            let lib = if !config.skip_native_build {
+                let lib = self.do_build_rust_library(
                     &config.project_root,
-                    &sdk_root,
-                    Self::rust_target(arch),
-                    config.profile.as_str(),
+                    config,
+                    arch,
+                    &deployment_target,
                 )?;
-            }
-            lib
-        } else {
-            Self::rust_lib_path(&config.project_root, arch, config.profile)
-        };
+                if config.lingxia_config.is_some() {
+                    apple::update_spm_rust_link_stamp(
+                        &config.project_root,
+                        &sdk_root,
+                        Self::rust_target(arch),
+                        config.profile.as_str(),
+                    )?;
+                }
+                lib
+            } else {
+                Self::rust_lib_path(&config.project_root, arch, config.profile)
+            };
+            native_lib_paths.push(lib);
+        }
 
         let mut preferred = Vec::new();
         if let Some(macos) = &macos_config
@@ -410,52 +486,42 @@ impl Platform for MacosPlatform {
 
         apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
 
-        let (bin_dir, executable_path) =
-            apple::with_temporary_package_manifest(&macos_dir, || {
-                // SwiftPM takes its minimum OS from Package.swift even when --triple
-                // includes a newer version, so align the build-time manifest with
-                // lingxia.yaml without changing the project copy.
-                apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
+        let explicit_executable = macos_config.and_then(|c| c.executable_name.as_deref());
+        let universal_stage = resolve_lingxia_target_dir(&config.project_root)
+            .join("macos")
+            .join("universal");
+        let linked = apple::with_temporary_package_manifest(&macos_dir, || {
+            // SwiftPM takes its minimum OS from Package.swift even when --triple
+            // includes a newer version, so align the build-time manifest with
+            // lingxia.yaml without changing the project copy.
+            apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
 
-                let mut bin_dir = self.swift_build_and_get_bin_dir(
+            let mut built = Vec::with_capacity(archs.len());
+            for (&arch, native_lib_path) in archs.iter().zip(&native_lib_paths) {
+                let (bin_dir, executable_path) = self.swift_build_arch(
                     &macos_dir,
-                    &config.project_root,
-                    config.profile,
+                    config,
                     arch,
                     &deployment_target,
-                    &config.native_features,
-                )?;
-                let mut executable_path = self.find_executable_in_bin_dir(
-                    &bin_dir,
                     &preferred,
-                    macos_config
-                        .as_ref()
-                        .and_then(|c| c.executable_name.as_deref()),
+                    explicit_executable,
+                    native_lib_path,
                 )?;
-                if executable_needs_native_relink(&executable_path, &native_lib_path) {
-                    println!(
-                        "  {} Swift executable is older than native library; forcing relink",
-                        "ℹ".blue()
-                    );
-                    let _ = fs::remove_dir_all(macos_dir.join(".build"));
-                    bin_dir = self.swift_build_and_get_bin_dir(
-                        &macos_dir,
-                        &config.project_root,
-                        config.profile,
-                        arch,
-                        &deployment_target,
-                        &config.native_features,
-                    )?;
-                    executable_path = self.find_executable_in_bin_dir(
-                        &bin_dir,
-                        &preferred,
-                        macos_config
-                            .as_ref()
-                            .and_then(|c| c.executable_name.as_deref()),
-                    )?;
+                if archs.len() == 1 {
+                    return Ok(LinkedOutputs {
+                        linked_dir: bin_dir.clone(),
+                        bin_dir,
+                        executable: executable_path,
+                    });
                 }
-                Ok((bin_dir, executable_path))
-            })?;
+                // Keep linked slices separate from the merged output.
+                let staged =
+                    stage_arch_outputs(&bin_dir, &executable_path, &universal_stage.join(arch))?;
+                built.push((bin_dir, staged));
+            }
+            merge_universal_outputs(&built, &universal_stage.join("merged"))
+        })?;
+        let executable_path = linked.executable.clone();
 
         let product_name = config
             .lingxia_config
@@ -517,18 +583,23 @@ impl Platform for MacosPlatform {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
+        let declared_arch = if config.lingxia_config.is_some() {
+            Some(self.declared_macos_arch(config)?)
+        } else {
+            None
+        };
         let app_path = create_macos_app_bundle(
             &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &macos_dir,
-            &bin_dir,
+            &linked,
             &host_target,
-            &executable_path,
             &product_name,
             &product_version,
             &bundle_id,
             &deployment_target,
             info_plist.as_ref(),
             hide_dock_icon,
+            declared_arch,
         )?;
         if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
             crate::product_i18n::write_apple_product_name_strings(
@@ -618,10 +689,17 @@ impl Platform for MacosPlatform {
         };
 
         let dmg_path = if config.dmg {
+            let background = config
+                .lingxia_config
+                .as_ref()
+                .and_then(|host| host.macos.as_ref())
+                .and_then(|macos| macos.dmg.as_ref())
+                .and_then(|dmg| dmg.background.as_deref());
             Some(create_dmg(
                 &app_path,
                 &config.project_root,
                 super::artifact_stem(config.lingxia_config.as_ref(), config.resolved_env.version),
+                background,
             )?)
         } else {
             None
@@ -635,16 +713,17 @@ impl Platform for MacosPlatform {
     }
 
     fn build_rust_library(&self, config: &BuildConfig) -> Result<()> {
-        let (arch, deployment_target) = self.resolve_macos_params(config)?;
-        let arch: &str = &arch;
-        self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
-        if config.lingxia_config.is_some() {
-            apple::update_spm_rust_link_stamp(
-                &config.project_root,
-                &config.project_root,
-                Self::rust_target(arch),
-                config.profile.as_str(),
-            )?;
+        let (archs, deployment_target) = self.resolve_macos_params(config)?;
+        for arch in archs {
+            self.do_build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+            if config.lingxia_config.is_some() {
+                apple::update_spm_rust_link_stamp(
+                    &config.project_root,
+                    &config.project_root,
+                    Self::rust_target(arch),
+                    config.profile.as_str(),
+                )?;
+            }
         }
         Ok(())
     }
@@ -703,6 +782,122 @@ fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str)
     current
 }
 
+/// Architectures a build produces. Packaged host apps build what the project
+/// declares; everything else builds the host arch to keep the local loop fast.
+fn resolve_macos_archs(
+    requested: Option<&str>,
+    declared: Option<&str>,
+    host_arch: &'static str,
+) -> Result<Vec<&'static str>> {
+    match requested.or(declared) {
+        Some("arm64") => Ok(vec!["arm64"]),
+        Some("x86_64") => Ok(vec!["x86_64"]),
+        Some("universal") => Ok(vec!["arm64", "x86_64"]),
+        Some(other) => Err(anyhow!(
+            "Unsupported macOS arch '{other}'. Supported values: arm64, x86_64, universal"
+        )),
+        None => Ok(vec![host_arch]),
+    }
+}
+
+/// What the app bundle is assembled from. `bin_dir` supplies SwiftPM resource
+/// bundles (arch-independent); `linked_dir` supplies dylibs and frameworks.
+struct LinkedOutputs {
+    bin_dir: PathBuf,
+    linked_dir: PathBuf,
+    executable: PathBuf,
+}
+
+/// Copy one arch's executable and dylibs into `stage_dir`; returns the staged
+/// executable.
+fn stage_arch_outputs(bin_dir: &Path, executable: &Path, stage_dir: &Path) -> Result<PathBuf> {
+    let _ = fs::remove_dir_all(stage_dir);
+    fs::create_dir_all(stage_dir)
+        .with_context(|| format!("Failed to create {}", stage_dir.display()))?;
+    for entry in fs::read_dir(bin_dir)? {
+        let path = entry?.path();
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("framework") => {
+                return Err(anyhow!(
+                    "universal macOS builds do not support dynamic framework products ({}); use --macos-arch arm64 or x86_64",
+                    path.display()
+                ));
+            }
+            Some("dylib") => {
+                fs::copy(&path, stage_dir.join(path.file_name().unwrap()))?;
+            }
+            _ => {}
+        }
+    }
+    let staged = stage_dir.join(
+        executable
+            .file_name()
+            .ok_or_else(|| anyhow!("Invalid executable path: {}", executable.display()))?,
+    );
+    fs::copy(executable, &staged)
+        .with_context(|| format!("Failed to stage {}", executable.display()))?;
+    Ok(staged)
+}
+
+/// `lipo` the staged per-arch executables and dylibs into `merged_dir`.
+/// Resource bundles come from the last arch's bin dir, which no later build
+/// can have wiped.
+fn merge_universal_outputs(
+    built: &[(PathBuf, PathBuf)],
+    merged_dir: &Path,
+) -> Result<LinkedOutputs> {
+    let (last_bin_dir, last_exe) = built
+        .last()
+        .ok_or_else(|| anyhow!("no macOS architectures were built"))?;
+    let _ = fs::remove_dir_all(merged_dir);
+    fs::create_dir_all(merged_dir)
+        .with_context(|| format!("Failed to create {}", merged_dir.display()))?;
+
+    let stage_dirs: Vec<&Path> = built
+        .iter()
+        .map(|(_, exe)| exe.parent().expect("staged executable has a parent"))
+        .collect();
+    let mut names = vec![last_exe.file_name().unwrap().to_os_string()];
+    for entry in fs::read_dir(stage_dirs[0])? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "dylib") {
+            names.push(path.file_name().unwrap().to_os_string());
+        }
+    }
+
+    for name in &names {
+        let inputs: Vec<PathBuf> = stage_dirs.iter().map(|dir| dir.join(name)).collect();
+        if let Some(missing) = inputs.iter().find(|p| !p.exists()) {
+            return Err(anyhow!(
+                "{} was not built for every architecture",
+                missing.display()
+            ));
+        }
+        lipo_create(&inputs, &merged_dir.join(name))?;
+    }
+    println!("  {} Merged universal binary", "✓".green());
+
+    Ok(LinkedOutputs {
+        bin_dir: last_bin_dir.clone(),
+        linked_dir: merged_dir.to_path_buf(),
+        executable: merged_dir.join(&names[0]),
+    })
+}
+
+fn lipo_create(inputs: &[PathBuf], output: &Path) -> Result<()> {
+    let status = Command::new("lipo")
+        .arg("-create")
+        .args(inputs)
+        .arg("-output")
+        .arg(output)
+        .status()
+        .context("Failed to execute lipo")?;
+    if !status.success() {
+        return Err(anyhow!("lipo failed to create {}", output.display()));
+    }
+    Ok(())
+}
+
 fn executable_needs_native_relink(executable_path: &Path, native_lib_path: &Path) -> bool {
     let Ok(executable_modified) = fs::metadata(executable_path).and_then(|m| m.modified()) else {
         return false;
@@ -733,15 +928,15 @@ LingXia will not inject these entitlements until approval is confirmed.",
 fn create_macos_app_bundle(
     output_dir: &Path,
     macos_dir: &Path,
-    bin_dir: &Path,
+    linked: &LinkedOutputs,
     host_target: &str,
-    executable_path: &Path,
     product_name: &str,
     product_version: &str,
     bundle_id: &str,
     deployment_target: &str,
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
+    declared_arch: Option<&str>,
 ) -> Result<PathBuf> {
     // Finder only applies InfoPlist.strings names when the bundle filename
     // matches the default product name. Keep technical target names inside.
@@ -763,6 +958,7 @@ fn create_macos_app_bundle(
     fs::create_dir_all(&macos_exec_dir)?;
     fs::create_dir_all(&resources_dir)?;
 
+    let executable_path = &linked.executable;
     let executable_name = executable_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -770,10 +966,10 @@ fn create_macos_app_bundle(
     let exe_dst = macos_exec_dir.join(executable_name);
     fs::copy(executable_path, &exe_dst)?;
 
-    apple::install_resource_bundles(macos_dir, bin_dir, host_target, &resources_dir)?;
+    apple::install_resource_bundles(macos_dir, &linked.bin_dir, host_target, &resources_dir)?;
 
     // Copy frameworks and dylibs into Contents/Frameworks
-    for entry in fs::read_dir(bin_dir)? {
+    for entry in fs::read_dir(&linked.linked_dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.extension().map(|e| e == "framework").unwrap_or(false) {
@@ -800,6 +996,7 @@ fn create_macos_app_bundle(
         executable_name,
         info_plist_path,
         hide_dock_icon,
+        declared_arch,
     )?;
 
     Ok(app_bundle)
@@ -871,7 +1068,12 @@ fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Re
     Ok(())
 }
 
-fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Result<PathBuf> {
+fn create_dmg(
+    app_path: &Path,
+    project_root: &Path,
+    stem: Option<String>,
+    background: Option<&str>,
+) -> Result<PathBuf> {
     let app_name = app_path
         .file_stem()
         .and_then(|n| n.to_str())
@@ -922,6 +1124,8 @@ fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Res
     } else {
         println!("  {} Created Applications symlink", "✓".green());
     }
+    let background_name = stage_dmg_background(&stage_dir, project_root, background)?;
+
     let rw_dmg_path = temp_dir.path().join(format!("{app_name}-rw.dmg"));
     let status = Command::new("hdiutil")
         .arg("create")
@@ -940,41 +1144,37 @@ fn create_dmg(app_path: &Path, project_root: &Path, stem: Option<String>) -> Res
         anyhow::bail!("Failed to create temporary writable DMG");
     }
 
-    let mount_point = temp_dir.path().join("mnt");
-    fs::create_dir_all(&mount_point)?;
-    let attach_status = Command::new("hdiutil")
+    // Mounted only to stamp the window layout into the volume; the alias to
+    // the background needs the volume's and the file's creation dates.
+    let attach = Command::new("hdiutil")
         .arg("attach")
-        .arg("-quiet")
+        .arg("-plist")
+        .arg("-nobrowse")
         .arg(&rw_dmg_path)
         .arg("-readwrite")
         .arg("-noverify")
         .arg("-noautoopen")
-        .arg("-mountpoint")
-        .arg(&mount_point)
-        .status()
+        .output()
         .context("Failed to mount temporary DMG")?;
-    if !attach_status.success() {
+    if !attach.status.success() {
         anyhow::bail!("Failed to mount temporary DMG");
     }
+    let mount_point = attached_mount_point(&attach.stdout)?;
 
-    // Give the system time to register the disk with Finder before AppleScript
-    thread::sleep(Duration::from_millis(2000));
-
-    if let Err(err) = configure_dmg_layout(app_name, app_bundle_name) {
-        eprintln!(
-            "  {} Failed to configure DMG Finder layout: {}",
-            "Warning:".yellow(),
-            err
-        );
-        eprintln!(
-            "  {} DMG still includes an 'Applications' link for drag-to-install.",
-            "Info:".blue()
-        );
-    }
-
-    // Give Finder a moment to persist the .DS_Store before detach.
-    thread::sleep(Duration::from_millis(500));
+    let layout = ds_store::write(
+        &mount_point,
+        &ds_store::DmgLayout {
+            volume_name: app_name,
+            app_bundle_name,
+            app_position: DMG_APP_POSITION,
+            applications_position: DMG_APPLICATIONS_POSITION,
+            window_size: DMG_WINDOW_SIZE,
+            background_name: &background_name,
+        },
+    );
+    // Detach even when the layout failed, so no image stays mounted.
     detach_mount(&mount_point)?;
+    layout?;
 
     let converted_base = temp_dir.path().join("release");
     let convert_status = Command::new("hdiutil")
@@ -1056,53 +1256,110 @@ fn create_update_zip(
     Ok(zip_path)
 }
 
-fn configure_dmg_layout(volume_name: &str, app_bundle_name: &str) -> Result<()> {
-    let volume_name = escape_applescript_string(volume_name);
-    let app_bundle_name = escape_applescript_string(app_bundle_name);
-    let script = format!(
-        r#"
-tell application "Finder"
-    set dmgDisk to disk "{volume_name}"
-    open dmgDisk
-    delay 0.5
-    set dmgWindow to container window of dmgDisk
-    set current view of dmgWindow to icon view
-    set toolbar visible of dmgWindow to false
-    set statusbar visible of dmgWindow to false
-    set bounds of dmgWindow to {{120, 120, 780, 500}}
-    tell icon view options of dmgWindow
-        set arrangement to not arranged
-        set icon size to 128
-        set text size to 14
-    end tell
-    -- Position app and Applications link (symlink should already exist)
-    set position of item "{app_bundle_name}" of dmgWindow to {{180, 220}}
-    if exists item "Applications" of dmgWindow then
-        set position of item "Applications" of dmgWindow to {{500, 220}}
-    end if
-    update without registering applications
-    delay 0.5
-    close dmgWindow
-end tell
-"#
-    );
+/// Install window content size, in points. The background fills it exactly.
+const DMG_WINDOW_SIZE: (u32, u32) = (660, 400);
+/// Icon centres, in points, matching the arrow in [`DMG_DEFAULT_BACKGROUND`].
+const DMG_APP_POSITION: (u32, u32) = (180, 190);
+const DMG_APPLICATIONS_POSITION: (u32, u32) = (480, 190);
 
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-        .context("Failed to execute osascript for DMG layout")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            anyhow::bail!("osascript returned non-zero status while setting DMG layout");
+/// The built-in background: a quiet floor and an arrow from the app to the
+/// Applications link. No text, so it needs no localization.
+const DMG_DEFAULT_BACKGROUND: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <rect width="660" height="400" fill="#F5F6F8"/>
+  <g fill="none" stroke="#A3ABB6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M270 190 H384"/>
+    <path d="M362 168 L390 190 L362 212"/>
+  </g>
+</svg>"##;
+
+/// Put the window background in the staged volume's hidden `.background`
+/// folder and return its file name there. With a Retina representation the
+/// two scales are joined into one TIFF so Finder picks the sharp one.
+fn stage_dmg_background(
+    stage_dir: &Path,
+    project_root: &Path,
+    custom: Option<&str>,
+) -> Result<String> {
+    let dir = stage_dir.join(".background");
+    fs::create_dir_all(&dir)?;
+    let one_x = dir.join("background.png");
+    let two_x = dir.join("background@2x.png");
+
+    let has_two_x = match custom {
+        Some(relative) => {
+            let source = project_root.join(relative);
+            fs::copy(&source, &one_x).with_context(|| {
+                format!("Failed to read macos.dmg.background {}", source.display())
+            })?;
+            let retina = source.with_file_name(format!(
+                "{}@2x.{}",
+                source
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("background"),
+                source.extension().and_then(|s| s.to_str()).unwrap_or("png"),
+            ));
+            retina.is_file() && fs::copy(&retina, &two_x).is_ok()
         }
-        anyhow::bail!(
-            "osascript returned non-zero status while setting DMG layout: {}",
-            stderr
-        );
+        None => {
+            fs::write(&one_x, render_dmg_background(1)?)?;
+            fs::write(&two_x, render_dmg_background(2)?)?;
+            true
+        }
+    };
+    if !has_two_x {
+        return Ok("background.png".to_string());
     }
-    Ok(())
+
+    let tiff = dir.join("background.tiff");
+    let status = Command::new("tiffutil")
+        .arg("-cathidpicheck")
+        .arg(&one_x)
+        .arg(&two_x)
+        .arg("-out")
+        .arg(&tiff)
+        .output()
+        .context("Failed to execute tiffutil for the DMG background")?;
+    if !status.status.success() {
+        let _ = fs::remove_file(&two_x);
+        return Ok("background.png".to_string());
+    }
+    fs::remove_file(&one_x)?;
+    fs::remove_file(&two_x)?;
+    Ok("background.tiff".to_string())
+}
+
+fn render_dmg_background(scale: u32) -> Result<Vec<u8>> {
+    let tree = usvg::Tree::from_str(DMG_DEFAULT_BACKGROUND, &usvg::Options::default())
+        .context("Failed to parse the DMG background")?;
+    let (width, height) = DMG_WINDOW_SIZE;
+    let mut pixmap = tiny_skia::Pixmap::new(width * scale, height * scale)
+        .ok_or_else(|| anyhow!("Failed to allocate the DMG background"))?;
+    let scale = scale as f32;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    pixmap
+        .encode_png()
+        .context("Failed to encode the DMG background")
+}
+
+/// The mount point `hdiutil attach -plist` reports for the image's volume.
+fn attached_mount_point(plist_bytes: &[u8]) -> Result<PathBuf> {
+    let value = plist::Value::from_reader_xml(plist_bytes)
+        .context("Failed to parse hdiutil attach output")?;
+    value
+        .as_dictionary()
+        .and_then(|root| root.get("system-entities"))
+        .and_then(|entities| entities.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|entity| entity.as_dictionary()?.get("mount-point")?.as_string())
+        .map(PathBuf::from)
+        .next()
+        .ok_or_else(|| anyhow!("hdiutil attach reported no mount point"))
 }
 
 fn detach_mount(mount_point: &Path) -> Result<()> {
@@ -1132,10 +1389,6 @@ fn detach_mount(mount_point: &Path) -> Result<()> {
     Ok(())
 }
 
-fn escape_applescript_string(input: &str) -> String {
-    input.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 #[allow(clippy::too_many_arguments)]
 fn generate_macos_info_plist(
     package_dir: &Path,
@@ -1147,6 +1400,7 @@ fn generate_macos_info_plist(
     executable_name: &str,
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
+    declared_arch: Option<&str>,
 ) -> Result<()> {
     let mut info: std::collections::HashMap<String, plist::Value> =
         std::collections::HashMap::new();
@@ -1226,6 +1480,9 @@ fn generate_macos_info_plist(
     // switch would cause.
     if hide_dock_icon {
         info.insert("LSUIElement".into(), true.into());
+    }
+    if let Some(arch) = declared_arch {
+        info.insert(DECLARED_ARCH_PLIST_KEY.into(), arch.into());
     }
 
     let info_plist_path = contents_dir.join("Info.plist");
@@ -1415,6 +1672,69 @@ fn apply_rounded_corner_mask(img: &mut image::RgbaImage, radius: f32) {
 mod name_tests {
     use super::*;
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires the macOS Swift toolchain and both architecture SDKs"]
+    fn swift_builds_keep_architecture_caches_separate() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let macos = root.join("macos");
+        fs::create_dir_all(macos.join("Sources/CacheProbe/Resources")).unwrap();
+        fs::write(
+            macos.join("Package.swift"),
+            r#"// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "CacheProbe", platforms: [.macOS(.v12)], targets: [
+    .executableTarget(name: "CacheProbe", resources: [.copy("Resources")])
+])
+"#,
+        )
+        .unwrap();
+        fs::write(
+            macos.join("Sources/CacheProbe/main.swift"),
+            "print(\"probe\")\n",
+        )
+        .unwrap();
+        let platform = MacosPlatform::new();
+        let mut bins = std::collections::BTreeMap::new();
+        // Alternate targets twice, changing a bundled resource between builds.
+        for (i, arch) in ["arm64", "x86_64", "arm64", "x86_64"].iter().enumerate() {
+            let version = i.to_string();
+            fs::write(
+                macos.join("Sources/CacheProbe/Resources/version.txt"),
+                &version,
+            )
+            .unwrap();
+            let bin = platform
+                .swift_build_and_get_bin_dir(
+                    &macos,
+                    &root,
+                    BuildProfile::Release,
+                    arch,
+                    "12.0",
+                    &[],
+                )
+                .unwrap();
+            let output = Command::new("lipo")
+                .arg("-archs")
+                .arg(bin.join("CacheProbe"))
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), *arch);
+            assert_eq!(
+                fs::read_to_string(bin.join("CacheProbe_CacheProbe.bundle/Resources/version.txt"))
+                    .unwrap(),
+                version
+            );
+            bins.insert(*arch, bin);
+        }
+        // Native relinking must not invalidate the other architecture's output.
+        fs::remove_dir_all(MacosPlatform::swift_scratch_dir(&macos, "arm64")).unwrap();
+        assert!(!bins["arm64"].exists());
+        assert!(bins["x86_64"].join("CacheProbe").is_file());
+    }
+
     fn executable(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
         fs::write(&path, "stub").unwrap();
@@ -1459,6 +1779,27 @@ mod name_tests {
     }
 
     #[test]
+    fn packaged_builds_follow_the_declared_arch() {
+        assert_eq!(
+            resolve_macos_archs(None, Some("arm64"), "x86_64").unwrap(),
+            ["arm64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(None, Some("universal"), "x86_64").unwrap(),
+            ["arm64", "x86_64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(None, None, "x86_64").unwrap(),
+            ["x86_64"]
+        );
+        assert_eq!(
+            resolve_macos_archs(Some("x86_64"), Some("universal"), "arm64").unwrap(),
+            ["x86_64"]
+        );
+        assert!(resolve_macos_archs(Some("i386"), None, "arm64").is_err());
+    }
+
+    #[test]
     fn bundle_and_localizations_use_product_name_but_keep_executable() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("bin");
@@ -1467,15 +1808,19 @@ mod name_tests {
         let bundle = create_macos_app_bundle(
             &dir.path().join("output"),
             dir.path(),
-            &bin,
+            &LinkedOutputs {
+                bin_dir: bin.clone(),
+                linked_dir: bin.clone(),
+                executable: exe,
+            },
             "Technical",
-            &exe,
             "Product Display",
             "1.2.3",
             "com.example.product",
             "12.0",
             None,
             false,
+            Some("universal"),
         )
         .unwrap();
         assert_eq!(bundle.file_name().unwrap(), "Product Display.app");
@@ -1486,6 +1831,7 @@ mod name_tests {
             Some("Product Display")
         );
         assert_eq!(info["CFBundleExecutable"].as_string(), Some("Technical"));
+        assert_eq!(info[DECLARED_ARCH_PLIST_KEY].as_string(), Some("universal"));
         let names = std::collections::BTreeMap::from([("zh-CN".into(), "产品名称".into())]);
         crate::product_i18n::write_apple_product_name_strings(
             &bundle.join("Contents/Resources"),
@@ -1537,5 +1883,33 @@ mod dock_icon_tests {
         // Art already on the grid passes through rather than shrinking again.
         let gridded = build_macos_icon_source(&write_source(temp.path(), 824)).unwrap();
         assert!((822..=826).contains(&plate_width(gridded.path())));
+    }
+}
+
+#[cfg(test)]
+mod dmg_tests {
+    use super::*;
+
+    #[test]
+    fn mount_point_comes_from_the_entity_that_has_one() {
+        let output = br#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>system-entities</key><array>
+  <dict><key>dev-entry</key><string>/dev/disk4</string></dict>
+  <dict><key>dev-entry</key><string>/dev/disk4s1</string>
+        <key>mount-point</key><string>/Volumes/Fusheng 1</string></dict>
+</array></dict></plist>"#;
+        assert_eq!(
+            attached_mount_point(output).unwrap(),
+            PathBuf::from("/Volumes/Fusheng 1")
+        );
+    }
+
+    #[test]
+    fn default_background_renders_at_both_scales() {
+        for scale in [1, 2] {
+            let png = image::load_from_memory(&render_dmg_background(scale).unwrap()).unwrap();
+            assert_eq!(png.dimensions(), (660 * scale, 400 * scale));
+        }
     }
 }

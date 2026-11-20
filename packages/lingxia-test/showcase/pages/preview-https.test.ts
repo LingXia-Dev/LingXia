@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 import type { PreviewMediaHandle } from '@lingxia/types';
@@ -6,7 +6,7 @@ import type { PreviewMediaHandle } from '@lingxia/types';
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const httpBase = testArgs.httpBase;
-spec.configure({
+test.configure({
   skip: selectedGate ? 'a --arg gate run selects only its gate'
     : httpBase ? undefined : 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 });
@@ -110,7 +110,7 @@ async function presentHttpsPreview(
   );
 }
 
-spec('present a remote image without downloading first', {
+test('present a remote image without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-IMAGE-001',
   covers: [
     'lx.previewMedia',
@@ -123,7 +123,7 @@ spec('present a remote image without downloading first', {
   await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-IMAGE-001', REMOTE_IMAGE, 'image');
 });
 
-spec('present a remote video without downloading first', {
+test('present a remote video without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-VIDEO-001',
   covers: [
     'lx.previewMedia',

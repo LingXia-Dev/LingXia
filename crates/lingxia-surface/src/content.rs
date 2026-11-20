@@ -43,20 +43,21 @@ pub enum SurfaceContent {
     },
 }
 
-/// Rendering-engine grouping used by adaptive aside slots.
+/// How asides group into slots. `Panel` is the side panel: lxapp pages and
+/// browser tabs share one docked region with one tab strip, in open order,
+/// whatever renders them. `Native` is a host-provided native view (the
+/// terminal), which cannot share that container and docks on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SlotKind {
-    Lxapp,
-    Browser,
+    Panel,
     Native,
 }
 
 impl SurfaceContent {
     pub fn slot_kind(&self) -> SlotKind {
         match self {
-            Self::Lxapp { .. } | Self::Page { .. } => SlotKind::Lxapp,
-            Self::Browser { .. } => SlotKind::Browser,
+            Self::Lxapp { .. } | Self::Page { .. } | Self::Browser { .. } => SlotKind::Panel,
             Self::Native { .. } => SlotKind::Native,
         }
     }

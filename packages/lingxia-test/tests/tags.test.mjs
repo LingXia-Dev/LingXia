@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { reset, run, renderJUnit } from "../dist/runner.js";
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "../dist/tags.js";
 import { coverageSummary, parseManifest } from "../dist/coverage.js";
@@ -39,18 +39,18 @@ test("tag syntax is checked where it is written", () => {
   assert.deepEqual(validateTags(["a", "a", "api:v2", "team/web"], "spec"), ["a", "api:v2", "team/web"]);
   assert.throws(() => validateTags(["!live"], "spec"), /invalid/);
   assert.throws(() => validateTags("live", "spec"), /array/);
-  assert.throws(() => spec("bad", { tags: ["has space"] }, async () => {}), /invalid/);
-  assert.throws(() => spec.configure({ tags: [","] }), /invalid/);
+  assert.throws(() => lxTest("bad", { tags: ["has space"] }, async () => {}), /invalid/);
+  assert.throws(() => lxTest.configure({ tags: [","] }), /invalid/);
 });
 
 test("file tags merge with spec tags, select, and summarize per tag", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world, { control: { tags: JSON.stringify(["routed,unit", "!live"]) } });
   const ran = [];
-  spec.configure({ tags: ["routed"] });
-  spec("list devices", { tags: ["smoke"] }, async () => { ran.push("list"); });
-  spec("rename device", async () => { ran.push("rename"); throw new Error("boom"); });
-  spec("live sync", { tags: ["live"] }, async () => { ran.push("live"); });
+  lxTest.configure({ tags: ["routed"] });
+  lxTest("list devices", { tags: ["smoke"] }, async () => { ran.push("list"); });
+  lxTest("rename device", async () => { ran.push("rename"); throw new Error("boom"); });
+  lxTest("live sync", { tags: ["live"] }, async () => { ran.push("live"); });
   // Another file: no `routed` from this file's configure, so not selected.
   registerOtherFileSpec("elsewhere");
 
@@ -91,7 +91,7 @@ test("an untagged spec shows as (untagged) next to tagged ones", () => {
 test("the HTML report shows the tag table and each case's tags", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world, { control: {} });
-  spec("tagged", { tags: ["unit"] }, async () => {});
+  lxTest("tagged", { tags: ["unit"] }, async () => {});
   await run();
   const html = Buffer.from(attachments.get("report.html").base64, "base64").toString("utf8");
   assert.match(html, /By tag/);
@@ -109,9 +109,9 @@ test("the coverage manifest names covered, uncovered and unknown ids", async () 
   const { events } = installFakeHost(world, {
     control: { coversManifest: JSON.stringify(manifest), coversManifestFile: "coverage.yaml", grep: "^(list|rename)" },
   });
-  spec("list", { covers: ["DEV-1"] }, async () => {});
-  spec("rename", { covers: ["DEV-2", "DEV-9"] }, async () => { throw new Error("nope"); });
-  spec("other", { covers: ["DEV-4"] }, async () => {});
+  lxTest("list", { covers: ["DEV-1"] }, async () => {});
+  lxTest("rename", { covers: ["DEV-2", "DEV-9"] }, async () => { throw new Error("nope"); });
+  lxTest("other", { covers: ["DEV-4"] }, async () => {});
 
   const report = await run();
   const coverage = report.coverage;
@@ -145,7 +145,7 @@ test("a manifest control is checked", () => {
 test("a bundled registration that maps to no file stops the run instead of losing its tags", async () => {
   const { runInThisContext } = await import("node:vm");
   const register = (mappings) => {
-    globalThis.__spec = spec;
+    globalThis.__spec = lxTest;
     globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { version: 3, sources: ["tests/a.test.ts"], mappings };
     runInThisContext(
       '__spec("placed", async () => {});\n__spec.configure({ tags: ["t"] });\n__spec("lost", async () => {});\n',
@@ -156,7 +156,7 @@ test("a bundled registration that maps to no file stops the run instead of losin
     installFakeHost(createWorld(), { control: {} });
     // Line 3 has no mapping, as a comment line has none.
     register("AAAA;AACA");
-    await assert.rejects(run(), /Cannot tell which file registered spec "lost" \(lxdev-test:\/\/tests:3\)/);
+    await assert.rejects(run(), /Cannot tell which file registered test "lost" \(lxdev-test:\/\/tests:3\)/);
 
     reset();
     const { events } = installFakeHost(createWorld(), { control: {} });

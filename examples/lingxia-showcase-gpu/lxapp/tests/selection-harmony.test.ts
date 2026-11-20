@@ -1,8 +1,8 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openDemo } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 const centre = ({ bounds: [l, t, r, b] }: HarmonyNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
 const sum = (rgb: number[]) => rgb[0] + rgb[1] + rgb[2];
@@ -32,7 +32,7 @@ async function waitForText(t: Fixture, labels: string[], timeout = 3000): Promis
 
 // The host draws the selection chrome a GPU surface cannot: handles and the floating menu, whose
 // actions the core runs. Driven by a real finger, read from the ArkUI layout.
-spec('a long press selects a word, and the host menu selects all and copies it', {
+test('a long press selects a word, and the host menu selects all and copies it', {
   id: 'SELECT-HARMONY-001', covers: ['view:text'],
   reason: 'long-presses through the Harmony device fixture and reads the host menu from the layout',
   start: openDemo('selecting'),
@@ -78,7 +78,7 @@ spec('a long press selects a word, and the host menu selects all and copies it',
 });
 
 // Press feedback is host chrome over the surface: while a finger rests on a control, its box darkens.
-spec('a finger held on a control shows the press overlay until it lifts', {
+test('a finger held on a control shows the press overlay until it lifts', {
   id: 'PRESS-HARMONY-001', covers: ['view:button'],
   reason: 'holds a finger through the Harmony device fixture and reads composited pixels',
   start: openDemo('jump'),

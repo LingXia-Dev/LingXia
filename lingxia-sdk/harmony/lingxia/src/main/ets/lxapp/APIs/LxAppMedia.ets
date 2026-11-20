@@ -11,6 +11,7 @@ import { Lingxia } from '../../app/Lingxia';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
 import { PermissionManager } from '../../app/PermissionManager';
+import { PermissionFeature } from '../../app/PermissionGate';
 
 const DOMAIN = 0xD001100;
 const TAG = 'LingXiaMedia';
@@ -153,15 +154,11 @@ export class LxAppMedia {
     const includeMicrophone =
       normalizedMode === 'videos' || normalizedMode === 'mix';
     try {
-      const cameraGranted: boolean = await PermissionManager.ensureCameraAccess(false);
-      if (!cameraGranted) {
-        return '3001';
-      }
-      if (!includeMicrophone) {
+      // One prompt for both, so a gate explains camera and microphone once.
+      if (await PermissionManager.ensureCameraAccess(PermissionFeature.CAMERA, includeMicrophone)) {
         return null;
       }
-      const micGranted: boolean = await PermissionManager.ensureMicrophoneAccess();
-      return micGranted ? null : '3003';
+      return await PermissionManager.isGranted('ohos.permission.CAMERA') ? '3003' : '3001';
     } catch (error) {
       LxLog.e(TAG,
         `requestCameraPermissions error: ${String(error)}`

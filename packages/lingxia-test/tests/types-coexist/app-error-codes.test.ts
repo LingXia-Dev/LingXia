@@ -1,5 +1,5 @@
 // An app declares its own error codes once; specs then expect them by code.
-import { spec } from '@lingxia/test';
+import { test } from '@lingxia/test';
 
 declare module '@lingxia/test' {
   interface AppErrorCodes {
@@ -8,7 +8,7 @@ declare module '@lingxia/test' {
   }
 }
 
-spec('app-defined codes are expected by code', async (t) => {
+test('app-defined codes are expected by code', async (t) => {
   const quota = () => Promise.reject(Object.assign(new Error('over quota'), { code: 'E_QUOTA' }));
   await t.reject(quota, { code: 'E_QUOTA' });
   // LingXia's own codes stay accepted next to the app's.
@@ -17,6 +17,6 @@ spec('app-defined codes are expected by code', async (t) => {
   await t.reject(quota, { code: 'E_QUOTA_EXCEEDED' });
 });
 
-spec.fail('declined payment', { expected: { code: 'E_PAYMENT_DECLINED' } }, async () => {});
+test.fail('declined payment', { expected: { code: 'E_PAYMENT_DECLINED' } }, async () => {});
 // @ts-expect-error `expected.code` is checked the same way.
-spec.fail('undeclared', { expected: { code: 'E_CARD_EXPIRED' } }, async () => {});
+test.fail('undeclared', { expected: { code: 'E_CARD_EXPIRED' } }, async () => {});

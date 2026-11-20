@@ -96,19 +96,20 @@ async function downloadCorrelation(): Promise<void> {
   type TemporaryIsEphemeral = Assert<typeof temporary extends { storage: 'temp' } ? true : false>;
 }
 
-async function chooseFileLiteral(): Promise<void> {
-  const single = await lx.chooseFile({ multiple: false });
+async function pickFileResults(): Promise<void> {
+  const single = await lx.pickFile();
   if (single.status !== 'canceled') {
-    const only: string = single.paths[0];
+    const only: string = single.uri;
+    const name: string = single.name;
+    void name;
     void only;
-    const onlyPath: [string] = single.paths;
-    void onlyPath;
   }
 
-  const many = await lx.chooseFile({ multiple: true });
+  const many = await lx.pickFiles();
   if (many.status !== 'canceled') {
-    const first: string = many.paths[0];
-    const rest: string[] = many.paths.slice(1);
+    const first: string = many.files[0].uri;
+    const names: string[] = many.files.map((file) => file.name);
+    const rest: string[] = names.slice(1);
     void first;
     void rest;
   }
@@ -143,7 +144,7 @@ type CompletedHasResult = Assert<
 
 export type ExclusiveOptionsGate = [
   typeof downloadCorrelation,
-  typeof chooseFileLiteral,
+  typeof pickFileResults,
   typeof progressEvents,
   CompletedHasResult,
 ];

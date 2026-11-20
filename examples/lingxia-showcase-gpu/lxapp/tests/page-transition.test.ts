@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { PageTransition } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
@@ -16,7 +16,7 @@ const slid = (slide: PageTransition, kind: PageTransition['kind']) => {
   expect(slide.firstMoveMs!).toBeLessThanOrEqual(100);
 };
 
-spec('a push and a pop slide the GPU page on every display frame', {
+test('a push and a pop slide the GPU page on every display frame', {
   id: 'CHROME-PUSH-POP-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
   start: { page: 'view' },
 }, async (t) => {

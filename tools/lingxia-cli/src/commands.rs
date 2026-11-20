@@ -13,7 +13,6 @@ pub mod pin;
 pub mod project_upgrade;
 pub mod provider;
 pub mod publish;
-pub mod runner;
 pub mod rust;
 pub mod skill;
 pub mod store;

@@ -23,7 +23,7 @@ pub enum Decision {
     FullScreenFallback,
     /// The aside joined an already-open slot of its kind as a tab (or, for a
     /// repeat web URL / aside id, focused the existing tab). Asides form one
-    /// region per content kind — lxapp, browser, native — with tabs inside.
+    /// region per slot kind — the side panel and native — with tabs inside.
     MergedIntoTabs,
 }
 
@@ -81,8 +81,8 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Self {
-            // One visible slot per aside kind: lxapp, browser, native.
-            max_asides_expanded: 3,
+            // One visible slot per aside kind: the side panel and native.
+            max_asides_expanded: 2,
             max_asides_medium: 1,
             // Compact shows one active slot full-screen over the main. This is
             // a projection limit, not dock capacity.

@@ -97,7 +97,7 @@ View 直接用 `@lingxia/react` 的 `useLxHost().sizeClass` 读取同一个尺�
 - `openPage(page)` 把**本** lxapp 的页面作为无 chrome 的 `float`，或桌面 `window` 打开。页面不能成为 `aside`——自己的侧栏面板应声明为 lxapp surface。
 - 提供贴边窗口前先问 `lx.supports('surface.window.fullChrome')`。自定义 chrome 用 `var(--lx-page-chrome-top-inset)` 留白。
 - `hide()` 保留状态，`close()` 销毁 surface。page overlay 的 form 在打开时确定，已声明 surface 则继续随 shell 自适应。
-- `lx.surface.getByKey(key)` 只返回本 lxapp **带 `key` 打开**的 surface 句柄。
+- `lx.surface.getByKey(key)` 只返回本 lxapp **带 `key` 打开**的页面与 URL 句柄。Control app 用 `lx.shell.getApp(appId)` 查找存活的应用，用 `lx.shell.getDeclared(id, key?)` 查找已声明 surface；句柄不携带运行时 id。
 
 `lx.openSurface` 与 `lx.onSurfaceContext` 已不存在。
 

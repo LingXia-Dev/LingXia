@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // A menu item may act and leave its menu open; the others close it as before.
-spec('a keep-open item acts twice with its menu still open, and a plain item closes it', { covers: ['view:menu-keep-open'], start: openDemo('stay') }, async (t) => {
+test('a keep-open item acts twice with its menu still open, and a plain item closes it', { covers: ['view:menu-keep-open'], start: openDemo('stay') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-stay-state');
   const menu = view.testId('lab-stay-menu');
@@ -24,7 +24,7 @@ spec('a keep-open item acts twice with its menu still open, and a plain item clo
 });
 
 // Escape asks the popover first, each time; a press outside does not ask.
-spec('a popover refuses Escape while its draft is kept, and closes once it is not', { covers: ['view:close-request'], start: openDemo('refuse') }, async (t) => {
+test('a popover refuses Escape while its draft is kept, and closes once it is not', { covers: ['view:close-request'], start: openDemo('refuse') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-refuse-state');
   const note = view.testId('lab-refuse-note');

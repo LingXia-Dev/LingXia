@@ -53,10 +53,6 @@ final class MacNativeComponentManager {
     private var componentPlaybackIntent: [String: Bool] = [:]
     private var componentsPendingAutoResume: Set<String> = []
     private var inactivePages: Set<String> = []
-    private var island: MacInlineNativeIsland?
-    /// Island video leaves, keyed by author id: they answer `lx.createVideoContext`
-    /// commands and callbacks exactly like a legacy overlay component.
-    private var islandVideos: [String: MacVideoComponent] = [:]
 
     init(
         hostView: NSView,
@@ -79,7 +75,6 @@ final class MacNativeComponentManager {
     func rebindHostView(_ host: NSView) {
         guard hostView !== host else { return }
         hostView = host
-        island?.rebind(to: host)
 
         for (id, component) in components {
             component.view.removeFromSuperview()
@@ -92,19 +87,6 @@ final class MacNativeComponentManager {
 
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
-        if island == nil, MacInlineNativeIsland.isIslandAction(action), let hostView {
-            // The bridge installs before the page's WebView learns its lxapp, so the
-            // id captured at init may still be the placeholder; read it now.
-            island = MacInlineNativeIsland(host: hostView, manager: self, appId: webView?.appId ?? appId) { [weak self] id, event, detail in
-                self?.emitIslandEvent(componentId: id, event: event, detail: detail)
-            }
-        }
-        if island?.handle(message: message) == true {
-            island?.drainOutgoing().forEach { payload in
-                emitIslandPayload(payload)
-            }
-            return
-        }
 
         switch action {
         case "component.mount":
@@ -240,65 +222,7 @@ final class MacNativeComponentManager {
             component.handleCommand(name: name, params: params)
             return true
         }
-        guard let video = islandVideos[componentId] else { return false }
-        video.handleCommand(name: name, params: params)
-        return true
-    }
-
-    func emitIslandEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
-        updatePlaybackIntent(componentId: componentId, event: event)
-        let payload: [String: Any] = [
-            "action": "component.event",
-            "id": componentId,
-            "componentId": componentId,
-            "event": event,
-            "detail": detail,
-            "pageId": componentPage[componentId] ?? defaultPageId,
-        ]
-        emitEventToView(componentId: componentId, payload: payload)
-        forwardEventToCallback(componentId: componentId, payload: payload)
-    }
-
-    private func emitIslandPayload(_ payload: [String: Any]) {
-        if let id = payload["id"] as? String {
-            emitEventToView(componentId: id, payload: payload)
-            return
-        }
-        eventSink(payload)
-    }
-
-    /// Bind an island video leaf to the command/callback registry so
-    /// `lx.createVideoContext(id)` reaches it.
-    func attachIslandVideo(id: String, component: MacVideoComponent) {
-        islandVideos[id] = component
-        MacComponentRouter.shared.register(componentId: id, manager: self)
-    }
-
-    func detachIslandVideo(id: String) {
-        guard islandVideos.removeValue(forKey: id) != nil else { return }
-        MacComponentRouter.shared.unregister(componentId: id, manager: self)
-        componentCallbacks.removeValue(forKey: id)
-        componentsPendingAutoResume.remove(id)
-        componentPlaybackIntent.removeValue(forKey: id)
-    }
-
-    private func pauseIslandVideos() {
-        for (id, video) in islandVideos {
-            if componentsPendingAutoResume.contains(id) || componentPlaybackIntent[id] == true {
-                componentsPendingAutoResume.insert(id)
-            } else {
-                componentsPendingAutoResume.remove(id)
-            }
-            video.handleCommand(name: "pause", params: nil)
-        }
-        island?.setPageActive(false)
-    }
-
-    private func resumeIslandVideos() {
-        island?.setPageActive(true)
-        for (id, video) in islandVideos where componentsPendingAutoResume.remove(id) != nil {
-            video.handleCommand(name: "play", params: nil)
-        }
+        return false
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
@@ -310,8 +234,6 @@ final class MacNativeComponentManager {
         inactivePages.removeAll()
         componentsPendingAutoResume.removeAll()
         componentPlaybackIntent.removeAll()
-        island?.teardown()
-        island = nil
         let allIds = Array(components.keys)
         allIds.forEach { id in
             unmountComponent(id: id, pageId: componentPage[id])
@@ -373,7 +295,6 @@ final class MacNativeComponentManager {
     func updateScrollOffset(x: CGFloat, y: CGFloat) {
         scrollOffsetX = x
         scrollOffsetY = y
-        island?.updateScrollOffset(x: x, y: y)
         for (id, docRect) in componentDocumentRects {
             guard let component = components[id] else { continue }
             component.setFrame(documentToViewport(docRect))
@@ -414,17 +335,13 @@ final class MacNativeComponentManager {
         case "inactive":
             if inactivePages.insert(pageId).inserted {
                 pausePage(pageId)
-                pauseIslandVideos()
             }
         case "active":
             inactivePages.remove(pageId)
             resumePage(pageId)
-            resumeIslandVideos()
         case "destroyed":
             inactivePages.remove(pageId)
             unmountPage(pageId)
-            island?.teardown()
-            island = nil
         default:
             break
         }

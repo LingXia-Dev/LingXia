@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset } from "../dist/runner.js";
 
 afterEach(() => {
@@ -19,14 +19,14 @@ test("toasts are observed per spec and read through expect.poll + objectContaini
   const { events } = installFakeHost(world);
   let second;
 
-  spec("shows a toast", async (t) => {
+  lxTest("shows a toast", async (t) => {
     await t.app.view.testId("save").click();
     await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ title: "Saved", icon: "success" }));
     const [toast] = await t.app.dialogs.toasts();
     expect(toast.duration).toBe(1500);
     expect(typeof toast.at).toBe("number");
   });
-  spec("starts with none", async (t) => { second = await t.app.dialogs.toasts(); });
+  lxTest("starts with none", async (t) => { second = await t.app.dialogs.toasts(); });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 2, JSON.stringify(finished(events)));
@@ -41,7 +41,7 @@ test("a queued answer answers the next modal, and every modal is recorded", asyn
   const { events } = installFakeHost(world);
   let modals;
 
-  spec("confirms a delete", async (t) => {
+  lxTest("confirms a delete", async (t) => {
     await t.app.dialogs.answerNextModal({ confirm: true });
     await t.app.dialogs.answerNextModal({ confirm: false });
     await t.app.view.testId("delete").click();
@@ -64,7 +64,7 @@ test("in strict mode, a modal with no answer queued fails the spec at once, nami
   const { events } = installFakeHost(world);
   let next = false;
 
-  spec("answers one modal, then meets a second", { timeout: 20_000, forensics: false }, async (t) => {
+  lxTest("answers one modal, then meets a second", { timeout: 20_000, forensics: false }, async (t) => {
     await t.app.dialogs.setAnswerMode({ modals: "strict" });
     await t.app.dialogs.answerNextModal({ confirm: true });
     await t.app.view.testId("delete").click();
@@ -72,7 +72,7 @@ test("in strict mode, a modal with no answer queued fails the spec at once, nami
     // A wait that would otherwise run for most of the budget.
     await expect(t.app.view.testId("never")).toBeVisible({ timeout: 15_000 });
   });
-  spec("runs after it", () => { next = true; });
+  lxTest("runs after it", () => { next = true; });
 
   const started = Date.now();
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -95,7 +95,7 @@ test("a spec that queues no answer sees modals and action sheets drawn and recor
   const { events } = installFakeHost(world);
   let modals, sheets;
 
-  spec("taps the drawn dialogs", async (t) => {
+  lxTest("taps the drawn dialogs", async (t) => {
     await t.app.view.testId("sign-out").click();
     expect(drawn.drawn).toBe(true);
     await t.app.view.testId("confirm").click();
@@ -118,7 +118,7 @@ test("a queued answer answers the next modal only; later modals and action sheet
   world.add({ testId: "more", onClick: () => seen.push(world.dialogs.logic.showActionSheet(["A"])) });
   const { events } = installFakeHost(world);
 
-  spec("drawn, then answered", async (t) => {
+  lxTest("drawn, then answered", async (t) => {
     await t.app.view.testId("ask").click();       // before any answer: drawn
     await t.app.dialogs.answerNextModal({ confirm: false });
     await t.app.view.testId("ask").click();       // answered
@@ -141,7 +141,7 @@ test("withAnswerMode scopes strict mode and restores the previous modes, also on
   const { events } = installFakeHost(world);
   const modes = [];
 
-  spec("scoped strictness", { forensics: false }, async (t) => {
+  lxTest("scoped strictness", { forensics: false }, async (t) => {
     modes.push(await t.app.dialogs.setAnswerMode({}));
     await t.app.dialogs.withAnswerMode({ modals: "strict" }, async () => {
       modes.push(await t.app.dialogs.setAnswerMode({}));
@@ -168,7 +168,7 @@ test("withAnswerMode scopes strict mode and restores the previous modes, also on
 test("setAnswerMode refuses an unknown mode", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
-  spec("bad mode", async (t) => {
+  lxTest("bad mode", async (t) => {
     await assert.rejects(t.app.dialogs.setAnswerMode({ modals: "always" }), /modals must be 'draw' or 'strict'/);
   });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -179,7 +179,7 @@ test("an answer no dialog used fails the spec when it ends", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
 
-  spec("expects a modal that never comes", async (t) => {
+  lxTest("expects a modal that never comes", async (t) => {
     await t.app.dialogs.answerNextModal({ confirm: true });
     await t.app.dialogs.answerNextActionSheet({ index: 0 });
   });
@@ -198,14 +198,14 @@ test("action sheets take an index or a cancel; in strict mode an unanswered one 
   const { events } = installFakeHost(world);
   let sheets;
 
-  spec("picks and cancels", async (t) => {
+  lxTest("picks and cancels", async (t) => {
     await t.app.dialogs.answerNextActionSheet({ index: 1 });
     await t.app.dialogs.answerNextActionSheet({ cancel: true });
     await t.app.view.testId("more").click();
     await t.app.view.testId("more").click();
     sheets = await t.app.dialogs.actionSheets();
   });
-  spec("runs out of answers", { forensics: false }, async (t) => {
+  lxTest("runs out of answers", { forensics: false }, async (t) => {
     await t.app.dialogs.setAnswerMode({ actionSheets: "strict" });
     await t.app.dialogs.answerNextActionSheet({ index: 0 });
     await t.app.view.testId("more").click();
@@ -229,7 +229,7 @@ test("answers are checked before they are queued", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
 
-  spec("bad answers", async (t) => {
+  lxTest("bad answers", async (t) => {
     await assert.rejects(t.app.dialogs.answerNextModal({ confirm: "yes" }), /answerNextModal takes \{ confirm: true \| false \}/);
     await assert.rejects(t.app.dialogs.answerNextActionSheet({ index: -1 }), /answerNextActionSheet takes \{ index \} or \{ cancel: true \}/);
   });
@@ -242,7 +242,7 @@ test("a host without dialog watching runs specs as before", async () => {
   const world = createWorld();
   delete world.app.dialogs;
   const { events } = installFakeHost(world);
-  spec("no dialogs driver", async () => {});
+  lxTest("no dialogs driver", async () => {});
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 1, JSON.stringify(finished(events)));
   assert.equal(events.some((event) => event.phase === "dialogs"), false);
@@ -255,7 +255,7 @@ for (const failing of ['watch', 'unanswered', 'unwatch']) {
     world.app.dialogs[failing] = () => { throw new Error(`${failing} unavailable`); };
     installFakeHost(world);
     let ran = false;
-    spec('dialog failure', { forensics: false }, async () => {
+    lxTest('dialog failure', { forensics: false }, async () => {
       ran = true;
       await new Promise(resolve => setTimeout(resolve, 20));
     });

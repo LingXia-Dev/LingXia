@@ -76,7 +76,7 @@ function specFiles(app) {
 /** `covers` ids of the specs in `file` whose bodies drive the UI as a user does. */
 function claims(file) {
   const text = readFileSync(file, 'utf8');
-  const starts = [...text.matchAll(/^spec(\.\w+)?\(/gm)].map((m) => m.index);
+  const starts = [...text.matchAll(/^test(\.\w+)?\(/gm)].map((m) => m.index);
   const out = [];
   starts.forEach((start, i) => {
     const body = text.slice(start, starts[i + 1] ?? text.length);

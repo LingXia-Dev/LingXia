@@ -3,7 +3,7 @@
   "renderer": "gpu",
   "appName": "Liuli Gallery",
   "version": "0.1.0",
-  "minRuntime": "0.28.0",
+  "minRuntime": "0.30.0",
   "languages": [
     "en"
   ],

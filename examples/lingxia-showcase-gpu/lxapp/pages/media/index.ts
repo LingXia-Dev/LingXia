@@ -1,6 +1,6 @@
 import { errorMessage } from "../../shared/lib/errors";
 import type {
-  ChooseMediaOptions,
+  PickMediaOptions,
   CompressVideoTask,
   CompressImageOptions,
   CompressVideoOptions,
@@ -174,7 +174,7 @@ const MODE_SETTINGS = {
 function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "lx.chooseMedia / lx.previewMedia",
+      headerSubtitle: "lx.pickMedia / lx.previewMedia",
       emptyHint: "Tap + to pick videos.",
       previewHint: "Tap Preview to open the full selection.",
       galleryHint: "Tap Preview to open the full selection.",
@@ -218,7 +218,7 @@ function getModeCopy(mediaType: string) {
     };
   }
   return {
-    headerSubtitle: "lx.chooseMedia / lx.previewMedia",
+    headerSubtitle: "lx.pickMedia / lx.previewMedia",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap Preview to open the full selection.",
     galleryHint: "Tap Preview to open the full selection.",
@@ -413,7 +413,6 @@ function createState(modeKey: unknown) {
     previewSessionBusy: false,
     previewSessionResult: null as PreviewMediaResult | null,
     previewSessionError: "",
-    componentRotateKey: "meta",
     componentObjectFitKey: "cover",
   };
 }
@@ -574,12 +573,6 @@ Page({
     });
   },
 
-  openComponentRotatePicker: async function () {
-    const choice = await pickOption(ROTATE_OPTIONS, this.data.componentRotateKey || "meta");
-    if (!choice) return;
-    this.setData({ componentRotateKey: choice.key });
-  },
-
   openComponentObjectFitPicker: async function () {
     const choice = await pickOption(OBJECT_FIT_OPTIONS, this.data.componentObjectFitKey || "cover");
     if (!choice) return;
@@ -613,9 +606,9 @@ Page({
     const cameraOnly = isCameraOnlySource(sourceOption);
     const countLimit = parsePositiveInt(this.data.countLimit || this.data.countKey);
 
-    const request: ChooseMediaOptions = {
+    const request: PickMediaOptions = {
       mediaType: resolveMediaTypeTokens(this.data.mediaType),
-      sourceType: (sourceOption?.request as ChooseMediaOptions["sourceType"]) || ["album"],
+      sourceType: (sourceOption?.request as PickMediaOptions["sourceType"]) || ["album"],
     };
     if (cameraOnly) {
       request.count = 1;
@@ -625,13 +618,13 @@ Page({
     if (this.data.mediaType === "video") {
       const maxDurationSeconds = parsePositiveInt(this.data.durationValue);
       if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
-      if (this.data.cameraKey) request.camera = this.data.cameraKey as ChooseMediaOptions["camera"];
+      if (this.data.cameraKey) request.camera = this.data.cameraKey as PickMediaOptions["camera"];
     }
 
     this.setData({ isRunning: true, selectedMedia: [] });
 
     try {
-      const picked = await lx.chooseMedia(request);
+      const picked = await lx.pickMedia(request);
       if (picked.status === 'canceled') {
         return;
       }
@@ -642,7 +635,7 @@ Page({
           : mapped;
       this.setData({ selectedMedia: enrichedList });
     } catch (error) {
-      console.error("[media-demo] chooseMedia failed:", error);
+      console.error("[media-demo] pickMedia failed:", error);
       lx.showToast({
         title: errorMessage(error, "Operation failed"),
         icon: "none",
@@ -1186,7 +1179,7 @@ Page({
 
   _pickSingleMedia: async function (type: string) {
     try {
-      const result = await lx.chooseMedia({
+      const result = await lx.pickMedia({
         count: 1,
         mediaType: [type === "video" ? "video" : "image"],
         sourceType: ["album", "camera"],
@@ -1195,7 +1188,7 @@ Page({
       return (result.status === 'canceled') ? null : result.entries[0].uri;
     } catch (error) {
       console.error("[media-demo] pickSingleMedia failed:", error);
-      lx.showToast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
+      lx.showToast({ title: errorMessage(error, "pickMedia failed"), icon: "none" });
       return null;
     }
   },
@@ -1204,7 +1197,7 @@ Page({
     if (this.data.saveToAlbumBusy) return;
     this.setData({ saveToAlbumBusy: true });
     try {
-      const result = await lx.chooseMedia({
+      const result = await lx.pickMedia({
         count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
       });
       if (result.status === 'canceled') return;
@@ -1221,7 +1214,7 @@ Page({
     if (this.data.saveToAlbumBusy) return;
     this.setData({ saveToAlbumBusy: true });
     try {
-      const result = await lx.chooseMedia({
+      const result = await lx.pickMedia({
         count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
       });
       if (result.status === 'canceled') return;

@@ -3,13 +3,15 @@ import { PACKAGE_NAME } from "./version.js";
 
 /**
  * JUnit XML is what CI dashboards (GitHub, GitLab, Jenkins, Azure) ingest, so
- * every run emits one next to the HTML report. `xfail` counts as a pass and
- * `xpass` as a failure, matching how the run itself is graded.
+ * every run emits one next to the HTML report. `xpass` is a failure, matching
+ * how the run is graded. `xfail` is `<skipped type="xfail">`, as pytest writes
+ * it: the run still passes, but a declared-broken spec is not proof the
+ * behaviour works, so a consumer counting passes must not credit it.
  */
 export function renderJUnit(report: JsonReport): string {
   const suites = new Map<string, CaseRecord[]>();
   for (const item of report.cases) {
-    const name = item.suite ?? "specs";
+    const name = item.suite ?? "tests";
     const bucket = suites.get(name) ?? [];
     bucket.push(item);
     suites.set(name, bucket);
@@ -24,7 +26,7 @@ export function renderJUnit(report: JsonReport): string {
     ? '  <testsuite name="runner" tests="1" failures="0" errors="1"><testcase name="incomplete run"><error message="The test run did not finish"/></testcase></testsuite>\n'
     : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="${attr(PACKAGE_NAME)}" tests="${report.total + errors}" failures="${failures}" errors="${errors}" skipped="${report.skipped}" time="${seconds(report.duration_ms)}">
+<testsuites name="${attr(PACKAGE_NAME)}" tests="${report.total + errors}" failures="${failures}" errors="${errors}" skipped="${report.skipped + report.xfail}" time="${seconds(report.duration_ms)}">
 ${renderRunProperties(report)}${body}${interrupted}</testsuites>
 `;
 }
@@ -49,21 +51,20 @@ function renderCase(item: CaseRecord, suite: string): string {
   ].filter(Boolean).join(" ");
   const verdict = graded(item);
   const inner: string[] = [];
-  if (verdict === "skipped") {
+  if (item.status === "xfail") {
+    inner.push(`      <skipped type="xfail" message="${attr(item.reason ?? "test.fail: failed as declared")}"/>\n`);
+  } else if (verdict === "skipped") {
     inner.push(`      <skipped message="${attr(item.reason ?? "pending")}"/>\n`);
   } else if (verdict === "failure") {
     const error = item.error;
     const detail = error
       ? `${error.message}${error.stack ? `\n\n${error.stack}` : ""}`
-      : `spec finished as ${item.status}`;
+      : `test finished as ${item.status}`;
     inner.push(
       `      <failure message="${attr(firstLine(error?.message ?? item.status))}" type="${attr(error?.name ?? "Error")}">${text(detail)}</failure>\n`,
     );
   }
   if (item.flaky) { inner.push(`      <system-out>${text(`Flaky: passed after ${item.attempts?.length ?? 1} attempts`)}</system-out>\n`); }
-  if (item.status === "xfail") {
-    inner.push(`      <system-out>${text(item.reason ?? "spec.fail: failed as declared")}</system-out>\n`);
-  }
   const properties = [
     ...(item.covers.length > 0 ? [`        <property name="covers" value="${attr(item.covers.join(" "))}"/>\n`] : []),
     ...(item.tags && item.tags.length > 0 ? [`        <property name="tags" value="${attr(item.tags.join(" "))}"/>\n`] : []),
@@ -101,8 +102,8 @@ function renderRunProperties(report: JsonReport): string {
 }
 
 function graded(item: CaseRecord): "success" | "failure" | "skipped" {
-  if (item.status === "skipped") return "skipped";
-  if (item.status === "passed" || item.status === "xfail") return "success";
+  if (item.status === "skipped" || item.status === "xfail") return "skipped";
+  if (item.status === "passed") return "success";
   return "failure";
 }
 

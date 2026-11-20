@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(FromJSObject, Clone)]
 #[ts_skip]
-pub(super) struct JSChooseMediaOptions {
+pub(super) struct JSPickMediaOptions {
     #[js_name = "count"]
     pub(super) count: Option<u32>,
     #[js_name = "mediaType"]
@@ -16,7 +16,7 @@ pub(super) struct JSChooseMediaOptions {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(super) struct ChosenMediaEntry {
+pub(super) struct PickedMediaEntry {
     #[serde(rename = "uri")]
     pub(super) path: String,
     #[serde(rename = "fileType")]

@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // Platform convention: a swipe from inside the system's edge zone is back, even across a
 // horizontal control; a drag that starts on the control past that zone moves the control.
-spec('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
+test('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
   id: 'EDGE-BACK-CLAIM-001', covers: ['view:scroll', 'lx.navigateBack'],
   reason: 'swipes through the system input path of the Harmony device fixture',
   start: { page: 'view' },

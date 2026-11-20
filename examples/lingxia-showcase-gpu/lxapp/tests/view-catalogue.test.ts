@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { demos, groups, missing } from '../shared/view-lab/text';
 
 // The catalogue of View: an index of groups, each a pushed page of demos in one shape.
-spec('the index lists each group with its count and opens it', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
+test('the index lists each group with its count and opens it', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
   const view = t.app.view;
   for (const group of groups) {
     await expect(view.testId(`view-index-${group.id}-count`)).toHaveAttribute('data-count', String(Object.keys(demos[group.id]).length));
@@ -13,7 +13,7 @@ spec('the index lists each group with its count and opens it', { covers: ['view:
 });
 
 for (const group of groups) {
-  spec(`${group.page} shows every demo of its group and says what is missing`, { covers: ['view:catalogue'], start: { page: group.page } }, async (t) => {
+  test(`${group.page} shows every demo of its group and says what is missing`, { covers: ['view:catalogue'], start: { page: group.page } }, async (t) => {
     const view = t.app.view;
     for (const demo of Object.values(demos[group.id])) expect(await view.testId(demo.testId).count()).toBe(1);
     expect(await view.testId('view-group-missing').count()).toBe(missing[group.id].length ? 1 : 0);
@@ -37,7 +37,7 @@ const zhNames: Record<string, string[]> = {
   'view-accessibility': ['名称与角色', '文件夹树', '有名称的列表', '日期网格'],
 };
 for (const group of groups) {
-  spec(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
+  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
     const view = t.app.view;
     // Retrying: the page can draw a first frame before its `lang` reaches it.
     for (const title of zhNames[group.page]) await expect(view.getByRole('heading', { name: title })).toHaveCount(1);
@@ -45,13 +45,13 @@ for (const group of groups) {
   });
 }
 
-spec('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
+test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('heading', { name: 'Suggestions while typing' })).toHaveCount(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
 });
 
-spec('a finger on an index row opens its group', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
+test('a finger on an index row opens its group', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
   const view = t.app.view;
   // A real touch at each row's centre, not a dispatch to the element: the hit test decides.
   // The first rows: on screen on any phone without scrolling.

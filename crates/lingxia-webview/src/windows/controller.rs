@@ -260,16 +260,6 @@ pub(crate) enum UiCommand {
         scale: f64,
         resp: Sender<StdResult<()>>,
     },
-    /// Re-runs the last content geometry so queued island visuals ride the
-    /// same DComp commit as the corner wedges.
-    ReplayContentGeometry {
-        resp: Sender<StdResult<()>>,
-    },
-    /// Uploads a decoded island video frame. Must not Commit the DComp device.
-    PresentIslandVideoFrame {
-        frame: super::composition::IslandVideoFrame,
-        resp: Sender<StdResult<()>>,
-    },
     /// Phase one of teardown: the message loop starts retiring the parent
     /// HWND off-thread and keeps pumping; it never reaches `handle_command`.
     Shutdown,
@@ -644,24 +634,6 @@ impl WebViewInner {
         self.wake_ui_thread();
         recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
             .map_err(|err| WebViewError::WebView(format!("Park WebView command: {err}")))?
-    }
-
-    pub(crate) fn sync_island_visuals(
-        &self,
-        visuals: Vec<super::composition::IslandVisualSpec>,
-    ) -> StdResult<()> {
-        super::composition::queue_island_visuals(self.webtag.key(), visuals);
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::ReplayContentGeometry { resp })
-    }
-
-    pub(crate) fn present_island_video_frame(
-        &self,
-        frame: super::composition::IslandVideoFrame,
-    ) -> StdResult<()> {
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::PresentIslandVideoFrame {
-            frame,
-            resp,
-        })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -1467,9 +1439,70 @@ fn recv_reply_pumping<T>(
                     0,
                     WindowsAndMessaging::PM_NOREMOVE,
                 );
+                dispatch_com_calls();
             },
             reply => return reply,
         }
+    }
+}
+
+thread_local! {
+    static COM_WINDOW: std::cell::Cell<Option<isize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run COM calls marshalled into this thread's STA. COM posts them to the
+/// thread's hidden `OleMainThreadWndClass` window, so the sent-message pump
+/// above never sees them: a WebView2 callback into a waiting host thread then
+/// stalls both threads until the command times out. Only that window's
+/// messages are dispatched; other posted UI work stays queued.
+fn dispatch_com_calls() {
+    let window = COM_WINDOW.with(|cached| {
+        // Not cached while absent: COM may initialize this thread later.
+        cached.get().or_else(|| {
+            let found = com_window_for_current_thread();
+            if found.is_some() {
+                cached.set(found);
+            }
+            found
+        })
+    });
+    let Some(window) = window else {
+        return;
+    };
+    let window = HWND(window as *mut _);
+    let mut msg = MSG::default();
+    unsafe {
+        while WindowsAndMessaging::PeekMessageW(
+            &mut msg,
+            Some(window),
+            0,
+            0,
+            WindowsAndMessaging::PM_REMOVE,
+        )
+        .as_bool()
+        {
+            WindowsAndMessaging::DispatchMessageW(&msg);
+        }
+    }
+}
+
+fn com_window_for_current_thread() -> Option<isize> {
+    let thread = unsafe { Threading::GetCurrentThreadId() };
+    let mut after = None;
+    loop {
+        let window = unsafe {
+            WindowsAndMessaging::FindWindowExW(
+                Some(WindowsAndMessaging::HWND_MESSAGE),
+                after,
+                windows::core::w!("OleMainThreadWndClass"),
+                None,
+            )
+        }
+        .ok()?;
+        if unsafe { WindowsAndMessaging::GetWindowThreadProcessId(window, None) } == thread {
+            return Some(window.0 as isize);
+        }
+        after = Some(window);
     }
 }
 
@@ -2010,24 +2043,6 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             state.notify_parent_position_changed();
             let _ = resp.send(Ok(()));
         }
-        UiCommand::ReplayContentGeometry { resp } => {
-            let bounds = match &state.hosting {
-                HostingMode::Composition(surface) => Some(surface.bounds),
-                HostingMode::Windowed => None,
-            };
-            let result = match bounds {
-                Some(bounds) => set_content_geometry(state, bounds, None),
-                None => Ok(()),
-            };
-            let _ = resp.send(result);
-        }
-        UiCommand::PresentIslandVideoFrame { frame, resp } => {
-            let result = match &mut state.hosting {
-                HostingMode::Composition(surface) => surface.present_island_video_frame(&frame),
-                HostingMode::Windowed => Ok(()),
-            };
-            let _ = resp.send(result);
-        }
         UiCommand::SetRasterizationScale { scale, resp } => {
             let result = state
                 .controller
@@ -2127,13 +2142,101 @@ fn set_content_geometry(
                 .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
         },
         HostingMode::Composition(surface) => {
-            surface.set_geometry(&state.controller, bounds, corners, &state.webtag_key)
+            surface.set_geometry(&state.controller, bounds, corners)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl};
+    use windows::core::{Interface, Ref, implement};
+
+    #[implement(IClassFactory, Agile = false)]
+    struct ApartmentProbe {
+        owner: u32,
+    }
+
+    impl IClassFactory_Impl for ApartmentProbe_Impl {
+        fn CreateInstance(
+            &self,
+            _: Ref<windows::core::IUnknown>,
+            _: *const windows::core::GUID,
+            _: *mut *mut std::ffi::c_void,
+        ) -> windows::core::Result<()> {
+            assert_eq!(
+                unsafe { super::Threading::GetCurrentThreadId() },
+                self.owner
+            );
+            Err(windows::Win32::Foundation::E_NOTIMPL.into())
+        }
+
+        fn LockServer(&self, _: windows::core::BOOL) -> windows::core::Result<()> {
+            assert_eq!(
+                unsafe { super::Threading::GetCurrentThreadId() },
+                self.owner
+            );
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reply_wait_services_com_calls_back_into_the_waiting_apartment() {
+        use windows::Win32::System::Com::{
+            COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize, IStream,
+            Marshal::CoMarshalInterThreadInterfaceInStream,
+            StructuredStorage::CoGetInterfaceAndReleaseStream,
+        };
+
+        std::thread::spawn(|| unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap();
+            let probe: IClassFactory = ApartmentProbe {
+                owner: super::Threading::GetCurrentThreadId(),
+            }
+            .into();
+            let stream = CoMarshalInterThreadInterfaceInStream(&IClassFactory::IID, &probe)
+                .unwrap()
+                .into_raw() as usize;
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap();
+                let stream = std::mem::ManuallyDrop::new(IStream::from_raw(stream as *mut _));
+                let proxy: IClassFactory = CoGetInterfaceAndReleaseStream(&*stream).unwrap();
+                let result = proxy
+                    .CreateInstance::<_, windows::core::IUnknown>(None)
+                    .map(|_| ())
+                    .map_err(|err| err.code());
+                drop(proxy);
+                CoUninitialize();
+                sender.send(result).unwrap();
+            });
+            let reply =
+                super::recv_reply_pumping(&receiver, Some(std::time::Duration::from_secs(2)));
+            // Keep the apartment available for cleanup even if the regression
+            // returns a timeout; joining the marshaling worker must not hang.
+            if reply.is_err() {
+                let mut msg = super::MSG::default();
+                while super::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    super::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+                {
+                    super::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+            assert_eq!(reply.unwrap(), Err(windows::Win32::Foundation::E_NOTIMPL));
+            worker.join().unwrap();
+            drop(probe);
+            CoUninitialize();
+        })
+        .join()
+        .unwrap();
+    }
+
     #[test]
     fn retirement_tracks_both_parents_until_transfer_finishes() {
         let (commands, _) = super::mpsc::channel();

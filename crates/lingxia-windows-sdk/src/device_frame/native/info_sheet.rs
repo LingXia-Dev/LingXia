@@ -4,11 +4,13 @@ use crate::{WindowsDeviceFrameSheetIcon, draw_windows_design_icon_with_color};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CombineRgn, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER,
     DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW,
-    EndPaint, FillRect, HBRUSH, HGDIOBJ, InvalidateRect, PAINTSTRUCT, RGN_AND, SelectObject,
-    SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
+    EndPaint, FillRect, GetTextExtentPoint32W, HBRUSH, HFONT, HGDIOBJ, InvalidateRect, PAINTSTRUCT,
+    RGN_AND, SelectObject, SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 
+// Sheet metrics are device-independent px; [`px`] applies the device frame's
+// display scale, as the capsule and status bar do.
 const HEADER_TOP: i32 = 16;
 const HORIZONTAL_PADDING: i32 = 20;
 const HEADER_HEIGHT: i32 = 24;
@@ -29,6 +31,28 @@ const BADGE_HEIGHT: i32 = 16;
 const BADGE_MIN_WIDTH: i32 = 34;
 const BADGE_TEXT_HORIZONTAL_PADDING: i32 = 10;
 const BADGE_VERSION_GAP: i32 = 4;
+const HEADER_DIVIDER_WIDTH: i32 = 18;
+const TITLE_FONT_HEIGHT: i32 = 16;
+const VERSION_FONT_HEIGHT: i32 = 14;
+const BADGE_FONT_HEIGHT: i32 = 10;
+const ACTION_FONT_HEIGHT: i32 = 13;
+
+/// A device-independent length at `scale`.
+fn px(value: i32, scale: f64) -> i32 {
+    (f64::from(value) * scale).round() as i32
+}
+
+fn content_scale(content: HWND) -> f64 {
+    content_fit_scale(hwnd_handle(content)).unwrap_or(1.0)
+}
+
+/// Display scale of the content window that owns the sheet, read live so a
+/// monitor change while the sheet is open repaints at the new scale.
+fn owner_scale(sheet: HWND) -> f64 {
+    let owner = unsafe { WindowsAndMessaging::GetWindow(sheet, WindowsAndMessaging::GW_OWNER) }
+        .unwrap_or_default();
+    content_scale(owner)
+}
 
 /// Opaque RGB (0xRRGGBB) for the capsule click sheet. Matches the iOS/Android
 /// overlay palettes; the simulated host scheme, not the OS.
@@ -141,7 +165,7 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         return;
     };
 
-    let sheet_height = sheet_height(info.actions.len()).min(height.max(1));
+    let sheet_height = sheet_height(info.actions.len(), content_scale(content)).min(height.max(1));
     let sheet = unsafe {
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_TOOLWINDOW | WindowsAndMessaging::WS_EX_NOACTIVATE,
@@ -309,19 +333,24 @@ unsafe extern "system" fn sheet_proc(
     unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-fn sheet_height(action_count: usize) -> i32 {
-    HEADER_TOP
-        + HEADER_HEIGHT
-        + HEADER_SEPARATOR_TOP_GAP
-        + SEPARATOR_HEIGHT
-        + BUTTON_ROW_TOP_GAP
-        + action_grid_height(action_count)
-        + BOTTOM_PADDING
+fn sheet_height(action_count: usize, scale: f64) -> i32 {
+    button_grid_top(scale) + action_grid_height(action_count, scale) + px(BOTTOM_PADDING, scale)
 }
 
-fn action_grid_height(action_count: usize) -> i32 {
+fn button_grid_top(scale: f64) -> i32 {
+    px(
+        HEADER_TOP
+            + HEADER_HEIGHT
+            + HEADER_SEPARATOR_TOP_GAP
+            + SEPARATOR_HEIGHT
+            + BUTTON_ROW_TOP_GAP,
+        scale,
+    )
+}
+
+fn action_grid_height(action_count: usize, scale: f64) -> i32 {
     let rows = action_count.clamp(1, BUTTON_LIMIT).div_ceil(BUTTON_COLUMNS) as i32;
-    rows * BUTTON_ROW_HEIGHT + (rows - 1) * BUTTON_ROW_GAP
+    (rows - 1) * px(BUTTON_ROW_HEIGHT + BUTTON_ROW_GAP, scale) + px(BUTTON_ROW_HEIGHT, scale)
 }
 
 enum SheetHit {
@@ -334,24 +363,25 @@ fn sheet_hit_at(hwnd: HWND, x: i32, y: i32) -> Option<SheetHit> {
     if actions.is_empty() {
         return None;
     }
-    let grid = button_grid_rect(sheet_client_rect(hwnd), actions.len());
+    let scale = owner_scale(hwnd);
+    let grid = button_grid_rect(sheet_client_rect(hwnd), actions.len(), scale);
     if y < grid.top || y >= grid.bottom {
         return None;
     }
     for (index, action) in actions.iter().take(BUTTON_LIMIT).enumerate() {
-        if rect_contains(action_button_rect(grid, actions.len(), index), x, y) {
+        if rect_contains(action_button_rect(grid, actions.len(), index, scale), x, y) {
             return Some(SheetHit::Action(action.command));
         }
     }
     None
 }
 
-fn draw_separator(dc: HDC, left: i32, top: i32, right: i32, color: u32) {
+fn draw_separator(dc: HDC, left: i32, top: i32, right: i32, height: i32, color: u32) {
     let line = RECT {
         left,
         top,
         right,
-        bottom: top + 1,
+        bottom: top + height,
     };
     unsafe {
         let brush = CreateSolidBrush(rgb_to_colorref(color));
@@ -365,103 +395,139 @@ fn paint_capsule_menu(
     client: &RECT,
     info: &DeviceFrameInfoSheet,
     palette: &OverlayPalette,
+    scale: f64,
 ) {
-    paint_header(dc, client, info, palette);
-    let separator_top = HEADER_TOP + HEADER_HEIGHT + HEADER_SEPARATOR_TOP_GAP;
-    draw_separator(dc, 0, separator_top, client.right, palette.separator);
-    paint_action_buttons(dc, client, info, palette);
+    paint_header(dc, client, info, palette, scale);
+    let separator_top = px(HEADER_TOP + HEADER_HEIGHT + HEADER_SEPARATOR_TOP_GAP, scale);
+    let separator_height = px(SEPARATOR_HEIGHT, scale).max(1);
+    draw_separator(
+        dc,
+        0,
+        separator_top,
+        client.right,
+        separator_height,
+        palette.separator,
+    );
+    paint_action_buttons(dc, client, info, palette, scale);
 }
 
-fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet, palette: &OverlayPalette) {
-    let left = HORIZONTAL_PADDING;
-    let top = HEADER_TOP;
-    let mut cursor = left;
+/// Header text slots, sized from measured text: a per-character estimate
+/// undersizes CJK glyphs and ellipsized short Chinese titles.
+struct HeaderLayout {
+    title: Option<RECT>,
+    divider: RECT,
+    version: RECT,
+    badge: Option<RECT>,
+}
+
+/// `measure(text, height, weight)` is the drawn width of `text` in the font
+/// `draw_sheet_text` creates for that `CreateFontW` height and weight.
+fn header_layout(
+    client_right: i32,
+    info: &DeviceFrameInfoSheet,
+    scale: f64,
+    measure: impl Fn(&str, i32, i32) -> i32,
+) -> HeaderLayout {
+    let left = px(HORIZONTAL_PADDING, scale);
+    let right = client_right - px(HORIZONTAL_PADDING, scale);
+    let top = px(HEADER_TOP, scale);
+    let bottom = px(HEADER_TOP + HEADER_HEIGHT, scale);
+    let slot = |left: i32, right: i32| RECT {
+        left,
+        top,
+        right,
+        bottom,
+    };
     let app_name = info.title.trim();
-    if !app_name.is_empty() {
-        let width = text_width_estimate(app_name, 16, 600).min((client.right - left) / 2);
+    let title = (!app_name.is_empty()).then(|| {
+        let width =
+            measure(app_name, -px(TITLE_FONT_HEIGHT, scale), 600).min((client_right - left) / 2);
+        slot(left, left + width)
+    });
+    let divider_left = title.map_or(left, |title| title.right);
+    let divider = slot(divider_left, divider_left + px(HEADER_DIVIDER_WIDTH, scale));
+    let cursor = divider.right;
+    let badge_width = info.badge.as_ref().map(|badge| {
+        let padding = px(BADGE_TEXT_HORIZONTAL_PADDING, scale);
+        measure(&badge.text, -px(BADGE_FONT_HEIGHT, scale), 600)
+            .max(px(BADGE_MIN_WIDTH, scale) - padding)
+            + padding
+    });
+    let gap = px(BADGE_VERSION_GAP, scale);
+    let version_right = match badge_width {
+        Some(badge_width) => {
+            let available = (right - badge_width - gap - cursor).max(0);
+            cursor
+                + measure(info.version.trim(), -px(VERSION_FONT_HEIGHT, scale), 400).min(available)
+        }
+        None => right,
+    };
+    let version = slot(cursor, version_right);
+    let badge = badge_width.map(|badge_width| {
+        let badge_left = (version.right + gap).min(right - badge_width).max(cursor);
+        let badge_top = top - px(2, scale);
+        RECT {
+            left: badge_left,
+            top: badge_top,
+            right: badge_left + badge_width,
+            bottom: badge_top + px(BADGE_HEIGHT, scale),
+        }
+    });
+    HeaderLayout {
+        title,
+        divider,
+        version,
+        badge,
+    }
+}
+
+fn paint_header(
+    dc: HDC,
+    client: &RECT,
+    info: &DeviceFrameInfoSheet,
+    palette: &OverlayPalette,
+    scale: f64,
+) {
+    let layout = header_layout(client.right, info, scale, |text, height, weight| {
+        measure_sheet_text(dc, text, height, weight)
+    });
+    let title_height = -px(TITLE_FONT_HEIGHT, scale);
+    if let Some(rect) = layout.title {
         draw_sheet_text(
             dc,
-            app_name,
-            RECT {
-                left: cursor,
-                top,
-                right: cursor + width,
-                bottom: top + HEADER_HEIGHT,
-            },
-            -16,
+            info.title.trim(),
+            rect,
+            title_height,
             600,
             palette.primary,
             DT_LEFT,
         );
-        cursor += width;
     }
     draw_sheet_text(
         dc,
         " | ",
-        RECT {
-            left: cursor,
-            top,
-            right: cursor + 18,
-            bottom: top + HEADER_HEIGHT,
-        },
-        -16,
+        layout.divider,
+        title_height,
         400,
         palette.separator_text,
         DT_LEFT,
     );
-    cursor += 18;
-    let version = info.version.trim();
-    let badge_width = info
-        .badge
-        .as_ref()
-        .map(|badge| {
-            text_width_estimate(&badge.text, 10, 600)
-                .max(BADGE_MIN_WIDTH - BADGE_TEXT_HORIZONTAL_PADDING)
-                + BADGE_TEXT_HORIZONTAL_PADDING
-        })
-        .unwrap_or(0);
-    let version_available_right = if badge_width > 0 {
-        client.right - HORIZONTAL_PADDING - badge_width - BADGE_VERSION_GAP
-    } else {
-        client.right - HORIZONTAL_PADDING
-    };
-    let version_width =
-        text_width_estimate(version, 14, 400).min((version_available_right - cursor).max(0));
-    let version_rect = RECT {
-        left: cursor,
-        top,
-        right: if badge_width > 0 {
-            cursor + version_width
-        } else {
-            client.right - HORIZONTAL_PADDING
-        },
-        bottom: top + HEADER_HEIGHT,
-    };
     draw_sheet_text(
         dc,
-        version,
-        version_rect,
-        -14,
+        info.version.trim(),
+        layout.version,
+        -px(VERSION_FONT_HEIGHT, scale),
         400,
         palette.secondary,
         DT_LEFT,
     );
-    if let Some(badge) = info.badge.as_ref() {
-        let badge_left = (version_rect.right + BADGE_VERSION_GAP)
-            .min(client.right - HORIZONTAL_PADDING - badge_width)
-            .max(cursor);
-        let badge_rect = RECT {
-            left: badge_left,
-            top: top - 2,
-            right: badge_left + badge_width,
-            bottom: top - 2 + BADGE_HEIGHT,
-        };
-        fill_rect(dc, badge_rect, badge.background);
+    if let (Some(badge), Some(rect)) = (info.badge.as_ref(), layout.badge) {
+        fill_rect(dc, rect, badge.background);
         draw_sheet_text(
             dc,
             &badge.text,
-            badge_rect,
-            -10,
+            rect,
+            -px(BADGE_FONT_HEIGHT, scale),
             600,
             badge.foreground,
             DT_CENTER,
@@ -474,39 +540,41 @@ fn paint_action_buttons(
     client: &RECT,
     info: &DeviceFrameInfoSheet,
     palette: &OverlayPalette,
+    scale: f64,
 ) {
     let actions = &info.actions;
     if actions.is_empty() {
         return;
     }
-    let grid = button_grid_rect(*client, actions.len());
+    let grid = button_grid_rect(*client, actions.len(), scale);
+    let icon_size = px(BUTTON_ICON_SIZE, scale);
     for (index, action) in actions.iter().take(BUTTON_LIMIT).enumerate() {
-        let rect = action_button_rect(grid, actions.len(), index);
+        let rect = action_button_rect(grid, actions.len(), index, scale);
+        let icon_top = rect.top + px(BUTTON_ICON_TOP, scale);
         let icon_rect = RECT {
-            left: rect.left + (rect.right - rect.left - BUTTON_ICON_SIZE) / 2,
-            top: rect.top + BUTTON_ICON_TOP,
-            right: rect.left + (rect.right - rect.left + BUTTON_ICON_SIZE) / 2,
-            bottom: rect.top + BUTTON_ICON_TOP + BUTTON_ICON_SIZE,
+            left: rect.left + (rect.right - rect.left - icon_size) / 2,
+            top: icon_top,
+            right: rect.left + (rect.right - rect.left + icon_size) / 2,
+            bottom: icon_top + icon_size,
         };
         match &action.icon {
             WindowsDeviceFrameSheetIcon::Design(icon) => {
                 let _ = draw_windows_design_icon_with_color(dc, *icon, icon_rect, palette.action);
             }
             WindowsDeviceFrameSheetIcon::Path(path) => {
-                let _ =
-                    crate::shell::draw_icon_from_path(dc, path, icon_rect, BUTTON_ICON_SIZE as u32);
+                let _ = crate::shell::draw_icon_from_path(dc, path, icon_rect, icon_size as u32);
             }
         }
         draw_sheet_wrapped_text(
             dc,
             &action.label,
             RECT {
-                left: rect.left + 4,
-                top: icon_rect.bottom + BUTTON_LABEL_GAP,
-                right: rect.right - 4,
-                bottom: rect.bottom - 8,
+                left: rect.left + px(4, scale),
+                top: icon_rect.bottom + px(BUTTON_LABEL_GAP, scale),
+                right: rect.right - px(4, scale),
+                bottom: rect.bottom - px(8, scale),
             },
-            -13,
+            -px(ACTION_FONT_HEIGHT, scale),
             400,
             palette.action,
             DT_CENTER,
@@ -514,29 +582,25 @@ fn paint_action_buttons(
     }
 }
 
-fn button_grid_rect(client: RECT, action_count: usize) -> RECT {
-    let top = HEADER_TOP
-        + HEADER_HEIGHT
-        + HEADER_SEPARATOR_TOP_GAP
-        + SEPARATOR_HEIGHT
-        + BUTTON_ROW_TOP_GAP;
+fn button_grid_rect(client: RECT, action_count: usize, scale: f64) -> RECT {
+    let top = button_grid_top(scale);
     RECT {
-        left: HORIZONTAL_PADDING,
+        left: px(HORIZONTAL_PADDING, scale),
         top,
-        right: client.right - HORIZONTAL_PADDING,
-        bottom: top + action_grid_height(action_count),
+        right: client.right - px(HORIZONTAL_PADDING, scale),
+        bottom: top + action_grid_height(action_count, scale),
     }
 }
 
-fn action_button_rect(grid: RECT, action_count: usize, index: usize) -> RECT {
+fn action_button_rect(grid: RECT, action_count: usize, index: usize, scale: f64) -> RECT {
     let row = index / BUTTON_COLUMNS;
     let row_start = row * BUTTON_COLUMNS;
     let columns = BUTTON_COLUMNS.min(action_count.saturating_sub(row_start)) as i32;
-    let gaps = BUTTON_GAP * (columns - 1);
-    let width = ((grid.right - grid.left - gaps) / columns).max(1);
+    let gap = px(BUTTON_GAP, scale);
+    let width = ((grid.right - grid.left - gap * (columns - 1)) / columns).max(1);
     let column = (index % BUTTON_COLUMNS) as i32;
-    let left = grid.left + column * (width + BUTTON_GAP);
-    let top = grid.top + row as i32 * (BUTTON_ROW_HEIGHT + BUTTON_ROW_GAP);
+    let left = grid.left + column * (width + gap);
+    let top = grid.top + row as i32 * px(BUTTON_ROW_HEIGHT + BUTTON_ROW_GAP, scale);
     RECT {
         left,
         top,
@@ -545,7 +609,7 @@ fn action_button_rect(grid: RECT, action_count: usize, index: usize) -> RECT {
         } else {
             left + width
         },
-        bottom: top + BUTTON_ROW_HEIGHT,
+        bottom: top + px(BUTTON_ROW_HEIGHT, scale),
     }
 }
 
@@ -566,7 +630,7 @@ fn paint_sheet(hwnd: HWND) {
     let palette = overlay_palette();
     fill_rect(dc, client, palette.surface);
 
-    paint_capsule_menu(dc, &client, &info, &palette);
+    paint_capsule_menu(dc, &client, &info, &palette, owner_scale(hwnd));
 
     unsafe {
         let _ = EndPaint(hwnd, &ps);
@@ -630,7 +694,44 @@ fn draw_sheet_text_with_flags(
     color: u32,
     flags: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
 ) {
-    let font = unsafe {
+    let font = sheet_font(height, weight);
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    unsafe {
+        let old_font = SelectObject(dc, HGDIOBJ(font.0));
+        let _ = SetBkMode(dc, TRANSPARENT);
+        let _ = SetTextColor(dc, rgb_to_colorref(color));
+        let _ = DrawTextW(dc, &mut wide, &mut rect, flags);
+        if !old_font.is_invalid() {
+            let _ = SelectObject(dc, old_font);
+        }
+        if !font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
+    }
+}
+
+/// Width of `text` drawn into `dc` by [`draw_sheet_text`] with the same
+/// height and weight.
+fn measure_sheet_text(dc: HDC, text: &str, height: i32, weight: i32) -> i32 {
+    let font = sheet_font(height, weight);
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    let mut size = SIZE::default();
+    unsafe {
+        let old_font = SelectObject(dc, HGDIOBJ(font.0));
+        let _ = GetTextExtentPoint32W(dc, &wide, &mut size);
+        if !old_font.is_invalid() {
+            let _ = SelectObject(dc, old_font);
+        }
+        if !font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(font.0));
+        }
+    }
+    size.cx
+}
+
+/// Caller-owned "Segoe UI" font; delete it after use.
+fn sheet_font(height: i32, weight: i32) -> HFONT {
+    unsafe {
         CreateFontW(
             height,
             0,
@@ -647,19 +748,6 @@ fn draw_sheet_text_with_flags(
             Default::default(),
             w!("Segoe UI"),
         )
-    };
-    let mut wide: Vec<u16> = text.encode_utf16().collect();
-    unsafe {
-        let old_font = SelectObject(dc, HGDIOBJ(font.0));
-        let _ = SetBkMode(dc, TRANSPARENT);
-        let _ = SetTextColor(dc, rgb_to_colorref(color));
-        let _ = DrawTextW(dc, &mut wide, &mut rect, flags);
-        if !old_font.is_invalid() {
-            let _ = SelectObject(dc, old_font);
-        }
-        if !font.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(font.0));
-        }
     }
 }
 
@@ -688,12 +776,13 @@ pub(super) fn reposition_info_sheet(content: HWND) {
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     let screen_corner_radius = content_screen_corner_radius(content);
+    let scale = content_scale(content);
     let sheet_height = if is_window_handle_valid(windows.sheet) {
         sheet_info(hwnd_from_handle(windows.sheet))
-            .map(|info| sheet_height(info.actions.len()))
-            .unwrap_or_else(|| sheet_height(0))
+            .map(|info| sheet_height(info.actions.len(), scale))
+            .unwrap_or_else(|| sheet_height(0, scale))
     } else {
-        sheet_height(0)
+        sheet_height(0, scale)
     }
     .min(height.max(1));
     unsafe {
@@ -726,6 +815,7 @@ pub(super) fn reposition_info_sheet(content: HWND) {
                 width,
                 height,
                 sheet_height,
+                px(SHEET_CORNER_RADIUS, scale),
                 screen_corner_radius,
             );
             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(sheet_hwnd), None, true);
@@ -783,12 +873,13 @@ fn apply_sheet_region(
     width: i32,
     screen_height: i32,
     sheet_height: i32,
+    sheet_corner_radius: i32,
     screen_corner_radius: i32,
 ) {
     if width <= 0 || screen_height <= 0 || sheet_height <= 0 {
         return;
     }
-    let sheet_diameter = SHEET_CORNER_RADIUS * 2;
+    let sheet_diameter = sheet_corner_radius * 2;
     unsafe {
         // Extend the rounded region below the window so the sheet keeps only
         // its own top corners, then intersect it with the device screen shape
@@ -797,7 +888,7 @@ fn apply_sheet_region(
             0,
             0,
             width + 1,
-            sheet_height + SHEET_CORNER_RADIUS + 1,
+            sheet_height + sheet_corner_radius + 1,
             sheet_diameter,
             sheet_diameter,
         );
@@ -861,11 +952,6 @@ fn sheet_client_rect(hwnd: HWND) -> RECT {
 
 fn rect_contains(rect: RECT, x: i32, y: i32) -> bool {
     x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
-}
-
-fn text_width_estimate(text: &str, font_size: i32, weight: i32) -> i32 {
-    let weight_extra = if weight >= 600 { 2 } else { 0 };
-    text.chars().count() as i32 * ((font_size / 2) + weight_extra) + 4
 }
 
 fn rgb_to_colorref(rgb: u32) -> COLORREF {
@@ -951,5 +1037,88 @@ fn restore_frame_overlays(content: isize) {
         reposition_cutout(hwnd);
         reposition_corner_mask(hwnd);
         reposition_capsule(hwnd);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// GDI's Segoe UI with CJK font linking: ideographs about one em wide,
+    /// ASCII about half.
+    fn measure(text: &str, height: i32, _weight: i32) -> i32 {
+        let em = height.abs();
+        text.chars()
+            .map(|ch| if ch.is_ascii() { em / 2 } else { em })
+            .sum()
+    }
+
+    fn sheet(title: &str, badge: Option<&str>, actions: usize) -> DeviceFrameInfoSheet {
+        DeviceFrameInfoSheet {
+            title: title.to_string(),
+            version: "0.3.2".to_string(),
+            badge: badge.map(|text| InfoSheetBadge {
+                text: text.to_string(),
+                foreground: 0,
+                background: 0,
+            }),
+            actions: (0..actions)
+                .map(|index| SheetAction {
+                    label: format!("action {index}"),
+                    command: index as u32,
+                    icon: WindowsDeviceFrameSheetIcon::Path(String::new()),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn sheet_geometry_follows_the_device_scale() {
+        let standard = sheet_height(5, 1.0);
+        let scaled = sheet_height(5, 2.25);
+        assert!(
+            (f64::from(scaled) - f64::from(standard) * 2.25).abs() <= 2.0,
+            "{scaled} vs {standard}"
+        );
+
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 967,
+            bottom: scaled,
+        };
+        let grid = button_grid_rect(client, 5, 2.25);
+        assert_eq!(grid.bottom + px(BOTTOM_PADDING, 2.25), scaled);
+        let first = action_button_rect(grid, 5, 0, 2.25);
+        let last = action_button_rect(grid, 5, 4, 2.25);
+        assert_eq!(first.left, grid.left);
+        assert_eq!(last.right, grid.right);
+        assert_eq!(first.bottom - first.top, px(BUTTON_ROW_HEIGHT, 2.25));
+    }
+
+    #[test]
+    fn header_keeps_the_measured_cjk_title() {
+        let scale = 2.25;
+        let layout = header_layout(967, &sheet("门店主数据", Some("DEV"), 5), scale, measure);
+        let title = layout.title.expect("title slot");
+        assert_eq!(
+            title.right - title.left,
+            measure("门店主数据", -px(TITLE_FONT_HEIGHT, scale), 600)
+        );
+        assert_eq!(layout.divider.left, title.right);
+        assert_eq!(layout.version.left, layout.divider.right);
+        let badge = layout.badge.expect("badge slot");
+        assert!(badge.left >= layout.version.right);
+        assert!(badge.right <= 967 - px(HORIZONTAL_PADDING, scale));
+    }
+
+    #[test]
+    fn long_title_takes_at_most_half_the_sheet() {
+        let layout = header_layout(967, &sheet(&"门".repeat(60), None, 1), 2.25, measure);
+        let title = layout.title.expect("title slot");
+        assert_eq!(
+            title.right - title.left,
+            (967 - px(HORIZONTAL_PADDING, 2.25)) / 2
+        );
     }
 }

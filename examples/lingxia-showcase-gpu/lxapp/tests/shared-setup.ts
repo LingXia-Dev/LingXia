@@ -1,4 +1,4 @@
-import { skipSpecFiles } from '@lingxia/test/runner';
+import { skipTestFiles } from '@lingxia/test/runner';
 import manifest from './shared-specs.json';
 
 // lxdev.json runs this before any test file: the shared specs read this lxapp's id at import.
@@ -7,4 +7,4 @@ import manifest from './shared-specs.json';
 
 // Matched under the shared specs' own directory wherever it resolved: a linked or installed
 // @lingxia/test lives outside this checkout.
-skipSpecFiles(manifest.skip, { root: ['lingxia-test/showcase', '@lingxia/test/showcase'] });
+skipTestFiles(manifest.skip, { root: ['lingxia-test/showcase', '@lingxia/test/showcase'] });

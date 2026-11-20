@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { decodePng } from './png.js';
 import { skipWhenCovered } from './covered.js';
 
-spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'video' } }, async (t) => {
+test('a video plays in a 16:9 box and under its overlay', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const hero = view.testId('video-hero');
@@ -19,7 +19,7 @@ spec('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   await expectPicture(t, hero);
 });
 
-type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
+type Fixture = Parameters<Parameters<typeof test>[2]>[0];
 type View = Fixture['app']['view'];
 type Viewport = Awaited<ReturnType<View['viewport']>>;
 
@@ -56,7 +56,7 @@ async function sample(t: Fixture, points: [number, number][], viewport: Viewport
   return points.map(point => shot.at(...at(point)));
 }
 
-spec('useVideo reports playback and pauses on command', { start: { page: 'video' } }, async (t) => {
+test('useVideo reports playback and pauses on command', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
@@ -75,7 +75,7 @@ spec('useVideo reports playback and pauses on command', { start: { page: 'video'
 
 const seconds = (text: string) => Number(/([\d.]+)s\s*$/.exec(text)?.[1] ?? NaN);
 
-spec('a quality switch keeps the position and the frames moving', { start: { page: 'video' } }, async (t) => {
+test('a quality switch keeps the position and the frames moving', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-quality-state');
@@ -96,7 +96,7 @@ spec('a quality switch keeps the position and the frames moving', { start: { pag
   await expect(state).toContainText('360p · 360p', { timeout: 5_000 });
 });
 
-spec('lx.createVideoContext pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
+test('lx.createVideoContext pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
@@ -107,7 +107,7 @@ spec('lx.createVideoContext pauses and plays the page player from Logic', { star
   await expect(state).toContainText('playing');
 });
 
-spec('a page under another holds its videos still and plays the playing ones again on return', { start: { page: 'video' } }, async (t) => {
+test('a page under another holds its videos still and plays the playing ones again on return', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
@@ -141,7 +141,7 @@ spec('a page under another holds its videos still and plays the playing ones aga
 
 // Needs the network: one public row plays Big Buck Bunny as three progressive files, the other
 // Apple's HLS test stream with five renditions; an unreachable host skips.
-spec('public renditions switch quality over the network', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+test('public renditions switch quality over the network', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const offline = () => t.skip('needs the network: the public video hosts are unreachable');
@@ -181,7 +181,7 @@ spec('public renditions switch quality over the network', { start: { page: 'vide
 
 // A pin while the stream still prepares (its row revealed by the tap) waits for it, then plays the
 // rendition from the start.
-spec('an HLS quality pinned before the first frame plays that rendition', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+test('an HLS quality pinned before the first frame plays that rendition', { start: { page: 'video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-stream-state');
@@ -200,7 +200,7 @@ spec('an HLS quality pinned before the first frame plays that rendition', { star
 
 // HarmonyOS's player opens this stream slowly (about 12 s on a nova 13): from the tap until a frame
 // or the 15 s error, the box shows the ring, never a blank picture.
-spec('an HLS start shows the ring from the tap until a frame or the error with Retry', { start: { page: 'spec-video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
+test('an HLS start shows the ring from the tap until a frame or the error with Retry', { start: { page: 'spec-video' }, tags: ['network'], timeout: 90_000 }, async (t) => {
   await skipWhenCovered(t, 'spec-video');
   const view = t.app.view;
   const c = (part: string) => view.testId(`lab-stream-controls-${part}`);

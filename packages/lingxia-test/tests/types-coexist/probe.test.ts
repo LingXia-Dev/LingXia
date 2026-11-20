@@ -1,10 +1,10 @@
 // A spec that imports product Logic next to the test SDK.
-import { spec } from '@lingxia/test';
+import { test } from '@lingxia/test';
 import { rawAutomation } from '@lingxia/test/runner';
 import type { HostRunAutomation, LxAppDriver } from '@lingxia/types/automation';
 import { hasStorageKey, userDataPath } from './app-logic.js';
 
-spec('app Logic and the test SDK type-check together', async (t) => {
+test('app Logic and the test SDK type-check together', async (t) => {
   const path: string = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
   path.toUpperCase();
   // The app's `lx` keeps its own meaning in the product modules a spec imports.

@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openDemo, openUnderTabs } from './open-demo';
 
 // The host draws the recovery panel in the page's display language.
@@ -39,7 +39,7 @@ async function slowPanel(t: Fixture) {
   });
 }
 
-spec('a pushed page whose View throws shows the recovery panel; Retry fails again and keeps the page', {
+test('a pushed page whose View throws shows the recovery panel; Retry fails again and keeps the page', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -53,7 +53,7 @@ spec('a pushed page whose View throws shows the recovery panel; Retry fails agai
   expect((await t.app.nav.stack()).length).toBe(before.length + 1);
 });
 
-spec('Go back on the recovery panel leaves only the failed page', {
+test('Go back on the recovery panel leaves only the failed page', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -65,7 +65,7 @@ spec('Go back on the recovery panel leaves only the failed page', {
   await expect(t.app.view.testId('lab-recovery-open')).toBeVisible();
 });
 
-spec('the recovery buttons open their pages from the View tab as from the group page', {
+test('the recovery buttons open their pages from the View tab as from the group page', {
   covers: ['view:recovery'], start: openUnderTabs('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -75,7 +75,7 @@ spec('the recovery buttons open their pages from the View tab as from the group 
 });
 
 // `devHoldFirstState`: under lingxia dev the page's Logic never sends its first state.
-spec('a page whose first state never comes shows the slow-load notice; Keep waiting closes it until it returns, and Go back leaves only that page', {
+test('a page whose first state never comes shows the slow-load notice; Keep waiting closes it until it returns, and Go back leaves only that page', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t, 'lab-recovery-stall', 'spec-stall');
@@ -95,7 +95,7 @@ spec('a page whose first state never comes shows the slow-load notice; Keep wait
 
 // An update that fails over a shown page keeps the page: a banner, not a panel over it. The host
 // draws it in each appearance, so the spec reads it in both.
-spec('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
+test('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const preference = await t.app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);

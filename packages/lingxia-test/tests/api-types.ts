@@ -1,11 +1,11 @@
 import {
-  spec, expect, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type NetworkCall, type PageContract, type ProfileCheckpoint, type TestApp, type TestErrorCode, type TestPage, type TestView, type UnaryActionsOnly, type ViewElement,
+  test, expect, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type NetworkCall, type PageContract, type ProfileCheckpoint, type TestApp, type TestErrorCode, type TestPage, type TestView, type UnaryActionsOnly, type ViewElement,
 } from '../dist/index.js';
 import type { FailureRecord, JsonReport, TagSummary } from '@lingxia/test/report';
 import { run, rawAutomation, trackPublicSurface, VERSION } from '@lingxia/test/runner';
 import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver } from '@lingxia/types/automation';
 
-spec('typed test boundary', async t => {
+test('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
   const editor: TestPage<PageContract> = await app.page({ name: 'editor' }, { timeout: 2_000 });
   editor.instanceId.toUpperCase(); editor.name.toUpperCase();
@@ -131,15 +131,15 @@ async function browserPage() {
 }
 void browserPage;
 
-spec.fail('known quota failure', { expected: { message: /quota/ } }, async () => {});
-// @ts-expect-error `expected` belongs to spec.fail only.
-spec('plain spec', { expected: { code: 'E_TIMEOUT' } }, async () => {});
+test.fail('known quota failure', { expected: { message: /quota/ } }, async () => {});
+// @ts-expect-error `expected` belongs to test.fail only.
+test('plain spec', { expected: { code: 'E_TIMEOUT' } }, async () => {});
 // @ts-expect-error An app code is accepted only once the app declares it in `AppErrorCodes`.
-spec.fail('app code', { expected: { code: 'E_QUOTA' } }, async () => {});
+test.fail('app code', { expected: { code: 'E_QUOTA' } }, async () => {});
 // @ts-expect-error A removed code does not compile: a driver timeout is `E_TIMEOUT`.
-spec.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => {});
+test.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => {});
 
-spec('typed Logic access', async t => {
+test('typed Logic access', async t => {
   // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
   const count: number = await t.app.logic.eval(({ getCurrentPages }) => getCurrentPages().length);
   count.toFixed();
@@ -343,7 +343,7 @@ type FixtureHasNoProfile = Fixture['profile'];
 type FixtureHasNoApps = Fixture['apps'];
 
 // One call record across routes, network and scenarios; removers resolve void.
-spec('network calls', async (t) => {
+test('network calls', async (t) => {
   const route = await t.app.network.route('**/devices', { json: [] });
   const calls: NetworkCall[] = await route.calls();
   calls[0]?.answeredBy satisfies 'rule' | 'route' | 'mock' | 'real' | 'companion';
@@ -387,9 +387,9 @@ const asRawPage: PageDriver = fixtureApp.view;
 const asRawApp: LxAppDriver = fixtureApp;
 void asRawApp; void asRawPage;
 
-spec.fail('known inactive page', { expected: { code: 'E_PAGE_NOT_ACTIVE' } }, async () => {});
-spec.fail('known timeout', { expected: { code: 'E_TIMEOUT' } }, async () => {});
-spec.fail('known contract break', { expected: { code: 'E_OPENAPI_CONTRACT' } }, async () => {});
+test.fail('known inactive page', { expected: { code: 'E_PAGE_NOT_ACTIVE' } }, async () => {});
+test.fail('known timeout', { expected: { code: 'E_TIMEOUT' } }, async () => {});
+test.fail('known contract break', { expected: { code: 'E_OPENAPI_CONTRACT' } }, async () => {});
 const knownCode: AutomationErrorCode = AUTOMATION_ERROR_CODES[0];
 // @ts-expect-error Automation codes are a closed union.
 const mistypedCode: AutomationErrorCode = 'E_PAGE_INACTIVE';
@@ -407,7 +407,7 @@ declare const failure: FailureRecord;
 failure.page?.instanceId?.toUpperCase();
 
 // Test clock and rollback that keeps chosen storage keys.
-spec('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
+test('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
   const started: ClockState = await t.app.clock.install({ now: new Date(0) });
   started.now.toFixed(); started.pending.toFixed();
   const { now, fired, pending }: ClockAdvance = await t.app.clock.tick(3_000);
@@ -426,12 +426,12 @@ spec('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
   void now; void fired; void pending; void ran; void set; void off; void dropped; void asNumber;
 });
 // @ts-expect-error keep is a list of globs.
-spec('bad keep', { restoreProfile: { keep: 'auth.*' } }, async () => {});
+test('bad keep', { restoreProfile: { keep: 'auth.*' } }, async () => {});
 // Tags: a file default plus the spec's own; report rows are typed.
-spec.configure({ tags: ['routed'] });
-spec('tagged spec', { tags: ['smoke'], covers: ['DEV-1'] }, async () => {});
+test.configure({ tags: ['routed'] });
+test('tagged spec', { tags: ['smoke'], covers: ['DEV-1'] }, async () => {});
 // @ts-expect-error Tags are a list of strings.
-spec('bad tags', { tags: 'smoke' }, async () => {});
+test('bad tags', { tags: 'smoke' }, async () => {});
 declare const tagRow: TagSummary;
 const tagOk: boolean = tagRow.ok;
 void tagOk;
@@ -445,23 +445,23 @@ declare const contractReport: JsonReport;
 contractReport.openapi?.routed.failed.toFixed();
 contractReport.coverage?.uncovered.map((entry) => entry.id);
 // A contract-only spec declares it and is skipped without --openapi.
-spec('contract only', { requires: { openapi: true } }, async (t) => {
+test('contract only', { requires: { openapi: true } }, async (t) => {
   t.openapi?.documents.map((doc) => doc.name.toUpperCase());
 });
-// File defaults: every SpecOptions key but `id`, plus `requires`.
-spec.configure({ timeout: 60_000, start: { page: 'home' }, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
-spec('starts on a page', { start: { page: 'detail', query: { id: 'd1' } } }, async () => {});
+// File defaults: every TestOptions key but `id`, plus `requires`.
+test.configure({ timeout: 60_000, start: { page: 'home' }, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
+test('starts on a page', { start: { page: 'detail', query: { id: 'd1' } } }, async () => {});
 // @ts-expect-error `fresh` is gone: `start: { page }` relaunches on that page.
-spec('fresh', { fresh: true }, async () => {});
+test('fresh', { fresh: true }, async () => {});
 // @ts-expect-error `start` names a page.
-spec('bad start', { start: 'home' }, async () => {});
+test('bad start', { start: 'home' }, async () => {});
 // @ts-expect-error Ids are per spec.
-spec.configure({ id: 'shared' });
+test.configure({ id: 'shared' });
 // @ts-expect-error requires.args lists --arg keys.
-spec('bad requires', { requires: { args: 'PASSWORD' } }, async () => {});
+test('bad requires', { requires: { args: 'PASSWORD' } }, async () => {});
 
 // Host tiers read lazily: the read never throws, a call rejects.
-spec('host tiers', async (t) => {
+test('host tiers', async (t) => {
   await t.automation.desktop.window.status({} as never);
   await t.automation.terminal.snapshot({ surfaceId: 's' } as never);
   await t.automation.browser.tabs();
@@ -489,7 +489,7 @@ import { run as mainRun } from '../dist/index.js';
 void mainRun;
 
 
-spec('a page contract binds one identity and checks public action payloads', async t => {
+test('a page contract binds one identity and checks public action payloads', async t => {
   type Contract = import('../dist/index.js').PageContract<
     { title: string }, { rename(input: { title: string }): Promise<boolean> }
   >;
@@ -557,10 +557,10 @@ type RemovedQuery = import('../dist/index.js').Locator['query'];
 // @ts-expect-error Nor the network `removeAll`.
 type RemovedRemoveAll = import('../dist/index.js').TestNetwork['removeAll'];
 // @ts-expect-error Nor a spec `fresh`.
-type RemovedFresh = import('../dist/index.js').SpecOptions['fresh'];
+type RemovedFresh = import('../dist/index.js').TestOptions['fresh'];
 export type { RunnerController };
 
-spec('recursive JSON types cross eval without excessive instantiation', async t => {
+test('recursive JSON types cross eval without excessive instantiation', async t => {
   const input: JsonValue = JSON.parse('{"nested":[{"ok":true}]}');
   const result: JsonValue = await t.app.logic.eval((_, value) => value, input);
   const list: JsonValue[] = await t.app.view.eval((_, value) => value, [input] as JsonValue[]);

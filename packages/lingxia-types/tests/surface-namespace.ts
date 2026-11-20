@@ -35,7 +35,7 @@ function narrowsByKind(surface: AnySurface): string {
   if (surface.kind === "tab") {
     return surface.scope;
   }
-  return surface.id;
+  return surface.kind;
 }
 
 // Probe 4: a url open returns a handle that can close what it opened.
@@ -81,7 +81,20 @@ async function builtinReportsIdentityOnly(): Promise<string> {
   const downloads = await lx.shell.openBuiltin("downloads");
   // @ts-expect-error the shell owns a builtin page's visibility
   downloads.show;
-  return downloads.id;
+  return downloads.kind;
+}
+
+// Shell-owned surfaces are looked up by identity, not by a handle id.
+function shellLookups(): boolean {
+  const app = lx.shell.getApp("com.example.agent");
+  const terminal = lx.shell.getDeclared("terminal", "project-a");
+  // @ts-expect-error handles carry no runtime id
+  app?.id;
+  // A declaration that shows an lxapp answers with that app's handle.
+  const chat = lx.shell.getDeclared("chat");
+  const chatRealized: "main" | "aside" | undefined =
+    chat?.kind === "app" ? chat.realized : undefined;
+  return Boolean(app?.alive && terminal?.alive && chatRealized);
 }
 
 // Host-wide Settings is bootstrap-owned native chrome, never Logic.
@@ -178,10 +191,11 @@ export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];
 // `lx.shell` resolves to the global `ShellApi`, not the exported alias, so a
 // member declared on only one of the two is unreachable at the call site it
 // exists for. `sidebarActions` was exactly that.
-function sidebarActionsAreReachableThroughLxShell(): void {
-  lx.shell.sidebarActions.replace([]);
-  lx.shell.sidebarActions.update("id", { label: "Renamed" });
-  lx.shell.sidebarActions.remove("id");
+async function sidebarActionsAreReachableThroughLxShell(): Promise<void> {
+  await lx.shell.sidebarActions.replace([]);
+  await lx.shell.sidebarActions.update("id", { label: "Renamed" });
+  await lx.shell.sidebarActions.remove("id");
+  // @ts-expect-error replace([]) is the one way to clear
   lx.shell.sidebarActions.clear();
 }
 
@@ -207,3 +221,17 @@ export type ShellSidebarGate = [
   typeof sidebarActionsAreReachableThroughLxShell,
   typeof sidebarActionValueIsFooterOnly,
 ];
+
+// A present key clears even when its value is undefined; only strings or a
+// clear are accepted.
+async function appDisplayPatchClears(): Promise<void> {
+  const brand = Math.random() > 0.5 ? { name: "Acme", icon: "public/acme.png" } : undefined;
+  await lx.shell.setAppDisplay({ name: brand?.name, icon: brand?.icon });
+  await lx.shell.setAppDisplay({ name: null });
+  // @ts-expect-error the patch takes no other keys
+  await lx.shell.setAppDisplay({ title: "Acme" });
+  // @ts-expect-error the icon is a path, not image data
+  await lx.shell.setAppDisplay({ icon: new Uint8Array(1) });
+}
+
+export type AppDisplayGate = [typeof appDisplayPatchClears];

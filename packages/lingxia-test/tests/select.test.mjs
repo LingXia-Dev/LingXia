@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { list, reset, run } from "../dist/runner.js";
 
 const here = fileURLToPath(import.meta.url);
@@ -14,13 +14,13 @@ afterEach(() => {
   delete globalThis.lx;
 });
 
-/** Registers three specs; returns the line of each `spec(` call. */
+/** Registers three specs; returns the line of each `lxTest(` call. */
 function registerThree(ran) {
   const line = () => Number(new Error().stack.split("\n")[2].match(/:(\d+):\d+\)?$/)[1]);
   const lines = [];
-  lines.push(line()); spec("first", async () => { ran.push("first"); });
-  lines.push(line()); spec("second", async () => { ran.push("second"); });
-  lines.push(line()); spec("third", async () => { ran.push("third"); });
+  lines.push(line()); lxTest("first", async () => { ran.push("first"); });
+  lines.push(line()); lxTest("second", async () => { ran.push("second"); });
+  lines.push(line()); lxTest("third", async () => { ran.push("third"); });
   return lines;
 }
 
@@ -50,7 +50,7 @@ test("a file mapped to null selects all its specs", async () => {
 test("list returns the selection and runs nothing", async () => {
   const ran = [];
   const lines = registerThree(ran);
-  spec.configure({ tags: ["unit"] });
+  lxTest.configure({ tags: ["unit"] });
   installFakeHost(createWorld(), { control: { grep: "^(first|third)$" } });
 
   const report = await list();

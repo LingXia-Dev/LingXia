@@ -2,14 +2,14 @@
 import AppKit
 import CLingXiaRustAPI
 
-/// A single page entry in the sidebar (~28pt high)
+/// A single page entry in the sidebar (~34pt high)
 /// Displays icon + title + optional badge/red dot, with hover/selection highlighting
 @MainActor
 class SidebarItemView: NSView {
 
     struct Layout {
-        static let height: CGFloat = 30
-        static let iconSize: CGFloat = 16
+        static let height: CGFloat = 34
+        static let iconSize: CGFloat = 18
         static let leadingPadding: CGFloat = 30
         static let trailingPadding: CGFloat = 8
         static let iconTitleSpacing: CGFloat = 8
@@ -107,7 +107,7 @@ class SidebarItemView: NSView {
 
         // Title
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = NSFont.systemFont(ofSize: 12)
+        titleLabel.font = NSFont.systemFont(ofSize: 15)
         titleLabel.textColor = LxAppHostTheme.foreground
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
@@ -290,18 +290,18 @@ class SidebarItemView: NSView {
                 shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
                 return shadow
             }()
-            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .medium)
             titleLabel.textColor = selectedTint ?? LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? accent : nil
         } else if isHovered {
             selectionBackground.shadow = nil
-            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+            titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .regular)
             selectionBackground.layer?.backgroundColor = themeCGColor(NSColor.labelColor.withAlphaComponent(0.06))
             titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         } else {
             selectionBackground.shadow = nil
-            titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
+            titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil

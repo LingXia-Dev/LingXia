@@ -338,9 +338,9 @@ pub fn tag_summary(cases: &[Value]) -> Value {
     Value::Array(list)
 }
 
-/// Refresh `coverage` from `cases`: a spec's status comes from its cases; a
-/// spec the runtime listed as `not_run` stays so unless a case says
-/// otherwise. Without an earlier summary, only the specs in `cases` count.
+/// Refresh `coverage` from `cases`: a test's status comes from its cases; a
+/// test the runtime listed as `not_run` stays so unless a case says
+/// otherwise. Without an earlier summary, only the tests in `cases` count.
 pub fn coverage_summary(
     manifest: &[ManifestEntry],
     cases: &[Value],
@@ -574,7 +574,7 @@ pub fn summary_lines(report: &Value) -> Vec<(bool, String)> {
             count("failing")
         );
         if !uncovered.is_empty() {
-            line.push_str(&format!("; no spec for {}", preview(&uncovered)));
+            line.push_str(&format!("; no test for {}", preview(&uncovered)));
         }
         if !unknown.is_empty() {
             line.push_str(&format!("; not in the manifest: {}", preview(&unknown)));
@@ -787,6 +787,6 @@ mod tests {
             "{}",
             lines[1].1
         );
-        assert!(lines[1].1.contains("no spec for M-3"), "{}", lines[1].1);
+        assert!(lines[1].1.contains("no test for M-3"), "{}", lines[1].1);
     }
 }

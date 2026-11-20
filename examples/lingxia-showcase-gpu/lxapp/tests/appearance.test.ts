@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // A theme change repaints without running a View that never read the appearance; one that reads
 // it, even from a later render on, runs again and shows the new theme.
-spec('a page that starts reading the theme runs again on the next theme change', { covers: ['view:environment'], start: openDemo('theme') }, async (t) => {
+test('a page that starts reading the theme runs again on the next theme change', { covers: ['view:environment'], start: openDemo('theme') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-appearance-runs');
   const runs = async () => Number(/runs=(\d+)/.exec((await state.getAttribute('data-state')) ?? '')?.[1]);
@@ -28,7 +28,7 @@ spec('a page that starts reading the theme runs again on the next theme change',
 
 // A pinned text scale is the system text size the page sees: text lays out again at it, and
 // clearing the pin gives the device's own size back.
-spec('a pinned text scale lays the text out at that size until the pin is cleared', {
+test('a pinned text scale lays the text out at that size until the pin is cleared', {
   id: 'TEXT-SCALE-001', covers: ['view:environment'], start: { page: 'view-text', query: { lang: 'en' } },
 }, async (t) => {
   const view = t.app.view;

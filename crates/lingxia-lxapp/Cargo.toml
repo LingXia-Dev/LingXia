@@ -55,6 +55,7 @@ zstd = "0.14"
 ring = "0.17.14"
 filetime = "0.2"
 uuid = { version = "1.26", features = ["v4"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
 
 # Local dependencies
 rong_modules = { workspace = true, default-features = false, features = ["timer", "cron", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "compression", "storage", "crypto"], optional = true }

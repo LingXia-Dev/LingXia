@@ -88,9 +88,9 @@ lx.host.control?.appearance.setPreference('dark');
   is the fallback). The View's `contentLanguage` (`useLxHost()`, GPU `env`) is
   the display language narrowed to them — `ja-JP` gives `en` — and sets
   `<html lang>` / `<html dir>` and built-in control words. Logic narrows itself.
-- `lingxia dev --display-language` shadows the effective language; there
+- `lxdev runner set --language` shadows the effective language; there
   `get()` and `getPreference()` disagree and `setPreference` shows no effect.
-  Test a Settings screen without the flag.
+  Test a Settings screen without it.
 - The starting scheme is the host's `theme.defaultAppearance`; a one-scheme
   lxapp declares `"appearance"` in `lxapp.json`
   ([Appearance](./guide.md#appearance)).
@@ -191,8 +191,8 @@ if (r.status === 'ok') await lx.surface.bringToFront({ query: { run: runId } })
 ## Errors
 
 A rejection means the operation failed, never that the user said no.
-Dismissable APIs (`showActionSheet`, `showModal`, `chooseFile`, `pickFile`,
-`pickFiles`, `chooseDirectory`, `chooseMedia`, `scanCode`, `lx.clipboard`
+Dismissable APIs (`showActionSheet`, `showModal`, `pickFile`,
+`pickFiles`, `pickDirectory`, `pickMedia`, `scanCode`, `lx.clipboard`
 reads) resolve a result discriminated on `status`. `lx.share` reports
 `outcome: 'completed' | 'dismissed' | 'unknown'`.
 

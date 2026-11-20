@@ -75,9 +75,8 @@ export const LX_API_NAMES = [
   'confirm',
   'pickFile',
   'pickFiles',
-  'chooseDirectory',
-  'chooseFile',
-  'chooseMedia',
+  'pickDirectory',
+  'pickMedia',
   'clipboard',
   'compressImage',
   'compressVideo',
@@ -87,11 +86,11 @@ export const LX_API_NAMES = [
   'env',
   'extractVideoThumbnail',
   'fs',
+  'getAppInfo',
   'getConnectedWifi',
   'getDeviceInfo',
   'getImageInfo',
   'getLocation',
-  'getLxAppInfo',
   'getNetworkInfo',
   'getScreenInfo',
   'getStorage',
@@ -202,8 +201,8 @@ const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SURFACE_NAMESPACE_API = ['bringToFront', 'getByKey', 'watchContext', 'openDeclared', 'openPage', 'openUrl'] as const;
-const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
-const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
+const SHELL_API = ['getApp', 'getDeclared', 'openApp', 'openBuiltin', 'openDeclared', 'setAppDisplay', 'sidebarActions'] as const;
+const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const CLIPBOARD_API = ['clear', 'read', 'readText', 'types', 'write', 'writeText'] as const;
 const FILE_SYSTEM_API = [
@@ -696,7 +695,6 @@ const PAGE_SURFACE_API = [
   'alive',
   'close',
   'hide',
-  'id',
   'key',
   'kind',
   'onClose',
@@ -712,7 +710,6 @@ const TAB_SURFACE_API = [
   'activate',
   'alive',
   'close',
-  'id',
   'key',
   'kind',
   'onClose',
@@ -736,7 +733,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     members: VIDEO_CONTEXT_API,
     properties: [],
     optionalProperties: [],
-    fixture: 'runtime-safe',
+    fixture: 'native-component',
     factory: 'lx.createVideoContext',
   },
   {
@@ -790,7 +787,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'PageSurface',
     members: PAGE_SURFACE_API,
-    properties: ['alive', 'id', 'key', 'kind', 'realized', 'visible'],
+    properties: ['alive', 'key', 'kind', 'realized', 'visible'],
     optionalProperties: ['key'],
     fixture: 'surface',
     factory: 'lx.surface.openPage',
@@ -798,7 +795,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'TabSurface',
     members: TAB_SURFACE_API,
-    properties: ['alive', 'id', 'key', 'kind', 'realized', 'scope', 'visible'],
+    properties: ['alive', 'key', 'kind', 'realized', 'scope', 'visible'],
     optionalProperties: ['key'],
     fixture: 'surface',
     factory: 'lx.surface.openUrl',

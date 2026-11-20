@@ -17,7 +17,10 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
-const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+/// Cloud server for this launch. `lingxia dev` resolves it from the server
+/// `lingxia auth login lingxia` saved for `--env`.
+const RUNNER_SERVER_ENV: &str = "LINGXIA_RUNNER_SERVER";
+const RUNNER_SERVER_ARG: &str = "--lingxia-server";
 const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
 /// The host's home lxapp id when the launched lxapp is it: the Runner draws no
@@ -43,92 +46,6 @@ const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 const RUNNER_WINDOWS_PRODUCT_NAME: &str = "LingXia Runner";
 const RUNNER_WINDOWS_APP_ID: &str = "app.lingxia.runner";
-const RUNNER_DEVICES_JSON: &str = include_str!("../../../../lingxia-runner/devices.json");
-
-#[derive(Debug, serde::Deserialize)]
-struct RunnerDevicesManifest {
-    default: String,
-    devices: Vec<RunnerDevicePreset>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct RunnerDevicePreset {
-    id: String,
-    group: String,
-    name: String,
-    /// Points; an Android or HarmonyOS phone's are fractional (pixels over density).
-    width: f64,
-    height: f64,
-    #[serde(rename = "pixelRatio")]
-    pixel_ratio: f32,
-}
-
-/// A length in points, whole when it is, else to one decimal.
-fn points(value: f64) -> String {
-    if value.fract().abs() < 1e-6 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.1}")
-    }
-}
-
-pub(super) fn print_runner_devices() -> Result<()> {
-    println!("{}", render_runner_devices()?);
-    Ok(())
-}
-
-fn render_runner_devices() -> Result<String> {
-    let manifest: RunnerDevicesManifest =
-        serde_json::from_str(RUNNER_DEVICES_JSON).context("runner devices.json must be valid")?;
-    let id_width = manifest
-        .devices
-        .iter()
-        .map(|device| device.id.len())
-        .max()
-        .unwrap_or("device".len())
-        .max("device".len());
-    let group_width = manifest
-        .devices
-        .iter()
-        .map(|device| device.group.len())
-        .max()
-        .unwrap_or("group".len())
-        .max("group".len());
-
-    let mut out = String::from("Runner devices:\n");
-    out.push_str(&format!(
-        "  {:id_width$}  {:group_width$}  {:>11}  {:5}  {}\n",
-        "device",
-        "group",
-        "size",
-        "ratio",
-        "name",
-        id_width = id_width,
-        group_width = group_width
-    ));
-    for device in &manifest.devices {
-        let marker = if device.id == manifest.default {
-            " (default)"
-        } else {
-            ""
-        };
-        out.push_str(&format!(
-            "  {:id_width$}  {:group_width$}  {:>4} x {:<4}  {:5}  {}{}\n",
-            device.id,
-            device.group,
-            points(device.width),
-            points(device.height),
-            format!("@{}x", device.pixel_ratio),
-            device.name,
-            marker,
-            id_width = id_width,
-            group_width = group_width
-        ));
-    }
-    out.push_str("\nUse `lingxia dev --runner <device>` to launch a specific runner device.");
-    Ok(out)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum RunnerDevTarget {
     LxApp(PathBuf),
@@ -297,39 +214,19 @@ pub(super) fn execute_runner_dev(
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
         let mut runner = match (&runner_host, &target) {
-            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => launch_runner_for_lxapp(
-                path,
-                &session_root,
-                &ws_url,
-                options.runner_device.as_deref(),
-                options.display_language.as_deref(),
-                runner_env,
-            )?,
-            (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
-                launch_windows_runner_for_lxapp(
-                    path,
-                    &session_root,
-                    &ws_url,
-                    options.runner_device.as_deref(),
-                    options.display_language.as_deref(),
-                    runner_env,
-                )?
+            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => {
+                launch_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
             }
-            (LxAppRunnerHost::MacOs, RunnerDevTarget::Web(url)) => launch_runner_for_web(
-                &session_root,
-                url,
-                &ws_url,
-                options.runner_device.as_deref(),
-                options.display_language.as_deref(),
-                options.headless,
-                runner_env,
-            )?,
+            (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
+                launch_windows_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
+            }
+            (LxAppRunnerHost::MacOs, RunnerDevTarget::Web(url)) => {
+                launch_runner_for_web(&session_root, url, &ws_url, options.headless, runner_env)?
+            }
             (LxAppRunnerHost::Windows, RunnerDevTarget::Web(url)) => launch_windows_runner_for_web(
                 &session_root,
                 url,
                 &ws_url,
-                options.runner_device.as_deref(),
-                options.display_language.as_deref(),
                 options.headless,
                 runner_env,
             )?,
@@ -430,8 +327,6 @@ fn launch_runner_for_lxapp(
     lxapp_path: &Path,
     session_root: &Path,
     ws_url: &str,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
@@ -469,11 +364,8 @@ fn launch_runner_for_lxapp(
     if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
         command.env(LAUNCH_INACTIVE_ENV, "1");
     }
-    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
-        command.env("LINGXIA_RUNNER_DEVICE", device);
-    }
-    if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
-        command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
+    if let Some(server) = runner_lingxia_server(runner_env) {
+        command.env(RUNNER_SERVER_ENV, server);
     }
     match read_lxapp_app_id(lxapp_path)
         .ok()
@@ -516,8 +408,6 @@ fn launch_runner_for_web(
     session_root: &Path,
     url: &str,
     ws_url: &str,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     headless: bool,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
@@ -549,17 +439,8 @@ fn launch_runner_for_web(
     if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
         command.env(LAUNCH_INACTIVE_ENV, "1");
     }
-    if let Some(device) = runner_device
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        command.env("LINGXIA_RUNNER_DEVICE", device);
-    }
-    if let Some(language) = display_language
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
+    if let Some(server) = runner_lingxia_server(runner_env) {
+        command.env(RUNNER_SERVER_ENV, server);
     }
     if headless {
         command.env(RUNNER_HEADLESS_ENV, "1");
@@ -821,14 +702,10 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// Launch contract: `--asset-dir` (host assets), `LINGXIA_LXAPP_PATH`
 /// (live lxapp bundle), and `LINGXIA_DEV_WS_URL` (devtool bridge).
 /// Host identity is generated into `app.json`.
-/// `runner_device` (the `--runner` flag) picks the simulated device, same
-/// id contract as the macOS runner's `LINGXIA_RUNNER_DEVICE`.
 fn launch_windows_runner_for_lxapp(
     lxapp_path: &Path,
     session_root: &Path,
     ws_url: &str,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
@@ -844,6 +721,7 @@ fn launch_windows_runner_for_lxapp(
     if host_home.is_some() {
         note_host_home();
     }
+    let lingxia_server = runner_lingxia_server(runner_env);
     let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
@@ -851,11 +729,10 @@ fn launch_windows_runner_for_lxapp(
             .join("runner")
             .join("state"),
         ws_url,
-        runner_device,
-        display_language,
         runner_env,
         &resource_lxapp_paths,
         host_home.as_deref(),
+        lingxia_server.as_deref(),
     )?;
 
     #[cfg(target_os = "windows")]
@@ -905,8 +782,6 @@ fn launch_windows_runner_for_web(
     session_root: &Path,
     url: &str,
     ws_url: &str,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     headless: bool,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
@@ -923,10 +798,9 @@ fn launch_windows_runner_for_web(
         &state_root,
         ws_url,
         &assets_dir,
-        runner_device,
-        display_language,
         headless,
         runner_env,
+        runner_lingxia_server(runner_env).as_deref(),
     );
 
     #[cfg(target_os = "windows")]
@@ -974,10 +848,9 @@ fn windows_web_runner_launch_args(
     state_root: &Path,
     ws_url: &str,
     assets_dir: &Path,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     headless: bool,
     runner_env: crate::config::AppEnv,
+    lingxia_server: Option<&str>,
 ) -> Vec<String> {
     let mut launch_args = vec![
         "--web-url".to_string(),
@@ -991,21 +864,10 @@ fn windows_web_runner_launch_args(
         "--asset-dir".to_string(),
         assets_dir.display().to_string(),
     ];
-    if let Some(device) = runner_device
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        launch_args.extend(["--runner-device".to_string(), device.to_string()]);
-    }
-    if let Some(language) = display_language
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        launch_args.extend(["--display-language".to_string(), language.to_string()]);
-    }
     if headless {
         launch_args.extend([RUNNER_HEADLESS_ARG.to_string(), "1".to_string()]);
     }
+    push_runner_server(&mut launch_args, lingxia_server);
     launch_args
 }
 
@@ -1015,11 +877,10 @@ fn windows_runner_launch_args(
     assets_dir: &Path,
     state_root: &Path,
     ws_url: &str,
-    runner_device: Option<&str>,
-    display_language: Option<&str>,
     runner_env: crate::config::AppEnv,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
     host_home_app_id: Option<&str>,
+    lingxia_server: Option<&str>,
 ) -> Result<Vec<String>> {
     let mut args = vec![
         "--lxapp-path".to_string(),
@@ -1033,14 +894,6 @@ fn windows_runner_launch_args(
         "--state-root".to_string(),
         state_root.display().to_string(),
     ];
-    if let Some(device) = runner_device.map(str::trim).filter(|s| !s.is_empty()) {
-        args.push("--runner-device".to_string());
-        args.push(device.to_string());
-    }
-    if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
-        args.push("--display-language".to_string());
-        args.push(language.to_string());
-    }
     if !resource_lxapp_paths.is_empty() {
         args.push("--resource-lxapp-paths".to_string());
         args.push(serde_json::to_string(resource_lxapp_paths)?);
@@ -1049,7 +902,24 @@ fn windows_runner_launch_args(
         args.push(RUNNER_HOST_HOME_ARG.to_string());
         args.push(app_id.to_string());
     }
+    push_runner_server(&mut args, lingxia_server);
     Ok(args)
+}
+
+/// Server saved by `lingxia auth login lingxia` for `env`.
+fn runner_lingxia_server(env: crate::config::AppEnv) -> Option<String> {
+    crate::cli_config::CliConfig::load()
+        .ok()
+        .and_then(|config| config.publish)
+        .and_then(|publish| publish.lingxia_server_for(env).map(str::to_string))
+}
+
+fn push_runner_server(args: &mut Vec<String>, server: Option<&str>) {
+    let Some(server) = server.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    args.push(RUNNER_SERVER_ARG.to_string());
+    args.push(server.to_string());
 }
 
 fn windows_runner_resource_lxapp_paths(
@@ -1588,8 +1458,8 @@ mod tests {
     use super::{
         RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
         lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
-        render_runner_devices, resolve_dev_target, windows_runner_launch_args,
-        windows_runner_ui_json, windows_web_runner_launch_args,
+        resolve_dev_target, windows_runner_launch_args, windows_runner_ui_json,
+        windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
@@ -1634,18 +1504,6 @@ mod tests {
         assert!(resolve_dev_target(temp.path(), Some("file:///tmp/app")).is_err());
         assert!(resolve_dev_target(temp.path(), Some("http://")).is_err());
         assert!(resolve_dev_target(temp.path(), Some("http://[")).is_err());
-    }
-
-    #[test]
-    fn runner_device_list_uses_shared_manifest() {
-        let list = render_runner_devices().unwrap();
-
-        assert!(list.contains("iphone-15-pro"));
-        assert!(list.contains("(default)"));
-        // A page screenshot is the viewport times this ratio.
-        assert!(list.contains("393 x 852   @3x"), "{list}");
-        assert!(list.contains("1280 x 800   @2x"), "{list}");
-        assert!(list.contains("lingxia dev --runner <device>"));
     }
 
     #[test]
@@ -1696,6 +1554,9 @@ mod tests {
 
         assert_eq!(app_json["env"], "prod");
         assert!(app_json.get("appLinks").is_none());
+        assert!(app_json.get("lingxiaId").is_none());
+        assert!(app_json.get("lingxiaServer").is_none());
+        assert!(app_json.get("lingxiaServers").is_none());
     }
 
     #[test]
@@ -1713,6 +1574,9 @@ mod tests {
         assert!(app_json.get("homeAppId").is_none());
         assert!(app_json.get("homeAppVersion").is_none());
         assert!(app_json.get("appLinks").is_none());
+        assert!(app_json.get("lingxiaId").is_none());
+        assert!(app_json.get("lingxiaServer").is_none());
+        assert!(app_json.get("lingxiaServers").is_none());
     }
 
     #[test]
@@ -1727,11 +1591,10 @@ mod tests {
             std::path::Path::new(r"D:\apps\assets"),
             std::path::Path::new(r"D:\sessions\state"),
             "ws://127.0.0.1:39000/?token=abc",
-            Some("desktop-1440"),
-            Some("zh-CN"),
             crate::config::AppEnv::Dev,
             &resources,
             None,
+            Some("https://api.example.com"),
         )
         .unwrap();
 
@@ -1745,18 +1608,14 @@ mod tests {
         );
         assert!(
             args.windows(2)
-                .any(|pair| pair == ["--runner-device", "desktop-1440"])
-        );
-        assert!(
-            args.windows(2)
                 .any(|pair| pair == ["--state-root", r"D:\sessions\state"])
-        );
-        assert!(
-            args.windows(2)
-                .any(|pair| pair == ["--display-language", "zh-CN"])
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
         assert!(!args.iter().any(|arg| arg == "--host-home-app-id"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--lingxia-server", "https://api.example.com"])
+        );
     }
 
     fn write_lxapp(dir: &std::path::Path, app_id: &str) {
@@ -1826,13 +1685,13 @@ mod tests {
             std::path::Path::new(r"D:\sessions\state"),
             "ws://127.0.0.1:39000/?token=abc",
             std::path::Path::new(r"D:\sessions\assets"),
-            Some("desktop-1440"),
-            None,
             true,
             crate::config::AppEnv::Dev,
+            None,
         );
 
         assert!(args.windows(2).any(|pair| pair == ["--headless", "1"]));
+        assert!(!args.iter().any(|arg| arg == "--lingxia-server"));
         assert!(
             args.windows(2)
                 .any(|pair| pair == ["--web-url", "http://127.0.0.1:5173/"])

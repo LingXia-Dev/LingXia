@@ -94,6 +94,39 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
     /// `granted` / `denied`. Empty when the prompt is left unanswered.
     static func requestPermission() -> String {
         let current = permission()
+        #if os(iOS)
+        // The gate needs the main actor; a main-thread caller prompts ungated.
+        if current != "granted", !Thread.isMainThread {
+            guard let granted = PermissionGates.blocking(timeout: .now() + 60, { done in
+                PermissionGates.run(
+                    .notification,
+                    permission: "notifications",
+                    blocked: current == "denied",
+                    declined: { done(false) }
+                ) { finish in
+                    guard current == "default" else {
+                        finish(.deniedPermanently)
+                        done(false)
+                        return
+                    }
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) {
+                        granted, error in
+                        if let error {
+                            setLastError(error.localizedDescription)
+                        }
+                        Task { @MainActor in
+                            finish(granted ? .granted : .deniedPermanently)
+                            done(granted)
+                        }
+                    }
+                }
+            }) else {
+                setLastError("notification permission prompt was not answered")
+                return ""
+            }
+            return granted ? "granted" : "denied"
+        }
+        #endif
         guard current == "default" || current == "granted" else { return current }
 
         let result = Box("")

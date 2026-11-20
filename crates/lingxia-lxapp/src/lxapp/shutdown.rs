@@ -106,6 +106,7 @@ impl LxApps {
             .cloned()
             .collect();
         for app in &apps {
+            app.close_window_surfaces_for_shutdown();
             self.retire_instance(app)?;
         }
         for app in &apps {
@@ -270,6 +271,42 @@ mod tests {
         manager.admission.resume().unwrap();
         let replacement = manager.ensure_lxapp(id, Channel::Release).unwrap();
         assert_ne!(replacement.session_id(), app.session_id());
+    }
+
+    #[tokio::test]
+    async fn drain_drops_closed_apps_from_the_window_switcher() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let manager = manager();
+        let keep = format!("app.switcher-keep.{}", uuid::Uuid::new_v4());
+        let id = format!("app.switcher-drain.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&keep);
+        register_synthetic_lxapp(&id);
+        let kept = manager
+            .ensure_lxapp(keep.clone(), Channel::Release)
+            .unwrap();
+        kept.set_active_main();
+        let app = manager.ensure_lxapp(id.clone(), Channel::Release).unwrap();
+        app.set_active_main();
+        let rows = |snapshot: lingxia_surface::SurfaceSwitcherSnapshot| {
+            snapshot
+                .items
+                .into_iter()
+                .map(|item| item.surface_id)
+                .collect::<HashSet<_>>()
+        };
+        assert!(rows(kept.surface_switcher_snapshot()).contains(&id));
+
+        manager
+            .admission
+            .block(HashSet::from([keep.clone()]))
+            .unwrap();
+        manager.wait_shutdown(Duration::from_secs(1)).await.unwrap();
+
+        let after = rows(kept.surface_switcher_snapshot());
+        assert!(!after.contains(&id));
+        assert!(after.contains(&keep));
+        manager.admission.resume().unwrap();
     }
 
     #[tokio::test]

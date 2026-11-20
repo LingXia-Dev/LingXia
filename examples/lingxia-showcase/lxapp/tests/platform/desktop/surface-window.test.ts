@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type TestApp, type TestView } from '@lingxia/test';
+import { expect, test, type Fixture, type TestApp, type TestView } from '@lingxia/test';
 import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
@@ -13,7 +13,6 @@ const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const FULL_DRAG_STRIP_HEIGHT = 28;
 
 interface OpenedWindow {
-  id: string;
   key: string | null;
   kind: string;
   realized: string;
@@ -24,19 +23,18 @@ interface OpenedWindow {
 
 /** The members of a page surface handle these probes use. */
 interface SurfaceHandle {
-  readonly id: string;
   readonly alive: boolean;
   readonly visible: boolean;
   close(): Promise<void>;
   postMessage(message: unknown): void;
-  onClose(handler: (event: { id?: string }) => void): () => void;
+  onClose(handler: (event: { reason?: string }) => void): () => void;
   onMessage(handler: (message: { message?: string; timestamp?: number }) => void): () => void;
 }
 
 /** What a spec keeps on Logic's `globalThis` between evals. */
 interface HeldSurface {
   handle?: SurfaceHandle | null;
-  closed?: number | Array<{ id?: string }>;
+  closed?: number | Array<{ reason?: string }>;
   messages?: Array<{ message?: string; timestamp?: number }>;
   off?: (() => void) | null;
 }
@@ -82,7 +80,6 @@ async function openWindow(
       query: { fixture: key, chrome },
     });
     return {
-      id: handle.id,
       key: handle.key ?? null,
       kind: handle.kind,
       realized: handle.realized,
@@ -150,9 +147,9 @@ function newSurfaceWindow(
     ))[0];
 }
 
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
-spec('native close disposes a secondary window in the dock and tray host', {
+test('native close disposes a secondary window in the dock and tray host', {
   id: 'DESKTOP-SURFACE-NATIVE-CLOSE-001',
   covers: ['PageSurface.onClose', 'PageSurface.alive', 'PageSurface.visible'],
   app: SHOWCASE_APP_ID,
@@ -195,7 +192,7 @@ spec('native close disposes a secondary window in the dock and tray host', {
   expect(state.closed).toBe(1);
 });
 
-spec('open a page window with system chrome and with full chrome', {
+test('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
   covers: [
     'lx.surface.openPage',
@@ -203,7 +200,6 @@ spec('open a page window with system chrome and with full chrome', {
     'lx.supports',
     'PageSurface.kind',
     'PageSurface.realized',
-    'PageSurface.id',
     'PageSurface.key',
     'PageSurface.alive',
     'PageSurface.visible',
@@ -353,7 +349,7 @@ async function invokeCaption(
   await desktop.ax.invoke({ window: window.id, match: `id:${node.id}` });
 }
 
-spec('caption buttons stay on top and can close both chrome modes', {
+test('caption buttons stay on top and can close both chrome modes', {
   id: 'DESKTOP-SURFACE-WINDOW-CHROME-001',
   covers: [
     'lx.surface.openPage',
@@ -452,7 +448,7 @@ spec('caption buttons stay on top and can close both chrome modes', {
   }
 });
 
-spec('deliver a child page message to its opener before closing', {
+test('deliver a child page message to its opener before closing', {
   id: 'DESKTOP-SURFACE-MESSAGE-001',
   covers: ['PageSurface.onMessage', 'PageMessagePort.postMessage'],
   app: SHOWCASE_APP_ID,
@@ -525,7 +521,7 @@ spec('deliver a child page message to its opener before closing', {
   );
 });
 
-spec('push a message from the opener into its page window', {
+test('push a message from the opener into its page window', {
   id: 'DESKTOP-SURFACE-POST-001',
   covers: ['PageSurface.postMessage', 'PageSurface.close', 'PageSurface.onClose', 'PageSurface.alive'],
   app: SHOWCASE_APP_ID,
@@ -561,7 +557,7 @@ spec('push a message from the opener into its page window', {
   // close lands — after close() itself resolves, so observe rather than read.
   await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key, stateKey) => {
     const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle;
-    const closed: Array<{ id?: string }> = [];
+    const closed: Array<{ reason?: string }> = [];
     handle.onClose((event) => closed.push(event));
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = { handle, closed };
     await handle.close();
@@ -576,12 +572,12 @@ spec('push a message from the opener into its page window', {
       return {
         alive: state.handle!.alive,
         visible: state.handle!.visible,
-        closed: (state.closed as Array<{ id?: string }>).map((event) => ({ id: event.id ?? null })),
+        closed: (state.closed as Array<{ reason?: string }>).map((event) => ({ reason: event.reason ?? null })),
       };
     }, stateKey),
     (state) => !state.alive && !state.visible && state.closed.length >= 1,
     { describe: 'closed surface handle to report alive=false, visible=false, and fire onClose', timeoutMs: 10_000 },
   );
   expect(closed.closed.length).toBe(1);
-  expect(closed.closed[0]?.id).toBe(opened.id);
+  expect(closed.closed[0]?.reason).toBe('programmatic');
 });

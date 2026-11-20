@@ -14,7 +14,7 @@
   "emptyHint": "Tap + to pick photos.",
   "previewHint": "Tap Preview to open the full selection.",
   "galleryHint": "Tap Preview to open the full selection.",
-  "headerSubtitle": "lx.chooseMedia / lx.previewMedia",
+  "headerSubtitle": "lx.pickMedia / lx.previewMedia",
   "addLabel": "Add Photo",
   "scanResult": "",
   "scanType": "",
@@ -57,6 +57,5 @@
   "previewSessionBusy": false,
   "previewSessionResult": null,
   "previewSessionError": "",
-  "componentRotateKey": "meta",
   "componentObjectFitKey": "cover"
 }

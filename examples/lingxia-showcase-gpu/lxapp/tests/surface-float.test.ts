@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openUnderTabs } from './open-demo';
 import { rawAutomation } from '@lingxia/test/runner';
 import { androidDevice, type AndroidNode } from '@lingxia/test/showcase/helpers/android-device.js';
@@ -10,7 +10,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 // What the docs promise about a float: it is not part of the page that opened it, so it stays open
 // while that page navigates, and it sits above the page's own top layer. Read from the composited
 // screen, since each sits on its own surface.
-spec('a float outlives its opener navigating away and stays above a page dialog', {
+test('a float outlives its opener navigating away and stays above a page dialog', {
   id: 'SURFACE-FLOAT-STACK-001', covers: ['lx.surface.openPage', 'view:dialog'],
   requires: { args: ['androidDevice'] }, reason: 'reads the composited screen through the Android device fixture',
   start: openUnderTabs('sheet'),
@@ -108,7 +108,7 @@ async function decodePng(base64: string): Promise<{ width: number; height: numbe
 
 // The host screenshot composites every window: a modal float shows its card, and around it the
 // page under a scrim rather than the float window's opaque snapshot.
-spec('a host screenshot shows the page dimmed around a modal float card', {
+test('a host screenshot shows the page dimmed around a modal float card', {
   id: 'SURFACE-FLOAT-SHOT-001', covers: ['lx.surface.openPage'],
   start: { page: 'view' },
 }, async (t) => {

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 import { reveal } from './pixels';
 
@@ -9,7 +9,7 @@ const against = (note: Box, link: Box) => {
   return gap > -1 && gap < 16 && note.x < link.x + link.width && note.x + note.width > link.x;
 };
 
-spec('a link mid-sentence opens its note against itself, says it is expanded, and the sentence keeps its lines', { covers: ['view:link', 'view:popover'], start: openDemo('linkNotes') }, async (t) => {
+test('a link mid-sentence opens its note against itself, says it is expanded, and the sentence keeps its lines', { covers: ['view:link', 'view:popover'], start: openDemo('linkNotes') }, async (t) => {
   const view = t.app.view;
   const link = view.testId('lab-notes-link');
   const note = view.testId('lab-notes-note');
@@ -28,7 +28,7 @@ spec('a link mid-sentence opens its note against itself, says it is expanded, an
   expect((await sentence.boundingBox()).height).toBe(open);
 });
 
-spec('a hint on a link shows while keyboard focus rests on it, on a link that wraps onto two lines too', { covers: ['view:link', 'view:popover', 'view:a11y'], start: openDemo('linkNotes') }, async (t) => {
+test('a hint on a link shows while keyboard focus rests on it, on a link that wraps onto two lines too', { covers: ['view:link', 'view:popover', 'view:a11y'], start: openDemo('linkNotes') }, async (t) => {
   const view = t.app.view;
   const hintLink = view.testId('lab-hint-link');
   const hint = view.testId('lab-hint-note');
@@ -51,7 +51,7 @@ spec('a hint on a link shows while keyboard focus rests on it, on a link that wr
   await expect(wrap).toHaveCount(0);
 });
 
-spec('a mouse resting on a link shows its hint, on either line of a link that wraps', { covers: ['view:link', 'view:pointer'], start: openDemo('linkNotes') }, async (t) => {
+test('a mouse resting on a link shows its hint, on either line of a link that wraps', { covers: ['view:link', 'view:pointer'], start: openDemo('linkNotes') }, async (t) => {
   const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
   const view = t.app.view;

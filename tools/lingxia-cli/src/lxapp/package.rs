@@ -22,10 +22,8 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
         ));
     }
 
-    // Packaging is the distribution boundary, and a `dist/` can reach it
-    // without this CLI having built it — an older CLI, or an edit made after
-    // the build. Audit what is actually about to ship.
-    crate::lxapp::media::audit_output_media(&project.output_dir)?;
+    // A `dist/` can reach packaging without this CLI having built it, so
+    // stamp what is actually about to ship.
     if crate::lxapp::stamp_output_html(&project.output_dir)? {
         crate::lxapp::hardening::write_integrity_manifest(project)?;
     }

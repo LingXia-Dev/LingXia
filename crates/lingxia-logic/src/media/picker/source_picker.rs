@@ -20,7 +20,7 @@ pub(super) async fn present_source_picker(
         Some(idx) => sources
             .get(idx)
             .copied()
-            .ok_or_else(|| js_internal_error("chooseMedia source picker returned invalid index"))
+            .ok_or_else(|| js_internal_error("pickMedia source picker returned invalid index"))
             .map(Some),
         None => Ok(None),
     }

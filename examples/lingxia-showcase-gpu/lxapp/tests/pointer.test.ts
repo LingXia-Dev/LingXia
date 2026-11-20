@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // `onPointer` on the scrub plot: twelve months across its width, the marker on the one under x.
-spec('a pointer scrubs along x and a vertical drag from the plot still scrolls the page', { covers: ['view:pointer', 'view:scroll'], start: openDemo('pointer') }, async (t) => {
+test('a pointer scrubs along x and a vertical drag from the plot still scrolls the page', { covers: ['view:pointer', 'view:scroll'], start: openDemo('pointer') }, async (t) => {
   const view = t.app.view;
   const plot = view.testId('lab-scrub-plot');
   const state = view.testId('lab-scrub-state');
@@ -27,7 +27,7 @@ spec('a pointer scrubs along x and a vertical drag from the plot still scrolls t
   }
 });
 
-spec('arrow keys and assistive input step the scrub plot in place', { covers: ['view:pointer', 'view:a11y'], start: openDemo('pointer') }, async (t) => {
+test('arrow keys and assistive input step the scrub plot in place', { covers: ['view:pointer', 'view:a11y'], start: openDemo('pointer') }, async (t) => {
   const view = t.app.view;
   const plot = view.testId('lab-scrub-plot');
   const state = view.testId('lab-scrub-state');

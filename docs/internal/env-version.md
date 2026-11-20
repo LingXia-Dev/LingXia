@@ -24,15 +24,15 @@ No compatibility aliases: `developer`/`preview`/`release` are not env names,
 spellings.
 
 YAML only overrides server and app-link hosts. Switching env must not
-rewrite any git-tracked file. A build requires a server URL for its env;
-omitting App Links for an env leaves that build without App Links.
+rewrite any git-tracked file. A server URL is optional: an env without one
+builds an app with no service server. Omitting App Links for an env leaves that build without App Links.
 
 | `lingxia.yaml` | `--env dev` | `--env prod` |
 | --- | --- | --- |
-| no server | build error | build error |
+| no server | `.dev`, no server | none, no server |
 | `lingxiaServer: "X"` | `.dev`, server=X | none, server=X |
 | `lingxiaServer: {dev:A, prod:B}` | `.dev`, server=A | none, server=B |
-| `lingxiaServer: {dev:A}` | `.dev`, server=A | build error |
+| `lingxiaServer: {dev:A}` | `.dev`, server=A | none, no server |
 | `appLinks.hosts: [H]` | hosts=`[H]` | hosts=`[H]` |
 | `appLinks.hosts: {dev:[D], prod:[R]}` | hosts=`[D]` | hosts=`[R]` |
 
@@ -58,8 +58,13 @@ app may call this API.
 
 The default lxapp channel is always `release`, independent of the running
 service env. Draft opens and publishes require an explicit `channel` selector.
-Installs and storage remain keyed by channel, home lxapp included. Switching
-service env does not select a different lxapp data profile by itself.
+
+Installs and data are keyed by channel and service env, home lxapp included:
+install dirs, install/download records, userdata, usercache, temp,
+`lx.getStorage`, plugin installs and cached registry answers. A dev-service
+package (possibly unsigned) therefore never runs under the prod service, and the
+two services never share login state. Uninstall acts on the running env's
+records; the orphan sweep keeps every env's referenced installs.
 
 Lxapps/plugins from the dev service may be unsigned on every channel,
 including on a prod build switched to dev and including the home lxapp. Packages from the prod service
@@ -74,6 +79,9 @@ remain above native sheets and guest lxapps without intercepting input.
 A process whose `app.json` has `devWsUrl` uses that same mark to show the
 port it dials. The phone tab shows only the port. The desktop chip shows the
 port, and `DEV` plus the port when the service mark is also up.
+Runner hosts never show this mark, even with `devWsUrl` configured. Runner
+identity is registered before SDK initialization (or supplied by
+`LINGXIA_RUNNER`); hiding the mark does not disable the dev connection.
 
 `--env` is not a channel alias. `--channel` is not accepted on
 `lingxia build` / `dev` / `package`. `lingxia publish` splits the two axes:

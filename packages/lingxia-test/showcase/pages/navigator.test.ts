@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
 import { waitForCurrentPage } from '../helpers/page.js';
@@ -13,7 +13,7 @@ async function openNavigator(t: Fixture, id: string) {
   return { app, page, home };
 }
 
-spec('navigate through a component and return to the original page instances', {
+test('navigate through a component and return to the original page instances', {
   id: 'NAVIGATOR-STACK-001', app: SHOWCASE_APP_ID,
   covers: ['lx.navigateTo', 'lx.navigateBack'],
 }, async (t) => {
@@ -30,7 +30,7 @@ spec('navigate through a component and return to the original page instances', {
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['home']);
 });
 
-spec('redirect through a component replaces only the current stack entry', {
+test('redirect through a component replaces only the current stack entry', {
   id: 'NAVIGATOR-REDIRECT-001', app: SHOWCASE_APP_ID,
   covers: ['lx.redirectTo'],
 }, async (t) => {
@@ -43,7 +43,7 @@ spec('redirect through a component replaces only the current stack entry', {
   expect((await app.nav.current()).instanceId).toBe(home.instanceId);
 });
 
-spec('relaunch through a component resets the stack and delivers its query', {
+test('relaunch through a component resets the stack and delivers its query', {
   id: 'NAVIGATOR-RELAUNCH-001', app: SHOWCASE_APP_ID,
   covers: ['lx.reLaunch'],
 }, async (t) => {
@@ -54,7 +54,7 @@ spec('relaunch through a component resets the stack and delivers its query', {
   await expect((await app.page({ name: 'device' })).view.testId('device-page')).toHaveAttribute('data-mode', 'screen');
 });
 
-spec('switch tab through a component clears the pushed stack', {
+test('switch tab through a component clears the pushed stack', {
   id: 'NAVIGATOR-TAB-001', app: SHOWCASE_APP_ID,
   covers: ['lx.switchTab'],
 }, async (t) => {

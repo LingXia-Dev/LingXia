@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { skipWhenCovered } from './covered.js';
 
 // The media specs play the bundled clip (`media=packaged`): the lab's own player streams public video.
-spec('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'spec-video', query: { media: 'packaged' } } }, async (t) => {
+test('kit video controls start a poster video on a tap, then pause, mute and scrub it', { start: { page: 'spec-video', query: { media: 'packaged' } } }, async (t) => {
   await skipWhenCovered(t, 'spec-video');
   const view = t.app.view;
   const button = (name: string) => view.getByRole('button', { name });
@@ -33,7 +33,7 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
   await expect(button('Pause')).toHaveCount(0);
 });
 
-spec('kit video controls show the player full screen and Escape brings it back', { start: { page: 'spec-video', query: { media: 'packaged' } } }, async (t) => {
+test('kit video controls show the player full screen and Escape brings it back', { start: { page: 'spec-video', query: { media: 'packaged' } } }, async (t) => {
   await skipWhenCovered(t, 'spec-video');
   const view = t.app.view;
   await view.testId('lab-video-controls-play').click();
@@ -58,7 +58,7 @@ spec('kit video controls show the player full screen and Escape brings it back',
 });
 
 // A desktop window keeps the shape its user gave it; a phone turns to the picture.
-spec('a landscape full-screen video turns the window and leaving gives it back', { start: { page: 'spec-video', query: { media: 'packaged' } }, requires: { input: ['touch'] } }, async (t) => {
+test('a landscape full-screen video turns the window and leaving gives it back', { start: { page: 'spec-video', query: { media: 'packaged' } }, requires: { input: ['touch'] } }, async (t) => {
   const view = t.app.view;
   const wide = async () => { const area = await view.viewport(); return area.width > area.height; };
   // Just after launch a window the sensor turned can still report its old shape: read it settled.

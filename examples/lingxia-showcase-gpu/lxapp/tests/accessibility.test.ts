@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 import { apart, fillOf } from './pixels';
 
 // GPU-only fixtures read through role and accessible name, the way a screen reader does.
-spec('the catalogue answers locators by role and name', { start: openDemo('names') }, async (t) => {
+test('the catalogue answers locators by role and name', { start: openDemo('names') }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('heading', { name: 'Monthly bills' })).toBeVisible();
   await expect(view.testId('lab-a11y-list').getByRole('listitem')).toHaveCount(3);
@@ -13,7 +13,7 @@ spec('the catalogue answers locators by role and name', { start: openDemo('names
   await expect(status).toHaveText('Saved 1 times');
 });
 
-spec('composites take one Tab stop, arrows move between items and tabs activate on arrival', {
+test('composites take one Tab stop, arrows move between items and tabs activate on arrival', {
   start: openDemo('groups'),
 }, async (t) => {
   const view = t.app.view;
@@ -33,7 +33,7 @@ spec('composites take one Tab stop, arrows move between items and tabs activate 
   await expect(view.getByRole('treeitem', { name: 'main.ts' })).toHaveCount(1);
 });
 
-spec('focus-visible paints after a key moves focus and clears after a finger tap', { start: openDemo('focus') }, async (t) => {
+test('focus-visible paints after a key moves focus and clears after a finger tap', { start: openDemo('focus') }, async (t) => {
   const view = t.app.view;
   const ring = view.testId('lab-focus-visible');
   const plain = await fillOf(t, ring);
@@ -46,7 +46,7 @@ spec('focus-visible paints after a key moves focus and clears after a finger tap
   await expect.poll(async () => apart(await fillOf(t, ring), plain), { timeout: 3_000 }).toBe(false);
 });
 
-spec('a hint shows after a key rests focus on its trigger and Escape hides it', { start: openDemo('focus') }, async (t) => {
+test('a hint shows after a key rests focus on its trigger and Escape hides it', { start: openDemo('focus') }, async (t) => {
   const view = t.app.view;
   const hint = view.testId('lab-interest-hint');
   await expect(hint).toHaveCount(0);
@@ -60,7 +60,7 @@ spec('a hint shows after a key rests focus on its trigger and Escape hides it', 
   await expect(trigger).toBeFocused();
 });
 
-spec('controls report checked, selected, pressed and expanded as a screen reader announces them', { covers: ['view:switch', 'view:checkbox', 'view:radio', 'view:a11y'], start: openDemo('nested') }, async (t) => {
+test('controls report checked, selected, pressed and expanded as a screen reader announces them', { covers: ['view:switch', 'view:checkbox', 'view:radio', 'view:a11y'], start: openDemo('nested') }, async (t) => {
   const view = t.app.view;
   const wifi = view.testId('lab-nested-switch');
   await expect(wifi).toBeChecked();

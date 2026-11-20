@@ -1,5 +1,5 @@
 //! `lxdev runner`: the simulated environment owned by the runner host —
-//! device preset, orientation and appearance.
+//! device preset, orientation, appearance and display language.
 //! Runner sessions only.
 
 use crate::client;
@@ -23,7 +23,7 @@ pub enum RunnerCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Print the simulated environment (device, orientation, appearance)
+    /// Print the simulated environment (device, orientation, appearance, language)
     Get {
         /// Print JSON output
         #[arg(long)]
@@ -43,6 +43,11 @@ pub enum RunnerCommand {
         /// Simulated appearance for the device screen
         #[arg(long, value_enum)]
         appearance: Option<AppearanceArg>,
+        /// Display language for this dev session: a BCP-47 tag (`zh-CN`,
+        /// `sr-Latn-RS`) or `auto` for the system. Shadows
+        /// `lx.host.displayLanguage` and is not saved.
+        #[arg(long, value_name = "TAG")]
+        language: Option<String>,
         /// Simulated system text size as a factor of the default (1.3, 2), 0.5 to 3
         #[arg(long, value_name = "FACTOR")]
         text_scale: Option<f64>,
@@ -118,6 +123,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             landscape,
             portrait,
             appearance,
+            language,
             text_scale,
             contrast,
             json,
@@ -126,11 +132,12 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                 && !landscape
                 && !portrait
                 && appearance.is_none()
+                && language.is_none()
                 && text_scale.is_none()
                 && contrast.is_none()
             {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, --appearance, --text-scale or --contrast"
+                    "nothing to change: pass --id, --landscape/--portrait, --appearance, --language, --text-scale or --contrast"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -149,6 +156,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                     "id": id,
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
+                    "language": language,
                     "textScale": text_scale,
                     "contrast": contrast.map(ContrastArg::as_str),
                 })),
@@ -241,6 +249,9 @@ fn describe_state(data: &Value) -> Result<String> {
         "{name} ({id})  {width}x{height} {}  {orientation}  appearance: {appearance}",
         pixel_ratio(data)
     );
+    if let Some(language) = data.get("language").and_then(Value::as_str) {
+        line.push_str(&format!("  language: {language}"));
+    }
     // The defaults go unsaid.
     let text_scale = data.get("textScale").and_then(Value::as_f64).unwrap_or(1.0);
     if (text_scale - 1.0).abs() > 0.001 {
@@ -275,6 +286,14 @@ mod tests {
         assert_eq!(
             describe_state(&state).unwrap(),
             "iPhone 15 Pro (iphone-15-pro)  393x852 @3x  portrait  appearance: dark"
+        );
+        let state = json!({
+            "name": "iPad", "id": "ipad", "width": 820, "height": 1180,
+            "landscape": true, "appearance": "system", "language": "zh-CN",
+        });
+        assert_eq!(
+            describe_state(&state).unwrap(),
+            "iPad (ipad)  820x1180 @1x  landscape  appearance: system  language: zh-CN"
         );
     }
 }

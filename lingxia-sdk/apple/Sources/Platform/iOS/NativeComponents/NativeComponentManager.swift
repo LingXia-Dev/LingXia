@@ -89,26 +89,8 @@ final class NativeComponentManager {
         factories[type] = factory
     }
 
-    private var island: InlineNativeIsland?
-    /// Island video leaves, keyed by author id: they answer `lx.createVideoContext`
-    /// commands and callbacks exactly like a legacy overlay component.
-    private var islandVideos: [String: VideoComponent] = [:]
-
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
-        if island == nil, InlineNativeIsland.isIslandAction(action), let hostView {
-            // The bridge installs before the page's WebView learns its lxapp, so the
-            // id captured at init may still be the placeholder; read it now.
-            island = InlineNativeIsland(host: hostView, manager: self, webView: webView, appId: webView?.appId ?? appId) { [weak self] id, event, detail in
-                self?.emitIslandEvent(componentId: id, event: event, detail: detail)
-            }
-        }
-        if island?.handle(message: message) == true {
-            island?.drainOutgoing().forEach { payload in
-                emitIslandPayload(payload)
-            }
-            return
-        }
 
         switch action {
         case "component.mount":
@@ -360,69 +342,7 @@ final class NativeComponentManager {
     }
 
     func componentView(componentId: String) -> UIView? {
-        return components[componentId]?.view ?? islandVideos[componentId]?.view
-    }
-
-    func emitIslandEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
-        updatePlaybackIntent(componentId: componentId, event: event)
-        let payload: [String: Any] = [
-            "action": "component.event",
-            "id": componentId,
-            "componentId": componentId,
-            "event": event,
-            "detail": detail,
-            "pageId": componentPage[componentId] ?? defaultPageId,
-        ]
-        emitEventToView(componentId: componentId, payload: payload)
-        forwardEventToCallback(componentId: componentId, payload: payload)
-    }
-
-    private func emitIslandPayload(_ payload: [String: Any]) {
-        if let id = payload["id"] as? String {
-            emitEventToView(componentId: id, payload: payload)
-            return
-        }
-        eventSink(payload)
-    }
-
-    /// Bind an island video leaf to the command/callback registry so
-    /// `lx.createVideoContext(id)` reaches it.
-    func attachIslandVideo(id: String, component: VideoComponent) {
-        islandVideos[id] = component
-        ComponentRouter.shared.register(componentId: id, manager: self)
-    }
-
-    func detachIslandVideo(id: String) {
-        guard islandVideos.removeValue(forKey: id) != nil else { return }
-        ComponentRouter.shared.unregister(componentId: id, manager: self)
-        componentCallbacks.removeValue(forKey: id)
-        componentsPendingAutoResume.remove(id)
-        componentPlaybackIntent.removeValue(forKey: id)
-    }
-
-    func publishIslandPresentation(root: [String: Any], sameLayer: Bool) {
-        guard let id = root["rootKey"] as? String else { return }
-        eventSink(["action": "root.presentation", "id": id, "root": root,
-                   "mode": sameLayer ? "same-layer" : "overlay"])
-    }
-
-    private func pauseIslandVideos() {
-        for (id, video) in islandVideos {
-            if componentsPendingAutoResume.contains(id) || componentPlaybackIntent[id] == true {
-                componentsPendingAutoResume.insert(id)
-            } else {
-                componentsPendingAutoResume.remove(id)
-            }
-            video.handleCommand(name: "pause", params: nil)
-        }
-        island?.setPageActive(false)
-    }
-
-    private func resumeIslandVideos() {
-        island?.setPageActive(true)
-        for (id, video) in islandVideos where componentsPendingAutoResume.remove(id) != nil {
-            video.handleCommand(name: "play", params: nil)
-        }
+        return components[componentId]?.view
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
@@ -433,8 +353,7 @@ final class NativeComponentManager {
     }
 
     func setStreamDecoderActive(componentId: String, active: Bool) {
-        let video = (components[componentId] as? VideoComponent) ?? islandVideos[componentId]
-        video?.setStreamDecoderActive(active)
+        (components[componentId] as? VideoComponent)?.setStreamDecoderActive(active)
     }
 
     private func handlePageLifecycle(_ parameters: [String: Any]) {
@@ -444,17 +363,13 @@ final class NativeComponentManager {
         case "inactive":
             if inactivePages.insert(pageId).inserted {
                 pausePage(pageId)
-                pauseIslandVideos()
             }
         case "active":
             inactivePages.remove(pageId)
             resumePage(pageId)
-            resumeIslandVideos()
         case "destroyed":
             inactivePages.remove(pageId)
             unmountPage(pageId)
-            island?.teardown()
-            island = nil
         default:
             break
         }
@@ -465,8 +380,6 @@ final class NativeComponentManager {
         inactivePages.removeAll()
         componentsPendingAutoResume.removeAll()
         componentPlaybackIntent.removeAll()
-        island?.teardown()
-        island = nil
         let allIds = Array(components.keys)
         allIds.forEach { id in
             unmountComponent(id: id, pageId: componentPage[id])
@@ -687,9 +600,7 @@ final class NativeComponentManager {
             component.handleCommand(name: name, params: params)
             return true
         }
-        guard let video = islandVideos[componentId] else { return false }
-        video.handleCommand(name: name, params: params)
-        return true
+        return false
     }
 
     private func unmountComponent(id: String, pageId: String?) {

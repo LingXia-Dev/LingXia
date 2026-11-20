@@ -1,6 +1,6 @@
 import type { Fixture, TestApp, TestView } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, eventually, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -37,7 +37,7 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
   );
 }
 
-spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.relaunch({ page: 'pullToRefresh' });
@@ -109,7 +109,7 @@ async function expectPageIntact(view: TestView, when: string): Promise<void> {
   }
 }
 
-spec("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true, hostInput: true } }, async (t) => {
+test("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true, hostInput: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-002");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
@@ -160,7 +160,7 @@ spec("a pull follows the finger, refreshes once past the threshold, and leaves t
   });
 });
 
-spec("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true } }, async (t) => {
+test("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-003");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
@@ -189,7 +189,7 @@ spec("a swipe scrolls the page and a pull below the top scrolls back instead of 
 
 // Touch only: synthesized trackpad momentum does not carry a macOS WebView,
 // so a desktop fling would measure the injector, not the page.
-spec("a fling carries the page past where the finger stopped", { id: "PULL-004", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch'] } }, async (t) => {
+test("a fling carries the page past where the finger stopped", { id: "PULL-004", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch'] } }, async (t) => {
   const { app } = bindFixture(t, "PULL-004");
   await app.nav.relaunch({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;

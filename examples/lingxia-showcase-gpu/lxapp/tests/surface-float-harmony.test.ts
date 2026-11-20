@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(channel - b[i]) <= 24);
@@ -6,7 +6,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 // A Harmony float is its own sub-window, so its GPU page must draw there: inside the card the screen
 // shows the float's page, not the opener under the scrim. Read from the composited screen, since the
 // host capture snapshots only the main window.
-spec('a modal float draws its GPU page in its own window', {
+test('a modal float draws its GPU page in its own window', {
   id: 'SURFACE-FLOAT-HARMONY-001', covers: ['lx.surface.openPage'],
   requires: { args: ['harmonyDevice'] }, reason: 'reads the composited screen through the Harmony device fixture',
   start: { page: 'view' },

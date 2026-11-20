@@ -1,11 +1,11 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
-spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
-    'lx.getLxAppInfo',
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
+    'lx.getAppInfo',
     'lx.getDeviceInfo',
     'lx.getScreenInfo',
     'lx.getNetworkInfo',
@@ -16,7 +16,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const app = lx.getLxAppInfo();
+    const app = lx.getAppInfo();
     const device = lx.getDeviceInfo();
     const screen = lx.getScreenInfo();
     const network = await lx.getNetworkInfo();
@@ -42,7 +42,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
   expect(['dev', 'prod']).toContain(result.env);
 });
 
-spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
+test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
     'lx.onNetworkChange',
     'lx.onDeviceOrientationChange',
     'lx.onKeyDown',
@@ -73,7 +73,7 @@ spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   expect(result).toBeTruthy();
 });
 
-spec("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+test("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
   const result = await app.logic.eval(async ({ lx }) => {
@@ -112,7 +112,7 @@ spec("answer capability questions consistently with the optional members", { id:
   });
 });
 
-spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
@@ -154,7 +154,7 @@ spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
   expect(result.sizeRestored).toBeTruthy();
 });
 
-spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
+test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
     'lx.fs',
     'lx.fs.copy',
     'lx.fs.exists',
@@ -223,7 +223,7 @@ spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
   expect(result.dataPathAvailable).toBeTruthy();
 });
 
-spec("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
+test("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
   id: "LOGIC-007",
   covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.reLaunch'],
   app: SHOWCASE_APP_ID,
@@ -286,7 +286,7 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(leftover == null).toBeTruthy();
 });
 
-spec("read directories, LxFile.exists/path, and deny escaped paths", {
+test("read directories, LxFile.exists/path, and deny escaped paths", {
   id: "LOGIC-008",
   covers: ['lx.fs.readDir', 'lx.fs.stat', 'LxFile.exists', 'LxFile.path'],
   app: SHOWCASE_APP_ID,
@@ -315,6 +315,9 @@ spec("read directories, LxFile.exists/path, and deny escaped paths", {
       return {
         names: entries.map((entry) => entry.name).sort(),
         childIsFile: entries.some((entry) => entry.name === 'child.txt' && entry.isFile),
+        // Entries must be plain data: a class wrapper serializes to null.
+        serializedIsFile: (JSON.parse(JSON.stringify(entries)) as typeof entries)
+          .some((entry) => entry.name === 'child.txt' && entry.isFile),
         exists,
         path: file.path,
         text,
@@ -327,6 +330,7 @@ spec("read directories, LxFile.exists/path, and deny escaped paths", {
   }, namespace);
 
   expect(result.childIsFile).toBeTruthy();
+  expect(result.serializedIsFile).toBeTruthy();
   expect(result.exists).toBeTruthy();
   expect(result.path).toContain(namespace);
   expect(result.text).toBe('overwritten');

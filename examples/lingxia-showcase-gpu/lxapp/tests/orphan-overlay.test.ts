@@ -1,7 +1,7 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 
 // An overlay goes with the control that opened it.
-spec('a date picker closes when its field leaves the page', { covers: ['view:picker', 'view:dialog'], start: { page: 'spec-orphan' } }, async (t) => {
+test('a date picker closes when its field leaves the page', { covers: ['view:picker', 'view:dialog'], start: { page: 'spec-orphan' } }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-orphan-date').click();
   await expect(view.testId('lx-picker')).toBeVisible();

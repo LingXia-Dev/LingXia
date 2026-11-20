@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // Right opens a folder and then enters it; Left leaves it and then closes it.
-spec('arrows open a folder, move into it, move out and close it', { covers: ['view:tree-keys'], start: openDemo('tree') }, async (t) => {
+test('arrows open a folder, move into it, move out and close it', { covers: ['view:tree-keys'], start: openDemo('tree') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-tree-state');
   const documents = view.testId('lab-tree-documents');
@@ -29,7 +29,7 @@ spec('arrows open a folder, move into it, move out and close it', { covers: ['vi
 });
 
 // A named list is found by its name.
-spec('a list takes a name a screen reader says', { covers: ['view:list-name'], start: openDemo('named') }, async (t) => {
+test('a list takes a name a screen reader says', { covers: ['view:list-name'], start: openDemo('named') }, async (t) => {
   const view = t.app.view;
   await expect(view.css('[aria-label="Messages"]')).toHaveCount(1);
   expect(await view.css('[aria-label="Messages"] span').count()).toBeGreaterThan(0);

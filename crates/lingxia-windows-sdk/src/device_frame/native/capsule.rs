@@ -40,6 +40,7 @@ fn capsule_icon_tint() -> u32 {
 /// Pixel geometry of the capsule window (origin at the window's top-left,
 /// which sits `CAPSULE_SHADOW` outside the pill on every side).
 struct CapsuleGeometry {
+    scale: f64,
     width: i32,
     height: i32,
     pill: RECT,
@@ -48,21 +49,23 @@ struct CapsuleGeometry {
     right_icon: RECT,
 }
 
-fn capsule_geometry() -> CapsuleGeometry {
-    let pill_w = CAPSULE_PAD * 2 + CAPSULE_ICON * 2 + CAPSULE_GAP * 2 + 1;
-    let width = pill_w + CAPSULE_SHADOW * 2;
-    let height = CAPSULE_H + CAPSULE_SHADOW * 2;
+fn capsule_geometry(scale: f64) -> CapsuleGeometry {
+    let px = |value: i32| (value as f64 * scale).round() as i32;
+    let pill_w = px(CAPSULE_PAD) * 2 + px(CAPSULE_ICON) * 2 + px(CAPSULE_GAP) * 2 + px(1);
+    let width = pill_w + px(CAPSULE_SHADOW) * 2;
+    let height = px(CAPSULE_H) + px(CAPSULE_SHADOW) * 2;
     let pill = RECT {
-        left: CAPSULE_SHADOW,
-        top: CAPSULE_SHADOW,
-        right: CAPSULE_SHADOW + pill_w,
-        bottom: CAPSULE_SHADOW + CAPSULE_H,
+        left: px(CAPSULE_SHADOW),
+        top: px(CAPSULE_SHADOW),
+        right: px(CAPSULE_SHADOW) + pill_w,
+        bottom: px(CAPSULE_SHADOW) + px(CAPSULE_H),
     };
-    let icon_top = pill.top + (CAPSULE_H - CAPSULE_ICON) / 2;
-    let left_icon_left = pill.left + CAPSULE_PAD;
-    let divider_x = left_icon_left + CAPSULE_ICON + CAPSULE_GAP;
-    let right_icon_left = divider_x + 1 + CAPSULE_GAP;
+    let icon_top = pill.top + (px(CAPSULE_H) - px(CAPSULE_ICON)) / 2;
+    let left_icon_left = pill.left + px(CAPSULE_PAD);
+    let divider_x = left_icon_left + px(CAPSULE_ICON) + px(CAPSULE_GAP);
+    let right_icon_left = divider_x + px(1) + px(CAPSULE_GAP);
     CapsuleGeometry {
+        scale,
         width,
         height,
         pill,
@@ -70,14 +73,14 @@ fn capsule_geometry() -> CapsuleGeometry {
         left_icon: RECT {
             left: left_icon_left,
             top: icon_top,
-            right: left_icon_left + CAPSULE_ICON,
-            bottom: icon_top + CAPSULE_ICON,
+            right: left_icon_left + px(CAPSULE_ICON),
+            bottom: icon_top + px(CAPSULE_ICON),
         },
         right_icon: RECT {
             left: right_icon_left,
             top: icon_top,
-            right: right_icon_left + CAPSULE_ICON,
-            bottom: icon_top + CAPSULE_ICON,
+            right: right_icon_left + px(CAPSULE_ICON),
+            bottom: icon_top + px(CAPSULE_ICON),
         },
     }
 }
@@ -86,7 +89,7 @@ fn capsule_geometry() -> CapsuleGeometry {
 /// pill plus its inset mirrored on both sides.
 pub(crate) fn capsule_reserve_width() -> i32 {
     let pill_w = CAPSULE_PAD * 2 + CAPSULE_ICON * 2 + CAPSULE_GAP * 2 + 1;
-    pill_w + CAPSULE_INSET * 2
+    crate::dpi::px(pill_w + CAPSULE_INSET * 2)
 }
 
 /// The visible pill's rect in the page's CSS pixel space, or `None` while the
@@ -94,11 +97,11 @@ pub(crate) fn capsule_reserve_width() -> i32 {
 /// measurement, so a custom-navigation page can lay out around the pill the
 /// same way it does on iOS.
 ///
-/// Coordinate mapping mirrors `report_surface_viewport`: a fit-scaled device
-/// frame renders `fit` physical px per CSS px regardless of monitor DPI;
-/// otherwise physical px per CSS px is the window DPI over 96. Win32 window
-/// queries used here are safe from any thread, which matters because the
-/// runtime asks from the Logic executor, not the UI thread.
+/// Coordinate mapping mirrors `report_surface_viewport`: a device frame
+/// renders `fit` physical px per CSS px, and `fit` already includes the
+/// monitor DPI. Win32 window queries used here are safe from any thread,
+/// which matters because the runtime asks from the Logic executor, not the
+/// UI thread.
 pub(super) fn capsule_page_rect(content: HWND) -> Option<String> {
     let handle = hwnd_handle(content);
     let (capsule, fit) = frame_state(handle, |state| {
@@ -126,23 +129,18 @@ pub(super) fn capsule_page_rect(content: HWND) -> Option<String> {
         }
     }
 
-    let scale = if fit < 1.0 {
-        fit
-    } else {
-        let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(content) }.max(96);
-        dpi as f64 / 96.0
-    };
+    let scale = fit;
     if scale <= 0.0 {
         return None;
     }
 
     // The pill sits `CAPSULE_SHADOW` inside the layered capsule window.
-    let geometry = capsule_geometry();
+    let geometry = capsule_geometry(scale);
     let pill_w = (geometry.pill.right - geometry.pill.left) as f64;
-    let left = (capsule_rect.left + CAPSULE_SHADOW - content_rect.left) as f64 / scale;
-    let top = (capsule_rect.top + CAPSULE_SHADOW - content_rect.top) as f64 / scale;
+    let left = (capsule_rect.left + geometry.pill.left - content_rect.left) as f64 / scale;
+    let top = (capsule_rect.top + geometry.pill.top - content_rect.top) as f64 / scale;
     let width = pill_w / scale;
-    let height = CAPSULE_H as f64 / scale;
+    let height = (geometry.pill.bottom - geometry.pill.top) as f64 / scale;
 
     Some(format!(
         "{{\"width\":{width},\"height\":{height},\"top\":{top},\"right\":{right},\"bottom\":{bottom},\"left\":{left}}}",
@@ -183,7 +181,11 @@ fn capsule_class() -> PCWSTR {
 /// Creates the capsule overlay owned by `content` and uploads its bitmap.
 /// Returns the window handle, or `None` on failure / when the toolbar has no
 /// capsule actions.
-pub(super) fn create_capsule_window(content: HWND, spec: &WindowsDeviceFrame) -> Option<isize> {
+pub(super) fn create_capsule_window(
+    content: HWND,
+    spec: &WindowsDeviceFrame,
+    scale: f64,
+) -> Option<isize> {
     let has_menu = spec
         .toolbar
         .as_ref()
@@ -191,7 +193,7 @@ pub(super) fn create_capsule_window(content: HWND, spec: &WindowsDeviceFrame) ->
     if !has_menu {
         return None;
     }
-    let geometry = capsule_geometry();
+    let geometry = capsule_geometry(scale);
     let capsule = unsafe {
         WindowsAndMessaging::CreateWindowExW(
             WindowsAndMessaging::WS_EX_LAYERED
@@ -227,9 +229,10 @@ pub(super) fn create_capsule_window(content: HWND, spec: &WindowsDeviceFrame) ->
 /// the two design icons, then uploads via `UpdateLayeredWindow`.
 fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
     let mut pixels = capsule_pixels(geometry);
+    let icon_size = geometry.left_icon.right - geometry.left_icon.left;
     if let Some(menu) = design_icon_argb_premultiplied(
         WindowsDesignIcon::CapsuleMenu,
-        CAPSULE_ICON as u32,
+        icon_size as u32,
         Some(capsule_icon_tint()),
     ) {
         blit_premultiplied(
@@ -237,12 +240,12 @@ fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
             geometry.width,
             geometry.left_icon,
             &menu,
-            CAPSULE_ICON,
+            icon_size,
         );
     }
     if let Some(close) = design_icon_argb_premultiplied(
         WindowsDesignIcon::CapsuleClose,
-        CAPSULE_ICON as u32,
+        icon_size as u32,
         Some(capsule_icon_tint()),
     ) {
         blit_premultiplied(
@@ -250,7 +253,7 @@ fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
             geometry.width,
             geometry.right_icon,
             &close,
-            CAPSULE_ICON,
+            icon_size,
         );
     }
     unsafe {
@@ -316,15 +319,17 @@ fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
 /// 1px divider between the two halves. Fill follows the simulated host scheme.
 fn capsule_pixels(geometry: &CapsuleGeometry) -> Vec<u32> {
     let pill = geometry.pill;
+    let radius = CAPSULE_RADIUS * geometry.scale as f32;
+    let shadow_size = (CAPSULE_SHADOW as f64 * geometry.scale) as f32;
     let cx = (pill.left + pill.right) as f32 / 2.0;
     let cy = (pill.top + pill.bottom) as f32 / 2.0;
-    let half_x = (pill.right - pill.left) as f32 / 2.0 - CAPSULE_RADIUS;
-    let half_y = (pill.bottom - pill.top) as f32 / 2.0 - CAPSULE_RADIUS;
+    let half_x = (pill.right - pill.left) as f32 / 2.0 - radius;
+    let half_y = (pill.bottom - pill.top) as f32 / 2.0 - radius;
     let rounded_distance = |x: f32, y: f32| -> f32 {
         let qx = (x - cx).abs() - half_x;
         let qy = (y - cy).abs() - half_y;
         let outside = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt();
-        outside + qx.max(qy).min(0.0) - CAPSULE_RADIUS
+        outside + qx.max(qy).min(0.0) - radius
     };
     let mut pixels = Vec::with_capacity((geometry.width * geometry.height) as usize);
     for y in 0..geometry.height {
@@ -335,7 +340,7 @@ fn capsule_pixels(geometry: &CapsuleGeometry) -> Vec<u32> {
             let fill = (0.5 - dist).clamp(0.0, 1.0) * CAPSULE_FILL_ALPHA;
             // Soft drop shadow, biased slightly downward.
             let shadow_d = rounded_distance(px, py - 1.0).max(0.0);
-            let shadow = (1.0 - shadow_d / CAPSULE_SHADOW as f32).clamp(0.0, 1.0);
+            let shadow = (1.0 - shadow_d / shadow_size).clamp(0.0, 1.0);
             let shadow_a = 0.18 * shadow * shadow;
             let mut alpha = fill + (1.0 - fill) * shadow_a;
             let (fr, fg, fb) = if super::overlay_is_dark() {
@@ -348,8 +353,8 @@ fn capsule_pixels(geometry: &CapsuleGeometry) -> Vec<u32> {
             let mut b = fb * fill;
             // Divider line inside the pill.
             if x == geometry.divider_x
-                && py > pill.top as f32 + 7.0
-                && py < pill.bottom as f32 - 7.0
+                && py > pill.top as f32 + 7.0 * geometry.scale as f32
+                && py < pill.bottom as f32 - 7.0 * geometry.scale as f32
             {
                 let tint = capsule_icon_tint();
                 let dr = ((tint >> 16) & 0xff) as f32;
@@ -431,14 +436,16 @@ pub(super) fn reposition_capsule(content: HWND) {
             .unwrap_or(0)
     })
     .unwrap_or(0);
-    let geometry = capsule_geometry();
+    let scale = content_fit_scale(handle).unwrap_or(1.0);
+    let px = |value: i32| (value as f64 * scale).round() as i32;
+    let geometry = capsule_geometry(scale);
     let pill_w = geometry.pill.right - geometry.pill.left;
-    let x = rect.right - CAPSULE_INSET - pill_w - CAPSULE_SHADOW;
+    let x = rect.right - px(CAPSULE_INSET) - pill_w - geometry.pill.left;
     let y = if status_bar_height > 0 {
-        let nav_center = ((NAV_BAR_ROW_HEIGHT - CAPSULE_H).max(0)) / 2;
-        rect.top + status_bar_height + nav_center - CAPSULE_NAV_LIFT - CAPSULE_SHADOW
+        let nav_center = px((NAV_BAR_ROW_HEIGHT - CAPSULE_H).max(0)) / 2;
+        rect.top + status_bar_height + nav_center - px(CAPSULE_NAV_LIFT) - geometry.pill.top
     } else {
-        rect.top + CAPSULE_INSET - CAPSULE_SHADOW
+        rect.top + px(CAPSULE_INSET) - geometry.pill.top
     };
     unsafe {
         let _ = WindowsAndMessaging::SetWindowPos(
@@ -477,6 +484,16 @@ pub(super) fn destroy_capsule(capsule: isize) {
     }
 }
 
+/// The capsule's owning content window and the pill geometry at its current
+/// display scale. Only pointer messages need it, so other messages skip the
+/// frame-registry lock.
+fn capsule_owner_geometry(capsule: HWND) -> (HWND, CapsuleGeometry) {
+    let owner = unsafe { WindowsAndMessaging::GetWindow(capsule, WindowsAndMessaging::GW_OWNER) }
+        .unwrap_or_default();
+    let scale = content_fit_scale(hwnd_handle(owner)).unwrap_or(1.0);
+    (owner, capsule_geometry(scale))
+}
+
 unsafe extern "system" fn capsule_proc(
     hwnd: HWND,
     msg: u32,
@@ -484,7 +501,7 @@ unsafe extern "system" fn capsule_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WindowsAndMessaging::WM_NCHITTEST {
-        let geometry = capsule_geometry();
+        let (_, geometry) = capsule_owner_geometry(hwnd);
         let screen_x = (lparam.0 & 0xffff) as i16 as i32;
         let screen_y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
         let mut rect = RECT::default();
@@ -507,9 +524,7 @@ unsafe extern "system" fn capsule_proc(
         return LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize);
     } else if msg == WindowsAndMessaging::WM_LBUTTONDOWN {
         let x = (lparam.0 & 0xffff) as i16 as i32;
-        let geometry = capsule_geometry();
-        let owner = unsafe { WindowsAndMessaging::GetWindow(hwnd, WindowsAndMessaging::GW_OWNER) }
-            .unwrap_or_default();
+        let (owner, geometry) = capsule_owner_geometry(hwnd);
         // The left "…" half opens the lxapp info sheet; the right circle is the
         // close button, which the caller (dev runner) maps to "quit emulator".
         if x < geometry.divider_x {

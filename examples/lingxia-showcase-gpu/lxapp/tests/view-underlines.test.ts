@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // What the lines look like is for the eye: the shots go with the run, light and dark.
-spec('a dotted, a dashed and a struck line draw in their own colours', { covers: ['view:text-decoration'], start: openDemo('underlines') }, async (t) => {
+test('a dotted, a dashed and a struck line draw in their own colours', { covers: ['view:text-decoration'], start: openDemo('underlines') }, async (t) => {
   const view = t.app.view;
   const text = view.testId('lab-underlines-text');
   // A press on the link brings the demo into view.

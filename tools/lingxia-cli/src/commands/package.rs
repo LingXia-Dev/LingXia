@@ -13,8 +13,8 @@ pub struct PackageOptions {
     )]
     pub android_abis: Vec<String>,
 
-    /// macOS architecture for native build
-    #[arg(long, value_parser = ["arm64", "x86_64"])]
+    /// macOS architecture: arm64, x86_64, or universal. Defaults to `macos.arch` (arm64)
+    #[arg(long, value_parser = ["arm64", "x86_64", "universal"])]
     pub macos_arch: Option<String>,
 
     /// LxApp progress output mode

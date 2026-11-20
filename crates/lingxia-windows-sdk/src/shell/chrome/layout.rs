@@ -19,7 +19,17 @@ pub struct WindowsShellNavigationBarLayout {
     pub text_color: u32,
     pub show_back_button: bool,
     pub show_home_button: bool,
+    /// The page declared `enablePullDownRefresh`: a desktop has no pull
+    /// gesture to discover, so the bar offers a button after Back/Home.
+    pub show_refresh_button: bool,
     pub height: i32,
+}
+
+impl WindowsShellNavigationBarLayout {
+    /// Slot of the refresh button: after Back and Home, or the first slot.
+    pub fn refresh_button_index(&self) -> i32 {
+        i32::from(self.show_back_button) + i32::from(self.show_home_button)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

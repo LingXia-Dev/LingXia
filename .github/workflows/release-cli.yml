@@ -6,11 +6,11 @@
 # the root install.sh, rustup/deno-style). NO npm distribution.
 #
 # Job graph:
-#   build (4-target matrix)  ─┐
+#   build (3-target matrix)  ─┐
 #   build-runner (2 arches)  ─┴─> publish (combine + SHASUMS + gh-release)
 #
 # The CLI does NOT support Linux yet, so we build only macOS (arm64 + x86_64)
-# and Windows (arm64 + x86_64). Each target builds on its OS runner. The arm64
+# and Windows (x86_64). Each target builds on its OS runner. The arm64
 # macOS runner cross-compiles the x86_64-apple-darwin target natively (a
 # supported Apple cross).
 # lingxia-cli's build.rs embeds the bridge/polyfills JS runtime, so every job
@@ -84,7 +84,7 @@ jobs:
         include:
           # Native per-OS builds. The arm64 macOS runner also builds the
           # x86_64-apple-darwin target natively (Apple cross), so Intel Macs are
-          # covered. Windows publishes both x64 and arm64 assets.
+          # covered. Windows publishes x64 assets for native or emulated use.
           - os: darwin
             arch: aarch64
             label: macOS arm64
@@ -103,12 +103,6 @@ jobs:
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             cli_target: windows-x64
-          - os: windows
-            arch: aarch64
-            label: Windows arm64
-            runner: windows-latest
-            target: aarch64-pc-windows-msvc
-            cli_target: windows-arm64
     steps:
       - uses: actions/checkout@v5
         with:

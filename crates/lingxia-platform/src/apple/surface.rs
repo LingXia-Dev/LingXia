@@ -65,6 +65,7 @@ impl SurfacePresenter for Platform {
             request.interaction.modal,
             request.ephemeral_web_data,
             request.url_callback,
+            request.browser_tab_id.as_deref().unwrap_or_default(),
             request.chrome as i32,
         ) {
             Ok(())

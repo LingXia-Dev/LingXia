@@ -1,3 +1,5 @@
+import type { AppLaunchOptions } from "@lingxia/types";
+
 const moreFeedbackByLanguage = {
   "en-US": "Feedback",
   "zh-CN": "反馈",
@@ -62,7 +64,13 @@ App({
     });
   },
 
-  onShow() {
+  onShow(options?: AppLaunchOptions) {
+    // Showcase desktop specs read what a reopen delivered.
+    this.globalData.lastShow = options;
     applyMoreActions();
+  },
+
+  globalData: {
+    lastShow: undefined as AppLaunchOptions | undefined,
   },
 });

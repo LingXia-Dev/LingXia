@@ -1,5 +1,5 @@
 import type { TestApp } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -39,7 +39,7 @@ async function waitForState(
   });
 }
 
-spec("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-001");
 
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
@@ -65,7 +65,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
   expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
-spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-002");
 
   for (const type of ['networkType', 'localIP'] as const) {
@@ -107,7 +107,7 @@ spec("keep network query and listener behavior equivalent across renderers", { i
   );
 });
 
-spec('publishes every device mode in the rendered API menu', {
+test('publishes every device mode in the rendered API menu', {
   timeout: 60_000,
   app: SHOWCASE_APP_ID,
 }, async (t) => {

@@ -1,16 +1,16 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo, openUnderTabs } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: HarmonyNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
 const sum = (rgb: number[]) => rgb[0] + rgb[1] + rgb[2];
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // A page dialog sits in the page's top layer, and its backdrop covers the host's bars as well as the
 // page: under it a bar point dims as much as a page point. Read from the composited screen, since
 // the bars are host views, not part of the GPU page.
-spec('a page dialog dims the nav and tab bars as it dims the page', {
+test('a page dialog dims the nav and tab bars as it dims the page', {
   id: 'TOP-LAYER-BARS-001', covers: ['view:dialog'],
   reason: 'reads the composited screen through the Harmony device fixture',
   start: openUnderTabs('dialog'),
@@ -49,7 +49,7 @@ spec('a page dialog dims the nav and tab bars as it dims the page', {
 });
 
 // The system back gesture is a close request to the topmost dialog, as Escape is; the page stays.
-spec('the system back gesture closes an open dialog and leaves the page where it was', {
+test('the system back gesture closes an open dialog and leaves the page where it was', {
   id: 'TOP-LAYER-BACK-001', covers: ['view:dialog'],
   reason: 'performs the system back gesture through the Harmony device fixture',
   start: openDemo('dialog'),
@@ -71,7 +71,7 @@ spec('the system back gesture closes an open dialog and leaves the page where it
 
 // Full screen covers the host's bars, and a finger on their strip reaches the page, never a tab
 // item under it: a leaked tap would switch tabs or open More.
-spec('a finger on the covered tab bar strip in full screen stays with the video', {
+test('a finger on the covered tab bar strip in full screen stays with the video', {
   id: 'TOP-LAYER-BARS-002', covers: ['view:dialog'],
   reason: 'taps through the system input path of the Harmony device fixture',
   start: { page: 'view', query: { spec: 'video', media: 'packaged' } },

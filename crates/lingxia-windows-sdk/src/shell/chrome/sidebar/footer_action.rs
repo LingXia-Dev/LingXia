@@ -283,7 +283,7 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
         let text_color = palette.text_muted;
 
         if !disabled {
-            draw_hover_wash(hdc, rect, 6, cursor);
+            draw_hover_wash(hdc, rect, px(6), cursor);
         }
 
         let icon_rect = if icon_only {
@@ -302,7 +302,13 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
         let icon_path = footer_action
             .map(|item| item.icon_path.as_str())
             .unwrap_or_default();
-        let _ = draw_icon_from_path(hdc, icon_path, icon_rect, footer_action_icon_size() as u32);
+        let _ = draw_action_icon(
+            hdc,
+            icon_path,
+            icon_rect,
+            footer_action_icon_size() as u32,
+            disabled,
+        );
         if let Some(value) = value {
             draw_text(
                 hdc,

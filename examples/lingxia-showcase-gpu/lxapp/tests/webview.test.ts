@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openDemo } from './open-demo.js';
 import { decodePng } from './png.js';
 
@@ -13,7 +13,7 @@ async function onScreen(t: Fixture, target: Locator) {
   return box;
 }
 
-spec('embedded webview loads packaged HTML, syncs #hash without reload, enforces mailbox and source policies', { start: { page: 'spec-webview' } }, async (t) => {
+test('embedded webview loads packaged HTML, syncs #hash without reload, enforces mailbox and source policies', { start: { page: 'spec-webview' } }, async (t) => {
   const view = t.app.view;
 
   await expect(view.testId('wv-state-load')).toContainText('title=Embed Demo|origin=lxapp|iframeClean=true', { timeout: 8_000 });
@@ -59,7 +59,7 @@ spec('embedded webview loads packaged HTML, syncs #hash without reload, enforces
   await expect(view.testId('wv-state-err')).toContainText('err=WEBVIEW_NOT_GRANTED', { timeout: 5_000 });
 });
 
-spec('embedded webview composites beneath View overlays, suppresses semantics under modal dialog, and hands off to a 70% dialog sheet without reload', { start: { page: 'spec-webview' } }, async (t) => {
+test('embedded webview composites beneath View overlays, suppresses semantics under modal dialog, and hands off to a 70% dialog sheet without reload', { start: { page: 'spec-webview' } }, async (t) => {
   const view = t.app.view;
 
   await expect(view.testId('wv-state-load')).toContainText('title=Embed Demo|origin=lxapp|iframeClean=true', { timeout: 8_000 });
@@ -124,7 +124,7 @@ spec('embedded webview composites beneath View overlays, suppresses semantics un
   await expect(view.testId('wv-state-epoch')).toContainText('|sheet=false', { timeout: 3_000 });
 });
 
-spec('view-media webview demo opens a 70% sheet via floating button and exits via Close, backdrop, or Escape without reload', { start: openDemo('webview') }, async (t) => {
+test('view-media webview demo opens a 70% sheet via floating button and exits via Close, backdrop, or Escape without reload', { start: openDemo('webview') }, async (t) => {
   const view = t.app.view;
   const readout = view.testId('lab-webview-state');
 
@@ -188,7 +188,7 @@ const skipWhenInjected = (t: Fixture, trace: { delivered: string }, byHand: stri
   if (trace.delivered === 'view') t.skip(`the drag was injected into the View page and never reached the native web view. By hand: ${byHand}`);
 };
 
-spec('a drag on a web page that does not keep its drags scrolls the screen', { covers: ['view:webview', 'view:scroll'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
+test('a drag on a web page that does not keep its drags scrolls the screen', { covers: ['view:webview', 'view:scroll'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
   const { view, state } = await webDrags(t);
   const frame = view.testId('lab-web-drags-plain');
   const before = await onScreen(t, frame);
@@ -200,7 +200,7 @@ spec('a drag on a web page that does not keep its drags scrolls the screen', { c
   await expect(state).toHaveAttribute('data-state', /plain=(none|\d+,\d+ moves=\d+ cancelled) /, { timeout: 3_000 });
 });
 
-spec('a web page with handlesDrags keeps a drag that starts on it: its pin follows and the screen stays', { covers: ['view:webview'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
+test('a web page with handlesDrags keeps a drag that starts on it: its pin follows and the screen stays', { covers: ['view:webview'], start: openDemo('webDrags'), requires: { input: ['touch'] } }, async (t) => {
   const { view, state } = await webDrags(t);
   const frame = view.testId('lab-web-drags-own');
   const before = await onScreen(t, frame);
@@ -228,7 +228,7 @@ spec('a web page with handlesDrags keeps a drag that starts on it: its pin follo
 });
 
 // The page reads only `prefers-color-scheme`: no hash, no message from the View page.
-spec('an embedded web page follows the View page\'s appearance live, without the hash or a reload', { covers: ['view:webview', 'view:environment'], start: openDemo('webScheme') }, async (t) => {
+test('an embedded web page follows the View page\'s appearance live, without the hash or a reload', { covers: ['view:webview', 'view:environment'], start: openDemo('webScheme') }, async (t) => {
   const state = t.app.view.testId('lab-web-scheme-state');
   const read = async () => (await state.getAttribute('data-state')) ?? '';
   for (const theme of ['light', 'dark', 'light'] as const) {
@@ -243,7 +243,7 @@ spec('an embedded web page follows the View page\'s appearance live, without the
 
 // Scrolling hands off at the edge: drags inside move the web page until its last row, then the
 // next drag scrolls the screen. Only a real touch reaches the native web view.
-spec('a drag inside a scrollable web page scrolls it to its edge, then the screen takes the next drag', { covers: ['view:webview', 'view:scroll'], start: openDemo('webScroll'), requires: { input: ['touch'] } }, async (t) => {
+test('a drag inside a scrollable web page scrolls it to its edge, then the screen takes the next drag', { covers: ['view:webview', 'view:scroll'], start: openDemo('webScroll'), requires: { input: ['touch'] } }, async (t) => {
   const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
   if (os === 'ios') t.skip('iOS: the runner\'s drag never reaches the native web view; check by hand on a device');
   const view = t.app.view;

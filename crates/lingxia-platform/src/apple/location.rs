@@ -285,26 +285,51 @@ pub(crate) mod ios {
 
         #[allow(deprecated)]
         let authorization_status = unsafe { CLLocationManager::authorizationStatus_class() };
+        let start = move || {
+            DispatchQueue::main().exec_async(move || {
+                if let Err(err_msg) = start_location_request(callback_id) {
+                    log::error!("Apple Location: Failed to start request {}", err_msg);
+                    deliver_failure(callback_id, &err_msg);
+                }
+            });
+        };
+
+        #[cfg(target_os = "ios")]
         if matches!(
             authorization_status,
-            CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted
+            CLAuthorizationStatus::AuthorizedWhenInUse | CLAuthorizationStatus::AuthorizedAlways
         ) {
-            log::warn!(
-                "Apple Location: Authorization denied/restricted before request (status: {:?})",
-                authorization_status
-            );
-            // Report permission denial via callback; the logic layer owns user-facing toasts
-            // and error handling decisions.
-            deliver_failure(callback_id, "Location permission denied");
-            return Ok(());
+            start();
+        } else {
+            // The host's permission gate runs in Swift around the system prompt.
+            std::thread::spawn(move || {
+                if crate::apple::ffi::request_location_access() {
+                    start();
+                } else {
+                    DispatchQueue::main().exec_async(move || {
+                        deliver_failure(callback_id, "Location permission denied");
+                    });
+                }
+            });
         }
 
-        DispatchQueue::main().exec_async(move || {
-            if let Err(err_msg) = start_location_request(callback_id) {
-                log::error!("Apple Location: Failed to start request {}", err_msg);
-                deliver_failure(callback_id, &err_msg);
+        #[cfg(not(target_os = "ios"))]
+        {
+            if matches!(
+                authorization_status,
+                CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted
+            ) {
+                log::warn!(
+                    "Apple Location: Authorization denied/restricted before request (status: {:?})",
+                    authorization_status
+                );
+                // Report permission denial via callback; the logic layer owns user-facing toasts
+                // and error handling decisions.
+                deliver_failure(callback_id, "Location permission denied");
+                return Ok(());
             }
-        });
+            start();
+        }
 
         let timeout_ms = config.effective_timeout_ms();
         let callbacks = callbacks().clone();

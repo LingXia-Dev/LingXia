@@ -772,10 +772,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self?.browserCoordinator.closeTab(id: id)
         }
         sidebar.onBrowserTabCloseOtherRequested = { [weak self] id in
-            self?.browserCoordinator.closeOtherTabs(keeping: id)
+            self?.closeMainAreaRows(around: id, below: false)
         }
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
-            self?.browserCoordinator.closeTabsBelow(id: id)
+            self?.closeMainAreaRows(around: id, below: true)
+        }
+        sidebar.onBrowserTabMoveToSidePanelRequested = { [weak self] id in
+            self?.browserCoordinator.moveTabToSidePanel(id: id)
         }
         sidebar.onPanelItemToggled = { [weak self] generation, actionID, source in
             switch source {
@@ -840,11 +843,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let toolbar = MacNavigationToolbar()
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.onNavigationAction = { [weak self] action in
-            guard let appId = self?.tabManager.activeTab?.appId else { return }
-            if action == "back" {
+            // The bar shows the state of the app that last published it; a
+            // declared surface (e.g. the host's home) does not move the tab
+            // manager, so its active tab can name another app.
+            guard let appId = NavigationBarStateManager.shared.currentAppId
+                ?? self?.tabManager.activeTab?.appId
+            else { return }
+            switch action {
+            case "back":
                 let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
-            } else if action == "home" {
+            case "home":
                 let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionHome)
+            case "refresh":
+                let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionRefresh)
+            default:
+                break
             }
         }
         toolbar.onHostAction = { [weak self] actionID in
@@ -855,6 +868,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         workspace.addSubview(toolbar)
         workspaceManager.attachBelowToolbar(toolbar)
 
+        installMainAsideDropZone(in: contentView)
         workspaceManager.configure(
             overlayParent: contentView,
             sidebar: sidebarSlot,
@@ -1128,6 +1142,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// maximized. Wired by the AppUI runtime to the core slot state.
     var onRestoreMaximizedAside: (() -> Bool)?
 
+    /// An lxapp shown in side panel `id` was closed by the runtime (not by
+    /// the panel), so the panel holds nothing. Wired by the AppUI runtime to
+    /// release the panel as the panel's own close does.
+    var onAsideLxAppClosed: ((String) -> Void)?
+
     /// A user intent to see main (draft §3.3): restore a maximized aside before
     /// the switch, also when the target is the main already showing. The aside
     /// keeps its size and its page.
@@ -1288,7 +1307,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Cmd+Option+\: collapse the lxapp aside slot or bring it back. Focus
+    /// Cmd+Option+\: collapse the side panel slot or bring it back. Focus
     /// follows: into the aside page when it returns, back to the main when it
     /// goes away.
     func toggleLxappAsideFromKeyboard() -> Bool {
@@ -1296,7 +1315,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // is one when no lxapp main is attached (a native or browser main).
         guard let appId = attachedMainAppId ?? LxAppTabManager.shared.activeTab?.appId
             ?? LxAppLayoutReconciler.lxappAsideChildId() else { return false }
-        switch toggleAsideSlotCollapsed(appId, "lxapp") {
+        switch toggleAsideSlotCollapsed(appId, "panel") {
         case 1:
             if let webView = Self.firstWebView(in: workspaceManager.rootView) {
                 window?.makeFirstResponder(webView)
@@ -1887,6 +1906,41 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         reconcileSidebarAutoHide()
     }
 
+    /// The sidebar's main-area rows, in order.
+    func mainAreaRows() -> [MainAreaRow] {
+        sidebarView?.mainAreaRows() ?? []
+    }
+
+    /// "Close Others" (`below == false`) or "Close Tabs Below" on the
+    /// main-area row `id`: every closable row it names, managed mains and
+    /// browser tabs alike, closes through its own provider.
+    func closeMainAreaRows(around id: String, below: Bool) {
+        let rows = mainAreaRows()
+        guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
+        let targets = (below ? Array(rows[(index + 1)...]) : rows.filter { $0.id != id })
+            .filter(\.closable)
+            .map(\.id)
+        guard !targets.isEmpty else { return }
+        let shown = sidebarView?.selectedMainAreaRowId()
+        let browserTabs = Set(browserCoordinator.tabIds)
+        for target in targets {
+            if browserTabs.contains(target) {
+                browserCoordinator.closeTab(id: target)
+            } else if managedMainSurfaceIDs.contains(target) {
+                managedMainCloseHandler?(target)
+            }
+        }
+        // A closed main presents its provider's successor (home), even under
+        // a browser tab that stays. Show the row that was showing if it
+        // stays, else the row the menu was opened on.
+        let keep = shown.flatMap { targets.contains($0) ? nil : $0 } ?? id
+        if browserTabs.contains(keep) {
+            browserCoordinator.selectTab(id: keep)
+        } else if managedMainSurfaceIDs.contains(keep) {
+            managedMainActivateHandler?(keep)
+        }
+    }
+
     func beginManagedMainRename(surfaceId: String) {
         sidebarView?.beginManagedMainRename(surfaceId: surfaceId)
     }
@@ -2094,11 +2148,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if let viewController = asideViewControllers[appId] {
             viewController.destroyNativeComponents()
         }
+        let asidePanelId = asidePanelIdByAppId[appId]
         detachAsideLxApp(appId: appId)
 
         tabManager.closeTab(appId: appId)
         appSessions.removeValue(forKey: appId)
         LxAppCore.removeSessionId(for: appId)
+
+        // A runtime close (not a restart, which reopens in place) leaves the
+        // app's side panel tab with nothing to show; let the runtime release it.
+        if !notifyRuntime, !suppressAutoReopen, let asidePanelId {
+            onAsideLxAppClosed?(asidePanelId)
+        }
 
         // A restart drives its own reopen; everything else reveals the next app.
         guard revealNext, !suppressAutoReopen, autoRevealOnClose else { return }
@@ -2986,6 +3047,44 @@ extension LxAppShell {
         tabManager.addTab(appId: appId, activate: false)
         tabManager.activeTab = tabManager.tabs.first { $0.appId == appId }
         return viewController
+    }
+
+    /// The band along the content area's trailing edge that takes a dragged
+    /// sidebar group: the live lxapp main moves into the side panel there.
+    private func installMainAsideDropZone(in parent: NSView) {
+        let zone = MainAsideDropZoneView(edge: "right")
+        zone.onDrop = { payload, edge in demoteMainLxappToAside(payload.appId, edge) }
+        parent.addSubview(zone, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            zone.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            zone.topAnchor.constraint(equalTo: parent.topAnchor),
+            zone.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
+            zone.widthAnchor.constraint(equalToConstant: 96),
+        ])
+    }
+
+    /// The core made `appId` an aside while its main controller still exists:
+    /// the main was demoted. Drop the main controller and its switcher row
+    /// without ending the session, and hand back the page it was showing so
+    /// a panel can re-host it (the WebView moves without reloading). The
+    /// successor main is attached by the plan's `activeMainId`, not here.
+    func detachMainLxAppForAside(appId: String) -> (path: String, pageInstanceId: String?)? {
+        guard let viewController = viewControllers[appId] else { return nil }
+        let page = viewController.presentedPage
+        viewController.pauseNativeComponents()
+        if currentViewController === viewController {
+            currentViewController = nil
+        }
+        viewController.view.removeFromSuperview()
+        viewControllers.removeValue(forKey: appId)
+        // Remove the row without `onTabChanged`: the graph already picked
+        // the successor main, which the caller presents; selecting from here
+        // would re-enter the core.
+        tabManager.tabs.removeAll { $0.appId == appId }
+        if tabManager.activeTab?.appId == appId {
+            tabManager.activeTab = nil
+        }
+        return page
     }
 
     /// Take `appId` out of its aside panel without ending the session.

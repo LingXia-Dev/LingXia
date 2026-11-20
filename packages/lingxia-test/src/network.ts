@@ -239,7 +239,7 @@ export function waitForNextCall(
 
 /** The lines listing recent calls for a timeout, read within `ms`. */
 async function recentCalls(recent: () => Promise<NetworkCall[]>, ms: number): Promise<string> {
-  if (ms < 1) return "Recent calls were not read: the spec's budget is spent.";
+  if (ms < 1) return "Recent calls were not read: the test's budget is spent.";
   let handle: unknown;
   const late = new Promise<"late">((resolve) => { handle = runnerSetTimeout(() => resolve("late"), ms); });
   let listed: NetworkCall[] | "late";

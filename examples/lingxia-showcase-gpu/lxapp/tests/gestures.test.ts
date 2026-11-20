@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // Drag elements, driven by a finger and by their semantics-tree equivalents.
-spec('a drag element follows the finger and lands on the nearest snap point', { covers: ['view:drag'], start: openDemo('stops') }, async (t) => {
+test('a drag element follows the finger and lands on the nearest snap point', { covers: ['view:drag'], start: openDemo('stops') }, async (t) => {
   const view = t.app.view;
   const card = view.testId('lab-drag-card');
   const state = view.testId('lab-drag-state');
@@ -16,7 +16,7 @@ spec('a drag element follows the finger and lands on the nearest snap point', { 
   await expect(state).toHaveAttribute('data-state', 'at=0 last=released at 1');
 });
 
-spec('arrow keys and assistive input step a drag element through its points', { covers: ['view:drag', 'view:a11y'], start: openDemo('stops') }, async (t) => {
+test('arrow keys and assistive input step a drag element through its points', { covers: ['view:drag', 'view:a11y'], start: openDemo('stops') }, async (t) => {
   const view = t.app.view;
   const card = view.getByRole('slider', { name: 'Card' });
   await expect(card).toHaveValue('1');
@@ -29,7 +29,7 @@ spec('arrow keys and assistive input step a drag element through its points', { 
   await expect(card).toHaveValue('1');
 });
 
-spec('a panel opens before its list scrolls and its list returns to the top before it closes', { covers: ['view:drag'], start: openDemo('chain') }, async (t) => {
+test('a panel opens before its list scrolls and its list returns to the top before it closes', { covers: ['view:drag'], start: openDemo('chain') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-chain-state');
   await expect(state).toHaveAttribute('data-state', 'at=1');
@@ -45,7 +45,7 @@ spec('a panel opens before its list scrolls and its list returns to the top befo
   await expect(state).toHaveAttribute('data-state', 'at=1');
 });
 
-spec('a sheet moves between its detents and closes when dragged off', { covers: ['view:dialog', 'view:drag'], start: openDemo('sheet') }, async (t) => {
+test('a sheet moves between its detents and closes when dragged off', { covers: ['view:dialog', 'view:drag'], start: openDemo('sheet') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-detents-state');
   await view.testId('lab-detents-open').click();
@@ -68,7 +68,7 @@ spec('a sheet moves between its detents and closes when dragged off', { covers: 
   await expect(sheet).toBeInViewport();
 });
 
-spec('a swipe row opens to its actions, deletes on a full swipe, and offers its actions to assistive tech', { covers: ['view:drag', 'view:a11y'], start: openDemo('rows') }, async (t) => {
+test('a swipe row opens to its actions, deletes on a full swipe, and offers its actions to assistive tech', { covers: ['view:drag', 'view:a11y'], start: openDemo('rows') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-swipe-state');
   await expect(state).toHaveAttribute('data-state', 'rows=3 last=none');
@@ -86,7 +86,7 @@ spec('a swipe row opens to its actions, deletes on a full swipe, and offers its 
   await expect(state).toHaveAttribute('data-state', 'rows=1 last=deleted Rent');
 });
 
-spec('a pager stops on the next page however fast the flick, and its bound page moves it', { covers: ['view:scroll', 'view:a11y'], start: openDemo('pages') }, async (t) => {
+test('a pager stops on the next page however fast the flick, and its bound page moves it', { covers: ['view:scroll', 'view:a11y'], start: openDemo('pages') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-pager-state');
   await expect(state).toHaveAttribute('data-state', 'page=0');
@@ -99,7 +99,7 @@ spec('a pager stops on the next page however fast the flick, and its bound page 
   await expect(state).toHaveAttribute('data-state', 'page=1');
 });
 
-spec('the kit pager reads as a list of pages, its dots follow the page and a tap on one jumps there', { covers: ['view:scroll', 'view:a11y'], start: openDemo('dots') }, async (t) => {
+test('the kit pager reads as a list of pages, its dots follow the page and a tap on one jumps there', { covers: ['view:scroll', 'view:a11y'], start: openDemo('dots') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-kit-pager-state');
   await expect(state).toHaveAttribute('data-state', 'page=0');
@@ -127,7 +127,7 @@ spec('the kit pager reads as a list of pages, its dots follow the page and a tap
   await expect.poll(() => width(2)).toBe(6);
 });
 
-spec('a tap on a nested switch, a row button and a rich-text link reaches only that control', { covers: ['view:switch', 'view:link', 'view:button'], start: openDemo('nested') }, async (t) => {
+test('a tap on a nested switch, a row button and a rich-text link reaches only that control', { covers: ['view:switch', 'view:link', 'view:button'], start: openDemo('nested') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-nested-state');
   await expect(state).toHaveAttribute('data-state', 'opened=0 wifi=true removed=0');
@@ -141,7 +141,7 @@ spec('a tap on a nested switch, a row button and a rich-text link reaches only t
   await expect(view.testId('lab-rich-presses')).toHaveAttribute('data-state', 'Link pressed 1 times');
 });
 
-spec('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: openDemo('hover') }, async (t) => {
+test('a mouse crossing nested boxes calls enter outermost first and leave innermost first', { start: openDemo('hover') }, async (t) => {
   const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
   const view = t.app.view;

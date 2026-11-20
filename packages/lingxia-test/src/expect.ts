@@ -327,7 +327,7 @@ function truncateTarget(value: unknown): string {
 }
 
 function runningScope(api: string): ExpectScope {
-  if (!activeScope) throw new Error(`${api} retries inside a spec's budget; call it from a running spec`);
+  if (!activeScope) throw new Error(`${api} retries inside a test's budget; call it from a running test`);
   return activeScope;
 }
 

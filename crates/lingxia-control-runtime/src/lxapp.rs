@@ -169,14 +169,48 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
         methods::lxapp::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
             let channel = parse_open_channel(args.channel.as_deref())?;
-            let appid = args.appid.clone();
-            run_async(async move { lxapp::prepare_lxapp_open(&appid, channel).await })?;
-            let app = lxapp::open_lxapp(
-                &args.appid,
-                lxapp::LxAppStartupOptions::new(args.path.as_deref().unwrap_or(""))
-                    .set_release_type(channel),
-            )
-            .map_err(|err| err.to_string())?;
+            let requested = args
+                .placement
+                .as_ref()
+                .map(|placement| parse_open_region(&placement.region))
+                .transpose()?;
+            let options = lxapp::LxAppStartupOptions::new(args.path.as_deref().unwrap_or(""))
+                .set_release_type(channel);
+            let same_channel = args.channel.is_none()
+                || lxapp::try_get(&args.appid).is_some_and(|app| app.release_type() == channel);
+            // Asides are registered and shown through the app that owns the
+            // window's shell, as they are for the Logic API.
+            let shell = lingxia_app_context::home_app_id().and_then(lxapp::try_get);
+            let app = match open_plan(lxapp::open_region(&args.appid), requested, same_channel) {
+                // Already open: show it where it is. Where the user put an
+                // app is their layout; an open only brings it into view. It
+                // skips the update/admission check a cold open runs, as the
+                // Logic API's reuse does.
+                OpenPlan::Show(region) => {
+                    let app = run_async(lxapp::show_lxapp_in_region(
+                        shell.as_deref(),
+                        &args.appid,
+                        region,
+                        None,
+                    ))?;
+                    if !options.path.trim().is_empty() {
+                        app.deliver_reopen(options).map_err(|err| err.to_string())?;
+                    }
+                    app
+                }
+                OpenPlan::Open(region) => {
+                    let appid = args.appid.clone();
+                    run_async(async move { lxapp::prepare_lxapp_open(&appid, channel).await })?;
+                    lxapp::open_lxapp_in_region(
+                        shell.as_deref(),
+                        &args.appid,
+                        region,
+                        None,
+                        options,
+                    )
+                    .map_err(|err| err.to_string())?
+                }
+            };
             let page = run_async(async {
                 let timeout = Duration::from_secs(15);
                 let deadline = tokio::time::Instant::now() + timeout;
@@ -206,6 +240,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 "appid": app.appid,
                 "path": page.path,
                 "page": page,
+                "surface": settled_presence(&app.appid).map(|presence| presence_json(&presence)),
             })))
         }
         methods::lxapp::CLOSE => {
@@ -239,6 +274,69 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
             ))
         }
         _ => Err(format!("unknown lxapp handler: {}", handler)),
+    }
+}
+
+/// `main` or `aside`.
+fn parse_open_region(value: &str) -> Result<lxapp::LxAppOpenRegion, String> {
+    match value.trim() {
+        "main" => Ok(lxapp::LxAppOpenRegion::Main),
+        "aside" => Ok(lxapp::LxAppOpenRegion::Aside),
+        other => Err(format!(
+            "placement.region must be `main` or `aside`; got `{other}`"
+        )),
+    }
+}
+
+/// Where the app actually is, as the core presents it (never the request).
+fn presence_json(presence: &lxapp::ShellPresence) -> Value {
+    json!({
+        "id": presence.surface_id,
+        "region": presence.region.as_str(),
+        "presentation": presence.presentation.as_str(),
+    })
+}
+
+/// What `lxapp.open` does with an app: a running app on the requested
+/// channel is shown in the region it holds; otherwise it opens, in the
+/// region it holds (another channel replaces it there) or the one requested,
+/// the main by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenPlan {
+    Show(lxapp::LxAppOpenRegion),
+    Open(lxapp::LxAppOpenRegion),
+}
+
+fn open_plan(
+    current: Option<lxapp::LxAppOpenRegion>,
+    requested: Option<lxapp::LxAppOpenRegion>,
+    same_channel: bool,
+) -> OpenPlan {
+    match current {
+        Some(region) if same_channel => OpenPlan::Show(region),
+        current => OpenPlan::Open(
+            current
+                .or(requested)
+                .unwrap_or(lxapp::LxAppOpenRegion::Main),
+        ),
+    }
+}
+
+/// Where the app is once the shell has presented the open: the shell
+/// commits it on its own thread, so read until the app is on screen (or
+/// give up after a short while and report what the graph says then).
+fn settled_presence(appid: &str) -> Option<lxapp::ShellPresence> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let presence = lxapp::shell_presence(appid);
+        if presence
+            .as_ref()
+            .is_none_or(|presence| presence.presentation.shown())
+            || std::time::Instant::now() >= deadline
+        {
+            return presence;
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -347,13 +445,50 @@ struct OpenArgs {
     path: Option<String>,
     #[serde(default)]
     channel: Option<String>,
+    /// Where an app that is not open yet goes; an open app is shown where
+    /// it is.
+    #[serde(default)]
+    placement: Option<OpenPlacement>,
+}
+
+#[derive(Deserialize)]
+struct OpenPlacement {
+    /// `main` or `aside`.
+    region: String,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{OpenArgs, page_paths_match, parse_open_channel, wait_for_open_page};
+    use super::{
+        OpenArgs, OpenPlan, open_plan, page_paths_match, parse_open_channel, wait_for_open_page,
+    };
+    use lxapp::LxAppOpenRegion::{Aside, Main};
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn an_open_app_is_shown_where_it_is_and_a_new_one_opens_where_asked() {
+        // Running on the requested channel: shown in its region, whatever
+        // was asked; the user's layout wins over the request.
+        assert_eq!(
+            open_plan(Some(Aside), Some(Main), true),
+            OpenPlan::Show(Aside)
+        );
+        assert_eq!(
+            open_plan(Some(Main), Some(Aside), true),
+            OpenPlan::Show(Main)
+        );
+        assert_eq!(open_plan(Some(Aside), None, true), OpenPlan::Show(Aside));
+        // Another channel replaces it in the region it holds.
+        assert_eq!(
+            open_plan(Some(Aside), Some(Main), false),
+            OpenPlan::Open(Aside)
+        );
+        // Not open: the requested region, the main by default.
+        assert_eq!(open_plan(None, Some(Aside), true), OpenPlan::Open(Aside));
+        assert_eq!(open_plan(None, None, true), OpenPlan::Open(Main));
+        assert_eq!(open_plan(None, None, false), OpenPlan::Open(Main));
+    }
 
     #[test]
     fn omitted_open_channel_follows_host_env_default() {
@@ -378,6 +513,20 @@ mod tests {
         let args: OpenArgs =
             serde_json::from_value(json!({ "appid": "shop", "release_type": "draft" })).unwrap();
         assert!(args.channel.is_none());
+    }
+
+    #[test]
+    fn open_args_read_a_placement_region() {
+        let args: OpenArgs = serde_json::from_value(json!({ "appid": "shop" })).unwrap();
+        assert!(args.placement.is_none());
+        let args: OpenArgs =
+            serde_json::from_value(json!({ "appid": "shop", "placement": { "region": "aside" } }))
+                .unwrap();
+        assert_eq!(
+            super::parse_open_region(&args.placement.unwrap().region).unwrap(),
+            lxapp::LxAppOpenRegion::Aside
+        );
+        assert!(super::parse_open_region("side").is_err());
     }
 
     #[tokio::test]

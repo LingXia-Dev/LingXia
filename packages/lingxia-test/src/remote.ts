@@ -100,7 +100,7 @@ export function explainRemoteError(error: unknown, api: string, target: RemoteTa
   const where = target === "logic" ? "the app's Logic runtime" : "the page WebView";
   const explained = new Error(remoteName === "ReferenceError"
     ? `${message}\n${api}(fn) runs fn in ${where} from its source text, so it cannot ` +
-      "use variables, imports or helpers of the spec. Pass values as JSON " +
+      "use variables, imports or helpers of the test. Pass values as JSON " +
       `arguments: ${api}((scope, value) => ..., value).`
     : message) as Error & { code?: unknown; data?: unknown; cause?: unknown };
   // Keep programming failures recognizable to retrying reads.

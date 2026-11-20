@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { reveal, tap, touchMinimum } from './finger.js';
 
 // A press target shorter than the platform minimum takes a finger in a centred band around it,
 // with no change to its reported box.
 
-spec('text-input: a finger just outside a 32 pt field focuses it', {
+test('text-input: a finger just outside a 32 pt field focuses it', {
   id: 'TOUCH-TARGET-FIELD-001', start: { page: 'text-input' }, timeout: 60_000,
   reason: 'touch targets apply to a real finger on a phone',
 }, async (t) => {
@@ -21,7 +21,7 @@ spec('text-input: a finger just outside a 32 pt field focuses it', {
   expect(Math.round((await small.boundingBox()).height)).toBe(30);
 });
 
-spec('checkbox-input: a small checkbox row already meets the touch target', {
+test('checkbox-input: a small checkbox row already meets the touch target', {
   id: 'TOUCH-TARGET-CHECKBOX-001', start: { page: 'checkbox-input' }, timeout: 60_000,
   reason: 'a Liuli checkbox presses as its whole row; the 20 pt box case is a host test',
 }, async (t) => {
@@ -45,7 +45,7 @@ const drawnSmall: Array<[page: string, testId: string, what: string]> = [
 ];
 
 for (const [page, testId, what] of drawnSmall) {
-  spec(`${page}: ${what} reaches a finger-sized target`, {
+  test(`${page}: ${what} reaches a finger-sized target`, {
     id: `TOUCH-TARGET-REACH-${page.toUpperCase()}`, start: { page }, timeout: 60_000,
     reason: 'touch targets apply to a real finger on a phone',
   }, async (t) => {
@@ -61,7 +61,7 @@ for (const [page, testId, what] of drawnSmall) {
 }
 
 // Compact density tightens what is drawn, not what a finger reaches.
-spec('shape-and-spacing: a compact field and a compact row still reach a finger-sized target', {
+test('shape-and-spacing: a compact field and a compact row still reach a finger-sized target', {
   id: 'TOUCH-TARGET-DENSITY-001', start: { page: 'shape-and-spacing' }, timeout: 60_000,
   reason: 'touch targets apply to a real finger on a phone',
 }, async (t) => {

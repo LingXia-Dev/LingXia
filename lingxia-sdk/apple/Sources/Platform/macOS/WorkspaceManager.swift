@@ -176,7 +176,7 @@ private class PanelSlot {
     var sideFullscreenConstraints: [NSLayoutConstraint] = []
 
     /// Aside-slot header tab strip. Mounted above `containerView`;
-    /// zero-height while the slot has at most one child.
+    /// zero-height only while the slot is empty.
     let slotTabStrip = AsideSlotTabStripView()
     private var slotStripHeight: NSLayoutConstraint?
 
@@ -242,9 +242,10 @@ private class PanelSlot {
         ])
     }
 
-    /// Show the slot strip whenever the slot has content — a single child still
-    /// shows its tab (the strip is the slot's management surface: switch AND
-    /// close live here, and the region doesn't reflow when a sibling arrives).
+    /// Show the slot strip whenever the slot has content. A single child
+    /// shows as a panel header rather than a lone chip (the strip is the
+    /// slot's management surface: close, menu and drag-out live here, and
+    /// the region doesn't reflow when a sibling arrives).
     func setSlotTabs(_ tabs: [AsideSlotTab], activeId: String?) {
         slotTabStrip.update(tabs: tabs, activeId: activeId)
         let wantsStrip = !tabs.isEmpty
@@ -278,29 +279,36 @@ struct CollapsedAsideHandle {
     let graphAppId: String
 }
 
-/// The slim pill a collapsed aside leaves at its edge; clicking it brings
-/// the region back with everything in it.
+/// The tongue a collapsed aside leaves at its edge: a slim shape flush with
+/// the window edge, its top and bottom sloped, so it reads as a pull-out tab
+/// of the edge itself — larger than a hairline, lighter than a card. No
+/// icon: at this width nothing is legible, and the tooltip names the
+/// content. It is a muted wash over whatever the host tints the base, one
+/// step darker on hover and again on press, and the hover eases it 2pt out
+/// toward the main — the drawer's "pull here". The hit area is larger than
+/// the drawn shape. Clicking it brings the region back with everything in
+/// it.
 @MainActor
 final class CollapsedAsideHandleView: NSView {
+    /// Hit area; the tongue is drawn `tongueWidth` wide at the outer edge.
+    static let width: CGFloat = 16
+    static let height: CGFloat = 72
+    private static let tongueWidth: CGFloat = 12
+    private static let tongueHeight: CGFloat = 56
+    private static let slope: CGFloat = 8
+    private static let hoverReach: CGFloat = 2
+
     var handle: CollapsedAsideHandle { didSet { applyLabel() } }
     var onRestore: ((CollapsedAsideHandle) -> Void)?
-    private let pill = NSView()
-    private var hovering = false { didSet { applyColors() } }
+    private var hovering = false { didSet { animateReach() } }
+    private var pressing = false { didSet { needsDisplay = true } }
+    /// Animated 0...1: how far the tongue has eased out toward the main.
+    @objc private dynamic var reach: CGFloat = 0 { didSet { needsDisplay = true } }
 
     init(handle: CollapsedAsideHandle) {
         self.handle = handle
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.wantsLayer = true
-        pill.layer?.cornerRadius = 2
-        addSubview(pill)
-        NSLayoutConstraint.activate([
-            pill.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pill.centerYAnchor.constraint(equalTo: centerYAnchor),
-            pill.widthAnchor.constraint(equalToConstant: 4),
-            pill.heightAnchor.constraint(equalTo: heightAnchor, constant: -8),
-        ])
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
@@ -309,29 +317,77 @@ final class CollapsedAsideHandleView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         applyLabel()
-        applyColors()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    override class func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
+        key == "reach" ? CABasicAnimation() : super.defaultAnimation(forKey: key)
+    }
+
     private func applyLabel() {
-        let label = "Show \(handle.title)"
+        let label = L10n.string("lx_aside_show_content")
+            .replacingOccurrences(of: "%1$s", with: handle.title)
         toolTip = label
         setAccessibilityLabel(label)
     }
 
-    private func applyColors() {
-        pill.layer?.backgroundColor = (hovering ? LxAppHostTheme.accent : LxAppHostTheme.separator).cgColor
+    private func animateReach() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().reach = hovering ? 1 : 0
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let width = Self.tongueWidth + Self.hoverReach * reach
+        let slope = min(Self.slope, Self.tongueHeight / 2)
+        let top = (bounds.height - Self.tongueHeight) / 2
+        let bottom = top + Self.tongueHeight
+        let path = NSBezierPath()
+        if handle.position == .left {
+            // Outer side is the leading edge; the slopes shorten the inner side.
+            let outer = bounds.minX
+            let inner = outer + width
+            path.move(to: NSPoint(x: outer, y: top))
+            path.line(to: NSPoint(x: inner, y: top + slope))
+            path.line(to: NSPoint(x: inner, y: bottom - slope))
+            path.line(to: NSPoint(x: outer, y: bottom))
+        } else {
+            let outer = bounds.maxX
+            let inner = outer - width
+            path.move(to: NSPoint(x: outer, y: top))
+            path.line(to: NSPoint(x: inner, y: top + slope))
+            path.line(to: NSPoint(x: inner, y: bottom - slope))
+            path.line(to: NSPoint(x: outer, y: bottom))
+        }
+        path.close()
+        let alpha: CGFloat = pressing ? 0.5 : (hovering ? 0.38 : 0.22)
+        LxAppHostTheme.mutedForeground.withAlphaComponent(alpha).setFill()
+        path.fill()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        applyColors()
+        needsDisplay = true
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) { onRestore?(handle) }
+    override func mouseDown(with event: NSEvent) {
+        pressing = true
+        // Fire on release inside, like a button; a drag-off cancels.
+        guard let window else { return }
+        var inside = true
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let point = convert(next.locationInWindow, from: nil)
+            inside = bounds.contains(point)
+            if next.type == .leftMouseUp { break }
+        }
+        pressing = false
+        if inside { onRestore?(handle) }
+    }
     override func accessibilityPerformPress() -> Bool {
         onRestore?(handle)
         return true
@@ -538,12 +594,14 @@ class WorkspaceManager: NSObject {
         onClose: @escaping (String) -> Void,
         onCollapse: @escaping () -> Void,
         maximized: Bool = false,
-        onToggleMaximize: (() -> Void)? = nil
+        onToggleMaximize: (() -> Void)? = nil,
+        onMenu: ((String) -> NSMenu?)? = nil
     ) {
         guard let slot = panels[panelId] else { return }
         slot.slotTabStrip.onSelect = onSelect
         slot.slotTabStrip.onClose = onClose
         slot.slotTabStrip.onCollapse = onCollapse
+        slot.slotTabStrip.onMenu = onMenu
         slot.slotTabStrip.onToggleMaximize = onToggleMaximize
         slot.slotTabStrip.setMaximized(maximized)
         slot.setSlotTabs(tabs, activeId: activeId)
@@ -737,7 +795,7 @@ class WorkspaceManager: NSObject {
         panels.values.contains { $0.isVisible && $0.isFullscreen }
     }
 
-    /// Edge handles of collapsed aside slots: a slim pill in the gap at the
+    /// Edge handles of collapsed aside slots: a slim tongue flush with the
     /// slot's edge that brings the region back.
     func setCollapsedAsideHandles(
         _ handles: [CollapsedAsideHandle],
@@ -759,10 +817,11 @@ class WorkspaceManager: NSObject {
             view.onRestore = onRestore
             parent.addSubview(view, positioned: .above, relativeTo: nil)
             var constraints = [
-                view.widthAnchor.constraint(equalToConstant: max(padding, 6)),
-                view.heightAnchor.constraint(equalToConstant: 56),
+                view.widthAnchor.constraint(equalToConstant: CollapsedAsideHandleView.width),
+                view.heightAnchor.constraint(equalToConstant: CollapsedAsideHandleView.height),
                 view.centerYAnchor.constraint(equalTo: parent.centerYAnchor),
             ]
+            // Flush with the outer edge; the gap is on the main's side.
             if handle.position == .left, let sidebar = sidebarRef {
                 constraints.append(view.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor))
             } else {
@@ -848,6 +907,21 @@ class WorkspaceManager: NSObject {
     }
 
     // MARK: - Resize
+
+    /// Give panel `to` the size of panel `from`: two hosts of the one side
+    /// panel slot (an lxapp's panel, the docked browser's) must present as a
+    /// single region, so a tab switch never changes the region's width.
+    func syncPanelSize(from: String, to: String) {
+        guard from != to, let source = panels[from], let target = panels[to],
+              source.config.position == target.config.position,
+              abs(source.currentSize - target.currentSize) > 0.5 else { return }
+        // The source is still on screen at this point and is about to give
+        // way to the target, so it must not count against the target's room.
+        let clamped = clampedPanelSize(source.currentSize, for: target.config.position, excluding: from)
+        target.currentSize = clamped
+        target.sizeConstraint?.constant = clamped
+        LxAppShellPersistence.setAsideSize(clamped, panelId: to)
+    }
 
     /// Update panel size in real-time during drag. No animation.
     private func updatePanelSize(id: String, newSize: CGFloat) {

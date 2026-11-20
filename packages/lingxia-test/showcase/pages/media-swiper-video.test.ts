@@ -1,10 +1,10 @@
-import { expect, spec, type TestView } from '@lingxia/test';
+import { expect, test, type TestView } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
-spec.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
+test.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
 const SWIPER = '#lx-media-swiper-demo';
 // A 64x40 solid red PNG: the page before the clip.
 const RED = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAAAoCAIAAADBrGu+AAAAPUlEQVR42u3PQQkAAAgEsIt2/QOYxww+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBiwX4qFzEMNmn2gAAAABJRU5ErkJggg==';
@@ -19,7 +19,7 @@ function reported(view: TestView): Promise<Reported[]> {
   return view.eval(({ window }) => ((window as unknown as { __swiperEvents?: Reported[] }).__swiperEvents ?? []));
 }
 
-spec('play a video page of a native media swiper to its end', {
+test('play a video page of a native media swiper to its end', {
   id: 'MEDIA-SWIPER-003',
   covers: ['NavDriver.to'],
   app: SHOWCASE_APP_ID,

@@ -33,6 +33,7 @@ use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
 
+pub mod app_display;
 pub mod config;
 #[doc(hidden)]
 pub mod data_profile;
@@ -111,8 +112,8 @@ pub use runtime_ops::{
     mark_lxapp_active, notify_lxapp_host_visibility, notify_lxapp_host_visibility_by_session,
     notify_page_host_visibility, notify_page_host_visibility_by_webtag, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
-    refresh_auto_appearances, restart_lxapp, terminate_lxapp, touch_page_instance_by_id,
-    uninstall_lxapp,
+    open_lxapp_in_region, refresh_auto_appearances, restart_lxapp, show_lxapp_in_region,
+    terminate_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -123,10 +124,11 @@ pub use runtime_registry::{
 pub(crate) use surface::SurfaceRecord;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
-    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
-    UrlCallbackWaitError, next_surface_context_revision, register_surface_active_main_observer,
-    register_surface_close_observer, register_surface_context_observer,
-    register_surface_context_snapshot, register_surface_visibility_observer,
+    ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, ShellSurfaceIdentity,
+    UrlCallbackSurface, UrlCallbackWaitError, next_surface_context_revision,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_context_snapshot,
+    register_surface_visibility_observer,
 };
 pub(crate) use surface::{
     SurfaceRecords, view_surface_context_script_for, view_surface_context_snapshot,
@@ -143,7 +145,7 @@ pub(crate) const USER_DATA_DIR: &str = "userdata";
 pub(crate) const USER_CACHE_DIR: &str = "usercache";
 pub(crate) const TEMP_DIR: &str = "temp";
 
-const LXAPPS_DB_FILE: &str = "lxapps.redb";
+const LXAPPS_DB_FILE: &str = "lxapp-index.redb";
 /// The host HTTP store, under the OS cache dir.
 pub(crate) const HTTP_STORE_DIR: &str = "http";
 type PendingPageServiceRestart = (PageInstance, oneshot::Receiver<Result<(), String>>);
@@ -158,7 +160,8 @@ static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>
     OnceLock::new();
 #[cfg(feature = "dev-bundles")]
 static DEV_BUNDLE_PREPARER: OnceLock<fn(&str)> = OnceLock::new();
-static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), PathBuf>> =
+type TransientGrantKey = (String, LxAppSessionId, String);
+static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<TransientGrantKey, (PathBuf, TransientPathKind)>> =
     OnceLock::new();
 static TRANSIENT_FILE_REFERENCE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), ()>> =
     OnceLock::new();
@@ -185,6 +188,25 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         )));
     }
     Ok(normalized)
+}
+
+/// Resolve `<relative>` under a picked directory's canonical `root`. Only the
+/// canonical target is returned, so a symlink or junction inside the directory
+/// cannot lead outside it.
+fn resolve_transient_directory_child(root: &Path, relative: &str) -> Result<PathBuf, LxAppError> {
+    let not_found = || LxAppError::ResourceNotFound(format!("temporary grant path: {relative}"));
+    if Path::new(relative).is_absolute()
+        || relative
+            .split('/')
+            .any(|segment| matches!(segment, "" | "." | "..") || segment.contains([':', '\\']))
+    {
+        return Err(not_found());
+    }
+    let canonical = std::fs::canonicalize(root.join(relative)).map_err(|_| not_found())?;
+    if !canonical.starts_with(root) {
+        return Err(not_found());
+    }
+    Ok(canonical)
 }
 
 fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppError> {
@@ -437,6 +459,14 @@ fn claim_pending_destroy(
     } else {
         false
     }
+}
+
+/// Whether opening an already-open lxapp must present it again. The stack top
+/// alone is not enough on desktop: the visible main can be another lxapp or a
+/// browser tab while `appid` stays on top, and skipping the present there
+/// makes `navigateToApp` resolve with nothing on screen.
+fn reentry_presents(appid: &str, stack_top: &str, active_main: Option<Option<&str>>) -> bool {
+    stack_top != appid || active_main.is_some_and(|main| main != Some(appid))
 }
 
 fn first_evictable_appid(
@@ -1645,7 +1675,7 @@ impl LxApp {
         let token = Uuid::new_v4().simple().to_string();
         TRANSIENT_FILE_GRANTS.get_or_init(DashMap::new).insert(
             (self.appid.clone(), self.session_id(), token.clone()),
-            normalized,
+            (normalized, kind),
         );
         uri::LxUri::from_str(&format!(
             "{}://{}/{}",
@@ -1656,7 +1686,7 @@ impl LxApp {
         .map_err(LxAppError::InvalidParameter)
     }
 
-    fn resolve_transient_file(&self, token: &str) -> Option<PathBuf> {
+    fn resolve_transient_grant(&self, token: &str) -> Option<(PathBuf, TransientPathKind)> {
         TRANSIENT_FILE_GRANTS
             .get_or_init(DashMap::new)
             .get(&(self.appid.clone(), self.session_id(), token.to_string()))
@@ -3251,16 +3281,30 @@ impl LxApp {
                 if uri.query().is_some() {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
-                let token = uri.path().trim_matches('/');
-                if token.is_empty() || token.contains('/') || token.contains('\\') {
+                let raw = uri.path().trim_matches('/');
+                let (token, relative) = match raw.split_once('/') {
+                    Some((token, relative)) => (token, Some(relative)),
+                    None => (raw, None),
+                };
+                if token.is_empty() || token.contains('\\') {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
-                self.resolve_transient_file(token).ok_or_else(|| {
+                let (root, kind) = self.resolve_transient_grant(token).ok_or_else(|| {
                     LxAppError::ResourceNotFound(format!(
                         "temporary file grant not found: {}",
                         lx_uri.as_str()
                     ))
-                })
+                })?;
+                match (relative, kind) {
+                    (None, _) => Ok(root),
+                    // Only a picked directory has children; a file grant stays one token.
+                    (Some(relative), TransientPathKind::Directory) => {
+                        resolve_transient_directory_child(&root, &uri::decode_lx_path(relative))
+                    }
+                    (Some(_), TransientPathKind::File) => {
+                        Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()))
+                    }
+                }
             }
             Some(uri::HOST_USER_CACHE) | Some(uri::HOST_USER_DATA) => {
                 let base_dir = match uri.host() {
@@ -3362,7 +3406,7 @@ impl LxApp {
             .unwrap_or_default()
     }
 
-    /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
+    /// Network domains the host granted this lxapp (`security.network.trustedDomains`).
     pub fn trusted_network_domains(&self) -> Vec<String> {
         self.host_permissions.domains()
     }
@@ -4030,7 +4074,13 @@ impl LxApp {
         }
 
         let (current_appid, _, _) = get_current_lxapp();
-        if current_appid != self.appid {
+        if reentry_presents(
+            &self.appid,
+            &current_appid,
+            self.desktop_active_main_appid()
+                .as_ref()
+                .map(Option::as_deref),
+        ) {
             let page = self.get_or_create_page(&current_path);
             let title = self.listing_name();
             let stored = self
@@ -4039,14 +4089,35 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
-            // Match first-open: put this lxapp on the switcher before the
-            // webview covers the previous main, or the row lands a frame late.
-            #[cfg(target_os = "windows")]
-            if !matches!(
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let is_panel = matches!(
                 stored.open_mode,
                 lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
-            ) {
-                self.set_active_main();
+            );
+            // Windows' show_lxapp never reaches on_lxapp_opened, which sends
+            // the outgoing app onHide and this one onShow with the new query.
+            #[cfg(target_os = "windows")]
+            {
+                let query =
+                    (!stored.query.is_empty()).then(|| PageQueryInput::Raw(stored.query.clone()));
+                self.create_page_instance(
+                    PageOwner::Scene(SceneId("system".to_string())),
+                    PageTarget::Path(current_path.clone()),
+                    query,
+                    if is_panel {
+                        PresentationKind::Panel
+                    } else {
+                        PresentationKind::Window
+                    },
+                    None,
+                )?;
+            }
+            // Activate the main in the graph before the host shows it. Windows
+            // needs the row before the webview covers the previous main; macOS
+            // never activates a main that is already a switcher row itself.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            if !is_panel {
+                self.set_active_main_in_graph();
             }
             self.runtime.show_lxapp(ShowLxApp {
                 appid: self.appid.clone(),
@@ -4214,8 +4285,19 @@ impl LxApp {
                 None,
             )?;
             if !is_panel {
-                self.set_active_main();
+                self.set_active_main_in_graph();
             }
+        }
+
+        // macOS: a main that is already a switcher row (the shell-opened home)
+        // is only brought forward by the graph; the host leaves rows alone.
+        #[cfg(target_os = "macos")]
+        if !matches!(
+            startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        ) && self.main_surface_content(&self.appid).is_some()
+        {
+            self.set_active_main_in_graph();
         }
 
         self.runtime.show_lxapp(ShowLxApp {
@@ -4454,10 +4536,72 @@ impl LxApp {
     }
 }
 
-/// Compute a stable hash id for lxapp-scoped data separation.
-/// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
+/// Whether `icon` is shaped like a chrome icon an lxapp may name: a bundled
+/// relative path or an `lx://` path. Resolve it with
+/// [`LxApp::resolve_accessible_path`].
+pub fn is_declared_icon_reference(icon: &str) -> bool {
+    let icon = icon.trim();
+    if icon.starts_with("lx://") {
+        return true;
+    }
+    let path = Path::new(icon);
+    !(has_uri_scheme(icon)
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        }))
+}
+
+fn has_uri_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+}
+
+/// Service env whose installs and data are in use; each env keeps its own.
+pub(crate) fn service_env_scope() -> lingxia_app_context::AppEnv {
+    #[cfg(test)]
+    if let Some(scope) = test_service_env_scope::current() {
+        return scope;
+    }
+    lingxia_app_context::service_env()
+}
+
+#[cfg(test)]
+pub(crate) mod test_service_env_scope {
+    use lingxia_app_context::AppEnv;
+    use std::cell::Cell;
+
+    thread_local! {
+        static SCOPE: Cell<Option<AppEnv>> = const { Cell::new(None) };
+    }
+
+    pub(crate) fn current() -> Option<AppEnv> {
+        SCOPE.with(Cell::get)
+    }
+
+    /// Run `body` on this thread as if the service env were `scope`.
+    pub(crate) fn with<T>(scope: AppEnv, body: impl FnOnce() -> T) -> T {
+        let previous = SCOPE.with(|cell| cell.replace(Some(scope)));
+        let result = body();
+        SCOPE.with(|cell| cell.set(previous));
+        result
+    }
+}
+
+/// Stable id for lxapp-scoped installs and data: appid, channel, device, and
+/// the service env scope.
 pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: Channel) -> String {
-    // Fingermark uses appid + release_type + device fingerprint (version excluded)
     let device_fp = match crate::provider::get_provider().get_fingerprint() {
         Ok(fp) => fp,
         Err(e) => {
@@ -4465,10 +4609,39 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: Channel) -> String {
             String::new()
         }
     };
-    let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
+    fingermark_of(lxappid, release_type, &device_fp, service_env_scope())
+}
+
+fn fingermark_of(
+    lxappid: &str,
+    release_type: Channel,
+    device_fp: &str,
+    scope: lingxia_app_context::AppEnv,
+) -> String {
+    let combined = format!(
+        "{}|{}|{}|{}",
+        lxappid,
+        release_type.as_str(),
+        device_fp,
+        scope.as_str()
+    );
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod fingermark_tests {
+    use super::*;
+    use lingxia_app_context::AppEnv;
+
+    #[test]
+    fn each_service_env_gets_its_own_fingermark() {
+        assert_ne!(
+            fingermark_of("app.one", Channel::Release, "device-1", AppEnv::Prod),
+            fingermark_of("app.one", Channel::Release, "device-1", AppEnv::Dev)
+        );
+    }
 }
 
 impl Drop for LxApp {
@@ -4518,6 +4691,93 @@ impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenReg
 pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
     let app = runtime_registry::try_get(appid)?;
     app.current_open_region()
+}
+
+/// How a surface is on screen right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellPresentation {
+    /// The active main.
+    Main,
+    /// A main the user switched away from.
+    Background,
+    /// An aside docked beside the main.
+    Dock,
+    /// An aside covering the main (a compact window, no room to dock, or
+    /// maximized).
+    Overlay,
+    /// An aside that is not on screen (collapsed, or another tab of its slot).
+    Hidden,
+}
+
+impl ShellPresentation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Background => "background",
+            Self::Dock => "dock",
+            Self::Overlay => "overlay",
+            Self::Hidden => "hidden",
+        }
+    }
+
+    /// Whether the user can see it.
+    pub const fn shown(self) -> bool {
+        matches!(self, Self::Main | Self::Dock | Self::Overlay)
+    }
+}
+
+/// Where an lxapp is presented now: its region, the shell surface that shows
+/// it, how that surface is on screen, and the window's size class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellPresence {
+    pub region: LxAppOpenRegion,
+    /// The shell surface presenting the app: its app id for a main or a
+    /// runtime aside, a declared surface's own id otherwise.
+    pub surface_id: String,
+    pub presentation: ShellPresentation,
+    pub size_class: lingxia_surface::SizeClass,
+}
+
+/// The app's [`ShellPresence`], read from the window's surface graph at the
+/// moment of the call — the single source of truth the shells render — so it
+/// follows every move the user makes. `None` when the app owns no live shell
+/// presentation.
+pub fn shell_presence(appid: &str) -> Option<ShellPresence> {
+    let app = runtime_registry::try_get(appid)?;
+    let region = app.current_open_region()?;
+    let plan = app.surface_derived_layout()?;
+    let surface_id = match region {
+        LxAppOpenRegion::Main => appid.to_string(),
+        LxAppOpenRegion::Aside => app.open_panel_id().unwrap_or_else(|| appid.to_string()),
+    };
+    let presentation = match region {
+        LxAppOpenRegion::Main if plan.active_main_id.as_deref() == Some(appid) => {
+            ShellPresentation::Main
+        }
+        LxAppOpenRegion::Main => ShellPresentation::Background,
+        LxAppOpenRegion::Aside => plan
+            .aside_slots
+            .iter()
+            .find(|slot| {
+                slot.visible
+                    && !slot.collapsed
+                    && slot.active_child.as_deref() == Some(surface_id.as_str())
+            })
+            .map(|slot| {
+                if slot.overlay {
+                    ShellPresentation::Overlay
+                } else {
+                    ShellPresentation::Dock
+                }
+            })
+            .unwrap_or(ShellPresentation::Hidden),
+    };
+    Some(ShellPresence {
+        region,
+        surface_id,
+        presentation,
+        size_class: plan.size_class,
+    })
 }
 
 #[cfg(test)]
@@ -4737,6 +4997,58 @@ mod delayed_destroy_tests {
             .startup_options
             .launch_options_value();
         assert_eq!(launch["query"]["session"], "s2");
+
+        app.state.lock().unwrap().open_region = None;
+        manager.retire_lxapp(&appid).unwrap();
+    }
+
+    #[test]
+    fn a_host_that_cannot_move_a_live_lxapp_refuses_before_changing_anything() {
+        use lingxia_platform::traits::app_runtime::{LxAppOpenMode, LxAppRegionMoves};
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let appid = format!("app.lingxia.region-move.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 2);
+        let app = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        app.state.lock().unwrap().open_region = Some(LxAppOpenRegion::Main);
+
+        for region in [LxAppOpenRegion::Aside, LxAppOpenRegion::Main] {
+            assert!(matches!(
+                app.move_to_region_on(LxAppRegionMoves::Unsupported, region, Some("left")),
+                Err(LxAppError::UnsupportedOperation(_))
+            ));
+        }
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
+        assert_eq!(app.open_panel_id(), None);
+        assert!(app.presentation_open_lock.try_lock().is_ok());
+
+        // A drag never waits on an open or move holding the guard.
+        {
+            let _open = app.presentation_open_lock.lock().unwrap();
+            assert!(matches!(
+                app.demote_main_to_aside(""),
+                Err(LxAppError::SurfaceConflict(_))
+            ));
+        }
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
+
+        // A rollback restores only the region its own move wrote.
+        let aside_startup = (LxAppOpenMode::Panel, appid.clone());
+        app.state.lock().unwrap().open_region = None;
+        app.roll_back_region(
+            LxAppOpenRegion::Main,
+            LxAppOpenRegion::Aside,
+            aside_startup.clone(),
+        );
+        assert_eq!(app.current_open_region(), None, "a close that landed stays");
+        app.state.lock().unwrap().open_region = Some(LxAppOpenRegion::Main);
+        app.roll_back_region(LxAppOpenRegion::Main, LxAppOpenRegion::Aside, aside_startup);
+        assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Aside));
+        assert_eq!(app.open_panel_id().as_deref(), Some(appid.as_str()));
 
         app.state.lock().unwrap().open_region = None;
         manager.retire_lxapp(&appid).unwrap();
@@ -5065,6 +5377,22 @@ mod delayed_destroy_tests {
             Some("app-b".to_string())
         );
         assert_eq!(first_evictable_appid(&stack, |_| false), None);
+    }
+
+    #[test]
+    fn reopening_an_open_lxapp_presents_it_unless_it_is_the_visible_main() {
+        // Home opened chat, then navigated back to home: chat can stay on top
+        // of the stack while home is the visible main. Opening chat again
+        // must present it, not resolve with nothing on screen.
+        assert!(reentry_presents("chat", "chat", Some(Some("home"))));
+        // A browser tab is the visible main.
+        assert!(reentry_presents("chat", "chat", Some(None)));
+        assert!(reentry_presents("chat", "home", Some(Some("home"))));
+        // Already the visible main: keep the page, only App onShow.
+        assert!(!reentry_presents("chat", "chat", Some(Some("chat"))));
+        // No desktop graph (mobile): the stack decides.
+        assert!(!reentry_presents("chat", "chat", None));
+        assert!(reentry_presents("chat", "home", None));
     }
 
     #[test]

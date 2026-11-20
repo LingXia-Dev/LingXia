@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // The panel's box takes its new height at once; what is drawn grows to it.
-spec('a panel opens to its full height, the row after it moves down, and it closes again', { covers: ['view:transition-size'], start: openDemo('panel') }, async (t) => {
+test('a panel opens to its full height, the row after it moves down, and it closes again', { covers: ['view:transition-size'], start: openDemo('panel') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-panel-state');
   const box = view.testId('lab-panel-box');

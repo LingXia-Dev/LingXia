@@ -1,12 +1,12 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // What ArkUI's accessibility layer reads, from the system's own layout dump: the field's
 // description carries its hint and error, the dialog that interrupts is a Dialog.
-spec('ArkUI reads a field description from aria-describedby and an alertdialog as a dialog', {
+test('ArkUI reads a field description from aria-describedby and an alertdialog as a dialog', {
   id: 'A11Y-HARMONY-001', covers: ['view:a11y'],
   reason: 'reads the ArkUI layout through the Harmony device fixture',
   start: openDemo('form'),

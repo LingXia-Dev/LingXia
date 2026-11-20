@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // An element asks for its own menu; the page opens it.
-spec('a row opens its menu when asked, not on a tap, and a choice closes it', { covers: ['view:context-menu'], start: openDemo('menu') }, async (t) => {
+test('a row opens its menu when asked, not on a tap, and a choice closes it', { covers: ['view:context-menu'], start: openDemo('menu') }, async (t) => {
   const view = t.app.view;
   const row = view.testId('lab-menu-row');
   const state = view.testId('lab-menu-state');
@@ -16,7 +16,7 @@ spec('a row opens its menu when asked, not on a tap, and a choice closes it', { 
 });
 
 // One Tab stop; arrows by day and by week; PageDown turns the month.
-spec('arrows move through the days by row and column and PageDown turns the month', { covers: ['view:grid'], start: openDemo('days') }, async (t) => {
+test('arrows move through the days by row and column and PageDown turns the month', { covers: ['view:grid'], start: openDemo('days') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-days-state');
   const day = (date: number) => view.testId(`lab-day-${date}`);

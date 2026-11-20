@@ -33,7 +33,7 @@ These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`, `lx.host.setBadge()`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`
 - `lx.host.control.displayLanguage` / `lx.host.control.appearance` (writers)
-- `lx.shell.*` mutations — `sidebarActions`, opening or reconfiguring declared surfaces
+- `lx.shell.*` — `sidebarActions`, `setAppDisplay` (the app's displayed name and icon), opening, moving or finding apps and declared surfaces
 
 Every lxapp may still **read** `lx.host.displayLanguage.get()` and `lx.host.appearance.get()`, and should follow those values. Bundle updates for this lxapp stay on `lx.getUpdateManager()`.
 

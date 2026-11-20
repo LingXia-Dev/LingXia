@@ -1,7 +1,7 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { reveal } from './finger.js';
 
-spec('text-area: Send while focused clears the reply on screen and keeps focus', {
+test('text-area: Send while focused clears the reply on screen and keeps focus', {
   id: 'EDITOR-VALUE-CLEAR-001', start: { page: 'text-area' }, timeout: 60_000,
 }, async (t) => {
   const view = t.app.view;

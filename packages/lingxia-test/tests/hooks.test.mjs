@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { test as lxTest } from "../dist/index.js";
 import { reset } from "../dist/runner.js";
 import { registerOtherFileSpec, registerOtherFileHook, registerOtherFileSpecWithHook } from "./helpers/other-file.mjs";
 import { installHooks } from "./helpers/install-hooks.mjs";
@@ -17,10 +17,10 @@ test("beforeEach runs only for specs declared in the same file", async () => {
   installFakeHost(world);
   const ran = [];
 
-  spec.beforeEach(async () => {
+  lxTest.beforeEach(async () => {
     ran.push("this-file-hook");
   });
-  spec("in this file", async () => {});
+  lxTest("in this file", async () => {});
   registerOtherFileSpec("in the other file");
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -35,7 +35,7 @@ test("a hook registered by a helper runs for the calling file's specs", async ()
   const ran = [];
 
   registerOtherFileHook(ran);
-  spec("in this file", async () => {});
+  lxTest("in this file", async () => {});
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0);
@@ -50,7 +50,7 @@ test("a spec file's hook does not leak into another file's specs", async () => {
   // other-file.mjs declares a spec, so it owns the hook it registers even
   // though this file called it.
   registerOtherFileSpecWithHook("in the other file", ran);
-  spec("in this file", async () => {});
+  lxTest("in this file", async () => {});
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0);
@@ -63,7 +63,7 @@ test("reset, beforeEach and afterEach from a shared helper run in order", async 
   const ran = [];
 
   installHooks(ran);
-  spec("uses the shared hooks", async () => {
+  lxTest("uses the shared hooks", async () => {
     ran.push("body");
   });
 
@@ -72,14 +72,14 @@ test("reset, beforeEach and afterEach from a shared helper run in order", async 
   assert.deepEqual(ran, ["reset", "beforeEach", "body", "afterEach"]);
 });
 
-test("--retries accepts a spec.reset registered by a helper", async () => {
+test("--retries accepts a test.reset registered by a helper", async () => {
   const world = createWorld();
   installFakeHost(world, { control: { retries: "1" } });
   const ran = [];
   let calls = 0;
 
   installHooks(ran);
-  spec("intermittent", { forensics: false }, () => {
+  lxTest("intermittent", { forensics: false }, () => {
     calls += 1;
     if (calls === 1) throw new Error("first attempt fails");
   });
@@ -105,5 +105,5 @@ test("a hook with no spec file on its stack is reported, not silently dropped", 
   assert.deepEqual(ran, []);
   const diagnostics = events.filter((event) => event.type === "diagnostic" && event.phase === "collect");
   assert.equal(diagnostics.length, 3);
-  assert.match(diagnostics[0].message, /spec\.beforeEach\(\) registered from .*install-hooks\.mjs never runs/);
+  assert.match(diagnostics[0].message, /test\.beforeEach\(\) registered from .*install-hooks\.mjs never runs/);
 });

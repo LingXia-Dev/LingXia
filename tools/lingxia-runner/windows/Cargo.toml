@@ -1,7 +1,7 @@
 [package]
 name = "lingxia-runner-windows"
 # Tools version. Keep in sync with tools/lingxia-cli and macos/runner-lib.
-version = "0.28.0"
+version = "0.30.1"
 edition.workspace = true
 publish = false
 
@@ -16,7 +16,7 @@ path = "src/main.rs"
 cloud = []
 
 # The runner is a dev container, so it asks the cloud provider for its
-# development behavior in addition to runtime lingxiaServer/lingxiaId overrides.
+# development behavior. `lingxia dev` passes the cloud server for this launch.
 # The CLI reads this to decide which provider features to enable; it hardcodes
 # no provider implementation details.
 [package.metadata.lingxia.providers.cloud]

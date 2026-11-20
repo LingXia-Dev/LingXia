@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { runtimePlatform } from '../helpers/platform.js';
 
-spec('open the clipboard demo from the API menu and round-trip text', {
+test('open the clipboard demo from the API menu and round-trip text', {
   id: 'UI-CLIPBOARD-001',
   covers: [
     'lx.clipboard.writeText',

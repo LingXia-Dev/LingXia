@@ -402,8 +402,7 @@ final class LxappPinTileView: NSView {
     /// and reused; without this a later registry refresh leaves them stale.
     func refreshFromRust() {
         let info = getLxAppInfo(appId)
-        let iconPath = getLxAppDisplayIconPath(appId).toString()
-        let source = LxIcon.lxappImage(appId: appId, path: iconPath)
+        let source = LxIcon.lxappImage(appId: appId)
         iconView.image = source.map {
             TabBarHelper.appTileIcon($0, size: SidebarPinTileView.Layout.iconSize)
         }

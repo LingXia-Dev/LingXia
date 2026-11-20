@@ -1,7 +1,7 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
-spec('editors take text through their accessible names', { covers: ['view:input'], start: openDemo('fields') }, async (t) => {
+test('editors take text through their accessible names', { covers: ['view:input'], start: openDemo('fields') }, async (t) => {
   const view = t.app.view;
   // Below the fold: the locator reveals the editor before it types.
   await view.getByRole('textbox', { name: 'Amount' }).fill('12');
@@ -9,7 +9,7 @@ spec('editors take text through their accessible names', { covers: ['view:input'
   await expect(view.testId('lab-input-values')).toHaveAttribute('data-state', /^code=123456 amount=12 /);
 });
 
-spec('a field states required and invalid, names its hint and error, in a group with a tooltip and an alertdialog', { covers: ['view:a11y', 'view:input'], start: openDemo('form') }, async (t) => {
+test('a field states required and invalid, names its hint and error, in a group with a tooltip and an alertdialog', { covers: ['view:a11y', 'view:input'], start: openDemo('form') }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('group', { name: 'Delivery' })).toHaveCount(1);
   await expect(view.getByRole('tooltip')).toHaveText('We deliver within the city');
@@ -33,7 +33,7 @@ spec('a field states required and invalid, names its hint and error, in a group 
   await expect(confirm).toHaveCount(0);
 });
 
-spec('three number fields ask for their own keyboards and take what is typed', { covers: ['view:input'], start: openDemo('keyboards') }, async (t) => {
+test('three number fields ask for their own keyboards and take what is typed', { covers: ['view:input'], start: openDemo('keyboards') }, async (t) => {
   const view = t.app.view;
   // The automation tree does not say which keyboard a field asks for yet; the names and values do.
   await view.getByRole('textbox', { name: 'Number type' }).fill('2.5');

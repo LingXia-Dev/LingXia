@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 
 // A simulated phone gives the page the device's own viewport and pixel ratio whatever screen
 // the Runner's window is on, so a page screenshot is the device's pixels, the same every time.
-spec('a page on each phone preset measures and renders as the device does', {
+test('a page on each phone preset measures and renders as the device does', {
   id: 'DEVICE-PIXELS-001', covers: ['view:environment'], start: { page: 'view' },
 }, async (t) => {
   const device = t.automation.device;
@@ -62,7 +62,7 @@ const TAB_BAR_REACH = {
 
 // Insets come from the preset alone: the same numbers on a 1x monitor with the phone at full
 // size as on a Retina laptop that shrinks it to fit, so this spec passes on both unchanged.
-spec('a page on each phone preset gets the safe area and bars its device gives it', {
+test('a page on each phone preset gets the safe area and bars its device gives it', {
   id: 'DEVICE-CHROME-001', covers: ['view:environment'], start: { page: 'view' },
 }, async (t) => {
   const device = t.automation.device;

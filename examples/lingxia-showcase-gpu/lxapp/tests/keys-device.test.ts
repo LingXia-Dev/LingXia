@@ -1,12 +1,12 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openDemo, rootOf } from './open-demo';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // The same menu walk as the automation-driven menu spec, but with key presses through the
 // system's input path, so it checks that hardware keys reach the page at all.
-spec('hardware keys move a menu focus and choose an item', {
+test('hardware keys move a menu focus and choose an item', {
   id: 'KEY-HARMONY-001', covers: ['view:popover', 'view:a11y'],
   reason: 'presses keys through the Harmony device fixture',
   start: openDemo('more'),
@@ -46,7 +46,7 @@ spec('hardware keys move a menu focus and choose an item', {
   await expect(more).toBeFocused();
 });
 
-spec('a focused editor scrolled off screen keeps focus and the keyboard, and typing brings it back', {
+test('a focused editor scrolled off screen keeps focus and the keyboard, and typing brings it back', {
   id: 'KEY-HARMONY-002', covers: ['view:textarea'],
   reason: 'taps the Huawei system keyboard through the Harmony device fixture',
   start: openDemo('controls'),
@@ -104,7 +104,7 @@ async function expectNothingFocused(view: Fixture['app']['view']) {
 }
 
 // A finger focuses the page's node in ArkUI, as a key does; only the key may show a ring.
-spec('a finger on the page leaves no control focused, and Tab then focuses one', {
+test('a finger on the page leaves no control focused, and Tab then focuses one', {
   id: 'FOCUS-HARMONY-001', covers: ['view:a11y'],
   reason: 'touches and presses Tab through the Harmony device fixture',
   start: openDemo('more'),
@@ -126,7 +126,7 @@ spec('a finger on the page leaves no control focused, and Tab then focuses one',
   }
 });
 
-spec('a finger on a tab shows its page with no control focused', {
+test('a finger on a tab shows its page with no control focused', {
   id: 'FOCUS-HARMONY-002', covers: ['view:a11y'],
   reason: 'taps the host tab bar through the Harmony device fixture',
   start: { page: 'home' },

@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import manifest from '../lxapp.json';
 
 // The visual baseline's capture: every gallery page, at rest at its top, light and dark, as
 // `<page>-<theme>.png`. Run by scripts/visual-baseline.mjs on the macOS Runner, once per size preset;
 // not part of an ordinary test run.
-spec.configure({ tags: ['baseline'] });
+test.configure({ tags: ['baseline'] });
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 // Pages that move by themselves are left out: a video's poster and first frame come from the network
@@ -34,7 +34,7 @@ async function settled(view: { settled(): Promise<void>; screenshot(): Promise<{
 }
 
 for (const page of pages) {
-  spec(`baseline: ${page}`, { start: { page }, timeout: 90_000 }, async (t) => {
+  test(`baseline: ${page}`, { start: { page }, timeout: 90_000 }, async (t) => {
     const view = t.app.view;
     // A page has a phone form and a desk form. A session that reports the wrong one for its window
     // would be recorded as a layout change, so the capture stops here instead.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { spec, expect } from "../dist/index.js";
+import { test as lxTest, expect } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 
@@ -17,7 +17,7 @@ test("a body that returns with an un-awaited assertion fails, naming it and wher
   world.add({ testId: "home-greeting", visible: false });
   installFakeHost(world);
 
-  spec("greets by name", { forensics: false }, async (t) => {
+  lxTest("greets by name", { forensics: false }, async (t) => {
     expect(t.app.view.testId("home-greeting")).toBeVisible({ timeout: 2_000 });
   });
 
@@ -38,11 +38,11 @@ test("an un-awaited action is stopped: it never lands after the spec returned", 
   installFakeHost(world);
   let later = true;
 
-  spec("saves", { forensics: false }, async (t) => {
+  lxTest("saves", { forensics: false }, async (t) => {
     t.app.view.testId("save").click({ timeout: 2_000 });
     void t.app.nav.current();
   });
-  spec("next", { forensics: false }, async () => {
+  lxTest("next", { forensics: false }, async () => {
     await pause(300);
     later = save.clicked === undefined;
   });
@@ -62,15 +62,15 @@ test("awaited calls pass; a thrown error wins over an un-awaited call; cleanup s
   installFakeHost(world);
   let cleaned = false;
 
-  spec("awaits", { forensics: false }, async (t) => {
+  lxTest("awaits", { forensics: false }, async (t) => {
     await expect(t.app.view.testId("ready")).toBeVisible();
     await Promise.all([t.app.nav.current(), expect.poll(() => 1).toBe(1)]);
   });
-  spec("throws", { forensics: false }, async (t) => {
+  lxTest("throws", { forensics: false }, async (t) => {
     expect(t.app.view.testId("late")).toBeVisible({ timeout: 1_000 });
     throw new Error("boom");
   });
-  spec("cleans up", { forensics: false }, async (t) => {
+  lxTest("cleans up", { forensics: false }, async (t) => {
     t.defer(async () => {
       await expect(t.app.view.testId("ready")).toBeVisible();
       cleaned = true;

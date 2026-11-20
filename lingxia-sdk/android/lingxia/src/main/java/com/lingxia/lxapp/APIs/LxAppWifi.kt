@@ -21,6 +21,7 @@ import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
+import com.lingxia.app.PermissionFeature
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -98,7 +99,7 @@ internal object LxAppWifi {
                         initializeWifiModule(callbackId, context)
                         return
                     }
-                    PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
+                    PermissionManager.ensurePermissions(activity, PermissionFeature.WIFI, LOCATION_PERMISSIONS) { granted ->
                         if (granted) {
                             Log.i(TAG, "Location permission granted for WiFi details")
                         } else {
@@ -647,7 +648,7 @@ internal object LxAppWifi {
                         NativeApi.onCallback(callbackId, false, "12006") // Permission denied
                         return
                     }
-                    PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
+                    PermissionManager.ensurePermissions(activity, PermissionFeature.WIFI, LOCATION_PERMISSIONS) { granted ->
                         if (granted) {
                             getWifiList(callbackId)
                         } else {

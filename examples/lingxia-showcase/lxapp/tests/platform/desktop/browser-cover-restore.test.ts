@@ -1,5 +1,5 @@
 import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
@@ -55,7 +55,7 @@ function windowsSidebarUsesRail(
   if (!main) throw new Error('visible Windows host WebView was not found');
   // SurfaceLayout.switcherForm describes the surface graph, not the shell's
   // persisted 44-DIP icon rail. The physical content inset distinguishes it
-  // from the 184-DIP expanded sidebar.
+  // from the expanded sidebar.
   return main.bounds.x - host.bounds.x < 80 * host.scale;
 }
 
@@ -67,10 +67,11 @@ function windowsStaticSettingsPoint(
   const scale = host.scale;
   if (!rail) {
     // Typed Settings leads the header actions, which sit right-aligned
-    // against the collapse toggle at the 184-DIP sidebar's trailing edge.
+    // against the collapse toggle at the expanded sidebar's trailing edge
+    // (lingxia-shell DEFAULT_EXPANDED_SIDEBAR_WIDTH).
     const size = 24;
     const gap = 4;
-    const toggleLeft = 184 - 8 - size;
+    const toggleLeft = 148 - 8 - size;
     const shown = Math.min(1 + actions.header, 2);
     const settingsLeft = toggleLeft - gap - shown * size - (shown - 1) * gap;
     return [
@@ -149,8 +150,8 @@ async function openHostSettings(
 }
 
 async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
-  await app.logic.eval(({ lx }) => {
-    lx.shell.sidebarActions.replace([
+  await app.logic.eval(async ({ lx }) => {
+    await lx.shell.sidebarActions.replace([
       {
         id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
         onActivate() { void lx.shell.openBuiltin('downloads'); },
@@ -180,7 +181,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
   });
 }
 
-spec("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
+test("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
       'BrowserDriver.tabs',
       'BrowserDriver.close',
       'DesktopDriver.pointer',
@@ -212,11 +213,11 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     });
     defer(() => restoreShowcaseSidebarActions(app));
 
-    await app.logic.eval(({ lx }) => {
+    await app.logic.eval(async ({ lx }) => {
       const probe = globalThis as SpoofGlobals;
       probe.__staticSettingsSpoofCalls = 0;
       const spoof = () => { probe.__staticSettingsSpoofCalls = (probe.__staticSettingsSpoofCalls ?? 0) + 1; };
-      lx.shell.sidebarActions.replace([
+      await lx.shell.sidebarActions.replace([
         { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate: spoof },
         { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate: spoof },
         { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate: spoof },

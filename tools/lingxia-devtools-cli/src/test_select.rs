@@ -1,5 +1,5 @@
 //! What `lxdev test` runs: its `PATH[:LINE]` arguments, the default entry,
-//! and the spec calls a `FILE:LINE` names, found by parsing the file.
+//! and the test calls a `FILE:LINE` names, found by parsing the file.
 
 use crate::test_bundle::{collect_test_files, find_project_root, source_name};
 use anyhow::{Context, Result, anyhow};
@@ -78,7 +78,7 @@ pub struct Selection {
     /// The project the files belong to.
     pub root: PathBuf,
     /// The `locations` run control: every file, by source name, to the line
-    /// ranges of the spec calls it selects (`None`: all of them). Only when
+    /// ranges of the test calls it selects (`None`: all of them). Only when
     /// a `FILE:LINE` was given.
     pub locations: Option<Locations>,
     /// The arguments as given (or the default entry), for rerun commands.
@@ -98,7 +98,7 @@ pub fn select(paths: &[TestPath], cwd: &Path) -> Result<Selection> {
         if !dir.is_dir() {
             return Err(usage(format!(
                 "no tests to run: {} does not exist. Pass a file or directory \
-                 (`lxdev test path/to/specs`), or set `test.entry` in lxdev.json",
+                 (`lxdev test path/to/tests`), or set `test.entry` in lxdev.json",
                 dir.display()
             )));
         }
@@ -193,7 +193,7 @@ pub fn display_path(path: &Path, cwd: &Path) -> String {
     }
 }
 
-/// `lxdev test list` text: one `file:line  id  title  [tags]` line per spec, the
+/// `lxdev test list` text: one `file:line  id  title  [tags]` line per test, the
 /// first two columns aligned.
 pub fn format_listing(specs: &[serde_json::Value]) -> String {
     let rows: Vec<(String, &str, &str, String)> = specs
@@ -239,13 +239,13 @@ pub enum Literal<T> {
     Computed,
 }
 
-/// A spec registration in a source file: `spec(…)`, `spec.only(…)`, ….
+/// A test registration in a source file: `test(…)`, `test.only(…)`, ….
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecCall {
     pub from: u32,
     pub to: u32,
     pub title: Option<String>,
-    /// `only`, `skip`, `fixme` or `fail`; `None` for a plain `spec(…)`.
+    /// `only`, `skip`, `fixme` or `fail`; `None` for a plain `test(…)`.
     pub modifier: Option<String>,
     /// The `id` option: `Known(None)` when the call gives none.
     pub id: Literal<Option<String>>,
@@ -255,13 +255,13 @@ pub struct SpecCall {
     pub repeated: bool,
 }
 
-/// Every spec call of a file, and the line span of every other syntax node
+/// Every test call of a file, and the line span of every other syntax node
 /// that contains one (a loop, a helper function, a grouping call).
 #[derive(Debug)]
 pub struct SpecMap {
     pub calls: Vec<SpecCall>,
     groups: Vec<(u32, u32)>,
-    /// The tags `spec.configure({ tags })` gives every spec in the file.
+    /// The tags `test.configure({ tags })` gives every test in the file.
     pub file_tags: Literal<Vec<String>>,
 }
 
@@ -275,11 +275,11 @@ impl SpecMap {
         let parsed = Parser::new(&allocator, source, source_type).parse();
         if !parsed.diagnostics.is_empty() {
             return Err(anyhow!(
-                "{}: cannot parse it to find its specs",
+                "{}: cannot parse it to find its tests",
                 path.display()
             ));
         }
-        // The bundle refuses any other way to reach `spec` (test_spec_check).
+        // The bundle refuses any other way to reach `test` (test_spec_check).
         let mut finder = SpecFinder {
             lines: LineIndex::new(source),
             calls: Vec::new(),
@@ -306,7 +306,7 @@ impl SpecMap {
         })
     }
 
-    /// The spec calls `line` selects: the one it is in, else every one in
+    /// The test calls `line` selects: the one it is in, else every one in
     /// the smallest node around it that has any. `Err` lists the nearest.
     pub fn at(&self, line: u32) -> Result<Vec<&SpecCall>, Vec<&SpecCall>> {
         let enclosing = self
@@ -337,7 +337,7 @@ impl SpecMap {
     }
 }
 
-/// The line ranges of the spec calls `file:line` selects.
+/// The line ranges of the test calls `file:line` selects.
 fn spec_ranges_at(file: &Path, line: u32, shown: &str) -> Result<Vec<(u32, u32)>> {
     let source =
         std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
@@ -345,7 +345,7 @@ fn spec_ranges_at(file: &Path, line: u32, shown: &str) -> Result<Vec<(u32, u32)>
     match map.at(line) {
         Ok(calls) => Ok(calls.iter().map(|call| (call.from, call.to)).collect()),
         Err(nearest) if nearest.is_empty() => {
-            Err(usage(format!("{shown}:{line}: {shown} has no spec calls")))
+            Err(usage(format!("{shown}:{line}: {shown} has no test calls")))
         }
         Err(nearest) => {
             let listed = nearest
@@ -360,7 +360,7 @@ fn spec_ranges_at(file: &Path, line: u32, shown: &str) -> Result<Vec<(u32, u32)>
                 .collect::<Vec<_>>()
                 .join("\n");
             Err(usage(format!(
-                "{shown}:{line} is not inside a spec. Nearest:\n{listed}"
+                "{shown}:{line} is not inside a test. Nearest:\n{listed}"
             )))
         }
     }
@@ -398,16 +398,16 @@ struct SpecFinder {
     nesting: u32,
 }
 
-/// What a callee on the spec API is.
+/// What a callee on the test API is.
 enum SpecCallee {
-    /// `spec(…)`, or `spec.MODIFIER(…)` with the modifier.
+    /// `test(…)`, or `test.MODIFIER(…)` with the modifier.
     Spec(Option<String>),
     Configure,
 }
 
 impl SpecFinder {
     fn spec_callee(&self, callee: &Expression<'_>) -> Option<SpecCallee> {
-        let named = |expression: &Expression<'_>| matches!(expression, Expression::Identifier(id) if id.name == "spec");
+        let named = |expression: &Expression<'_>| matches!(expression, Expression::Identifier(id) if id.name == "test");
         match callee {
             Expression::StaticMemberExpression(member) if named(&member.object) => {
                 let property = member.property.name.as_str();
@@ -496,7 +496,7 @@ fn literal_tags(expression: &Expression<'_>) -> Literal<Vec<String>> {
     Literal::Known(tags)
 }
 
-/// The options argument of a spec call: `spec(title, options?, body?)`.
+/// The options argument of a test call: `test(title, options?, body?)`.
 fn call_options(arguments: &[Argument<'_>]) -> (Literal<Option<String>>, Literal<Vec<String>>) {
     match arguments.get(1) {
         None
@@ -623,19 +623,19 @@ mod tests {
         assert!(parse_test_path("").is_err());
     }
 
-    const SOURCE: &str = r#"import { spec } from "@lingxia/test";
+    const SOURCE: &str = r#"import { test } from "@lingxia/test";
 
-spec("first", async () => {
+test("first", async () => {
   await 1;
 });
 
-spec.skip(`second`, { id: "S-2" }, async () => {});
+test.skip(`second`, { id: "S-2" }, async () => {});
 
 for (const name of ["a", "b"]) {
-  spec(name, async () => {});
+  test(name, async () => {});
 }
 
-spec.beforeEach(async () => {});
+test.beforeEach(async () => {});
 "#;
 
     fn map() -> SpecMap {
@@ -672,7 +672,7 @@ spec.beforeEach(async () => {});
         assert_eq!(lines(4), [3]);
         assert_eq!(lines(5), [3]);
         assert_eq!(lines(7), [7]);
-        // The loop around a spec call is its group.
+        // The loop around a test call is its group.
         assert_eq!(lines(9), [10]);
         assert_eq!(lines(11), [10]);
     }
@@ -689,7 +689,7 @@ spec.beforeEach(async () => {});
         };
         assert_eq!(nearest(1), [3, 7, 10]);
         assert_eq!(nearest(6), [3, 7, 10]);
-        // A hook is not a spec.
+        // A hook is not a test.
         assert_eq!(nearest(13), [3, 7, 10]);
     }
 
@@ -785,7 +785,7 @@ spec.beforeEach(async () => {});
         let error = select(&paths(&["tests/cart.test.ts:13"]), dir.path()).unwrap_err();
         let message = format!("{error}");
         assert!(
-            message.contains("tests/cart.test.ts:13 is not inside a spec"),
+            message.contains("tests/cart.test.ts:13 is not inside a test"),
             "{message}"
         );
         assert!(message.contains("tests/cart.test.ts:3  first"), "{message}");

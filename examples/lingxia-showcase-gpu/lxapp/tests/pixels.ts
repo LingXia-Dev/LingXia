@@ -1,8 +1,8 @@
-import type { spec } from '@lingxia/test';
+import type { test } from '@lingxia/test';
 import { decodePng } from './png.js';
 
 // Pixel readings shared by the specs that check what a control draws.
-export type Fixture = Parameters<Parameters<typeof spec>[2]>[0];
+export type Fixture = Parameters<Parameters<typeof test>[2]>[0];
 
 export const apart = (a: number[], b: number[]) => a.some((value, i) => Math.abs(value - b[i]) > 40);
 

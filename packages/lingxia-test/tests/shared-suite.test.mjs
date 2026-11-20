@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { expect, spec } from "../dist/index.js";
-import { reset, run, skipSpecFiles } from "../dist/runner.js";
+import { expect, test as lxTest } from "../dist/index.js";
+import { reset, run, skipTestFiles } from "../dist/runner.js";
 
 const here = fileURLToPath(import.meta.url).replaceAll("\\", "/");
 
@@ -16,10 +16,10 @@ afterEach(() => {
   delete globalThis.lx;
 });
 
-test("skipSpecFiles skips a file's specs with the reason", async () => {
+test("skipTestFiles skips a file's specs with the reason", async () => {
   let ran = false;
-  spec("webview only", async () => { ran = true; });
-  skipSpecFiles({ [here]: "reads the WebView DOM" });
+  lxTest("webview only", async () => { ran = true; });
+  skipTestFiles({ [here]: "reads the WebView DOM" });
   installFakeHost(createWorld());
   const report = await run();
   assert.equal(ran, false);
@@ -28,8 +28,8 @@ test("skipSpecFiles skips a file's specs with the reason", async () => {
 });
 
 test("a skip naming a file the run does not carry warns and is listed as skipUnused", async () => {
-  spec("one", async () => {});
-  skipSpecFiles({ "tests/gone.test.ts": "removed" });
+  lxTest("one", async () => {});
+  skipTestFiles({ "tests/gone.test.ts": "removed" });
   const host = installFakeHost(createWorld());
   const report = await run();
   assert.equal(report.cases[0].status, "passed");
@@ -38,8 +38,8 @@ test("a skip naming a file the run does not carry warns and is listed as skipUnu
 });
 
 test("a skip naming a bundled file that registers no spec warns and is listed as skipUnused", async () => {
-  spec("one", async () => {});
-  skipSpecFiles({ "tests/empty.test.ts": "renderer reason" });
+  lxTest("one", async () => {});
+  skipTestFiles({ "tests/empty.test.ts": "renderer reason" });
   globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { sources: ["tests/empty.test.ts", here], mappings: "" };
   const host = installFakeHost(createWorld());
   try {
@@ -58,12 +58,12 @@ test("a root-relative skip matches a shared spec reached through a symlinked pac
   const real = join(base, "LingXia-gpu", "packages", "lingxia-test", "showcase", "pages");
   mkdirSync(real, { recursive: true });
   const dist = pathToFileURL(fileURLToPath(new URL("../dist/index.js", import.meta.url))).href;
-  writeFileSync(join(real, "render.test.mjs"), `import { spec } from ${JSON.stringify(dist)};\nspec("webview render", async () => { globalThis.__ranShared = true; });\n`);
+  writeFileSync(join(real, "render.test.mjs"), `import { test } from ${JSON.stringify(dist)};\ntest("webview render", async () => { globalThis.__ranShared = true; });\n`);
   mkdirSync(join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia"), { recursive: true });
   symlinkSync(join(base, "LingXia-gpu", "packages", "lingxia-test"), join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia", "test"), "dir");
   try {
     await import(pathToFileURL(join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia", "test", "showcase", "pages", "render.test.mjs")).href);
-    skipSpecFiles({ "pages/render.test.mjs": "reads the WebView DOM" }, { root: ["lingxia-test/showcase", "@lingxia/test/showcase"] });
+    skipTestFiles({ "pages/render.test.mjs": "reads the WebView DOM" }, { root: ["lingxia-test/showcase", "@lingxia/test/showcase"] });
     installFakeHost(createWorld());
     const report = await run();
     assert.equal(globalThis.__ranShared, undefined, "the shared spec did not run");
@@ -77,31 +77,31 @@ test("a root-relative skip matches a shared spec reached through a symlinked pac
 });
 
 test("a root-relative skip matches only under that directory, and a root takes no ..", async () => {
-  spec("one", async () => {});
-  skipSpecFiles({ "shared-suite.test.mjs": "elsewhere" }, { root: "lingxia-test/showcase" });
+  lxTest("one", async () => {});
+  skipTestFiles({ "shared-suite.test.mjs": "elsewhere" }, { root: "lingxia-test/showcase" });
   installFakeHost(createWorld());
   const report = await run();
   assert.equal(report.cases[0].status, "passed");
   assert.deepEqual(report.skipUnused, ["lingxia-test/showcase/shared-suite.test.mjs"]);
   reset();
-  skipSpecFiles({ "shared-suite.test.mjs": "here" }, { root: "lingxia-test/tests" });
-  spec("two", async () => {});
+  skipTestFiles({ "shared-suite.test.mjs": "here" }, { root: "lingxia-test/tests" });
+  lxTest("two", async () => {});
   installFakeHost(createWorld());
   assert.equal((await run()).cases[0].status, "skipped");
-  assert.throws(() => skipSpecFiles({ x: "y" }, { root: "../showcase" }), /without \.\./);
+  assert.throws(() => skipTestFiles({ x: "y" }, { root: "../showcase" }), /without \.\./);
 });
 
 test("a skip needs a reason", () => {
-  assert.throws(() => skipSpecFiles({ [here]: " " }), /needs a reason/);
+  assert.throws(() => skipTestFiles({ [here]: " " }), /needs a reason/);
 });
 
 test("each case records the renderers its locators read", async () => {
   const world = createWorld();
   world.add({ testId: "gpu-title", renderer: "gpu" });
   world.add({ testId: "web-title" });
-  spec("gpu page", async (t) => { await expect(t.app.view.testId("gpu-title")).toBeVisible(); });
-  spec("web page", async (t) => { await expect(t.app.view.testId("web-title")).toBeVisible(); });
-  spec("no page", async () => {});
+  lxTest("gpu page", async (t) => { await expect(t.app.view.testId("gpu-title")).toBeVisible(); });
+  lxTest("web page", async (t) => { await expect(t.app.view.testId("web-title")).toBeVisible(); });
+  lxTest("no page", async () => {});
   installFakeHost(world);
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.renderers), [["gpu"], ["webview"], undefined]);

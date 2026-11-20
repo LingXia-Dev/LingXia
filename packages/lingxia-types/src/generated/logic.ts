@@ -63,13 +63,6 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
-/**
- * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
- * Annotate the field (`null as Profile | null`) when a later fill should be
- * checked.
- */
-export type LazyInitField<T> = T;
-
 type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
 
 type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -268,11 +261,6 @@ export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResu
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-export type ChooseFileSingleResult = {
-  status: 'ok';
-  paths: [string];
-} | CanceledResult;
-
 /** A running operation. Progress has one consumer; stopping observation does not cancel it. */
 export interface Task<TResult, TProgress> {
   readonly result: Promise<TResult>;
@@ -388,16 +376,6 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
-    /** Single-file picker: a completed selection is exactly one path. */
-    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
-    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
-    /**
-     * Opens a file picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -488,6 +466,22 @@ export type AppConfig = {
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onUserCaptureScreen?: () => void | Promise<void>;
+};
+
+/**
+ * What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+ * `undefined`, `null` or `''` restores the default, and a key left out
+ * keeps its value.
+ */
+export type AppDisplayPatch = {
+    /** One line, 1 to 64 characters after trimming; blank restores the default. */
+    name?: string | null;
+    /**
+     * A bundled path or `lx://` file: PNG, JPEG, WebP or SVG of at most 1 MiB,
+     * raster images at most 4096 px on a side; SVG content is not validated.
+     * Copied, so the source may go.
+     */
+    icon?: string | null;
 };
 
 /** Runtime-managed app download path, usually under `lx://userdata`. */
@@ -703,74 +697,6 @@ export type CanceledResult = {
     status: 'canceled';
 };
 
-export type ChooseDirectoryOptions = {
-    /** Initial directory the dialog opens in. Platform default if omitted. */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseDirectory`. Branch on `status` before reading
- * the selected directory.
- */
-export type ChooseDirectoryResult = {
-    status: 'ok';
-    /** Native-consumable directory reference (path or URI). */
-    path: string;
-} | CanceledResult;
-
-export type ChooseFileOptions = {
-    /** Allow selecting multiple files. Default: false */
-    multiple?: boolean;
-    /** Optional file filters. Empty or omitted means all file types. */
-    filters?: FileDialogFilter[];
-    /**
-     * Initial directory the dialog opens in.
-     *
-     * When this resolves to an app-local directory, LingXia may use its internal
-     * file picker. When omitted, the platform system file picker is used.
-     */
-    defaultPath?: string;
-};
-
-/**
- * Result of `lx.chooseFile`. Branch on `status` before reading the
- * selected paths.
- */
-export type ChooseFileResult = {
-    status: 'ok';
-    /**
-     * File paths returned by LingXia; always at least one. Values may be
-     * app-local paths, `lx://...` paths, or platform system-picker references.
-     * Treat them as opaque strings and pass them back to LingXia APIs such as
-     * `lx.share`.
-     */
-    paths: [string, ...string[]];
-} | CanceledResult;
-
-export type ChooseMediaOptions = {
-    count?: number;
-    mediaType?: ('image' | 'video')[];
-    sourceType?: ('album' | 'camera')[];
-    camera?: 'back' | 'front';
-    maxDurationSeconds?: number;
-};
-
-/**
- * Result of `lx.chooseMedia`. Branch on `status` before reading the
- * selected entries.
- */
-export type ChooseMediaResult = {
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
-} | CanceledResult;
-
-export type ChosenMediaEntry = {
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
-};
-
 export type ClipboardApi = globalThis.ClipboardApi;
 
 export type ClipboardItem = {
@@ -828,8 +754,8 @@ export type ClipboardWriteItem = {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
-     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * Managed `lx://` path, or a picker result from `lx.pickFile` /
+     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -985,7 +911,10 @@ export type ControlDisplayLanguageApi = {
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
 
-/** A surface declared by the host in `lingxia.yaml`. */
+/**
+ * A surface declared by the host in `lingxia.yaml`. A declaration that
+ * shows an lxapp is that app's `AppSurface` instead.
+ */
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
 };
@@ -1119,7 +1048,7 @@ export type ExtractVideoThumbnailResult = {
 };
 
 export type FileDialogFilter = {
-    /** Optional label shown in the native dialog. */
+    /** Optional label shown in the native dialog (desktop only). */
     name?: string;
     /** Allowed extensions without dots, e.g. ['pdf', 'txt']. */
     extensions: string[];
@@ -1600,9 +1529,99 @@ export type PageTargetOptions = {
     query?: PageQuery;
 };
 
-export type PickFileOptions = Omit<ChooseFileOptions, 'multiple'>;
+export type PickDirectoryOptions = {
+    /**
+     * Initial directory the dialog opens in. Platform default if omitted. On
+     * Android and HarmonyOS phones and tablets, only a directory in lxapp
+     * storage works (it opens the in-app chooser); otherwise the call rejects
+     * with `E_NOT_SUPPORTED`.
+     */
+    defaultPath?: string;
+};
 
-export type PickFileResult = { status: 'ok'; uri: string } | CanceledResult;
+/**
+ * Result of `lx.pickDirectory`. Branch on `status` before reading
+ * the selected directory.
+ */
+export type PickDirectoryResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+
+export type PickFileOptions = {
+    /** Optional file filters. Empty or omitted means all file types. */
+    filters?: FileDialogFilter[];
+    /**
+     * Initial directory the dialog opens in.
+     *
+     * When this resolves to an app-local directory, LingXia may use its internal
+     * file picker. When omitted, the platform system file picker is used.
+     */
+    defaultPath?: string;
+};
+
+/** Result of `lx.pickFile`. Branch on `status` before reading the file. */
+export type PickFileResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+
+/**
+ * Result of `lx.pickFiles`. Branch on `status` before reading the
+ * selected files.
+ */
+export type PickFilesResult = {
+    status: 'ok';
+    /** Always at least one file. */
+    files: [PickedItem, ...PickedItem[]];
+} | CanceledResult;
+
+export type PickMediaOptions = {
+    /**
+     * Maximum entries to return (default 9). Where the system picker cannot
+     * enforce it (desktop), entries beyond it are dropped from the result.
+     */
+    count?: number;
+    mediaType?: ('image' | 'video')[];
+    sourceType?: ('album' | 'camera')[];
+    camera?: 'back' | 'front';
+    maxDurationSeconds?: number;
+};
+
+/**
+ * Result of `lx.pickMedia`. Branch on `status` before reading the
+ * selected entries.
+ * On mobile each entry is a copy in the lxapp temp directory (counted
+ * against its quota); on desktop it is a read-only grant on the
+ * original file.
+ */
+export type PickMediaResult = {
+    status: 'ok';
+    /** Picked media; always at least one entry. */
+    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
+} | CanceledResult;
+
+/**
+ * One picked file or directory. `uri` is opaque: never parse it, and pass
+ * it only to APIs that take a picked file such as `lx.share`. `name` is the
+ * display name the picker reported, reduced to one path component:
+ * display-only, not unique, and it may lack an extension or disagree
+ * with the content type.
+ * A picked `uri` is read-only and valid for the current session only;
+ * `lx.fs.copy` it to keep the file. Whether the file was copied is
+ * host-specific: desktop grants the live original, mobile may hand
+ * over a copy (iOS) or a reference to the original (Android, Harmony).
+ * A `pickDirectory` `uri` is a read-only root: `lx.fs.exists`, `stat`,
+ * `readDir` and `file()` reads, and `lx.fs.copy` as a source, also take
+ * `<uri>/<relative>` with each segment percent-encoded. Empty, `.` or
+ * `..` segments, `:`, `\`, and any path that leaves the directory
+ * through a symlink do not resolve; writes through the grant are
+ * rejected.
+ */
+export type PickedItem = {
+    uri: string;
+    name: string;
+};
+
+export type PickedMediaEntry = {
+    uri: string;
+    fileType: 'image' | 'video';
+    isOriginal: boolean;
+};
 
 export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
 
@@ -1806,7 +1825,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.chooseFile` for system files and `lx.chooseMedia` for picked media;
+     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -1903,23 +1922,49 @@ export type ShellApi = {
      * navigation and all other behavior.
      */
     sidebarActions: ShellSidebarActionsApi;
-    /** Compose another lxapp into a shell slot. */
-    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * Open another lxapp in main or a companion slot, focus it if it is open,
+     * or move it to the role `as` names.
+     */
+    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * The handle of an lxapp live as a surface of its own, declared or not;
+     * `undefined` when it is not. A live lxapp has one handle: `openApp`,
+     * `getApp`, and `openDeclared` / `getDeclared` of the declaration that
+     * shows it all return the same `AppSurface`.
+     */
+    getApp(appId: string): AppSurface | undefined;
+    /**
+     * The handle of a live declared surface, or of its keyed instance, the
+     * same object on every call; `undefined` when it is not live. A
+     * declaration that shows an lxapp answers with that app's `AppSurface`.
+     */
+    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
+     * Change the name and icon the host shows for this app, above the
+     * registry's and `lxapp.json`'s. Kept per service env and dropped on
+     * uninstall; identical values are a no-op, so calling it on every launch
+     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /**
      * Open a declared surface with shell privileges — the same declaration
      * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides.
+     * placement overrides; `as` and `edge` also move a live instance. A
+     * declaration that shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
-    /** Re-place a live declared surface: change its role or its edge. */
-    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
 };
 
 export type ShellOpenAppOptions = {
-    /** `main` occupies the primary content area; `aside` a companion region. */
-    as: 'main' | 'aside';
+    /**
+     * `main` occupies the primary content area; `aside` a companion region.
+     * Omitted, a live app keeps its role and a closed one opens in main. A live
+     * app asked for the other role moves there without restarting.
+     */
+    as?: 'main' | 'aside';
     /** Preferred docking side. Only meaningful with `as: 'aside'`. */
     edge?: SurfaceEdge;
     /**
@@ -1928,10 +1973,10 @@ export type ShellOpenAppOptions = {
      */
     page?: ExternalPageName;
     /**
-     * Startup query. When the lxapp is already open in this role, the surface
-     * is focused, not reopened: `page` and `query` reach its Logic as App
-     * `onShow` with `reason: 'switch_back'`, `path` and `query`, and its page
-     * stack is kept.
+     * Startup query. When the lxapp is already open, the surface is focused
+     * (and moved, if `as` names the other role), not reopened: `page` and
+     * `query` reach its Logic as App `onShow` with `reason: 'switch_back'`,
+     * `path` and `query`, and its page stack is kept.
      */
     query?: PageQuery;
     /**
@@ -1939,8 +1984,6 @@ export type ShellOpenAppOptions = {
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
-    /** Stable identity for `lx.surface.getByKey(key)`. */
-    key?: string;
 };
 
 /**
@@ -1952,18 +1995,16 @@ export type ShellOpenAppOptions = {
  */
 export type ShellOpenDeclaredOptions = {
     /**
-     * Caller-owned identity, for `lx.surface.getByKey(key)` later — the same key
-     * every opener takes. It carries one extra power here: a declaration can
-     * be opened more than once, and the key is which instance you mean, so a
-     * new key creates one. 1 to 128 UTF-8 bytes. Declarations without
-     * instantiable native providers reject it with `capability_missing`.
+     * Which instance of the declaration: a declaration can be opened more than
+     * once, and a new key creates one. Find it again with
+     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
     /**
-     * Open with a role other than the declaration's. Must be realizable by the
-     * declared provider; a stable root rejects anything but `main`. Prefer this
-     * over opening and then calling `reconfigure`, which would present the
-     * wrong role first.
+     * Open with a role other than the declaration's, or move the live instance
+     * to it. Must be realizable by the declared provider; a stable root rejects
+     * anything but `main`.
      */
     as?: 'main' | 'aside' | 'float';
     /** Preferred docking side when the effective role is `aside`. */
@@ -2062,15 +2103,6 @@ export type ShellSidebarActionUpdate = {
     disabled?: boolean;
 };
 
-/**
- * Role and edge overrides the native-assigned Control app may apply to a live declared
- * surface. A stable root rejects non-main roles.
- */
-export type ShellSurfacePatch = {
-    as?: 'main' | 'aside' | 'float';
-    edge?: SurfaceEdge;
-};
-
 export type ShowActionSheetOptions = {
     items: readonly { id: string; label: string }[];
     itemColor?: string;
@@ -2150,14 +2182,16 @@ export type SurfaceApi = {
     /**
      * Open a surface the host declared in `lingxia.yaml`, with the placement
      * the declaration chose. Instance keys and placement overrides are shell
-     * composition; they live on `lx.shell.openDeclared`.
+     * composition; they live on `lx.shell.openDeclared`. A declaration that
+     * shows an lxapp resolves to that app's `AppSurface`.
      */
-    openDeclared(id: string): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
     /**
-     * Find a live surface by the explicit key passed when opening it.
-     * Runtime-assigned ids are not lookup keys.
+     * Find one of this lxapp's own live pages or browser tabs by the key passed
+     * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
+     * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
-    getByKey(key: string): AnySurface | undefined;
+    getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
      * Observe this presentation's viewport. Invoked immediately with the
      * current context, then again whenever it changes. Returns an unsubscribe
@@ -2181,13 +2215,12 @@ export type SurfaceApi = {
 /** What every surface handle carries, whatever opened it. */
 export type SurfaceBase = {
     readonly kind: SurfaceKind;
-    readonly id: string;
     /** The caller-supplied identity, when this surface was opened with one. */
     readonly key?: string;
     /**
      * The placement the host produced, which an ordered preference may narrow.
-     * Live rather than a snapshot: `lx.shell.reconfigure` updates it on the
-     * handle you already hold.
+     * Live rather than a snapshot: a later open that moves the surface, or the
+     * user dragging it, updates the handle you already hold.
      */
     readonly realized: SurfacePlacement;
     /** True until `close()` fires; afterwards the page instance is torn down. */
@@ -2219,7 +2252,6 @@ export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app
  | 'reclaimed' | 'unknown';
 
 export type SurfaceClosedEvent = {
-    id: string;
     reason: SurfaceCloseReason;
 };
 
@@ -2251,10 +2283,12 @@ export type SurfaceContext = {
 export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
 
 /**
- * A surface rejection. The runtime carries the surface code on
- * `data.code` — `code` itself is the transport-level host code, shared
- * with every other `lx` rejection — so read it with
- * `surfaceErrorCode(error)` and never parse the message.
+ * A surface rejection. `code` is the host code: `E_SURFACE_CONFLICT`,
+ * `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CLOSED`, `E_CAPABILITY_MISSING`,
+ * `E_NOT_SUPPORTED`, `E_NOT_FOUND`, `E_INVALID_ARG`,
+ * `E_PERMISSION_DENIED`, or `E_INTERNAL`. `data.code` carries the finer
+ * `SurfaceErrorCode`; read it with `surfaceErrorCode(error)` and never
+ * parse the message.
  * ```ts
  * import { surfaceErrorCode } from 'lingxia-types/error';
  * catch (error) {
@@ -2267,7 +2301,7 @@ export type SurfaceError = Error & {
 };
 
 /**
- * Why a surface operation was refused. Carried as `code` on every
+ * Why a surface operation was refused. Carried on `data.code` of every
  * `SurfaceError`, so no caller has to match on message text.
  */
 export type SurfaceErrorCode = /** The placement cannot be realized by this host build. */
@@ -2280,6 +2314,9 @@ export type SurfaceErrorCode = /** The placement cannot be realized by this host
  | 'invalid_arg'
 /** The target is already open in a role this call cannot change. */
  | 'already_open_other_role'
+/** The role forbids this: a main cannot be hidden, and the stable
+ * root main cannot be closed or leave `main`. */
+ | 'role_locked'
 /** The surface has been closed; the handle is detached. */
  | 'closed'
 /** The host lacks a capability the request needs, such as an instantiable
@@ -2353,7 +2390,6 @@ export type SurfaceShowable = {
  * toggled visibility). `shell` identifies a host-driven main switch.
  */
 export type SurfaceVisibilityEvent = {
-    id: string;
     source: 'opener' | 'page' | 'shell';
 };
 
@@ -2851,6 +2887,13 @@ export interface AppBaseInfo {
   sdkVersion: string;
 }
 
+export interface AppInfo {
+  appId: string;
+  name: string;
+  version: string;
+  channel: LxAppReleaseType;
+}
+
 /** Device info APIs. */
 export interface DeviceInfo {
   brand: string;
@@ -2858,6 +2901,13 @@ export interface DeviceInfo {
   marketName: string;
   osName: HostOs;
   osVersion: string;
+}
+
+export interface DirEntry {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
 }
 
 export interface FileStats {
@@ -2912,13 +2962,6 @@ export interface LocationInfo {
   horizontalAccuracy?: number;
 }
 
-export interface LxAppInfo {
-  appId: string;
-  appName: string;
-  version: string;
-  channel: LxAppReleaseType;
-}
-
 export interface ScreenInfo {
   width: number;
   height: number;
@@ -2944,13 +2987,6 @@ export interface WifiInfo {
   signalStrength: number;
   /** Center frequency in MHz (if available) */
   frequency?: number;
-}
-
-export interface DirEntry {
-  readonly name: string;
-  readonly isFile: boolean;
-  readonly isDirectory: boolean;
-  readonly isSymlink: boolean;
 }
 
 export interface LxFile {
@@ -3189,23 +3225,25 @@ declare global {
      * `mode: "auto"`.
      */
     openFile(options: OpenFileOptions): Promise<void>;
-    /** Pick one file. A successful selection returns one opaque URI. */
+    /** Pick one file. A completed selection is `{ status: 'ok', uri, name }`. */
     pickFile(options?: PickFileOptions): Promise<PickFileResult>;
-    /** Pick one or more files. Dismissal is a normal outcome. */
-    pickFiles(options?: PickFileOptions): Promise<ChooseFileResult>;
     /**
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
+     * Pick one or more files. A completed selection is
+     * `{ status: 'ok', files: [{ uri, name }, ...] }` with at least one file.
      */
-    chooseFile(options: never): Promise<never>;
+    pickFiles(options?: PickFileOptions): Promise<PickFilesResult>;
     /**
      * Opens a directory picker.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', path }`. Rejects when the
-     * picker fails or returns an invalid payload.
+     * completed selection resolves `{ status: 'ok', uri, name }`. Rejects when the
+     * picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
+     * the host has no readable system folder picker (Android, HarmonyOS phones and
+     * tablets) and `defaultPath` is not in lxapp storage.
+     * The `uri` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
+     * source, also take `<uri>/<relative>` with each segment percent-encoded. A
+     * child outside the directory, including through a symlink, does not resolve.
      */
-    chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
+    pickDirectory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     readonly fs: FileSystemApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback): () => void;
@@ -3214,7 +3252,7 @@ declare global {
     /** Get location function */
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
     /** Identify the running lxapp: its id, display name, version, and channel. */
-    getLxAppInfo(): LxAppInfo;
+    getAppInfo(): AppInfo;
     /** Read an image's dimensions, type, and orientation without decoding it into a view. */
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
     /** Re-encode an image at a lower quality or size, writing a new managed file. */
@@ -3226,7 +3264,7 @@ declare global {
      * entry. Rejects when capture or selection fails, or the host returns an invalid
      * payload.
      */
-    chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
+    pickMedia(options?: PickMediaOptions): Promise<PickMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:
@@ -3255,8 +3293,8 @@ declare global {
      */
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
     /**
-     * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
-     * `useVideo` name or `<video id>`.
+     * A control handle for the native video component with this id, or on a GPU page for the player
+     * of this `useVideo` name or `<video id>`.
      */
     createVideoContext(name: string): VideoContext;
     /**
@@ -3413,16 +3451,30 @@ declare global {
      * `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
      * slot. Control-app only; the namespace is the privilege.
      */
-    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
+    /**
+     * `lx.shell.getApp(appId)` — the handle of an app live as a surface of its
+     * own, declared or not. One live lxapp has one handle, its `AppSurface`.
+     */
+    getApp(appId: string): AppSurface | undefined;
+    /**
+     * `lx.shell.getDeclared(id, key?)` — the handle of a live declared surface,
+     * or of its keyed instance; a declared lxapp answers with its `AppSurface`.
+     */
+    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
     /** `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
      * keyed multi-instance form and placement overrides. Control-app only.
      */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
-    /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
-    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
+    /**
+     * Change the name and icon the host shows for the calling app. Only the
+     * Control app may call this API. Resolves once stored; the host repaints only
+     * when a value changed, so calling it on every launch is cheap.
+     */
+    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }
@@ -3441,27 +3493,21 @@ declare global {
      * the chrome explicitly. Declarations are process-local, so call `replace` again
      * on every Logic launch.
      */
-    replace(items: ShellSidebarAction[]): void;
+    replace(items: ShellSidebarAction[]): Promise<void>;
     /**
      * Atomically updates the icon, label, value, and/or disabled state of one stable
      * id. Only the Control app may call this API. The patch must be non-empty;
      * unknown fields are rejected. A `value` key that is present sets the value, and
-     * `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Throws
-     * `E_NOT_FOUND` when `id` is not in the current declaration.
+     * `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Rejects
+     * with `E_NOT_FOUND` when `id` is not in the current declaration.
      */
-    update(id: string, patch: ShellSidebarActionUpdate): void;
+    update(id: string, patch: ShellSidebarActionUpdate): Promise<void>;
     /**
      * Atomically removes one stable id and its generation-scoped callback. Only the
-     * Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
-     * current declaration.
+     * Control app may call this API. Rejects with `E_NOT_FOUND` when `id` is not in
+     * the current declaration.
      */
-    remove(id: string): void;
-    /**
-     * Atomically clears every runtime sidebar action and callback. Only the
-     * Control app may call this API. Equivalent to `replace([])` and safe when already
-     * empty; the Control app must still redeclare actions after the next Logic launch.
-     */
-    clear(): void;
+    remove(id: string): Promise<void>;
   }
 }
 
@@ -3482,9 +3528,9 @@ declare global {
      * `lx.surface.openDeclared(id, options?)` — a surface the host declared in
      * `lingxia.yaml`, opened with the declaration's own presentation.
      */
-    openDeclared(id: string): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
     /** Find a live surface by its explicit caller-owned key. Runtime ids are not keys. */
-    getByKey(key: string): AnySurface | undefined;
+    getByKey(key: string): PageSurface | TabSurface | undefined;
     /**
      * `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
      * lxapp's JS context), invoke it immediately, then again whenever that

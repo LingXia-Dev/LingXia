@@ -24,7 +24,6 @@ pub mod lifecycle;
 pub mod log {
     pub use lingxia_log::{LogLevel, LogMessage, LogProvider};
 }
-pub mod inline_native;
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
@@ -86,6 +85,7 @@ pub use lingxia_update::{
     Channel, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
 pub use lingxia_webview::url_callback;
+pub use lxapp::app_display;
 /// Host-owned data-root override for isolated test runs. Not an lxapp API.
 #[doc(hidden)]
 pub use lxapp::data_profile;
@@ -102,9 +102,10 @@ pub use lxapp::{
     LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege, ManagedNativeSurface,
     PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput,
     PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget, PageWebView, PresentationKind,
-    ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface,
-    UrlCallbackWaitError, add_display_language_effective_listener, await_page_webview,
-    await_page_webview_then, block_lxapp_admission, bundled_lxapp_asset_available,
+    ResolvedPage, SceneId, ShellPresence, ShellPresentation, ShellSurfaceIdentity, SurfaceKind,
+    SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
+    add_display_language_effective_listener, await_page_webview, await_page_webview_then,
+    block_lxapp_admission, bundled_lxapp_asset_available,
     clear_active_display_language_session_override, clear_display_language_session_override,
     close_lxapp,
     config::LxAppInfo,
@@ -114,21 +115,21 @@ pub use lxapp::{
     ensure_lxapp_ready, find_page_by_instance_id, find_page_by_webtag, get_current_lxapp,
     get_platform, host_appearance_dark, host_appearance_state, host_appearance_update, host_class,
     init, initialize_display_language, initialize_host_appearance,
-    install_display_language_session_override, installed_lxapp_path, is_dev_bundle_appid,
-    is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
+    install_display_language_session_override, installed_lxapp_path, is_declared_icon_reference,
+    is_dev_bundle_appid, is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
     keep_responsive_for_development, list_lxapps, mark_lxapp_active, navbar,
     next_surface_context_revision, notify_lxapp_host_visibility,
     notify_lxapp_host_visibility_by_session, notify_page_host_visibility,
     notify_page_host_visibility_by_webtag, notify_page_instance, notify_page_instance_by_id,
     observe_display_language_state, observe_host_appearance, on_low_memory,
-    open_control_lxapp_page, open_lxapp, open_region, page_chrome, refresh_auto_appearances,
-    refresh_display_language_system, refresh_host_appearance_system, register_builtin_asset_bundle,
-    register_dev_bundle_source, register_runner_host, register_surface_active_main_observer,
-    register_surface_close_observer, register_surface_context_observer,
-    register_surface_context_snapshot, register_surface_visibility_observer,
-    register_synthetic_lxapp,
+    open_control_lxapp_page, open_lxapp, open_lxapp_in_region, open_region, page_chrome,
+    refresh_auto_appearances, refresh_display_language_system, refresh_host_appearance_system,
+    register_builtin_asset_bundle, register_dev_bundle_source, register_runner_host,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_context_snapshot,
+    register_surface_visibility_observer, register_synthetic_lxapp,
     registry::{
-        display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
+        LxAppIcon, display_icon as lxapp_display_icon, display_name as lxapp_display_name,
         display_status as lxapp_registry_status, ensure_open_allowed,
         notify_open_blocked as notify_lxapp_open_blocked,
         refresh_registry as refresh_lxapp_registry, registry_unavailable_status,
@@ -137,7 +138,8 @@ pub use lxapp::{
     },
     release_retained_surfaces, resolve_open_channel, restart_lxapp, resume_lxapp_admission,
     set_display_language_preference, set_display_language_preference_in,
-    set_host_appearance_preference, shutdown_lxapps_except, subscribe_display_language_effective,
+    set_host_appearance_preference, shell_presence, show_lxapp_in_region, shutdown_lxapps_except,
+    subscribe_display_language_effective,
     subscribe_display_language_state, tabbar, terminate_lxapp, touch_page_instance_by_id, try_get,
     uninstall_lxapp,
 };

@@ -340,15 +340,13 @@ pub mod platform {
     #[cfg(target_os = "windows")]
     pub mod windows {
         pub use crate::windows::{
-            CompositionSurfacePixels, IslandPointerPhase, IslandVideoFrame, IslandVisualSpec,
-            ParentRetirement, ParkOutcome, SYNTHETIC_MOUSE_WPARAM_MARKER,
+            CompositionSurfacePixels, ParentRetirement, ParkOutcome, SYNTHETIC_MOUSE_WPARAM_MARKER,
             WindowsBrowserEmulationProfile, WindowsNativeContent, WindowsPreferredColorScheme,
             WindowsWebViewHandler, WindowsWebViewNativeView, WindowsWebViewNativeViewHost,
             capture_composition_surface_bgra, clear_windows_lxapp_preferred_color_scheme,
             create_native_content_parent, destroy_native_content_parent,
             find_composition_surface_hwnd, find_webview_handler, list_content_webtags,
-            preferred_color_scheme_for, queue_island_visuals, queued_island_visuals,
-            register_native_content, retire_native_content_parent, set_island_pointer_filter,
+            preferred_color_scheme_for, register_native_content, retire_native_content_parent,
             set_webview_composition_hosting, set_webview_devtools_enabled,
             set_webview_native_view_host, set_webview_user_data_dir,
             set_windows_browser_emulation_profile_for_new_webviews,

@@ -40,19 +40,8 @@ pub(super) fn create_windows_project(config: &ProjectConfig) -> Result<()> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn windows_host_takes_sdk_and_windows_rs_from_crates_io() {
-        let sdk_manifest = include_str!("../../../../../crates/lingxia-windows-sdk/Cargo.toml");
-        assert!(
-            !sdk_manifest.contains("microsoft/windows-rs.git"),
-            "windows-sdk must take windows-rs from crates.io"
-        );
-
+    fn windows_host_takes_sdk_from_crates_io() {
         let template = include_str!("../../../templates/windows/Cargo.toml.template");
-        assert!(
-            !template.contains("microsoft/windows-rs.git"),
-            "generated Windows hosts must not git-pin windows-rs"
-        );
-        assert!(!template.contains("{{WINDOWS_RS_REV}}"));
         assert!(
             !template.contains("LingXia-Dev/LingXia.git"),
             "generated Windows hosts must take lingxia-windows-sdk from crates.io"

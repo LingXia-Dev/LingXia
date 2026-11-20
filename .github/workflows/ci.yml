@@ -1721,9 +1721,9 @@ jobs:
         run: |
           npm test --workspace @lingxia/page-runtime
 
-      - name: Test inline native protocol (@lingxia/elements)
+      - name: Test native component elements (@lingxia/elements)
         working-directory: packages
-        run: npm run test:inline-native --workspace @lingxia/elements
+        run: npm test --workspace @lingxia/elements
 
       # The browser's built-in pages ship as a prebuilt bundle; their theme
       # contract needs no build to check.
@@ -1766,8 +1766,6 @@ jobs:
         run: |
           npm run typecheck --workspace @liulidesign/core
           npm run typecheck --workspace @liulidesign/gallery
-
-  # Native islands run in the showcase host (NATIVE-ISLAND-001), not Chrome.
 
   # The release scripts have their own tests but no change signal of their own:
   # they used to ride on the showcase automation job, which a release-plumbing

@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 const state = async (t: Fixture, id: string) => (await t.app.view.testId(id).getAttribute('data-state')) ?? '';
@@ -34,14 +34,14 @@ async function wellFormed(t: Fixture): Promise<{ capsule: string; safeTop: numbe
   return { capsule, safeTop: Number(await state(t, 'lab-env-safe-top')) };
 }
 
-spec('a page reads its screen: safe area, insets, size class, contrast, appearance, motion, viewport, keyboard, device and language, and no capsule under a nav bar', {
+test('a page reads its screen: safe area, insets, size class, contrast, appearance, motion, viewport, keyboard, device and language, and no capsule under a nav bar', {
   covers: ['view:environment'], start: openDemo('screen'),
 }, async (t) => {
   const { capsule } = await wellFormed(t);
   expect(capsule, 'a page with a navigation bar has no capsule over it').toBe('none');
 });
 
-spec('a page without a nav bar knows where the capsule floats, inside the top band', {
+test('a page without a nav bar knows where the capsule floats, inside the top band', {
   covers: ['view:environment'], start: { page: 'view-screen', query: { lang: 'en' } },
 }, async (t) => {
   const { capsule, safeTop } = await wellFormed(t);
@@ -58,7 +58,7 @@ spec('a page without a nav bar knows where the capsule floats, inside the top ba
   expect(header.y >= y + h, `back button at ${header.y}, capsule ends at ${y + h}`).toBe(true);
 });
 
-spec('a pinned environment reaches the readout: still motion reads as reduced, the theme and contrast as pinned', {
+test('a pinned environment reaches the readout: still motion reads as reduced, the theme and contrast as pinned', {
   covers: ['view:environment'], start: openDemo('screen'),
 }, async (t) => {
   await t.app.view.environment({ theme: 'dark', still: true, contrast: 'high' });

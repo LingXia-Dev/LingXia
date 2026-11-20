@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { androidDevice } from '@lingxia/test/showcase/helpers/android-device.js';
@@ -6,7 +6,7 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
 // A pull through the OS input dispatcher (`adb shell input swipe`), not the injected touches
 // the other pull specs use: the path a finger takes, system touch slop and batching included.
-spec('pull down from the screen to refresh, then refresh again', {
+test('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
   covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
   requires: { args: ['androidDevice'] },

@@ -1,10 +1,10 @@
-import { expect, spec, type LogicPage } from '@lingxia/test';
+import { expect, test, type LogicPage } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
 import { bindFixture, eventually, specNamespace, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
+test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "UI-NAV-001");
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
@@ -71,7 +71,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
 
-spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
+test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-001");
 
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
@@ -211,7 +211,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(viewportAfterChromeRefresh).toBe(viewportBeforeChromeRefresh);
 });
 
-spec('rejects invalid native-surface dimensions before opening a host surface', {
+test('rejects invalid native-surface dimensions before opening a host surface', {
   timeout: 60_000,
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);

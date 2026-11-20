@@ -13,6 +13,7 @@ use crate::LxAppError;
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
 const REGISTRY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("registry");
+const APP_DISPLAY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("app_display");
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -24,8 +25,8 @@ pub(crate) struct LxAppRecord {
     pub fingermark: String,
     pub install_path: String,
     pub last_open_at: i64,
-    /// SHA-256 of the package that produced this install. Absent on older
-    /// records and on bundled first-installs that never went through OTA.
+    /// SHA-256 of the package that produced this install. Absent on bundled
+    /// first-installs that never went through OTA.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_sha256: Option<String>,
 }
@@ -83,6 +84,9 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         let _registry = write_txn
             .open_table(REGISTRY_TABLE)
             .map_err(|e| metadata_error("open registry table", e))?;
+        let _app_display = write_txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
     }
     write_txn
         .commit()
@@ -132,40 +136,11 @@ pub(crate) fn upsert(record: &LxAppRecord) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Drop every channel's record of `lxappid` under the running service env;
+/// another env's records still back that env's installs and data.
 pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
-    let prefix = format!("{}::", lxappid);
-    let db = database()?;
-    let txn = db
-        .begin_write()
-        .map_err(|e| metadata_error("begin write transaction", e))?;
-
-    {
-        let mut table = txn
-            .open_table(INSTALLED_TABLE)
-            .map_err(|e| metadata_error("open installed table", e))?;
-        let mut keys_to_remove = Vec::new();
-        let iter = table
-            .iter()
-            .map_err(|e| metadata_error("iterate installed records", e))?;
-
-        for entry in iter {
-            let (key, _) = entry.map_err(|e| metadata_error("read installed record", e))?;
-            let key_value = key.value();
-            if key_value.starts_with(&prefix) {
-                keys_to_remove.push(key_value.to_string());
-            }
-        }
-
-        for key in keys_to_remove {
-            table
-                .remove(key.as_str())
-                .map_err(|e| metadata_error("delete installed record", e))?;
-        }
-    }
-
-    txn.commit()
-        .map_err(|e| metadata_error("commit installed delete", e))?;
-    Ok(())
+    remove(lxappid, Channel::Release)?;
+    remove(lxappid, Channel::Draft)
 }
 
 pub(crate) fn remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
@@ -187,8 +162,20 @@ pub(crate) fn remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppEr
     Ok(())
 }
 
+/// Keyed by service env so one env's lookup never selects the other's install:
+/// a dev-service package may be unsigned.
 fn key_for(lxappid: &str, release_type: Channel) -> String {
-    format!("{}::{}", lxappid, release_type.as_str())
+    format!(
+        "{}::{}::{}",
+        lxappid,
+        release_type.as_str(),
+        super::service_env_scope().as_str()
+    )
+}
+
+/// Registry answers come from the service, so each env caches its own.
+fn registry_key(appid: &str) -> String {
+    format!("{appid}::{}", super::service_env_scope().as_str())
 }
 
 pub(crate) fn database() -> Result<Arc<Database>, LxAppError> {
@@ -383,7 +370,7 @@ pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppE
         .open_table(REGISTRY_TABLE)
         .map_err(|e| metadata_error("open registry table", e))?;
     let Some(value) = table
-        .get(appid)
+        .get(registry_key(appid).as_str())
         .map_err(|e| metadata_error("read registry record", e))?
     else {
         return Ok(None);
@@ -392,7 +379,8 @@ pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppE
 }
 
 pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError> {
-    let key = record.appid.as_str();
+    let key = registry_key(&record.appid);
+    let key = key.as_str();
     let db = database()?;
     let txn = db
         .begin_write()
@@ -411,49 +399,27 @@ pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError>
     Ok(())
 }
 
-/// Drop this app's record, returning the icon files it referenced so the
-/// caller can delete the artwork they were the last user of.
-///
-/// Also sweeps leftover `appid::…` keys from the previous locale-scoped cache
-/// so an uninstall still cleans a record written before the key was just the
-/// app id.
-pub(crate) fn registry_remove_all(appid: &str) -> Result<Vec<String>, LxAppError> {
-    let legacy_prefix = format!("{appid}::");
+/// Drop this app's record under the running service env, returning the icon
+/// file it referenced so the caller can delete artwork it was the last user of.
+pub(crate) fn registry_remove(appid: &str) -> Result<Option<String>, LxAppError> {
+    let key = registry_key(appid);
     let db = database()?;
     let txn = db
         .begin_write()
         .map_err(|e| metadata_error("begin write transaction", e))?;
-    let mut icon_files = Vec::new();
-    {
+    let icon_file = {
         let mut table = txn
             .open_table(REGISTRY_TABLE)
             .map_err(|e| metadata_error("open registry table", e))?;
-        let mut keys_to_remove = Vec::new();
-        for entry in table
-            .iter()
-            .map_err(|e| metadata_error("iterate registry records", e))?
-        {
-            let (key, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
-            let key = key.value();
-            if key != appid && !key.starts_with(&legacy_prefix) {
-                continue;
-            }
-            keys_to_remove.push(key.to_string());
-            if let Ok(record) = serde_json::from_slice::<RegistryRecord>(value.value())
-                && let Some(file) = record.icon_file
-            {
-                icon_files.push(file);
-            }
-        }
-        for key in keys_to_remove {
-            table
-                .remove(key.as_str())
-                .map_err(|e| metadata_error("delete registry record", e))?;
-        }
-    }
+        table
+            .remove(key.as_str())
+            .map_err(|e| metadata_error("delete registry record", e))?
+            .and_then(|value| serde_json::from_slice::<RegistryRecord>(value.value()).ok())
+            .and_then(|record| record.icon_file)
+    };
     txn.commit()
         .map_err(|e| metadata_error("commit registry delete", e))?;
-    Ok(icon_files)
+    Ok(icon_file)
 }
 
 /// Every icon file still referenced by some app's records — the survivor set
@@ -473,6 +439,108 @@ pub(crate) fn registry_referenced_icon_files() -> Result<BTreeSet<String>, LxApp
     {
         let (_, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
         if let Ok(record) = serde_json::from_slice::<RegistryRecord>(value.value())
+            && let Some(file) = record.icon_file
+        {
+            files.insert(file);
+        }
+    }
+    Ok(files)
+}
+
+/// The name and icon an app set for itself, outranking the registry's.
+/// `icon_file` names a file in the display icon directory under app data.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct AppDisplayRecord {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub icon_file: Option<String>,
+}
+
+/// Each service env keeps its own choice, like the registry answer it beats.
+pub(crate) fn app_display_key(appid: &str) -> String {
+    registry_key(appid)
+}
+
+pub(crate) fn app_display_get(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(APP_DISPLAY_TABLE)
+        .map_err(|e| metadata_error("open app display table", e))?;
+    let Some(value) = table
+        .get(app_display_key(appid).as_str())
+        .map_err(|e| metadata_error("read app display record", e))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_slice(value.value())?))
+}
+
+pub(crate) fn app_display_put(appid: &str, record: &AppDisplayRecord) -> Result<(), LxAppError> {
+    let key = app_display_key(appid);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
+        if *record == AppDisplayRecord::default() {
+            table
+                .remove(key.as_str())
+                .map_err(|e| metadata_error("delete app display record", e))?;
+        } else {
+            let serialized = serde_json::to_vec(record)?;
+            table
+                .insert(key.as_str(), serialized.as_slice())
+                .map_err(|e| metadata_error("write app display record", e))?;
+        }
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit app display write", e))?;
+    Ok(())
+}
+
+pub(crate) fn app_display_remove(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+    let key = app_display_key(appid);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    let removed = {
+        let mut table = txn
+            .open_table(APP_DISPLAY_TABLE)
+            .map_err(|e| metadata_error("open app display table", e))?;
+        table
+            .remove(key.as_str())
+            .map_err(|e| metadata_error("delete app display record", e))?
+            .and_then(|value| serde_json::from_slice::<AppDisplayRecord>(value.value()).ok())
+    };
+    txn.commit()
+        .map_err(|e| metadata_error("commit app display delete", e))?;
+    Ok(removed)
+}
+
+/// Every display icon some app's record still names, across service envs.
+pub(crate) fn app_display_referenced_icon_files() -> Result<BTreeSet<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(APP_DISPLAY_TABLE)
+        .map_err(|e| metadata_error("open app display table", e))?;
+    let mut files = BTreeSet::new();
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate app display records", e))?
+    {
+        let (_, value) = entry.map_err(|e| metadata_error("read app display record", e))?;
+        if let Ok(record) = serde_json::from_slice::<AppDisplayRecord>(value.value())
             && let Some(file) = record.icon_file
         {
             files.insert(file);
@@ -528,4 +596,131 @@ pub(crate) fn downloaded_archives() -> Result<BTreeSet<String>, LxAppError> {
         }
     }
     Ok(paths)
+}
+
+#[cfg(test)]
+pub(crate) fn init_for_tests() {
+    static ROOT: OnceLock<tempfile::TempDir> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let root = tempfile::tempdir().unwrap();
+        init(root.path().join("metadata.redb")).unwrap();
+        root
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lxapp::test_service_env_scope::with;
+    use lingxia_app_context::AppEnv;
+
+    fn record(appid: &str, install_path: &str) -> LxAppRecord {
+        LxAppRecord::new(
+            appid,
+            Channel::Release,
+            SemanticVersion::from_version(&Version::parse("1.0.0").unwrap()),
+            format!("fm-{install_path}"),
+            install_path.to_string(),
+            0,
+        )
+    }
+
+    #[test]
+    fn install_records_do_not_cross_service_envs() {
+        init_for_tests();
+        let appid = format!("app.lingxia.metadata-scope.{}", uuid::Uuid::new_v4());
+        with(AppEnv::Prod, || {
+            upsert(&record(&appid, "prod-install")).unwrap()
+        });
+        with(AppEnv::Dev, || {
+            assert!(get(&appid, Channel::Release).unwrap().is_none());
+            upsert(&record(&appid, "dev-install")).unwrap();
+            downloaded_upsert(
+                &appid,
+                Channel::Release,
+                "2.0.0",
+                std::path::Path::new("dev.zst"),
+                None,
+            )
+            .unwrap();
+        });
+        with(AppEnv::Prod, || {
+            assert_eq!(
+                get(&appid, Channel::Release).unwrap().unwrap().install_path,
+                "prod-install"
+            );
+            assert!(downloaded_get(&appid, Channel::Release).unwrap().is_none());
+            remove_all(&appid).unwrap();
+            assert!(get(&appid, Channel::Release).unwrap().is_none());
+        });
+        with(AppEnv::Dev, || {
+            assert_eq!(
+                get(&appid, Channel::Release).unwrap().unwrap().install_path,
+                "dev-install"
+            );
+        });
+        assert!(installed_paths().unwrap().contains("dev-install"));
+    }
+
+    #[test]
+    fn app_display_choices_do_not_cross_service_envs() {
+        init_for_tests();
+        let appid = format!("app.lingxia.display-scope.{}", uuid::Uuid::new_v4());
+        let record = |name: &str| AppDisplayRecord {
+            name: Some(name.to_string()),
+            icon_file: Some(format!("{name}.png")),
+        };
+        with(AppEnv::Prod, || {
+            app_display_put(&appid, &record("prod")).unwrap()
+        });
+        with(AppEnv::Dev, || {
+            assert!(app_display_get(&appid).unwrap().is_none());
+            app_display_put(&appid, &record("dev")).unwrap();
+            assert!(
+                app_display_referenced_icon_files()
+                    .unwrap()
+                    .contains("prod.png")
+            );
+            assert_eq!(app_display_remove(&appid).unwrap(), Some(record("dev")));
+        });
+        with(AppEnv::Prod, || {
+            assert_eq!(app_display_get(&appid).unwrap(), Some(record("prod")));
+            // An empty choice is no record at all.
+            app_display_put(&appid, &AppDisplayRecord::default()).unwrap();
+            assert!(app_display_get(&appid).unwrap().is_none());
+        });
+        assert!(
+            !app_display_referenced_icon_files()
+                .unwrap()
+                .contains("dev.png")
+        );
+    }
+
+    #[test]
+    fn registry_records_do_not_cross_service_envs() {
+        init_for_tests();
+        let appid = format!("app.lingxia.registry-scope.{}", uuid::Uuid::new_v4());
+        let record = |icon: &str| RegistryRecord {
+            appid: appid.clone(),
+            name: None,
+            description: None,
+            icon_url: None,
+            icon_file: Some(icon.to_string()),
+            status: "active".to_string(),
+            grants: BTreeMap::new(),
+            fetched_at: 0,
+        };
+        with(AppEnv::Prod, || {
+            registry_upsert(&record("prod.png")).unwrap()
+        });
+        with(AppEnv::Dev, || {
+            assert!(registry_get(&appid).unwrap().is_none());
+            registry_upsert(&record("dev.png")).unwrap();
+            assert_eq!(registry_remove(&appid).unwrap().as_deref(), Some("dev.png"));
+        });
+        with(AppEnv::Prod, || {
+            let kept = registry_get(&appid).unwrap().unwrap();
+            assert_eq!(kept.icon_file.as_deref(), Some("prod.png"));
+        });
+    }
 }

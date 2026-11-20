@@ -764,13 +764,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private func standardTabBarInset(for appId: String) -> CGFloat {
         guard let config = lingxia.getTabBar(appId), config.is_visible else { return 0 }
         guard config.presentation != 1 else { return 0 }
+        // The bar's band sits above the home-indicator inset, which only a bottom bar takes.
         let bottom = config.position == 0 ? view.safeAreaInsets.bottom : 0
-        return CGFloat(config.dimension) + bottom
+        return config.dimensionPoints + bottom
     }
 
     public override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
-        if let appId = LxAppCore.currentAppId { updateWebViewBottomInset(for: appId) }
+        if let appId = LxAppCore.currentAppId {
+            updateWebViewBottomInset(for: appId)
+        }
     }
 
     private func updateWebViewBottomInset(for appId: String) {
@@ -1204,7 +1207,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBar, for appId: String) {
         let isVertical = config.position == 1 || config.position == 2 // 1=left, 2=right
-        let tabBarSize = CGFloat(config.dimension)
+        let tabBarSize = config.dimensionPoints
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1221,7 +1224,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor).isActive = true
             }
         } else {
-            // `dimension` is the items' band; the bar grows down through the home-indicator strip.
+            // The band holds the items above the safe area; the background
+            // runs on to the screen edge under the home indicator.
             NSLayoutConstraint.activate([
                 tabBar.topAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -tabBarSize),
@@ -1270,16 +1274,19 @@ final class LxAppViewController: UIViewController, ObservableObject {
             // Same turn as the post: a `Task { @MainActor }` hop let the user
             // reopen overflow, then this dismiss-on-refresh closed it.
             MainActor.assumeIsolated {
-                if let appId, appId == LxAppCore.currentAppId {
+                // Launch-time patches can arrive after init registered this
+                // observer but before setupUI created the containers. Rust
+                // retains the patch; the first navigation reads the latest
+                // state. Still complete its waiter below while unmounted.
+                if let appId, appId == LxAppCore.currentAppId,
+                   self.isViewLoaded, self.rootContainer != nil {
                     let path = self.getCurrentPath()
                     self.updateTabBar(for: appId, path: path)
                     self.updateNavigationBar(appId: appId, path: path)
                     self.bringUIElementsToFront()
                     // Appearance changes arrive through this notification too;
                     // restyle so every canvas follows the resolved scheme.
-                    if self.isViewLoaded {
-                        self.applyAppStyling(for: appId)
-                    }
+                    self.applyAppStyling(for: appId)
                 }
                 if let appId {
                     TabBarUpdateWaiters.complete(appId)

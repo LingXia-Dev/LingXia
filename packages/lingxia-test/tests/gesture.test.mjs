@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { expect, spec } from "../dist/index.js";
+import { expect, test as lxTest } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 
 afterEach(() => {
@@ -13,7 +13,7 @@ afterEach(() => {
 test("swipe, drag and fling send real paths at page points and record their delivery", async () => {
   const world = createWorld();
   world.add({ testId: "card", rect: { left: 100, top: 200, width: 50, height: 40 }, inViewport: true });
-  spec("gestures", async (t) => {
+  lxTest("gestures", async (t) => {
     await t.app.view.swipe({ from: [10, 500], to: [10, 100], durationMs: 400 });
     await t.app.view.drag(t.app.view.testId("card"), { dx: 0, dy: 120 });
     await t.app.view.fling("up", 4000);
@@ -37,7 +37,7 @@ test("swipe, drag and fling send real paths at page points and record their deli
 test("a gesture at a GPU match outside the viewport scrolls it on screen first", async () => {
   const world = createWorld();
   const under = world.add({ testId: "under", renderer: "gpu", rect: { left: 0, top: 380, width: 40, height: 20 }, inViewport: false });
-  spec("reveal", async (t) => { await (await t.app.view.touch(t.app.view.testId("under"))).up(); });
+  lxTest("reveal", async (t) => { await (await t.app.view.touch(t.app.view.testId("under"))).up(); });
   installFakeHost(world);
   const report = await run();
   assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
@@ -51,7 +51,7 @@ test("a gesture aims at the visible part of a GPU match and scrolls a sliver int
     visibleRect: { left: 0, top: 380, width: 40, height: 20 } });
   const sliver = world.add({ testId: "sliver", renderer: "gpu", rect: { left: 0, top: 395, width: 40, height: 40 }, inViewport: true,
     visibleRect: { left: 0, top: 395, width: 40, height: 5 }, revealedRect: { left: 0, top: 300, width: 40, height: 40 } });
-  spec("aim", async (t) => {
+  lxTest("aim", async (t) => {
     await (await t.app.view.touch(t.app.view.testId("half"))).up();
     await (await t.app.view.touch(t.app.view.testId("sliver"))).up();
   });
@@ -68,7 +68,7 @@ test("a fallback past the input dispatcher is visible in the result", async () =
   const world = createWorld();
   world.gestureHost.delivered = "view";
   let delivered;
-  spec("fallback", async (t) => {
+  lxTest("fallback", async (t) => {
     delivered = (await t.app.view.swipe({ from: [0, 0], to: [0, 10] })).delivered;
   });
   installFakeHost(world);
@@ -88,7 +88,7 @@ test("pullToRefresh holds one finger, samples the indicator, and reports a refre
   world.gestureHost.indicator = () => released ? { phase: "refreshing", offset: 64 }
     : pulled >= 120 ? { phase: "armed", offset: 90 } : pulled > 0 ? { phase: "pulling", offset: pulled * 0.6 } : { phase: "idle", offset: 0 };
   let result;
-  spec("pull", async (t) => { result = await t.app.view.pullToRefresh(); });
+  lxTest("pull", async (t) => { result = await t.app.view.pullToRefresh(); });
   installFakeHost(world);
   const report = await run();
   assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
@@ -104,7 +104,7 @@ test("pullToRefresh holds one finger, samples the indicator, and reports a refre
 
 test("pullToRefresh on a page without an indicator rejects before any input", async () => {
   const world = createWorld();
-  spec("no indicator", async (t) => {
+  lxTest("no indicator", async (t) => {
     await t.reject(() => t.app.view.pullToRefresh(), { code: "E_UNSUPPORTED" });
   });
   installFakeHost(world);
@@ -115,7 +115,7 @@ test("pullToRefresh on a page without an indicator rejects before any input", as
 
 test("a finger continues, then cannot move once lifted", async () => {
   const world = createWorld();
-  spec("finger", async (t) => {
+  lxTest("finger", async (t) => {
     const finger = await t.app.view.touch([50, 50]);
     await finger.moveTo([50, 150], { durationMs: 100 });
     await finger.up();
@@ -132,7 +132,7 @@ test("requires.input skips with the reason where the host cannot imitate the dev
   const world = createWorld();
   world.gestureHost.inputs = ["mouse", "trackpad"];
   let ran = false;
-  spec("touch only", { requires: { input: ["touch"] } }, async () => { ran = true; });
+  lxTest("touch only", { requires: { input: ["touch"] } }, async () => { ran = true; });
   installFakeHost(world);
   const report = await run();
   assert.equal(ran, false);
@@ -144,22 +144,22 @@ test("requires.input runs where the host has any of the devices", async () => {
   const world = createWorld();
   world.gestureHost.inputs = ["mouse", "trackpad"];
   let ran = false;
-  spec("touch or trackpad", { requires: { input: ["touch", "trackpad"] } }, async () => { ran = true; });
+  lxTest("touch or trackpad", { requires: { input: ["touch", "trackpad"] } }, async () => { ran = true; });
   installFakeHost(world);
   await run();
   assert.equal(ran, true);
 });
 
 test("requires.input rejects an unknown device", () => {
-  assert.throws(() => spec("bad", { requires: { input: ["pen"] } }, async () => {}), /requires.input/);
+  assert.throws(() => lxTest("bad", { requires: { input: ["pen"] } }, async () => {}), /requires.input/);
 });
 
 test("requires capabilities skip with the reason where the host lacks one", async () => {
   const world = createWorld();
   world.gestureHost.capabilities = ["refreshIndicator"];
   const ran = [];
-  spec("reads the indicator", { requires: { refreshIndicator: true } }, async () => { ran.push("indicator"); });
-  spec("taps chrome", { requires: { chrome: true, hostInput: true } }, async () => { ran.push("chrome"); });
+  lxTest("reads the indicator", { requires: { refreshIndicator: true } }, async () => { ran.push("indicator"); });
+  lxTest("taps chrome", { requires: { chrome: true, hostInput: true } }, async () => { ran.push("chrome"); });
   installFakeHost(world);
   const report = await run();
   assert.deepEqual(ran, ["indicator"]);
@@ -169,15 +169,15 @@ test("requires capabilities skip with the reason where the host lacks one", asyn
 });
 
 test("requires capabilities must be booleans", () => {
-  assert.throws(() => spec("bad", { requires: { chrome: "yes" } }, async () => {}), /requires\.chrome must be a boolean/);
+  assert.throws(() => lxTest("bad", { requires: { chrome: "yes" } }, async () => {}), /requires\.chrome must be a boolean/);
 });
 
 test("requires.pointer runs on the pointer the page reports and skips on the other", async () => {
   const world = createWorld();
   world.gestureHost.pointer = "fine";
   const ran = [];
-  spec("popover", { requires: { pointer: "fine" } }, async () => { ran.push("fine"); });
-  spec("sheet", { requires: { pointer: "coarse" } }, async () => { ran.push("coarse"); });
+  lxTest("popover", { requires: { pointer: "fine" } }, async () => { ran.push("fine"); });
+  lxTest("sheet", { requires: { pointer: "coarse" } }, async () => { ran.push("coarse"); });
   installFakeHost(world);
   const report = await run();
   assert.deepEqual(ran, ["fine"]);
@@ -189,7 +189,7 @@ test("requires.pointer skips where the host does not report its pointer", async 
   const world = createWorld();
   world.gestureHost.pointer = undefined;
   let ran = false;
-  spec("sheet", { requires: { pointer: "coarse" } }, async () => { ran = true; });
+  lxTest("sheet", { requires: { pointer: "coarse" } }, async () => { ran = true; });
   installFakeHost(world);
   const report = await run();
   assert.equal(ran, false);
@@ -197,12 +197,12 @@ test("requires.pointer skips where the host does not report its pointer", async 
 });
 
 test("requires.pointer rejects anything but fine or coarse", () => {
-  assert.throws(() => spec("bad", { requires: { pointer: "touch" } }, async () => {}), /requires\.pointer must be fine \| coarse/);
+  assert.throws(() => lxTest("bad", { requires: { pointer: "touch" } }, async () => {}), /requires\.pointer must be fine \| coarse/);
 });
 
 test("edge back reports E_UNSUPPORTED with the host's reason", async () => {
   const world = createWorld();
-  spec("edge", async (t) => {
+  lxTest("edge", async (t) => {
     await t.reject(() => t.app.gesture.edgeBack(), { code: "E_UNSUPPORTED", message: /system gesture/ });
   });
   installFakeHost(world);
@@ -217,7 +217,7 @@ test("chrome.tap finds one labelled host control and taps its center in window p
     { label: "API", role: "button", scope: "navigationBar", selected: false, bounds: [0, 0, 10, 10] },
     { label: "Back", role: "button", scope: "navigationBar", selected: false, bounds: [0, 24, 48, 48] },
   ];
-  spec("chrome", async (t) => {
+  lxTest("chrome", async (t) => {
     await t.app.tabBar.tap("API");
     await t.app.chrome.tap("Back");
     await t.reject(() => t.app.chrome.tap("API", { timeout: 200 }), { message: /2 chrome elements are labelled "API"/ });

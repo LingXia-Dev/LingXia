@@ -24,6 +24,13 @@ browser:
   manage_pinned_sites: "Manage Pinned Sites…"
   manage_bookmarks: "Manage Bookmarks…"
 
+# Aside slot tab menu (the per-tab "···" and right-click menu)
+aside:
+  open_in_main: "Open in Main Area"
+  open_in_side: "Open in Side Panel"
+  show_content: "Show %1$s"
+  tab_menu: "Tab options"
+
 # Terminal panel (native Windows shell terminal)
 terminal:
   title: "Terminal"

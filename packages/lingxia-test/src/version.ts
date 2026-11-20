@@ -1,8 +1,8 @@
-export const VERSION = "0.19.0";
+export const VERSION = "0.28.0";
 export const PACKAGE_NAME = "@lingxia/test";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 5_000;
-export const DEFAULT_SPEC_TIMEOUT_MS = 30_000;
+export const DEFAULT_TEST_TIMEOUT_MS = 30_000;
 /** Per-spec cap on recorded actions, so a loop cannot bloat the report. */
 export const MAX_ACTIONS = 300;
 /**

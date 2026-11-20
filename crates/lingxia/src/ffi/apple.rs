@@ -32,6 +32,9 @@ mod bridge {
         pub show_navbar: bool,
         pub show_back_button: bool,
         pub show_home_button: bool,
+        /// Desktop hosts put a refresh button in the bar of a page that
+        /// declared `enablePullDownRefresh`; mobile pulls instead.
+        pub show_refresh_button: bool,
         pub capsule_background_color: u32,
         pub capsule_foreground_color: u32,
         pub capsule_divider_color: u32,
@@ -114,6 +117,14 @@ mod bridge {
         TrayMenuClick,
         /// Stop pressed on the "an AI assistant is in control" indicator
         ControlSessionStopClick,
+    }
+
+    // Artwork for an lxapp: the host product icon first when `product` is
+    // set, then `path` (empty for none), then the default mark.
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct LxAppDisplayIcon {
+        pub path: String,
+        pub product: bool,
     }
 
     // Current LxApp info from Rust stack
@@ -265,11 +276,8 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
-        #[swift_bridge(swift_name = "getLxAppDisplayIconPath")]
-        fn get_lxapp_display_icon_path(appid: &str) -> String;
-
-        #[swift_bridge(swift_name = "validateInlineNativeMediaUrls")]
-        fn validate_inline_native_media_urls(appid: &str, urls_json: &str) -> String;
+        #[swift_bridge(swift_name = "getLxAppDisplayIcon")]
+        fn get_lxapp_display_icon(appid: &str) -> LxAppDisplayIcon;
 
         #[swift_bridge(swift_name = "getLxAppMoreActions")]
         fn get_lxapp_more_actions(appid: &str) -> String;
@@ -394,8 +402,10 @@ mod bridge {
         #[swift_bridge(swift_name = "surfaceSwitcher")]
         fn surface_switcher(appid: &str) -> String;
 
+        // `rows_json`: the sidebar's main-area rows (`[{id, closable}]`, in
+        // order, browser tabs included) the close family counts.
         #[swift_bridge(swift_name = "surfaceMenu")]
-        fn surface_menu(appid: &str, surface_id: &str) -> String;
+        fn surface_menu(appid: &str, surface_id: &str, rows_json: &str) -> String;
 
         #[swift_bridge(swift_name = "performSurfaceMenuIntent")]
         fn perform_surface_menu_intent(appid: &str, intent_json: &str) -> String;
@@ -458,10 +468,27 @@ mod bridge {
         #[swift_bridge(swift_name = "promoteAsideLxappToMain")]
         fn promote_aside_lxapp_to_main(app_id: &str) -> bool;
 
+        // Move a live lxapp main into the aside region at `edge` without
+        // restarting it. The committed plan docks it; the reconciler
+        // re-hosts its page from the main controller.
+        #[swift_bridge(swift_name = "demoteMainLxappToAside")]
+        fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool;
+
         // Re-home a docked aside browser tab as the active main-browser tab,
         // keeping its tab id and WebView.
         #[swift_bridge(swift_name = "promoteDockedBrowserTab")]
         fn promote_docked_browser_tab(tab_id: &str) -> bool;
+
+        // The menu of a main-area browser tab, keyed by its tab id, in the
+        // shared surface menu shape. `rows_json` as for `surfaceMenu`.
+        #[swift_bridge(swift_name = "browserTabMenu")]
+        fn browser_tab_menu(rows_json: &str, tab_id: &str) -> String;
+
+        // Move a main-area browser tab into the side panel, keeping its
+        // WebView. The caller lets go of the tab first. Returns the side
+        // panel surface id, empty when refused.
+        #[swift_bridge(swift_name = "moveBrowserTabToSidePanel")]
+        fn move_browser_tab_to_side_panel(tab_id: &str) -> String;
 
         #[swift_bridge(swift_name = "shellPins")]
         fn shell_pins() -> String;
@@ -1645,10 +1672,12 @@ pub fn surface_switcher(appid: &str) -> String {
     })
 }
 
-pub fn surface_menu(appid: &str, surface_id: &str) -> String {
+pub fn surface_menu(appid: &str, surface_id: &str, rows_json: &str) -> String {
     ffi_catch_unwind!("surface_menu", String::new(), || {
+        let rows =
+            serde_json::from_str::<Vec<lingxia_shell::MainRow>>(rows_json).unwrap_or_default();
         lxapp::try_get(appid)
-            .and_then(|app| app.shell_surface_menu(surface_id))
+            .and_then(|app| app.shell_surface_menu_in_rows(surface_id, &rows))
             .and_then(|menu| serde_json::to_string(&menu).ok())
             .unwrap_or_default()
     })
@@ -1759,6 +1788,55 @@ pub fn promote_aside_lxapp_to_main(app_id: &str) -> bool {
                 log::warn!("aside promotion refused for {app_id}: {err}");
                 false
             }
+        }
+    })
+}
+
+pub fn demote_main_lxapp_to_aside(app_id: &str, edge: &str) -> bool {
+    ffi_catch_unwind!("demote_main_lxapp_to_aside", false, || {
+        let Some(app) = lxapp::try_get(app_id.trim()) else {
+            return false;
+        };
+        match app.demote_main_to_aside(edge.trim()) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("main demotion refused for {app_id}: {err}");
+                false
+            }
+        }
+    })
+}
+
+pub fn browser_tab_menu(rows_json: &str, tab_id: &str) -> String {
+    ffi_catch_unwind!("browser_tab_menu", String::new(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            serde_json::from_str::<Vec<lingxia_shell::MainRow>>(rows_json)
+                .ok()
+                .and_then(|rows| crate::browser_tab_menu(&rows, tab_id))
+                .and_then(|menu| serde_json::to_string(&menu).ok())
+                .unwrap_or_default()
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = (rows_json, tab_id);
+            String::new()
+        }
+    })
+}
+
+pub fn move_browser_tab_to_side_panel(tab_id: &str) -> String {
+    ffi_catch_unwind!("move_browser_tab_to_side_panel", String::new(), || {
+        #[cfg(feature = "browser-runtime")]
+        {
+            crate::move_browser_tab_to_side_panel(tab_id)
+                .inspect_err(|err| log::warn!("moving browser tab {tab_id} refused: {err}"))
+                .unwrap_or_default()
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = tab_id;
+            String::new()
         }
     })
 }
@@ -2378,9 +2456,9 @@ pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
 ///
 /// This works around a swift-bridge `Option<struct with String>` limitation.
 pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
-    // Registry first even when the package is not running — pins and a
-    // closed switcher row still have a server-owned name. `lxapp.json` is
-    // only the fallback once a running app can supply it.
+    // The display name first even when the package is not running — pins and
+    // a closed switcher row still have the app's chosen or server-owned name.
+    // `lxapp.json` is only the fallback once a running app can supply it.
     let registry_name = lxapp::lxapp_display_name(appid);
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
@@ -2400,34 +2478,18 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
     }
 }
 
-/// Absolute path to the icon to show for an lxapp, or empty when none is
-/// cached yet and the host should draw its default mark.
+/// The icon to show for an lxapp, ranked by `lxapp_display_icon`.
 ///
-/// Separate from `getLxAppInfo` because the icon is no longer part of the
-/// package the way the name and version are: it comes from the registry, and a
-/// running app is not a precondition for having one.
-pub fn get_lxapp_display_icon_path(appid: &str) -> String {
-    // Asking for the icon is also what schedules the refresh that keeps it
-    // current — the native chrome has no other moment that would notice a
-    // rename or a new icon. `refresh_lxapp_registry` returns immediately and
-    // rate-limits itself, so calling it per row per repaint is safe.
-    lxapp::refresh_lxapp_registry(std::slice::from_ref(&appid.to_string()));
-    lxapp::lxapp_display_icon_path(appid).unwrap_or_default()
-}
-
-pub fn validate_inline_native_media_urls(appid: &str, urls_json: &str) -> String {
-    let result = serde_json::from_str::<Vec<String>>(urls_json)
-        .map_err(|err| format!("invalid media URL list: {err}"))
-        .and_then(|urls| {
-            let app =
-                lxapp::try_get(appid).ok_or_else(|| format!("LxApp is not registered: {appid}"))?;
-            lxapp::inline_native::validate_media_urls(
-                &urls,
-                &app.trusted_network_domains(),
-                lxapp::is_dev_session(),
-            )
-        });
-    result.err().unwrap_or_default()
+/// Separate from `getLxAppInfo` because the icon is not part of the package:
+/// it comes from the app's own choice or the registry, and a running app is
+/// not a precondition for having one. Asking is also what schedules the
+/// rate-limited registry refresh that keeps it current.
+pub fn get_lxapp_display_icon(appid: &str) -> self::bridge::LxAppDisplayIcon {
+    let icon = lxapp::lxapp_display_icon(appid);
+    self::bridge::LxAppDisplayIcon {
+        path: icon.file().unwrap_or_default().to_string(),
+        product: matches!(icon, lxapp::LxAppIcon::Product { .. }),
+    }
 }
 
 pub fn get_lxapp_more_actions(appid: &str) -> String {
@@ -2456,6 +2518,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             show_navbar: nav_state.show_navbar,
             show_back_button: nav_state.show_back_button,
             show_home_button: nav_state.home_button_visible(),
+            show_refresh_button: lxapp.is_pull_down_refresh_enabled(path),
             capsule_background_color: capsule.background_color.argb(),
             capsule_foreground_color: capsule.foreground_color.argb(),
             capsule_divider_color: capsule.divider_color.argb(),
@@ -2471,6 +2534,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             show_navbar: false,
             show_back_button: false,
             show_home_button: false,
+            show_refresh_button: false,
             capsule_background_color: 0xFFFFFFFF,
             capsule_foreground_color: 0xFF000000,
             capsule_divider_color: 0xFFD1D1D6,
@@ -2537,7 +2601,8 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             presentation: i32::from(
                 tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive,
             ),
-            dimension: 64,
+            // iOS adds the home-indicator inset below this band.
+            dimension: if cfg!(target_os = "ios") { 50 } else { 64 },
             items_count: tabbar.visible_items().count() as i32,
             is_visible: lxapp.tabbar_visible_now(),
             is_api_hidden: tabbar.visibility

@@ -82,7 +82,7 @@ import type {
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
-  DEFAULT_SPEC_TIMEOUT_MS,
+  DEFAULT_TEST_TIMEOUT_MS,
   MAX_ACTIONS,
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
@@ -103,7 +103,7 @@ const SETTLED_POLL_MS = 50;
 
 /**
  * Thrown by `t.skip()`. It unwinds the spec like any throw, but the runtime
- * grades it `skipped`, never `failed` — and not `xfail` under `spec.fail`.
+ * grades it `skipped`, never `failed` — and not `xfail` under `test.fail`.
  * Internal: a spec never needs to name it.
  */
 export class SkipSignal extends Error {
@@ -217,7 +217,7 @@ export class LiveFixture implements Fixture {
     private readonly host: ResolvedHost,
     args: Record<string, string>,
     automation: Automation,
-    private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
+    private readonly specBudgetMs: number = DEFAULT_TEST_TIMEOUT_MS,
     private readonly redactor?: Redactor,
     appId?: string,
     traceOriginMs?: number,
@@ -1087,7 +1087,7 @@ export class LiveFixture implements Fixture {
 
   close(): void {
     this.closed = true;
-    this.finishOpenSteps(new Error("step was still running when the spec ended"), "failed");
+    this.finishOpenSteps(new Error("step was still running when the test ended"), "failed");
   }
 
   private finishOpenSteps(reason: Error, status: "timeout" | "failed"): void {

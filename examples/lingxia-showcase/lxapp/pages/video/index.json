@@ -1,8 +1,8 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Native Component Video",
-      "zh-CN": "原生视频组件"
+      "default": "Video",
+      "zh-CN": "视频"
     }
   }
 }

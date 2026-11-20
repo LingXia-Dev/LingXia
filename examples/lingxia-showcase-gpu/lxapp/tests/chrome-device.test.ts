@@ -1,15 +1,15 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openUnderTabs } from './open-demo';
 import { harmonyDevice, type HarmonyNode } from '@lingxia/test/showcase/helpers/harmony-device.js';
 
 const centre = ({ bounds: [l, t, r, b] }: HarmonyNode): [number, number] => [Math.round((l + r) / 2), Math.round((t + b) / 2)];
 const sum = (rgb: number[]) => rgb[0] + rgb[1] + rgb[2];
 
-spec.configure({ requires: { args: ['harmonyDevice'] } });
+test.configure({ requires: { args: ['harmonyDevice'] } });
 
 // Around a GPU page the nav bar takes the page palette's surface colour, which a card on the page
 // also uses, in either scheme; the page config names no colour, so its defaults would differ in dark.
-spec('the nav bar takes the GPU page palette in light and in dark', {
+test('the nav bar takes the GPU page palette in light and in dark', {
   id: 'CHROME-NAV-PALETTE-001', covers: ['lx.host.control.appearance.setPreference'],
   reason: 'reads the composited screen through the Harmony device fixture',
   start: openUnderTabs('dialog'),

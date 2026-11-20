@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 // A page pushed again loads a new instance onto the surface that still holds the old one's
 // frame; that frame is not the new page's, so the reveal must wait for a fresh present.
-spec('a page pushed again is not revealed on its previous frame', {
+test('a page pushed again is not revealed on its previous frame', {
   id: 'CHROME-REPUSH-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
   start: { page: 'view' },
 }, async (t) => {

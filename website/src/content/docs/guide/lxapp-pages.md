@@ -66,31 +66,21 @@ APIs that act on the **product** (quit, dock badge, shell sidebar, host update) 
 
 ## Native-backed components
 
-LingXia ships two families:
-
-- **Inline native island** — `LxNativeRoot` wraps `LxVideo`, plus `LxNativeCover` / `LxNativeView` / `LxNativeText` / `LxNativeButton`. `LxVideo` must be a **direct child** of an explicit `LxNativeRoot`. A bare `<LxVideo>` is `NATIVE_ROOT_INVALID_STRUCTURE`.
-- **Presenters** — `LxPicker`, `LxMediaSwiper`, `LxNavigator` (not on the island).
-
-React re-exports both families. HTML Views register the custom elements (`<lx-native-root>`, `<lx-video>`, …). Text input is normal web `<input>` / `<textarea>`—there is no `LxInput`.
+LingXia ships the presenters `LxPicker`, `LxMediaSwiper`, and `LxNavigator`. React re-exports them; HTML Views use the custom elements. Text input is normal web `<input>` / `<textarea>`—there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
 
 ```tsx
-import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
-
-<LxNativeRoot className="player">
-  <LxVideo src={data.src} aria-label={data.title} controls />
-</LxNativeRoot>
+import { LxPicker } from '@lingxia/react'
 ```
 
 Component callbacks are not uniform:
 
 | Component | What the React handler receives |
 |---|---|
-| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** — `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)`. HTML still reads `CustomEvent.detail`. |
 | `LxPicker` | **Resolved value** — `string \| string[]` |
 | `LxMediaSwiper` | Raw DOM `CustomEvent` — `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` |
 
-Use the generated [Components reference](../../reference/components/) for attributes. Island structure and seek/controls contracts live in the LingXia skill's `lxapp/components.md`.
+Use the generated [Components reference](../../reference/components/) for attributes. Callback contracts live in the LingXia skill's `lxapp/components.md`.
 
 ## Adapt to the surface
 

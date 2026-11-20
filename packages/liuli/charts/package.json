@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
-    "@lingxia/view": ">=0.28.0",
+    "@lingxia/view": ">=0.30.0",
     "@liulidesign/core": ">=0.1.0"
   }
 }

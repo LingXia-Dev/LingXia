@@ -1,5 +1,5 @@
 /** Pending backlog items that must or are worth automating, but are not at the
- *  tests/README bar yet. Bodies stay empty (`spec.skip`); modes stay off
+ *  tests/README bar yet. Bodies stay empty (`test.skip`); modes stay off
  *  `automated` in logic-api-coverage.mjs. */
 export default [
   {
@@ -15,10 +15,10 @@ export default [
   },
   {
     id: "PEND-DIRPICK-001",
-    title: "chooseDirectory returns a grant the lxapp can read",
+    title: "pickDirectory returns a grant the lxapp can read",
     mode: "external-ui",
-    covers: ["lx.chooseDirectory"],
-    reason: "the directory picker is an OS dialog with no in-process driver",
+    covers: ["lx.pickDirectory"],
+    reason: "the desktop / HarmonyOS 2-in-1 folder picker is an OS dialog with no in-process driver; Android and HarmonyOS phones reject without defaultPath (E_NOT_SUPPORTED) and use the in-app chooser with it",
   },
   {
     id: "PEND-DESTRUCTIVE-001",
@@ -43,9 +43,9 @@ export default [
   },
   {
     id: "PEND-MEDIA-PICK-001",
-    title: "chooseMedia and scanCode pick a real file through the OS panel",
+    title: "pickMedia and scanCode pick a real file through the OS panel",
     mode: "external-ui",
-    covers: ["lx.chooseMedia", "lx.scanCode"],
+    covers: ["lx.pickMedia", "lx.scanCode"],
     reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; previewMedia is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
@@ -86,17 +86,31 @@ export default [
   },
   {
     id: "PEND-FILE-PICK-001",
-    title: "openFile and chooseFile cancel/error codes",
+    title: "openFile and pickFile cancel/error codes, and the picked name and copy behavior per host",
     mode: "external-ui",
-    covers: ["lx.openFile", "lx.chooseFile"],
-    reason: "OS file picker and viewer stay external-ui",
+    covers: ["lx.openFile", "lx.pickFile"],
+    reason: "OS file picker and viewer stay external-ui; a device run must check name (Android content:// DISPLAY_NAME, Harmony decoded tail, iOS copy) and that desktop grants the live original",
+  },
+  {
+    id: "PEND-VIDEO-CONTEXT-001",
+    title: "VideoContext commands against a mounted native video component",
+    mode: "external-fixture",
+    covers: [
+      "lx.createVideoContext",
+      "VideoContext.play",
+      "VideoContext.pause",
+      "VideoContext.stop",
+      "VideoContext.seek",
+      "VideoContext.requestFullScreen",
+    ],
+    reason: "the Showcase ships no native video component; a host app that mounts one owns this check",
   },
   {
     id: "PEND-VIDEO-STREAM-001",
     title: "VideoContext setStreamSource against a stream provider",
     mode: "external-fixture",
     covers: ["VideoContext.setStreamSource"],
-    reason: "needs a host stream provider addon; the Showcase has none",
+    reason: "needs a native video component and a host stream provider addon; the Showcase has neither",
   },
   {
     id: "PEND-NET-FIRE-001",
@@ -143,13 +157,6 @@ export default [
     reason: "Windows leaves the target current after navigateBackApp instead of returning to the caller, and on both desktops the hop leaves the bundled chat lxapp in a state the workspace cases cannot reuse; NAV-APP-001 proves the contract on Android",
   },
   {
-    id: "PEND-VIDEO-FS-WINDOWS-001",
-    title: "native video fullscreen on Windows",
-    mode: "planned",
-    covers: ["VideoContext.requestFullScreen"],
-    reason: "requestFullScreen rejects with an internal error on Windows while playback itself works; DESKTOP-VIDEO-FULLSCREEN-001 proves the contract on macOS",
-  },
-  {
     id: "PEND-PREVIEW-DISMISS-001",
     title: "dismissing the native preview settles completed",
     mode: "external-ui",
@@ -189,10 +196,10 @@ export default [
   },
   {
     id: "PEND-SWIPER-001",
-    title: "LxMediaSwiper add from chooseMedia",
+    title: "LxMediaSwiper index change and add from pickMedia",
     mode: "planned",
-    covers: ["lx.chooseMedia"],
-    reason: "MEDIA-SWIPER-001 to -003 check paging, index events and a video page; the add path is the OS picker",
+    covers: ["lx.pickMedia"],
+    reason: "add path is OS picker; index events have no contract",
   },
   {
     id: "PEND-BROWSER-DRV-001",

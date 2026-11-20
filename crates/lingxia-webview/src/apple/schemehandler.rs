@@ -349,6 +349,7 @@ impl LingXiaSchemeHandler {
             if !headers_map.contains_key("content-length") {
                 let content_len = match &body {
                     WebResourceBody::Path(path) => std::fs::metadata(path).ok().map(|m| m.len()),
+                    WebResourceBody::FileRange { len, .. } => Some(*len),
                     WebResourceBody::Bytes(data) => Some(data.len() as u64),
                     WebResourceBody::Pipe(_) => None,
                 };
@@ -388,9 +389,26 @@ impl LingXiaSchemeHandler {
             }
 
             match body {
-                WebResourceBody::Path(path) => {
-                    let mut reader: Box<dyn std::io::Read> = match File::open(&path) {
-                        Ok(file) => Box::new(file),
+                body @ (WebResourceBody::Path(_) | WebResourceBody::FileRange { .. }) => {
+                    let (path, range) = match body {
+                        WebResourceBody::FileRange { path, offset, len } => {
+                            (path, Some((offset, len)))
+                        }
+                        WebResourceBody::Path(path) => (path, None),
+                        _ => unreachable!(),
+                    };
+                    let opened = File::open(&path).and_then(|mut file| {
+                        use std::io::{Read as _, Seek as _};
+                        Ok::<Box<dyn std::io::Read>, std::io::Error>(match range {
+                            Some((offset, len)) => {
+                                file.seek(std::io::SeekFrom::Start(offset))?;
+                                Box::new(file.take(len))
+                            }
+                            None => Box::new(file),
+                        })
+                    });
+                    let mut reader: Box<dyn std::io::Read> = match opened {
+                        Ok(reader) => reader,
                         Err(e) => {
                             log::error!("Failed to open response file {}: {}", path.display(), e);
                             self.fail_task_with_error(task, "Failed to open response file");

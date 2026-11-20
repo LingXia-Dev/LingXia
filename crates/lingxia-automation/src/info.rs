@@ -35,6 +35,58 @@ fn normalize_surface_layout_keys(value: &mut serde_json::Value) {
     }
 }
 
+/// Map every surface id in the layout to its owner identity, so a test can
+/// find a surface by app or declaration without a runtime id from Logic.
+fn attach_surface_identities(app: &LxApp, layout: &mut serde_json::Value) {
+    let Some(fields) = layout.as_object_mut() else {
+        return;
+    };
+    let entry_ids = |name: &str, id_field: &str| -> Vec<String> {
+        fields
+            .get(name)
+            .and_then(|list| list.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.get(id_field)?.as_str().map(str::to_string))
+            .collect()
+    };
+    let mut ids: Vec<String> = fields
+        .get("mains")
+        .and_then(|mains| mains.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|id| id.as_str().map(str::to_string))
+        .collect();
+    ids.extend(entry_ids("asides", "id"));
+    ids.extend(entry_ids("floats", "id"));
+    if let Some(items) = fields
+        .get("mainSwitcher")
+        .and_then(|switcher| switcher.get("items"))
+        .and_then(|items| items.as_array())
+    {
+        ids.extend(
+            items
+                .iter()
+                .filter_map(|item| item.get("surfaceId")?.as_str().map(str::to_string)),
+        );
+    }
+    let mut identities = serde_json::Map::new();
+    for id in ids {
+        if identities.contains_key(&id) {
+            continue;
+        }
+        if let Some(identity) = app.shell_surface_identity(&id)
+            && let Ok(identity) = serde_json::to_value(identity)
+        {
+            identities.insert(id, identity);
+        }
+    }
+    fields.insert(
+        "identities".to_string(),
+        serde_json::Value::Object(identities),
+    );
+}
+
 #[js_class(clone)]
 pub(crate) struct JSLxAppDriver {
     lxapp: Weak<LxApp>,
@@ -207,6 +259,7 @@ impl JSLxAppDriver {
         let mut layout = serde_json::to_value(layout)
             .map_err(|err| crate::auto_err(format!("serialize surface layout: {err}")))?;
         normalize_surface_layout_keys(&mut layout);
+        attach_surface_identities(&app, &mut layout);
         json_to_js(&ctx, &layout)
     }
 

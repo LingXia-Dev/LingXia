@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // Dialogs and popovers in the top layer, read and driven through their roles.
-spec('a menu popover opens from its button and a menu item closes it', { covers: ['view:popover'], start: openDemo('more') }, async (t) => {
+test('a menu popover opens from its button and a menu item closes it', { covers: ['view:popover'], start: openDemo('more') }, async (t) => {
   const view = t.app.view;
   // Progress's own More button shares the tab: the menu button by its id.
   const more = view.testId('lab-overlay-more');
@@ -14,7 +14,7 @@ spec('a menu popover opens from its button and a menu item closes it', { covers:
   await expect(view.testId('lab-more-last')).toHaveAttribute('data-state', 'last=Share');
 });
 
-spec('a dialog hides the page behind it until it closes', { covers: ['view:dialog'], start: openDemo('dialog') }, async (t) => {
+test('a dialog hides the page behind it until it closes', { covers: ['view:dialog'], start: openDemo('dialog') }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-overlay-confirm').click();
   await expect(view.getByRole('dialog', { name: 'Delete note?' })).toBeVisible();
@@ -25,7 +25,7 @@ spec('a dialog hides the page behind it until it closes', { covers: ['view:dialo
   await expect(view.testId('lab-dialog-last')).toHaveAttribute('data-state', 'last=cancel');
 });
 
-spec('role queries scoped to a dialog find only its own controls', { covers: ['view:dialog'], start: openDemo('dialog') }, async (t) => {
+test('role queries scoped to a dialog find only its own controls', { covers: ['view:dialog'], start: openDemo('dialog') }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-overlay-confirm').click();
   const dialog = view.testId('lab-dialog');
@@ -37,7 +37,7 @@ spec('role queries scoped to a dialog find only its own controls', { covers: ['v
   await expect(view.testId('lab-dialog-last')).toHaveAttribute('data-state', 'last=cancel');
 });
 
-spec('a sheet holds its own scroll and closes from its button', { covers: ['view:dialog'], start: openDemo('bottomSheet') }, async (t) => {
+test('a sheet holds its own scroll and closes from its button', { covers: ['view:dialog'], start: openDemo('bottomSheet') }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-overlay-sheet').click();
   await expect(view.getByRole('dialog', { name: 'Filters' })).toBeVisible();
@@ -46,7 +46,7 @@ spec('a sheet holds its own scroll and closes from its button', { covers: ['view
   await expect(view.testId('lab-sheet-last')).toHaveAttribute('data-state', 'last=apply');
 });
 
-spec('a menu opened from the keyboard focuses its first item and gives focus back when it closes', { covers: ['view:popover', 'view:a11y'], start: openDemo('more') }, async (t) => {
+test('a menu opened from the keyboard focuses its first item and gives focus back when it closes', { covers: ['view:popover', 'view:a11y'], start: openDemo('more') }, async (t) => {
   const view = t.app.view;
   const more = view.testId('lab-overlay-more');
   await more.press('Enter');
@@ -57,7 +57,7 @@ spec('a menu opened from the keyboard focuses its first item and gives focus bac
   await expect(more).toBeFocused();
 });
 
-spec('a menu moves its focus with arrows, Home and End and jumps by a typed letter', { covers: ['view:popover', 'view:a11y'], start: openDemo('more') }, async (t) => {
+test('a menu moves its focus with arrows, Home and End and jumps by a typed letter', { covers: ['view:popover', 'view:a11y'], start: openDemo('more') }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-overlay-more').click();
   const item = (name: string) => view.getByRole('menuitem', { name });
@@ -73,7 +73,7 @@ spec('a menu moves its focus with arrows, Home and End and jumps by a typed lett
   await expect(view.testId('lab-more-last')).toHaveAttribute('data-state', 'last=Rename');
 });
 
-spec('Escape closes a light-dismiss popover from its trigger or its content', { covers: ['view:popover', 'view:a11y'], start: openDemo('shared') }, async (t) => {
+test('Escape closes a light-dismiss popover from its trigger or its content', { covers: ['view:popover', 'view:a11y'], start: openDemo('shared') }, async (t) => {
   const view = t.app.view;
   const more = view.testId('lab-choice-alpha-more');
   const menu = view.testId('lab-choices-menu');

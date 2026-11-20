@@ -28,33 +28,28 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const QUICK_ANSWER: Duration = Duration::from_millis(150);
 const SESSION_STALE_AFTER: Duration = Duration::from_secs(15);
 
-struct RunnerDisplayLanguageLease(Option<lxapp::DisplayLanguageSessionOwner>);
+/// Holds this websocket session's display-language override: the launch
+/// environment's, or a later `runner.set`. Dropping it clears either.
+struct RunnerDisplayLanguageLease;
 
 impl RunnerDisplayLanguageLease {
     fn acquire() -> Self {
-        let owner = std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV)
+        if let Some(value) = std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .and_then(
-                |value| match value.parse::<lxapp::DisplayLanguagePreference>() {
-                    Ok(preference) => {
-                        Some(lxapp::install_display_language_session_override(preference))
-                    }
-                    Err(error) => {
-                        log::warn!("Ignoring invalid Runner display language: {error}");
-                        None
-                    }
-                },
-            );
-        Self(owner)
+        {
+            match value.parse::<lxapp::DisplayLanguagePreference>() {
+                Ok(preference) => crate::runner::set_session_language(preference),
+                Err(error) => log::warn!("Ignoring invalid Runner display language: {error}"),
+            }
+        }
+        Self
     }
 }
 
 impl Drop for RunnerDisplayLanguageLease {
     fn drop(&mut self) {
-        if let Some(owner) = self.0.take() {
-            lxapp::clear_display_language_session_override(owner);
-        }
+        crate::runner::clear_session_language();
     }
 }
 

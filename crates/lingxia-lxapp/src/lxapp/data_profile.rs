@@ -126,7 +126,7 @@ pub struct ProfileManifest {
 }
 
 impl ProfileManifest {
-    /// Refuse a snapshot of another app, another channel/device, or a
+    /// Refuse a snapshot of another app, another channel/service env/device, or a
     /// storage format this build does not write.
     pub fn check_matches(&self, expected: &ProfileManifest) -> Result<(), LxAppError> {
         if self.format != PROFILE_FORMAT {
@@ -149,7 +149,7 @@ impl ProfileManifest {
         }
         if self.fingermark != expected.fingermark {
             return Err(LxAppError::InvalidParameter(format!(
-                "profile snapshot of {} was taken for another channel or device; save it again \
+                "profile snapshot of {} was taken for another channel, service env or device; save it again \
                  on this host",
                 self.appid
             )));
@@ -158,7 +158,7 @@ impl ProfileManifest {
     }
 
     /// Whether this is a snapshot of `expected`'s app, in a format this build
-    /// reads, taken under another fingermark: another channel, or a host
+    /// reads, taken under another fingermark: another channel or service env, or a host
     /// whose device fingerprint changed (a reinstall with other providers).
     /// It can never be used here, but it is not damaged either.
     pub fn is_for_another_install(&self, expected: &ProfileManifest) -> bool {

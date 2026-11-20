@@ -1,4 +1,4 @@
-import { expect, spec, type TestView } from '@lingxia/test';
+import { expect, test, type TestView } from '@lingxia/test';
 import { reveal, type Box } from './finger.js';
 
 // DateTimeInput's parts have no least width of their own; the View keeps each editor as wide as its
@@ -10,7 +10,7 @@ const inside = (part: Box, box: Box, inset: number) => {
 const parts = async (view: TestView, id: string) =>
   [await view.testId(`${id}-date`).boundingBox(), await view.testId(`${id}-time`).boundingBox()];
 
-spec('category-inputs: the DateTimeInput tile holds both parts inside its stage', {
+test('category-inputs: the DateTimeInput tile holds both parts inside its stage', {
   id: 'DATE-TIME-TILE-001', start: { page: 'category-inputs' }, timeout: 60_000,
 }, async (t) => {
   const view = t.app.view;
@@ -22,7 +22,7 @@ spec('category-inputs: the DateTimeInput tile holds both parts inside its stage'
   if ((await view.viewport()).width < 700) expect(time.y, 'on a phone the time goes under the date').toBeGreaterThan(date.y + date.height);
 });
 
-spec('date-time-input: side by side from 280 pt, the time under the date below it', {
+test('date-time-input: side by side from 280 pt, the time under the date below it', {
   id: 'DATE-TIME-WRAP-001', start: { page: 'date-time-input' }, timeout: 60_000,
 }, async (t) => {
   const view = t.app.view;

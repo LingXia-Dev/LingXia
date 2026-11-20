@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // A drag element reads its snap point as its value whatever its role, counted from 1 as a
 // slider's position is: the Places sheet's points are full (1), half (2) and off (3).
-spec('a sheet dialog reads its detent as its value', {
+test('a sheet dialog reads its detent as its value', {
   id: 'DRAG-VALUE-SHEET-001', covers: ['view:dialog', 'view:drag'], start: openDemo('sheet'),
 }, async (t) => {
   const view = t.app.view;

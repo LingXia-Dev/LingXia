@@ -56,6 +56,8 @@ import androidx.fragment.app.Fragment
 import com.lingxia.app.media.modules.MediaModuleHost as LxLog
 import com.lingxia.app.media.modules.MediaModuleHost as NativeApi
 import com.lingxia.lxapp.R
+import com.lingxia.app.PermissionGates
+import com.lingxia.app.PermissionFeature
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import java.io.File
@@ -157,7 +159,8 @@ internal class MediaCaptureFragment : Fragment() {
     private val techBlueColor: Int = Color.parseColor("#1677FF")
     private val lightTechBlueColor: Int = Color.parseColor("#AFCBFF")
 
-    // Modern permission launcher (replaces deprecated requestPermissions API)
+    private var finishPermissionPrompt: ((Boolean) -> Unit)? = null
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -177,6 +180,8 @@ internal class MediaCaptureFragment : Fragment() {
                         android.content.pm.PackageManager.PERMISSION_GRANTED
                 } ?: false)
         }
+        finishPermissionPrompt?.invoke(cameraGranted && micGranted)
+        finishPermissionPrompt = null
         if (cameraGranted && micGranted) {
             startCamera()
         } else {
@@ -396,6 +401,8 @@ internal class MediaCaptureFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        finishPermissionPrompt?.invoke(false)
+        finishPermissionPrompt = null
         releaseCamera()
         previewView = null
         captureButton = null
@@ -428,8 +435,22 @@ internal class MediaCaptureFragment : Fragment() {
         }
         if (needed.isEmpty()) {
             startCamera()
-        } else {
-            permissionLauncher.launch(needed.toTypedArray())
+            return
+        }
+        val activity = activity ?: return
+        val permissions = needed.toTypedArray()
+        PermissionGates.run(
+            activity,
+            PermissionFeature.CAMERA,
+            permissions,
+            declined = { if (isAdded) cancelCapture(3001) },
+        ) { finish ->
+            if (!isAdded) {
+                finish(false)
+                return@run
+            }
+            finishPermissionPrompt = finish
+            permissionLauncher.launch(permissions)
         }
     }
 

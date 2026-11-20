@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // Touch select sheet: the check marks a choice, never keyboard focus; Done commits the tapped one.
-spec('a select sheet with no value ticks nothing until a tap, and Done commits that tap', {
+test('a select sheet with no value ticks nothing until a tap, and Done commits that tap', {
   covers: ['view:select', 'view:dialog'], start: openDemo('select'), requires: { pointer: 'coarse' },
 }, async (t) => {
   const view = t.app.view;
@@ -26,7 +26,7 @@ spec('a select sheet with no value ticks nothing until a tap, and Done commits t
 });
 
 // A choice made through automation while the sheet is open closes the sheet, as a tap and Done would.
-spec('selectOption with the select sheet open picks the option and closes the sheet', {
+test('selectOption with the select sheet open picks the option and closes the sheet', {
   covers: ['view:select', 'view:dialog'], start: openDemo('select'), requires: { pointer: 'coarse' },
 }, async (t) => {
   const view = t.app.view;

@@ -1,6 +1,7 @@
 use super::*;
 use crate::LxAppDelegate;
 use lingxia_platform::Platform;
+use lingxia_platform::traits::app_runtime::LxAppRegionMoves;
 use lingxia_platform::traits::ui::{
     ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest, ManagedSurfaceProviderRequest,
     SurfaceContent, SurfaceContentKind, SurfaceKind, SurfacePosition, SurfacePresenter,
@@ -163,10 +164,11 @@ pub(crate) const PRIMARY_WINDOW: &str = "primary";
 /// clone the runtime handle and seed a fresh `SurfaceManager` for that window's
 /// graph.
 /// Slot kind named by a shell control ("lxapp" / "browser" / "native").
+/// A slot kind from its API spelling. `lxapp` and `browser` name the side
+/// panel they merged into, for callers written against the three-slot model.
 fn shell_slot_kind(kind: &str) -> Option<lingxia_surface::SlotKind> {
     match kind.trim() {
-        "lxapp" => Some(lingxia_surface::SlotKind::Lxapp),
-        "browser" => Some(lingxia_surface::SlotKind::Browser),
+        "panel" | "lxapp" | "browser" => Some(lingxia_surface::SlotKind::Panel),
         "native" => Some(lingxia_surface::SlotKind::Native),
         _ => None,
     }
@@ -250,7 +252,7 @@ impl WindowSurfaceController {
                     if manager.graph().is_root_main(&surface.id)
                         && role != lingxia_surface::Role::Main
                     {
-                        return Err(LxAppError::UnsupportedOperation(
+                        return Err(LxAppError::SurfaceRoleLocked(
                             "the stable root main surface cannot change role".to_string(),
                         ));
                     }
@@ -368,7 +370,7 @@ impl WindowSurfaceController {
             let slot = plan
                 .aside_slots
                 .iter()
-                .find(|slot| slot.kind == lingxia_surface::SlotKind::Lxapp);
+                .find(|slot| slot.kind == lingxia_surface::SlotKind::Panel);
             let transition = collapsed_lxapp_transition(guard.as_deref(), slot);
             *guard = transition.collapsed.clone();
             transition
@@ -504,6 +506,38 @@ impl WindowSurfaceController {
         removed
     }
 
+    /// Remove every non-root surface presenting `app_id`, in one commit.
+    fn close_surfaces_presenting(&self, app_id: &str, reason: &str) -> Vec<String> {
+        let ids: Vec<String> = {
+            let manager = self.manager.lock().unwrap();
+            let graph = manager.graph();
+            graph
+                .surfaces()
+                .iter()
+                .filter(|surface| !graph.is_root_main(&surface.id))
+                .filter(|surface| match &surface.content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id: id, .. }
+                    | lingxia_surface::SurfaceContent::Page { app_id: id, .. } => id == app_id,
+                    _ => false,
+                })
+                .map(|surface| surface.id.clone())
+                .collect()
+        };
+        if ids.is_empty() {
+            return ids;
+        }
+        let before = self.manager.lock().unwrap().graph().active_main_id.clone();
+        let mut removed = Vec::new();
+        for id in &ids {
+            removed.extend(self.close_deferred(id, reason).into_removed());
+        }
+        if self.manager.lock().unwrap().graph().active_main_id != before {
+            *self.active_main_publication_blocked.lock().unwrap() = false;
+        }
+        self.commit();
+        removed
+    }
+
     fn contains(&self, id: &str) -> bool {
         self.manager.lock().unwrap().graph().get(id).is_some()
     }
@@ -580,7 +614,7 @@ impl WindowSurfaceController {
             )
         };
         if is_root_main && role.is_some_and(|role| role != lingxia_surface::Role::Main) {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(LxAppError::SurfaceRoleLocked(
                 "the stable root main surface cannot change role".to_string(),
             ));
         }
@@ -660,7 +694,7 @@ impl WindowSurfaceController {
                 self.commit();
             }
             lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
-                return Err(LxAppError::UnsupportedOperation(
+                return Err(LxAppError::SurfaceRoleLocked(
                     "the stable root main surface cannot be closed".to_string(),
                 ));
             }
@@ -706,6 +740,58 @@ impl WindowSurfaceController {
 
     fn managed_surface_role(&self, id: &str) -> Option<SurfaceRole> {
         self.manager.lock().unwrap().graph().role_of(id)
+    }
+
+    fn surface_content(&self, id: &str) -> Option<lingxia_surface::SurfaceContent> {
+        self.manager
+            .lock()
+            .unwrap()
+            .graph()
+            .get(id)
+            .map(|surface| surface.content.clone())
+    }
+
+    fn native_declaration_capability(&self, declaration_id: &str) -> Option<String> {
+        self.native_declarations
+            .lock()
+            .unwrap()
+            .get(declaration_id)
+            .and_then(|declaration| {
+                declaration
+                    .surface
+                    .content
+                    .native_identity()
+                    .map(|(capability, _)| capability.to_string())
+            })
+    }
+
+    /// The declaration a keyed native instance was made from.
+    fn native_declaration_for_capability(&self, capability: &str) -> Option<String> {
+        let declarations = self.native_declarations.lock().unwrap();
+        let mut ids: Vec<&String> = declarations
+            .iter()
+            .filter(|(_, declaration)| {
+                declaration
+                    .surface
+                    .content
+                    .native_identity()
+                    .is_some_and(|(cap, _)| cap == capability)
+            })
+            .map(|(id, _)| id)
+            .collect();
+        ids.sort();
+        ids.first().map(|id| id.to_string())
+    }
+
+    fn native_instance_surface_id(&self, capability: &str, key: &str) -> Option<String> {
+        self.manager
+            .lock()
+            .unwrap()
+            .graph()
+            .surfaces()
+            .iter()
+            .find(|surface| surface.content.native_identity() == Some((capability, Some(key))))
+            .map(|surface| surface.id.clone())
     }
 
     fn managed_surface_visible(&self, id: &str) -> Option<bool> {
@@ -824,6 +910,37 @@ impl WindowSurfaceController {
         true
     }
 
+    /// Move a live lxapp main into the side panel as an aside, in one commit.
+    /// An empty `edge` follows the panel's current edge. The successor main
+    /// the core picks becomes active through the plan; its app id (when it is
+    /// an lxapp) comes back so the caller can align the lxapp stack.
+    fn demote_main_to_aside(&self, surface_id: &str, edge: &str) -> Option<Option<String>> {
+        let successor = {
+            let mut manager = self.manager.lock().unwrap();
+            if manager.graph().role_of(surface_id) != Some(lingxia_surface::Role::Main)
+                || manager.graph().is_root_main(surface_id)
+            {
+                return None;
+            }
+            let edge = (!edge.trim().is_empty()).then(|| edge_from_name(edge));
+            if !manager.demote_main_to_aside(surface_id, edge) {
+                return None;
+            }
+            let graph = manager.graph();
+            graph
+                .active_main_id
+                .as_deref()
+                .and_then(|id| graph.get(id))
+                .and_then(|surface| match &surface.content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => Some(app_id.clone()),
+                    _ => None,
+                })
+        };
+        *self.active_main_publication_blocked.lock().unwrap() = false;
+        self.commit();
+        Some(successor)
+    }
+
     fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -906,7 +1023,8 @@ impl WindowSurfaceController {
     fn surface_menu(
         &self,
         surface_id: &str,
-        content_groups: Vec<Vec<lingxia_shell::SurfaceMenuItem>>,
+        parts: lingxia_shell::SurfaceMenuParts,
+        rows: &[lingxia_shell::MainRow],
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let snapshot = self.manager.lock().unwrap().switcher_snapshot();
         let index = snapshot
@@ -914,7 +1032,7 @@ impl WindowSurfaceController {
             .iter()
             .position(|item| item.surface_id == surface_id)?;
         let item = &snapshot.items[index];
-        Some(lingxia_shell::compose_surface_menu(
+        Some(lingxia_shell::compose_surface_menu_parts(
             lingxia_shell::SurfaceMenuContext {
                 revision: snapshot.revision,
                 surface_id: item.surface_id.clone(),
@@ -935,8 +1053,9 @@ impl WindowSurfaceController {
                     .iter()
                     .skip(index + 1)
                     .any(|candidate| candidate.closable),
-            },
-            content_groups,
+            }
+            .with_rows(rows),
+            parts,
         ))
     }
 
@@ -1031,11 +1150,16 @@ impl WindowSurfaceController {
     }
 
     fn set_slot_collapsed(&self, kind: lingxia_surface::SlotKind, collapsed: bool) -> bool {
-        let changed = self
-            .manager
-            .lock()
-            .unwrap()
-            .set_slot_collapsed(kind, collapsed);
+        // Restoring is "show me this region": it also reveals a slot that is
+        // hidden for lack of room, as an overlay.
+        let changed = {
+            let mut manager = self.manager.lock().unwrap();
+            if collapsed {
+                manager.set_slot_collapsed(kind, true)
+            } else {
+                manager.reveal_slot(kind)
+            }
+        };
         if changed {
             self.commit();
         }
@@ -1050,9 +1174,19 @@ impl WindowSurfaceController {
             if !manager.slot_occupied(kind) {
                 return None;
             }
-            let collapsed = !manager.graph().slot_collapsed(kind);
-            manager.set_slot_collapsed(kind, collapsed);
-            collapsed
+            // Only a slot on screen collapses; a collapsed one, or one hidden
+            // for lack of room, is revealed like its edge handle does.
+            let shown = manager
+                .presentation_plan()
+                .aside_slots
+                .iter()
+                .any(|slot| slot.kind == kind && slot.visible);
+            if shown {
+                manager.set_slot_collapsed(kind, true);
+            } else {
+                manager.reveal_slot(kind);
+            }
+            shown
         };
         self.commit();
         Some(collapsed)
@@ -1205,18 +1339,24 @@ fn instantiate_native_declaration(
     (surface, presentation)
 }
 
+/// A dock edge from its API spelling; anything else is the trailing edge.
+fn edge_from_name(edge: &str) -> lingxia_surface::Edge {
+    use lingxia_surface::Edge;
+    match edge {
+        "left" | "leading" => Edge::Left,
+        "top" => Edge::Top,
+        "bottom" => Edge::Bottom,
+        _ => Edge::Right,
+    }
+}
+
 fn host_aside_node(
     surface_id: &str,
     content: lingxia_surface::SurfaceContent,
     edge: &str,
 ) -> lingxia_surface::Surface {
-    use lingxia_surface::{Edge, Placement, Role, Surface, SurfaceOwner, SurfaceState};
-    let edge = match edge {
-        "left" | "leading" => Edge::Left,
-        "top" => Edge::Top,
-        "bottom" => Edge::Bottom,
-        _ => Edge::Right,
-    };
+    use lingxia_surface::{Placement, Role, Surface, SurfaceOwner, SurfaceState};
+    let edge = edge_from_name(edge);
     Surface {
         id: surface_id.to_string(),
         role: Role::Aside,
@@ -1419,6 +1559,18 @@ pub struct ManagedNativeSurface {
     pub role: lingxia_surface::Role,
 }
 
+/// See [`LxApp::shell_surface_identity`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellSurfaceIdentity {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declaration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostMainSurfaceRegistration {
@@ -1473,7 +1625,8 @@ fn execute_surface_menu_intent(
             lingxia_shell::SurfaceMenuBuiltinAction::ResetTitle => {
                 item.renameable && manager.rename(&intent.surface_id, None)
             }
-            lingxia_shell::SurfaceMenuBuiltinAction::Close => {
+            lingxia_shell::SurfaceMenuBuiltinAction::Close
+            | lingxia_shell::SurfaceMenuBuiltinAction::CloseApp => {
                 if !item.closable {
                     false
                 } else {
@@ -1497,9 +1650,11 @@ fn execute_surface_menu_intent(
             }
         },
         // Provider actions are dispatched by the provider integration, never
-        // interpreted as shell lifecycle operations.
+        // interpreted as shell lifecycle operations. Browser tabs are not
+        // graph surfaces: the platform runs their actions.
         lingxia_shell::SurfaceMenuAction::Information {}
         | lingxia_shell::SurfaceMenuAction::Lxapp { .. }
+        | lingxia_shell::SurfaceMenuAction::Browser { .. }
         | lingxia_shell::SurfaceMenuAction::External { .. } => false,
     };
     HostSurfaceMenuExecution {
@@ -1653,7 +1808,43 @@ impl LxApp {
         request: PageSurfaceRequest,
         chrome: WindowChrome,
     ) -> Result<PageSurface, LxAppError> {
-        self.open_surface_with_web_data(request, chrome, false, false)
+        self.open_surface_with_web_data(request, chrome, false, false, None)
+    }
+
+    /// Show a live main-area browser tab in the side panel, at the panel's
+    /// current edge. The caller has already handed the tab to `self`
+    /// (`lingxia_browser::demote_tab_to_standalone`); the surface takes it
+    /// over as it is, never merging into an open tab of the same URL.
+    pub fn open_browser_tab_aside(
+        &self,
+        tab_id: &str,
+        url: &str,
+    ) -> Result<PageSurface, LxAppError> {
+        let tab_id = tab_id.trim();
+        if tab_id.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "browser tab id must not be empty".to_string(),
+            ));
+        }
+        let edge = self.side_panel_dock_edge();
+        let mut request = PageSurfaceRequest::new(
+            format!("browser-tab:{tab_id}"),
+            PageSurfaceTarget::Url(url.to_string()),
+        );
+        request.role = lingxia_surface::Role::Aside;
+        request.position = match edge {
+            lingxia_surface::Edge::Left => SurfacePosition::Left,
+            lingxia_surface::Edge::Top => SurfacePosition::Top,
+            lingxia_surface::Edge::Bottom => SurfacePosition::Bottom,
+            lingxia_surface::Edge::Right => SurfacePosition::Right,
+        };
+        self.open_surface_with_web_data(
+            request,
+            WindowChrome::default(),
+            false,
+            false,
+            Some(tab_id.to_string()),
+        )
     }
 
     fn open_surface_with_web_data(
@@ -1662,6 +1853,7 @@ impl LxApp {
         chrome: WindowChrome,
         ephemeral_web_data: bool,
         url_callback: bool,
+        browser_tab_id: Option<String>,
     ) -> Result<PageSurface, LxAppError> {
         if !self.is_opened() {
             return Err(LxAppError::UnsupportedOperation(
@@ -1760,7 +1952,7 @@ impl LxApp {
                 &page_path,
                 owner_pid.as_deref(),
                 request.role,
-                url_callback,
+                !url_callback && browser_tab_id.is_none(),
                 interaction,
             );
             let opened = controller.open_node(node, request.position);
@@ -1827,6 +2019,7 @@ impl LxApp {
                         chrome,
                         ephemeral_web_data,
                         url_callback,
+                        browser_tab_id,
                     })
                     .map_err(LxAppError::from)
             });
@@ -2009,6 +2202,7 @@ impl LxApp {
                         // Window surfaces host this lxapp's own pages, never external web.
                         ephemeral_web_data: false,
                         url_callback: false,
+                        browser_tab_id: None,
                     })
                     .map_err(LxAppError::from)
             });
@@ -2055,7 +2249,7 @@ impl LxApp {
             return Ok(());
         }
         if controller.is_root_main(id) {
-            return Err(LxAppError::UnsupportedOperation(format!(
+            return Err(LxAppError::SurfaceRoleLocked(format!(
                 "root main surface '{id}' cannot be closed"
             )));
         }
@@ -2114,7 +2308,7 @@ impl LxApp {
         // web session: logout is real, and a new login can pick a different
         // account instead of silently reusing a prior SSO cookie.
         let surface =
-            self.open_surface_with_web_data(request, WindowChrome::default(), true, true)?;
+            self.open_surface_with_web_data(request, WindowChrome::default(), true, true, None)?;
         Ok(UrlCallbackSurface {
             appid: self.appid.clone(),
             surface,
@@ -2328,6 +2522,16 @@ impl LxApp {
     /// drive the switch imperatively — it routes the switch through here so the
     /// graph stays the single source of truth.
     pub fn set_active_main(&self) {
+        self.set_active_main_in_graph();
+        // The shown main is the current lxapp, or eval and surface-close
+        // routing keep targeting the app opened last.
+        mark_lxapp_active(&self.appid);
+    }
+
+    /// `set_active_main` without moving the lxapp stack, for an open that
+    /// has not reached `on_lxapp_opened` yet: that callback reads the stack
+    /// top to send the outgoing app `onHide`, then moves the stack itself.
+    pub(crate) fn set_active_main_in_graph(&self) {
         let title = self.listing_name();
         window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main(
             &self.appid,
@@ -2341,13 +2545,183 @@ impl LxApp {
     /// physically covering an already-active lxapp graph node.
     pub fn activate_main(&self) {
         self.runtime.request_lxapp_main_activation(&self.appid);
-        self.set_active_main();
+        self.set_active_main_in_graph();
+    }
+
+    /// Whether `id` names a surface the host declared: a `lingxia.yaml` panel
+    /// item or a registered native declaration.
+    pub fn is_declared_shell_surface(&self, id: &str) -> bool {
+        let id = id.trim();
+        !id.is_empty()
+            && (window_controller(PRIMARY_WINDOW, &self.runtime)
+                .native_declaration_capability(id)
+                .is_some()
+                || lingxia_app_context::app_config()
+                    .and_then(|config| config.panels.as_ref())
+                    .is_some_and(|panels| panels.items.iter().any(|item| item.id == id)))
+    }
+
+    /// The live surface of a declaration's keyed instance.
+    pub fn declared_instance_surface_id(&self, declaration_id: &str, key: &str) -> Option<String> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let capability = controller.native_declaration_capability(declaration_id.trim())?;
+        controller.native_instance_surface_id(&capability, key.trim())
+    }
+
+    /// Who a live surface is, for test automation: the lxapp it shows, the
+    /// declaration it came from, and that declaration's instance key.
+    pub fn shell_surface_identity(&self, surface_id: &str) -> Option<ShellSurfaceIdentity> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let content = controller.surface_content(surface_id)?;
+        let mut identity = ShellSurfaceIdentity::default();
+        match content {
+            lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+            | lingxia_surface::SurfaceContent::Page { app_id, .. } => {
+                identity.app_id = Some(app_id);
+            }
+            lingxia_surface::SurfaceContent::Native {
+                capability,
+                instance_key: Some(key),
+            } => {
+                identity.declaration = controller.native_declaration_for_capability(&capability);
+                identity.key = Some(key);
+            }
+            _ => {}
+        }
+        if identity.declaration.is_none() && self.is_declared_shell_surface(surface_id) {
+            identity.declaration = Some(surface_id.to_string());
+        }
+        Some(identity)
+    }
+
+    /// Whether this app is live as a surface of its own, rather than only
+    /// inside another surface's app navigation.
+    pub fn owns_shell_surface(&self) -> bool {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        match self.current_open_region() {
+            None => false,
+            Some(LxAppOpenRegion::Aside) => true,
+            Some(LxAppOpenRegion::Main) => {
+                controller.managed_surface_role(&self.appid) == Some(SurfaceRole::Main)
+                    || controller.switcher_snapshot().root_surface_id.is_none()
+            }
+        }
+    }
+
+    /// Move this live lxapp to `region` without restarting it, for an API
+    /// open that names the other role. A no-op when it is already there.
+    pub fn move_to_region(
+        &self,
+        region: LxAppOpenRegion,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        self.move_to_region_on(self.runtime.lxapp_region_moves(), region, edge)
+    }
+
+    pub(super) fn move_to_region_on(
+        &self,
+        moves: LxAppRegionMoves,
+        region: LxAppOpenRegion,
+        edge: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        if moves == LxAppRegionMoves::Unsupported {
+            return Err(LxAppError::UnsupportedOperation(
+                "this host cannot move a live lxapp between main and aside".to_string(),
+            ));
+        }
+        // The shell's own move re-enters the drag entry points, which take
+        // this guard themselves.
+        let _guard = (moves == LxAppRegionMoves::FromPlan).then(|| {
+            self.presentation_open_lock
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+        });
+        let current = self.current_open_region().ok_or_else(|| {
+            LxAppError::ResourceNotFound(format!("lxapp is not open: {}", self.appid))
+        })?;
+        if current == region {
+            return Ok(());
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        match region {
+            LxAppOpenRegion::Aside => {
+                if controller.is_root_main(&self.appid) {
+                    return Err(LxAppError::SurfaceRoleLocked(
+                        "the stable root main surface cannot change role".to_string(),
+                    ));
+                }
+                if controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main) {
+                    // A shell with mains that does not list this app shows it
+                    // inside another surface's app navigation.
+                    return Err(
+                        if controller.switcher_snapshot().root_surface_id.is_some() {
+                            LxAppError::SurfaceConflict(format!(
+                                "lxapp '{}' is open only inside another surface's app navigation",
+                                self.appid
+                            ))
+                        } else {
+                            LxAppError::UnsupportedOperation(
+                                "this host cannot move a live lxapp out of main".to_string(),
+                            )
+                        },
+                    );
+                }
+            }
+            LxAppOpenRegion::Main => {
+                let panel = self.open_panel_id().unwrap_or_else(|| self.appid.clone());
+                if controller.managed_surface_role(&panel) != Some(SurfaceRole::Aside) {
+                    return Err(LxAppError::UnsupportedOperation(
+                        "this host cannot move a live aside into main".to_string(),
+                    ));
+                }
+            }
+        }
+        let edge = edge.unwrap_or("").trim();
+        match moves {
+            LxAppRegionMoves::Shell => {
+                if self.runtime.move_lxapp_region(
+                    &self.appid,
+                    region == LxAppOpenRegion::Main,
+                    edge,
+                ) {
+                    Ok(())
+                } else {
+                    Err(LxAppError::Runtime(format!(
+                        "the shell could not move lxapp '{}' to {}",
+                        self.appid,
+                        region.as_str()
+                    )))
+                }
+            }
+            _ => match region {
+                LxAppOpenRegion::Main => self.promote_aside_to_main_guarded(),
+                LxAppOpenRegion::Aside => self.demote_main_to_aside_guarded(edge),
+            },
+        }
+    }
+
+    /// The open guard for a move a UI thread started. It never waits: an open
+    /// holding the guard may itself be waiting on that UI thread.
+    fn try_presentation_guard(&self) -> Result<std::sync::MutexGuard<'_, ()>, LxAppError> {
+        match self.presentation_open_lock.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Ok(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => Err(LxAppError::SurfaceConflict(format!(
+                "lxapp '{}' is being opened or moved",
+                self.appid
+            ))),
+        }
     }
 
     /// Move this lxapp's live aside presentation into the main region without
     /// restarting it: Logic, the page stack and every WebView stay as they
     /// are, and the platform re-hosts the current page in the main area.
     pub fn promote_aside_to_main(&self) -> Result<(), LxAppError> {
+        let _guard = self.try_presentation_guard()?;
+        self.promote_aside_to_main_guarded()
+    }
+
+    fn promote_aside_to_main_guarded(&self) -> Result<(), LxAppError> {
         let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         let surface_id = self
             .open_panel_id()
@@ -2385,12 +2759,11 @@ impl LxApp {
             if let Some(manager) = get_lxapps_manager() {
                 manager.remove_from_stack(&self.appid);
             }
-            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
-            state.open_region = Some(LxAppOpenRegion::Aside);
-            (
-                state.startup_options.open_mode,
-                state.startup_options.panel_id,
-            ) = previous_startup;
+            self.roll_back_region(
+                LxAppOpenRegion::Main,
+                LxAppOpenRegion::Aside,
+                previous_startup,
+            );
             return Err(LxAppError::InvalidParameter(format!(
                 "surface '{surface_id}' is no longer an aside"
             )));
@@ -2410,6 +2783,87 @@ impl LxApp {
         Ok(())
     }
 
+    /// Move this lxapp's live main presentation into the side panel without
+    /// restarting it — the mirror of `promote_aside_to_main`: Logic, the page
+    /// stack and every WebView stay as they are, and the platform re-hosts
+    /// the current page in the panel. An empty `edge` keeps the panel where
+    /// it is. The root main never moves.
+    pub fn demote_main_to_aside(&self, edge: &str) -> Result<(), LxAppError> {
+        let _guard = self.try_presentation_guard()?;
+        self.demote_main_to_aside_guarded(edge)
+    }
+
+    fn demote_main_to_aside_guarded(&self, edge: &str) -> Result<(), LxAppError> {
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if self.current_open_region() != Some(LxAppOpenRegion::Main)
+            || controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main)
+        {
+            return Err(LxAppError::InvalidParameter(format!(
+                "lxapp '{}' is not open as a main",
+                self.appid
+            )));
+        }
+        if controller.is_root_main(&self.appid) {
+            return Err(LxAppError::SurfaceRoleLocked(
+                "the stable root main surface cannot change role".to_string(),
+            ));
+        }
+        let previous_startup = {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            let previous = (
+                state.startup_options.open_mode,
+                std::mem::replace(&mut state.startup_options.panel_id, self.appid.clone()),
+            );
+            state.open_region = Some(LxAppOpenRegion::Aside);
+            state.startup_options.open_mode =
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
+            previous
+        };
+        let Some(successor) = controller.demote_main_to_aside(&self.appid, edge) else {
+            self.roll_back_region(
+                LxAppOpenRegion::Aside,
+                LxAppOpenRegion::Main,
+                previous_startup,
+            );
+            return Err(LxAppError::InvalidParameter(format!(
+                "surface '{}' is no longer a main",
+                self.appid
+            )));
+        };
+        // An aside is not in the main navigation stack; the successor the
+        // graph chose becomes the current lxapp, as after a close.
+        if let Some(manager) = get_lxapps_manager() {
+            manager.remove_from_stack(&self.appid);
+            if let Some(successor) = &successor {
+                manager.remove_from_stack(successor);
+                manager.push_lxapp_stack(successor.clone());
+            }
+        }
+        if let Some(successor) = successor {
+            self.runtime.request_lxapp_main_activation(&successor);
+        }
+        Ok(())
+    }
+
+    /// Undo a refused move, but only while the region still holds what the
+    /// move wrote: a close that landed meanwhile must not be revived.
+    pub(super) fn roll_back_region(
+        &self,
+        wrote: LxAppOpenRegion,
+        previous: LxAppOpenRegion,
+        previous_startup: (lingxia_platform::traits::app_runtime::LxAppOpenMode, String),
+    ) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.open_region != Some(wrote) {
+            return;
+        }
+        state.open_region = Some(previous);
+        (
+            state.startup_options.open_mode,
+            state.startup_options.panel_id,
+        ) = previous_startup;
+    }
+
     pub fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -2426,8 +2880,39 @@ impl LxApp {
 
     pub fn set_active_main_surface(&self, surface_id: &str) -> bool {
         let surface_id = surface_id.trim();
-        !surface_id.is_empty()
-            && window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main_surface(surface_id)
+        if surface_id.is_empty() {
+            return false;
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        if !controller.set_active_main_surface(surface_id) {
+            return false;
+        }
+        if let Some(
+            lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+            | lingxia_surface::SurfaceContent::Page { app_id, .. },
+        ) = controller.main_surface_content(surface_id)
+        {
+            mark_lxapp_active(&app_id);
+        }
+        true
+    }
+
+    /// The lxapp the desktop window's active main shows: `None` where no host
+    /// drives the graph (mobile) or no main is active, `Some(None)` for a
+    /// browser or native main.
+    pub(crate) fn desktop_active_main_appid(&self) -> Option<Option<String>> {
+        if !cfg!(any(target_os = "windows", target_os = "macos")) {
+            return None;
+        }
+        let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
+        let active = controller.switcher_snapshot().active_surface_id?;
+        Some(match controller.main_surface_content(&active) {
+            Some(
+                lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+                | lingxia_surface::SurfaceContent::Page { app_id, .. },
+            ) => Some(app_id),
+            _ => None,
+        })
     }
 
     pub fn surface_switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
@@ -2450,23 +2935,36 @@ impl LxApp {
         &self,
         surface_id: &str,
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
+        self.shell_surface_menu_in_rows(surface_id, &[])
+    }
+
+    /// The menu of a main-area row, its close family counted over `rows`:
+    /// every main-area row the sidebar shows, browser tabs included, in
+    /// order. Empty `rows` counts the graph's mains only.
+    pub fn shell_surface_menu_in_rows(
+        &self,
+        surface_id: &str,
+        rows: &[lingxia_shell::MainRow],
+    ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
             return None;
         }
-        let content_groups = match self.main_surface_content(surface_id) {
+        let parts = match self.main_surface_content(surface_id) {
             Some(lingxia_surface::SurfaceContent::Lxapp { app_id, .. }) => crate::try_get(&app_id)
                 .map(|app| {
                     let info = app.get_lxapp_info();
-                    let mut groups = vec![vec![lingxia_shell::SurfaceMenuItem::information(
-                        lxapp_surface_menu_header(
-                            &app_id,
-                            &app.listing_name(),
-                            &info.version,
-                            &info.release_type,
-                        ),
-                    )]];
-                    groups.extend(lxapp_switcher_maintenance_groups(app.is_home_lxapp));
+                    let header = lxapp_surface_menu_header(
+                        &app_id,
+                        &app.listing_name(),
+                        &info.version,
+                        &info.release_type,
+                    );
+                    let pinned = !app.is_home_lxapp
+                        && lingxia_shell::is_pinned(&lingxia_shell::ShellPinTarget::Lxapp {
+                            key: app_id.clone(),
+                        })
+                        .unwrap_or(false);
                     let actions = app.more_actions();
                     let generation = actions.generation;
                     let more_actions = actions
@@ -2483,15 +2981,12 @@ impl LxApp {
                             )
                         })
                         .collect::<Vec<_>>();
-                    if !more_actions.is_empty() {
-                        groups.push(more_actions);
-                    }
-                    groups
+                    lxapp_switcher_menu_parts(header, app.is_home_lxapp, pinned, more_actions)
                 })
                 .unwrap_or_default(),
-            _ => Vec::new(),
+            _ => lingxia_shell::SurfaceMenuParts::default(),
         };
-        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, content_groups)
+        window_controller(PRIMARY_WINDOW, &self.runtime).surface_menu(surface_id, parts, rows)
     }
 
     pub fn perform_shell_surface_menu_intent(
@@ -2541,6 +3036,43 @@ impl LxApp {
                     snapshot,
                 });
             };
+            if let lingxia_shell::LxappSurfaceMenuAction::Pin
+            | lingxia_shell::LxappSurfaceMenuAction::Unpin = action
+            {
+                let pin = matches!(action, lingxia_shell::LxappSurfaceMenuAction::Pin);
+                // A full Pin grid is refused here; the platform that wants to
+                // say so checks the limit before sending the intent.
+                let accepted = !app.is_home_lxapp
+                    && lingxia_shell::set_pinned(
+                        lingxia_shell::ShellPinTarget::Lxapp {
+                            key: app.appid.clone(),
+                        },
+                        pin,
+                    )
+                    .is_ok();
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: Vec::new(),
+                    snapshot: self.surface_switcher_snapshot(),
+                });
+            }
+            if matches!(action, lingxia_shell::LxappSurfaceMenuAction::OpenInSide) {
+                // The live main moves beside the main: Logic, page stack and
+                // WebViews stay; the committed plan docks it.
+                let accepted = match app.demote_main_to_aside("") {
+                    Ok(()) => true,
+                    Err(error) => {
+                        warn!("Failed to move the lxapp main into the side panel: {error}")
+                            .with_appid(app.appid.clone());
+                        false
+                    }
+                };
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: Vec::new(),
+                    snapshot: self.surface_switcher_snapshot(),
+                });
+            }
             if matches!(action, lingxia_shell::LxappSurfaceMenuAction::Uninstall) {
                 if app.is_home_lxapp {
                     return Some(HostSurfaceMenuExecution {
@@ -2834,6 +3366,13 @@ impl LxApp {
         })
     }
 
+    /// A runtime-driven shutdown leaves the platform no close gesture to report,
+    /// so drop this app's switcher rows and asides before it goes away.
+    pub(crate) fn close_window_surfaces_for_shutdown(&self) -> Vec<String> {
+        window_controller(PRIMARY_WINDOW, &self.runtime)
+            .close_surfaces_presenting(&self.appid, close_reason_str(CloseReason::AppClosed))
+    }
+
     pub fn forget_surface(&self, id: &str) -> bool {
         self.forget_surface_with_reason(id, "user")
     }
@@ -2966,6 +3505,41 @@ impl LxApp {
     /// Snapshot the core's `LayoutPresentationPlan` for this app's window — the
     /// stable, renderable contract `lx.surface.derivedLayout()` returns (the
     /// same plan the skin reconciler binds via `present_layout`).
+    /// The edge the side panel docks at now (`right` while it is empty), so
+    /// an aside opened into it joins it there.
+    pub fn side_panel_edge(&self) -> &'static str {
+        match self.side_panel_dock_edge() {
+            lingxia_surface::Edge::Left => "left",
+            lingxia_surface::Edge::Top => "top",
+            lingxia_surface::Edge::Bottom => "bottom",
+            lingxia_surface::Edge::Right => "right",
+        }
+    }
+
+    fn side_panel_dock_edge(&self) -> lingxia_surface::Edge {
+        use lingxia_surface::{Edge, SlotKind};
+        self.surface_derived_layout()
+            .and_then(|plan| {
+                plan.aside_slots
+                    .into_iter()
+                    .find(|slot| slot.kind == SlotKind::Panel && !slot.children.is_empty())
+                    .and_then(|slot| slot.edge)
+            })
+            .unwrap_or(Edge::Right)
+    }
+
+    /// A window too small to dock a side panel: a URL aside opens in the
+    /// compact aside browser over the main instead.
+    pub fn aside_browser_is_compact(&self) -> bool {
+        use lingxia_surface::SizeClass;
+        !matches!(
+            self.surface_derived_layout()
+                .as_ref()
+                .map(|layout| layout.size_class),
+            Some(SizeClass::Medium) | Some(SizeClass::Expanded)
+        )
+    }
+
     pub fn surface_derived_layout(&self) -> Option<lingxia_surface::LayoutPresentationPlan> {
         Some(window_controller(PRIMARY_WINDOW, &self.runtime).presentation_plan())
     }
@@ -2982,7 +3556,7 @@ impl LxApp {
         page_path: &Option<String>,
         owner_page_instance_id: Option<&str>,
         role: lingxia_surface::Role,
-        url_callback: bool,
+        reuse_by_url: bool,
         interaction: lingxia_surface::SurfaceInteraction,
     ) -> lingxia_surface::Surface {
         use lingxia_surface::{
@@ -3008,7 +3582,7 @@ impl LxApp {
             },
             SurfaceContentKind::Url => LxContent::Browser {
                 initial_url: path_or_url.to_string(),
-                reuse_by_url: !url_callback,
+                reuse_by_url,
             },
         };
         // A surface opened dynamically by an lxapp is caller-scoped: owned by the
@@ -3126,22 +3700,42 @@ fn apply_registry_switcher_titles(
     snapshot
 }
 
-/// Restart and clean-cache stay together. Uninstall is its own section, and
-/// only for a guest lxapp — the home app is not removable from the switcher.
-fn lxapp_switcher_maintenance_groups(is_home: bool) -> Vec<Vec<lingxia_shell::SurfaceMenuItem>> {
-    let mut groups = vec![vec![
-        lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Restart),
-        lingxia_shell::SurfaceMenuItem::lxapp(
-            lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart,
-        ),
-    ]];
+/// An lxapp main's menu: its identity, Pin, its own MoreActions, then
+/// restart and clean-cache; "Open in Side Panel" after the content; Uninstall
+/// last, below every close. The home app is the root main: it neither pins,
+/// moves, nor uninstalls.
+fn lxapp_switcher_menu_parts(
+    header: String,
+    is_home: bool,
+    pinned: bool,
+    more_actions: Vec<lingxia_shell::SurfaceMenuItem>,
+) -> lingxia_shell::SurfaceMenuParts {
+    use lingxia_shell::{LxappSurfaceMenuAction as Action, SurfaceMenuItem as Item};
+    let mut content = vec![vec![Item::information(header)]];
     if !is_home {
-        let mut uninstall =
-            lingxia_shell::SurfaceMenuItem::lxapp(lingxia_shell::LxappSurfaceMenuAction::Uninstall);
-        uninstall.role = lingxia_shell::SurfaceMenuItemRole::Destructive;
-        groups.push(vec![uninstall]);
+        content.push(vec![Item::lxapp(if pinned {
+            Action::Unpin
+        } else {
+            Action::Pin
+        })]);
     }
-    groups
+    content.push(more_actions);
+    content.push(vec![
+        Item::lxapp(Action::Restart),
+        Item::lxapp(Action::CleanCacheRestart),
+    ]);
+    let mut parts = lingxia_shell::SurfaceMenuParts {
+        content,
+        close_app: true,
+        ..Default::default()
+    };
+    if !is_home {
+        parts.placement.push(Item::lxapp(Action::OpenInSide));
+        let mut uninstall = Item::lxapp(Action::Uninstall);
+        uninstall.role = lingxia_shell::SurfaceMenuItemRole::Destructive;
+        parts.removal.push(uninstall);
+    }
+    parts
 }
 
 fn lxapp_surface_menu_header(
@@ -3385,7 +3979,7 @@ mod tests {
 
     fn lxapp_slot(active: &str, collapsed: bool) -> lingxia_surface::PlanAsideSlot {
         lingxia_surface::PlanAsideSlot {
-            kind: lingxia_surface::SlotKind::Lxapp,
+            kind: lingxia_surface::SlotKind::Panel,
             edge: None,
             children: vec!["agent".to_string(), "chat".to_string()],
             active_child: Some(active.to_string()),
@@ -3637,40 +4231,47 @@ mod tests {
     }
 
     #[test]
-    fn switcher_menu_offers_uninstall_only_for_guest_lxapps() {
-        let home = lxapp_switcher_maintenance_groups(true);
-        assert_eq!(home.len(), 1);
-        assert!(home[0].iter().any(|item| matches!(
-            item.action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::Restart
-            }
-        )));
-        assert!(!home.iter().flatten().any(|item| matches!(
-            item.action,
-            lingxia_shell::SurfaceMenuAction::Lxapp {
-                action: lingxia_shell::LxappSurfaceMenuAction::Uninstall
-            }
-        )));
+    fn switcher_menu_moves_pins_and_uninstalls_only_guest_lxapps() {
+        use lingxia_shell::{LxappSurfaceMenuAction as Action, SurfaceMenuAction};
+        let has = |parts: &lingxia_shell::SurfaceMenuParts, wanted: Action| {
+            parts
+                .content
+                .iter()
+                .flatten()
+                .chain(&parts.placement)
+                .chain(&parts.removal)
+                .any(|item| item.action == SurfaceMenuAction::Lxapp { action: wanted })
+        };
 
-        let guest = lxapp_switcher_maintenance_groups(false);
-        let uninstall = guest
-            .iter()
-            .flatten()
-            .find(|item| {
-                matches!(
-                    item.action,
-                    lingxia_shell::SurfaceMenuAction::Lxapp {
-                        action: lingxia_shell::LxappSurfaceMenuAction::Uninstall
-                    }
-                )
-            })
-            .expect("guest uninstall");
+        let home = lxapp_switcher_menu_parts("Home".into(), true, false, Vec::new());
+        assert!(has(&home, Action::Restart));
+        for absent in [
+            Action::Pin,
+            Action::Unpin,
+            Action::OpenInSide,
+            Action::Uninstall,
+        ] {
+            assert!(!has(&home, absent));
+        }
+
+        let guest = lxapp_switcher_menu_parts("Guest".into(), false, true, Vec::new());
+        assert!(has(&guest, Action::Unpin) && !has(&guest, Action::Pin));
         assert_eq!(
-            uninstall.role,
+            guest.placement[0].action,
+            SurfaceMenuAction::Lxapp {
+                action: Action::OpenInSide
+            }
+        );
+        assert_eq!(
+            guest.removal[0].action,
+            SurfaceMenuAction::Lxapp {
+                action: Action::Uninstall
+            }
+        );
+        assert_eq!(
+            guest.removal[0].role,
             lingxia_shell::SurfaceMenuItemRole::Destructive
         );
-        assert_eq!(guest.len(), 2);
     }
 
     #[test]

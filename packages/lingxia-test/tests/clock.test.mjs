@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
-import { spec, expect } from "../dist/index.js";
-import { reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/runner.js";
+import { test as lxTest, expect } from "../dist/index.js";
+import { reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_TEST_TIMEOUT_MS } from "../dist/runner.js";
 
 afterEach(() => {
   reset();
@@ -26,10 +26,10 @@ test("registers specs and runs them sequentially through __LINGXIA_TEST__.run", 
   installFakeHost(world);
   const order = [];
 
-  spec("first case", async () => {
+  lxTest("first case", async () => {
     order.push("first");
   });
-  spec("second case", async () => {
+  lxTest("second case", async () => {
     order.push("second");
   });
 
@@ -49,7 +49,7 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   const world = createWorld();
   const { events, attachments } = installFakeHost(world);
 
-  spec("tab bar rejects a bad index", { covers: ["lx.tabBar.update"], id: "UI-TABBAR-001" }, async (t) => {
+  lxTest("tab bar rejects a bad index", { covers: ["lx.tabBar.update"], id: "UI-TABBAR-001" }, async (t) => {
     await t.step("outer", async (step) => {
       await step.step("inner", async () => {
         expect(1).toBe(1);
@@ -61,7 +61,7 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   const started = events.find((event) => event.type === "case_started");
   assert.ok(started);
   assert.deepEqual(started.covers, ["lx.tabBar.update"]);
-  assert.equal(started.timeout_ms, DEFAULT_SPEC_TIMEOUT_MS);
+  assert.equal(started.timeout_ms, DEFAULT_TEST_TIMEOUT_MS);
 
   const report = reportJson(attachments);
   const steps = report.cases[0].steps;
@@ -78,9 +78,9 @@ test("ASCII titles slug; non-ASCII titles use file-n unless id is set", async ()
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("Home greets by name", async () => {});
-  spec("首页打招呼", async () => {});
-  spec("中文稳定 id", { id: "UI-HOME-009" }, async () => {});
+  lxTest("Home greets by name", async () => {});
+  lxTest("首页打招呼", async () => {});
+  lxTest("中文稳定 id", { id: "UI-HOME-009" }, async () => {});
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = reportJson(attachments);
@@ -95,10 +95,10 @@ test("generated ids count per file, so another file's specs never shift them", a
 
   const register = (extraInOtherFile) => {
     for (let i = 0; i < extraInOtherFile; i += 1) registerOtherFileSpec(`另一个文件 ${i}`);
-    spec("首页打招呼", async () => {});
-    spec("ASCII title in between", async () => {});
+    lxTest("首页打招呼", async () => {});
+    lxTest("ASCII title in between", async () => {});
     registerOtherFileSpec("另一个文件 末尾");
-    spec("设置页", async () => {});
+    lxTest("设置页", async () => {});
   };
 
   register(0);
@@ -118,13 +118,13 @@ test("grep filters by title or id and marks the report filtered", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world, { control: { grep: "keep-me|UI-KEEP" } });
   const ran = [];
-  spec("keep-me visible", async () => {
+  lxTest("keep-me visible", async () => {
     ran.push("title");
   });
-  spec("other case", { id: "UI-KEEP" }, async () => {
+  lxTest("other case", { id: "UI-KEEP" }, async () => {
     ran.push("id");
   });
-  spec("skip this", async () => {
+  lxTest("skip this", async () => {
     ran.push("no");
   });
   await globalThis.__LINGXIA_TEST__.run();
@@ -132,14 +132,14 @@ test("grep filters by title or id and marks the report filtered", async () => {
   assert.equal(reportJson(attachments).filtered, true);
 });
 
-test("spec.only runs only those cases; forbidOnly refuses to start", async () => {
+test("test.only runs only those cases; forbidOnly refuses to start", async () => {
   const world = createWorld();
   installFakeHost(world);
   const ran = [];
-  spec("background", async () => {
+  lxTest("background", async () => {
     ran.push("background");
   });
-  spec.only("focused", async () => {
+  lxTest.only("focused", async () => {
     ran.push("focused");
   });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -149,7 +149,7 @@ test("spec.only runs only those cases; forbidOnly refuses to start", async () =>
   reset();
   const world2 = createWorld();
   installFakeHost(world2, { control: { forbidOnly: "1" } });
-  spec.only("must not run", async () => {
+  lxTest.only("must not run", async () => {
     ran.push("only");
   });
   await assert.rejects(() => globalThis.__LINGXIA_TEST__.run(), /forbid-only/);
@@ -159,10 +159,10 @@ test("a timeout forces the next spec to relaunch home", async () => {
   const world = createWorld();
   installFakeHost(world);
   const pages = [];
-  spec("times out", { timeout: 40, forensics: false }, async () => {
+  lxTest("times out", { timeout: 40, forensics: false }, async () => {
     await new Promise((resolve) => setTimeout(resolve, 120));
   });
-  spec("after timeout", async (t) => {
+  lxTest("after timeout", async (t) => {
     pages.push((await t.app.nav.current()).name);
   });
   const original = world.app.nav.relaunch.bind(world.app.nav);
@@ -179,13 +179,13 @@ test("duplicate spec ids fail before any case runs", async () => {
   const world = createWorld();
   installFakeHost(world);
   const ran = [];
-  spec("one", { id: "dup" }, async () => {
+  lxTest("one", { id: "dup" }, async () => {
     ran.push("one");
   });
-  spec("two", { id: "dup" }, async () => {
+  lxTest("two", { id: "dup" }, async () => {
     ran.push("two");
   });
-  await assert.rejects(() => globalThis.__LINGXIA_TEST__.run(), /Duplicate spec id/);
+  await assert.rejects(() => globalThis.__LINGXIA_TEST__.run(), /Duplicate test id/);
   assert.deepEqual(ran, []);
 });
 
@@ -194,7 +194,7 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
   installFakeHost(world);
   const cleaned = [];
 
-  spec("slow cleanup on a healthy spec", { timeout: 20_000 }, async (t) => {
+  lxTest("slow cleanup on a healthy spec", { timeout: 20_000 }, async (t) => {
     t.defer(async () => {
       // Longer than the 2s post-timeout budget; a healthy spec must still finish.
       await new Promise((resolve) => setTimeout(resolve, 2_600));
@@ -203,7 +203,7 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
     });
   });
 
-  spec("wedged spec bails out of cleanup", { timeout: 60 }, async (t) => {
+  lxTest("wedged spec bails out of cleanup", { timeout: 60 }, async (t) => {
     t.defer(async () => {
       await new Promise((resolve) => setTimeout(resolve, 2_600));
       await t.app.logic.eval(() => 1);
@@ -222,7 +222,7 @@ test("a cleanup failure after a timeout keeps the timeout verdict", async () => 
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  spec("hangs, then cannot clean up", { id: "VERDICT-1", timeout: 120 }, async (t) => {
+  lxTest("hangs, then cannot clean up", { id: "VERDICT-1", timeout: 120 }, async (t) => {
     t.defer(async () => {
       // Outlives the post-timeout cleanup budget, as a wedged app's would.
       await new Promise((resolve) => setTimeout(resolve, 3_000));
@@ -246,7 +246,7 @@ test("cleanup is not charged to a short spec's own budget", async () => {
   installFakeHost(world);
   let cleaned = false;
 
-  spec("short spec, slower cleanup", { timeout: 2_000 }, async (t) => {
+  lxTest("short spec, slower cleanup", { timeout: 2_000 }, async (t) => {
     t.defer(async () => {
       // A relaunch-and-wait routinely outruns a spec this short.
       await new Promise((resolve) => setTimeout(resolve, 2_600));

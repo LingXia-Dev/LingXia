@@ -104,18 +104,18 @@ export function revokeGrant(grant: Grant | undefined, reason: string): void {
 }
 
 function refused(reason: string): Error {
-  return Object.assign(new Error(`The run revoked spec code's automation authority: ${reason}`), {
+  return Object.assign(new Error(`The run revoked test code's automation authority: ${reason}`), {
     code: "E_AUTOMATION_PRIVILEGE",
   });
 }
 
 function checkGrant(grant: Grant): void {
   if (revokedReason !== undefined) throw refused(revokedReason);
-  if (grant.revoked !== undefined) throw refused(`this driver belongs to an abandoned spec: ${grant.revoked}`);
+  if (grant.revoked !== undefined) throw refused(`this driver belongs to an abandoned test: ${grant.revoked}`);
   // A handle setup code took is shared by every spec, so no spec's grant
   // fences it: the spec using it is one the run cannot fence.
   if (grant !== currentGrant && currentGrant !== undefined && currentGrant !== setupGrant) {
-    currentGrant.unfenced.add("a rawAutomation() driver taken outside the spec");
+    currentGrant.unfenced.add("a rawAutomation() driver taken outside the test");
   }
 }
 
@@ -229,7 +229,7 @@ export function trackAutomationRoot<T extends object>(root: T): T {
   if (revokedReason !== undefined) throw refused(revokedReason);
   const grant = currentGrant;
   if (!grant) {
-    throw refused("no spec is running; a spec that already ended cannot take a new driver");
+    throw refused("no test is running; a test that already ended cannot take a new driver");
   }
   checkGrant(grant);
   return new Proxy(root, {
@@ -351,9 +351,9 @@ export function cancelTimersOf(name: string): number {
 /** `timer setTimeout 60000ms (at 12ms), fetch GET https://…` */
 export function describePending(work: readonly PendingWork[]): string {
   if (work.length === 0) {
-    return "an awaited promise that no timer, fetch or fixture call of the spec backs (e.g. `new Promise(() => {})`, or a raw driver call)";
+    return "an awaited promise that no timer, fetch or fixture call of the test backs (e.g. `new Promise(() => {})`, or a raw driver call)";
   }
   return work
-    .map((item) => `${item.kind} ${item.detail}${item.at_ms !== undefined ? ` (started ${item.at_ms}ms into the spec)` : ""}`)
+    .map((item) => `${item.kind} ${item.detail}${item.at_ms !== undefined ? ` (started ${item.at_ms}ms into the test)` : ""}`)
     .join(", ");
 }

@@ -666,11 +666,11 @@ pub fn set_display_language_preference_in(
     dispatch(transition);
     let state = service().state();
     if state.effective_source == DisplayLanguageEffectiveSource::SessionOverride {
-        // Otherwise a Settings screen looks broken under `lingxia dev
-        // --display-language`: the write succeeds and nothing on screen moves.
+        // Otherwise a Settings screen looks broken under `lxdev runner set
+        // --language`: the write succeeds and nothing on screen moves.
         crate::warn!(
             "Display language preference saved as '{}', but a dev session override pins the \
-             effective language to '{}'; restart without --display-language to see it apply",
+             effective language to '{}'; end the dev session to see it apply",
             state.preference,
             state.effective
         );

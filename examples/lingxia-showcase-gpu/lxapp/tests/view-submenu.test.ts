@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // A menu item that opens a menu keeps its own menu open; a choice in the second closes both.
-spec('a second menu opens beside the first, arrows open and close it, and a choice closes both', { covers: ['view:submenu'], start: openDemo('submenu') }, async (t) => {
+test('a second menu opens beside the first, arrows open and close it, and a choice closes both', { covers: ['view:submenu'], start: openDemo('submenu') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-submenu-state');
   const menu = view.testId('lab-submenu-menu');
@@ -37,7 +37,7 @@ spec('a second menu opens beside the first, arrows open and close it, and a choi
 });
 
 // Opened by a press on its item, the second menu hands focus back to that item too.
-spec('a second menu a press opened returns focus to its item when the back arrow closes it', { covers: ['view:submenu'], start: openDemo('submenu') }, async (t) => {
+test('a second menu a press opened returns focus to its item when the back arrow closes it', { covers: ['view:submenu'], start: openDemo('submenu') }, async (t) => {
   const view = t.app.view;
   const move = view.testId('lab-submenu-move');
   await view.testId('lab-submenu-open').click();

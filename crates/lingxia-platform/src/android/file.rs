@@ -2,7 +2,7 @@ use super::app::Platform;
 use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
+    FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
 };
 use jni::objects::{JObject, JString, JValue};
 use jni::{jni_sig, jni_str};
@@ -18,22 +18,27 @@ impl FileService for Platform {
         crate::rt::blocking(move || open_external_sync(request)).await
     }
 
-    async fn choose_file(
-        &self,
-        request: ChooseFileRequest,
-    ) -> Result<FileDialogResult, PlatformError> {
+    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
         let payload =
-            crate::rt::native_call(|callback_id| choose_file_impl(&request, callback_id)).await?;
+            crate::rt::native_call(|callback_id| pick_file_impl(&request, callback_id)).await?;
         parse_file_dialog_result(&payload)
     }
 
-    async fn choose_directory(
+    async fn pick_directory(
         &self,
-        request: ChooseDirectoryRequest,
+        request: PickDirectoryRequest,
     ) -> Result<FileDialogResult, PlatformError> {
         let payload =
-            crate::rt::native_call(|callback_id| choose_directory_impl(&request, callback_id))
-                .await?;
+            crate::rt::native_call(|callback_id| pick_directory_impl(&request, callback_id))
+                .await
+                .map_err(|err| match err {
+                    PlatformError::BusinessError(6000) => PlatformError::NotSupported(
+                        "pickDirectory on Android needs a defaultPath in lxapp storage: \
+                         a system folder pick is a SAF tree URI no file API can read"
+                            .to_string(),
+                    ),
+                    other => other,
+                })?;
         parse_file_dialog_result(&payload)
     }
 }
@@ -42,6 +47,8 @@ impl FileService for Platform {
 struct AndroidFileDialogResult {
     canceled: bool,
     paths: Vec<String>,
+    #[serde(default)]
+    names: Option<Vec<Option<String>>>,
 }
 
 fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
@@ -150,7 +157,7 @@ fn open_document_external_impl(
     })
 }
 
-fn choose_file_impl(request: &ChooseFileRequest, callback_id: u64) -> Result<(), PlatformError> {
+fn pick_file_impl(request: &PickFileRequest, callback_id: u64) -> Result<(), PlatformError> {
     with_env(|env| -> Result<(), PlatformError> {
         let class = super::get_cached_class(super::CachedClass::LxAppFile)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
@@ -189,8 +196,8 @@ fn choose_file_impl(request: &ChooseFileRequest, callback_id: u64) -> Result<(),
     })
 }
 
-fn choose_directory_impl(
-    request: &ChooseDirectoryRequest,
+fn pick_directory_impl(
+    request: &PickDirectoryRequest,
     callback_id: u64,
 ) -> Result<(), PlatformError> {
     with_env(|env| -> Result<(), PlatformError> {
@@ -223,8 +230,5 @@ fn choose_directory_impl(
 fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
     let parsed: AndroidFileDialogResult = serde_json::from_str(payload)
         .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
-    Ok(FileDialogResult {
-        canceled: parsed.canceled,
-        paths: parsed.paths,
-    })
+    FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)
 }

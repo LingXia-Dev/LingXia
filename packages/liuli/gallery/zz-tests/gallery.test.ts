@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { tap, touchMinimum, type Box } from './finger.js';
 
 // Liuli's gallery on a device: every page opens, and each control answers taps and keys as its
@@ -22,7 +22,7 @@ const categories: Record<string, string[]> = {
   'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard', 'conversation'],
 };
 
-spec('gallery: home opens every category, and each category every page', { start: { page: 'home' }, timeout: 360_000 }, async (t) => {
+test('gallery: home opens every category, and each category every page', { start: { page: 'home' }, timeout: 360_000 }, async (t) => {
   const view = t.app.view;
   for (const [category, pages] of Object.entries(categories)) {
     const card = view.testId(`open-${category}`);
@@ -41,7 +41,7 @@ spec('gallery: home opens every category, and each category every page', { start
   }
 });
 
-spec('gallery: home search narrows to matching components and opens one', { start: { page: 'home' }, timeout: 60_000 }, async (t) => {
+test('gallery: home search narrows to matching components and opens one', { start: { page: 'home' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await view.testId('home-search').fill('date');
   await expect(view.testId('result-date-input')).toBeAttached();
@@ -53,13 +53,13 @@ spec('gallery: home search narrows to matching components and opens one', { star
   await expect(view.testId('result-toast')).toHaveCount(0);
 });
 
-spec('button: an async action shows busy, then settles', { start: { page: 'button' }, timeout: 60_000 }, async (t) => {
+test('button: an async action shows busy, then settles', { start: { page: 'button' }, timeout: 60_000 }, async (t) => {
   const publish = t.app.view.testId('publish');
   await publish.click();
   await expect(publish).toBeEnabled();
 });
 
-spec('checkbox: a tap toggles it; Space toggles it back', { start: { page: 'checkbox-input' }, timeout: 60_000 }, async (t) => {
+test('checkbox: a tap toggles it; Space toggles it back', { start: { page: 'checkbox-input' }, timeout: 60_000 }, async (t) => {
   const digest = t.app.view.getByRole('checkbox', { name: 'Weekly digest' });
   await expect(digest).toBeChecked();
   await digest.click();
@@ -68,7 +68,7 @@ spec('checkbox: a tap toggles it; Space toggles it back', { start: { page: 'chec
   await expect(digest).toBeChecked();
 });
 
-spec('dialog: an alert dialog ignores a backdrop tap; a form closes on Escape', { start: { page: 'dialog' }, timeout: 90_000 }, async (t) => {
+test('dialog: an alert dialog ignores a backdrop tap; a form closes on Escape', { start: { page: 'dialog' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   await view.getByRole('button', { name: 'Delete note' }).click();
   const alert = view.getByRole('alertdialog', { name: 'Delete this note?' });
@@ -92,7 +92,7 @@ spec('dialog: an alert dialog ignores a backdrop tap; a form closes on Escape', 
   await expect(form).toHaveCount(0);
 });
 
-spec('dropdown: an item runs and closes the menu; a tap outside closes it', { start: { page: 'dropdown-menu' }, timeout: 90_000 }, async (t) => {
+test('dropdown: an item runs and closes the menu; a tap outside closes it', { start: { page: 'dropdown-menu' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const menu = view.getByRole('menu');
   await view.getByRole('button', { name: 'Sort by' }).click();
@@ -107,7 +107,7 @@ spec('dropdown: an item runs and closes the menu; a tap outside closes it', { st
   await expect(menu).toHaveCount(0);
 });
 
-spec('dropdown: Enter opens on the first item; Down then Enter runs the second', { start: { page: 'dropdown-menu' }, timeout: 60_000 }, async (t) => {
+test('dropdown: Enter opens on the first item; Down then Enter runs the second', { start: { page: 'dropdown-menu' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await view.getByRole('button', { name: 'Sort by' }).press('Enter');
   await expect(view.getByRole('menuitem', { name: 'Name' })).toBeFocused();
@@ -118,7 +118,7 @@ spec('dropdown: Enter opens on the first item; Down then Enter runs the second',
   await expect(view.testId('order')).toHaveText('Last updated');
 });
 
-spec('dropdown: checkbox and radio items check and keep the menu open; arrows reach them', { start: { page: 'dropdown-menu' }, timeout: 60_000 }, async (t) => {
+test('dropdown: checkbox and radio items check and keep the menu open; arrows reach them', { start: { page: 'dropdown-menu' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const menu = view.getByRole('menu', { name: 'View' });
   await view.testId('view-menu').click();
@@ -136,7 +136,7 @@ spec('dropdown: checkbox and radio items check and keep the menu open; arrows re
   await expect(view.testId('group-Week')).toBeChecked();
 });
 
-spec('text input: an invalid email is marked; typing reaches the field', { start: { page: 'text-input' }, timeout: 60_000 }, async (t) => {
+test('text input: an invalid email is marked; typing reaches the field', { start: { page: 'text-input' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const email = view.getByRole('textbox', { name: 'Email' });
   await email.fill('abc');
@@ -146,7 +146,7 @@ spec('text input: an invalid email is marked; typing reaches the field', { start
   await expect(search).toHaveValue('milk');
 });
 
-spec('slider: arrows step it, Home and End reach the ends, a drag moves it', { start: { page: 'slider' }, timeout: 60_000 }, async (t) => {
+test('slider: arrows step it, Home and End reach the ends, a drag moves it', { start: { page: 'slider' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const volume = view.getByRole('slider', { name: 'Volume' });
   await expect(volume).toHaveValue('40');
@@ -160,7 +160,7 @@ spec('slider: arrows step it, Home and End reach the ends, a drag moves it', { s
   await expect(volume).not.toHaveValue('100');
 });
 
-spec('tabs: a tap chooses a tab and its panel; arrows choose on arrival', { start: { page: 'tabs' }, timeout: 60_000 }, async (t) => {
+test('tabs: a tap chooses a tab and its panel; arrows choose on arrival', { start: { page: 'tabs' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const tab = (value: string) => view.testId(`project-${value}`);
   const panel = view.testId('project-panel');
@@ -179,7 +179,7 @@ spec('tabs: a tap chooses a tab and its panel; arrows choose on arrival', { star
   await expect(view.testId('range-panel')).toContainText('21 hours');
 });
 
-spec('radio group: a tap chooses; arrows move and choose; the required error clears', { start: { page: 'radio-group' }, timeout: 60_000 }, async (t) => {
+test('radio group: a tap chooses; arrows move and choose; the required error clears', { start: { page: 'radio-group' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const option = (value: string) => view.testId(`delivery-${value}`);
   await expect(option('standard')).toBeChecked();
@@ -197,7 +197,7 @@ spec('radio group: a tap chooses; arrows move and choose; the required error cle
   await expect(reason).not.toHaveAttribute('aria-invalid', 'true');
 });
 
-spec('card choice: a tap checks a card; arrows move and choose', { start: { page: 'card' }, timeout: 60_000 }, async (t) => {
+test('card choice: a tap checks a card; arrows move and choose', { start: { page: 'card' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const plan = (id: string) => view.testId(`plan-${id}`);
   await expect(plan('monthly')).toBeChecked();
@@ -209,7 +209,7 @@ spec('card choice: a tap checks a card; arrows move and choose', { start: { page
   await expect(plan('monthly')).toBeFocused();
 });
 
-spec('item: rows in an ItemList are read as list items of a named list', { start: { page: 'item' }, timeout: 60_000 }, async (t) => {
+test('item: rows in an ItemList are read as list items of a named list', { start: { page: 'item' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('list', { name: 'Notes' })).toBeVisible();
   await expect(view.getByRole('list', { name: 'About' })).toBeAttached();
@@ -217,14 +217,14 @@ spec('item: rows in an ItemList are read as list items of a named list', { start
   await expect(view.getByRole('button', { name: 'Trip to the coast' })).toBeVisible();
 });
 
-spec('uploads: each section is a named list, every card a list item', { start: { page: 'uploads' }, timeout: 60_000 }, async (t) => {
+test('uploads: each section is a named list, every card a list item', { start: { page: 'uploads' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('list', { name: 'In progress' })).toBeVisible();
   await expect(view.getByRole('list', { name: 'Done today' })).toBeAttached();
   await expect(view.getByRole('listitem')).toHaveCount(4);
 });
 
-spec('text area: typing reaches it, it grows, and Send submits the reply', { start: { page: 'text-area' }, timeout: 60_000 }, async (t) => {
+test('text area: typing reaches it, it grows, and Send submits the reply', { start: { page: 'text-area' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const note = view.getByRole('textbox', { name: 'Delivery note' });
   const before = (await note.boundingBox())!.height;
@@ -238,20 +238,20 @@ spec('text area: typing reaches it, it grows, and Send submits the reply', { sta
   await expect(reply).toHaveValue('');
 });
 
-spec('empty state: its title is a heading, and its action works', { start: { page: 'empty-state' }, timeout: 60_000 }, async (t) => {
+test('empty state: its title is a heading, and its action works', { start: { page: 'empty-state' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('heading', { name: 'No notebooks yet' })).toBeVisible();
   await view.testId('create').click();
   await expect(view.getByRole('heading', { name: 'Notebook created' })).toBeVisible();
 });
 
-spec('skeleton: one busy status per loading group, named by what is loading', { start: { page: 'skeleton' }, timeout: 60_000 }, async (t) => {
+test('skeleton: one busy status per loading group, named by what is loading', { start: { page: 'skeleton' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('status', { name: 'Loading notes' })).toBeVisible();
   await t.attach('skeleton.png', await view.screenshot());
 });
 
-spec('select: a choice lands in the box; a required select clears its error', { start: { page: 'select' }, timeout: 60_000 }, async (t) => {
+test('select: a choice lands in the box; a required select clears its error', { start: { page: 'select' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });
   await expect(country).toHaveText('Choose a country');
@@ -263,7 +263,7 @@ spec('select: a choice lands in the box; a required select clears its error', { 
   await expect(role).not.toHaveAttribute('aria-invalid', 'true');
 });
 
-spec('select (fine pointer): the list opens under the box; a click chooses, Escape closes without choosing', { start: { page: 'select' }, requires: { pointer: 'fine' }, timeout: 60_000 }, async (t) => {
+test('select (fine pointer): the list opens under the box; a click chooses, Escape closes without choosing', { start: { page: 'select' }, requires: { pointer: 'fine' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });
   const list = view.getByRole('listbox', { name: 'Country' });
@@ -280,7 +280,7 @@ spec('select (fine pointer): the list opens under the box; a click chooses, Esca
   await expect(country).toHaveText('France');
 });
 
-spec('select (touch): the list opens as a sheet; Done keeps a choice, Escape drops one', { start: { page: 'select' }, requires: { pointer: 'coarse' }, timeout: 60_000 }, async (t) => {
+test('select (touch): the list opens as a sheet; Done keeps a choice, Escape drops one', { start: { page: 'select' }, requires: { pointer: 'coarse' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const country = view.getByRole('combobox', { name: 'Country' });
   const sheet = view.getByRole('dialog', { name: 'Country' });
@@ -299,7 +299,7 @@ spec('select (touch): the list opens as a sheet; Done keeps a choice, Escape dro
   await expect(country).toHaveText('France');
 });
 
-spec('switch: a tap flips it; Space flips it back', { start: { page: 'switch' }, timeout: 60_000 }, async (t) => {
+test('switch: a tap flips it; Space flips it back', { start: { page: 'switch' }, timeout: 60_000 }, async (t) => {
   const sync = t.app.view.getByRole('switch', { name: 'Sync over mobile data' });
   await expect(sync).toBeChecked();
   await sync.click();
@@ -308,7 +308,7 @@ spec('switch: a tap flips it; Space flips it back', { start: { page: 'switch' },
   await expect(sync).toBeChecked();
 });
 
-spec('switch: a tap on its help text flips it', { start: { page: 'switch' }, timeout: 60_000 }, async (t) => {
+test('switch: a tap on its help text flips it', { start: { page: 'switch' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const sync = view.getByRole('switch', { name: 'Sync over mobile data' });
   await expect(sync).toBeChecked();
@@ -319,7 +319,7 @@ spec('switch: a tap on its help text flips it', { start: { page: 'switch' }, tim
   await expect(sync).not.toBeChecked();
 });
 
-spec('details: a row opens and closes; an accordion keeps one open', { start: { page: 'details' }, timeout: 60_000 }, async (t) => {
+test('details: a row opens and closes; an accordion keeps one open', { start: { page: 'details' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const summary = (id: string) => view.testId(`${id}-summary`);
   await summary('active').click();
@@ -333,7 +333,7 @@ spec('details: a row opens and closes; an accordion keeps one open', { start: { 
   await expect(summary('refunds')).not.toBeExpanded();
 });
 
-spec('info tip: a press opens the note; a tap outside closes it', { start: { page: 'info-tip' }, timeout: 60_000 }, async (t) => {
+test('info tip: a press opens the note; a tap outside closes it', { start: { page: 'info-tip' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const button = view.testId('storage');
   const note = view.testId('storage-content');
@@ -348,7 +348,7 @@ spec('info tip: a press opens the note; a tap outside closes it', { start: { pag
   await expect(button).not.toBeExpanded();
 });
 
-spec('banner: the action runs; dismiss removes it', { start: { page: 'banner' }, timeout: 60_000 }, async (t) => {
+test('banner: the action runs; dismiss removes it', { start: { page: 'banner' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await view.testId('payment-action').click();
   await expect(view.testId('payment-action')).toHaveText('Card updated');
@@ -356,7 +356,7 @@ spec('banner: the action runs; dismiss removes it', { start: { page: 'banner' },
   await expect(view.testId('payment')).toHaveCount(0);
 });
 
-spec('toggle button: a tap presses it and filters the list; Space releases it', { start: { page: 'toggle-button' }, timeout: 60_000 }, async (t) => {
+test('toggle button: a tap presses it and filters the list; Space releases it', { start: { page: 'toggle-button' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const unread = view.getByRole('button', { name: 'Unread' });
   await expect(unread).not.toBePressed();
@@ -368,7 +368,7 @@ spec('toggle button: a tap presses it and filters the list; Space releases it', 
   await expect(view.testId('count')).toHaveText('4 notes');
 });
 
-spec('segmented control: a named radio group; a tap and an arrow choose', { start: { page: 'segmented-control' }, timeout: 60_000 }, async (t) => {
+test('segmented control: a named radio group; a tap and an arrow choose', { start: { page: 'segmented-control' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('radiogroup', { name: 'Units' })).toBeAttached();
   const miles = view.getByRole('radio', { name: 'Miles' });
@@ -381,7 +381,7 @@ spec('segmented control: a named radio group; a tap and an arrow choose', { star
   await t.attach('segmented-control.png', await view.screenshot());
 });
 
-spec('toast: Undo restores the note; tones queue and close by themselves; one with Undo waits for a swipe', { start: { page: 'toast' }, timeout: 90_000 }, async (t) => {
+test('toast: Undo restores the note; tones queue and close by themselves; one with Undo waits for a swipe', { start: { page: 'toast' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const toast = view.testId('toast');
   await view.testId('archive-q3-plan').click();
@@ -407,7 +407,7 @@ spec('toast: Undo restores the note; tones queue and close by themselves; one wi
   await expect(toast).toHaveCount(0);
 });
 
-spec('bottom sheet: opens as a named dialog; a row closes it; a drag down dismisses it', { start: { page: 'bottom-sheet' }, timeout: 90_000 }, async (t) => {
+test('bottom sheet: opens as a named dialog; a row closes it; a drag down dismisses it', { start: { page: 'bottom-sheet' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   await view.testId('move-open').click();
   const sheet = view.getByRole('dialog', { name: 'Move to' });
@@ -431,7 +431,7 @@ spec('bottom sheet: opens as a named dialog; a row closes it; a drag down dismis
   await expect(comments).toHaveCount(0);
 });
 
-spec('popover: opens a named panel; a control inside keeps it open; Escape closes it and returns focus', { start: { page: 'popover' }, timeout: 60_000 }, async (t) => {
+test('popover: opens a named panel; a control inside keeps it open; Escape closes it and returns focus', { start: { page: 'popover' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const trigger = view.testId('options');
   const panel = view.testId('options-panel');
@@ -452,7 +452,7 @@ spec('popover: opens a named panel; a control inside keeps it open; Escape close
   await expect(trigger).toBeFocused();
 });
 
-spec('date input: a tap opens the picker; a filled day reaches the page; a return before leaving is invalid', { start: { page: 'date-input' }, timeout: 60_000 }, async (t) => {
+test('date input: a tap opens the picker; a filled day reaches the page; a return before leaving is invalid', { start: { page: 'date-input' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const due = view.testId('due');
   await due.click();
@@ -470,7 +470,7 @@ spec('date input: a tap opens the picker; a filled day reaches the page; a retur
   await expect(back).toHaveAttribute('aria-invalid', 'true');
 });
 
-spec('time input: a tap opens the picker; a filled time reaches the page', { start: { page: 'time-input' }, timeout: 60_000 }, async (t) => {
+test('time input: a tap opens the picker; a filled time reaches the page', { start: { page: 'time-input' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const remind = view.testId('remind');
   await remind.click();
@@ -482,7 +482,7 @@ spec('time input: a tap opens the picker; a filled time reaches the page', { sta
   await expect(view.testId('remind-value')).toHaveText('Set for 07:30');
 });
 
-spec('playground: a changed prop redraws the component and rewrites the code', { id: 'PLAYGROUND-001', start: { page: 'playground' }, timeout: 90_000 }, async (t) => {
+test('playground: a changed prop redraws the component and rewrites the code', { id: 'PLAYGROUND-001', start: { page: 'playground' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const stage = view.testId('playground-stage');
   const code = view.testId('playground-code');
@@ -501,7 +501,7 @@ spec('playground: a changed prop redraws the component and rewrites the code', {
   await t.attach('playground-badge.png', await view.screenshot());
 });
 
-spec('dropdown menu: on a narrow screen Escape leaves a submenu before it closes the menu', { id: 'SUBMENU-ESCAPE-001', start: { page: 'dropdown-menu' }, timeout: 90_000 }, async (t) => {
+test('dropdown menu: on a narrow screen Escape leaves a submenu before it closes the menu', { id: 'SUBMENU-ESCAPE-001', start: { page: 'dropdown-menu' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   // Beside its item at regular width, where there is no level to go back to.
   if ((await view.viewport()).width >= 600) return;
@@ -516,7 +516,7 @@ spec('dropdown menu: on a narrow screen Escape leaves a submenu before it closes
   await expect(view.testId('move')).toHaveCount(0);
 });
 
-spec('tree list: Right opens a closed branch and Left closes it', { id: 'TREE-KEYS-001', start: { page: 'tree-list' }, timeout: 60_000 }, async (t) => {
+test('tree list: Right opens a closed branch and Left closes it', { id: 'TREE-KEYS-001', start: { page: 'tree-list' }, timeout: 60_000 }, async (t) => {
   const shared = t.app.view.testId('folders-shared');
   await expect(shared).not.toBeExpanded();
   await shared.press('ArrowRight');
@@ -525,7 +525,7 @@ spec('tree list: Right opens a closed branch and Left closes it', { id: 'TREE-KE
   await expect(shared).not.toBeExpanded();
 });
 
-spec('dashboard: every period draws its charts', { id: 'DASHBOARD-PERIODS-001', start: { page: 'dashboard' }, timeout: 90_000 }, async (t) => {
+test('dashboard: every period draws its charts', { id: 'DASHBOARD-PERIODS-001', start: { page: 'dashboard' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   // A page that fails to render answers every locator with the failure, so each check below also says the page is alive.
   for (const period of ['month', 'week', 'year']) {
@@ -537,7 +537,7 @@ spec('dashboard: every period draws its charts', { id: 'DASHBOARD-PERIODS-001', 
   await t.attach('dashboard-year.png', await view.screenshot());
 });
 
-spec('context menu (touch): a long press docks the menu level between the edges, and an item runs its action', { id: 'CONTEXT-MENU-TOUCH-001', start: { page: 'context-menu' }, timeout: 60_000 }, async (t) => {
+test('context menu (touch): a long press docks the menu level between the edges, and an item runs its action', { id: 'CONTEXT-MENU-TOUCH-001', start: { page: 'context-menu' }, timeout: 60_000 }, async (t) => {
   // A desktop asks with a secondary click, which no spec can send; there a held touch is a press.
   await touchMinimum(t);
   const view = t.app.view;
@@ -562,7 +562,7 @@ spec('context menu (touch): a long press docks the menu level between the edges,
   await expect(view.testId('note-reading-menu')).toHaveCount(0);
 });
 
-spec('conversation: a message is sent, a failed one says so and is sent again', { id: 'CONVERSATION-001', start: { page: 'conversation' }, timeout: 60_000 }, async (t) => {
+test('conversation: a message is sent, a failed one says so and is sent again', { id: 'CONVERSATION-001', start: { page: 'conversation' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const field = view.testId('composer');
   const send = view.testId('composer-send');
@@ -580,7 +580,7 @@ spec('conversation: a message is sent, a failed one says so and is sent again', 
   await t.attach('conversation-sent.png', await view.screenshot());
 });
 
-spec('composer: past one line the text takes the full width and the buttons go under it; five lines at most, whole', { id: 'COMPOSER-STACK-001', start: { page: 'composer' }, timeout: 60_000 }, async (t) => {
+test('composer: past one line the text takes the full width and the buttons go under it; five lines at most, whole', { id: 'COMPOSER-STACK-001', start: { page: 'composer' }, timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const field = view.testId('reply');
   const send = view.testId('reply-send');

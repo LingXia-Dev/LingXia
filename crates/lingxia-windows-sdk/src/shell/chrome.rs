@@ -107,11 +107,6 @@ pub(super) fn address_capsule_button_size() -> i32 {
     crate::dpi::px(20)
 }
 
-/// Side length of the sidebar group-header chevron hit area.
-pub(super) fn sidebar_chevron_size() -> i32 {
-    crate::dpi::px(18)
-}
-
 /// Side length of the sidebar header action buttons (settings/downloads),
 /// and the gap between them.
 pub(super) fn sidebar_header_action_size() -> i32 {
@@ -121,8 +116,35 @@ pub(super) fn sidebar_header_action_gap() -> i32 {
     crate::dpi::px(4)
 }
 
+/// Floor of the expanded sidebar column; the user-chosen width starts here.
 pub(super) fn shell_sidebar_width() -> i32 {
-    crate::dpi::px(184)
+    crate::dpi::px(148)
+}
+
+/// The grab zone on the sidebar column's inner edge, where dragging resizes
+/// the column (as on macOS). Returns the column's current width and whether
+/// it docks on the left; `None` off the zone or without a side sidebar.
+pub(crate) fn sidebar_resize_edge(
+    state: &WindowsChromeState,
+    point: (i32, i32),
+) -> Option<(i32, bool)> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if tabbar.collapsed {
+        return None;
+    }
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => true,
+        WindowsShellTabBarPosition::Right => false,
+        WindowsShellTabBarPosition::Bottom => return None,
+    };
+    let bar = chrome_rects_for_state(state, layout).tab_bar?;
+    let edge = if left { bar.right } else { bar.left };
+    let zone = px(4);
+    if point.1 < bar.top || point.1 >= bar.bottom || (point.0 - edge).abs() > zone {
+        return None;
+    }
+    Some((rect_width(&bar), left))
 }
 
 /// Width of the icon-only rail (the macOS first-collapse state).
@@ -180,15 +202,33 @@ pub(super) fn sidebar_child_indent() -> i32 {
     crate::dpi::px(22)
 }
 
-/// Width of the close-glyph hit area at the trailing edge of a browser row.
-pub(super) fn sidebar_browser_close_size() -> i32 {
-    crate::dpi::px(22)
+/// Side of a sidebar row's trailing control cell (chevron, close, menu). The
+/// hover circle fills the cell, so what a press hits is what lights up.
+pub(super) fn sidebar_row_control_size() -> i32 {
+    crate::dpi::px(20)
 }
 
-/// Width of a row's vertical-ellipsis menu button; narrower than the close
-/// cell so the title keeps the difference.
-pub(super) fn sidebar_row_menu_width() -> i32 {
-    crate::dpi::px(16)
+/// The `slot`-th trailing control of `row`, counted from its trailing edge:
+/// inset from the row's rounded edge, vertically centred, 2 DIP apart.
+pub(super) fn sidebar_row_control_rect(row: RECT, slot: usize) -> RECT {
+    let size = sidebar_row_control_size();
+    let right = row.right - crate::dpi::px(6) - slot as i32 * (size + crate::dpi::px(2));
+    let top = row.top + (rect_height(&row) - size).max(0) / 2;
+    normalize_rect(RECT {
+        left: right - size,
+        top,
+        right,
+        bottom: top + size,
+    })
+}
+
+/// Trailing edge of a row title that leaves room for `visible` controls only:
+/// controls that are not drawn do not truncate the title.
+pub(super) fn sidebar_row_title_right(row: RECT, visible: usize) -> i32 {
+    match visible {
+        0 => row.right - crate::dpi::px(8),
+        count => sidebar_row_control_rect(row, count - 1).left - crate::dpi::px(4),
+    }
 }
 
 /// Close glyph for browser tab rows (multiplication X).
@@ -254,8 +294,9 @@ pub(super) fn footer_action_size() -> i32 {
     crate::dpi::px(30)
 }
 
+/// Footer glyphs match macOS (18 pt) and the rail's icons.
 pub(super) fn footer_action_icon_size() -> i32 {
-    crate::dpi::px(16)
+    crate::dpi::px(18)
 }
 
 pub(super) fn footer_action_gap() -> i32 {
@@ -325,6 +366,7 @@ pub(super) mod command_id {
     pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
+    pub(super) const NAVIGATION_REFRESH: &str = "navigation.refresh";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
     pub(super) const MAIN_WORKSPACE_ADD: &str = "main-workspace.add";
     pub(super) const BROWSER_TABS_CYCLE: &str = "browser.tabs.cycle";
@@ -337,10 +379,13 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
+    pub(super) const ASIDE_PANEL_TAB_MENU: &str = "aside-panel.tab.menu";
+    pub(super) const ASIDE_PANEL_TAB_OVERFLOW: &str = "aside-panel.tab.overflow";
     pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_MAXIMIZE: &str = "aside-panel.maximize";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_HOME: &str = "aside-panel.nav.home";
+    pub(super) const ASIDE_PANEL_NAV_REFRESH: &str = "aside-panel.nav.refresh";
     pub(super) const ASIDE_PANEL_RESTORE: &str = "aside-panel.restore";
     pub(super) const ASIDE_PANEL_TABBAR_CLICK: &str = "aside-panel.tabbar.click";
     pub(super) const ASIDE_PANEL_TABBAR_MENU: &str = "aside-panel.tabbar.menu";
@@ -700,11 +745,28 @@ fn chrome_hover_rect(
                 return Some(close_all);
             }
             let tabs = panel_aside_tabs(panel);
-            for rect in aside_panel_tab_rects(panel, &tabs) {
-                if let Some(close) = aside_panel_tab_close_rect(rect)
+            let tab_layout = aside_panel_tab_layout(panel, &tabs);
+            if let Some(overflow) = tab_layout.overflow
+                && rect_contains(&overflow, point)
+            {
+                return Some(overflow);
+            }
+            for (tab, rect) in tabs.iter().zip(tab_layout.rects) {
+                let Some(rect) = rect else {
+                    continue;
+                };
+                let controls = aside_panel_tab_controls(rect, tab.active, tabs.len() == 1, true);
+                // The tab pill repaints with its control, or leaving through
+                // the control strands the pill's hover wash.
+                if let Some(close) = controls.close
                     && rect_contains(&close, point)
                 {
-                    return Some(close);
+                    return Some(row_with_control_hover_rect(rect, close));
+                }
+                if let Some(more) = controls.more
+                    && rect_contains(&more, point)
+                {
+                    return Some(row_with_control_hover_rect(rect, more));
                 }
                 if rect_contains(&rect, point) {
                     return Some(rect);
@@ -728,6 +790,12 @@ fn chrome_hover_rect(
         if navbar.show_home_button {
             let index = if navbar.show_back_button { 1 } else { 0 };
             let rect = nav_button_rect(navbar_rect, buttons_left, index);
+            if rect_contains(&rect, point) {
+                return Some(rect);
+            }
+        }
+        if navbar.show_refresh_button {
+            let rect = nav_button_rect(navbar_rect, buttons_left, navbar.refresh_button_index());
             if rect_contains(&rect, point) {
                 return Some(rect);
             }
@@ -807,13 +875,15 @@ pub(super) fn sidebar_hover_rect(
     if tabbar.group_closable {
         group_controls.push(sidebar_group_close_rect(tabbar_rect, tabbar, scroll_offset));
     }
+    // The row stays part of the hover rect while a control is hovered:
+    // leaving through the control must repaint the row's wash as well.
+    let group = sidebar_group_rect(tabbar_rect, tabbar, scroll_offset);
     if let Some(control) = group_controls
         .into_iter()
         .find(|control| rect_contains(control, point))
     {
-        return Some(row_control_hover_rect(control));
+        return Some(row_with_control_hover_rect(group, control));
     }
-    let group = sidebar_group_rect(tabbar_rect, tabbar, scroll_offset);
     if rect_contains(&group, point) {
         return Some(group);
     }
@@ -839,11 +909,11 @@ pub(super) fn sidebar_hover_rect(
             {
                 let menu = sidebar_auxiliary_menu_rect(*rect, item);
                 if rect_contains(&menu, point) {
-                    return Some(row_control_hover_rect(menu));
+                    return Some(row_with_control_hover_rect(*rect, menu));
                 }
                 let close = sidebar_auxiliary_close_rect(*rect);
                 if item.closable && rect_contains(&close, point) {
-                    return Some(row_control_hover_rect(close));
+                    return Some(row_with_control_hover_rect(*rect, close));
                 }
             }
             return Some(*rect);
@@ -902,7 +972,7 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
     let mut titles = HashMap::new();
     titles.insert(
         tabbar.group_target_id.clone(),
-        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset),
+        sidebar_group_title_rect(tabbar_rect, tabbar, scroll_offset, true),
     );
     if let Some(auxiliary) =
         sidebar_auxiliary_rects(tabbar_rect, tabbar, scroll_offset, viewport_bottom)
@@ -922,6 +992,7 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
                     item_rect,
                     item,
                     icon_rect.right + sidebar_favicon_text_gap(),
+                    true,
                 ),
             );
         }
@@ -2288,23 +2359,41 @@ fn compute_attached_layout(
     }
 }
 
-/// Width of the strip a collapsed aside keeps at its edge.
+/// What the main gives up for a collapsed aside's handle. The tongue sits in
+/// the workspace's own edge clearance (`shell_content_inset`, 12 DIP) flush
+/// with the window edge, so the main only yields a hairline gap beside it and
+/// room for the 2 DIP hover reach.
 fn collapsed_aside_handle_width() -> i32 {
-    px(10)
+    px(4)
 }
 
-/// The handles of collapsed aside slots, beside `main_region`: a short strip
-/// centred on the edge the slot docks to. Clicking one restores the slot.
+/// The tongue's drawn width, the same as macOS.
+fn collapsed_aside_tongue_width() -> i32 {
+    px(12)
+}
+
+/// The handles of collapsed aside slots, beside `main_region`: a slim tongue
+/// flush with the window edge the slot docks to, its top and bottom sloped
+/// (`collapsed_aside_handle_slope`), so it reads as a pull-out tab of the
+/// edge itself — larger than a hairline, lighter than a card. Clicking one
+/// restores the slot.
 fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
-    let width = collapsed_aside_handle_width();
+    let width = collapsed_aside_tongue_width();
     let center = (main_region.top + main_region.bottom) / 2;
-    let half = px(32).min(rect_height(&main_region) / 2);
+    let half = px(28).min(rect_height(&main_region) / 2);
     lingxia_windows_contract::collapsed_aside_panels()
         .into_iter()
         .filter_map(|(panel_id, edge)| {
+            // Flush with the window edge: past the main's yielded gap, the
+            // tongue fills the workspace clearance.
+            let gap = collapsed_aside_handle_width();
             let (left, right) = match edge {
-                WindowsPanelPosition::Right => (main_region.right, main_region.right + width),
-                WindowsPanelPosition::Left => (main_region.left - width, main_region.left),
+                WindowsPanelPosition::Right => {
+                    (main_region.right + gap, main_region.right + gap + width)
+                }
+                WindowsPanelPosition::Left => {
+                    (main_region.left - gap - width, main_region.left - gap)
+                }
                 WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => return None,
             };
             Some((
@@ -2318,6 +2407,56 @@ fn collapsed_aside_handle_rects(main_region: RECT) -> Vec<(String, RECT)> {
             ))
         })
         .collect()
+}
+
+/// Whether `point` (client coordinates) is on a collapsed aside's handle.
+/// The tongue sits flush with the window edge, inside the host's resize
+/// border, so the non-client hit test asks this first: the handle wins over
+/// resizing there.
+pub(crate) fn collapsed_aside_handle_hit(state: &WindowsChromeState, point: (i32, i32)) -> bool {
+    state.attached.as_ref().is_some_and(|attached| {
+        collapsed_aside_handle_rects(attached.main_region)
+            .iter()
+            .any(|(_, rect)| rect_contains(rect, point))
+    })
+}
+
+/// Colors of the drag chip that follows a shell drag: the content card's
+/// fill, the divider as its hairline, the primary text.
+pub(crate) fn drag_ghost_colors() -> crate::drag_ghost::GhostColors {
+    let pal = shell_palette();
+    crate::drag_ghost::GhostColors {
+        fill: pal.panel_background,
+        border: pal.divider,
+        text: pal.text_primary,
+    }
+}
+
+/// Slope height of the tongue's top and bottom edges.
+fn collapsed_aside_handle_slope() -> i32 {
+    px(8)
+}
+
+/// The tongue polygon for a handle rect: its outer side (the window edge)
+/// runs the full height, its inner side is shortened by a slope at each end.
+fn collapsed_aside_handle_shape(rect: RECT, main_region: RECT) -> [(i32, i32); 4] {
+    let slope = collapsed_aside_handle_slope().min(rect_height(&rect) / 2);
+    if rect.left >= main_region.right {
+        // Right edge: inner side is the left.
+        [
+            (rect.right, rect.top),
+            (rect.left, rect.top + slope),
+            (rect.left, rect.bottom - slope),
+            (rect.right, rect.bottom),
+        ]
+    } else {
+        [
+            (rect.left, rect.top),
+            (rect.right, rect.top + slope),
+            (rect.right, rect.bottom - slope),
+            (rect.left, rect.bottom),
+        ]
+    }
 }
 
 fn attached_panel_order(panel: &WindowsChromePanelLayoutInput) -> (u8, u8, u8, &str) {
@@ -2421,6 +2560,27 @@ pub(crate) fn sidebar_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
         return None;
     }
     chrome_rects_for_state(state, layout).tab_bar
+}
+
+/// The band along the main's trailing edge where a dragged sidebar group
+/// drops into the side panel. The main's WebView covers this region, so no
+/// outline is painted; the drag chip is the only feedback.
+pub(crate) fn main_aside_drop_rect(state: &WindowsChromeState) -> Option<RECT> {
+    let layout = shell_layout(&state.layout)?;
+    let main = state
+        .attached
+        .as_ref()
+        .map(|attached| attached.main_region)
+        .unwrap_or_else(|| chrome_rects_for_state(state, layout).content);
+    if rect_width(&main) <= 0 || rect_height(&main) <= 0 {
+        return None;
+    }
+    Some(RECT {
+        left: (main.right - px(72)).max(main.left),
+        top: main.top,
+        right: main.right,
+        bottom: main.bottom,
+    })
 }
 
 /// Outline the sidebar while a dragged aside tab is over it. Returns whether
@@ -2721,6 +2881,14 @@ pub(super) fn chrome_hit_test(
         {
             return Some(chrome_command(command_id::NAVIGATION_HOME, json!({})));
         }
+        if navbar.show_refresh_button
+            && rect_contains(
+                &nav_button_rect(navbar_rect, buttons_left, navbar.refresh_button_index()),
+                point,
+            )
+        {
+            return Some(chrome_command(command_id::NAVIGATION_REFRESH, json!({})));
+        }
         return Some(WindowsChromeHit::Caption);
     }
 
@@ -2951,13 +3119,16 @@ pub(super) fn sidebar_hit_test(
                 // Same as macOS: the active lxapp's header toggles its page
                 // list. Re-sending BROWSER_TAB_CLICK is a no-op and made the
                 // chevron look broken when the hit landed on the name row.
+                // A right-click opens the row menu either way, as on the "⋮".
+                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 if tabbar.group_active && !tabbar.items_api_hidden && !tabbar.items.is_empty() {
-                    return Some(chrome_command(
+                    return Some(chrome_command_with_context(
                         command_id::SIDEBAR_GROUP_TOGGLE,
                         json!({ "group": tabbar.group_id.clone() }),
+                        command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU,
+                        payload,
                     ));
                 }
-                let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
                     payload.clone(),
@@ -3157,36 +3328,6 @@ pub(super) fn sidebar_rows(
         .collect()
 }
 
-/// The sidebar's width handle under `point`: the x of the sidebar's fixed
-/// edge, and whether the sidebar is on the left (its width grows with x).
-pub(crate) fn sidebar_resize_anchor(
-    state: &WindowsChromeState,
-    point: (i32, i32),
-) -> Option<(i32, bool)> {
-    let layout = shell_layout(&state.layout)?;
-    let tabbar = layout.tab_bar.as_ref()?;
-    let left = match tabbar.position {
-        WindowsShellTabBarPosition::Left => true,
-        WindowsShellTabBarPosition::Right => false,
-        _ => return None,
-    };
-    if tabbar.collapsed || tabbar.rail_expand_disabled {
-        return None;
-    }
-    let rects = chrome_rects_for_state(state, layout);
-    let bar = rects.tab_bar?;
-    let edge = if left { bar.right } else { bar.left };
-    // The whole gutter up to the workspace, which no page covers.
-    let (inside, outside) = (crate::dpi::px(3), crate::dpi::px(6));
-    let near = if left {
-        point.0 >= edge - inside && point.0 < (edge + outside).max(rects.workspace.left)
-    } else {
-        point.0 > (edge - outside).min(rects.workspace.right) && point.0 <= edge + inside
-    };
-    let beside_workspace = point.1 >= rects.workspace.top && point.1 < rects.workspace.bottom;
-    (near && beside_workspace).then_some((if left { bar.left } else { bar.right }, left))
-}
-
 fn sidebar_caption_contains(rect: RECT, point: (i32, i32)) -> bool {
     rect_contains(
         &RECT {
@@ -3257,8 +3398,29 @@ pub(super) fn draw_content_cards(
         draw_content_card(hdc, attached.main_region, desktop_card);
         for (_, rect) in collapsed_aside_handle_rects(attached.main_region) {
             let pal = shell_palette();
-            draw_hover_wash(hdc, rect, 4, state.cursor);
-            fill_round_rect_aa(hdc, inset_rect(rect, px(3), px(10)), 2, pal.divider);
+            let hovered = state
+                .cursor
+                .is_some_and(|point| rect_contains(&rect, point));
+            // A muted wash over the base, one step darker on hover, when
+            // the tongue also reaches 2 DIP further toward the main.
+            let color = blend_rgb(
+                pal.text_muted,
+                pal.window_background,
+                if hovered { 38 } else { 22 },
+            );
+            let mut shape = rect;
+            if hovered {
+                if rect.left >= attached.main_region.right {
+                    shape.left -= px(2);
+                } else {
+                    shape.right += px(2);
+                }
+            }
+            fill_polygon_aa(
+                hdc,
+                &collapsed_aside_handle_shape(shape, attached.main_region),
+                color,
+            );
         }
         for panel in &attached.panels {
             if panel.host_content.is_some() {
@@ -3397,6 +3559,21 @@ pub(super) fn normalize_rect(mut rect: RECT) -> RECT {
 
 pub(super) fn rects_intersect(a: &RECT, b: &RECT) -> bool {
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+/// Hover target of a row while one of its controls is hovered: the row and
+/// the control's hover shape, one pixel wider than the bare row. Moving onto
+/// or off the control then changes the target, so both the control's circle
+/// and the row's wash repaint; returning only the control left the wash
+/// stranded when the pointer left through it.
+pub(super) fn row_with_control_hover_rect(row: RECT, control: RECT) -> RECT {
+    let shape = row_control_hover_rect(control);
+    RECT {
+        left: row.left.min(shape.left),
+        top: row.top.min(shape.top),
+        right: row.right.max(shape.right) + 1,
+        bottom: row.bottom.max(shape.bottom),
+    }
 }
 
 pub(super) fn rect_contains_rect(outer: &RECT, inner: &RECT) -> bool {
@@ -4163,6 +4340,7 @@ mod scroll_tests {
         for control in [group_menu, group_close] {
             let rect = hover(center(control)).unwrap();
             assert_ne!(rect, group);
+            assert!(super::rect_contains_rect(&rect, &group));
             assert!(super::rect_contains_rect(
                 &rect,
                 &super::hover_circle_rect(control)
@@ -4180,6 +4358,7 @@ mod scroll_tests {
         for control in [row_menu, row_close] {
             let rect = hover(center(control)).unwrap();
             assert_ne!(rect, row);
+            assert!(super::rect_contains_rect(&rect, &row));
             assert!(super::rect_contains_rect(
                 &rect,
                 &super::hover_circle_rect(control)
@@ -4537,6 +4716,7 @@ mod scroll_tests {
             text_color: 0,
             show_back_button: false,
             show_home_button: false,
+            show_refresh_button: false,
             height: 38,
         });
         let rects = compute_chrome_rects(client, &layout);
@@ -4593,6 +4773,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             tab_bar: Some(bottom_tabbar(true, false)),
@@ -4672,6 +4853,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             ..Default::default()
@@ -4754,6 +4936,7 @@ mod scroll_tests {
                     text_color: 0,
                     show_back_button: true,
                     show_home_button: true,
+                    show_refresh_button: false,
                     height: 38,
                 }),
                 tab_bar: Some(tabbar),
@@ -4828,6 +5011,7 @@ mod scroll_tests {
                 text_color: 0,
                 show_back_button: true,
                 show_home_button: true,
+                show_refresh_button: false,
                 height: 38,
             }),
             tab_bar: Some(sidebar),
@@ -5089,6 +5273,7 @@ mod corner_tests {
                 text_color: 0,
                 show_back_button: false,
                 show_home_button: false,
+                show_refresh_button: false,
                 height: 38,
             }),
             ..Default::default()

@@ -8,11 +8,12 @@ use std::thread;
 
 use serde::Serialize;
 
+use super::file_dialog::{self, DialogFilter, DialogKind, OpenDialog};
 use super::{Platform, file, not_supported};
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest,
+    MediaInteraction, MediaSource, PickMediaMode, PickMediaRequest, PreviewMediaRequest,
+    SaveMediaRequest, ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
@@ -28,22 +29,16 @@ impl MediaInteraction for Platform {
         super::media_preview::cancel_preview(callback_id).map_err(PlatformError::Platform)
     }
 
-    fn choose_media(
+    fn pick_media(
         &self,
-        request: ChooseMediaRequest,
+        request: PickMediaRequest,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send {
         async move {
-            // Camera capture has no pipeline on desktop; like the macOS
-            // chooser, camera requests fall back to the file dialog.
-            let handle = crate::rt::spawn_blocking(move || pick_media_files(&request));
-            match handle {
-                Some(task) => task.await.map_err(|err| {
-                    PlatformError::Platform(format!("choose_media task panicked: {err}"))
-                })?,
-                None => Err(PlatformError::Platform(
-                    "choose_media: async runtime not initialized".into(),
-                )),
+            // No camera capture pipeline on Windows.
+            if matches!(request.source_types.as_slice(), [MediaSource::Camera]) {
+                return not_supported("pick_media camera capture");
             }
+            pick_media_files(request).await
         }
     }
 
@@ -75,43 +70,43 @@ const VIDEO_EXTENSIONS: [&str; 7] = ["mp4", "mov", "avi", "mkv", "webm", "m4v", 
 /// Album picking on Windows is a file dialog over the media types; the
 /// chosen paths go back as the `[{uri, fileType, isOriginal}]` array the
 /// logic layer copies into the app cache. Cancel yields an empty list.
-fn pick_media_files(request: &ChooseMediaRequest) -> Result<String, PlatformError> {
-    let dialog = rfd::FileDialog::new();
-    let dialog = match request.mode {
-        ChooseMediaMode::Images => dialog
-            .set_title(crate::i18n::text(
-                "file_chooser.choose_images",
-                "Choose Images",
-            ))
-            .add_filter("Images", &IMAGE_EXTENSIONS),
-        ChooseMediaMode::Videos => dialog
-            .set_title(crate::i18n::text(
-                "file_chooser.choose_videos",
-                "Choose Videos",
-            ))
-            .add_filter("Videos", &VIDEO_EXTENSIONS),
-        ChooseMediaMode::Mix => {
-            let mut all: Vec<&str> = Vec::new();
-            all.extend_from_slice(&IMAGE_EXTENSIONS);
-            all.extend_from_slice(&VIDEO_EXTENSIONS);
-            dialog
-                .set_title(crate::i18n::text(
-                    "file_chooser.choose_media",
-                    "Choose Media",
-                ))
-                .add_filter("Media", &all)
-                .add_filter("Images", &IMAGE_EXTENSIONS)
-                .add_filter("Videos", &VIDEO_EXTENSIONS)
+async fn pick_media_files(request: PickMediaRequest) -> Result<String, PlatformError> {
+    let filter = |name: &str, extensions: &[&str]| DialogFilter {
+        name: name.to_string(),
+        extensions: extensions.iter().map(|ext| ext.to_string()).collect(),
+    };
+    let (title, filters) = match request.mode {
+        PickMediaMode::Images => (
+            crate::i18n::text("file_chooser.choose_images", "Choose Images"),
+            vec![filter("Images", &IMAGE_EXTENSIONS)],
+        ),
+        PickMediaMode::Videos => (
+            crate::i18n::text("file_chooser.choose_videos", "Choose Videos"),
+            vec![filter("Videos", &VIDEO_EXTENSIONS)],
+        ),
+        PickMediaMode::Mix => {
+            let all = [&IMAGE_EXTENSIONS[..], &VIDEO_EXTENSIONS[..]].concat();
+            (
+                crate::i18n::text("file_chooser.choose_media", "Choose Media"),
+                vec![
+                    filter("Media", &all),
+                    filter("Images", &IMAGE_EXTENSIONS),
+                    filter("Videos", &VIDEO_EXTENSIONS),
+                ],
+            )
         }
     };
-    let picked = if request.max_count > 1 {
-        dialog.pick_files().unwrap_or_default()
-    } else {
-        dialog
-            .pick_file()
-            .map(|path| vec![path])
-            .unwrap_or_default()
-    };
+    let picked = file_dialog::show(OpenDialog {
+        kind: DialogKind::File {
+            multiple: request.max_count > 1,
+        },
+        title: Some(title),
+        default_path: None,
+        filters,
+        owner: request.owner,
+    })
+    .await?
+    .unwrap_or_default();
     let entries: Vec<serde_json::Value> = picked
         .into_iter()
         .take(request.max_count.max(1) as usize)
@@ -134,7 +129,7 @@ fn pick_media_files(request: &ChooseMediaRequest) -> Result<String, PlatformErro
         })
         .collect();
     serde_json::to_string(&entries)
-        .map_err(|err| PlatformError::Platform(format!("choose_media: {err}")))
+        .map_err(|err| PlatformError::Platform(format!("pick_media: {err}")))
 }
 
 impl MediaRuntime for Platform {

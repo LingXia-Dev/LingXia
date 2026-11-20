@@ -172,7 +172,7 @@ export interface CaseRecord {
   status: SpecStatus;
   duration_ms: number;
   covers: string[];
-  /** Selection tags: the file's `spec.configure` tags, then the spec's own. */
+  /** Selection tags: the file's `test.configure` tags, then the test's own. */
   tags?: string[];
   /**
    * `lxdev test --openapi`: this spec's Logic `fetch` responses checked
@@ -352,7 +352,7 @@ export interface FailureRecord {
 
 export interface JsonReport {
   schema_version?: number;
-  /** `skipSpecFiles` names of bundled files that registered no spec this run. */
+  /** `skipTestFiles` names of bundled files that registered no spec this run. */
   skipUnused?: string[];
   /** Added by lxdev when the host run is finalized. */
   run_id?: string;

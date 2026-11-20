@@ -81,9 +81,15 @@ lingxia dev                                # this project
 lingxia dev ../my-lxapp                    # Runner target elsewhere; state stays here
 lingxia dev <http(s)://url> --headless --background
 lingxia dev -p runner                      # the Runner explicitly
-lingxia dev --display-language sr-Latn-RS  # or auto; this process only
 lingxia dev --background --mock all        # answer from mocks/ (CI against mocks)
+lingxia dev --env prod                     # Runner against the prod server
 ```
+
+`--env` selects the Runner cloud server saved by
+`lingxia auth login lingxia --server` for that env (default `dev`).
+
+Device, orientation, appearance, and display language of a running Runner:
+[`lxdev runner`](./lxdev.md#lxdev-runner).
 
 - **Takeover.** Re-running for the same platform stops that project's session
   and starts fresh. Different platforms run side by side.

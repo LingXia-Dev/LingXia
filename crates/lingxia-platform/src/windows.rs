@@ -8,7 +8,8 @@ pub(crate) mod banner;
 mod clipboard;
 mod control_session_indicator;
 mod device;
-mod file;
+pub(crate) mod file;
+mod file_dialog;
 mod gesture;
 mod keyboard;
 mod location;
@@ -39,9 +40,9 @@ pub use app::{
     set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
     set_windows_close_browser_tab_handler, set_windows_exclusive_update_ready_handler,
     set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
-    set_windows_open_url_handler, set_windows_shell_pins_handler,
-    set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
-    set_windows_tray_menu_handler,
+    set_windows_lxapp_region_move_handler, set_windows_open_url_handler,
+    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
 };
 pub use gesture::{WindowsChromeProvider, set_windows_chrome_provider};
 pub use media_preview::{
@@ -64,8 +65,9 @@ pub use surface::{
     set_windows_url_surface_handler,
 };
 pub use surface::{
-    close_windows_url_surface_for_browser_tab, release_windows_aside_browser_surface,
-    release_windows_lxapp_aside, restore_windows_lxapp_aside, windows_aside_browser_tab_id,
+    adopt_windows_lxapp_main_as_aside, close_windows_url_surface_for_browser_tab,
+    release_windows_aside_browser_surface, release_windows_lxapp_aside,
+    restore_windows_lxapp_aside, windows_aside_browser_tab_id,
 };
 pub use ui_update::{
     set_windows_capsule_rect_provider, set_windows_home_first_ready_handler,

@@ -3,7 +3,7 @@
 
 use crate::BUILTIN_BROWSER_APPID;
 use lingxia_platform::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileService,
+    FileDialogFilter, FileService, PickDirectoryRequest, PickFileRequest,
 };
 use lingxia_webview::{FileChooserFile, FileChooserRequest, FileChooserResponse};
 use lxapp::{LxApp, publish_app_event};
@@ -103,17 +103,19 @@ pub(crate) async fn browser_choose_files(
     if request.allow_directories {
         return match owner
             .runtime
-            .choose_directory(ChooseDirectoryRequest {
+            .pick_directory(PickDirectoryRequest {
                 title: Some("Choose folder".to_string()),
                 default_path: None,
+                owner: owner.dialog_owner(),
             })
             .await
         {
-            Ok(result) if !result.canceled && !result.paths.is_empty() => {
+            Ok(result) if !result.canceled && !result.entries.is_empty() => {
                 FileChooserResponse::Files(
                     result
-                        .paths
+                        .entries
                         .into_iter()
+                        .map(|entry| entry.path)
                         .map(|value| FileChooserFile {
                             path: (!value.contains("://")).then_some(value.clone()),
                             uri: value.contains("://").then_some(value),
@@ -135,18 +137,20 @@ pub(crate) async fn browser_choose_files(
 
     match owner
         .runtime
-        .choose_file(ChooseFileRequest {
+        .pick_file(PickFileRequest {
             multiple: request.allow_multiple,
             filters: file_filters_from_accept_types(&request.accept_types),
             title: Some("Choose file".to_string()),
             default_path: None,
+            owner: owner.dialog_owner(),
         })
         .await
     {
-        Ok(result) if !result.canceled && !result.paths.is_empty() => FileChooserResponse::Files(
+        Ok(result) if !result.canceled && !result.entries.is_empty() => FileChooserResponse::Files(
             result
-                .paths
+                .entries
                 .into_iter()
+                .map(|entry| entry.path)
                 .map(|value| FileChooserFile {
                     path: (!value.contains("://")).then_some(value.clone()),
                     uri: value.contains("://").then_some(value),

@@ -105,7 +105,7 @@ Page({
 
   chooseAndWriteImage: async function () {
     try {
-      const picked = await lx.chooseMedia({
+      const picked = await lx.pickMedia({
         count: 1,
         mediaType: ["image"],
         sourceType: ["album", "camera"],

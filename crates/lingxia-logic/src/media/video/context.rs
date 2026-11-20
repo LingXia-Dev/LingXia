@@ -18,8 +18,8 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     register_video_context_api(ctx)
 }
 
-/// A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
-/// `useVideo` name or `<video id>`.
+/// A control handle for the native video component with this id, or on a GPU page for the player
+/// of this `useVideo` name or `<video id>`.
 fn create_video_context(ctx: JSContext, component_id: String) -> JSResult<JSVideoContext> {
     JSVideoContext::create(&ctx, component_id)
 }

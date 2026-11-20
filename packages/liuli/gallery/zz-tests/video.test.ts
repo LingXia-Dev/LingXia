@@ -1,10 +1,10 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 
 // Liuli's VideoPlayer on a device: the first play, the bar over the picture, a drag that seeks, and
 // full screen as a dialog that the close request leaves.
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-spec('video player: plays, seeks by a drag, and full screen opens and closes', { start: { page: 'video-player' }, timeout: 90_000 }, async (t) => {
+test('video player: plays, seeks by a drag, and full screen opens and closes', { start: { page: 'video-player' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const id = (part: string) => view.testId(`standard-controls-${part}`);
   await t.attach('0-rest.png', await view.screenshot());

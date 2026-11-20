@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
@@ -6,7 +6,7 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
 // A pull through the system's input path (`uitest uiInput swipe`), not injected touches: the
 // GPU page must give up the drag at its top so the host's refresh takes it.
-spec('pull down from the screen to refresh, then refresh again', {
+test('pull down from the screen to refresh, then refresh again', {
   id: 'HARMONY-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
   covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
   requires: { args: ['harmonyDevice'] },

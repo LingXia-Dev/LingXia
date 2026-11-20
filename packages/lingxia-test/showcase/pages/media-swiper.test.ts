@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type TestView } from '@lingxia/test';
+import { expect, test, type Fixture, type TestView } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -85,7 +85,7 @@ async function openSwiper(t: Fixture, id: string) {
   return { app, view, shownIndex, next };
 }
 
-spec('page through a native media swiper by command and by the index the page sets', {
+test('page through a native media swiper by command and by the index the page sets', {
   id: 'MEDIA-SWIPER-001',
   covers: ['NavDriver.to'],
   app: SHOWCASE_APP_ID,
@@ -139,7 +139,7 @@ spec('page through a native media swiper by command and by the index the page se
 
 });
 
-spec('a finger swipe pages a native media swiper and settles on the next page', {
+test('a finger swipe pages a native media swiper and settles on the next page', {
   id: 'MEDIA-SWIPER-002',
   covers: ['NavDriver.to'],
   app: SHOWCASE_APP_ID,

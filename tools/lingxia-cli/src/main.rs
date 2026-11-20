@@ -1,26 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, error::ErrorKind};
 
-fn parse_display_language(value: &str) -> std::result::Result<String, String> {
-    let value = value.trim();
-    if value.eq_ignore_ascii_case("auto") {
-        return Ok("auto".to_string());
-    }
-    let parsed = language_tags::LanguageTag::parse(value)
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
-    parsed
-        .validate()
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
-    let canonical = parsed
-        .canonicalize()
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
-        .into_string();
-    if canonical.eq_ignore_ascii_case("auto") {
-        return Err("'auto' is reserved for the automatic display-language preference".into());
-    }
-    Ok(canonical)
-}
-
 mod appicon;
 mod binding;
 mod build_prepare;
@@ -122,8 +102,9 @@ struct PlatformBuildOptions {
     )]
     android_abis: Vec<String>,
 
-    /// macOS architecture for native build; defaults to the host architecture
-    #[arg(long, value_parser = ["arm64", "x86_64"])]
+    /// macOS architecture: arm64, x86_64, or universal. Packaging defaults to
+    /// `macos.arch` (arm64); other builds to the host architecture
+    #[arg(long, value_parser = ["arm64", "x86_64", "universal"])]
     macos_arch: Option<String>,
 }
 
@@ -160,16 +141,6 @@ struct DevOptions {
     /// for the app to connect when someone opens it
     #[arg(long)]
     no_launch: bool,
-
-    /// Runner simulator device for `lingxia dev` on an lxapp or web URL (macOS and
-    /// Windows runners): e.g. `iphone-15-pro`, `ipad`, `desktop-1440`. Only
-    /// affects the lxapp runner window; ignored for native host apps.
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    runner: Option<String>,
-
-    /// Override the effective display language for this Runner session.
-    #[arg(long, value_parser = parse_display_language)]
-    display_language: Option<String>,
 
     /// Hide the desktop Runner window; only for an http(s) URL TARGET
     #[arg(long)]
@@ -718,11 +689,6 @@ enum AuthAction {
         #[arg(long, value_parser = ["ios", "macos", "harmony", "googleplay", "xiaomi", "oppo", "honor", "msstore"])]
         platform: String,
     },
-    /// The standalone lxapp Runner's cloud identity (show, set, clear)
-    Runner {
-        #[command(subcommand)]
-        action: Option<commands::runner::RunnerAction>,
-    },
 }
 
 #[derive(Subcommand)]
@@ -1152,8 +1118,6 @@ fn run() -> Result<()> {
                 extra_native_features: dev_options.build_options.native_features,
                 with_provider: dev_options.build_options.with_provider,
                 provider_path: dev_options.build_options.provider_path,
-                runner_device: dev_options.runner,
-                display_language: dev_options.display_language,
                 headless: dev_options.headless,
                 background: dev_options.background,
                 json: dev_options.json,
@@ -1390,9 +1354,6 @@ fn run() -> Result<()> {
             AuthAction::Forget { platform } => {
                 commands::auth::auth_forget(&platform)?;
             }
-            AuthAction::Runner { action } => {
-                commands::runner::execute(action)?;
-            }
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
@@ -1432,15 +1393,6 @@ fn run() -> Result<()> {
 mod cli_tests {
     use super::*;
     use clap::CommandFactory;
-
-    #[test]
-    fn display_language_accepts_and_canonicalizes_arbitrary_bcp47_tags() {
-        assert_eq!(parse_display_language("sr-latn-rs").unwrap(), "sr-Latn-RS");
-        assert_eq!(parse_display_language("auto").unwrap(), "auto");
-        assert_eq!(parse_display_language("AUTO").unwrap(), "auto");
-        assert!(parse_display_language("en--US").is_err());
-        assert!(parse_display_language("zzz-Latn-RS").is_err());
-    }
 
     #[test]
     fn lingxia_credentials_are_named_for_the_provider_not_the_publish_action() {
@@ -1543,21 +1495,10 @@ mod cli_tests {
     }
 
     #[test]
-    fn dev_runner_accepts_missing_value_for_device_list() {
-        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner"]).unwrap();
-        let Commands::Dev { dev_options } = cli.command else {
-            panic!("expected dev command");
-        };
-        assert_eq!(dev_options.runner.as_deref(), Some(""));
-    }
-
-    #[test]
-    fn dev_runner_accepts_explicit_device_id() {
-        let cli = Cli::try_parse_from(["lingxia", "dev", "--runner", "desktop-1440"]).unwrap();
-        let Commands::Dev { dev_options } = cli.command else {
-            panic!("expected dev command");
-        };
-        assert_eq!(dev_options.runner.as_deref(), Some("desktop-1440"));
+    fn dev_runner_environment_flags_are_removed() {
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--runner"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--runner", "desktop-1440"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--display-language", "zh-CN"]).is_err());
     }
 
     #[test]
@@ -1599,18 +1540,21 @@ mod cli_tests {
     }
 
     #[test]
-    fn runner_without_action_shows_config() {
-        let cli = Cli::try_parse_from(["lingxia", "auth", "runner"]).unwrap();
-        let Commands::Auth {
-            action: AuthAction::Runner { action },
-        } = cli.command
-        else {
-            panic!("expected auth runner command");
-        };
-        assert!(action.is_none());
-        // Moved under `auth` without an alias.
+    fn auth_runner_command_is_removed() {
+        assert!(Cli::try_parse_from(["lingxia", "auth", "runner"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "lingxia",
+                "auth",
+                "runner",
+                "set",
+                "com.example.app",
+                "--dev",
+                "http://127.0.0.1:8787",
+            ])
+            .is_err()
+        );
         assert!(Cli::try_parse_from(["lingxia", "runner"]).is_err());
-        assert!(Cli::try_parse_from(["lingxia", "runner", "clear"]).is_err());
     }
 
     #[test]
@@ -1700,39 +1644,6 @@ mod cli_tests {
         assert_eq!(dev_options.name.as_deref(), Some("demo"));
         assert!(Cli::try_parse_from(["lingxia", "doctor", "--project"]).is_ok());
         assert!(Cli::try_parse_from(["lingxia", "doctor", "--project", "-p", "ios"]).is_err());
-    }
-
-    #[test]
-    fn runner_set_accepts_identity_and_environment_urls() {
-        let cli = Cli::try_parse_from([
-            "lingxia",
-            "auth",
-            "runner",
-            "set",
-            "com.example.app",
-            "--dev",
-            "http://127.0.0.1:8787",
-            "--prod",
-            "https://api.example.com",
-        ])
-        .unwrap();
-        let Commands::Auth {
-            action:
-                AuthAction::Runner {
-                    action:
-                        Some(commands::runner::RunnerAction::Set {
-                            lingxia_id,
-                            dev,
-                            prod,
-                        }),
-                },
-        } = cli.command
-        else {
-            panic!("expected runner set command");
-        };
-        assert_eq!(lingxia_id, "com.example.app");
-        assert_eq!(dev.as_deref(), Some("http://127.0.0.1:8787"));
-        assert_eq!(prod.as_deref(), Some("https://api.example.com"));
     }
 
     #[test]

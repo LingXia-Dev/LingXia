@@ -320,7 +320,7 @@ mod tests {
         assert!(next.get("a2").is_some());
         let slots = next.aside_slots(SizeClass::Expanded);
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].kind, SlotKind::Lxapp);
+        assert_eq!(slots[0].kind, SlotKind::Panel);
         assert_eq!(slots[0].children, vec!["a1".to_string(), "a2".to_string()]);
         assert_eq!(slots[0].active_child.as_deref(), Some("a2"));
         assert!(slots[0].visible);
@@ -331,20 +331,27 @@ mod tests {
     fn slots_hide_beyond_admission_never_evict() {
         let mut next = SurfaceGraph::new();
         next.insert(main_s("home"));
-        for request in [
-            aside_s("chat", Edge::Right),
-            terminal_aside_s("terminal", Edge::Bottom),
-            web_aside_s("b1", "https://a.example", Edge::Right),
+        for (request, expected) in [
+            (aside_s("chat", Edge::Right), Decision::Accepted),
+            (
+                terminal_aside_s("terminal", Edge::Bottom),
+                Decision::Accepted,
+            ),
+            // A browser tab joins the lxapp in the ONE side panel.
+            (
+                web_aside_s("b1", "https://a.example", Edge::Right),
+                Decision::MergedIntoTabs,
+            ),
         ] {
             let (n, d) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
-            assert_eq!(d, Decision::Accepted);
+            assert_eq!(d, expected);
             next = n;
         }
-        // Three kinds → three slots, all admitted on expanded.
+        // Two kinds → two slots, both admitted on expanded.
         let expanded = next.aside_slots(SizeClass::Expanded);
-        assert_eq!(expanded.len(), 3);
+        assert_eq!(expanded.len(), 2);
         assert!(expanded.iter().all(|slot| slot.visible));
-        // Medium admits only the most recently used slot; the others stay
+        // Medium admits only the most recently used slot; the other stays
         // alive hidden — the graph itself never shrinks.
         let medium = next.aside_slots(SizeClass::Medium);
         assert_eq!(medium.iter().filter(|slot| slot.visible).count(), 1);
@@ -352,7 +359,7 @@ mod tests {
             medium
                 .iter()
                 .find(|slot| slot.visible)
-                .is_some_and(|slot| slot.kind == SlotKind::Browser)
+                .is_some_and(|slot| slot.kind == SlotKind::Panel)
         );
         assert_eq!(next.asides().len(), 3);
         assert!(next.is_valid());
@@ -360,13 +367,15 @@ mod tests {
 
     #[test]
     fn physical_admission_caps_below_the_count_ceiling() {
-        // Two right-docked lxapp/browser slots + one bottom terminal slot.
+        // Two right-docked panel slots (an lxapp and a terminal) + a bottom
+        // terminal cannot exist — one native slot — so use two right slots:
+        // the side panel and a right-docked terminal, plus nothing below.
         let mut next = SurfaceGraph::new();
         next.insert(main_s("home"));
         for request in [
             aside_s("chat", Edge::Right),
             web_aside_s("b1", "https://a.example", Edge::Right),
-            terminal_aside_s("terminal", Edge::Bottom),
+            terminal_aside_s("terminal", Edge::Right),
         ] {
             let (n, _) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
             next = n;
@@ -374,24 +383,17 @@ mod tests {
         let policy = Policy::default(); // main_min 360, aside_min 240
 
         // Wide expanded (1200): main 360 + 2×240 = 840 ≤ 1200 → both right
-        // slots fit; the bottom terminal never consumes horizontal budget.
+        // slots fit.
         let wide = next.aside_slots_admitted(SizeClass::Expanded, 1200.0, &policy);
-        assert_eq!(wide.iter().filter(|s| s.visible).count(), 3);
+        assert_eq!(wide.iter().filter(|s| s.visible).count(), 2);
 
-        // Narrow expanded (850): count ceiling says 3, but 360 + 240 = 600 ≤
-        // 850 fits ONE right slot; the second right slot (600 + 240 = 840 —
-        // wait, 840 ≤ 850) — pick 700 to force exactly one.
+        // Narrow expanded (700): the count ceiling says 2, but 360 + 240 =
+        // 600 ≤ 700 fits ONE right slot.
         let narrow = next.aside_slots_admitted(SizeClass::Expanded, 700.0, &policy);
-        let visible_right = narrow
-            .iter()
-            .filter(|s| s.visible && !matches!(s.edge, Some(Edge::Bottom)))
-            .count();
-        assert_eq!(visible_right, 1, "only one right slot fits at 700pt");
-        // The bottom terminal stays visible regardless of horizontal budget.
-        assert!(
-            narrow
-                .iter()
-                .any(|s| s.visible && matches!(s.edge, Some(Edge::Bottom)))
+        assert_eq!(
+            narrow.iter().filter(|s| s.visible).count(),
+            1,
+            "only one right slot fits at 700pt"
         );
         // Nothing was evicted — the graph still holds all three asides.
         assert_eq!(next.asides().len(), 3);
@@ -402,16 +404,16 @@ mod tests {
         let mut graph = SurfaceGraph::new();
         graph.insert(main_s("home"));
         graph.insert(aside_s("chat", Edge::Right));
-        graph.insert(web_aside_s("browser", "https://example.com", Edge::Right));
+        graph.insert(terminal_aside_s("terminal", Edge::Right));
 
-        // Browser was opened last, so it initially owns Medium's one slot.
+        // The terminal was opened last, so it initially owns Medium's one slot.
         let medium = graph.aside_slots(SizeClass::Medium);
         assert_eq!(
             medium
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
-            Some(SlotKind::Browser)
+            Some(SlotKind::Native)
         );
 
         // Focusing an older slot makes it MRU without changing tab/open order.
@@ -422,7 +424,7 @@ mod tests {
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
-            Some(SlotKind::Lxapp)
+            Some(SlotKind::Panel)
         );
 
         let policy = Policy {
@@ -436,7 +438,7 @@ mod tests {
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
-            Some(SlotKind::Lxapp)
+            Some(SlotKind::Panel)
         );
     }
 
@@ -651,9 +653,9 @@ mod tests {
         let mut next = SurfaceGraph::new();
         next.insert(main_s("home"));
         next.insert(aside_s("chat", Edge::Right)); // declared lxapp aside
-        // Open browser tabs beyond the generic aside cap (expanded=2). The
-        // declared `chat` aside must survive — web + non-web budgets are
-        // independent (they coexist as separate side panels).
+        // Open browser tabs beyond the aside cap (expanded=2). The declared
+        // `chat` aside must survive — tabs join the side panel, nothing is
+        // evicted for them.
         for (i, url) in [
             "https://a.example",
             "https://b.example",
@@ -668,13 +670,8 @@ mod tests {
                 &Policy::default(),
                 SizeClass::Expanded,
             );
-            // The first web aside claims the browser slot; the rest join it.
-            let expected = if i == 0 {
-                Decision::Accepted
-            } else {
-                Decision::MergedIntoTabs
-            };
-            assert_eq!(d, expected);
+            // Every web aside joins the side panel the lxapp already opened.
+            assert_eq!(d, Decision::MergedIntoTabs);
             next = n;
         }
         assert!(next.get("chat").is_some(), "declared aside must survive");
@@ -689,22 +686,26 @@ mod tests {
     }
 
     #[test]
-    fn web_aside_coexists_with_a_page_aside() {
+    fn web_aside_joins_a_page_aside_in_the_side_panel() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
-        // A browser aside does NOT evict a non-web (declared/page) aside; both
-        // coexist under the expanded cap of 2.
+        // A browser aside does NOT evict a declared/page aside: it becomes the
+        // second tab of the one side panel, and its edge wins as the newest.
         let (next, decision) = arbitrate(
             &g,
             web_aside_s("browser-1", "https://a.example", Edge::Left),
             &Policy::default(),
             SizeClass::Expanded,
         );
-        assert_eq!(decision, Decision::Accepted);
+        assert_eq!(decision, Decision::MergedIntoTabs);
         assert!(next.get("assistant").is_some());
         assert!(next.get("browser-1").is_some());
         assert_eq!(next.asides().len(), 2);
+        let slots = next.aside_slots(SizeClass::Expanded);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].kind, SlotKind::Panel);
+        assert_eq!(slots[0].edge, Some(Edge::Left));
         assert!(next.is_valid());
     }
 

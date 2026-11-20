@@ -26,7 +26,7 @@ Commands:
 
 CLI options:
   --target <platform> Build specific target(s): darwin-x64, darwin-arm64,
-                      windows-x64, windows-arm64, all
+                      windows-x64, all
   --publish           Upload built assets to the GitHub release tag
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: ./dist/cli-release)
@@ -89,7 +89,6 @@ cli_asset_for_target() {
     darwin-x64) echo "lingxia-darwin-x86_64" ;;
     darwin-arm64) echo "lingxia-darwin-aarch64" ;;
     windows-x64) echo "lingxia-windows-x86_64.exe" ;;
-    windows-arm64) echo "lingxia-windows-aarch64.exe" ;;
     *) return 1 ;;
   esac
 }
@@ -125,6 +124,7 @@ current_cli_target() {
       ;;
   esac
 
+  [[ "$os" != "windows" ]] || arch="x64"
   printf '%s-%s\n' "$os" "$arch"
 }
 

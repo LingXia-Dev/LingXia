@@ -5,7 +5,6 @@ import type { DeepReadonly } from "@lingxia/page-runtime";
 import {
   LxMediaSwiper,
   LxPicker,
-  LxVideo,
   useLxChannel,
   useLxPage,
   useLxStream,
@@ -78,7 +77,6 @@ type Page = DeepReadonly<{
   slides: { id: string; type: "image"; src: string }[];
   columns: string[][];
   choice: string[];
-  rates: number[];
 }>;
 declare const page: Page;
 export function Components() {
@@ -94,7 +92,6 @@ export function Components() {
         onClick={() => {}}
       />
       <LxPicker columns={page.columns} value={page.choice} onKeyDown={() => {}} />
-      <LxVideo playbackRates={page.rates} onDoubleClick={() => {}} />
     </>
   );
 }

@@ -26,7 +26,7 @@ in-process desktop automation feature in the host. On Android, ADB connectivity 
 readiness: wake the device, unlock it normally, verify `mWakefulness=Awake`
 in `adb -s <serial> shell dumpsys power`, and check that the host package has
 `mCurrentFocus` and `mDreamingLockscreen=false` in `dumpsys window`. A powered-off
-or locked device cannot count as a UI pass. The spec additionally requires the
+or locked device cannot count as a UI pass. The test additionally requires the
 browser document to be visible.
 
 Android currently has no platform implementation of `open_builtin_browser_page`.

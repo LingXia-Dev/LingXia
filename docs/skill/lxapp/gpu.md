@@ -74,7 +74,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the
   finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
   `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.
-  Needs `aria-label`: screen readers and arrow keys step it; specs read the point as `toHaveValue('1')`.
+  Needs `aria-label`: screen readers and arrow keys step it; tests read the point as `toHaveValue('1')`.
   A same-axis scroll inside it scrolls only once it is fully open (lowest offset) and returns to its top before it closes.
 - No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
 - On phones a finger reaches a control smaller than 44 pt (Android 48 dp) within that size around it, never over
@@ -93,7 +93,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   edge and its padding grows by that side's inset: never add `env.insets` yourself. `<view id popover>` + `<button popoverTarget>` is a light-dismiss
   popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside; `backdrop:bg-scrim` dims the page under a light-dismiss popover, as a docked menu sheet does.
 - Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
-  screen readers get those as the row's actions; specs call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
+  screen readers get those as the row's actions; tests call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
   stays across pages (a mini player), and it always sits above the page and its dialogs.
 - There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'tab' | 'aside' })`.

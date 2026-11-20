@@ -1,17 +1,16 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
 
 interface OpenedTab {
   kind: string;
   realized: string;
   scope: string;
-  id: string;
   key: string | null;
   alive: boolean;
   visible: boolean;
@@ -39,7 +38,7 @@ function fileUrl(nativeDir: string, relative: string): string {
   return `file://${encodeURI(`${absolute}/${relative}`)}`;
 }
 
-spec('open a browser tab from Logic and control it through TabSurface', {
+test('open a browser tab from Logic and control it through TabSurface', {
   id: 'DESKTOP-SURFACE-TAB-001',
   covers: [
     'lx.surface.openUrl',
@@ -47,7 +46,6 @@ spec('open a browser tab from Logic and control it through TabSurface', {
     'TabSurface.kind',
     'TabSurface.realized',
     'TabSurface.scope',
-    'TabSurface.id',
     'TabSurface.key',
     'TabSurface.alive',
     'TabSurface.visible',
@@ -120,18 +118,15 @@ spec('open a browser tab from Logic and control it through TabSurface', {
       kind: tab.kind,
       realized: tab.realized,
       scope: tab.scope,
-      id: tab.id,
       key: tab.key ?? null,
       alive: tab.alive,
       visible: tab.visible,
-      registered: registered != null && registered.id === tab.id,
+      registered: registered === tab,
     };
   }, url, key, stateKey);
   expect(opened.kind).toBe('tab');
   expect(['tab', 'aside']).toContain(opened.realized);
   expect(['tab', 'group']).toContain(opened.scope);
-  expect(typeof opened.id).toBe('string');
-  expect(opened.id.length).toBeGreaterThan(0);
   expect(opened.key).toBe(key);
   expect(opened.alive).toBeTruthy();
   expect(opened.visible).toBeTruthy();

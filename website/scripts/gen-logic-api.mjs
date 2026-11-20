@@ -77,7 +77,7 @@ const GROUPS = [
     title: 'Files and storage',
     summary: 'Managed files, the system picker, transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pickFile', 'pickFiles', 'chooseFile', 'chooseDirectory',
+      'fs', 'openFile', 'pickFile', 'pickFiles', 'pickDirectory',
       'uploadFile', 'downloadFile', 'getStorage',
     ],
   },
@@ -86,7 +86,7 @@ const GROUPS = [
     title: 'Media',
     summary: 'Pick, preview, transcode, and save images and video; read a code.',
     members: [
-      'chooseMedia', 'previewMedia', 'getImageInfo', 'compressImage',
+      'pickMedia', 'previewMedia', 'getImageInfo', 'compressImage',
       'saveImageToPhotosAlbum', 'saveVideoToPhotosAlbum',
       'createVideoContext', 'getVideoInfo', 'extractVideoThumbnail', 'compressVideo',
       'scanCode',
@@ -118,7 +118,7 @@ const GROUPS = [
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
-      'host', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
+      'host', 'env', 'getAppInfo', 'getUpdateManager', 'openExternal',
       'supports', 'terminal',
     ],
   },

@@ -1,4 +1,4 @@
-export { spec, expect } from "./runtime.js";
+export { test, expect } from "./runtime.js";
 export { AssertionError } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
 export { TEST_ERROR_CODES } from "./errors.js";
@@ -43,10 +43,10 @@ export type {
   RestoreProfileOptions,
   RetryMatchers,
   ScenarioCallTarget,
-  SpecBody,
-  SpecOptions,
-  SpecRequirements,
-  SpecStart,
+  TestBody,
+  TestOptions,
+  TestRequirements,
+  TestStart,
   StepScope,
   TestApp,
   TestMetrics,

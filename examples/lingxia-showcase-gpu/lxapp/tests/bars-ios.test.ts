@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture } from '@lingxia/test';
+import { expect, test, type Fixture } from '@lingxia/test';
 import { openUnderTabs, rootOf } from './open-demo';
 import { rawAutomation } from '@lingxia/test/runner';
 import { decodePng } from './png.js';
@@ -66,13 +66,13 @@ async function dimsTheBar(t: Fixture) {
   }
 }
 
-spec('a page dialog dims the iOS tab bar with the page, and the real bar is back on close', {
+test('a page dialog dims the iOS tab bar with the page, and the real bar is back on close', {
   id: 'TOP-LAYER-BARS-IOS-001', covers: ['view:dialog'],
   start: openUnderTabs('dialog'),
 }, dimsTheBar);
 
 // A page unloaded with its dialog open hands the bars back: the next page's dialog still draws them.
-spec('after a page is unloaded with its dialog open, the next page dialog still dims a drawn tab bar', {
+test('after a page is unloaded with its dialog open, the next page dialog still dims a drawn tab bar', {
   id: 'TOP-LAYER-BARS-IOS-002', covers: ['view:dialog'],
   start: openUnderTabs('dialog'),
 }, async (t) => {

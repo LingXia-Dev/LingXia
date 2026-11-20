@@ -362,6 +362,7 @@ enum LxAppSurface {
         modal: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool,
+        browserTabId: String = "",
         chrome: Int32 = chromeSystem
     ) -> Bool {
         if let existing = entries[id] {
@@ -418,6 +419,7 @@ enum LxAppSurface {
                 closeButton: closeButton,
                 ephemeralWebData: ephemeralWebData,
                 urlCallback: urlCallback,
+                browserTabId: browserTabId,
                 shell: shell
             )
         }
@@ -788,6 +790,7 @@ enum LxAppSurface {
         closeButton: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool,
+        browserTabId: String,
         shell: LxAppShell
     ) -> Bool {
         let container = NSView()
@@ -862,6 +865,7 @@ enum LxAppSurface {
             guard let opened = shell.browserCoordinator.openDockedAsideTab(
                 surfaceId: id,
                 url: url.absoluteString,
+                adoptedBrowserTabId: browserTabId.isEmpty ? nil : browserTabId,
                 ephemeralWebData: ephemeralWebData,
                 urlCallback: urlCallback,
                 onCloseTab: onCloseTab,
@@ -1040,6 +1044,17 @@ enum LxAppSurface {
         _ = close(id: surfaceId, appId: entry.appId, reason: "user")
         shell.browserCoordinator.presentInternalBrowserTab(id: tabId)
         return true
+    }
+
+    /// Whether `surfaceId` is a browser tab of the side panel.
+    static func isBrowserAside(surfaceId: String) -> Bool {
+        entries[surfaceId]?.dockedBrowser != nil
+    }
+
+    /// Close one side-panel browser tab from the slot strip.
+    static func closeAsideTab(surfaceId: String) -> Bool {
+        guard let entry = entries[surfaceId] else { return false }
+        return close(id: surfaceId, appId: entry.appId, reason: "user")
     }
 
     static func close(id: String, appId: String, reason: String) -> Bool {
@@ -1845,10 +1860,13 @@ enum LxAppSurface {
         modal: Bool,
         ephemeralWebData: Bool,
         urlCallback: Bool,
+        browserTabId: String = "",
         chrome: Int32
     ) -> Bool {
-        // Mobile surfaces have no configurable desktop window decoration.
+        // Mobile surfaces have no configurable desktop window decoration or
+        // main-area browser tabs to take over.
         _ = chrome
+        _ = browserTabId
         // A phone has no side-by-side room, so the core promotes an aside to a
         // main and presents it as a window (kind Window); an aside that survives
         // the arbitration (kind Overlay, role Aside) is likewise shown

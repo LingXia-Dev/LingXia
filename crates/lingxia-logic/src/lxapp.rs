@@ -2,11 +2,10 @@ use ::lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
-struct LxAppInfo {
+struct AppInfo {
     #[js_name = "appId"]
     app_id: String,
-    #[js_name = "appName"]
-    app_name: String,
+    name: String,
     version: String,
     #[js_name = "channel"]
     #[ts_type = "LxAppReleaseType"]
@@ -14,12 +13,12 @@ struct LxAppInfo {
 }
 
 /// Identify the running lxapp: its id, display name, version, and channel.
-fn get_lxapp_info(ctx: JSContext) -> JSResult<LxAppInfo> {
+fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let info = lxapp.get_lxapp_info();
-    Ok(LxAppInfo {
+    Ok(AppInfo {
         app_id: lxapp.appid.clone(),
-        app_name: info.app_name,
+        name: info.app_name,
         version: info.version,
         release_type: info.release_type,
     })
@@ -32,6 +31,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getLxAppInfo(ts_return = "LxAppInfo") = get_lxapp_info;
+        fn getAppInfo(ts_return = "AppInfo") = get_app_info;
     }
 }

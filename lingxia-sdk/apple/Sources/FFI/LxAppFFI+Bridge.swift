@@ -225,9 +225,11 @@ extension LxApp {
         modal: Bool,
         ephemeral_web_data: Bool,
         url_callback: Bool,
+        browser_tab_id: RustStr,
         chrome: Int32
     ) -> Bool {
         let idString = id.toString()
+        let browserTabId = browser_tab_id.toString()
         let appIdString = appid.toString()
         let webtagString = webtag.toString()
         let urlString = url.toString()
@@ -266,6 +268,7 @@ extension LxApp {
                 modal: modal,
                 ephemeralWebData: ephemeral_web_data,
                 urlCallback: url_callback,
+                browserTabId: browserTabId,
                 chrome: chrome
             )
         }
@@ -636,6 +639,30 @@ extension LxApp {
 
     nonisolated static func notificationRequestPermission() -> String {
         MacLocalNotification.requestPermission()
+    }
+
+    /// Runs the host permission gate and the add-only Photos prompt; blocks a
+    /// background thread until they finish.
+    nonisolated static func requestPhotoAddAccess() -> Bool {
+        #if os(iOS)
+        return PermissionGates.blocking { done in
+            PermissionManager.ensurePhotoAccess(.addOnly, feature: .saveMedia, completion: done)
+        } ?? false
+        #else
+        return false
+        #endif
+    }
+
+    /// Runs the host permission gate and the when-in-use location prompt;
+    /// blocks a background thread until they finish. iOS only.
+    nonisolated static func requestLocationAccess() -> Bool {
+        #if os(iOS)
+        return PermissionGates.blocking { done in
+            PermissionManager.ensureLocationWhenInUseAccess(for: .location, completion: done)
+        } ?? false
+        #else
+        return false
+        #endif
     }
 
     nonisolated static func notificationShow(

@@ -10,15 +10,15 @@ use windows::Win32::Graphics::Gdi::{
     ANTIALIASED_QUALITY, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateRoundRectRgn,
     CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE,
     DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, ExtSelectClipRgn, FF_SWISS, FONT_QUALITY,
-    FillRect, GetDC, GetDeviceCaps, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ,
-    IntersectClipRect, LOGPIXELSY, NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC,
-    RoundRect, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    FillRect, GetDC, GetStockObject, GetTextExtentPoint32W, HDC, HFONT, HGDIOBJ, IntersectClipRect,
+    NULL_PEN, OUT_DEFAULT_PRECIS, RGN_AND, ReleaseDC, RestoreDC, RoundRect, SaveDC, SelectObject,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::Graphics::GdiPlus;
 use windows::Win32::UI::WindowsAndMessaging::{self, HICON};
 use windows::core::w;
 
-use super::icons::{cached_png_bytes_icon_handle, cached_png_icon_handle};
+use super::icons::{cached_icon_handle, cached_png_bytes_icon_handle, cached_png_icon_handle};
 use super::*;
 
 /// Process-lifetime GDI font cache; a repaint draws dozens of strings and
@@ -49,16 +49,19 @@ pub(in crate::shell) fn cached_font_with(
 }
 
 /// Chrome text font ("Segoe UI" at the shell text size/weight) sized for
-/// `hdc`'s DPI. Shared cache entry - do not delete.
-pub(in crate::shell) fn chrome_text_font(hdc: HDC) -> HFONT {
-    chrome_text_font_with_quality(hdc, CLEARTYPE_QUALITY)
+/// the current chrome scale. Shared cache entry - do not delete.
+pub(in crate::shell) fn chrome_text_font() -> HFONT {
+    chrome_text_font_with_quality(CLEARTYPE_QUALITY)
 }
 
 pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
-    static WIDTHS: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+    // Widths are per font height: the height follows the chrome scale, which
+    // differs per monitor and per simulated device.
+    static WIDTHS: OnceLock<Mutex<HashMap<i32, HashMap<String, i32>>>> = OnceLock::new();
+    let height = logical_font_height(SHELL_TEXT_POINT_SIZE);
     let widths = WIDTHS.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(widths) = widths.lock()
-        && let Some(width) = widths.get(text)
+        && let Some(width) = widths.get(&height).and_then(|by_text| by_text.get(text))
     {
         return *width;
     }
@@ -69,7 +72,7 @@ pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
         if hdc.is_invalid() {
             0
         } else {
-            let font = chrome_text_font(hdc);
+            let font = chrome_text_font();
             let old = SelectObject(hdc, HGDIOBJ(font.0));
             let mut size = SIZE::default();
             let _ = GetTextExtentPoint32W(hdc, &wide, &mut size);
@@ -81,13 +84,16 @@ pub(in crate::shell::chrome) fn measure_chrome_text_width(text: &str) -> i32 {
         }
     };
     if let Ok(mut widths) = widths.lock() {
-        widths.insert(text.to_string(), width);
+        widths
+            .entry(height)
+            .or_default()
+            .insert(text.to_string(), width);
     }
     width
 }
 
-fn chrome_text_font_with_quality(hdc: HDC, quality: FONT_QUALITY) -> HFONT {
-    let height = logical_font_height(hdc, SHELL_TEXT_POINT_SIZE);
+fn chrome_text_font_with_quality(quality: FONT_QUALITY) -> HFONT {
+    let height = logical_font_height(SHELL_TEXT_POINT_SIZE);
     cached_font_with("Segoe UI", height, SHELL_TEXT_WEIGHT, quality, || unsafe {
         CreateFontW(
             -height,
@@ -139,7 +145,7 @@ pub(in crate::shell) fn draw_text_multiline_antialiased(
     }
     let mut wide = text.encode_utf16().collect::<Vec<_>>();
     let mut rect = rect;
-    let font = chrome_text_font_with_quality(hdc, ANTIALIASED_QUALITY);
+    let font = chrome_text_font_with_quality(ANTIALIASED_QUALITY);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
@@ -174,7 +180,7 @@ fn draw_text_with_quality(
 
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut rect = rect;
-    let font = chrome_text_font_with_quality(hdc, quality);
+    let font = chrome_text_font_with_quality(quality);
     unsafe {
         let old_font = if font.is_invalid() {
             HGDIOBJ::default()
@@ -195,10 +201,8 @@ fn draw_text_with_quality(
     }
 }
 
-pub(in crate::shell) fn logical_font_height(hdc: HDC, point_size: i32) -> i32 {
-    let dpi_y = unsafe { GetDeviceCaps(Some(hdc), LOGPIXELSY) };
-    let dpi_y = if dpi_y > 0 { dpi_y } else { 96 };
-    (point_size * dpi_y + 36) / 72
+pub(in crate::shell) fn logical_font_height(point_size: i32) -> i32 {
+    (f64::from(point_size) * 96.0 / 72.0 * crate::dpi::chrome_scale()).round() as i32
 }
 
 pub(in crate::shell) fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
@@ -462,6 +466,57 @@ pub(in crate::shell) fn fill_round_rect_aa_corners(
     }
 }
 
+/// Fills a closed polygon (at least three `points`, in order) with an
+/// anti-aliased GDI+ path; falls back to the points' bounding rect when GDI+
+/// is unavailable. For the few chrome shapes that are not rounded rects.
+pub(in crate::shell) fn fill_polygon_aa(hdc: HDC, points: &[(i32, i32)], rgb: u32) {
+    if points.len() < 3 {
+        return;
+    }
+    let bounds = RECT {
+        left: points.iter().map(|p| p.0).min().unwrap_or(0),
+        top: points.iter().map(|p| p.1).min().unwrap_or(0),
+        right: points.iter().map(|p| p.0).max().unwrap_or(0),
+        bottom: points.iter().map(|p| p.1).max().unwrap_or(0),
+    };
+    if !ensure_gdiplus_started() {
+        fill_rect(hdc, bounds, rgb);
+        return;
+    }
+    unsafe {
+        let mut graphics: *mut GdiPlus::GpGraphics = std::ptr::null_mut();
+        if GdiPlus::GdipCreateFromHDC(hdc, &mut graphics) != GdiPlus::Ok || graphics.is_null() {
+            fill_rect(hdc, bounds, rgb);
+            return;
+        }
+        apply_round_rect_quality(graphics);
+        let mut path: *mut GdiPlus::GpPath = std::ptr::null_mut();
+        if GdiPlus::GdipCreatePath(GdiPlus::FillModeAlternate, &mut path) == GdiPlus::Ok
+            && !path.is_null()
+        {
+            for pair in points.windows(2) {
+                let _ = GdiPlus::GdipAddPathLine(
+                    path,
+                    pair[0].0 as f32,
+                    pair[0].1 as f32,
+                    pair[1].0 as f32,
+                    pair[1].1 as f32,
+                );
+            }
+            let _ = GdiPlus::GdipClosePathFigure(path);
+            let mut brush: *mut GdiPlus::GpSolidFill = std::ptr::null_mut();
+            if GdiPlus::GdipCreateSolidFill(0xff00_0000 | rgb, &mut brush) == GdiPlus::Ok
+                && !brush.is_null()
+            {
+                let _ = GdiPlus::GdipFillPath(graphics, brush.cast(), path);
+                let _ = GdiPlus::GdipDeleteBrush(brush.cast());
+            }
+            let _ = GdiPlus::GdipDeletePath(path);
+        }
+        let _ = GdiPlus::GdipDeleteGraphics(graphics);
+    }
+}
+
 /// Intersects the DC's clip with a rounded rect two pixels inside `rect`.
 /// Pairs with an outer [`fill_round_rect_aa`] of the same rect: the AA fill
 /// provides the card's smooth edge, and plain square fills painted inside the
@@ -705,9 +760,39 @@ pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, si
         return false;
     };
     // Raster tiles are already corner-masked in the cached bitmap
-    // (`icons::apply_app_tile_corners`). SVG glyphs stay unmasked so they
-    // tint as templates.
+    // (`icons::apply_app_tile_corners`); SVG glyphs stay unmasked.
     draw_icon_handle(hdc, handle, rect)
+}
+
+/// A sidebar action's icon: an SVG is a template drawn in the action's text
+/// colour (dimmed while disabled), following the theme like macOS; a raster
+/// icon draws as-is.
+pub(in crate::shell) fn draw_action_icon(
+    hdc: HDC,
+    path: &str,
+    rect: RECT,
+    size: u32,
+    disabled: bool,
+) -> bool {
+    let Some(handle) = cached_icon_handle(path, size, Some(action_icon_tint(disabled))) else {
+        return false;
+    };
+    draw_icon_handle(hdc, handle, rect)
+}
+
+/// Tint of a sidebar action glyph: muted text, or that colour faded toward
+/// the sidebar while disabled.
+pub(in crate::shell) fn action_icon_tint(disabled: bool) -> u32 {
+    let palette = shell_palette();
+    if !disabled {
+        return palette.text_muted;
+    }
+    let mix = |shift: u32| {
+        let fg = (palette.text_muted >> shift) & 0xff;
+        let bg = (palette.sidebar_background >> shift) & 0xff;
+        (fg * 45 + bg * 55) / 100
+    };
+    (mix(16) << 16) | (mix(8) << 8) | mix(0)
 }
 
 /// Absolute path to the LingXia icon, copied next to the app by the CLI
@@ -799,4 +884,24 @@ pub(in crate::shell) fn rgb_to_colorref(rgb: u32) -> COLORREF {
     let g = (rgb >> 8) & 0xff;
     let b = rgb & 0xff;
     COLORREF(r | (g << 8) | (b << 16))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_width_follows_the_chrome_scale() {
+        let text = "Chrome scale width probe";
+        let standard = {
+            let _scale = crate::dpi::enter_test_scale(1.0);
+            measure_chrome_text_width(text)
+        };
+        let doubled = {
+            let _scale = crate::dpi::enter_test_scale(2.0);
+            measure_chrome_text_width(text)
+        };
+        assert!(standard > 0);
+        assert!(doubled > standard, "{doubled} <= {standard}");
+    }
 }

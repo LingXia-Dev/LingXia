@@ -5,8 +5,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 pub use lingxia_service::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult, OpenFileRequest,
-    RevealInFileManagerRequest,
+    FileDialogFilter, FileDialogResult, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
+    PickedPath, RevealInFileManagerRequest,
 };
 
 /// Opens a file for in-app review using the platform's preview UI.
@@ -34,21 +34,27 @@ pub async fn reveal_in_file_manager(
 }
 
 /// Presents a file picker and returns the selected entries.
-pub async fn choose_file(
+///
+/// Each entry's `path` may be an opaque platform reference (for example an
+/// Android `content://` URI), so its tail is not a file name; use `name`.
+/// Desktop returns the original file, iOS a copy, Android and Harmony a
+/// reference to the original.
+pub async fn pick_file(
     app: &crate::LxApp,
-    request: ChooseFileRequest,
+    request: PickFileRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::choose_file(&*app.runtime, request)
+    lingxia_service::file::pick_file(&*app.runtime, request)
         .await
         .map_err(crate::Error::from)
 }
 
-/// Presents a directory picker and returns the selected entry.
-pub async fn choose_directory(
+/// Presents a directory picker and returns the selected entry. `name` is
+/// the directory's display name; `path` may be an opaque platform reference.
+pub async fn pick_directory(
     app: &crate::LxApp,
-    request: ChooseDirectoryRequest,
+    request: PickDirectoryRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::choose_directory(&*app.runtime, request)
+    lingxia_service::file::pick_directory(&*app.runtime, request)
         .await
         .map_err(crate::Error::from)
 }

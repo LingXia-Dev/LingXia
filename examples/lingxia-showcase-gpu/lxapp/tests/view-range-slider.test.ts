@@ -1,8 +1,8 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // Two thumbs on one track: a press moves the nearer one, keys move the focused one, and neither passes the other.
-spec('a slider with two thumbs moves the nearer one, stops at the other, and reports where a press ended', { covers: ['view:slider'], start: openDemo('range') }, async (t) => {
+test('a slider with two thumbs moves the nearer one, stops at the other, and reports where a press ended', { covers: ['view:slider'], start: openDemo('range') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-range-state');
   const lower = view.testId('lab-range-price-lower');

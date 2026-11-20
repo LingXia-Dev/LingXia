@@ -210,8 +210,8 @@ a dev build for testing.
 Envs install side by side. The default lxapp channel is always `release`,
 independent of the running service env; an omitted selector keeps the channel a
 running lxapp already has. An explicit `channel: 'draft'` works
-on any host. Lxapp data is kept per channel; switching service env alone does
-not select another channel's data.
+on any host. Lxapp installs and data are kept per channel and per service
+env.
 
 ```yaml
 app:
@@ -221,7 +221,8 @@ app:
 #   prod: https://api.myapp.com
 ```
 
-A map may omit an env, which then cannot be built. A prod build can switch
+`lingxiaServer` is optional, and a map may omit an env: that build has no
+service server. A prod build can switch
 service servers at runtime; package id, icon, and signed App Link entitlements
 stay with the build env. Read the build env with `lx.host.env` (JS) or
 `lingxia::app::env()` (Rust), and the running service env with
@@ -318,7 +319,12 @@ A campaign screen after launch: [Launch screen](../native/splash.md).
 ## `macos` and `windows`
 
 - `macos` — `deploymentTarget`, `targetName`, optional `executableName`, optional
-  `bundleId`, optional `store:` (App Store Connect identity).
+  `bundleId`, optional `store:` (App Store Connect identity), optional `arch`:
+  `arm64` (default), `x86_64`, or `universal`. Packages build it and
+  `lingxia publish` refuses one missing a declared slice; installed Macs whose
+  CPU a later update drops keep their current version. Optional
+  `dmg.background`: a 660×400 PNG (`@2x` sibling for Retina) replacing the
+  built-in drag arrow behind the `--dmg` window.
 - `windows` — optional `executableName`, `publisher` (MSIX Identity Publisher,
   a distinguished name; required for MSIX except `--self-signed`),
   `publisherDisplayName` (the publisher's name, default the `O=`/`CN=` of
@@ -415,7 +421,7 @@ tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 
 ```ts
 const { uri } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
-lx.shell.sidebarActions.replace([
+await lx.shell.sidebarActions.replace([
   {
     id: 'agent',
     placement: 'footer',
@@ -441,10 +447,21 @@ when it must. At most two footer actions carry one, and a header `value` is a
 type error.
 Header actions are icon-only, max two.
 
-`update(id, patch)` sets every key the patch carries:
-`update('brand', { value: brand?.shortName })` clears the value when there is
-no brand. Pins are the user's; there is no API to write them. Open a declared
-aside with `lx.surface.openDeclared(id)`.
+`replace`, `update` and `remove` return promises that reject on a bad
+declaration; `replace([])` clears. `update(id, patch)` sets every key the patch
+carries: `update('brand', { value: brand?.shortName })` clears the value when
+there is no brand. Pins are the user's; there is no API to write them. Open a
+declared aside with `lx.surface.openDeclared(id)`. A live lxapp has one handle,
+its `AppSurface`: `openApp`, `getApp` and `openDeclared` / `getDeclared` of its
+declaration return the same object.
+
+### App name and icon
+
+`await lx.shell.setAppDisplay({ name, icon })` sets what the sidebar, switcher
+and pins show for the Control app, above the registry and `lxapp.json`; it is
+kept per service env and dropped on uninstall. `icon` is a bundled or `lx://`
+PNG, JPEG, WebP or SVG ≤ 1 MiB (rasters ≤ 4096 px; SVG content is not
+validated); `null`, `undefined` or `''` restores a key. Identical values are a no-op, so set it on every launch.
 
 ### Tray apps
 
@@ -474,7 +491,8 @@ Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
 
 A terminal main is the default workspace; open or reuse a named one with
 `lx.shell.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
-keys reuse one workspace; the handle's `id` is not the key. `native: browser`
+keys reuse one workspace; `lx.shell.getDeclared('terminal', 'project-a')`
+returns its live handle. `native: browser`
 opens an empty tab in the managed browser; use a `url:` main for a fixed target.
 
 ## Icon paths

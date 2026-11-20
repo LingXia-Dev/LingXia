@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 
 // An editor that owns a list: focus and blur events, a popover anchored to the field box, keys
 // taken from the editor while the caret stays in it, and a read-only editor.
-spec('a field opens its suggestions against itself on focus and takes a tapped one without blurring first', { covers: ['view:input', 'view:popover'], start: openDemo('suggestions') }, async (t) => {
+test('a field opens its suggestions against itself on focus and takes a tapped one without blurring first', { covers: ['view:input', 'view:popover'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
   const input = view.testId('lab-type-input');
   const state = view.testId('lab-type-state');
@@ -31,7 +31,7 @@ spec('a field opens its suggestions against itself on focus and takes a tapped o
   await expect(input).toHaveValue('Cherry');
 });
 
-spec('an editor gives the page the keys it lists and keeps the caret', { covers: ['view:input', 'view:keys'], start: openDemo('suggestions') }, async (t) => {
+test('an editor gives the page the keys it lists and keeps the caret', { covers: ['view:input', 'view:keys'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
   const input = view.testId('lab-type-input');
   const state = view.testId('lab-type-state');
@@ -50,7 +50,7 @@ spec('an editor gives the page the keys it lists and keeps the caret', { covers:
   await expect(state).toHaveAttribute('data-state', 'open=false active=0 last=escape');
 });
 
-spec('moving to another editor blurs the first, and a read-only editor keeps its text', { covers: ['view:input'], start: openDemo('suggestions') }, async (t) => {
+test('moving to another editor blurs the first, and a read-only editor keeps its text', { covers: ['view:input'], start: openDemo('suggestions') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-type-state');
   await view.testId('lab-type-input').click();

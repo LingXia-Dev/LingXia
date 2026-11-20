@@ -864,7 +864,7 @@ mod tests {
             json!({ "profile": { "max_state_bytes": 1 << 20, "chunk_bytes": 1 << 20 } });
         let stale = Err((
             "stale",
-            "profile snapshot of app.one was taken for another channel or device fingerprint",
+            "profile snapshot of app.one was taken for another channel, service env or device fingerprint",
         ));
         let dir = scratch("stale");
         let path = dir.join("auth.lxstate");
@@ -899,7 +899,10 @@ mod tests {
             .to_string();
         server.join().unwrap();
         assert!(error.contains("--profile-save"), "{error}");
-        assert!(error.contains("another channel or device"), "{error}");
+        assert!(
+            error.contains("another channel, service env or device"),
+            "{error}"
+        );
         assert!(!path.exists());
         assert_eq!(std::fs::read(&aside).unwrap(), b"old again");
         let _ = std::fs::remove_dir_all(dir);

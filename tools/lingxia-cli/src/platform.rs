@@ -174,7 +174,7 @@ pub struct BuildConfig {
     pub dmg: bool,
     /// Android: produce an AAB (`bundleRelease`) instead of an APK (`--dist play`).
     pub android_aab: bool,
-    /// Requested macOS architecture for native build (`arm64` or `x86_64`)
+    /// Requested macOS architecture (`arm64`, `x86_64`, or `universal`)
     pub macos_arch: Option<String>,
     /// Extra Rust features enabled for native app builds.
     pub native_features: Vec<String>,

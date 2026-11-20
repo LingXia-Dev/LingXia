@@ -71,10 +71,10 @@ export function extractLxErrorCode(error: unknown): number | null {
 /**
  * The surface code carried by a `lx.surface.*` / `lx.shell.*` rejection.
  *
- * A rejection's `code` is the transport-level host code shared with every
- * other `lx` API; the surface-specific member of `SurfaceErrorCode` rides on
- * `data.code`. Reading it through this helper keeps callers off both the
- * message text and the shape.
+ * A rejection's `code` is the host code (`E_SURFACE_CONFLICT`,
+ * `E_SURFACE_ROLE_LOCKED`, `E_CAPABILITY_MISSING`, …); the finer
+ * `SurfaceErrorCode` rides on `data.code`. Reading it through this helper
+ * keeps callers off both the message text and the shape.
  */
 export function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
   const root = toRecord(error);
@@ -154,6 +154,7 @@ export const SURFACE_ERROR_CODES = [
   'not_declared',
   'invalid_arg',
   'already_open_other_role',
+  'role_locked',
   'closed',
   'capability_missing',
   'failed',

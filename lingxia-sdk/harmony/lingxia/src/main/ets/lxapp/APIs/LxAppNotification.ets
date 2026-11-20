@@ -6,6 +6,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { onCallback } from 'liblingxia.so';
 import { Lingxia } from '../../app/Lingxia';
 import { LxLog } from '../../app/LxLog';
+import { PermissionFeature, PermissionGates, PermissionOutcome } from '../../app/PermissionGate';
 
 const TAG = 'LingXia.Notification';
 const STORE = 'lingxia.local.notifications';
@@ -71,22 +72,33 @@ export class LxAppNotification {
 
   private static async ensurePermission(): Promise<string> {
     const current = await LxAppNotification.currentPermission();
-    if (current !== 'default') {
+    if (current === 'granted') {
       return current;
     }
     const ctx = Lingxia.context;
     if (!ctx) {
       return 'denied';
     }
-    try {
-      await notificationManager.requestEnableNotification(ctx);
-    } catch (error) {
-      LxLog.w(TAG, `requestEnableNotification: ${describe(error as Object)}`);
-    }
-    const store = LxAppNotification.store();
-    store?.putSync(ASKED_KEY, true);
-    await store?.flush();
-    return (await notificationManager.isNotificationEnabled()) ? 'granted' : 'denied';
+    const blocked = current === 'denied';
+    const granted = await PermissionGates.run(ctx, PermissionFeature.NOTIFICATION,
+      [], blocked, async () => {
+        if (blocked) {
+          return PermissionOutcome.DENIED_PERMANENTLY;
+        }
+        try {
+          await notificationManager.requestEnableNotification(ctx);
+        } catch (error) {
+          LxLog.w(TAG, `requestEnableNotification: ${describe(error as Object)}`);
+        }
+        const store = LxAppNotification.store();
+        store?.putSync(ASKED_KEY, true);
+        await store?.flush();
+        // LingXia does not ask again once asked; only Settings can enable it.
+        return (await notificationManager.isNotificationEnabled())
+          ? PermissionOutcome.GRANTED
+          : PermissionOutcome.DENIED_PERMANENTLY;
+      });
+    return granted ? 'granted' : 'denied';
   }
 
   public static permission(callbackId: string): void {

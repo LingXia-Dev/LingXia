@@ -72,7 +72,12 @@ $TagPrefix  = 'lingxia-cli-v'
 $rawArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
 $Arch = switch ($rawArch) {
     'AMD64' { 'x86_64' }
-    'ARM64' { 'aarch64' }
+    'ARM64' {
+        if ((Get-WindowsVersion).Build -lt 22000) {
+            Stop-WithError 'Windows on Arm requires Windows 11 for x64 emulation'
+        }
+        'x86_64'
+    }
     default { Stop-WithError "unsupported architecture '$rawArch'" }
 }
 

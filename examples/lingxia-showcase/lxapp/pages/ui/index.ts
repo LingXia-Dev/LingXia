@@ -39,15 +39,13 @@ const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
   "not_declared",
   "invalid_arg",
   "already_open_other_role",
+  "role_locked",
   "closed",
   "capability_missing",
   "failed",
 ];
 
-// One key names one live surface, so the page demo and the composed-lxapp demo
-// cannot share one — `lx.surface.getByKey` would hand back whichever ran last.
 const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
-const DEMO_APP_SURFACE_KEY = "surface-demo-app";
 
 const NAV_TITLE_MAP: Record<string, string> = {
   navigation: "Navigation Demo",
@@ -378,7 +376,7 @@ Page({
       this.setData({
         surfaceDemo: {
           ...this.data.surfaceDemo,
-          message: `Opened ${surface.realized}: ${surface.id}`,
+          message: `Opened ${surface.kind} as ${surface.realized}`,
           active: single,
           visible: single,
         },
@@ -423,12 +421,10 @@ Page({
   ) {
     if (verb === "lxapp") {
       // Compose another lxapp into the aside slot — home-lxapp privilege, so
-      // it lives on lx.shell rather than lx.surface.
-      await this._releaseDemoSurfaceKey(DEMO_APP_SURFACE_KEY);
+      // it lives on lx.shell rather than lx.surface. A live app is reused.
       return lx.shell.openApp("lingxia-chat", {
         as: "aside",
         edge: cfg.edge ?? "right",
-        key: DEMO_APP_SURFACE_KEY,
       });
     }
     if (verb === "aside") {
@@ -488,7 +484,7 @@ Page({
         surfaceDemo: {
           ...this.data.surfaceDemo,
           visible: true,
-          message: `Shown ${event.id} (source=${event.source})`,
+          message: `Shown (source=${event.source})`,
         },
       });
     });
@@ -497,13 +493,13 @@ Page({
         surfaceDemo: {
           ...this.data.surfaceDemo,
           visible: false,
-          message: `Hidden ${event.id} (source=${event.source})`,
+          message: `Hidden (source=${event.source})`,
         },
       });
     });
     surface.onClose((event) => {
       const currentMessage = this.data.surfaceDemo?.message || "";
-      const closeMessage = `Closed ${event.id}: ${event.reason}`;
+      const closeMessage = `Closed: ${event.reason}`;
       this.setData({
         surfaceDemo: {
           ...this.data.surfaceDemo,
@@ -529,7 +525,7 @@ Page({
       this.setData({
         surfaceDemo: {
           ...this.data.surfaceDemo,
-          message: `Shown ${surface.id}`,
+          message: `Shown ${DEMO_PAGE_SURFACE_KEY}`,
           visible: true,
         },
       });
@@ -549,7 +545,7 @@ Page({
       this.setData({
         surfaceDemo: {
           ...this.data.surfaceDemo,
-          message: `Hidden ${surface.id}`,
+          message: `Hidden ${DEMO_PAGE_SURFACE_KEY}`,
           visible: false,
         },
       });

@@ -1,4 +1,4 @@
-import { expect, spec, type LogicApp, type LogicPage } from '@lingxia/test';
+import { expect, test, type LogicApp, type LogicPage } from '@lingxia/test';
 import type { PageSurface } from '@lingxia/types';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
@@ -7,7 +7,7 @@ interface UiPage extends LogicPage<{ logicCounter: number; instanceTag: string; 
   surface?: PageSurface;
 }
 
-spec('keep App identity across pages and merge setData into the correct View', {
+test('keep App identity across pages and merge setData into the correct View', {
   id: 'PAGE-GLOBALS-001', app: SHOWCASE_APP_ID,
   covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.navigateTo'],
 }, async (t) => {
@@ -56,9 +56,9 @@ spec('keep App identity across pages and merge setData into the correct View', {
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
 });
 
-spec('inject the owning surface into a page opened as a float', {
+test('inject the owning surface into a page opened as a float', {
   id: 'PAGE-GLOBALS-002', app: SHOWCASE_APP_ID,
-  covers: ['Page.surface', 'Page.route', 'lx.surface.openPage', 'PageSurface.id', 'PageSurface.close'],
+  covers: ['Page.surface', 'Page.route', 'lx.surface.openPage', 'PageSurface.key', 'PageSurface.close'],
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-002');
   defer(async () => {
@@ -71,16 +71,16 @@ spec('inject the owning surface into a page opened as a float', {
   await app.nav.relaunch({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
     const surface = await lx.surface.openPage('surface', { as: 'float', key, query: { fixture: key } });
-    return { id: surface.id, key: surface.key ?? null };
+    return { key: surface.key ?? null };
   }, namespace);
   const page = await app.page({ name: 'surface' });
   await expect(page.view.testId('surface-page')).toBeVisible();
   const owner = await app.logic.eval(({ getPage }, id) => {
     const page = getPage<UiPage>(id);
     if (!page?.surface) throw new Error('Page surface missing');
-    return { route: page.route, id: page.surface.id, key: page.surface.key ?? null, alive: page.surface.alive };
+    return { route: page.route, key: page.surface.key ?? null, alive: page.surface.alive };
   }, page.instanceId);
-  expect({ ...owner, route: owner.route.replace(/\.tsx$/, '') }).toEqual({ route: 'pages/surface/index', id: opened.id, key: namespace, alive: true });
+  expect({ ...owner, route: owner.route.replace(/\.tsx$/, '') }).toEqual({ route: 'pages/surface/index', key: namespace, alive: true });
   expect(opened.key).toBe(namespace);
   await app.logic.eval(async ({ getPage }, id) => {
     const surface = getPage<UiPage>(id)?.surface;

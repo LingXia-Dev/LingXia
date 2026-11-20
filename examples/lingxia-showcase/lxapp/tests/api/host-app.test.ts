@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
@@ -16,7 +16,7 @@ const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '
   ? undefined
   : 'host banners are desktop only';
 
-spec('publish the lxapp sandbox roots through lx.env', {
+test('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
   covers: ['lx.env', 'lx.env.USER_DATA_PATH', 'lx.env.USER_CACHE_PATH'],
   app: SHOWCASE_APP_ID,
@@ -40,7 +40,7 @@ spec('publish the lxapp sandbox roots through lx.env', {
   expect(env.stable).toBeTruthy();
 });
 
-spec('capture a host app screenshot into the lxapp sandbox', {
+test('capture a host app screenshot into the lxapp sandbox', {
   id: 'HOSTAPP-SHOT-001',
   covers: ['lx.host', 'lx.host.screenshot'],
   app: SHOWCASE_APP_ID,
@@ -70,7 +70,7 @@ spec('capture a host app screenshot into the lxapp sandbox', {
   expect(shot.bytes).toBeGreaterThan(0);
 });
 
-spec('set and clear the host app badge without leaving one behind', {
+test('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -98,7 +98,7 @@ spec('set and clear the host app badge without leaving one behind', {
   }
 });
 
-spec('tell a hidden tray from a shown one in what setBadge reports', {
+test('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
   covers: ['lx.host.setBadge', 'lx.tray.show', 'lx.tray.hide'],
   app: SHOWCASE_APP_ID,
@@ -126,7 +126,7 @@ spec('tell a hidden tray from a shown one in what setBadge reports', {
   expect(shown === true || shown === false).toBe(true);
 });
 
-spec('report a surface this platform does not have instead of failing', {
+test('report a surface this platform does not have instead of failing', {
   id: 'HOSTAPP-BADGE-003',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -166,7 +166,7 @@ spec('report a surface this platform does not have instead of failing', {
   expect(bad.code).toBe('E_INVALID_ARG');
 });
 
-spec('reject a badge value that is neither a string, a number, nor null', {
+test('reject a badge value that is neither a string, a number, nor null', {
   id: 'HOSTAPP-BADGE-002',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -203,7 +203,7 @@ spec('reject a badge value that is neither a string, a number, nor null', {
   }
 });
 
-spec('answer checkUpdate with a decision instead of throwing', {
+test('answer checkUpdate with a decision instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
   covers: ['lx.host.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
@@ -232,7 +232,7 @@ spec('answer checkUpdate with a decision instead of throwing', {
   else expect(result.version).toBe(null);
 });
 
-spec('reject an invalid host display language', {
+test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
   covers: ['lx.host.control.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
@@ -257,7 +257,7 @@ spec('reject an invalid host display language', {
   }
 });
 
-spec('subscribe to and release the display language listener', {
+test('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
   covers: ['lx.host.displayLanguage.watch'],
   app: SHOWCASE_APP_ID,
@@ -277,7 +277,7 @@ spec('subscribe to and release the display language listener', {
   expect(result.distinct).toBeTruthy();
 });
 
-spec('request permission and replace local notifications by id', {
+test('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
     'lx.host.notification',
@@ -383,7 +383,7 @@ spec('request permission and replace local notifications by id', {
   expect(result.rejected).toEqual({ http: true, page: true, title: true, both: true, emptyId: true });
 });
 
-spec('show a toast, dismiss a prompt, and reject bad banner options', {
+test('show a toast, dismiss a prompt, and reject bad banner options', {
   skip: bannerSkip,
   id: 'HOSTAPP-BANNER-001',
   covers: [
@@ -468,7 +468,7 @@ spec('show a toast, dismiss a prompt, and reject bad banner options', {
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
 });
 
-spec('report autostart state and accept an idempotent write', {
+test('report autostart state and accept an idempotent write', {
   skip: autostartSkip,
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.setEnabled'],
@@ -503,7 +503,7 @@ spec('report autostart state and accept an idempotent write', {
   expect(result.after).toBe(result.before);
 });
 
-spec('clear product caches while preserving live app storage', {
+test('clear product caches while preserving live app storage', {
   id: 'HOSTAPP-CACHE-001',
   covers: ['lx.host.cache', 'lx.host.cache.size', 'lx.host.cache.clear'],
   app: SHOWCASE_APP_ID,
@@ -545,7 +545,7 @@ spec('clear product caches while preserving live app storage', {
   expect(result.kv).toBe('keep');
 });
 
-spec('show, label, and retract the host tray item', {
+test('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [
     'lx.tray',
@@ -586,7 +586,7 @@ spec('show, label, and retract the host tray item', {
   expect(result.unsubscribe).toBe('function');
 });
 
-spec('declare, patch, and retract runtime sidebar actions atomically', {
+test('declare, patch, and retract runtime sidebar actions atomically', {
   id: 'HOSTAPP-SIDEBAR-001',
   covers: [
     'lx.shell',
@@ -594,7 +594,6 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     'lx.shell.sidebarActions.replace',
     'lx.shell.sidebarActions.update',
     'lx.shell.sidebarActions.remove',
-    'lx.shell.sidebarActions.clear',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
@@ -603,7 +602,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       const probe = globalThis as { __sidebarProbeIcon?: string };
-      try { lx.shell.sidebarActions.clear(); } catch {}
+      try { await lx.shell.sidebarActions.replace([]); } catch {}
       if (probe.__sidebarProbeIcon) {
         try { await lx.fs.remove(probe.__sidebarProbeIcon); } catch {}
         delete probe.__sidebarProbeIcon;
@@ -615,7 +614,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   await t.step('declare a header and a footer action', async () => {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.replace([
+        await lx.shell.sidebarActions.replace([
           { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
           { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer', onActivate() {} },
         ]);
@@ -631,7 +630,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   await t.step('patch presentation of one live id', async () => {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.update('probe-footer', { label: 'Probe footer 2', disabled: true });
+        await lx.shell.sidebarActions.update('probe-footer', { label: 'Probe footer 2', disabled: true });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -646,7 +645,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
       try {
         const shot = await lx.host.screenshot();
         (globalThis as { __sidebarProbeIcon?: string }).__sidebarProbeIcon = shot.uri;
-        lx.shell.sidebarActions.update('probe-footer', { icon: shot.uri });
+        await lx.shell.sidebarActions.update('probe-footer', { icon: shot.uri });
         const value = shot.uri;
         return { ok: true, value };
       } catch (error) {
@@ -661,14 +660,14 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   await t.step('keep settings-shaped declarations on the generic runtime channel', async () => {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.replace([
+        await lx.shell.sidebarActions.replace([
           { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate() {} },
           { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate() {} },
           { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate() {} },
         ]);
-        lx.shell.sidebarActions.update('settings', { label: 'ID spoof live' });
-        lx.shell.sidebarActions.update('label-spoof', { disabled: true });
-        lx.shell.sidebarActions.update('icon-spoof', { label: 'Icon spoof live' });
+        await lx.shell.sidebarActions.update('settings', { label: 'ID spoof live' });
+        await lx.shell.sidebarActions.update('label-spoof', { disabled: true });
+        await lx.shell.sidebarActions.update('icon-spoof', { label: 'Icon spoof live' });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -680,7 +679,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     // Restore the live set used by the following rollback assertions.
     const restored = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.replace([
+        await lx.shell.sidebarActions.replace([
           { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
           { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onActivate() {} },
         ]);
@@ -696,7 +695,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   await t.step('reject a patch for an id outside the declaration', async () => {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.update('probe-missing', { label: 'nope' });
+        await lx.shell.sidebarActions.update('probe-missing', { label: 'nope' });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -709,12 +708,19 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
 
   await t.step('reject a third header action without disturbing the live set', async () => {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
+      // A refusal settles the returned promise; it never throws at the call.
+      let pending: Promise<void>;
       try {
-        lx.shell.sidebarActions.replace([
+        pending = lx.shell.sidebarActions.replace([
           { id: 'h1', placement: 'header', icon: 'public/showcase-icon.svg', label: 'One', onActivate() {} },
           { id: 'h2', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Two', onActivate() {} },
           { id: 'h3', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Three', onActivate() {} },
         ]);
+      } catch (error) {
+        return { ok: false, code: 'THREW', message: String(error), data: null };
+      }
+      try {
+        await pending;
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -722,10 +728,11 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
       }
     });
     expect(result.ok).toBeFalsy();
+    expect(result.code).toBe('E_INVALID_ARG');
     // The rejected generation must not have replaced the live one.
     const survivor = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.update('probe-header', { label: 'Probe header 2' });
+        await lx.shell.sidebarActions.update('probe-header', { label: 'Probe header 2' });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -737,9 +744,9 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
 
   await t.step('set, clear, and reject footer values', async () => {
     const result = await app.logic.eval(async ({ lx }) => {
-      const attempt = (run: () => void) => {
+      const attempt = async (run: () => Promise<void>) => {
         try {
-          run();
+          await run();
           return { ok: true, code: '', message: '' };
         } catch (error) {
           const { code, message } = error as { code?: string; message?: string };
@@ -748,12 +755,12 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
       };
       const missing: { name: string } | undefined = undefined as { name: string } | undefined;
       return {
-        set: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: 'Acme' })),
+        set: await attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: 'Acme' })),
         // A present key clears even when its value is undefined.
-        clearUndefined: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: missing?.name })),
-        clearNull: attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: null })),
-        header: attempt(() => lx.shell.sidebarActions.update('probe-header', { value: 'Acme' })),
-        third: attempt(() => lx.shell.sidebarActions.replace([
+        clearUndefined: await attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: missing?.name })),
+        clearNull: await attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: null })),
+        header: await attempt(() => lx.shell.sidebarActions.update('probe-header', { value: 'Acme' })),
+        third: await attempt(() => lx.shell.sidebarActions.replace([
           { id: 'v1', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'One', value: 'a', onActivate() {} },
           { id: 'v2', placement: 'footer', icon: 'public/showcase-icon.png', label: 'Two', value: 'b', onActivate() {} },
           { id: 'v3', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'Three', value: 'c', onActivate() {} },
@@ -771,10 +778,10 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     expect(result.third.message).toContain('v1, v2, v3');
   });
 
-  await t.step('remove one id, then clear the rest idempotently', async () => {
+  await t.step('remove one id, then clear the rest idempotently with replace([])', async () => {
     const removed = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.remove('probe-footer');
+        await lx.shell.sidebarActions.remove('probe-footer');
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -785,7 +792,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
 
     const removedTwice = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.remove('probe-footer');
+        await lx.shell.sidebarActions.remove('probe-footer');
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -797,8 +804,8 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
 
     const cleared = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        lx.shell.sidebarActions.clear();
-        lx.shell.sidebarActions.clear();
+        await lx.shell.sidebarActions.replace([]);
+        await lx.shell.sidebarActions.replace([]);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -809,16 +816,72 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 });
 
-spec('reject shell surface reconfigure for an id the shell never realized', {
-  id: 'HOSTAPP-SHELL-RECONFIG-001',
-  covers: ['lx.shell.reconfigure'],
+test('set and restore the name and icon the host shows for this app', {
+  id: 'HOSTAPP-APP-DISPLAY-001',
+  covers: ['lx.shell.setAppDisplay'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
-  const { app } = bindFixture(t, 'HOSTAPP-SHELL-RECONFIG-001');
+  const { app } = bindFixture(t, 'HOSTAPP-APP-DISPLAY-001');
+  // The choice persists across launches; restore the defaults however the spec ends.
+  t.defer(async () => {
+    await app.logic.eval(async ({ lx }) => {
+      try { await lx.shell.setAppDisplay({ name: null, icon: null }); } catch {}
+      return true;
+    });
+  });
+
+  const result = await app.logic.eval(async ({ lx }) => {
+    const setDisplay = lx.shell.setAppDisplay as (patch: unknown) => Promise<void>;
+    const attempt = async (patch: unknown) => {
+      try {
+        await setDisplay(patch);
+        return { ok: true, code: '' };
+      } catch (error) {
+        return { ok: false, code: (error as { code?: string }).code ?? '' };
+      }
+    };
+    const packageName = lx.getAppInfo().name;
+    const set = await attempt({ name: '  Showcase Brand  ', icon: 'public/showcase-icon.png' });
+    const again = await attempt({ name: 'Showcase Brand', icon: 'public/showcase-icon.png' });
+    return {
+      set,
+      again,
+      svg: await attempt({ icon: 'public/showcase-icon.svg' }),
+      nameAfterSet: lx.getAppInfo().name === packageName,
+      empty: await attempt({}),
+      unknown: await attempt({ title: 'x' }),
+      notObject: await attempt('x'),
+      multiline: await attempt({ name: 'a\nb' }),
+      tooLong: await attempt({ name: 'x'.repeat(65) }),
+      remote: await attempt({ icon: 'https://example.com/a.png' }),
+      traversal: await attempt({ icon: '../a.png' }),
+      notImage: await attempt({ icon: 'lxapp.json' }),
+      blankClears: await attempt({ name: '   ', icon: '' }),
+    };
+  });
+  expect(result.set.ok).toBeTruthy();
+  expect(result.again.ok).toBeTruthy();
+  expect(result.svg.ok).toBeTruthy();
+  expect(result.nameAfterSet).toBeTruthy();
+  for (const refused of [
+    result.empty, result.unknown, result.notObject, result.multiline, result.tooLong,
+    result.remote, result.traversal, result.notImage,
+  ]) {
+    expect(refused).toEqual({ ok: false, code: 'E_INVALID_ARG' });
+  }
+  expect(result.blankClears.ok).toBeTruthy();
+});
+
+test('refuse to move the root main out of main', {
+  id: 'HOSTAPP-SHELL-OPENAPP-ROOT-001',
+  covers: ['lx.shell.openApp'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-SHELL-OPENAPP-ROOT-001');
 
   const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      await lx.shell.reconfigure('surface-that-was-never-opened', { as: 'aside', edge: 'right' });
+      await lx.shell.openApp(lx.getAppInfo().appId, { as: 'aside' });
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -827,11 +890,10 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
   });
 
   expect(result.ok).toBeFalsy();
-  expect(typeof result.code).toBe('string');
-  expect(String(result.code).length).toBeGreaterThan(0);
+  expect(result.code).toBe('E_SURFACE_ROLE_LOCKED');
 });
 
-spec('subscribe to and release the surface context listener', {
+test('subscribe to and release the surface context listener', {
   id: 'HOSTAPP-SURFACE-CTX-001',
   covers: ['lx.surface', 'lx.surface.watchContext'],
   app: SHOWCASE_APP_ID,

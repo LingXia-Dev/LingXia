@@ -5,15 +5,15 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// The attachment `@lingxia/test` writes for each spec under
-/// `--record-network`: `attachments/<spec id>[/repeat-k]/attempt-n/<name>`.
+/// The attachment `@lingxia/test` writes for each test under
+/// `--record-network`: `attachments/<test id>[/repeat-k]/attempt-n/<name>`.
 pub const RECORDED_SCENARIO: &str = "network.scenario.json";
 
-/// Copy each spec's recorded scenario into `dir` as `<spec id>.json`
-/// (`<spec id>-repeat-<k>.json` under `--repeat-each`). A retried spec keeps
-/// its last attempt. Two specs whose ids map to the same file name get a
+/// Copy each test's recorded scenario into `dir` as `<test id>.json`
+/// (`<test id>-repeat-<k>.json` under `--repeat-each`). A retried test keeps
+/// its last attempt. Two tests whose ids map to the same file name get a
 /// numeric suffix (`<stem>-2.json`), so one never overwrites another.
-/// Returns the files written, in spec order.
+/// Returns the files written, in test order.
 pub fn save_recorded_scenarios(
     dir: &Path,
     artifacts: &[(String, PathBuf, usize)],
@@ -56,7 +56,7 @@ pub fn save_recorded_scenarios(
     Ok(written)
 }
 
-/// `(spec id, repeat)` of a recorded-scenario attachment name.
+/// `(test id, repeat)` of a recorded-scenario attachment name.
 fn scenario_key(artifact: &str) -> Option<(String, Option<String>)> {
     let rest = artifact.strip_prefix("attachments/")?;
     let rest = rest.strip_suffix(RECORDED_SCENARIO)?.strip_suffix('/')?;
@@ -69,7 +69,7 @@ fn scenario_key(artifact: &str) -> Option<(String, Option<String>)> {
     Some((id, repeat))
 }
 
-/// A file stem for a spec id: unsafe characters become `-`.
+/// A file stem for a test id: unsafe characters become `-`.
 fn scenario_stem(id: &str, repeat: Option<&str>) -> String {
     let mut stem: String = id
         .chars()
@@ -90,7 +90,7 @@ fn scenario_stem(id: &str, repeat: Option<&str>) -> String {
     stem
 }
 
-/// `<spec id>.json` for a recorded-scenario attachment name.
+/// `<test id>.json` for a recorded-scenario attachment name.
 #[cfg(test)]
 fn scenario_file_name(artifact: &str) -> Option<String> {
     let (id, repeat) = scenario_key(artifact)?;
@@ -137,7 +137,7 @@ pub fn network_lines(calls: &Value) -> Vec<String> {
         .collect()
 }
 
-/// What a failed spec prints about the scenario it had installed: the
+/// What a failed test prints about the scenario it had installed: the
 /// scenario, each rule's hits, and the calls before the failure with who
 /// answered them. Empty when it had none.
 pub fn scenario_lines(detail: &serde_json::Map<String, Value>) -> Vec<String> {

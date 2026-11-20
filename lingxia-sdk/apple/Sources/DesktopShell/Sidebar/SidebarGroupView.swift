@@ -84,6 +84,10 @@ private class SidebarGroupHeaderView: NSView {
     var renameField: NSTextField?
     var onHeaderClicked: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
+    /// The lxapp this header may be dragged out as (toward the main's edge,
+    /// into the side panel); nil for home, the root main.
+    var dragAppIdProvider: (() -> String?)?
+    private static let dragThreshold: CGFloat = 4
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, frame.contains(point) else { return nil }
@@ -121,12 +125,47 @@ private class SidebarGroupHeaderView: NSView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// A click still selects or toggles the group; moving past the threshold
+    /// with the button held drags the app out instead.
     override func mouseDown(with event: NSEvent) {
-        onHeaderClicked?()
+        guard let appId = dragAppIdProvider?(), let window else {
+            onHeaderClicked?()
+            return
+        }
+        let origin = event.locationInWindow
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp {
+                onHeaderClicked?()
+                return
+            }
+            let point = next.locationInWindow
+            if hypot(point.x - origin.x, point.y - origin.y) >= Self.dragThreshold {
+                beginDrag(appId: appId, with: next)
+                return
+            }
+        }
+    }
+
+    private func beginDrag(appId: String, with event: NSEvent) {
+        let item = NSPasteboardItem()
+        guard SidebarMainDragPayload(appId: appId).write(to: item) else { return }
+        let draggingItem = NSDraggingItem(pasteboardWriter: item)
+        draggingItem.setDraggingFrame(bounds, contents: DragSnapshot.image(of: self))
+        let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
     }
 
     override func rightMouseDown(with event: NSEvent) {
         onRightClick?(event)
+    }
+}
+
+extension SidebarGroupHeaderView: NSDraggingSource {
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        context == .withinApplication ? .move : []
     }
 }
 
@@ -139,7 +178,7 @@ private class SidebarGroupHeaderView: NSView {
 class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     struct Layout {
-        static let headerHeight: CGFloat = 36
+        static let headerHeight: CGFloat = 40
         static let headerCornerRadius: CGFloat = 6
         static let groupInset: CGFloat = 8
         static let headerHPadding: CGFloat = 8
@@ -147,7 +186,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         static let closeButtonSize: CGFloat = 16
         static let itemTopPadding: CGFloat = 2
         /// Sidebar app tile. Raster `AppIcon.png` is a square; the shell clips it.
-        static let appIconSize: CGFloat = 16
+        static let appIconSize: CGFloat = 18
     }
 
     let appId: String
@@ -336,6 +375,12 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         headerView.onRightClick = { [weak self] event in
             self?.requestContextMenu(with: event)
         }
+        // Dragging the header toward the main's edge moves the live app into
+        // the side panel; home, the root main, stays.
+        headerView.dragAppIdProvider = { [weak self] in
+            guard let self, !LxAppCore.isHomeLxApp(self.providerAppId) else { return nil }
+            return self.providerAppId
+        }
         addSubview(headerView)
 
         // App icon (left of the name)
@@ -348,7 +393,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
         // App name (left-aligned in header)
         appNameLabel.translatesAutoresizingMaskIntoConstraints = false
-        appNameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        appNameLabel.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         appNameLabel.lineBreakMode = .byTruncatingTail
         appNameLabel.maximumNumberOfLines = 1
         appNameLabel.delegate = self
@@ -491,11 +536,10 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         applyColors()
     }
 
-    /// Show the lxapp's icon (`path` is an absolute file path from the
-    /// registry cache). Home uses the host product icon; other apps fall
-    /// back to the bundled default mark. The shell clips the square tile.
-    private func loadAppIcon(path: String) {
-        let source = LxIcon.lxappImage(appId: providerAppId, path: path)
+    /// Show the lxapp's icon as `LxIcon.lxappImage` ranks it. The shell clips
+    /// the square tile.
+    private func loadAppIcon() {
+        let source = LxIcon.lxappImage(appId: providerAppId)
         appIconView.image = source.map { TabBarHelper.appTileIcon($0, size: Layout.appIconSize) }
     }
 
@@ -507,7 +551,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
         let info = getLxAppInfo(providerAppId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
-        loadAppIcon(path: getLxAppDisplayIconPath(providerAppId).toString())
+        loadAppIcon()
 
         // Hide close button for home lxapp
         let isHome = LxAppCore.isHomeLxApp(providerAppId)
@@ -568,7 +612,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         if !isRenaming {
             appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
         }
-        appIconView.image = (managedIcon ?? LxIcon.lxappImage(appId: providerAppId, path: "")).map {
+        appIconView.image = (managedIcon ?? LxIcon.lxappImage(appId: providerAppId)).map {
             TabBarHelper.appTileIcon($0, size: Layout.appIconSize)
         }
         closeButton.isHidden = true
@@ -842,7 +886,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     /// SF Symbols has no vertical ellipsis on macOS 12+, so turn `ellipsis`
     /// a quarter. Stays a template so the button tints it.
-    private static func verticalEllipsisImage() -> NSImage? {
+    /// The sidebar rows' "···" glyph, vertical.
+    static func verticalEllipsisImage() -> NSImage? {
         guard let base = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More actions")?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))
         else {
@@ -1023,6 +1068,18 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         menu.addItem(cleanItem)
 
         if !isHome {
+            // The mirror of the aside tab's "Open in Main Area": the live app
+            // moves beside the main without restarting. Home is the root main.
+            menu.addItem(NSMenuItem.separator())
+            let appId = providerAppId
+            let openInSide = MenuActionItem(title: L10n.string("lx_aside_open_in_side")) {
+                _ = demoteMainLxappToAside(appId, "")
+            }
+            openInSide.image = NSImage(
+                systemSymbolName: "sidebar.trailing", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            menu.addItem(openInSide)
+
             menu.addItem(NSMenuItem.separator())
             let uninstallItem = NSMenuItem(
                 title: L10n.string("lx_capsule_uninstall"),

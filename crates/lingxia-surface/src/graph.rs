@@ -416,7 +416,7 @@ impl SurfaceGraph {
         true
     }
 
-    /// Group the asides into per-kind slots (lxapp / browser / native), in
+    /// Group the asides into per-kind slots (panel / native), in
     /// first-open order, with tab order = open order. Admission marks the
     /// most recently used slots visible — the size class caps the count
     /// (expanded 3 / medium 1 / compact 0), and physical width caps it

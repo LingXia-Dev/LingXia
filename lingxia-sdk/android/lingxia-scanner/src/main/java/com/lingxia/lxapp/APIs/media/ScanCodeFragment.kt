@@ -39,6 +39,8 @@ import com.google.mlkit.vision.common.InputImage
 import com.lingxia.app.media.modules.MediaModuleHost as LxLog
 import com.lingxia.app.media.modules.MediaModuleHost as NativeApi
 import com.lingxia.lxapp.R
+import com.lingxia.app.PermissionGates
+import com.lingxia.app.PermissionFeature
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -124,8 +126,12 @@ internal class ScanCodeFragment : Fragment() {
         }
     }
 
+    private var finishPermissionPrompt: ((Boolean) -> Unit)? = null
+
     private val permissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+            finishPermissionPrompt?.invoke(granted)
+            finishPermissionPrompt = null
             if (granted) {
                 startCamera()
             } else {
@@ -337,6 +343,8 @@ internal class ScanCodeFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        finishPermissionPrompt?.invoke(false)
+        finishPermissionPrompt = null
         stopScanLineAnimation()
         mainHandler.removeCallbacks(showLoadingRunnable)
         mainHandler.removeCallbacks(streamWatchdogRunnable)
@@ -367,7 +375,21 @@ internal class ScanCodeFragment : Fragment() {
             PackageManager.PERMISSION_GRANTED
         ) {
             startCamera()
-        } else {
+            return
+        }
+        val activity = activity ?: return
+        val permissions = arrayOf(Manifest.permission.CAMERA)
+        PermissionGates.run(
+            activity,
+            PermissionFeature.SCAN_CODE,
+            permissions,
+            declined = { if (isAdded) deliverFailure(3001, "Camera permission denied") },
+        ) { finish ->
+            if (!isAdded) {
+                finish(false)
+                return@run
+            }
+            finishPermissionPrompt = finish
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }

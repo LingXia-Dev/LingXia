@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, test } from '@lingxia/test';
 import { openDemo } from './open-demo';
 import { apart, lineRows, reveal, sameHue, sample, trackFill } from './pixels';
 
 // The control, select and composition demos, driven as a user drives them.
-spec('the controls take a tap, a drag and typing as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea'], start: openDemo('controls') }, async (t) => {
+test('the controls take a tap, a drag and typing as a user gives them', { covers: ['view:radio', 'view:slider', 'view:textarea'], start: openDemo('controls') }, async (t) => {
   const view = t.app.view;
   const values = view.testId('lab-controls-values');
   await expect(values).toHaveAttribute('data-state', 'size=m volume=40 notes=0');
@@ -19,7 +19,7 @@ spec('the controls take a tap, a drag and typing as a user gives them', { covers
   await expect.poll(async () => Number(((await values.getAttribute('data-state')) ?? '').match(/volume=(\d+)/)?.[1])).toBeGreaterThan(40);
 });
 
-spec('kit progress reads as a progressbar with its value, and without one while indeterminate', { covers: ['view:a11y'], start: openDemo('progress') }, async (t) => {
+test('kit progress reads as a progressbar with its value, and without one while indeterminate', { covers: ['view:a11y'], start: openDemo('progress') }, async (t) => {
   const view = t.app.view;
   const upload = view.getByRole('progressbar', { name: 'Upload' });
   await expect(upload).toHaveValue('40');
@@ -33,7 +33,7 @@ spec('kit progress reads as a progressbar with its value, and without one while 
   await expect.poll(async () => Math.round(await width('lab-progress-bar-fill') / await width('lab-progress-bar') * 100)).toBe(60);
 });
 
-spec('a slider styled by parts reads its valuetext and grows its line and thumb while held', { start: openDemo('controls') }, async (t) => {
+test('a slider styled by parts reads its valuetext and grows its line and thumb while held', { start: openDemo('controls') }, async (t) => {
   const view = t.app.view;
   const scrub = view.getByRole('slider', { name: 'Scrub' });
   await expect(scrub).toHaveAttribute('aria-valuetext', '0:30 of 3:00');
@@ -54,7 +54,7 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   await expect.poll(async () => lineRows(t, scrub), { timeout: 3_000 }).toBe(rest);
 });
 
-spec('a switch styled by parts recolours its track when on, and a disabled switch that is on keeps its accent', { start: openDemo('controls') }, async (t) => {
+test('a switch styled by parts recolours its track when on, and a disabled switch that is on keeps its accent', { start: openDemo('controls') }, async (t) => {
   const view = t.app.view;
   const power = view.getByRole('switch', { name: 'Power' });
   await reveal(t, power);
@@ -67,13 +67,13 @@ spec('a switch styled by parts recolours its track when on, and a disabled switc
   expect(sameHue(locked, accent) ? 'accent' : `grey ${JSON.stringify({ locked, accent })}`).toBe('accent');
 });
 
-spec('a long select label stays on one line', { start: openDemo('select') }, async (t) => {
+test('a long select label stays on one line', { start: openDemo('select') }, async (t) => {
   const view = t.app.view;
   const billing = view.getByRole('combobox', { name: 'Billing' });
   expect((await billing.boundingBox()).height).toBeLessThan(56);
 });
 
-spec('a ring in the surface role paints the surface it sits on, and a role="img" avatar speaks only its name', { start: openDemo('rings') }, async (t) => {
+test('a ring in the surface role paints the surface it sits on, and a role="img" avatar speaks only its name', { start: openDemo('rings') }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('img', { name: 'Ada Lovelace' })).toHaveCount(1);
   await expect(view.getByRole('img', { name: 'Alan Turing' })).toHaveCount(1);
@@ -86,7 +86,7 @@ spec('a ring in the surface role paints the surface it sits on, and a role="img"
   expect(apart(ring, stage) ? `ring ${JSON.stringify({ ring, stage })}` : 'matches').toBe('matches');
 });
 
-spec('a provided value reaches List rows under rtl and follows its changes', { covers: ['view:list'], start: openDemo('shared') }, async (t) => {
+test('a provided value reaches List rows under rtl and follows its changes', { covers: ['view:list'], start: openDemo('shared') }, async (t) => {
   const view = t.app.view;
   // Rows of a List below the fold are not rendered yet; a tap on the picked row reveals it and changes nothing.
   await view.testId('lab-choice-alpha').click();
@@ -109,7 +109,7 @@ spec('a provided value reaches List rows under rtl and follows its changes', { c
   await expect(view.testId('lab-choice-alpha-state')).toHaveText('md');
 });
 
-spec('a popover opens from a List row that names it by a useId id', { covers: ['view:popover', 'view:list'], start: openDemo('shared') }, async (t) => {
+test('a popover opens from a List row that names it by a useId id', { covers: ['view:popover', 'view:list'], start: openDemo('shared') }, async (t) => {
   const view = t.app.view;
   await view.testId('lab-choice-beta').click();
   await view.testId('lab-choice-gamma-more').click();

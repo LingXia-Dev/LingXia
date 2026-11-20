@@ -87,6 +87,8 @@ OS="$(detect_os)"
 ARCH="$(detect_arch)"
 # Asset name scheme matches .github/workflows/release-cli.yml exactly.
 if [ "$OS" = "windows" ]; then
+  # Windows 11 Arm runs the same x64 release through emulation.
+  ARCH="x86_64"
   EXT=".exe"
 else
   EXT=""

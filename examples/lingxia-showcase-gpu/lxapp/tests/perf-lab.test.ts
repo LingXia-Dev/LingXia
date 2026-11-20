@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type TestMetrics } from '@lingxia/test';
+import { expect, test, type Fixture, type TestMetrics } from '@lingxia/test';
 import type { PageContract } from '@lingxia/types/page';
 import type { DriveRequest, PerfActions, PerfData } from '../shared/perf-types';
 import { judgeFrames, judgeInput, judgeReveal, REVEAL_P95_MS, TICK_SHARE } from '../shared/perf-judge';
@@ -10,7 +10,7 @@ type PerfLab = PageContract<PerfData, PerfActions>;
 // (shared/perf-judge.ts). A scene that misses it fails here too; each spec attaches what it
 // measured before it judges, so a red run still reports its numbers.
 
-spec.configure({ start: { page: 'perf-lab' }, timeout: 90_000 });
+test.configure({ start: { page: 'perf-lab' }, timeout: 90_000 });
 
 async function scene(t: Fixture, name: string, count: number) {
   await t.app.view.testId(`perf-tab-${name}`).click();
@@ -61,7 +61,7 @@ async function glideSettled(t: Fixture, timeoutMs = 8000) {
   throw new Error(`the list was still gliding after ${timeoutMs} ms`);
 }
 
-spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers: ['view:list'] }, async (t) => {
+test('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'list', 1000);
   const list = t.app.view.testId('perf-list');
   const started = Date.now();
@@ -74,7 +74,7 @@ spec('a 1000-row list keeps pace through flings', { id: 'PERF-LIST-001', covers:
 });
 
 // Each fling lands while the last one still glides, so the list window keeps shifting under input.
-spec('a 1000-row list keeps pace through chained flings', { id: 'PERF-LIST-002', covers: ['view:list'] }, async (t) => {
+test('a 1000-row list keeps pace through chained flings', { id: 'PERF-LIST-002', covers: ['view:list'] }, async (t) => {
   await scene(t, 'list', 1000);
   const list = t.app.view.testId('perf-list');
   const started = Date.now();
@@ -86,38 +86,38 @@ spec('a 1000-row list keeps pace through chained flings', { id: 'PERF-LIST-002',
   await expectFrames(t, await t.app.metrics({ windowMs: Date.now() - started }));
 });
 
-spec('a 1000-row list keeps pace while Logic moves its anchor every tick', { id: 'PERF-DATA-001', covers: ['view:list'] }, async (t) => {
+test('a 1000-row list keeps pace while Logic moves its anchor every tick', { id: 'PERF-DATA-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'data', 1000);
   await expectFrames(t, await runBudget(t, 'data', 1000));
 });
 
-spec('a 1000-record Logic list keeps pace while one record changes every tick', { id: 'PERF-STATE-001', covers: ['view:list'] }, async (t) => {
+test('a 1000-record Logic list keeps pace while one record changes every tick', { id: 'PERF-STATE-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'state', 1000);
   await expectFrames(t, await runBudget(t, 'state', 1000));
 });
 
-spec('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
+test('250 springs at once keep pace', { id: 'PERF-ANIM-001' }, async (t) => {
   await scene(t, 'animation', 250);
   await expectFrames(t, await runBudget(t, 'animation', 250));
 });
 
-spec('eight translucent, blurred and shadowed layers keep pace', { id: 'PERF-FILL-001' }, async (t) => {
+test('eight translucent, blurred and shadowed layers keep pace', { id: 'PERF-FILL-001' }, async (t) => {
   await skipWhenCovered(t, 'perf-lab');
   await scene(t, 'fill', 8);
   await expectFrames(t, await runBudget(t, 'fill', 8));
 });
 
-spec('a mixed-script paragraph relayouts while it grows', { id: 'PERF-TEXT-001' }, async (t) => {
+test('a mixed-script paragraph relayouts while it grows', { id: 'PERF-TEXT-001' }, async (t) => {
   await scene(t, 'text', 4);
   await expectFrames(t, await runBudget(t, 'text', 4));
 });
 
-spec('images decoding while a list scrolls keep pace', { id: 'PERF-IMAGE-001' }, async (t) => {
+test('images decoding while a list scrolls keep pace', { id: 'PERF-IMAGE-001' }, async (t) => {
   await scene(t, 'images', 96);
   await expectFrames(t, await runBudget(t, 'images', 96));
 });
 
-spec('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH-001' }, async (t) => {
+test('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH-001' }, async (t) => {
   await scene(t, 'touch', 48);
   const box = t.app.view.testId('perf-box');
   const started = Date.now();
@@ -131,7 +131,7 @@ spec('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH
   withinBudget(t, metrics, verdict.pass, verdict.line);
 });
 
-spec('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.navigateTo', 'lx.navigateBack'] }, async (t) => {
+test('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.navigateTo', 'lx.navigateBack'] }, async (t) => {
   await scene(t, 'transition', 100);
   const back = await runBudget(t, 'transition', 100);
   await t.attach('pop-metrics', back);
@@ -154,7 +154,7 @@ spec('pushed and popped pages show their first frame within budget', { id: 'PERF
   withinBudget(t, back, slowest <= REVEAL_P95_MS, `slowest push first present ${slowest} ms (budget ${REVEAL_P95_MS} ms)`);
 });
 
-spec('the list at its largest row count stays windowed and the page responsive', { id: 'PERF-LIST-MAX-001', covers: ['view:list'] }, async (t) => {
+test('the list at its largest row count stays windowed and the page responsive', { id: 'PERF-LIST-MAX-001', covers: ['view:list'] }, async (t) => {
   await scene(t, 'list', 20000);
   const metrics = await t.app.metrics();
   await t.attach('metrics', metrics);
@@ -174,7 +174,7 @@ spec('the list at its largest row count stays windowed and the page responsive',
 const RELOAD = /^(Reload page|重新载入页面)$/;
 const HOME = /^(Home|首页)$/;
 
-spec('a page past its View budget shows recovery chrome while the rest of the app works', { id: 'PERF-FAIL-001', requires: { chrome: true } }, async (t) => {
+test('a page past its View budget shows recovery chrome while the rest of the app works', { id: 'PERF-FAIL-001', requires: { chrome: true } }, async (t) => {
   // The act fails with the page it was acting on; the chrome is what counts.
   await t.app.view.testId('perf-stall').click().catch(() => undefined);
   const chrome = await t.waitFor(() => t.app.chrome.elements(), { until: elements => elements.some(e => RELOAD.test(e.label)) });
@@ -190,7 +190,7 @@ spec('a page past its View budget shows recovery chrome while the rest of the ap
   await expect(t.app.view.testId('perf-tab-list')).toBeVisible({ timeout: 15_000 });
 });
 
-spec('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF-BRIDGE-001' }, async (t) => {
+test('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF-BRIDGE-001' }, async (t) => {
   // The touch scene draws only the tick counter per update, so the View is not the limit.
   await scene(t, 'touch', 48);
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
@@ -219,7 +219,7 @@ spec('state set from an awaited Logic loop keeps reaching the View', { id: 'PERF
   expect(reply.count).toBeGreaterThan(3);
 });
 
-spec('the bridge micro-benchmark runs its writes, requests and calls', { id: 'PERF-BRIDGE-002' }, async (t) => {
+test('the bridge micro-benchmark runs its writes, requests and calls', { id: 'PERF-BRIDGE-002' }, async (t) => {
   // Latencies come from the runtime's bridge probes in debug builds: `lxdev logs --grep bridge-probe`.
   await scene(t, 'touch', 48);
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });

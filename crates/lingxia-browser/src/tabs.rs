@@ -580,6 +580,28 @@ pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
         .map(|tab| build_tab_info(&normalized, tab))
 }
 
+/// The browser tabs that can be behind a side-panel page opened at `url`,
+/// newest first: standalone or aside tabs (whichever the platform's side
+/// panel creates) whose initial URL is `url`. URL-callback tabs belong to
+/// their opener and never match.
+pub fn side_panel_tabs_for_url(url: &str) -> Vec<String> {
+    let initial_url =
+        lxapp::lingxia_surface::normalize_initial_url(&normalize_browser_target_url(url));
+    let state = lock_state();
+    let mut matches = state
+        .tabs
+        .iter()
+        .filter(|(_, tab)| {
+            (tab.standalone || tab.aside)
+                && !tab.url_callback.load(std::sync::atomic::Ordering::Acquire)
+                && tab.initial_url.as_deref() == Some(initial_url.as_str())
+        })
+        .map(|(tab_id, tab)| (tab.created_order, tab_id.clone()))
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|(created_order, _)| std::cmp::Reverse(*created_order));
+    matches.into_iter().map(|(_, tab_id)| tab_id).collect()
+}
+
 /// Tabs in creation order — the listing contract for automation and shells;
 /// id ordering is an accident of stable-key naming and must not leak out.
 pub fn browser_tabs() -> Vec<BrowserTabInfo> {
@@ -1258,6 +1280,18 @@ pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
 /// Re-home a docked (standalone) tab as an ordinary main-browser tab and make
 /// it active. The tab keeps its id, WebView and history. URL-callback and
 /// ephemeral tabs stay docked: they belong to the flow that opened them.
+/// Whether [`promote_standalone_tab`] would accept `tab_id`.
+pub(crate) fn can_promote_standalone_tab(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state().tabs.get(&normalized).is_some_and(|tab| {
+        tab.standalone
+            && !tab.url_callback.load(Ordering::Acquire)
+            && tab.data_mode != WebViewDataMode::Ephemeral
+    })
+}
+
 pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     let normalized = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
@@ -1286,6 +1320,59 @@ pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     }
     set_active_browser_tab(&normalized);
     // It now appears in the product listing, which excludes standalone tabs.
+    notify_tabs_changed();
+    Ok(())
+}
+
+/// Whether [`demote_tab_to_standalone`] would accept `tab_id`: a main-area
+/// tab that is not a URL-callback or ephemeral tab.
+pub(crate) fn can_demote_tab_to_standalone(tab_id: &str) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state().tabs.get(&normalized).is_some_and(|tab| {
+        !tab.standalone
+            && !tab.url_callback.load(Ordering::Acquire)
+            && tab.data_mode != WebViewDataMode::Ephemeral
+    })
+}
+
+/// The inverse of [`promote_standalone_tab`]: hand a main-area tab to a
+/// docked side panel opened by `owner_appid`. The tab keeps its id, WebView
+/// and history; it leaves the product listing, so the main browser drops it.
+pub(crate) fn demote_tab_to_standalone(
+    tab_id: &str,
+    owner_appid: &str,
+    owner_session_id: u64,
+) -> Result<(), LxAppError> {
+    let normalized = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
+    {
+        let mut state = lock_state();
+        let tab = state
+            .tabs
+            .get_mut(&normalized)
+            .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab {normalized}")))?;
+        if tab.standalone {
+            return Err(LxAppError::InvalidParameter(format!(
+                "browser tab {normalized} is already docked"
+            )));
+        }
+        if tab.url_callback.load(Ordering::Acquire) || tab.data_mode == WebViewDataMode::Ephemeral {
+            return Err(LxAppError::UnsupportedOperation(
+                "a URL-callback or ephemeral tab cannot move into the side panel".to_string(),
+            ));
+        }
+        tab.standalone = true;
+        tab.owner_appid = Some(owner_appid.to_string());
+        tab.owner_session_id = Some(owner_session_id);
+    }
+    {
+        let mut active = lock_active_tab();
+        if active.as_deref() == Some(normalized.as_str()) {
+            *active = None;
+        }
+    }
     notify_tabs_changed();
     Ok(())
 }
@@ -1756,6 +1843,57 @@ mod tests {
         tab.standalone = false;
         tab.current_url = Some("lingxia://settings".into());
         assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+    }
+
+    #[test]
+    fn side_panel_tabs_are_found_by_their_first_url_newest_first() {
+        let insert = |standalone: bool, aside: bool, url_callback: bool, url: &str| {
+            let tab_id = generate_tab_id();
+            lock_state().tabs.insert(
+                tab_id.clone(),
+                BrowserTabState {
+                    session_id: 42,
+                    created_order: next_browser_created_order(),
+                    create_token: 1,
+                    create_in_flight: false,
+                    pending_url: None,
+                    initial_url: Some(lxapp::lingxia_surface::normalize_initial_url(url)),
+                    current_url: None,
+                    title: None,
+                    title_url: None,
+                    favicon_png: None,
+                    can_go_back: false,
+                    can_go_forward: false,
+                    discarded: false,
+                    data_mode: WebViewDataMode::ProfileDefault,
+                    url_callback: Arc::new(AtomicBool::new(url_callback)),
+                    standalone,
+                    aside,
+                    owner_appid: None,
+                    owner_session_id: None,
+                },
+            );
+            tab_id
+        };
+        let url = "https://side-panel.example/page";
+        // A product tab, a URL-callback tab and another URL never match.
+        let product = insert(false, false, false, url);
+        let callback = insert(true, false, true, url);
+        let other = insert(true, false, false, "https://elsewhere.example/");
+        assert!(side_panel_tabs_for_url(url).is_empty());
+        // A standalone (macOS docked browser) or aside (Windows) tab does,
+        // the newest when there are two.
+        let older = insert(true, false, false, url);
+        assert_eq!(side_panel_tabs_for_url(url), vec![older.clone()]);
+        let newer = insert(false, true, false, url);
+        assert_eq!(
+            side_panel_tabs_for_url(url),
+            vec![newer.clone(), older.clone()]
+        );
+        let mut state = lock_state();
+        for tab_id in [product, callback, other, older, newer] {
+            state.tabs.remove(&tab_id);
+        }
     }
 
     #[test]
@@ -2282,6 +2420,56 @@ mod tests {
         lock_state().tabs.remove(&docked_tab_id);
         lock_state().tabs.remove(&callback_tab_id);
         lock_state().tabs.remove(&ephemeral_tab_id);
+        lock_active_tab().take();
+    }
+
+    #[test]
+    fn demoting_a_main_tab_docks_it_and_promoting_brings_it_back() {
+        let tab_id = generate_tab_id();
+        let callback_tab_id = generate_tab_id();
+        let make_tab = |url_callback| BrowserTabState {
+            session_id: 7,
+            created_order: next_browser_created_order(),
+            create_token: 1,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: Some("https://example.test/".to_string()),
+            current_url: Some("https://example.test/next".to_string()),
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: true,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(url_callback)),
+            standalone: false,
+            aside: false,
+            owner_appid: None,
+            owner_session_id: None,
+        };
+        lock_state().tabs.insert(tab_id.clone(), make_tab(false));
+        lock_state()
+            .tabs
+            .insert(callback_tab_id.clone(), make_tab(true));
+        *lock_active_tab() = Some(tab_id.clone());
+
+        assert!(can_demote_tab_to_standalone(&tab_id));
+        assert!(!can_demote_tab_to_standalone(&callback_tab_id));
+        demote_tab_to_standalone(&tab_id, "app.shell", 4).unwrap();
+
+        assert!(is_standalone_tab(&tab_id));
+        assert_eq!(tab_owner_appid(&tab_id).as_deref(), Some("app.shell"));
+        assert!(lock_active_tab().is_none());
+        assert!(demote_tab_to_standalone(&tab_id, "app.shell", 4).is_err());
+        assert!(demote_tab_to_standalone(&callback_tab_id, "app.shell", 4).is_err());
+        assert!(!is_standalone_tab(&callback_tab_id));
+
+        promote_standalone_tab(&tab_id).unwrap();
+        assert!(!is_standalone_tab(&tab_id));
+
+        lock_state().tabs.remove(&tab_id);
+        lock_state().tabs.remove(&callback_tab_id);
         lock_active_tab().take();
     }
 }

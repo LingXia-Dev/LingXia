@@ -1,4 +1,4 @@
-import { expect, spec, type Fixture, type Locator } from '@lingxia/test';
+import { expect, test, type Fixture, type Locator } from '@lingxia/test';
 import { openDemo, openUnderTabs, rootOf } from './open-demo';
 
 // How a GPU page shares the bottom edge with the host tab bar: the page scroll runs under the bar
@@ -48,7 +48,7 @@ async function coversTheBar(t: Fixture, root: string, open: () => Promise<void>,
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
 }
 
-spec('a tab page scroll runs under the tab bar and its end scrolls clear of it', { covers: ['view:scroll'], start: openUnderTabs('controls') }, async (t) => {
+test('a tab page scroll runs under the tab bar and its end scrolls clear of it', { covers: ['view:scroll'], start: openUnderTabs('controls') }, async (t) => {
   const view = t.app.view;
   const { page, inset, top } = await bars(t, rootOf('controls'));
   const scroll = await view.testId('page-scroll').boundingBox();
@@ -65,7 +65,7 @@ spec('a tab page scroll runs under the tab bar and its end scrolls clear of it',
   expect(previous).toBeGreaterThan(top - inset);
 });
 
-spec('another tab page scroll runs under the tab bar too', { covers: ['view:scroll'], start: { page: 'api' } }, async (t) => {
+test('another tab page scroll runs under the tab bar too', { covers: ['view:scroll'], start: { page: 'api' } }, async (t) => {
   const view = t.app.view;
   const page = await view.testId('api-page').boundingBox();
   const scroll = await view.testId('page-scroll').boundingBox();
@@ -73,31 +73,31 @@ spec('another tab page scroll runs under the tab bar too', { covers: ['view:scro
 });
 
 // A fine pointer opens a popover, not a sheet with Cancel.
-spec('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: openUnderTabs('select'), requires: { pointer: 'coarse' } }, async (t) => {
+test('a select picker covers the tab bar', { covers: ['view:select', 'view:dialog'], start: openUnderTabs('select'), requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
   await coversTheBar(t, rootOf('select'), () => view.testId('lab-input-plan').click(), view.testId('lx-picker'),
     () => view.testId('lx-picker-cancel').click());
 });
 
-spec('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: openUnderTabs('fields'), requires: { pointer: 'coarse' } }, async (t) => {
+test('a date picker covers the tab bar', { covers: ['view:input', 'view:dialog'], start: openUnderTabs('fields'), requires: { pointer: 'coarse' } }, async (t) => {
   const view = t.app.view;
   await coversTheBar(t, rootOf('fields'), () => view.testId('lab-input-date').click(), view.testId('lx-picker'),
     () => view.testId('lx-picker-cancel').click());
 });
 
-spec('an overlay sheet covers the tab bar', { covers: ['view:dialog'], start: openUnderTabs('bottomSheet') }, async (t) => {
+test('an overlay sheet covers the tab bar', { covers: ['view:dialog'], start: openUnderTabs('bottomSheet') }, async (t) => {
   const view = t.app.view;
   await coversTheBar(t, rootOf('bottomSheet'), () => view.testId('lab-overlay-sheet').click(), view.getByRole('dialog', { name: 'Filters' }),
     () => view.testId('lab-sheet-apply').click());
 });
 
-spec('a sheet with detents covers the tab bar', { covers: ['view:dialog', 'view:drag'], start: openUnderTabs('sheet') }, async (t) => {
+test('a sheet with detents covers the tab bar', { covers: ['view:dialog', 'view:drag'], start: openUnderTabs('sheet') }, async (t) => {
   const view = t.app.view;
   await coversTheBar(t, rootOf('sheet'), () => view.testId('lab-detents-open').click(), view.testId('lab-detents-sheet'),
     () => view.testId('lab-detents-sheet').performAction('dismiss'));
 });
 
-spec('a tap at an element under the tab bar scrolls it clear of the bar first and lands on it', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
+test('a tap at an element under the tab bar scrolls it clear of the bar first and lands on it', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
   const view = t.app.view;
   const { page, top } = await bars(t, rootOf('dots'));
   const state = view.testId('lab-kit-pager-state');
@@ -118,7 +118,7 @@ spec('a tap at an element under the tab bar scrolls it clear of the bar first an
   expect(bottom(await dot.boundingBox())).toBeLessThanOrEqual(top);
 });
 
-spec('a tap at an element partly under the tab bar lands on its visible part without scrolling', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
+test('a tap at an element partly under the tab bar lands on its visible part without scrolling', { covers: ['view:scroll'], start: openUnderTabs('dots') }, async (t) => {
   const view = t.app.view;
   const { top } = await bars(t, rootOf('dots'));
   const state = view.testId('lab-kit-pager-state');
@@ -152,7 +152,7 @@ spec('a tap at an element partly under the tab bar lands on its visible part wit
   expect((await dot.boundingBox()).y).toBe(parked.y);
 });
 
-spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view' } }, async (t) => {
+test('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view' } }, async (t) => {
   const before = await tabItems(t);
   console.log(`tab items readable before: ${before?.length ?? 'unsupported'}`);
   await t.app.nav.relaunch(openDemo('press'));
@@ -169,7 +169,7 @@ spec('a relaunch onto a page outside the tab bar hides the bar and keeps no room
 
 // Every tab page: at scroll end its last control rests above the bar; content passes under only while scrolling.
 // A fling takes about 3 s on the macOS Runner (under 0.1 s on a phone), two or more a tab.
-spec('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view' }, timeout: 90_000 }, async (t) => {
+test('every tab page ends its content above the tab bar', { covers: ['view:scroll'], start: { page: 'view' }, timeout: 90_000 }, async (t) => {
   const view = t.app.view;
   const { inset } = await bars(t);
   const controls = 'button, input, select, textarea, checkbox, switch, slider, [role="button"], [role="link"]';

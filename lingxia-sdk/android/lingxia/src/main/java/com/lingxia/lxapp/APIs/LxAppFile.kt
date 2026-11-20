@@ -32,6 +32,8 @@ import org.json.JSONObject
 
 internal object LxAppFile {
     private const val TAG = "LingXia.LxAppFile"
+    /** Business code 6000: surfaces to JS as E_NOT_SUPPORTED. */
+    private const val ERR_FEATURE_NOT_SUPPORTED = "6000"
     private val WPS_PACKAGES = listOf(
         "cn.wps.moffice_eng",
         "cn.wps.moffice_i18n",
@@ -265,21 +267,11 @@ internal object LxAppFile {
             )
         }
 
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            addFlags(
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-            )
-            title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_TITLE, it) }
-        }
-
-        val launched = activity.openHostFileDialog(intent) { result ->
-            reportFileDialogResult(callbackId, result)
-        }
-        if (!launched) {
-            NativeApi.onCallback(callbackId, false, "1000")
-        }
-        return launched
+        // ACTION_OPEN_DOCUMENT_TREE yields a SAF tree URI, which no LingXia
+        // file API can list or read, so refuse before showing a picker whose
+        // result would be unusable. Returning true: the callback is answered.
+        NativeApi.onCallback(callbackId, false, ERR_FEATURE_NOT_SUPPORTED)
+        return true
     }
 
     private fun reportFileDialogResult(callbackId: Long, result: HostFileDialogResult) {
@@ -288,6 +280,7 @@ internal object LxAppFile {
                 val payload = JSONObject().apply {
                     put("canceled", false)
                     put("paths", JSONArray(result.paths))
+                    put("names", JSONArray(result.names.map { it ?: JSONObject.NULL }))
                 }
                 NativeApi.onCallback(callbackId, true, payload.toString())
             }

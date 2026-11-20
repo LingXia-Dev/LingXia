@@ -280,6 +280,28 @@ pub fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
     tabs::promote_standalone_tab(tab_id)
 }
 
+/// Whether a docked tab may move into the main browser: URL-callback and
+/// ephemeral tabs belong to their opener.
+pub fn can_promote_standalone_tab(tab_id: &str) -> bool {
+    tabs::can_promote_standalone_tab(tab_id)
+}
+
+/// Hand a main-area tab to a docked side panel opened by `owner_appid`,
+/// keeping its id, WebView and history; it leaves the product listing.
+pub fn demote_tab_to_standalone(
+    tab_id: &str,
+    owner_appid: &str,
+    owner_session_id: u64,
+) -> Result<(), LxAppError> {
+    tabs::demote_tab_to_standalone(tab_id, owner_appid, owner_session_id)
+}
+
+/// Whether a main-area tab may move into the side panel: URL-callback and
+/// ephemeral tabs belong to their opener.
+pub fn can_demote_tab_to_standalone(tab_id: &str) -> bool {
+    tabs::can_demote_tab_to_standalone(tab_id)
+}
+
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     let owner_appid = tabs::tab_owner_appid(tab_id);
     tabs::close_browser_tab(tab_id)?;
@@ -322,6 +344,12 @@ pub fn clear_active() {
 
 pub fn tabs() -> Vec<BrowserTabInfo> {
     tabs::browser_tabs()
+}
+
+/// The browser tabs that can be behind a side-panel page opened at `url`,
+/// newest first. See `tabs::side_panel_tabs_for_url`.
+pub fn side_panel_tabs_for_url(url: &str) -> Vec<String> {
+    tabs::side_panel_tabs_for_url(url)
 }
 
 pub fn current_tab() -> Option<BrowserTabInfo> {

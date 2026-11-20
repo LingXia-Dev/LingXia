@@ -4,7 +4,7 @@ package com.lingxia.app.media
  * URL 源。
  *
  * v1 框架传给引擎的 [headers] **恒为空**。[com.lingxia.lxapp.APIs.media.LxMediaPlayer]
- * 今日没有 headers 入口，预览 / `<LxVideo>` 也不传 Cookie。宿主不要实现
+ * 今日没有 headers 入口，预览也不传 Cookie。宿主不要实现
  * `http-header-fields` 并指望预览带上登录态。字段留下是为了以后只改
  * loadSource、不改引擎协议。
  */
@@ -16,7 +16,7 @@ data class UrlPlayerSource(
 enum class UrlPlayerSurfaceKind {
     /** 全屏 MediaPreviewFragment。宿主引擎在 API ≥ 24 时允许 SurfaceView。 */
     PREVIEW,
-    /** &lt;LxVideo&gt; / MediaSwiper。必须 TextureView。 */
+    /** video.native / MediaSwiper。必须 TextureView。 */
     INLINE,
 }
 
