@@ -82,9 +82,7 @@ final class GpuFrameVectorsTests: XCTestCase {
         case "hit_test": return .hitTest(identity: r.identity!, generation: r.generation!, point: r.point!, word: r.word!)
         case "focus": return .focus(identity: r.identity!, generation: r.generation!)
         case "query": return .query(identity: r.identity!, token: r.token!)
-        case "select": return .select(identity: r.identity!, generation: r.generation!, index: r.index!)
         case "blur": return .blur(identity: r.identity!, token: r.token!)
-        case "pick": return .pick(identity: r.identity!, token: r.token!, parts: r.parts)
         default: return .edit(identity: r.identity!, token: r.token!, edits: r.edits!.map(rebuild), submit: r.submit!)
         }
     }
@@ -92,7 +90,7 @@ final class GpuFrameVectorsTests: XCTestCase {
     func testInputRequestMessagesEncodeEveryRequestTheCoreParses() throws {
         let root = try JSONSerialization.jsonObject(with: vectors()) as! [String: Any]
         let requests = root["inputRequests"] as! [[String: Any]]
-        XCTAssertEqual(Set(requests.map { $0["op"] as! String }).count, 8)
+        XCTAssertEqual(Set(requests.map { $0["op"] as! String }).count, 6)
         for vector in requests {
             let decoded = try JSONDecoder().decode(GpuFrameInputRequest.self, from: JSONSerialization.data(withJSONObject: vector))
             let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(rebuild(decoded))) as! NSDictionary
