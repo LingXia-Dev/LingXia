@@ -70,7 +70,7 @@ const GROUPS = [
     slug: 'feedback',
     title: 'Dialogs and feedback',
     summary: 'Ask the user something, or report what just happened.',
-    members: ['alert', 'confirm', 'showModal', 'showActionSheet', 'showToast', 'hideToast', 'share'],
+    members: ['ui', 'share'],
   },
   {
     slug: 'files',

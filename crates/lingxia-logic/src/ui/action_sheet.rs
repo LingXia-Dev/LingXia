@@ -20,8 +20,7 @@ use std::sync::Arc;
 #[ts_skip]
 struct JSActionSheetOptions {
     items: Vec<JSActionItem>,
-    #[js_name = "itemColor"]
-    item_color: Option<String>,
+    tone: Option<String>,
 }
 
 #[derive(FromJSObject)]
@@ -75,7 +74,8 @@ async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
 ) -> Result<JSObject, RongJSError> {
-    let JSActionSheetOptions { items, item_color } = options;
+    let JSActionSheetOptions { items, tone } = options;
+    let item_color = super::tone_color(tone.as_deref())?;
     let mut ids = std::collections::HashSet::new();
     for item in &items {
         if item.id.is_empty() || item.label.is_empty() || !ids.insert(item.id.as_str()) {
@@ -216,9 +216,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn showActionSheet(
-            ts_params = "options: ShowActionSheetOptions",
+        namespace UiApi = super::ui_namespace(ctx)?;
+        fn actionSheet(
+            ts_params = "options: ActionSheetOptions",
             ts_return = "Promise<ActionSheetResult>"
         ) = show_action_sheet;
     }

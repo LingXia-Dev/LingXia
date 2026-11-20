@@ -48,14 +48,13 @@ App({
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async () => {
-      const applyNow = await lx.showModal({
+      const applyNow = await lx.ui.confirm({
         title: 'Update Available',
-        content: 'A new version is ready. Apply now?',
-        showCancel: true,
+        message: 'A new version is ready. Apply now?',
         cancelText: 'Later',
         confirmText: 'Apply',
       });
-      if (applyNow.status !== 'canceled') {
+      if (applyNow) {
         um.applyUpdate();
       }
     });

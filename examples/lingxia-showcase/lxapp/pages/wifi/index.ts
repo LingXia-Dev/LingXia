@@ -64,7 +64,7 @@ export default definePage({
           page.update(d => { d.wifiModuleEnabled = true; });
         } catch (error) {
           console.error("Failed to start WiFi:", error);
-          lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
         }
       },
       async stopWifi() {
@@ -92,7 +92,7 @@ export default definePage({
           page.update(d => { d.wifiList = wifiList; });
         } catch (error) {
           console.error("Failed to get WiFi list:", error);
-          lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
         }
       },
       async getConnectedWifi() {

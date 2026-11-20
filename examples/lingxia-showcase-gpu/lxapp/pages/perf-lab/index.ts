@@ -24,7 +24,12 @@ export default definePage({
         // Only desktop answers `ui.*` in the View; mobile shows toasts natively.
         const os = lx.getDeviceInfo().osName;
         const viewUi = os === 'macOS' || os === 'Windows';
-        if (viewUi) for (let i = 0; i < requests; i++) await lx.hideToast().catch(() => undefined);
+        if (viewUi) {
+          for (let i = 0; i < requests; i++) {
+            const toast = await lx.ui.toast({ title: 'bench', durationMs: 1 }).catch(() => undefined);
+            await toast?.dismiss().catch(() => undefined);
+          }
+        }
         const record = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, `value ${i}`]));
         const started = Date.now();
         for (let i = 0; i < calls; i++) page.update(d => { d.record = { ...record, field0: i }; });

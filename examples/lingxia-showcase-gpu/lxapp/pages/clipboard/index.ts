@@ -23,7 +23,7 @@ export default definePage({
       async fail(error: unknown, fallback: string) {
         const message = errorMessage(error, fallback);
         page.update(d => { d.statusText = message; });
-        lx.showToast({ title: message, icon: "none" });
+        lx.ui.toast({ title: message, icon: "none" });
       },
       async peekTypes() {
         const types = await lx.clipboard.types();

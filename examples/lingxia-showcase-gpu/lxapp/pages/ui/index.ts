@@ -5,13 +5,16 @@ import type {
   SurfaceEdge,
   SurfaceErrorCode,
   SurfaceFloatPosition,
-  ModalResult,
   ActionSheetResult,
-  ShowToastOptions,
+  ToastHandle,
+  ToastOptions,
   NavigationBarPatch,
   TabBarItemPatch,
 } from "@lingxia/types";
 import { definePage } from '@lingxia/types/page';
+
+/** What the modal demo shows: whether the dialog was confirmed. */
+type ModalResult = { status: 'ok' } | { status: 'canceled' };
 
 type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
 
@@ -102,26 +105,28 @@ export default definePage({
     events: [] as string[],
     modalResult: null as ModalResult | null,
     actionSheetResult: null as ActionSheetResult | null,
-    toastIcon: "success" as NonNullable<ShowToastOptions["icon"]>,
+    toastIcon: "success" as NonNullable<ToastOptions["icon"]>,
     toastIconLabel: "Success",
     toastIconOptions: [
       { label: "Success", value: "success" },
       { label: "Error", value: "error" },
       { label: "Loading", value: "loading" },
       { label: "None", value: "none" },
-    ] as { label: string; value: NonNullable<ShowToastOptions["icon"]> }[],
-    toastPosition: "center" as NonNullable<ShowToastOptions["position"]>,
+    ] as { label: string; value: NonNullable<ToastOptions["icon"]> }[],
+    toastPosition: "center" as NonNullable<ToastOptions["position"]>,
     toastPositionLabel: "Center",
     toastPositionOptions: [
       { label: "Top", value: "top" },
       { label: "Center", value: "center" },
       { label: "Bottom", value: "bottom" },
-    ] as { label: string; value: NonNullable<ShowToastOptions["position"]> }[],
+    ] as { label: string; value: NonNullable<ToastOptions["position"]> }[],
     surfaceDemo: { message: "", active: false, visible: false },
     chromeError: "",
     appearance: { preference: "auto", resolved: "light" },
   },
   setup(thisPage) {
+    // The toast the "hide" button dismisses.
+    let lastToast: ToastHandle | undefined;
     let stopWatchingAppearance = null as (() => void) | null;
     let asideTabIndex = 0;
     let surfaceOffs = [] as (() => void)[];
@@ -312,7 +317,7 @@ export default definePage({
         try {
           await lx.navigateTo({ page: "ui", query: { type: "navigation" } });
         } catch (err) {
-          lx.showToast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
+          lx.ui.toast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
           console.warn("[UI] navigateTo rejected", err);
         }
       },
@@ -333,10 +338,10 @@ export default definePage({
         });
       },
       // Show toast with custom parameters
-      showToastWithParams(params: Partial<ShowToastOptions>) {
+      async showToastWithParams(params: Partial<ToastOptions>) {
         const icon = params.icon || thisPage.data.toastIcon || "success";
         const position = params.position || thisPage.data.toastPosition || "center";
-        lx.showToast({
+        lastToast = await lx.ui.toast({
           title: params.title || "Hello Toast!",
           icon,
           durationMs: params.durationMs || 2000,
@@ -346,9 +351,8 @@ export default definePage({
       },
       // Choose toast icon via action sheet
       async chooseToastIcon() {
-        const result = await lx.showActionSheet({
+        const result = await lx.ui.actionSheet({
           items: thisPage.data.toastIconOptions.map((option, index) => ({ id: String(index), label: option.label })),
-          itemColor: "#007AFF",
         });
         if (result.status === 'canceled') {
           return;
@@ -361,9 +365,8 @@ export default definePage({
       },
       // Choose toast position via action sheet
       async chooseToastPosition() {
-        const result = await lx.showActionSheet({
+        const result = await lx.ui.actionSheet({
           items: thisPage.data.toastPositionOptions.map((option, index) => ({ id: String(index), label: option.label })),
-          itemColor: "#007AFF",
         });
         if (result.status === 'canceled') {
           return;
@@ -374,23 +377,22 @@ export default definePage({
           d.toastPositionLabel = selected.label;
         });
       },
-      hideToast() {
-        lx.hideToast();
+      async hideToast() {
+        await lastToast?.dismiss();
       },
       // Demo action sheet with mixed language options
       async showDemoActionSheet() {
         thisPage.update(d => { d.actionSheetResult = null; });
         const items = ["View Details", "查看日志", "Send Email", "删除"];
-        const result = await lx.showActionSheet({
+        const result = await lx.ui.actionSheet({
           items: items.map((label, index) => ({ id: String(index), label })),
-          itemColor: "#007AFF",
         });
         thisPage.update(d => { d.actionSheetResult = result; });
         if (result.status === 'canceled') {
-          lx.showToast({ title: "Dismissed", icon: "none" });
+          lx.ui.toast({ title: "Dismissed", icon: "none" });
           return;
         }
-        lx.showToast({ title: `Selected: ${items[Number(result.id)]}`, icon: "success" });
+        lx.ui.toast({ title: `Selected: ${items[Number(result.id)]}`, icon: "success" });
       },
       async openSurfaceDemo(config?: DemoSurfaceConfig) {
         thisPage.update(d => { d.surfaceDemo.message = ""; });
@@ -414,7 +416,7 @@ export default definePage({
               visible: false,
             };
           });
-          lx.showToast({ title: "not supported", icon: "none" });
+          lx.ui.toast({ title: "not supported", icon: "none" });
           return;
         }
 
@@ -451,7 +453,7 @@ export default definePage({
               visible: false,
             };
           });
-          lx.showToast({ title: `open failed: ${message}`, icon: "none" });
+          lx.ui.toast({ title: `open failed: ${message}`, icon: "none" });
         }
       },
       async showActiveSurface() {
@@ -511,13 +513,16 @@ export default definePage({
       },
       // Show modal with custom parameters
       async showModalWithParams(params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {
-        const result = await lx.showModal({
-          title: params.title ?? "Alert",
-          content: params.content || "This is a modal dialog",
-          showCancel: params.showCancel ?? true,
-          cancelText: params.cancelText || "Cancel",
-          confirmText: params.confirmText || "OK",
-        });
+        const title = params.title ?? "Alert";
+        const message = params.content || "This is a modal dialog";
+        const confirmText = params.confirmText || "OK";
+        let confirmed = true;
+        if (params.showCancel ?? true) {
+          confirmed = await lx.ui.confirm({ title, message, confirmText, cancelText: params.cancelText || "Cancel" });
+        } else {
+          await lx.ui.alert({ title, message, confirmText });
+        }
+        const result = confirmed ? { status: 'ok' as const } : { status: 'canceled' as const };
         thisPage.update(d => { d.modalResult = result; });
         return result;
       },
@@ -579,14 +584,14 @@ export default definePage({
       revealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
           const result = await lx.tabBar.update({ visibility: "visible" });
-          actions.showToastWithParams({ title: "shown", icon: "success", durationMs: 800 });
+          void actions.showToastWithParams({ title: "shown", icon: "success", durationMs: 800 });
           return result;
         });
       },
       concealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
           const result = await lx.tabBar.update({ visibility: "hidden" });
-          actions.showToastWithParams({ title: "hidden", icon: "success", durationMs: 800 });
+          void actions.showToastWithParams({ title: "hidden", icon: "success", durationMs: 800 });
           return result;
         });
       },

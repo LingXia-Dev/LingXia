@@ -96,7 +96,7 @@ async function applyHostChrome(os: string, tag: string) {
     icon: "public/activator.svg",
     label: t("sidebarPing"),
     onActivate: () => {
-      lx.showToast({ title: t("pingToast"), icon: "success" });
+      lx.ui.toast({ title: t("pingToast"), icon: "success" });
     },
   });
   // The one footer action with a `value`: the display language is a fact that
@@ -165,14 +165,13 @@ App({
     um.onUpdateReady(async () => {
       console.log("Update ready; asking user to apply...");
       const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-      const applyNow = await lx.showModal({
+      const applyNow = await lx.ui.confirm({
         title: t("updateTitle"),
-        content: t("updateBody"),
-        showCancel: true,
+        message: t("updateBody"),
         cancelText: t("updateLater"),
         confirmText: t("updateApply"),
       });
-      if (applyNow.status !== 'canceled') {
+      if (applyNow) {
         um.applyUpdate();
       }
     });

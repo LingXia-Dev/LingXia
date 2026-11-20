@@ -86,7 +86,7 @@ export default definePage({
           });
         } catch (err) {
           console.error("navigateToApp failed", err);
-          lx.showToast({ title: errorMessage(err, "navigateToApp failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(err, "navigateToApp failed"), icon: "none" });
         }
       },
       async navigateToCloudPage(params: { type?: string } | undefined) {
@@ -99,9 +99,8 @@ export default definePage({
       async openDeepSeek() {
         const targets: Array<"self" | "aside" | "external"> = ["self", "aside", "external"];
 
-        const choice = await lx.showActionSheet({
+        const choice = await lx.ui.actionSheet({
           items: targets.map((id) => ({ id, label: id })),
-          itemColor: "#007AFF",
         });
         if (choice.status === 'canceled') {
           return;
@@ -117,7 +116,7 @@ export default definePage({
             await lx.surface.openUrl(url);
           }
         } catch (error) {
-          lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
         }
       },
       async navigateToSharePage() {
@@ -134,13 +133,14 @@ export default definePage({
         await lx.navigateTo({ page: "leaveGuard" });
       },
       async exitApp() {
-        const result = await lx.showModal({
+        const exit = await lx.ui.confirm({
           title: "Exit App",
-          content: "lx.host.exit() exits immediately. Close the host app now?",
+          message: "lx.host.exit() exits immediately. Close the host app now?",
+          tone: "danger",
           confirmText: "Exit",
           cancelText: "Cancel",
         });
-        if (result.status !== 'canceled') {
+        if (exit) {
           lx.host.exit();
         }
       },

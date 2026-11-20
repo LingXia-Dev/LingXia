@@ -1013,7 +1013,7 @@ export interface TestClock {
 
 /**
  * `t.app.dialogs`: the dialogs the app's Logic opens during this test, all
- * recorded. Toasts are always drawn. Modals (`lx.showModal`, `alert`,
+ * recorded. Toasts are always drawn. Dialogs (`lx.ui.alert`,
  * `confirm`) and action sheets are drawn unless an answer is queued for the
  * next one or strict answer mode is explicitly enabled.
  * An answer no dialog used fails the test when it ends. Each test starts
@@ -1024,7 +1024,7 @@ export interface TestDialogs {
   toasts(): Promise<ToastRecord[]>;
   /** Modals opened so far, with the answer each got (the user's, when drawn). */
   modals(): Promise<ModalRecord[]>;
-  /** `lx.showActionSheet` calls so far, with the answer each got. */
+  /** `lx.ui.actionSheet` calls so far, with the answer each got. */
   actionSheets(): Promise<ActionSheetRecord[]>;
   /**
    * Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }`

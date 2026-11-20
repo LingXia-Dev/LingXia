@@ -146,7 +146,7 @@ export default [
     implementedOn: ["android"],
     title: "native modal and action sheet on a phone host",
     mode: "external-ui",
-    covers: ["lx.showModal", "lx.showActionSheet"],
+    covers: ["lx.ui.confirm", "lx.ui.actionSheet"],
     reason: "Android native-overlay tests cover OS input, dismissal, and replacement; other phone hosts still need a system-input fixture",
   },
   {

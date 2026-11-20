@@ -8,8 +8,8 @@ function testIdFromCss(css) {
 
 /**
  * Mirrors the host's dialog watch: `driver` is `lxapp().dialogs`, and
- * `logic` is what the app's Logic does when it calls `lx.showToast`,
- * `lx.showModal` or `lx.showActionSheet`. Watched, a dialog is recorded and
+ * `logic` is what the app's Logic does when it calls `lx.ui.toast`,
+ * `lx.ui.alert` / `confirm` or `lx.ui.actionSheet`. Watched, a dialog is recorded and
  * drawn until the spec queued an answer of its kind, then answered or
  * refused. A drawn modal or sheet returns `{ drawn, close(choice) }`: the
  * user's tap. Unwatched, `"presented"`.

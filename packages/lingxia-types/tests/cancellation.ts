@@ -6,7 +6,7 @@ declare const lx: Lx;
 // every dismissable API.
 async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
-  (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
+  (await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error pickFiles may have been dismissed
   (await lx.pickFiles()).files;
   // @ts-expect-error pickDirectory may have been dismissed
@@ -19,7 +19,7 @@ async function payloadNeedsTheCheck(): Promise<void> {
 
 // `status: 'ok'` narrows the payload with no cast and no non-null assertion.
 async function checkedResultsNarrow(): Promise<string> {
-  const sheet = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
+  const sheet = await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.pickFiles();
@@ -40,8 +40,7 @@ async function checkedResultsNarrow(): Promise<string> {
   const scan = await lx.scanCode();
   const code: string = (scan.status === 'canceled') ? "" : scan.scanResult;
 
-  const modal = await lx.showModal({ content: "ok?" });
-  const confirmed = modal.status !== 'canceled';
+  const confirmed: boolean = await lx.ui.confirm("ok?");
 
   return [
     index,
@@ -56,17 +55,8 @@ async function checkedResultsNarrow(): Promise<string> {
   ].join(",");
 }
 
-// The modal outcome is one bit; the mutually exclusive boolean pair is gone.
-async function modalHasNoBooleanPair(): Promise<void> {
-  const modal = await lx.showModal({ content: "ok?" });
-  // @ts-expect-error confirm no longer exists
-  modal.confirm;
-  // @ts-expect-error cancel no longer exists
-  modal.cancel;
-}
-
 async function actionSheetHasNoSentinel(): Promise<void> {
-  const sheet = await lx.showActionSheet({ items: [{ id: "a", label: "A" }] });
+  const sheet = await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }] });
   // @ts-expect-error the successful branch carries `id`, not `tapIndex`
   sheet.tapIndex;
 }
@@ -74,6 +64,5 @@ async function actionSheetHasNoSentinel(): Promise<void> {
 export type CancellationGate = [
   typeof payloadNeedsTheCheck,
   typeof checkedResultsNarrow,
-  typeof modalHasNoBooleanPair,
   typeof actionSheetHasNoSentinel,
 ];

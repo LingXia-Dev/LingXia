@@ -469,8 +469,8 @@ test('deleting asks first', async (t) => {
 ```
 
 - Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
-  never stub `lx.showToast` in Logic.
-- Modals (`lx.showModal` / `alert` / `confirm`) and `lx.showActionSheet` are
+  never stub `lx.ui.toast` in Logic.
+- Dialogs (`lx.ui.alert` / `confirm`) and `lx.ui.actionSheet` are
   drawn unless the test queues an answer for the next one, so a test can tap them
   (`.lx-modal-btn-confirm`); `modals()` / `actionSheets()` record them with
   `drawn: true` and the user's choice as `answer`.

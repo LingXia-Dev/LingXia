@@ -696,7 +696,7 @@ interactive foreground content, not necessarily to the page background.
 
 ### 8.2 Standard system modal UI
 
-Standard mobile APIs such as `lx.showModal()` and `lx.showActionSheet()` SHOULD
+Standard mobile APIs such as `lx.ui.confirm()` and `lx.ui.actionSheet()` SHOULD
 continue to use native platform presentation. Native presentation is above
 tabbar and capsule chrome and therefore does not depend on WebView z-index.
 

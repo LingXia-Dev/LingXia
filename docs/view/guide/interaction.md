@@ -235,7 +235,7 @@ moves to the next item whose name starts with it. Specs check focus with `toBeFo
 
 ## Feedback from Logic
 
-On desktop, `lx.showToast`, `lx.hideToast`, `lx.showModal` and `lx.showActionSheet` draw above the page
+On desktop, `lx.ui.toast`, `alert`, `confirm` and `actionSheet` draw above the page
 in the View itself. The toast is a polite live region and a dark HUD in every theme, as on the phones;
 the modal and the action sheet take the theme's roles and are dialogs that hold keyboard focus, and each answers Logic as a WebView page would (the modal
 with `confirm`/`cancel`, the sheet with `tapIndex`, `-1` for cancel). Button colours follow the roles

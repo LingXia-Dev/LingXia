@@ -671,7 +671,7 @@ Development machine: lxdev receives progress, results, and artifacts
   answers from the queue, and one with no answer left refuses and resolves
   `unanswered()`, failing the test at once. Logic reaches the watch through
   `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
-  them, modals and `lx.showActionSheet` ask first (sheets the runtime opens
+  them, dialogs and `lx.ui.actionSheet` ask first (sheets the runtime opens
   itself, the media source picker, do not).
 - Diagnostics carry an optional `level`: `info` is expected housekeeping
   (the timers a test's own `t.app.clock` dropped when it ended or

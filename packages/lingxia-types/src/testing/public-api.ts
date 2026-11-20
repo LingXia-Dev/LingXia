@@ -48,6 +48,7 @@ import type {
   HostAppUpdateTask,
   LxFile,
   NavigationBarApi,
+  UiApi,
   NotificationApi,
   PageMessagePort,
   PreviewMediaHandle,
@@ -71,8 +72,6 @@ import type {
 export const LX_API_NAMES = [
   'host',
   'automation',
-  'alert',
-  'confirm',
   'pickFile',
   'pickFiles',
   'pickDirectory',
@@ -98,7 +97,6 @@ export const LX_API_NAMES = [
   'getUpdateManager',
   'getVideoInfo',
   'getWifiList',
-  'hideToast',
   'makePhoneCall',
   'navigateBack',
   'navigateBackApp',
@@ -122,9 +120,6 @@ export const LX_API_NAMES = [
   'setMoreActions',
   'share',
   'shell',
-  'showActionSheet',
-  'showModal',
-  'showToast',
   'startPullDownRefresh',
   'startWifi',
   'stopPullDownRefresh',
@@ -135,6 +130,7 @@ export const LX_API_NAMES = [
   'tabBar',
   'terminal',
   'tray',
+  'ui',
   'uploadFile',
   'vibrateLong',
   'vibrateShort',
@@ -193,6 +189,7 @@ const CONTROL_APPEARANCE_API = [
 ] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
+const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
@@ -422,6 +419,7 @@ export const LX_RUNTIME_SURFACES = [
       'tabBar',
       'terminal',
       'tray',
+      'ui',
     ],
   },
   {
@@ -504,6 +502,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.tabBar',
     members: TAB_BAR_API,
+  },
+  {
+    name: 'lx.ui',
+    layer: 'logic',
+    expression: 'lx.ui',
+    members: UI_API,
   },
   {
     name: 'lx.terminal',
@@ -865,6 +869,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
+  AssertTrue<Exact<UiApi, typeof UI_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
   AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,
   AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,

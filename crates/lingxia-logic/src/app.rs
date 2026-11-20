@@ -52,7 +52,7 @@ fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
 /// Control app only: quitting the product is not an lxapp's decision. Other
 /// lxapps get a permission error.
 ///
-/// If the user should confirm first, call `lx.showModal(...)` and invoke this
+/// If the user should confirm first, call `lx.ui.confirm(...)` and invoke this
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppExit)?;

@@ -18,7 +18,7 @@ rong::js_api! {
     status: 'canceled';
 }"###;
 
-        /// Result of `lx.showActionSheet`. Branch on `status` before reading
+        /// Result of `lx.ui.actionSheet`. Branch on `status` before reading
         /// the selected item id.
         type ActionSheetResult = r###"{
     status: 'ok';
@@ -1122,13 +1122,6 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
-        /// Result of `lx.showModal`. `status: 'ok'` means the user confirmed;
-        /// there is no third resolved outcome. Presentation failures reject.
-        ///
-        type ModalResult = r###"{
-    status: 'ok';
-} | CanceledResult"###;
-
         /// Options for `lx.navigateBack()`. Omit the object or `delta` to pop
         /// one page.
         type NavigateBackOptions = r###"{
@@ -1512,33 +1505,35 @@ true
     title?: string;
 }"###;
 
-        type ShowActionSheetOptions = r###"{
+        type ActionSheetOptions = r###"{
     items: readonly { id: string; label: string }[];
-    itemColor?: string;
+    /** `'danger'` draws the items as destructive. */
+    tone?: 'default' | 'danger';
 }"###;
 
         /// An acknowledgement dialog has no cancel button.
-        type AlertOptions = r###"Omit<ShowModalOptions, 'showCancel' | 'cancelText' | 'cancelColor'>"###;
+        type AlertOptions = r###"{
+    title: string;
+    message?: string;
+    confirmText?: string;
+}"###;
         /// A confirmation dialog always permits declining.
-        type ConfirmOptions = r###"Omit<ShowModalOptions, 'showCancel'>"###;
+        type ConfirmOptions = r###"{
+    title: string;
+    message?: string;
+    /** `'danger'` draws the confirm button as destructive. */
+    tone?: 'default' | 'danger';
+    confirmText?: string;
+    cancelText?: string;
+}"###;
         type ToastHandle = r###"{
     /** Dismiss this toast only; harmless after a newer toast replaces it. */
     dismiss(): Promise<void>;
 }"###;
 
-        type ShowModalOptions = r###"{
-    title?: string;
-    content?: string;
-    showCancel?: boolean;
-    cancelText?: string;
-    cancelColor?: string;
-    confirmText?: string;
-    confirmColor?: string;
-}"###;
-
         /// UI feedback, navigation, and surface control APIs.
         ///
-        type ShowToastOptions = r###"{
+        type ToastOptions = r###"{
     title: string;
     icon?: 'success' | 'error' | 'loading' | 'none';
     image?: string;
@@ -2309,6 +2304,7 @@ true
         type NavigationBarApi = "globalThis.NavigationBarApi";
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";
+        type UiApi = "globalThis.UiApi";
 
         /// App-owned host-shell chrome. Mutations are available only to the
         /// Control app's Logic context; other lxapps receive a permission error.

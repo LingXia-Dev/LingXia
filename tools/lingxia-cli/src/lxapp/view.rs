@@ -1081,7 +1081,7 @@ mod tests {
                     return lx.navigationBar.update(options);
                   },
                   chooseToastIcon: async function () {
-                    const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
+                    const result = await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
                     return result;
                   },
                   directArrow: (payload) => lx.callSomething(payload)
@@ -1165,7 +1165,7 @@ mod tests {
             }
 
             const chooseToastIcon = async () => {
-              const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
+              const result = await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
               return result;
             };
 
@@ -1235,7 +1235,7 @@ mod tests {
             &full_path,
             r#"
             export default function ApiPage() {
-              return <button onClick={() => lx.showToast({ title: "bad" })}>bad</button>;
+              return <button onClick={() => lx.ui.toast({ title: "bad" })}>bad</button>;
             }
             "#,
         )
@@ -1248,7 +1248,7 @@ mod tests {
             .to_string();
 
         assert!(error.contains("must not call lx.* directly"));
-        assert!(error.contains("lx.showToast"));
+        assert!(error.contains("lx.ui"));
     }
 
     #[test]

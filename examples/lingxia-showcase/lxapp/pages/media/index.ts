@@ -313,7 +313,7 @@ async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<Chose
 }
 
 async function pickOption(options: MediaOption[], currentKey?: string) {
-  const result = await lx.showActionSheet({
+  const result = await lx.ui.actionSheet({
     items: options.map((option, index) => ({ id: String(index), label: option.label })),
   });
   return (result.status === 'canceled') ? null : options[Number(result.id)] || null;
@@ -497,7 +497,7 @@ export default definePage({
           });
           if (!isAbort) {
             console.error("[media-demo] previewMedia failed:", error);
-            lx.showToast({ title: errorMessage(error, "Preview failed"), icon: "none" });
+            lx.ui.toast({ title: errorMessage(error, "Preview failed"), icon: "none" });
           }
           return null;
         } finally {
@@ -526,7 +526,7 @@ export default definePage({
           return (result.status === 'canceled') ? null : result.entries[0].uri;
         } catch (error) {
           console.error("[media-demo] pickSingleMedia failed:", error);
-          lx.showToast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
           return null;
         }
       },
@@ -689,7 +689,7 @@ export default definePage({
           page.update(d => { d.selectedMedia = enrichedList; });
         } catch (error) {
           console.error("[media-demo] chooseMedia failed:", error);
-          lx.showToast({
+          lx.ui.toast({
             title: errorMessage(error, "Operation failed"),
             icon: "none",
           });
@@ -726,7 +726,7 @@ export default definePage({
         } catch (error) {
           console.error("scanCode failed:", error);
           page.update(d => { d.scanBusy = false; });
-          lx.showToast({
+          lx.ui.toast({
             title: errorMessage(error, "scanCode failed"),
             icon: "none",
           });
@@ -757,7 +757,7 @@ export default definePage({
       async previewSelectedMedia() {
         const selected = page.data.selectedMedia || [];
         if (!selected.length) {
-          lx.showToast({
+          lx.ui.toast({
             title: "Nothing to preview",
             icon: "none",
           });
@@ -814,7 +814,7 @@ export default definePage({
             d.imageInfoResult = null;
             d.imageInfoBusy = false;
           });
-          lx.showToast({
+          lx.ui.toast({
             title: message,
             icon: "none",
           });
@@ -852,7 +852,7 @@ export default definePage({
             d.videoInfoBusy = false;
             d.videoInfoError = message;
           });
-          lx.showToast({
+          lx.ui.toast({
             title: message,
             icon: "none",
           });
@@ -880,7 +880,7 @@ export default definePage({
         }
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
-          lx.showToast({
+          lx.ui.toast({
             title: "Please pick a video first",
             icon: "none",
           });
@@ -924,7 +924,7 @@ export default definePage({
             d.thumbnailResult = null;
             d.thumbnailBusy = false;
           });
-          lx.showToast({
+          lx.ui.toast({
             title: message,
             icon: "none",
           });
@@ -933,7 +933,7 @@ export default definePage({
       async previewVideoThumbnail() {
         const path = page.data.thumbnailResult?.uri;
         if (!path) {
-          lx.showToast({
+          lx.ui.toast({
             title: "No thumbnail to preview",
             icon: "none",
           });
@@ -968,7 +968,7 @@ export default definePage({
         }
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
-          lx.showToast({
+          lx.ui.toast({
             title: "Please pick a video first",
             icon: "none",
           });
@@ -1014,7 +1014,7 @@ export default definePage({
             d.videoCompressBusy = false;
             d.videoCompressProgress = null;
           });
-          lx.showToast({
+          lx.ui.toast({
             title: isAbort ? "Compression cancelled" : message,
             icon: "none",
           });
@@ -1028,7 +1028,7 @@ export default definePage({
       async previewCompressedVideo() {
         const path = page.data.videoCompressResult?.uri;
         if (!path) {
-          lx.showToast({ title: "No compressed video to preview", icon: "none" });
+          lx.ui.toast({ title: "No compressed video to preview", icon: "none" });
           return;
         }
         const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
@@ -1063,7 +1063,7 @@ export default definePage({
         }
         const path = page.data.imageInfoResult?.path;
         if (!path) {
-          lx.showToast({
+          lx.ui.toast({
             title: "Please select an image first",
             icon: "none",
           });
@@ -1102,7 +1102,7 @@ export default definePage({
             d.compressError = message;
             d.compressResult = null;
           });
-          lx.showToast({
+          lx.ui.toast({
             title: message,
             icon: "none",
           });
@@ -1113,7 +1113,7 @@ export default definePage({
       async previewCompressedImage() {
         const path = page.data.compressResult?.path;
         if (!path) {
-          lx.showToast({
+          lx.ui.toast({
             title: "No compressed image to preview",
             icon: "none",
           });
@@ -1135,9 +1135,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].uri });
-          lx.showToast({ title: "Image saved to album", icon: "success" });
+          lx.ui.toast({ title: "Image saved to album", icon: "success" });
         } catch (error) {
-          lx.showToast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }
@@ -1151,9 +1151,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].uri });
-          lx.showToast({ title: "Video saved to album", icon: "success" });
+          lx.ui.toast({ title: "Video saved to album", icon: "success" });
         } catch (error) {
-          lx.showToast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }

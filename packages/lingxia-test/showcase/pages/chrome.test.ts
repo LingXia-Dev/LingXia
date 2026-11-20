@@ -1,5 +1,6 @@
 import { tabIndex } from '../helpers/tabs.js';
 import type { JsonValue, TestApp } from '@lingxia/test';
+import type { ToastHandle } from '@lingxia/types';
 import { expect, test } from '@lingxia/test';
 import type { LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { bindFixture, eventually, relaunchFromLogic, type Caught } from '../helpers/poll.js';
@@ -246,7 +247,7 @@ const OVERLAY_SURFACE: Record<string, 'dom' | 'native'> = {
 
 test("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
-  covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.alert', 'lx.confirm', 'lx.showActionSheet'],
+  covers: ['lx.ui.toast', 'lx.ui.alert', 'lx.ui.confirm', 'lx.ui.actionSheet'],
   app: SHOWCASE_APP_ID,
   reason: 'Mobile hosts render feedback through native overlays rather than DOM elements.',
   timeout: 60_000,
@@ -274,8 +275,10 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
     await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('toast-show').waitFor({ state: 'visible', timeout: 30_000 });
+    // The handle stays in Logic: it is not JSON.
     await app.logic.eval(async ({ lx }) => {
-      await lx.showToast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
+      (globalThis as { coverageToast?: ToastHandle }).coverageToast =
+        await lx.ui.toast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
     });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toContainText('Coverage toast', { timeout: 30_000 });
@@ -284,7 +287,9 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       await expect.poll(() => hostShows('Coverage toast'), { timeout: 10_000 }).toBe(true);
       await expect(page.view.testId('lx-toast')).toHaveCount(0);
     }
-    await app.logic.eval(async ({ lx }) => { await lx.hideToast(); });
+    await app.logic.eval(async () => {
+      await (globalThis as { coverageToast?: ToastHandle }).coverageToast?.dismiss();
+    });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toHaveCount(0, { timeout: 10_000 });
     } else {
@@ -308,16 +313,16 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.logic.eval(({ lx }) =>
-      lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' }));
+      lx.ui.confirm({ title: 'Coverage', message: 'Confirm this', confirmText: 'OK', cancelText: 'Cancel' }));
     await press('lx-modal-confirm', 'OK');
-    expect((await confirmed).status === 'canceled').toBeFalsy();
+    expect(await confirmed).toBe(true);
 
     const canceled = app.logic.eval(({ lx }) =>
-      lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true }));
+      lx.ui.confirm({ title: 'Coverage', message: 'Cancel this' }));
     await press('lx-modal-cancel', 'Cancel');
-    expect((await canceled).status === 'canceled').toBeTruthy();
+    expect(await canceled).toBe(false);
 
-    const noCancel = app.logic.eval(({ lx }) => lx.showModal({ content: 'No cancel', showCancel: false }));
+    const noCancel = app.logic.eval(async ({ lx }) => { await lx.ui.alert('No cancel'); return true; });
     if (overlays === 'dom') {
       await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
       await expect(ui.view.testId('lx-modal-cancel')).toHaveCount(0);
@@ -326,34 +331,34 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       expect(await hostShows('Cancel')).toBe(false);
     }
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
-    expect((await noCancel).status === 'canceled').toBeFalsy();
+    expect(await noCancel).toBe(true);
   });
 
   await t.step('use acknowledgement and boolean dialogs', async () => {
     const alert = app.logic.eval(async ({ lx }) => {
-      await lx.alert({ title: 'Notice' });
+      await lx.ui.alert({ title: 'Notice' });
       return 'acknowledged';
     });
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await alert).toBe('acknowledged');
-    const confirmed = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
+    const confirmed = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await confirmed).toBe(true);
-    const canceled = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
+    const canceled = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
     await press('lx-modal-cancel', 'Cancel');
     expect(await canceled).toBe(false);
   });
 
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.logic.eval(({ lx }) =>
-      lx.showActionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
+      lx.ui.actionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
     await press('lx-action-sheet-item-1', '查看日志');
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();
     expect(selected.status === 'ok' ? selected.id : null).toBe('查看日志');
 
     const dismissed = app.logic.eval(({ lx }) =>
-      lx.showActionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
+      lx.ui.actionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
     await press('lx-action-sheet-cancel', 'Cancel');
     expect((await dismissed).status === 'canceled').toBeTruthy();
   });
@@ -361,7 +366,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
   await t.step('reject an empty action sheet', async () => {
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.showActionSheet({ items: [] });
+        await lx.ui.actionSheet({ items: [] });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

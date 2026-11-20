@@ -1613,7 +1613,7 @@ export interface ModalRecord {
 /** `{ index }` picks that item; `{ cancel: true }` dismisses the sheet. */
 export type ActionSheetAnswer = { index: number } | { cancel: true };
 
-/** An `lx.showActionSheet` while watched: drawn, or answered like modals. */
+/** An `lx.ui.actionSheet` while watched: drawn, or answered like dialogs. */
 export interface ActionSheetRecord {
   /** Item labels, in order. */
   items: string[];
@@ -1631,8 +1631,8 @@ export interface DialogUnwatchResult {
 /**
  * The dialogs the selected lxapp's Logic opens while a test of a host
  * automation run (`lxdev test`) watches it; outside one every call rejects
- * with `E_AUTOMATION`. Toasts, modals (`showModal`, `alert`, `confirm`) and
- * `showActionSheet` are recorded and drawn. A queued answer applies once;
+ * with `E_AUTOMATION`. Toasts, dialogs (`lx.ui.alert`, `confirm`) and
+ * `lx.ui.actionSheet` are recorded and drawn. A queued answer applies once;
  * later dialogs are drawn unless strict mode explicitly requires an answer.
  * An unwatched app presents every dialog as usual.
  */

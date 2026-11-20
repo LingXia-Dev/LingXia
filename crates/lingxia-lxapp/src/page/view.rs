@@ -186,7 +186,7 @@ pub enum GpuVideoCommand {
     SetVolume { volume: f64 },
 }
 
-/// The feedback overlays a desktop GPU View draws for `lx.showToast` and its siblings.
+/// The feedback overlays a desktop GPU View draws for `lx.ui.toast` and its siblings.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuUiRequest {
     ShowToast(GpuToast),
