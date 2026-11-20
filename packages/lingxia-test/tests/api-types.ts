@@ -450,7 +450,7 @@ test('contract only', { requires: { openapi: true } }, async (t) => {
 });
 // File defaults: every TestOptions key but `id`, plus `requires`.
 test.configure({ timeout: 60_000, start: { page: 'home' }, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
-test('starts on a page', { start: { page: 'detail', query: { id: 'd1' } } }, async () => {});
+test('starts on a page', { start: { page: 'detail', params: { id: 'd1' } } }, async () => {});
 // @ts-expect-error `fresh` is gone: `start: { page }` relaunches on that page.
 test('fresh', { fresh: true }, async () => {});
 // @ts-expect-error `start` names a page.

@@ -342,10 +342,10 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   const calls = world.navCalls.map(([verb, options]) => [verb, { ...options, ...(options.timeoutMs ? { timeoutMs: options.timeoutMs <= 10_000 && options.timeoutMs > 9_000 ? "room" : options.timeoutMs } : {}) }]);
   assert.deepEqual(calls, [
-    ["to", { page: "detail", waitUntil: "ready", timeoutMs: "room" }],
-    ["to", { page: "other", waitUntil: "commit" }],
-    ["to", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
-    ["to", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
+    ["go", { page: "detail", waitUntil: "ready", timeoutMs: "room" }],
+    ["go", { page: "other", waitUntil: "commit" }],
+    ["go", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
+    ["go", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
     ["back", { waitUntil: "ready", timeoutMs: "room" }],
   ]);
   assert.match(refused.message, /takes \{ timeout \} in ms/);
@@ -354,7 +354,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
 test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its cause", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
-  world.app.nav.to = async () => {
+  world.app.nav.go = async () => {
     throw Object.assign(new Error("page did not become ready within 50ms"), { code: "E_AUTOMATION_TIMEOUT", data: { page: "slow" } });
   };
   world.app.eval = async () => {
@@ -388,14 +388,14 @@ test("a `start` spec relaunches on that page, with its query, before beforeEach,
 
   lxTest.beforeEach(async (t) => { order.push(`beforeEach on ${(await t.app.nav.current()).name}`); });
   lxTest("home", { start: { page: "home" } }, async () => {});
-  lxTest("detail", { start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+  lxTest("detail", { start: { page: "detail", params: { id: "d1" } } }, async (t) => {
     order.push(`body on ${(await t.app.nav.current()).name}`);
   });
 
   await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(world.navCalls, [
-    ["relaunch", { page: "home", waitUntil: "ready" }],
-    ["relaunch", { page: "detail", query: { id: "d1" }, waitUntil: "ready" }],
+    ["reset", { page: "home", waitUntil: "ready" }],
+    ["reset", { page: "detail", params: { id: "d1" }, waitUntil: "ready" }],
   ]);
   assert.deepEqual(order, ["beforeEach on home", "beforeEach on detail", "body on detail"]);
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));

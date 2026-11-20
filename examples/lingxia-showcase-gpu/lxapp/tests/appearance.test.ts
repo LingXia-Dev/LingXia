@@ -29,7 +29,7 @@ test('a page that starts reading the theme runs again on the next theme change',
 // A pinned text scale is the system text size the page sees: text lays out again at it, and
 // clearing the pin gives the device's own size back.
 test('a pinned text scale lays the text out at that size until the pin is cleared', {
-  id: 'TEXT-SCALE-001', covers: ['view:environment'], start: { page: 'view-text', query: { lang: 'en' } },
+  id: 'TEXT-SCALE-001', covers: ['view:environment'], start: { page: 'view-text', params: { lang: 'en' } },
 }, async (t) => {
   const view = t.app.view;
   // A short single line: its height is its line height at any of these sizes.

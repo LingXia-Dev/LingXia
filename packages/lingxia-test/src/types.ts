@@ -135,8 +135,8 @@ export interface TestOptions {
 export interface TestStart {
   /** Configured page name (from lxapp.json). */
   page: string;
-  /** Query forwarded to the page. */
-  query?: Record<string, unknown>;
+  /** Params forwarded to the page. */
+  params?: Record<string, unknown>;
 }
 
 /** `requires`: run inputs a test cannot mean anything without. */

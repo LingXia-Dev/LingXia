@@ -50,7 +50,7 @@ test("a spec abandoned with a fetch still in flight stops the run: the app is re
   assert.match(stopped[0].message,
     /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the test\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the test\) is still running after 2000ms and would resume its code during a later test\. Relaunched the app under test on its home page for inspection\. Make the test settle \(await its work\), or give it a longer timeout\. The remaining tests are not run\.$/);
   assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*The run stopped: abandoned code can resume through an untracked promise in this shared JS context; fetch GET/);
-  assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
+  assert.ok(world.navCalls.some(([method, options]) => method === "reset" && options.page === "home"));
 
   // The abandoned spec's poll was cancelled, so it never fires into later specs.
   const after = ticks;
@@ -80,7 +80,7 @@ test("an abandoned body stops the shared context even when no tracked work remai
   assert.equal(events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 1);
   const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.match(recovered.message, /abandoned code can resume through an untracked promise/);
-  assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
+  assert.ok(world.navCalls.some(([method, options]) => method === "reset" && options.page === "home"));
   const after = ticks;
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(ticks, after, "the abandoned spec's poll never fires into later specs");

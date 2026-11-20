@@ -74,7 +74,7 @@ test("a body that resumes late is refused and charged its own late assertion, an
     await fetch("https://backend.example.test/slow");
     resumed = true;
     for (const [name, act] of [
-      ["captured", () => nav.relaunch({ page: "zombie-captured" })],
+      ["captured", () => nav.reset({ page: "zombie-captured" })],
       ["fresh", () => rawAutomation().lxapp().nav.reset({ page: "zombie-fresh" })],
       ["global", () => globalThis.lx.automation().lxapp().nav.reset({ page: "zombie-global" })],
     ]) {

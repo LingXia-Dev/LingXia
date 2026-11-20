@@ -169,7 +169,7 @@ test("test.configure sets file defaults; a spec's own options override them", as
   lxTest.configure({ timeout: 1_234, start: { page: "dashboard" }, tags: ["routed"], covers: ["DEV-1"], forensics: false });
   lxTest.configure({ tags: ["smoke"] });
   lxTest("defaults", async () => {});
-  lxTest("overrides", { timeout: 5_000, start: { page: "detail", query: { id: "d1" } }, tags: ["own"], covers: ["DEV-2"] }, async () => {});
+  lxTest("overrides", { timeout: 5_000, start: { page: "detail", params: { id: "d1" } }, tags: ["own"], covers: ["DEV-2"] }, async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
@@ -181,20 +181,20 @@ test("test.configure sets file defaults; a spec's own options override them", as
   assert.deepEqual(overrides.tags, ["routed", "smoke", "own"]);
   assert.deepEqual(overrides.covers, ["DEV-1", "DEV-2"]);
   // `start`: the file's page for the first spec, the spec's own (with its query) for the second.
-  assert.deepEqual(world.navCalls.filter(([name]) => name === "relaunch").map(([, options]) => options), [
+  assert.deepEqual(world.navCalls.filter(([name]) => name === "reset").map(([, options]) => options), [
     { page: "dashboard", waitUntil: "ready" },
-    { page: "detail", query: { id: "d1" }, waitUntil: "ready" },
+    { page: "detail", params: { id: "d1" }, waitUntil: "ready" },
   ]);
 });
 
-test("test.configure rejects an id and malformed options at registration", () => {
+lxTest("test.configure rejects an id and malformed options at registration", () => {
   assert.throws(() => lxTest.configure({ id: "shared" }), /cannot set `id`/);
   assert.throws(() => lxTest.configure({ timeout: -1 }), /timeout must be a positive finite number/);
   assert.throws(() => lxTest.configure({ requires: { args: "PASSWORD" } }), /requires\.args must be an array/);
   assert.throws(() => lxTest("bad", { requires: { openapi: "yes" } }, async () => {}), /requires\.openapi must be a boolean/);
-  assert.throws(() => lxTest("bad start", { start: "home" }, async () => {}), /start must be \{ page, query\? \}/);
-  assert.throws(() => lxTest.configure({ start: { page: "" } }), /start must be \{ page, query\? \}/);
-  assert.throws(() => lxTest("bad query", { start: { page: "home", query: [1] } }, async () => {}), /start\.query must be an object/);
+  assert.throws(() => lxTest("bad start", { start: "home" }, async () => {}), /start must be \{ page, params\? \}/);
+  assert.throws(() => lxTest.configure({ start: { page: "" } }), /start must be \{ page, params\? \}/);
+  assert.throws(() => lxTest("bad params", { start: { page: "home", params: [1] } }, async () => {}), /start\.params must be an object/);
 });
 
 test("requires skips a spec whose run inputs are missing, naming what to pass", async () => {

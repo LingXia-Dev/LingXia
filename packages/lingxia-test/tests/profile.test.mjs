@@ -68,7 +68,7 @@ test("restoreProfile rolls a spec's writes back before the next spec", async () 
   assert.equal(profile.checkpoints.size, 0);
   // The checkpoint is taken before the implied relaunch.
   assert.equal(profile.calls[0][1], 0);
-  assert.deepEqual(world.navCalls.filter(([name]) => name === "relaunch"), [["relaunch", { page: "home", waitUntil: "ready" }]],
+  assert.deepEqual(world.navCalls.filter(([name]) => name === "reset"), [["reset", { page: "home", waitUntil: "ready" }]],
     "restoreProfile relaunches on the home page");
   const traced = report.cases[0].steps.map((step) => step.name);
   assert.ok(traced.includes("profile.checkpoint") && traced.includes("profile.restore"));
@@ -79,13 +79,13 @@ test("restoreProfile relaunches on the spec's start page, after the checkpoint",
   const profile = fakeProfile(world);
   installFakeHost(world);
   let landed;
-  lxTest("on detail", { restoreProfile: true, start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+  lxTest("on detail", { restoreProfile: true, start: { page: "detail", params: { id: "d1" } } }, async (t) => {
     landed = (await t.app.nav.current()).name;
   });
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.equal(landed, "detail");
-  assert.deepEqual(world.navCalls, [["relaunch", { page: "detail", query: { id: "d1" }, waitUntil: "ready" }]]);
+  assert.deepEqual(world.navCalls, [["reset", { page: "detail", params: { id: "d1" }, waitUntil: "ready" }]]);
   assert.equal(profile.calls[0][0], "checkpoint");
   assert.equal(profile.calls[0][1], 0, "the checkpoint is taken before the relaunch");
 });

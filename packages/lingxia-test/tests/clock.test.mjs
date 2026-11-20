@@ -165,11 +165,11 @@ test("a timeout forces the next spec to relaunch home", async () => {
   lxTest("after timeout", async (t) => {
     pages.push((await t.app.nav.current()).name);
   });
-  const original = world.app.nav.relaunch.bind(world.app.nav);
+  const original = world.app.nav.reset.bind(world.app.nav);
   let relaunched = 0;
-  world.app.nav.relaunch = async (options) => {
+  world.app.nav.reset = async (...args) => {
     relaunched += 1;
-    return original(options);
+    return original(...args);
   };
   await globalThis.__LINGXIA_TEST__.run();
   assert.equal(relaunched, 1);

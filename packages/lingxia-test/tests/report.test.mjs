@@ -661,7 +661,7 @@ test("an app that declares no coverage gets no coverage panel", async () => {
   assert.doesNotMatch(html, /coverage/i);
   // A new app never claimed the rest of the platform; listing it would read
   // as failing to cover an API it has nothing to do with.
-  assert.doesNotMatch(html, /lx\.vibrateShort/);
+  assert.doesNotMatch(html, /lx.device.haptics/);
   assert.doesNotMatch(html, /Logic API/);
 });
 
@@ -682,7 +682,7 @@ test("declared tags are the default coverage scope", async () => {
   assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
   assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
   // Everything the suite never mentioned stays out of the report.
-  assert.doesNotMatch(html, /lx\.vibrateShort/);
+  assert.doesNotMatch(html, /lx.device.haptics/);
   assert.doesNotMatch(html, /lx API coverage/);
 });
 
@@ -855,9 +855,9 @@ test("a conformance suite opts into the whole published surface", async () => {
   assert.match(html, /lx API coverage/);
   assert.match(html, /Logic API \(lx\.\*\)/);
   // Now an untested capability is a hole worth showing.
-  assert.match(html, /class="cover cover-none"[^>]*>lx\.vibrateShort</);
+  assert.match(html, /class="cover cover-none"[^>]*>lx.device.haptics</);
   assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
-  assert.match(html, /class="cover cover-shape"[^>]*>lx\.getLocation</);
+  assert.match(html, /class="cover cover-shape"[^>]*>lx.device.location</);
   assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
 });
 
@@ -925,12 +925,12 @@ test("a spec that never calls t.step still records what it did", async () => {
 
   assert.deepEqual(
     trace.map((entry) => `${entry.kind} ${entry.name} ${entry.detail}`),
-    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"] value="Ada"', "action logic.eval () => 1 + 1"],
+    ["action nav.reset home", 'action page.fill [data-testid="home-name"] value="Ada"', "action logic.eval () => 1 + 1"],
   );
   assert.ok(trace.every((entry) => entry.status === "passed"));
 
   const html = decodeAttachment(attachments, "report.html");
-  assert.match(html, /nav\.relaunch/);
+  assert.match(html, /nav\.reset/);
   assert.match(html, /logic\.eval/);
 });
 

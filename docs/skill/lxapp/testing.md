@@ -26,7 +26,7 @@ lxdev test tests/pages/notes.test.ts
 
 - `testId('x')` matches `[data-testid="x"]` on the current page and must match
   exactly one element (narrow with `.nth(i)`).
-- `test(title, { start: { page, query? } }, body)` relaunches the app on that
+- `test(title, { start: { page, params? } }, body)` relaunches the app on that
   page before the body, like `t.app.nav.reset({ page })` mid-test: the stack
   is cleared and a fresh instance opens, ready after its `onReady`. Neither
   resets app or backend data.

@@ -406,11 +406,11 @@ export function createWorld(options = {}) {
   };
 
   const nav = {
-    async relaunch(options) {
-      navCalls.push(["relaunch", options]);
+    async reset(target, options) {
+      navCalls.push(["reset", { ...target, ...options }]);
       if (blocked) throw new Error("fixture should not reach the app after abort");
       if (relaunchError) throw relaunchError;
-      currentPage = landedPage(options.page);
+      currentPage = landedPage(target.page ?? target.tab);
       stack.splice(0, stack.length, currentPage);
       return currentPage;
     },
@@ -426,10 +426,12 @@ export function createWorld(options = {}) {
       return stack.find((entry) => entry.name === name || entry.instanceId === name)
         ?? { name, path: `pages/${name}/index`, instanceId: null, current: false, inStack: false, ready: false, webviewAttached: false };
     },
-    async to(options) {
-      navCalls.push(["to", options]);
-      currentPage = landedPage(options.page);
-      stack.push(currentPage);
+    async go(target, options) {
+      navCalls.push(["go", { ...target, ...options }]);
+      currentPage = landedPage(target.page ?? target.tab);
+      if (target.tab) stack.splice(0, stack.length, currentPage);
+      else if (options?.replace) stack.splice(stack.length - 1, 1, currentPage);
+      else stack.push(currentPage);
       return currentPage;
     },
     async back(options) {

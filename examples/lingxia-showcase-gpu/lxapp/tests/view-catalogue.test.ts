@@ -37,7 +37,7 @@ const zhNames: Record<string, string[]> = {
   'view-accessibility': ['名称与角色', '文件夹树', '有名称的列表', '日期网格'],
 };
 for (const group of groups) {
-  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
+  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, params: { lang: 'zh' } } }, async (t) => {
     const view = t.app.view;
     // Retrying: the page can draw a first frame before its `lang` reaches it.
     for (const title of zhNames[group.page]) await expect(view.getByRole('heading', { name: title })).toHaveCount(1);
@@ -45,7 +45,7 @@ for (const group of groups) {
   });
 }
 
-test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
+test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', params: { lang: 'en' } } }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('heading', { name: 'Suggestions while typing' })).toHaveCount(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
