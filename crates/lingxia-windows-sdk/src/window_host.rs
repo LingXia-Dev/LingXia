@@ -6522,11 +6522,11 @@ fn keep_sidebar_resize_cursor(hwnd: HWND) -> bool {
         .is_ok_and(|active| active.is_some());
     let on_edge = || {
         let mut cursor = POINT::default();
-        unsafe {
+        let read = unsafe {
             WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok()
                 && ScreenToClient(hwnd, &mut cursor).as_bool()
-        }
-        &&sidebar_resize_hit(hwnd, (cursor.x, cursor.y)).is_some()
+        };
+        read && sidebar_resize_hit(hwnd, (cursor.x, cursor.y)).is_some()
     };
     if dragging || on_edge() {
         set_divider_cursor(true);
