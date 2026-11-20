@@ -4,9 +4,9 @@ declare const lx: Lx;
 
 const unsubscribeNetwork: () => void = lx.network.watch(() => {});
 const unsubscribeWifi: () => void = lx.network.wifi.onConnected(() => {});
-const unsubscribeOrientation: () => void = lx.onDeviceOrientationChange(() => {});
-const unsubscribeKeyDown: () => void = lx.onKeyDown(() => {});
-const unsubscribeKeyUp: () => void = lx.onKeyUp(() => {});
+const unsubscribeOrientation: () => void = lx.device.orientation.watch(() => {});
+const unsubscribeKeyDown: () => void = lx.device.onKeyDown(() => {});
+const unsubscribeKeyUp: () => void = lx.device.onKeyUp(() => {});
 
 // The update manager is a listener set; each subscribe call returns its own
 // unsubscribe handle, same idiom as the rest of the surface.

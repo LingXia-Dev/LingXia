@@ -57,7 +57,7 @@ export default definePage({
       // Get device information
       async getDeviceInfo() {
         try {
-          const deviceInfo = lx.getDeviceInfo();
+          const deviceInfo = lx.device.info;
           console.log("Device info:", deviceInfo);
 
           page.update(d => { d.deviceInfo = deviceInfo; });
@@ -68,7 +68,7 @@ export default definePage({
       // Get screen information
       async getScreenInfo() {
         try {
-          const screenInfo = lx.getScreenInfo();
+          const screenInfo = lx.device.screen();
           console.log("Screen info:", screenInfo);
 
           page.update(d => { d.screenInfo = screenInfo; });
@@ -79,7 +79,7 @@ export default definePage({
       // Trigger short vibration
       async vibrateShort() {
         try {
-          await lx.vibrateShort();
+          await lx.device.haptics();
           console.log("Triggered short vibration");
         } catch (error) {
           console.error("Failed to trigger short vibration:", error);
@@ -89,7 +89,7 @@ export default definePage({
       // Trigger long vibration
       async vibrateLong() {
         try {
-          await lx.vibrateLong();
+          await lx.device.haptics('long');
           console.log("Triggered long vibration");
         } catch (error) {
           console.error("Failed to trigger long vibration:", error);
@@ -105,7 +105,7 @@ export default definePage({
         }
 
         try {
-          await lx.makePhoneCall({ phoneNumber: normalizedPhoneNumber });
+          await lx.openExternal(`tel:${normalizedPhoneNumber}`);
           console.log("Making phone call to:", normalizedPhoneNumber);
         } catch (error) {
           console.error("Failed to make phone call:", error);
@@ -139,7 +139,7 @@ export default definePage({
       },
       async setOrientationPortrait() {
         try {
-          await lx.setDeviceOrientation("portrait");
+          await lx.device.orientation.set("portrait");
           page.update(d => { d.orientationLock = "portrait"; });
         } catch (error) {
           console.error("Failed to set portrait orientation:", error);
@@ -148,7 +148,7 @@ export default definePage({
       },
       async setOrientationLandscape() {
         try {
-          await lx.setDeviceOrientation("landscape");
+          await lx.device.orientation.set("landscape");
           page.update(d => { d.orientationLock = "landscape"; });
         } catch (error) {
           console.error("Failed to set landscape orientation:", error);
@@ -161,7 +161,7 @@ export default definePage({
         }
 
         try {
-          offDeviceOrientationChange = lx.onDeviceOrientationChange((event) => {
+          offDeviceOrientationChange = lx.device.orientation.watch((event) => {
             const value = typeof event === "string" ? event : event?.value;
             helpers.appendOrientationEvent(value);
           });

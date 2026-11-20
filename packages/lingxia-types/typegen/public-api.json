@@ -96,9 +96,10 @@
     "LxAppReleaseType",
     "LxEnv",
     "LxFile",
-    "MakePhoneCallOptions",
+    "DeviceApi",
     "MediaApi",
     "MediaObjectFit",
+    "OrientationApi",
     "NetworkApi",
     "WifiApi",
     "MediaRotation",
@@ -211,6 +212,8 @@
     "MediaApi",
     "NetworkApi",
     "WifiApi",
+    "DeviceApi",
+    "OrientationApi",
     "PickedFile"
   ]
 }

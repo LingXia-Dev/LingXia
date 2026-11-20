@@ -42,7 +42,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getSystemSetting(ts_return = "SystemSettingInfo") = get_system_setting;
+        namespace DeviceApi = crate::namespace::device(ctx)?;
+        fn systemSettings(ts_return = "SystemSettingInfo") = get_system_setting;
     }
 }

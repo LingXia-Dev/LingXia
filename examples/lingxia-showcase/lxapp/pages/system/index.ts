@@ -357,7 +357,7 @@ export default definePage({
       },
       getSystemSetting() {
         try {
-          const info = lx.getSystemSetting();
+          const info = lx.device.systemSettings();
           console.log('System setting:', info);
           page.update(d => { d.systemSetting = info; });
         } catch (error) {

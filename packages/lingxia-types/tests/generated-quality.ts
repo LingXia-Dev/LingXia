@@ -84,7 +84,7 @@ const cacheSize: Promise<number> | undefined = lx.host.cache?.size();
 // @ts-expect-error cache is Control-only; guests do not have the member
 lx.host.cache.size();
 const hostOs: HostOs = lx.host.getBaseInfo().os;
-const deviceOs: HostOs = lx.getDeviceInfo().osName;
+const deviceOs: HostOs = lx.device.info.osName;
 const applinkScene: AppLaunchScene = 8003;
 const launchOptions: AppLaunchOptions = { scene: applinkScene };
 // @ts-expect-error binding-layer class names are not part of the public contract

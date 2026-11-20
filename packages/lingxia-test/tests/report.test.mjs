@@ -844,7 +844,7 @@ test("a conformance suite opts into the whole published surface", async () => {
   lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
   });
-  lxTest("only proves a member exists", { id: "COV-2", covers: ["shape:lx.getLocation"] }, async () => {
+  lxTest("only proves a member exists", { id: "COV-2", covers: ["shape:lx.device.location"] }, async () => {
     expect(1).toBe(1);
   });
   lxTest.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });

@@ -90,10 +90,7 @@ const GROUPS = [
     title: 'Device and input',
     summary: 'Device, screen, and system facts, the clipboard, plus orientation and key events.',
     members: [
-      'getDeviceInfo', 'getScreenInfo', 'getSystemSetting',
-      'vibrateShort', 'vibrateLong', 'makePhoneCall', 'getLocation',
-      'setDeviceOrientation', 'onDeviceOrientationChange',
-      'onKeyDown', 'onKeyUp', 'clipboard',
+      'device', 'clipboard',
     ],
   },
   {

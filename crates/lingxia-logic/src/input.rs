@@ -50,7 +50,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        namespace DeviceApi = crate::namespace::device(ctx)?;
         fn onKeyDown(
             ts_params = "callback: KeyEventCallback",
             ts_return = "() => void"

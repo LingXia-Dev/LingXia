@@ -47,14 +47,23 @@ impl From<PlatformScreenInfo> for ScreenInfo {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_api(ctx)?;
+    register_device_api(ctx)
 }
 
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getDeviceInfo(ts_return = "DeviceInfo") = device_info;
-        fn getScreenInfo(ts_return = "ScreenInfo") = screen_info;
+        const device: "DeviceApi" = crate::namespace::device(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_device_api(ctx) {
+        namespace DeviceApi = crate::namespace::device(ctx)?;
+        const info: "Readonly<DeviceInfo>" = device_info(ctx.clone())?;
+        const orientation: "OrientationApi" = crate::namespace::orientation(ctx)?;
+        fn screen(ts_return = "ScreenInfo") = screen_info;
     }
 }
 

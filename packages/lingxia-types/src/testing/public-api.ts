@@ -53,6 +53,8 @@ import type {
   PickApi,
   MediaApi,
   NetworkApi,
+  DeviceApi,
+  OrientationApi,
   WifiApi,
   NotificationApi,
   PageHandle,
@@ -82,24 +84,16 @@ export const LX_API_NAMES = [
   'env',
   'fs',
   'getAppInfo',
-  'getDeviceInfo',
-  'getLocation',
-  'getScreenInfo',
   'getStorage',
-  'getSystemSetting',
   'getUpdateManager',
-  'makePhoneCall',
   'nav',
   'navigationBar',
-  'onDeviceOrientationChange',
-  'onKeyDown',
-  'onKeyUp',
   'openExternal',
+  'device',
   'media',
   'network',
   'openFile',
   'pick',
-  'setDeviceOrientation',
   'setMoreActions',
   'share',
   'shell',
@@ -111,8 +105,6 @@ export const LX_API_NAMES = [
   'terminal',
   'tray',
   'ui',
-  'vibrateLong',
-  'vibrateShort',
 ] as const;
 
 const HOST_APP_API = [
@@ -170,6 +162,8 @@ const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
+const DEVICE_API = ['haptics', 'info', 'location', 'onKeyDown', 'onKeyUp', 'orientation', 'screen', 'systemSettings'] as const;
+const ORIENTATION_API = ['set', 'watch'] as const;
 const NETWORK_API = ['download', 'status', 'upload', 'watch', 'wifi'] as const;
 const WIFI_API = ['connect', 'current', 'list', 'onConnected', 'start', 'stop'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
@@ -394,6 +388,7 @@ export const LX_RUNTIME_SURFACES = [
       'clipboard',
       'env',
       'fs',
+      'device',
       'host',
       'media',
       'nav',
@@ -500,6 +495,18 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.pick',
     members: PICK_API,
+  },
+  {
+    name: 'lx.device',
+    layer: 'logic',
+    expression: 'lx.device',
+    members: DEVICE_API,
+  },
+  {
+    name: 'lx.device.orientation',
+    layer: 'logic',
+    expression: 'lx.device.orientation',
+    members: ORIENTATION_API,
   },
   {
     name: 'lx.network',
@@ -888,6 +895,8 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PickApi, typeof PICK_API>>,
   AssertTrue<Exact<MediaApi, typeof MEDIA_API>>,
   AssertTrue<Exact<NetworkApi, typeof NETWORK_API>>,
+  AssertTrue<Exact<DeviceApi, typeof DEVICE_API>>,
+  AssertTrue<Exact<OrientationApi, typeof ORIENTATION_API>>,
   AssertTrue<Exact<WifiApi, typeof WIFI_API>>,
   AssertTrue<Exact<NavApi, typeof NAV_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,

@@ -38,7 +38,7 @@ export default [
     id: "PEND-LOCATION-001",
     title: "getLocation through the Android / iOS permission sheet",
     mode: "external-ui",
-    covers: ["lx.getLocation"],
+    covers: ["lx.device.location"],
     reason: "macOS is proven by MACOS-LOCATION-001 over AX; the mobile permission sheet still needs a device-lab UI driver",
   },
   {
@@ -60,7 +60,7 @@ export default [
     implementedOn: ["android"],
     title: "observe the host physically rotate after setDeviceOrientation",
     mode: "external-ui",
-    covers: ["lx.setDeviceOrientation"],
+    covers: ["lx.device.orientation.set"],
     reason: "ANDROID-ORIENTATION-001 observes the real Android viewport rotate; other hosts still need a rotation contract",
   },
   {
@@ -74,7 +74,7 @@ export default [
     id: "PEND-DEVICE-FB-001",
     title: "vibrate and makePhoneCall on a phone",
     mode: "external-ui",
-    covers: ["lx.vibrateShort", "lx.vibrateLong", "lx.makePhoneCall"],
+    covers: ["lx.device.haptics"],
     reason: "desktop is proven absent by DEVICE-ABSENT-001; the real haptics and dialer are device-lab",
   },
   {
@@ -124,7 +124,7 @@ export default [
     implementedOn: ["android"],
     title: "onDeviceOrientationChange fires after a host rotate",
     mode: "external-fixture",
-    covers: ["lx.onDeviceOrientationChange"],
+    covers: ["lx.device.orientation.watch"],
     reason: "ANDROID-ORIENTATION-001 verifies rotation events and unsubscribe on Android; other hosts still need event delivery coverage",
   },
   {
@@ -167,7 +167,7 @@ export default [
     id: "PEND-KEYS-001",
     title: "onKeyDown and onKeyUp fire from PageDriver.key",
     mode: "planned",
-    covers: ["lx.onKeyDown", "lx.onKeyUp"],
+    covers: ["lx.device.onKeyDown", "lx.device.onKeyUp"],
     reason: "no case yet drives a host key into the listener",
   },
   {
@@ -212,7 +212,7 @@ export default [
     id: "PEND-DEVICE-DRV-001",
     title: "DeviceDriver get, list, and set",
     mode: "planned",
-    covers: ["lx.getDeviceInfo"],
+    covers: ["lx.device.info"],
     reason: "automation DeviceDriver is still shape-only",
   },
   {

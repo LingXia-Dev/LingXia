@@ -992,6 +992,8 @@ export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
 };
 
+export type DeviceApi = globalThis.DeviceApi;
+
 /** Display and orientation APIs. */
 export type DeviceOrientation = "portrait" | "landscape";
 
@@ -1193,7 +1195,7 @@ export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
 
 /**
  * Canonical platform-family label shared by `lx.host.getBaseInfo().os`
- * and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
+ * and `lx.device.info.osName`. `"unknown"` is a non-product build.
  */
 export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
 
@@ -1257,11 +1259,6 @@ export type LxAppEnvVersion = 'release' | 'draft';
 export type LxAppReleaseType = 'release' | 'draft';
 
 export type LxEnv = globalThis.LxEnv;
-
-/** Device action APIs. */
-export type MakePhoneCallOptions = {
-    phoneNumber: string;
-};
 
 export type MediaApi = globalThis.MediaApi;
 
@@ -1469,6 +1466,8 @@ export type OpenUrlOptions = {
     /** Stable identity for `lx.surface.getByKey(key)`. */
     key?: string;
 };
+
+export type OrientationApi = globalThis.OrientationApi;
 
 export type OverlaySurfaceSize = {
     /** Width hint. */
@@ -3077,6 +3076,28 @@ declare global {
 }
 
 declare global {
+  interface DeviceApi {
+    /**
+     * A vibration pulse, where the device has a vibrator: `short` (default) or
+     * `long`. Rejects `E_NOT_SUPPORTED` where it has none.
+     */
+    haptics(kind?: 'short' | 'long'): void;
+    readonly info: Readonly<DeviceInfo>;
+    readonly orientation: OrientationApi;
+    /** Read the screen geometry and pixel ratio this host reports. */
+    screen(): ScreenInfo;
+    /** Subscribes to key-down events and returns the unsubscribe fn. */
+    onKeyDown(callback: KeyEventCallback): () => void;
+    /** Subscribes to key-up events and returns the unsubscribe fn. */
+    onKeyUp(callback: KeyEventCallback): () => void;
+    /** Get location function */
+    location(options?: GetLocationOptions): Promise<LocationInfo>;
+    /** Read system switches the lxapp may branch on, such as location and WiFi. */
+    systemSettings(): SystemSettingInfo;
+  }
+}
+
+declare global {
   interface FileSystemApi {
     /**
      * Create a lazy reference to a LingXia-managed path.
@@ -3181,25 +3202,8 @@ declare global {
      */
     supports(feature: LxFeature): boolean;
     readonly clipboard: ClipboardApi;
-    /** Vibrate briefly, where the device has a vibrator. */
-    vibrateShort(): boolean;
-    /** Vibrate for a longer pulse, where the device has a vibrator. */
-    vibrateLong(): boolean;
-    /** Hand a number to the system dialer; the user still places the call. */
-    makePhoneCall(options: MakePhoneCallOptions): boolean;
-    /** Read the device and OS facts this host reports. */
-    getDeviceInfo(): DeviceInfo;
-    /** Read the screen geometry and pixel ratio this host reports. */
-    getScreenInfo(): ScreenInfo;
+    readonly device: DeviceApi;
     readonly network: NetworkApi;
-    /**
-     * Lock this lxapp to `portrait` or `landscape`.
-     * Any other value rejects. Where the host does not report the change back,
-     * the runtime emits the orientation event itself so JS state stays in sync.
-     */
-    setDeviceOrientation(orientation: DeviceOrientation): boolean;
-    /** Subscribes to orientation changes and returns the unsubscribe fn. */
-    onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
     readonly env: LxEnv;
     /**
      * Open a local file with the requested strategy.
@@ -3208,12 +3212,6 @@ declare global {
      */
     openFile(options: OpenFileOptions): Promise<void>;
     readonly fs: FileSystemApi;
-    /** Subscribes to key-down events and returns the unsubscribe fn. */
-    onKeyDown(callback: KeyEventCallback): () => void;
-    /** Subscribes to key-up events and returns the unsubscribe fn. */
-    onKeyUp(callback: KeyEventCallback): () => void;
-    /** Get location function */
-    getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
     /** Identify the running lxapp: its id, display name, version, and channel. */
     getLxAppInfo(): LxAppInfo;
     /**
@@ -3238,8 +3236,6 @@ declare global {
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     readonly surface: SurfaceApi;
-    /** Read system switches the lxapp may branch on, such as location and WiFi. */
-    getSystemSetting(): SystemSettingInfo;
     /**
      * Replace the current lxapp's complete app-declared More action list (seven
      * entries maximum). Pass an empty array to clear it. Native hosts append these
@@ -3354,6 +3350,19 @@ declare global {
      * once, `progress` streams to one consumer, and `cancel()` aborts.
      */
     upload(options: UploadOptions): UploadTask;
+  }
+}
+
+declare global {
+  interface OrientationApi {
+    /**
+     * Lock this lxapp to `portrait` or `landscape`.
+     * Any other value rejects. Where the host does not report the change back,
+     * the runtime emits the orientation event itself so JS state stays in sync.
+     */
+    set(orientation: DeviceOrientation): boolean;
+    /** Subscribes to orientation changes and returns the unsubscribe fn. */
+    watch(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
   }
 }
 

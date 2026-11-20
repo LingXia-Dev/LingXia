@@ -39,7 +39,7 @@ async function waitForState(
   });
 }
 
-test("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.device.info', 'lx.device.screen'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-001");
 
   await app.nav.reset({ page: 'device', params: { type: 'device' } });

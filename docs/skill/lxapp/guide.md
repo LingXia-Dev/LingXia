@@ -303,7 +303,7 @@ export default definePage({
 });
 ```
 
-The same applies to `lx.network.wifi.onConnected`, `onDeviceOrientationChange`,
+The same applies to `lx.network.wifi.onConnected`, `lx.device.orientation.watch`,
 `onKeyDown`, `onKeyUp`, `lx.surface.watchContext`, `onUpdateReady`,
 `onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
 `onClose`. A route can be open more than once, so a leak multiplies per

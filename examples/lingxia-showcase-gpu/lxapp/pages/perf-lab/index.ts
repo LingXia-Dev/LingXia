@@ -22,7 +22,7 @@ export default definePage({
           await page.flush();
         }
         // Only desktop answers `ui.*` in the View; mobile shows toasts natively.
-        const os = lx.getDeviceInfo().osName;
+        const os = lx.device.info.osName;
         const viewUi = os === 'macOS' || os === 'Windows';
         if (viewUi) {
           for (let i = 0; i < requests; i++) {

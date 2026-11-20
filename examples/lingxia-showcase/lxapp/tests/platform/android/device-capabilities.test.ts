@@ -129,7 +129,7 @@ test('save an image and a video into the photo library', {
 test('fire both haptics without a dialog', {
   skip: androidSkip,
   id: 'ANDROID-HAPTICS-001',
-  covers: ['lx.vibrateShort', 'lx.vibrateLong'],
+  covers: ['lx.device.haptics'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-HAPTICS-001');
@@ -138,8 +138,8 @@ test('fire both haptics without a dialog', {
   // Whether the motor moved is not observable from here; that the call is
   // supported and resolves — where a desktop rejects it — is.
   const result = await app.logic.eval(async ({ lx }) => {
-    const short: unknown = await lx.vibrateShort();
-    const long: unknown = await lx.vibrateLong();
+    const short: unknown = await lx.device.haptics();
+    const long: unknown = await lx.device.haptics('long');
     return { short, long };
   });
   expect(result.short).toBe(true);

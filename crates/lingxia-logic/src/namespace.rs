@@ -20,3 +20,11 @@ pub(crate) fn network(ctx: &JSContext) -> JSResult<JSObject> {
 pub(crate) fn wifi(ctx: &JSContext) -> JSResult<JSObject> {
     child(ctx, &network(ctx)?, "wifi")
 }
+
+pub(crate) fn device(ctx: &JSContext) -> JSResult<JSObject> {
+    child(ctx, &ctx.global().get::<_, JSObject>("lx")?, "device")
+}
+
+pub(crate) fn orientation(ctx: &JSContext) -> JSResult<JSObject> {
+    child(ctx, &device(ctx)?, "orientation")
+}

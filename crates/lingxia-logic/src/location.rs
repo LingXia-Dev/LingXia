@@ -110,16 +110,16 @@ pub struct LocationInfo {
 
 fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
     let parsed: Value = serde_json::from_str(data)
-        .map_err(|e| js_internal_error(format!("getLocation invalid payload: {}", e)))?;
+        .map_err(|e| js_internal_error(format!("device.location invalid payload: {}", e)))?;
 
     let latitude = parsed
         .get("latitude")
         .and_then(Value::as_f64)
-        .ok_or_else(|| js_internal_error("getLocation payload missing numeric `latitude`"))?;
+        .ok_or_else(|| js_internal_error("device.location payload missing numeric `latitude`"))?;
     let longitude = parsed
         .get("longitude")
         .and_then(Value::as_f64)
-        .ok_or_else(|| js_internal_error("getLocation payload missing numeric `longitude`"))?;
+        .ok_or_else(|| js_internal_error("device.location payload missing numeric `longitude`"))?;
     let speed = parsed.get("speed").and_then(Value::as_f64);
     let accuracy = parsed.get("accuracy").and_then(Value::as_f64);
     let altitude = parsed.get("altitude").and_then(Value::as_f64);
@@ -149,7 +149,7 @@ async fn get_location(
         .unwrap_or("wgs84");
     if requested_type != "wgs84" && requested_type != "gcj02" {
         return Err(js_invalid_parameter_error(format!(
-            "getLocation invalid coordinateSystem: {}",
+            "device.location invalid coordinateSystem: {}",
             requested_type
         )));
     }
@@ -189,8 +189,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getLocation(
+        namespace DeviceApi = crate::namespace::device(ctx)?;
+        fn location(
             ts_params = "options?: GetLocationOptions",
             ts_return = "Promise<LocationInfo>"
         ) = get_location;

@@ -700,8 +700,8 @@ export class LiveFixture implements Fixture {
     this.visualSubject ??= (async () => ({
       app: await this.app.info().then((info) => info.appId, () => this.pinned.appid ?? null),
       device: await this.app.logic.eval(() => {
-        const lx = (globalThis as unknown as { lx: { getDeviceInfo(): Record<string, string>; host?: { displayLanguage?: { get(): string } } } }).lx;
-        const info = lx.getDeviceInfo();
+        const lx = (globalThis as unknown as { lx: { device: { info: Record<string, string> }; host?: { displayLanguage?: { get(): string } } } }).lx;
+        const info = lx.device.info;
         let language: string | null = null;
         try { language = lx.host?.displayLanguage?.get() ?? null; } catch { /* an older host */ }
         return { brand: info.brand, model: info.model, marketName: info.marketName ?? null, osName: info.osName, osVersion: info.osVersion, language };

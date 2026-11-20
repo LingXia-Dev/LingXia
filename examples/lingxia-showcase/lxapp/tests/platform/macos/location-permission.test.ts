@@ -82,11 +82,11 @@ const promptAppearanceGraceMs = 5_000;
 
 test('handles the macOS location permission sheet when it appears', {
   id: 'MACOS-LOCATION-001',
-  covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
+  covers: ['lx.device.location', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
 }, async (t) => {
   const auto = t.automation;
   const app = auto.lxapp();
-  // This case claims lx.getLocation; a silent pass elsewhere would credit it falsely.
+  // This case claims lx.device.location; a silent pass elsewhere would credit it falsely.
   const platform = await runtimePlatform(app);
   if (platform !== 'macos') throw new Error(`macOS location case ran against ${platform || 'unknown'}`);
   const doctor = await auto.desktop.doctor();

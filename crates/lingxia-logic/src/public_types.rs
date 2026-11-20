@@ -71,7 +71,7 @@ rong::js_api! {
 }"###;
 
         /// Canonical platform-family label shared by `lx.host.getBaseInfo().os`
-        /// and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
+        /// and `lx.device.info.osName`. `"unknown"` is a non-product build.
         type HostOs = r###"'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'"###;
 
         /// Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript
@@ -1104,12 +1104,6 @@ rong::js_api! {
         /// LxApp metadata APIs.
         ///
         type LxAppReleaseType = r###"'release' | 'draft'"###;
-
-        /// Device action APIs.
-        ///
-        type MakePhoneCallOptions = r###"{
-    phoneNumber: string;
-}"###;
 
         type MediaObjectFit = r###"'cover' | 'contain' | 'fill' | 'fit'"###;
 
@@ -2286,7 +2280,9 @@ true
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
+        type DeviceApi = "globalThis.DeviceApi";
         type NetworkApi = "globalThis.NetworkApi";
+        type OrientationApi = "globalThis.OrientationApi";
         type WifiApi = "globalThis.WifiApi";
         type MediaApi = "globalThis.MediaApi";
         type PickApi = "globalThis.PickApi";
