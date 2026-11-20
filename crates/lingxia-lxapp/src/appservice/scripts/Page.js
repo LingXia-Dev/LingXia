@@ -395,6 +395,7 @@
       }
       config[name] = fn;
     }
+    config.route = pagePath.replace(/\.[^./]+$/, "");
     svc = createPageInstance(
       { config, bindingMetaJson: JSON.stringify({ handlers: Object.keys(actions) }) },
       pagePath,
