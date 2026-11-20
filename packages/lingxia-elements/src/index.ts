@@ -46,10 +46,9 @@ export {
   type NavigatorSizeValue,
   type NavigatorUrlPlacement,
   type NavigatorWindowChrome,
-  type NavigatorOpenType,
-  type NavigatorQuery,
-  type NavigatorQueryValue,
-  type NavigatorTarget,
+  type LinkTarget,
+  type NavigatorParams,
+  type NavigatorParamValue,
 } from "./navigator.js";
 
 export {

@@ -19,13 +19,13 @@ test('navigate through a component and return to the original page instances', {
 }, async (t) => {
   const { app, page, home } = await openNavigator(t, 'NAVIGATOR-STACK-001');
   const navigator = await app.nav.current();
-  await page.view.css('lx-navigator[open-type="navigate"][page="device"]').click();
+  await page.view.css(`lx-navigator[to='{"page":"device","params":{"type":"device"}}']`).click();
   await waitForCurrentPage(app, 'device');
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['home', 'navigator', 'device']);
   await expect((await app.page({ name: 'device' })).view.testId('device-page')).toHaveAttribute('data-mode', 'device');
   await app.nav.back();
   expect((await app.nav.current()).instanceId).toBe(navigator.instanceId);
-  await page.view.css('lx-navigator[open-type="navigateBack"]').click();
+  await page.view.css(`lx-navigator[to='{"back":1}']`).click();
   expect((await waitForCurrentPage(app, 'home')).instanceId).toBe(home.instanceId);
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['home']);
 });
@@ -35,7 +35,7 @@ test('redirect through a component replaces only the current stack entry', {
   covers: ['lx.nav.go'],
 }, async (t) => {
   const { app, page, home } = await openNavigator(t, 'NAVIGATOR-REDIRECT-001');
-  await page.view.css('lx-navigator[open-type="redirect"]').click();
+  await page.view.css('lx-navigator[replace]').click();
   await waitForCurrentPage(app, 'ui');
   await expect((await app.page({ name: 'ui' })).view.testId('toast-show')).toBeVisible();
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['home', 'ui']);
@@ -48,7 +48,7 @@ test('relaunch through a component resets the stack and delivers its query', {
   covers: ['lx.nav.reset'],
 }, async (t) => {
   const { app, page } = await openNavigator(t, 'NAVIGATOR-RELAUNCH-001');
-  await page.view.css('lx-navigator[open-type="reLaunch"]').click();
+  await page.view.css('lx-navigator[reset]').click();
   await waitForCurrentPage(app, 'device');
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['device']);
   await expect((await app.page({ name: 'device' })).view.testId('device-page')).toHaveAttribute('data-mode', 'screen');
@@ -59,7 +59,7 @@ test('switch tab through a component clears the pushed stack', {
   covers: ['lx.nav.go'],
 }, async (t) => {
   const { app, page } = await openNavigator(t, 'NAVIGATOR-TAB-001');
-  await page.view.css('lx-navigator[open-type="switchTab"][page="todo"]').click();
+  await page.view.css(`lx-navigator[to='{"tab":"todo"}']`).click();
   await waitForCurrentPage(app, 'todo');
   expect((await app.nav.stack()).map((entry) => entry.name)).toEqual(['todo']);
   await expect((await app.page({ name: 'todo' })).view.testId('todo-page')).toBeVisible();

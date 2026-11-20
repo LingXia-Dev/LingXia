@@ -51,9 +51,7 @@ export default function NavigatorPage() {
               <div className="grid grid-cols-2 gap-3">
                 {/* Navigate */}
                 <LxNavigator
-                  page="device"
-                  query={{ type: 'device' }}
-                  openType="navigate"
+                  to={{ page: 'device', params: { type: 'device' } }}
                   onSuccess={() => addLog('✓ Navigate to device')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 dark:text-blue-400 rounded-xl transition-colors h-full">
@@ -65,9 +63,8 @@ export default function NavigatorPage() {
 
                 {/* Redirect */}
                 <LxNavigator
-                  page="ui"
-                  query={{ type: 'toast' }}
-                  openType="redirect"
+                  to={{ page: 'ui', params: { type: 'toast' } }}
+                  replace
                   onSuccess={() => addLog('✓ Redirect to toast demo')}
                   onFail={onFailWithMessage('Failed to redirect')}
                 >
@@ -80,8 +77,7 @@ export default function NavigatorPage() {
 
                 {/* Navigate Back */}
                 <LxNavigator
-                  openType="navigateBack"
-                  delta={1}
+                  to={{ back: 1 }}
                   onSuccess={() => addLog('✓ Back 1 page')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-surface-100 hover:bg-surface-200 active:bg-surface-300 text-gray-700 rounded-xl transition-colors h-full">
@@ -93,9 +89,8 @@ export default function NavigatorPage() {
 
                 {/* ReLaunch */}
                 <LxNavigator
-                  page="device"
-                  query={{ type: 'screen' }}
-                  openType="reLaunch"
+                  to={{ page: 'device', params: { type: 'screen' } }}
+                  reset
                   onSuccess={() => addLog('✓ ReLaunch to device')}
                 >
                   <div className="flex flex-col items-center justify-center py-4 px-2 bg-orange-50 hover:bg-orange-100 active:bg-orange-200 text-orange-700 dark:text-orange-400 rounded-xl transition-colors h-full">
@@ -117,8 +112,7 @@ export default function NavigatorPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <LxNavigator
-                  page="home"
-                  openType="switchTab"
+                  to={{ tab: 'home' }}
                   onSuccess={() => addLog('✓ Switch to Home tab')}
                 >
                   <div className="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-medium text-center transition-colors">
@@ -126,8 +120,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  page="api"
-                  openType="switchTab"
+                  to={{ tab: 'api' }}
                   onSuccess={() => addLog('✓ Switch to API tab')}
                 >
                   <div className="py-2 px-3 bg-purple-50 hover:bg-purple-100 text-purple-600 dark:text-purple-400 rounded-lg text-xs font-medium text-center transition-colors">
@@ -135,8 +128,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  page="todo"
-                  openType="switchTab"
+                  to={{ tab: 'todo' }}
                   onSuccess={() => addLog('✓ Switch to Todo tab')}
                 >
                   <div className="py-2 px-3 bg-green-50 hover:bg-green-100 text-green-600 dark:text-green-400 rounded-lg text-xs font-medium text-center transition-colors">
@@ -158,8 +150,7 @@ export default function NavigatorPage() {
           <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
             <div className="p-4 space-y-3">
               <LxNavigator
-                appId="lingxia-chat"
-                page="chat"
+                to={{ app: 'lingxia-chat', page: 'chat' }}
                 onSuccess={() => addLog('✓ Opening other LxApp')}
                 onFail={onFailWithMessage('Failed to open LxApp')}
               >
@@ -172,7 +163,7 @@ export default function NavigatorPage() {
               </LxNavigator>
 
               <LxNavigator
-                url="https://www.deepseek.com"
+                to={{ url: 'https://www.deepseek.com' }}
                 as="main"
                 onSuccess={() => addLog('✓ Opening DeepSeek in-app')}
                 onFail={onFailWithMessage('Failed to open in-app browser')}
@@ -186,7 +177,7 @@ export default function NavigatorPage() {
               </LxNavigator>
 
               <LxNavigator
-                url="https://www.deepseek.com"
+                to={{ url: 'https://www.deepseek.com' }}
                 as="aside"
                 edge="right"
                 onSuccess={() => addLog('✓ Opening DeepSeek as aside')}
@@ -201,7 +192,7 @@ export default function NavigatorPage() {
               </LxNavigator>
 
               <LxNavigator
-                page="surface"
+                to={{ page: 'surface' }}
                 as="float"
                 size={{ width: '80%', height: '60%' }}
                 interaction={{ closeButton: true }}
@@ -217,7 +208,8 @@ export default function NavigatorPage() {
               </LxNavigator>
 
               <LxNavigator
-                url="https://www.deepseek.com"
+                to={{ url: 'https://www.deepseek.com' }}
+                as="external"
                 onSuccess={() => addLog('✓ Opening DeepSeek in external browser')}
                 onFail={onFailWithMessage('Failed to open external browser')}
               >
@@ -244,12 +236,11 @@ export default function NavigatorPage() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="text-sm font-medium text-gray-900">Make Phone Call</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Trigger system dialer with tel open-type</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Trigger the system dialer with a tel: link</div>
                 </div>
               </div>
               <LxNavigator
-                openType="tel"
-                phoneNumber="10086"
+                to={{ url: 'tel:10086' }}
                 onSuccess={() => addLog('✓ Making phone call')}
                 onFail={onFailWithMessage('Failed to make call')}
               >

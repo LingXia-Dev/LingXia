@@ -1,11 +1,8 @@
 import React from 'react';
 import type {
+  LinkTarget,
   LxNavigatorAttributes,
-  NavigatorChannel,
   LxNavigatorEvent,
-  NavigatorQuery,
-  NavigatorOpenType,
-  NavigatorTarget,
   NavigatorEdge,
   NavigatorFloatPosition,
   NavigatorInteraction,
@@ -18,14 +15,13 @@ import { buildNavigatorNativeAttrs } from '@lingxia/elements';
 // Import to ensure custom element is registered
 import '@lingxia/elements';
 
-export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete' | 'query' | 'size' | 'interaction'> {
-  // Navigation
-  url?: string;
-  page?: string;
-  openType?: NavigatorOpenType;
-  target?: NavigatorTarget; // Auto-inferred if not specified
-  delta?: number;
-  query?: NavigatorQuery;
+export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete' | 'to' | 'size' | 'interaction'> {
+  /** Where a tap goes: `{ page, params }`, `{ tab }`, `{ app }`, `{ url }` or `{ back: n }`. */
+  to: LinkTarget;
+  /** `{ page }`: replace the current page instead of pushing. */
+  replace?: boolean;
+  /** `{ page }` or `{ tab }`: clear the stack to it. */
+  reset?: boolean;
 
   // Placement
   as?: NavigatorPlacement;
@@ -34,14 +30,6 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
   chrome?: NavigatorWindowChrome;
   size?: NavigatorSize;
   interaction?: NavigatorInteraction;
-
-  // Open external lxapp
-  appId?: string;
-  channel?: NavigatorChannel;
-  targetVersion?: string;
-
-  // Phone call
-  phoneNumber?: string;
 
   // Hover effect
   hoverClass?: string;
@@ -65,22 +53,15 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
 export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
   (props, ref) => {
     const {
-      url,
-      page,
-      openType = 'navigate',
-      target, // Auto-inferred, no default
-      delta = 1,
-      query,
+      to,
+      replace,
+      reset,
       as,
       edge,
       position,
       chrome,
       size,
       interaction,
-      appId,
-      channel,
-      targetVersion,
-      phoneNumber,
       hoverClass = 'navigator-hover',
       hoverStopPropagation = false,
       hoverStartTime = 20,
@@ -135,22 +116,15 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
     }, [onSuccess, onFail, onComplete]);
 
     const navigatorProps = buildNavigatorNativeAttrs({
-      url,
-      page,
-      openType,
-      target,
-      delta,
-      query,
+      to,
+      replace,
+      reset,
       as,
       edge,
       position,
       chrome,
       size,
       interaction,
-      appId,
-      channel,
-      targetVersion,
-      phoneNumber,
       hoverClass,
       hoverStopPropagation,
       hoverStartTime,
