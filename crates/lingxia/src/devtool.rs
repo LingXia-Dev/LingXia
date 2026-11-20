@@ -419,7 +419,8 @@ static SYNCING: std::sync::Mutex<std::collections::BTreeSet<String>> =
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
-    target_env = "ohos"
+    target_env = "ohos",
+    target_os = "windows"
 ))]
 pub fn view_wire() -> Option<(u32, u32)> {
     #[cfg(target_os = "android")]
@@ -428,6 +429,8 @@ pub fn view_wire() -> Option<(u32, u32)> {
     use lingxia_view_apple::lingxia_view::protocol;
     #[cfg(target_env = "ohos")]
     use lingxia_view_harmony::lingxia_view::protocol;
+    #[cfg(target_os = "windows")]
+    use lingxia_view_windows::lingxia_view::protocol;
     Some((protocol::UI_ABI, (protocol::FIELDS.len() - 1) as u32))
 }
 
@@ -436,7 +439,8 @@ pub fn view_wire() -> Option<(u32, u32)> {
     target_os = "android",
     target_os = "ios",
     target_os = "macos",
-    target_env = "ohos"
+    target_env = "ohos",
+    target_os = "windows"
 )))]
 pub fn view_wire() -> Option<(u32, u32)> {
     None
