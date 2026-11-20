@@ -41,14 +41,14 @@
 	<key>NSAppSleepDisabled</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Required to capture photos and videos.</string>
+	<string>Camera access is needed to take photos and video in this page.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Required to read Wi-Fi network information.</string>
+	<string>Location access is needed to get your location and read Wi-Fi information.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Required to record audio when capturing videos.</string>
+	<string>Microphone access is needed to record audio in this page.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Required to save photos and videos.</string>
+	<string>Photo library access is needed to save photos and videos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Required to access photos and videos in your library.</string>
+	<string>Photo library access is needed to pick photos and videos.</string>
 </dict>
 </plist>

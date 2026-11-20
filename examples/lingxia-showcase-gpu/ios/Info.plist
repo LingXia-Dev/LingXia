@@ -20,24 +20,24 @@
 
     <!-- Location permission description for runtime prompts (required for WiFi info access) -->
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Allow LingXia to access your location to read WiFi information.</string>
+    <string>Location access is needed to get your location and read Wi-Fi information.</string>
 
     <!-- Local network access (dev tooling connects to the Mac dev server);
          without this key iOS silently denies LAN connections with no prompt. -->
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Allow LingXia to connect to the development server on your local network.</string>
+    <string>Local network access is needed to connect to the development server.</string>
 
     <!-- Photos library permission descriptions -->
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Allow LingXia to save images and videos to your photo library.</string>
+    <string>Photo library access is needed to save photos and videos.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Allow LingXia to access your photo library for media features.</string>
+    <string>Photo library access is needed to pick photos and videos.</string>
 
     <!-- Camera and microphone permission descriptions -->
     <key>NSCameraUsageDescription</key>
-    <string>Allow LingXia to capture photos and videos through the camera.</string>
+    <string>Camera access is needed to take photos and video in this page.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow LingXia to record audio.</string>
+    <string>Microphone access is needed to record audio in this page.</string>
 
     <!-- Allow runtime orientation lock APIs to switch between portrait and landscape -->
     <key>UISupportedInterfaceOrientations</key>
