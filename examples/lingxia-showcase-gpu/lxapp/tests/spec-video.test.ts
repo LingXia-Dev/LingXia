@@ -26,7 +26,7 @@ spec('kit video controls start a poster video on a tap, then pause, mute and scr
   // A drag to the far end seeks there and stays paused (at the end, the button offers Replay). It
   // starts on the line: on a narrow bar the slider's touch box reaches down over the buttons.
   const seek = await view.getByRole('slider', { name: 'Seek' }).boundingBox();
-  const finger = await view.touch([seek.x + seek.width / 10, seek.y + seek.height / 4]);
+  const finger = await view.touch([seek.x + seek.width / 10, seek.y + seek.height / 4], { press: true });
   await finger.moveTo([seek.x + seek.width + 40, seek.y + seek.height / 4], { durationMs: 400 });
   await finger.up();
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThanOrEqual(5);

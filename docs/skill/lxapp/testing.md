@@ -160,8 +160,10 @@ spec('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
 - `pullToRefresh({ distance?, hold?, release?, at? })` returns `{ refreshed,
   maxOffset, phases }`, sampled from the page's refresh indicator as the
   finger moves; it rejects with `E_UNSUPPORTED` on a page without one.
-- `t.app.view.touch(at)` holds a pointer for checks mid-gesture:
-  `.moveTo(at, { durationMs })`, `.hold(ms)`, `.up()`, `.cancel()`.
+- `t.app.view.touch(at, { press? })` holds a pointer for checks mid-gesture:
+  `.moveTo(at, { durationMs })`, `.hold(ms)`, `.up()`, `.cancel()`. On a
+  desktop it defaults to trackpad fingers, which press nothing at rest; pass
+  `press: true` to hold a slider or scrub (the mouse there, a finger on touch).
 - `t.app.view.refreshIndicator()` reads `{ phase, offset }` (`idle`,
   `pulling`, `armed`, `refreshing`, `ending`).
 - `t.app.gesture.swipe(...)` / `.edgeBack({ edge? })` act on the host window

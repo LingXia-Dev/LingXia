@@ -171,10 +171,12 @@ export class Gestures {
   touch(at: GestureTarget, options: TouchOptions = {}): Promise<TestFinger> {
     return this.scope.act("gesture.touch", "", async () => {
       const start = await pointOf(at, "touch at");
+      const input = options.input
+        ?? (options.press ? (this.scope.driver().inputs().includes("touch") ? "touch" : "mouse") : undefined);
       const down = await this.perform("touch", {
         shape: { kind: "hold", at: start, durationMs: 0 },
         end: "hold",
-        ...(options.input ? { input: options.input } : {}),
+        ...(input ? { input } : {}),
       });
       return this.finger(down, start);
     });
