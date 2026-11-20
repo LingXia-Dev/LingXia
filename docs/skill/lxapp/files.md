@@ -195,14 +195,13 @@ Limits come from host [`storage`](../app/project.md#storage):
 
 ## Host cache
 
-`lx.host.cache` exists only in the [Control app](../app/control-app.md), for a
-product-wide "clear cache" setting:
+`lx.host.cache` works only in the [Control app](../app/control-app.md); elsewhere
+its calls fail `E_PERMISSION_DENIED`. For a product-wide "clear cache" setting:
 
 ```ts
-const cache = lx.host.cache;
-if (!cache) return; // not the Control app
-const reclaimableBytes = await cache.size();
-const result = await cache.clear();
+if (lx.app.info.role !== 'control') return;
+const reclaimableBytes = await lx.host.cache.size();
+const result = await lx.host.cache.clear();
 // result: { freedBytes, skippedActivePaths, webview, failures }
 ```
 

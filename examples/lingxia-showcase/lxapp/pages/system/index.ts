@@ -45,11 +45,11 @@ export default definePage({
           });
         }
       },
-      // lx.host.autostart is absent off macOS/Windows or without the capability,
-      // so presence of the member is the support check.
+      // lx.host.autostart is always present; off macOS/Windows or without the
+      // capability its calls fail, so ask lx.supports first.
       async refreshAutostart() {
         const autostart = lx.host.autostart;
-        if (!autostart) {
+        if (!lx.supports('app.autostart')) {
           page.update(d => {
             d.autostartSupported = false;
             d.autostartEnabled = null;
@@ -80,7 +80,7 @@ export default definePage({
       // app, so the member is present here; a guest does not have it.
       async refreshCacheSize() {
         const cache = lx.host.cache;
-        if (!cache) {
+        if (lx.app.info.role !== 'control') {
           page.update(d => {
             d.cacheBytes = null;
             d.cacheError = 'Cache APIs are Control-app only';
@@ -112,7 +112,7 @@ export default definePage({
           d.cacheNotice = '';
         });
         const cache = lx.host.cache;
-        if (!cache) {
+        if (lx.app.info.role !== 'control') {
           page.update(d => {
             d.cacheBusy = false;
             d.cacheError = 'Cache APIs are Control-app only';
@@ -150,7 +150,7 @@ export default definePage({
       // `lx.supports('app.notification')`.
       async refreshNotification() {
         const notification = lx.host.notification;
-        if (!notification) {
+        if (!lx.supports('app.notification')) {
           page.update(d => {
             d.notificationSupported = false;
             d.notificationPermission = '';
@@ -180,8 +180,8 @@ export default definePage({
       },
       async showNotification() {
         const notification = lx.host.notification;
-        if (!notification) {
-          page.update(d => { d.notificationError = 'Notifications are absent on this host'; });
+        if (!lx.supports('app.notification')) {
+          page.update(d => { d.notificationError = 'Notifications are not supported on this host'; });
           return;
         }
         try {
@@ -204,7 +204,7 @@ export default definePage({
       },
       async cancelNotification() {
         const notification = lx.host.notification;
-        if (!notification) {
+        if (!lx.supports('app.notification')) {
           return;
         }
         try {
@@ -224,7 +224,7 @@ export default definePage({
       },
       refreshBanner() {
         const banner = lx.host.banner;
-        const supported = !!(banner && typeof banner.show === 'function');
+        const supported = lx.supports('app.banner');
         page.update(d => {
           d.bannerSupported = supported;
           d.bannerError = banner ? '' : 'Desktop banner is Control-app / desktop only';
@@ -235,8 +235,8 @@ export default definePage({
       },
       async showBannerToast() {
         const banner = lx.host.banner;
-        if (!banner) {
-          page.update(d => { d.bannerError = 'Desktop banner is absent on this host'; });
+        if (!lx.supports('app.banner')) {
+          page.update(d => { d.bannerError = 'Desktop banner is not supported on this host'; });
           return;
         }
         if (page.data.bannerBusy) {
@@ -272,8 +272,8 @@ export default definePage({
       },
       async showBannerPrompt() {
         const banner = lx.host.banner;
-        if (!banner) {
-          page.update(d => { d.bannerError = 'Desktop banner is absent on this host'; });
+        if (!lx.supports('app.banner')) {
+          page.update(d => { d.bannerError = 'Desktop banner is not supported on this host'; });
           return;
         }
         if (page.data.bannerBusy) {
@@ -313,7 +313,7 @@ export default definePage({
       },
       async dismissBanner() {
         const banner = lx.host.banner;
-        if (!banner) {
+        if (!lx.supports('app.banner')) {
           return;
         }
         try {
@@ -332,7 +332,7 @@ export default definePage({
       },
       async toggleAutostart() {
         const autostart = lx.host.autostart;
-        if (!autostart) {
+        if (!lx.supports('app.autostart')) {
           return;
         }
         if (page.data.autostartEnabled === null) {

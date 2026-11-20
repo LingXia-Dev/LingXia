@@ -9,7 +9,7 @@ declare const systemDownloadsPathBrand: unique symbol;
 export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
 /** Lifecycle hook names an `App({...})` config may declare. */
-export type AppLifecycleName = Exclude<keyof AppConfig, 'globalData'>;
+export type AppLifecycleName = keyof AppConfig;
 
 /**
  * What a key that differs from a lifecycle hook only in case resolves to, so
