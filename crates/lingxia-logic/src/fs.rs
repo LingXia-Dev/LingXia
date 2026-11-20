@@ -1088,7 +1088,7 @@ impl JSLxFile {
 
     /// Read and parse the complete file as JSON. Stays `unknown`: a class
     /// method cannot carry a type parameter through the binding, so unlike
-    /// `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+    /// `lx.storage().get<T>()` the assertion is spelled `as` at the call
     /// site rather than passed in.
     #[js_method(ts_return = "Promise<unknown>")]
     async fn json(&self, ctx: JSContext) -> JSResult<JSValue> {
@@ -1173,7 +1173,7 @@ fn fs_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 
 /// Create a lazy reference to a LingXia-managed path.
 ///
-/// Relative paths resolve under `lx.env.USER_DATA_PATH`. Creating a reference
+/// Relative paths resolve under `lx.fs.userData`. Creating a reference
 /// does not require the path to exist.
 fn fs_file(ctx: JSContext, path: String) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -1481,6 +1481,8 @@ rong::js_api! {
 rong::js_api! {
     fn register_fs_api(ctx) {
         namespace FileSystemApi = fs_namespace(ctx)?;
+        const userData: "'lx://userdata'" = "lx://userdata";
+        const userCache: "'lx://usercache'" = "lx://usercache";
         fn file(ts_params = "path: ManagedPath", ts_return = "LxFile") = fs_file;
         fn exists(ts_params = "path: ManagedPath") = fs_exists;
         fn stat(ts_params = "path: ManagedPath") = fs_stat;

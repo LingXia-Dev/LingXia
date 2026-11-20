@@ -42,7 +42,7 @@ test('play a video page of a native media swiper to its end', {
   const view = (await app.page({ name: 'swiper' }, { timeout: 30_000 })).view;
 
   await app.logic.eval(async ({ lx, getCurrentPages }, folder, red, clip) => {
-    const path = `${lx.env.USER_DATA_PATH}/${folder}/red.png`;
+    const path = `${lx.fs.userData}/${folder}/red.png`;
     await lx.fs.write(path, red, { encoding: 'base64', overwrite: true });
     const page = getCurrentPages().find((candidate) => candidate.route.includes('/swiper/'));
     page?.setData({

@@ -1512,7 +1512,7 @@ true
         /// database. Use `lx.fs` for path-based data.
         ///
         /// `get<T>()` is an unchecked assertion at the call site. Pin every
-        /// key's shape once with `lx.getStorage<Schema>()` — that returns a
+        /// key's shape once with `lx.storage<Schema>()` — that returns a
         /// `TypedStorage<Schema>` instead of this untyped handle.
         ///
         type Storage = r###"{
@@ -2244,7 +2244,6 @@ true
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxAppApi = "globalThis.LxAppApi";
-        type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
         type DeviceApi = "globalThis.DeviceApi";
         type NetworkApi = "globalThis.NetworkApi";

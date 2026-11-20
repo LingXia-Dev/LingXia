@@ -349,10 +349,11 @@ declare global {
     leaveApp(): Promise<void>;
   }
 
-  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
-  // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). env re-declares
-  // the generated member doc-only; tsc rejects the merge if the types drift.
+  // HostAppApi/FileSystemApi members are emitted from the Rust js_api
+  // metadata; these merges only add what Rong cannot express — the cfg-gated
+  // autostart member and doc comments (js_api consts cannot carry docs).
+  // host.env, fs.userData and fs.userCache re-declare the generated members
+  // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
@@ -415,8 +416,12 @@ declare global {
     claimCustomUpdate(): void;
   }
 
-  /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {}
+  interface FileSystemApi {
+    /** The root of this lxapp's durable files; a relative path resolves here. */
+    readonly userData: 'lx://userdata';
+    /** The root of this lxapp's cache, which the host may clear. */
+    readonly userCache: 'lx://usercache';
+  }
 
   interface NetworkApi {
     /** Download to the downloads directory. */
@@ -443,7 +448,7 @@ declare global {
      * `get` / `set` / `delete` then share that schema instead of
      * repeating `get<T>()` at each call site.
      */
-    getStorage<S extends StorageSchema>(): TypedStorage<S>;
+    storage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
 
@@ -461,7 +466,7 @@ type StorageEntry<S extends object> = {
 }[StorageKey<S>];
 
 /**
- * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Schema-typed view of the same store `lx.storage()` returns.
  * Runtime is identical; only the key/value types are pinned.
  *
  * The schema constrains what this handle writes and reads, not what the store
@@ -1235,8 +1240,6 @@ export type LxAppEnvVersion = 'release' | 'draft';
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'draft';
-
-export type LxEnv = globalThis.LxEnv;
 
 export type MediaApi = globalThis.MediaApi;
 
@@ -2044,7 +2047,7 @@ export type ShellSurfacePatch = {
  * Asynchronous persistent key-value storage backed by the lxapp
  * database. Use `lx.fs` for path-based data.
  * `get<T>()` is an unchecked assertion at the call site. Pin every
- * key's shape once with `lx.getStorage<Schema>()` — that returns a
+ * key's shape once with `lx.storage<Schema>()` — that returns a
  * `TypedStorage<Schema>` instead of this untyped handle.
  */
 export type Storage = {
@@ -2976,7 +2979,7 @@ export interface LxFile {
   /**
    * Read and parse the complete file as JSON. Stays `unknown`: a class
    * method cannot carry a type parameter through the binding, so unlike
-   * `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+   * `lx.storage().get<T>()` the assertion is spelled `as` at the call
    * site rather than passed in.
    */
   json(): Promise<unknown>;
@@ -3067,9 +3070,11 @@ declare global {
 
 declare global {
   interface FileSystemApi {
+    readonly userData: 'lx://userdata';
+    readonly userCache: 'lx://usercache';
     /**
      * Create a lazy reference to a LingXia-managed path.
-     * Relative paths resolve under `lx.env.USER_DATA_PATH`. Creating a reference
+     * Relative paths resolve under `lx.fs.userData`. Creating a reference
      * does not require the path to exist.
      */
     file(path: ManagedPath): LxFile;
@@ -3169,7 +3174,6 @@ declare global {
     readonly clipboard: ClipboardApi;
     readonly device: DeviceApi;
     readonly network: NetworkApi;
-    readonly env: LxEnv;
     /**
      * Open a local file with the requested strategy.
      * Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
@@ -3196,7 +3200,7 @@ declare global {
      * value shape at the call site and resolves `undefined` for a missing key. Use
      * `lx.fs` instead for path-based data.
      */
-    getStorage(): Storage;
+    storage(): Storage;
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     readonly surface: SurfaceApi;
@@ -3241,13 +3245,6 @@ declare global {
     onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
     /** Calls `callback` when downloading an update fails. Returns the unsubscribe fn. */
     onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
-  }
-}
-
-declare global {
-  interface LxEnv {
-    readonly USER_DATA_PATH: 'lx://userdata';
-    readonly USER_CACHE_PATH: 'lx://usercache';
   }
 }
 

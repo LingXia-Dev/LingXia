@@ -7,8 +7,8 @@ test("reject storage and file operations on invalid inputs", { id: "LOGIC-005", 
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
     const files = lx.fs;
-    const storage = lx.getStorage();
-    const missing = lx.env.USER_CACHE_PATH + '/' + namespace + '/missing.txt';
+    const storage = lx.storage();
+    const missing = lx.fs.userCache + '/' + namespace + '/missing.txt';
     const rejects = async (operation: () => unknown) => {
       try {
         await operation();
@@ -35,7 +35,7 @@ test("read image info from managed storage and reject a missing image", { id: "M
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const root = lx.fs.userCache + '/' + namespace;
     const fixture = root + '/fixture.png';
     // 1x1 red pixel PNG.
     const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

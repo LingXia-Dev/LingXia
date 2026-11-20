@@ -121,7 +121,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
-  `lx.getStorage()` or `App({})`.
+  `lx.storage()` or `App({})`.
 - **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
   desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
   and the next show brings `onShow` and a new `onReady`.
@@ -153,7 +153,7 @@ export default definePage({
 | --- | --- | --- |
 | One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
 | Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
-| Must survive restarts | `lx.getStorage()` | Persistent |
+| Must survive restarts | `lx.storage()` | Persistent |
 
 Never keep per-entry state in module scope.
 
@@ -342,7 +342,7 @@ App({
     // Once per worker. AppLaunchOptions: path?, query?, scene?, url?, referrerInfo?
     // Cold AppLink: scene 8003 + the original `url` here. referrerInfo when
     // opened by another lxapp.
-    const stored = await lx.getStorage().get<string>('userId');
+    const stored = await lx.storage().get<string>('userId');
     if (stored) this.globalData.userId = stored;
   },
 

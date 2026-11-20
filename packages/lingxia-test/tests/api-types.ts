@@ -148,7 +148,7 @@ test('typed Logic access', async t => {
     return pages[pages.length - 1 - index].route;
   }, 0);
   route.toUpperCase();
-  const envPath = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+  const envPath = await t.app.logic.eval(({ lx }) => lx.fs.userData);
   envPath.valueOf();
   // @ts-expect-error Logic API members are checked against the published `lx`.
   await t.app.logic.eval(({ lx }) => lx.noSuchApi());
@@ -175,7 +175,7 @@ test('typed Logic access', async t => {
   const surface = await t.app.page({ name: 'surface' });
   const surfaceTitle: string = await surface.view.eval(({ document }, suffix: string) => document.title + suffix, '!');
   surfaceTitle.toUpperCase();
-  const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.env.USER_DATA_PATH.length, 1);
+  const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.fs.userData.length, 1);
   slow.toFixed();
   await surface.view.eval({ timeout: 20_000 }, ({ document }) => document.title);
   // @ts-expect-error `page` is not an eval option: bind the page and use its view.

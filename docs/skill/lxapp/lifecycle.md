@@ -17,7 +17,7 @@ page instance. They advance independently.
   App({
     globalData: { userId: '' },
     async onLaunch() {
-      this.globalData.userId = (await lx.getStorage().get<string>('userId')) ?? '';
+      this.globalData.userId = (await lx.storage().get<string>('userId')) ?? '';
     },
   });
 

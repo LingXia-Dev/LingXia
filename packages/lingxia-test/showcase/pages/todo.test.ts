@@ -10,7 +10,7 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
  */
 function storedTodo(app: TestApp, text: string): Promise<{ completed: boolean } | null> {
   return app.logic.eval(async ({ lx }, wanted) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const state = (await storage.get('todo:state')) as { todos?: Todo[] } | undefined;
     const todos = state?.todos ?? ((await storage.get('todo:todos')) as Todo[] | undefined);
     const todo = Array.isArray(todos) ? todos.find((item) => item.text === wanted) : undefined;
@@ -20,7 +20,7 @@ function storedTodo(app: TestApp, text: string): Promise<{ completed: boolean } 
 
 async function cleanupStoredTodo(app: TestApp, text: string): Promise<void> {
   await app.logic.eval(async ({ lx }, wanted) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const state = (await storage.get('todo:state')) as { todos?: Todo[] } | undefined;
     if (state && Array.isArray(state.todos)) {
       await storage.set('todo:state', { ...state, todos: state.todos.filter((todo) => todo.text !== wanted) });
@@ -39,7 +39,7 @@ test.reset(async t => {
   await t.app.nav.reset({ page: 'todo' });
 });
 
-test("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set', 'view:checkbox'], app: SHOWCASE_APP_ID }, async (t) => {
+test("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.storage', 'Storage.get', 'Storage.set', 'view:checkbox'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
   const todo = await app.page<TodoPage>({ name: 'todo' });
   const view = todo.view;

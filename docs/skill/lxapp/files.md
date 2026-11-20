@@ -65,8 +65,8 @@ const buffer = await file.arrayBuffer();    // ArrayBuffer
 const encoded = await file.base64();        // string
 ```
 
-- Relative paths resolve under userdata; `lx.env.USER_DATA_PATH` and
-  `lx.env.USER_CACHE_PATH` are the explicit roots. Reads also accept
+- Relative paths resolve under userdata; `lx.fs.userData` and
+  `lx.fs.userCache` are the explicit roots. Reads also accept
   `lx://temp/...`.
 - Each read is limited to 16 MiB. Pass larger files by path to upload,
   preview, or native APIs.
@@ -85,7 +85,7 @@ await lx.fs.copy(
 
 await lx.fs.rename(
   result.uri,
-  `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
+  `${lx.fs.userCache}/previews/video.mp4`,
 );
 ```
 

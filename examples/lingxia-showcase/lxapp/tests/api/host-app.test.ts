@@ -16,24 +16,22 @@ const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '
   ? undefined
   : 'host banners are desktop only';
 
-test('publish the lxapp sandbox roots through lx.env', {
+test('publish the lxapp sandbox roots on lx.fs', {
   id: 'ENV-001',
-  covers: ['lx.env', 'lx.env.USER_DATA_PATH', 'lx.env.USER_CACHE_PATH'],
+  covers: ['lx.fs.userData', 'lx.fs.userCache'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ENV-001');
 
   const env = await app.logic.eval(async ({ lx }) => {
     return {
-          keys: Object.keys(lx.env).sort(),
-          data: lx.env.USER_DATA_PATH,
-          cache: lx.env.USER_CACHE_PATH,
-          // A second read must return the same roots — env is a snapshot, not a probe.
-          stable: lx.env.USER_DATA_PATH === lx.env.USER_DATA_PATH,
-        };
+      data: lx.fs.userData,
+      cache: lx.fs.userCache,
+      // A second read must return the same roots: they are constants, not probes.
+      stable: lx.fs.userData === lx.fs.userData,
+    };
   });
 
-  expect(env.keys).toEqual(['USER_CACHE_PATH', 'USER_DATA_PATH']);
   expect(env.data).toMatch(/^lx:\/\//);
   expect(env.cache).toMatch(/^lx:\/\//);
   expect(env.data).not.toBe(env.cache);
@@ -515,20 +513,20 @@ test('clear product caches while preserving live app storage', {
 
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }) => {
     const payload = 'x'.repeat(256 * 1024);
-    const cached = lx.env.USER_CACHE_PATH + '/automation/cache-probe.txt';
+    const cached = lx.fs.userCache + '/automation/cache-probe.txt';
     const durable = 'automation/cache-probe.txt';
     await lx.fs.write(cached, payload, { overwrite: true });
     await lx.fs.write(durable, payload, { overwrite: true });
 
-    await lx.getStorage().set('automation-cache-probe', 'keep');
+    await lx.storage().set('automation-cache-probe', 'keep');
     const before = await lx.host.cache!.size();
     const report = await lx.host.cache!.clear();
     const after = await lx.host.cache!.size();
 
     const cachedSurvived = await lx.fs.exists(cached);
     const durableSurvived = await lx.fs.exists(durable);
-    const kv = await lx.getStorage().get('automation-cache-probe');
-    await lx.getStorage().delete('automation-cache-probe');
+    const kv = await lx.storage().get('automation-cache-probe');
+    await lx.storage().delete('automation-cache-probe');
     await lx.fs.remove(durable);
     await lx.fs.remove(cached);
 

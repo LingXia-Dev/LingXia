@@ -73,6 +73,7 @@
     "GetLocationOptions",
     "VideoInfoOptions",
     "HostAppApi",
+    "HostInfo",
     "HostAppEnv",
     "HostServiceEnvState",
     "HostServiceEnvSwitchResult",
@@ -90,7 +91,6 @@
     "LocationInfo",
     "LxAppEnvVersion",
     "LxAppReleaseType",
-    "LxEnv",
     "LxFile",
     "DeviceApi",
     "MediaApi",
@@ -198,7 +198,6 @@
   "documented": [
     "HostAppApi",
     "HostInfo",
-    "LxEnv",
     "TrayApi",
     "NavApi",
     "AppTarget",

@@ -11,7 +11,7 @@ test("expose only host automation authority in the test runtime", { id: "AUT-000
     expect(typeof testLx.automation).toBe('function');
     expect(testLx.app).toBeUndefined();
     expect(testLx.env).toBeUndefined();
-    expect(testLx.getStorage).toBeUndefined();
+    expect(testLx.storage).toBeUndefined();
     expect(scope.App).toBeUndefined();
     expect(scope.Page).toBeUndefined();
     expect(scope.getApp).toBeUndefined();

@@ -231,9 +231,9 @@ await expect(devices.view.testId('device-name').first()).toHaveText('Office');
 ## Logic eval
 
 ```ts
-const path = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+const path = await t.app.logic.eval(({ lx }) => lx.fs.userData);
 const label = await t.app.view.eval(({ document }) => document.querySelector('#total')?.textContent);
-const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.getStorage().get(key), 'cache');
+const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.storage().get(key), 'cache');
 ```
 
 - `logic.eval(fn, ...args)` runs in Logic with `{ lx, getApp,

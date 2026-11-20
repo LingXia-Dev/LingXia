@@ -29,7 +29,7 @@ export default definePage({
     let _loading = false;
     const helpers = {
       ensureStorage() {
-        return _storage ?? (_storage = lx.getStorage<TodoStorage>());
+        return _storage ?? (_storage = lx.storage<TodoStorage>());
       },
       async commit(change: Partial<Snapshot>) {
         if (disposed || saving || page.data.loading || page.data.loadError) throw new Error('Tasks are not ready');

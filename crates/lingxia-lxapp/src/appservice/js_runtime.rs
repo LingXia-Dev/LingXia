@@ -321,7 +321,7 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
 /// global instead would record every background call the app happened to make
 /// and credit it to whatever spec was running.
 ///
-/// Primitive members (`lx.env.USER_DATA_PATH`) are published capabilities too;
+/// Primitive members (`lx.fs.userData`) are published capabilities too;
 /// recording only functions and objects would miss the get that reached them.
 const RECORDER_PRELUDE: &str = r#"
 const __lxCalls = new Set();

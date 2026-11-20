@@ -37,7 +37,7 @@ export default definePage({
     const helpers = {
       ensureStorage() {
         if (!_storage) {
-          _storage = lx.getStorage<TodoStorage>();
+          _storage = lx.storage<TodoStorage>();
         }
         return _storage;
       },

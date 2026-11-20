@@ -92,7 +92,7 @@ fn remove_if_unprotected(path: &Path) -> std::io::Result<Option<u64>> {
 ///
 /// What it covers, and what it must never touch, follows the storage contract:
 /// temp is disposable by definition and usercache is regenerable by contract,
-/// so both are fair game. Userdata, the `lx.getStorage` key-value store, the
+/// so both are fair game. Userdata, the `lx.storage` key-value store, the
 /// user's downloads, and installed lxapp packages are not caches — deleting any
 /// of them behind a "clear cache" button is data loss, not maintenance.
 pub mod product {

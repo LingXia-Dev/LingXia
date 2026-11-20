@@ -25,13 +25,13 @@ const entryKey = 'gallery.entry';
 
 /** Remembers the workspace's entry, or forgets it with ''. */
 export function rememberEntry(page: string): void {
-  const storage = lx.getStorage();
+  const storage = lx.storage();
   void (page ? storage.set(entryKey, page) : storage.delete(entryKey));
 }
 
 /** The remembered workspace entry, or ''. */
 export async function rememberedEntry(): Promise<string> {
-  const page = await lx.getStorage().get<string>(entryKey);
+  const page = await lx.storage().get<string>(entryKey);
   return typeof page === 'string' ? page : '';
 }
 

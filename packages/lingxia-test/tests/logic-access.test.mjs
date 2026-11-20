@@ -12,7 +12,7 @@ afterEach(() => {
 
 function logicWorld(pages = []) {
   const world = createWorld();
-  const lx = { env: { USER_DATA_PATH: "lx://userdata" } };
+  const lx = { fs: { userData: "lx://userdata" } };
   world.useLogic({ lx, getApp: () => ({ name: "demo" }), getCurrentPages: () => pages });
   return world;
 }
@@ -30,7 +30,7 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
 
   const result = await runOne(async (t) => {
     seen.push(await t.app.logic.eval(({ lx, getApp, getCurrentPages }, extra, label) => ({
-      path: lx.env.USER_DATA_PATH,
+      path: lx.fs.userData,
       app: getApp().name,
       count: getCurrentPages()[0].data.count + extra.add,
       label,

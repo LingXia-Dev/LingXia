@@ -79,9 +79,7 @@ export const LX_API_NAMES = [
   'automation',
   'clipboard',
   'createVideoContext',
-  'env',
   'fs',
-  'getStorage',
   'nav',
   'navigationBar',
   'openExternal',
@@ -91,6 +89,7 @@ export const LX_API_NAMES = [
   'openFile',
   'pick',
   'share',
+  'storage',
   'shell',
   'startPullDownRefresh',
   'stopPullDownRefresh',
@@ -162,7 +161,6 @@ const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
-const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SURFACE_NAMESPACE_API = ['bringToFront', 'getByKey', 'watchContext', 'openDeclared', 'openPage', 'openUrl'] as const;
 const SHELL_API = ['getApp', 'getDeclared', 'openApp', 'openBuiltin', 'openDeclared', 'setAppDisplay', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
@@ -177,6 +175,8 @@ const FILE_SYSTEM_API = [
   'remove',
   'rename',
   'stat',
+  'userCache',
+  'userData',
   'write',
 ] as const;
 const LX_FILE_API = [
@@ -374,7 +374,6 @@ export const LX_RUNTIME_SURFACES = [
     properties: [
       'app',
       'clipboard',
-      'env',
       'fs',
       'device',
       'host',
@@ -534,13 +533,7 @@ export const LX_RUNTIME_SURFACES = [
     members: WINDOWS_TERMINAL_API,
     optional: true,
   },
-  {
-    name: 'lx.env',
-    layer: 'logic',
-    expression: 'lx.env',
-    members: ENV_API,
-    properties: ENV_API,
-  },
+
   {
     name: 'lx.surface',
     layer: 'logic',
@@ -561,9 +554,15 @@ export const LX_RUNTIME_SURFACES = [
     members: SHELL_SIDEBAR_ACTIONS_API,
   },
   { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API },
-  { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
+  {
+    name: 'lx.fs',
+    layer: 'logic',
+    expression: 'lx.fs',
+    members: FILE_SYSTEM_API,
+    properties: ['userCache', 'userData'],
+  },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
-  { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
+  { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
   { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API },
   {
     name: 'Automation',
@@ -866,7 +865,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,
   AssertTrue<Exact<TerminalFontsApi, typeof TERMINAL_FONTS_API>>,
   AssertTrue<Exact<TerminalPreviewController, typeof TERMINAL_PREVIEW_API>>,
-  AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,

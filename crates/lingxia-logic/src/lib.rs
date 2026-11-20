@@ -9,7 +9,6 @@ mod clipboard;
 mod device;
 mod dismissal;
 mod display;
-mod env;
 mod fs;
 pub mod i18n;
 mod input;
@@ -59,7 +58,6 @@ impl LxLogicExtension for LxLogicRuntime {
         }
 
         public_types::init(ctx)?;
-        env::init(ctx)?;
         app::init(ctx)?;
         lxapp::init(ctx)?;
         device::init(ctx)?;

@@ -40,8 +40,8 @@ library, and the root `tsconfig.json` references both.
 - Navigation takes a configured **page name**, never a path. A name computed
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
   (`lx.nav.go({ app })`, `lx.shell.openApp`) is a plain string.
-- Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
-  `lx.clipboard`, `lx.navigationBar`, `lx.app.tabBar`, `lx.host.tray`, `lx.shell`.
+- Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
+  `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.surface`, `lx.shell`.
 
 ## Web globals
 

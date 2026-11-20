@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 pub const PROFILES_DIR: &str = "test-profiles";
 /// Snapshot archive layout version.
 pub const PROFILE_FORMAT: u32 = 1;
-/// On-disk format of `lx.getStorage()`. A snapshot from another major redb
+/// On-disk format of `lx.storage()`. A snapshot from another major redb
 /// is refused rather than handed to a library that may not read it.
 pub const STORAGE_FORMAT: &str = "redb-4";
 /// Largest profile a snapshot may carry, unpacked.
@@ -329,10 +329,10 @@ impl RunProfile {
 
 /// Most patterns one rollback may keep.
 pub const MAX_KEEP_PATTERNS: usize = 64;
-/// Longest keep pattern, the same bound `lx.getStorage()` puts on a key.
+/// Longest keep pattern, the same bound `lx.storage()` puts on a key.
 pub const MAX_KEEP_PATTERN_BYTES: usize = 1024;
 
-/// `lx.getStorage()` keys a rollback keeps at their current values: globs
+/// `lx.storage()` keys a rollback keeps at their current values: globs
 /// where `*` matches any run of characters (dots included) and `?` exactly
 /// one; everything else is literal. Only storage keys are kept, never files.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -400,7 +400,7 @@ fn glob_matches(pattern: &str, text: &str) -> bool {
     pattern[p..].iter().all(|c| *c == '*')
 }
 
-/// The table `lx.getStorage()` (rong_storage, [`STORAGE_FORMAT`]) keeps its
+/// The table `lx.storage()` (rong_storage, [`STORAGE_FORMAT`]) keeps its
 /// entries in: string keys, encoded values copied as opaque bytes.
 const STORAGE_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("storage");
 

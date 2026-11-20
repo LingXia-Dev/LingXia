@@ -696,7 +696,7 @@ export default function UIPage() {
                   </span>
                 </div>
                 <div className="text-[11px] text-gray-400 leading-relaxed pt-1">
-                  The previous tag is read back from <code>lx.getStorage()</code>, which is
+                  The previous tag is read back from <code>lx.storage()</code>, which is
                   app-scoped and survives the reset.
                 </div>
               </div>

@@ -116,7 +116,7 @@ function sanitizeFileName(name: unknown) {
 }
 
 function userDataFilePath(fileName: string) {
-  const base = (lx.env.USER_DATA_PATH || "lx://userdata").replace(/\/+$/, "");
+  const base = (lx.fs.userData || "lx://userdata").replace(/\/+$/, "");
   return `${base}/${sanitizeFileName(fileName)}`;
 }
 
@@ -467,7 +467,7 @@ export default definePage({
         const hasPausedPdf = pdfDownloadTask && page.data.pdfUrl?.trim() === pdfDownloadUrl;
         page.update(d => {
           d.activeDemo = requestedSection;
-          d.chooseFileDefaultPath = lx.env.USER_DATA_PATH || "";
+          d.chooseFileDefaultPath = lx.fs.userData || "";
           d.chooseFileStatusText = "Choose a file";
           d.isPdfDownloading = false;
           d.pdfDownloadState = hasPausedPdf ? "paused" : "idle";

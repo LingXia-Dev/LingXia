@@ -628,7 +628,7 @@ export default definePage({
           d.moduleCounter = moduleCounter;
         });
         helpers.record("onLoad");
-        const storage = lx.getStorage();
+        const storage = lx.storage();
         storage
           .get(LAST_INSTANCE_TAG_KEY)
           .then((previous) => {

@@ -49,7 +49,7 @@ async function openSwiper(t: Fixture, id: string) {
   await app.logic.eval(async ({ lx, getCurrentPages }, folder, pages) => {
     const items = [];
     for (const [name, base64] of pages) {
-      const path = `${lx.env.USER_DATA_PATH}/${folder}/${name}.png`;
+      const path = `${lx.fs.userData}/${folder}/${name}.png`;
       await lx.fs.write(path, base64, { encoding: 'base64', overwrite: true });
       items.push({ id: name, type: 'image' as const, src: path });
     }

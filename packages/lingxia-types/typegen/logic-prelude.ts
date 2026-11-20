@@ -339,10 +339,11 @@ declare global {
     leaveApp(): Promise<void>;
   }
 
-  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
-  // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). env re-declares
-  // the generated member doc-only; tsc rejects the merge if the types drift.
+  // HostAppApi/FileSystemApi members are emitted from the Rust js_api
+  // metadata; these merges only add what Rong cannot express — the cfg-gated
+  // autostart member and doc comments (js_api consts cannot carry docs).
+  // host.env, fs.userData and fs.userCache re-declare the generated members
+  // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
@@ -405,8 +406,12 @@ declare global {
     claimCustomUpdate(): void;
   }
 
-  /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {}
+  interface FileSystemApi {
+    /** The root of this lxapp's durable files; a relative path resolves here. */
+    readonly userData: 'lx://userdata';
+    /** The root of this lxapp's cache, which the host may clear. */
+    readonly userCache: 'lx://usercache';
+  }
 
   interface NetworkApi {
     /** Download to the downloads directory. */
@@ -433,7 +438,7 @@ declare global {
      * `get` / `set` / `delete` then share that schema instead of
      * repeating `get<T>()` at each call site.
      */
-    getStorage<S extends StorageSchema>(): TypedStorage<S>;
+    storage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
 
@@ -451,7 +456,7 @@ type StorageEntry<S extends object> = {
 }[StorageKey<S>];
 
 /**
- * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Schema-typed view of the same store `lx.storage()` returns.
  * Runtime is identical; only the key/value types are pinned.
  *
  * The schema constrains what this handle writes and reads, not what the store

@@ -9,7 +9,7 @@ function fixture(seed = {}) {
     async get(key) { reads++; if (readHold) await readHold; if (readFailure) throw Error('read unavailable'); return structuredClone(saved.get(key)); },
     async set(key, value) { if (hold) await hold; if (writeFailure) throw Error('disk full'); writes++; saved.set(key, structuredClone(value)); },
   };
-  page = mountPage(source, { lx: { getStorage: () => storage } });
+  page = mountPage(source, { lx: { storage: () => storage } });
   return { page, saved, writes: () => writes, reads: () => reads, readHold(value) { readHold = value; }, readFailure(value) { readFailure = value; }, writeFailure(value) { writeFailure = value; }, hold(value) { hold = value; } };
 }
 test('empty legacy task lists restore their saved filter and migrate in one write', async () => {

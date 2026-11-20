@@ -93,7 +93,7 @@ export default definePage({
       },
       async writeSampleImage() {
         try {
-          const root = `${lx.env.USER_CACHE_PATH}/clipboard-demo`;
+          const root = `${lx.fs.userCache}/clipboard-demo`;
           const fixture = `${root}/sample.png`;
           await lx.fs.mkdir(root, { recursive: true });
           await lx.fs.write(fixture, SAMPLE_PNG, { encoding: "base64" });

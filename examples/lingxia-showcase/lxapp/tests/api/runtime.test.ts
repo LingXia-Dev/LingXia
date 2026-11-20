@@ -98,11 +98,11 @@ test("answer capability questions consistently with the optional members", { id:
   });
 });
 
-test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.storage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const key = namespace;
     const before = await storage.info();
     const absentBefore = await storage.has(key);
@@ -140,30 +140,13 @@ test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
   expect(result.sizeRestored).toBeTruthy();
 });
 
-test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
-    'lx.fs',
-    'lx.fs.copy',
-    'lx.fs.exists',
-    'lx.fs.file',
-    'lx.fs.mkdir',
-    'lx.fs.remove',
-    'lx.fs.rename',
-    'lx.fs.write',
-    'lx.env.USER_CACHE_PATH',
-    'lx.env.USER_DATA_PATH',
-    'LxFile.text',
-    'LxFile.json',
-    'LxFile.base64',
-    'LxFile.bytes',
-    'LxFile.arrayBuffer',
-    'LxFile.stat',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs', 'lx.fs.copy', 'lx.fs.exists', 'lx.fs.file', 'lx.fs.mkdir', 'lx.fs.remove', 'lx.fs.rename', 'lx.fs.write', 'lx.fs.userCache', 'lx.fs.userData', 'LxFile.text', 'LxFile.json', 'LxFile.base64', 'LxFile.bytes', 'LxFile.arrayBuffer', 'LxFile.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-004");
 
   const result = await app.logic.eval({ timeout: 15_000 }, async ({ lx }, namespace) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
-    const dataPathAvailable = typeof lx.env.USER_DATA_PATH === 'string' && lx.env.USER_DATA_PATH.length > 0;
+    const root = lx.fs.userCache + '/' + namespace;
+    const dataPathAvailable = typeof lx.fs.userData === 'string' && lx.fs.userData.length > 0;
     const source = root + '/source.txt';
     const renamed = root + '/renamed.txt';
     const copied = root + '/copied.txt';
@@ -218,14 +201,14 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   const persistKey = `${namespace}-persist`;
   defer(async () => {
     await app.logic.eval(async ({ lx }, namespace) => {
-      const storage = lx.getStorage();
+      const storage = lx.storage();
       const keys = await storage.list(namespace);
       for (const key of keys) await storage.delete(key);
     }, namespace).catch(() => undefined);
   });
 
   const first = await app.logic.eval(async ({ lx }, namespace, persistKey) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const ns = namespace;
     await storage.set(ns + '-a', 1);
     await storage.set(ns + '-b', 2);
@@ -254,12 +237,12 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
 
   await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home', 30_000);
-  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.getStorage().get(persistKey), persistKey);
+  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.storage().get(persistKey), persistKey);
   expect(persisted).toEqual({ kept: true });
 
   const oversized: Caught = await app.logic.eval(async ({ lx }, namespace) => {
     try {
-      await lx.getStorage().set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
+      await lx.storage().set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
       return { ok: true };
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
@@ -268,7 +251,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   }, namespace);
   expect(oversized.ok).toBeFalsy();
   expect(oversized.code).toBe('E_OUT_OF_RANGE');
-  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.getStorage().get(namespace + '-big'), namespace);
+  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.storage().get(namespace + '-big'), namespace);
   expect(leftover == null).toBeTruthy();
 });
 
@@ -281,7 +264,7 @@ test("read directories, LxFile.exists/path, and deny escaped paths", {
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const root = lx.fs.userCache + '/' + namespace;
     const child = root + '/child.txt';
     await files.mkdir(root, { recursive: true });
     try {

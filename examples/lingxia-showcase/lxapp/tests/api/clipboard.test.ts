@@ -25,7 +25,7 @@ test('round-trip text, empty clipboard, and typed image items', {
 
   const result = await app.logic.eval(async ({ lx }, namespace, marker) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const root = lx.fs.userCache + '/' + namespace;
     const fixture = root + '/clipboard.png';
     const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     await files.mkdir(root, { recursive: true });
@@ -106,7 +106,7 @@ async function expectHarmonyReadsDenied(
 ): Promise<void> {
   const result = await app.logic.eval(async ({ lx }, namespace, marker) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const root = lx.fs.userCache + '/' + namespace;
     const fixture = root + '/clipboard.png';
     const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     const rejection = async (call: () => Promise<unknown>) => {
