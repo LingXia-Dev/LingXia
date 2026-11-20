@@ -38,7 +38,7 @@
       },
       {
         "name": "ohos.permission.CAMERA",
-        "reason": "$string:lx_permission_media_reason",
+        "reason": "$string:lx_permission_camera_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -48,7 +48,7 @@
       },
       {
         "name": "ohos.permission.MICROPHONE",
-        "reason": "$string:lx_permission_media_reason",
+        "reason": "$string:lx_permission_microphone_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"

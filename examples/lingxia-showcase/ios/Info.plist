@@ -37,7 +37,7 @@
     <key>NSCameraUsageDescription</key>
     <string>Allow LingXia to capture photos and videos through the camera.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow LingXia to record audio when capturing videos.</string>
+    <string>Allow LingXia to record audio.</string>
 
     <!-- Allow runtime orientation lock APIs to switch between portrait and landscape -->
     <key>UISupportedInterfaceOrientations</key>
