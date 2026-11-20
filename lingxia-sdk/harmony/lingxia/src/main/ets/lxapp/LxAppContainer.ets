@@ -466,6 +466,7 @@ export struct LxAppContainer {
         this.pendingWebTag = '';
         this.navigateToPage(page.webTag);
       } else if (page.webTag === this.targetWebTag) {
+        hilog.info(DOMAIN, TAG, `GPU page ${page.webTag} is the target: current on create`);
         this.currentWebTag = page.webTag;
         GpuPages.reveal(page, () => {});
         this.triggerOnPageShowIfNeeded(page.webTag);
@@ -1805,6 +1806,7 @@ export struct LxAppContainer {
       this.pendingRevealTag = newWebTag;
       GpuPages.reveal(gpuPage, () => {
         if (this.pendingRevealTag !== newWebTag) {
+          hilog.info(DOMAIN, TAG, `reveal of ${newWebTag} superseded by '${this.pendingRevealTag}'`);
           return;
         }
         this.pendingRevealTag = '';
@@ -1822,6 +1824,7 @@ export struct LxAppContainer {
 
   private transitionTo(newWebTag: string, path: string): void {
     const oldWebTag = this.currentWebTag;
+    hilog.info(DOMAIN, TAG, `transition ${oldWebTag} -> ${newWebTag} (target ${this.targetWebTag})`);
     if (this.shouldAnimateTransition() && oldWebTag) {
       this.performAnimatedTransition(oldWebTag, newWebTag, path);
     } else {
