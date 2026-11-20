@@ -5658,7 +5658,12 @@ mod manifest_reload_tests {
             page.attach_gpu_view(endpoint.clone()).unwrap();
             // The created View already holds its module: the cold open does not reload it.
             page.reload_view().unwrap();
-            assert!(endpoint.0.lock().unwrap().is_empty());
+            // Attaching hands the View its text-scale limit; nothing else reaches it.
+            let calls = std::mem::take(&mut *endpoint.0.lock().unwrap());
+            assert!(
+                calls.len() == 1 && calls[0].starts_with("TextScaleLimit"),
+                "{calls:?}"
+            );
             assert!(page.has_live_view());
             assert!(page.webview().is_none());
             assert!(page.attach_gpu_view(endpoint.clone()).is_err());
