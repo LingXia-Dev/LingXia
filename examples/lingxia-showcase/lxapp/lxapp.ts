@@ -1,4 +1,4 @@
-import type { AppLaunchOptions, ConfiguredPageName } from "@lingxia/types";
+import type { AppLaunchOptions, ConfiguredPageName, NavTarget, OpenLink } from "@lingxia/types";
 import { appState, setIpAddr } from "./shared/lib/app";
 import { getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";
@@ -21,19 +21,18 @@ async function testManagedFileAccess() {
 
 const PRODUCT_LINK_PREFIX = "/showcase/";
 
-function routeFromAppLink(options?: AppLaunchOptions) {
-  if (options?.scene !== 8003) return;
-  const pathname = options.url ? new URL(options.url).pathname : "";
-  // Two shapes: a product path this app recognises, and `/lxapp/open?page=`.
+/** Where an App Link goes: a product path this app recognises, or `/lxapp/open?page=`. */
+function targetOfLink(link: OpenLink): NavTarget | undefined {
+  const pathname = link.url ? new URL(link.url).pathname : "";
   const page = pathname.startsWith(PRODUCT_LINK_PREFIX)
     ? pathname.slice(PRODUCT_LINK_PREFIX.length)
-    : options.query?.page;
-  if (!page) return;
-  const query = { ...options.query };
-  delete query.page;
+    : link.query.page;
+  if (!page) return undefined;
+  const params = { ...link.query };
+  delete params.page;
   // A link carries whatever the sender wrote, so the name cannot be checked
-  // here — navigateTo rejects one this lxapp does not have.
-  void lx.nav.go({ page: page as ConfiguredPageName, params: query });
+  // here — navigation rejects one this lxapp does not have.
+  return { page: page as ConfiguredPageName, params };
 }
 
 async function applyHostChrome(os: string, tag: string) {
@@ -144,7 +143,6 @@ App({
   onLaunch(options?: AppLaunchOptions) {
     appState.lifecycle.launches++;
     appState.lifecycle.last = "launch";
-    routeFromAppLink(options);
     const { os } = lx.host.info;
     const applyChrome = (tag = lx.host.displayLanguage.get()) => {
       void applyHostChrome(os, tag).catch((error) =>
@@ -199,8 +197,11 @@ App({
     appState.lifecycle.shows++;
     appState.lifecycle.last = "show";
     appState.lifecycle.lastShow = options;
-    routeFromAppLink(options);
     console.log("App.onShow");
+  },
+
+  onOpen(link: OpenLink) {
+    return targetOfLink(link);
   },
 
   onUserCaptureScreen() {

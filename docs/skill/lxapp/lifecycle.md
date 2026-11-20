@@ -67,11 +67,12 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   the other role moves the live lxapp: no `onLaunch`, page stack and state
   kept; the previous main gets `onHide` (`switch_away`). Desktop only: mobile
   hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`.
-- **AppLink arrives once.** A cold AppLink is in `onLaunch` options
-  (`scene: 8003`, `url`); the `onShow` that follows carries no link. A warm
-  AppLink is in `onShow` with `reason: 'switch_back'`.
+- **AppLink arrives once.** Route it in `App.onOpen(link)` and return a
+  target: cold, it runs after `onLaunch` settles; warm, before `onShow`
+  (`reason: 'switch_back'`). The hooks still carry `scene: 8003` and `url`;
+  the cold `onShow` carries no link.
 - **`onLaunch` runs once per Logic start.** Restarts start Logic again:
-  - `lx.update.applyUpdate()` closes the session (`onHide`, `close`) and opens
+  - `lx.app.applyUpdate()` closes the session (`onHide`, `close`) and opens
     a new one: `onLaunch`, `onShow` (`open`), then the initial page's `onLoad`.
   - A dev or code reload, or a device switch in the Runner, keeps the window
     but starts fresh Logic: `onLaunch`, then `onShow` (`open`) if the lxapp is

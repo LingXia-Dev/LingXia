@@ -28,6 +28,13 @@ rong::js_api! {
 
         type AppConfig = r###"{
     onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
+    /**
+     * An App Link from outside, cold (after `onLaunch` settles) or warm
+     * (before `onShow`). Turn its untrusted strings into a target here; the
+     * framework navigates to it, and returning nothing stays where the app
+     * is (the landing page on a cold start).
+     */
+    onOpen?: (link: OpenLink) => NavTarget | void | Promise<NavTarget | void>;
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onUserCaptureScreen?: () => void | Promise<void>;
@@ -104,6 +111,15 @@ rong::js_api! {
         appId?: string;
         extraData?: Record<string, unknown>;
     };
+}"###;
+
+        /// An inbound App Link, as `App.onOpen` receives it.
+        type OpenLink = r###"{
+    /** The link exactly as the OS delivered it. Untrusted. */
+    url: string;
+    /** The lxapp page path the link resolved to, if any. */
+    path: string;
+    query: Record<string, string>;
 }"###;
 
         type AppLifecycleEventArgs = r###"{

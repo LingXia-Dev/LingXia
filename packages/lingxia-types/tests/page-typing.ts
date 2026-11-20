@@ -26,3 +26,16 @@ App({
 getCurrentPages;
 // @ts-expect-error getApp is gone
 getApp;
+
+App({
+  onOpen(link) {
+    const from: string = link.url;
+    if (link.query.id) return { page: 'detail', params: { id: link.query.id } };
+    return from ? { tab: 'home' } : undefined;
+  },
+});
+
+App({
+  // @ts-expect-error onOpen returns a navigation target, not a page name
+  onOpen: () => 'detail',
+});

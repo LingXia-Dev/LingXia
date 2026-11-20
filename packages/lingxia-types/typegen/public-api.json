@@ -112,6 +112,7 @@
     "NavigationBarPatch",
     "NavigationBarStylePatch",
     "OpenFileOptions",
+    "OpenLink",
     "OverlaySurfaceSize",
     "OverlaySurfaceSizeValue",
     "PageDataPath",
