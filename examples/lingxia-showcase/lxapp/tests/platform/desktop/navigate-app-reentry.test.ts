@@ -13,9 +13,9 @@ const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
   list.some((row) => row.appId === appid && row.status === 'opened')
 );
 
-test('navigateToApp presents an open lxapp again after the caller came back to the front', {
+test('lx.nav.go({ app }) presents an open lxapp again after the caller came back to the front', {
   id: 'NAV-APP-DESKTOP-002',
-  covers: ['lx.navigateToApp', 'LxAppManager.current'],
+  covers: ['lx.nav.go', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
 }, async (t) => {
@@ -26,7 +26,7 @@ test('navigateToApp presents an open lxapp again after the caller came back to t
     (await app.surfaceLayout()).asideSlots.some((slot) => slot.children.includes(CHAT_APP_ID))
   );
   // Chat is also the host's declared right aside. Once an earlier spec opened
-  // that slot it outlives the lxapp, and navigateToApp would reopen chat into
+  // that slot it outlives the lxapp, and `lx.nav.go({ app })` would reopen chat into
   // the aside instead of the main this spec walks.
   const closeChat = async (): Promise<void> => {
     if (await inAsideSlot()) {
@@ -52,7 +52,7 @@ test('navigateToApp presents an open lxapp again after the caller came back to t
     await from.logic.eval({ timeout: 20_000 }, ({ lx }, target) => {
       const key = '__navigateAppReentryError';
       delete (globalThis as Record<string, unknown>)[key];
-      lx.navigateToApp({ appId: target }).catch((error: { code?: string } | null) => {
+      lx.nav.go({ app: target }).catch((error: { code?: string } | null) => {
         (globalThis as Record<string, unknown>)[key] = error?.code ?? String(error);
       });
       return 'scheduled';

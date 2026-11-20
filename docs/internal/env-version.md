@@ -61,7 +61,7 @@ service env. Draft opens and publishes require an explicit `channel` selector.
 
 Installs and data are keyed by channel and service env, home lxapp included:
 install dirs, install/download records, userdata, usercache, temp,
-`lx.getStorage`, plugin installs and cached registry answers. A dev-service
+`lx.storage`, plugin installs and cached registry answers. A dev-service
 package (possibly unsigned) therefore never runs under the prod service, and the
 two services never share login state. Uninstall acts on the running env's
 records; the orphan sweep keeps every env's referenced installs.

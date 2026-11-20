@@ -2251,7 +2251,6 @@ true
         type WifiApi = "globalThis.WifiApi";
         type MediaApi = "globalThis.MediaApi";
         type PickApi = "globalThis.PickApi";
-        type NavigationBarApi = "globalThis.NavigationBarApi";
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";
         type UiApi = "globalThis.UiApi";

@@ -426,7 +426,7 @@ lxdev test tests/ --tag routed --tag smoke   # routed and smoke
   `--covers-manifest tests/coverage.yaml` reports which requirement ids have a
   passing test and which have none.
 - `covers` lists the requirement ids a test proves (`AC-OPEN-01`,
-  `lx.getStorage`), not `tags`. `id` is the test's own unique stable id: never
+  `lx.storage`), not `tags`. `id` is the test's own unique stable id: never
   put a requirement or acceptance id in `id`.
 
 ## Test clock

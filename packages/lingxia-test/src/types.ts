@@ -82,7 +82,7 @@ export interface TestOptions {
    */
   id?: string;
   /**
-   * Requirement ids this test proves, e.g. `AC-OPEN-01` or `lx.getStorage`;
+   * Requirement ids this test proves, e.g. `AC-OPEN-01` or `lx.storage`;
    * a file's `test.configure({ covers })` adds to them. Not selection `tags`.
    */
   covers?: readonly string[];
