@@ -180,7 +180,7 @@
     "iphone-15-pro/category-overlays-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "d0862ba7f1ec76f91e355e24fd6b9a0cac336f14bbfdffaff6980eac305a1ca7"
+      "sha256": "68277648e404355ea3ab499227414da08ff36c10f6e665466a443a72dacf1080"
     },
     "iphone-15-pro/category-overlays-light.png": {
       "width": 1179,
@@ -370,7 +370,7 @@
     "iphone-15-pro/dialog-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "bfc61ea4104642de5da0b960135ae9545bbcfc5cf0247684eb66e88656047a2a"
+      "sha256": "2a4bf02b1937dbf3c5d81784498b823ed9445d3529c9c0245aa7674e50b369a0"
     },
     "iphone-15-pro/dialog-light.png": {
       "width": 1179,
@@ -1190,7 +1190,7 @@
     "desktop-1280/category-overlays-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "d98fc4080169a6fb07e572b0571498f6c06101566c011320d124a78ba646029d"
+      "sha256": "896bf8285b109a9c5bf6f9aff576cbf1125d41bb3be3d70a41bbb9745dbd4c1e"
     },
     "desktop-1280/category-overlays-light.png": {
       "width": 2536,
@@ -1380,7 +1380,7 @@
     "desktop-1280/dialog-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "9805618c4544d643994dbd2f0986521125bdc620bd7e80c41d2824fafd7ce1ed"
+      "sha256": "3568a769db8dc06b97920e06b4053104e3031183cc9cd013e2fb0c79b3fa9888"
     },
     "desktop-1280/dialog-light.png": {
       "width": 2536,
