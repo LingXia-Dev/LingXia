@@ -1829,7 +1829,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         // Otherwise nothing is coming, or a frame started after the answer presented and the
         // session saw no animation still running; newer Logic state meanwhile does not count.
         let shown = (!main.dirty && !main.busy()) || (main.acked_flight >= after && !main.moving);
-        let settled = quiet && (shown || main.interaction.parked() || !main.visible);
+        // An update that failed is the act's outcome: the frame it waited for never comes.
+        let failed = main.failure.is_some();
+        let settled = quiet && (shown || failed || main.interaction.parked() || !main.visible);
         if settled || matches!(main.automation_calls.get(&call), Some(Some(Err(_))) | None) {
             main.settle_after.remove(&call);
         }

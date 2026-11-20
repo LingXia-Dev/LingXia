@@ -1429,6 +1429,43 @@ fn hiding_a_page_ends_its_text_input() {
     );
 }
 
+/// A click whose update throws keeps the shown page under a banner: the click settles.
+#[test]
+fn a_click_whose_update_fails_settles() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);if(n.value>0)throw Error('broken update');return h('page',null,h('button',{'data-testid':'go',onClick:()=>n.set(1),style:{height:60}},'Go'))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let call = host
+        .automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"go\"]", "action": {"kind": "click"}}))
+        .unwrap()["call"]
+        .clone();
+    let mut answer = None;
+    for _ in 0..20 {
+        host.request_frame();
+        platform.settle(&[&host]);
+        match host.automation_request(&serde_json::json!({"op": "result", "call": call})) {
+            Ok(reply) if reply["done"] == true => {
+                answer = Some(Ok(reply));
+                break;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                answer = Some(Err(error));
+                break;
+            }
+        }
+    }
+    assert!(answer.is_some(), "the click settles once its update failed");
+}
+
 #[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();
