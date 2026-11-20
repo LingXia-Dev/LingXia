@@ -66,6 +66,9 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
      */
     private volatile boolean webQueued;
     private volatile boolean webMissed;
+    /** The frame queued last went into buffers made before a resize: dropped at the latch. */
+    private volatile boolean webStale;
+    private boolean webResized;
     private volatile java.util.concurrent.Future<?> posterTask;
     private static java.util.concurrent.ExecutorService posters;
 
@@ -422,10 +425,15 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         texture.updateTexImage();
         texture.getTransformMatrix(matrix);
         if (webKey != null) {
+            boolean stale = webStale;
+            webStale = false;
             webQueued = false;
-            if (webMissed) {
+            if (webMissed || stale) {
                 webMissed = false;
                 GpuWebView.recapture(webKey);
+            }
+            if (stale) {
+                return null;
             }
         }
         return matrix;
@@ -439,6 +447,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         texture.setDefaultBufferSize(w, h);
         width = w;
         height = h;
+        webResized = true;
         return true;
     }
 
@@ -456,6 +465,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         }
         if (width != w || height != h) {
             texture.setDefaultBufferSize(w, h);
+            webResized = width > 0;
             width = w;
             height = h;
         }
@@ -465,10 +475,19 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         if (canvas == null) {
             return false;
         }
+        // The first buffer queued after a resize can still be the old size, the page drawn
+        // into its corner; the sink scales it into the new size, so it is drawn again instead.
+        boolean stale = webResized;
+        webResized = false;
+        if (stale) {
+            Log.i(TAG, "web sink " + webKey + " drops its first frame at " + w + "x" + h
+                + ", canvas " + canvas.getWidth() + "x" + canvas.getHeight());
+        }
         try {
             canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
             target.draw(canvas);
         } finally {
+            webStale = stale;
             surface.unlockCanvasAndPost(canvas);
             webQueued = true;
         }
