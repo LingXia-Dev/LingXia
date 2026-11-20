@@ -169,6 +169,8 @@ export struct LxAppContainer {
   @Prop appId: string
   @Prop navigationMode: boolean = false
   @Prop closeCallback: string = ''
+  /** Kept mounted under another app or out of view: its tab bar is not on screen. */
+  @Prop hidden: boolean = false
   @State path: string = ''
 
   // Static registry for TabBar updates (simple and direct)
@@ -1140,7 +1142,7 @@ export struct LxAppContainer {
           refreshKey: key,
           pageCanvasColor: resolveCanvasColor(this.appearanceDark),
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
-          covered: this.isGpuTopLayer(),
+          covered: this.isGpuTopLayer() || this.hidden,
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
         })
           // Above the left-edge swipe strip so the first tab stays tappable.

@@ -1,3 +1,5 @@
+import { LxAppActionSheet } from './APIs/LxAppActionSheet';
+import { LxAppModal } from './APIs/LxAppModal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DevServiceMarkWindow } from './DevServiceMarkWindow';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
@@ -530,6 +532,9 @@ export struct LxAppNavigation {
 
       // Pause native components (video players, etc.) after close is accepted.
       pauseAllComponentsByAppId(appId);
+      // Its host dialogs go with it: they would cover the app shown next.
+      LxAppModal.dismiss();
+      LxAppActionSheet.dismiss();
 
       // UI cleanup: hide the closed app
       if (appId === this.homeAppId) {
@@ -654,7 +659,8 @@ export struct LxAppNavigation {
       targetWebTag: this.currentModalWebTag,
       navigationMode: true,
       closeCallback: 'navigation',
-      navigationTrigger: 0
+      navigationTrigger: 0,
+      hidden: !this.modalAppVisible
     })
     .width('100%')
     .height('100%')
@@ -682,7 +688,8 @@ export struct LxAppNavigation {
           targetWebTag: this.homeWebTag,
           navigationMode: false,
           closeCallback: undefined,
-          navigationTrigger: this.navigationTrigger
+          navigationTrigger: this.navigationTrigger,
+          hidden: this.modalAppVisible
         })
         .width('100%')
         .height('100%')

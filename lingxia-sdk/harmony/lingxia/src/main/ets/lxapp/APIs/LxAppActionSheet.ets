@@ -87,6 +87,11 @@ export class LxAppActionSheet {
     LxAppActionSheet.actionSheetManagerRef = manager;
   }
 
+  /** The app that asked for it closed: the sheet goes, its caller hears a dismissal. */
+  public static dismiss(): void {
+    LxAppActionSheet.actionSheetManagerRef?.dismiss();
+  }
+
   /**
    * Clear ActionSheet manager reference
    */
@@ -200,6 +205,12 @@ export struct ActionSheetManager {
     onCallback(this.callbackId, false, USER_DISMISSED_CODE);
 
     this.hideActionSheet();
+  }
+
+  public dismiss(): void {
+    if (this.isVisible) {
+      this.handleCancel();
+    }
   }
 
   private hideActionSheet(): void {

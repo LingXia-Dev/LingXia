@@ -122,6 +122,11 @@ export class LxAppModal {
     LxAppModal.pending.push(pending);
   }
 
+  /** The app that asked for it closed: the modal goes, its caller hears a dismissal. */
+  public static dismiss(): void {
+    LxAppModal.modalManagerRef?.dismiss();
+  }
+
   /**
    * Set modal manager reference (called by ModalManager component)
    */
@@ -300,6 +305,12 @@ export struct ModalManager {
     onCallback(this.callbackId, false, USER_DISMISSED_CODE);
 
     this.hideModal();
+  }
+
+  public dismiss(): void {
+    if (this.isVisible) {
+      this.handleCancel();
+    }
   }
 
   private hideModal(): void {
