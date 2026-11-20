@@ -51,7 +51,11 @@ export class GpuRecovery {
   action: number = -1;
   /** Offer Back: the user's back path leaves this page. */
   back: boolean = false;
+  /** Set on arrival: each panel the core shows gets its own nodes and automation source. */
+  serial: number = 0;
 }
+
+let recoverySerial = 0;
 
 export interface GpuClipMount {
   bounds: number[];
@@ -234,7 +238,13 @@ export class GpuPages {
         page.chromeSnapshot = Number(payload) || 0;
         break;
       case 'recovery':
-        page.recovery = payload.length > 0 ? JSON.parse(payload) as GpuRecovery : null;
+        if (payload.length > 0) {
+          const recovery = JSON.parse(payload) as GpuRecovery;
+          recovery.serial = ++recoverySerial;
+          page.recovery = recovery;
+        } else {
+          page.recovery = null;
+        }
         break;
       case 'revealed': {
         LxLog.d(TAG, `revealed ${page.webTag} hold=${payload}`);

@@ -31,12 +31,29 @@ final class GpuRecovery {
     /** The page's canvas, bar, bar line, text and accent colours, once the core has resolved its palette. */
     private Integer canvas, bar, barLine, text, accent;
     private View line;
+    /** What the panel shows (kind, message, action, Back), so a repeat keeps the laid-out panel. */
+    private String shown;
+    private Runnable retryCallback;
+    private java.util.function.BooleanSupplier backCallback;
 
     GpuRecovery(FrameLayout host) { this.host = host; }
 
     /** {@code back}, when non-null, offers Back beside the action; false re-enables it. */
     void show(boolean retained, int code, int actionCode, Runnable retry, java.util.function.BooleanSupplier back) {
+        String key = retained + ":" + code + ":" + (retry != null ? actionCode : -1) + ":" + (back != null);
+        retryCallback = retry;
+        backCallback = back;
+        if (panel != null && key.equals(shown)) {
+            // The same failure again (a retry that failed): the panel stays, its buttons pressable.
+            if (this.back != null) this.back.setEnabled(true);
+            if (action != null) {
+                action.setEnabled(true);
+                action.setText(string(ACTIONS[actionCode]));
+            }
+            return;
+        }
         clear();
+        shown = key;
         android.content.Context context = host.getContext();
         float density = host.getResources().getDisplayMetrics().density;
         LinearLayout current = new LinearLayout(context);
@@ -70,9 +87,9 @@ final class GpuRecovery {
             Button button = textButton(context, R.string.lx_gpu_back);
             this.back = button;
             button.setOnClickListener(view -> {
-                if (panel != current || !button.isEnabled()) return;
+                if (panel != current || !button.isEnabled() || backCallback == null) return;
                 button.setEnabled(false);
-                if (!back.getAsBoolean()) button.setEnabled(true);
+                if (!backCallback.getAsBoolean()) button.setEnabled(true);
             });
             row.addView(button);
         }
@@ -80,10 +97,10 @@ final class GpuRecovery {
             Button button = textButton(context, ACTIONS[actionCode]);
             this.action = button;
             button.setOnClickListener(view -> {
-                if (panel != current || !button.isEnabled()) return;
+                if (panel != current || !button.isEnabled() || retryCallback == null) return;
                 button.setEnabled(false);
                 if (actionCode != KEEP_WAITING) button.setText(string(R.string.lx_gpu_retrying));
-                retry.run();
+                retryCallback.run();
             });
             row.addView(button);
         }
@@ -185,5 +202,6 @@ final class GpuRecovery {
 
     void clear() {
         if (panel != null) { host.removeView(panel); panel = null; message = null; action = null; back = null; }
+        shown = null;
     }
 }

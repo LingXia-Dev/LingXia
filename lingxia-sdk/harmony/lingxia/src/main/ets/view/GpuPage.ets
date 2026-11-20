@@ -428,9 +428,10 @@ export struct GpuPage {
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
   }
 
-  /** The recovery panel as automation reads it: window chrome a tap reaches. */
-  private recoverySource(): string {
-    return `gpu-recovery-${this.page.token}`;
+  /** The recovery panel as automation reads it: window chrome a tap reaches. Per panel, so
+   *  one leaving after the next appeared does not take the next one's elements along. */
+  private recoverySource(recovery: GpuRecovery): string {
+    return `gpu-recovery-${this.page.token}-${recovery.serial}`;
   }
 
   /** Phrases the native accessibility provider speaks, in the current language. */
@@ -490,7 +491,8 @@ export struct GpuPage {
 
   /** A text button, as every platform's panel draws it: no plate, the accent colour. */
   @Builder
-  recoveryButton(label: ResourceStr, enabled: boolean, press: () => void, part: string, read: () => string) {
+  recoveryButton(recovery: GpuRecovery, label: ResourceStr, enabled: boolean, press: () => void, part: string,
+    read: () => string) {
     // Message 17, buttons 16 medium: the panel reads the same on every platform.
     Button(label, { type: ButtonType.Normal, stateEffect: true })
       .fontSize(16)
@@ -501,7 +503,7 @@ export struct GpuPage {
       .constraintSize({ minWidth: 44, minHeight: 44 })
       .enabled(enabled)
       .onClick(press)
-      .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), part, read, 'button', area,
+      .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(recovery), part, read, 'button', area,
         press))
   }
 
@@ -520,16 +522,16 @@ export struct GpuPage {
           .fontSize(17)
           .fontColor(this.recoveryText())
           .textAlign(TextAlign.Center)
-          .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(), 'message',
+          .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(recovery), 'message',
             () => this.appText(this.messages[recovery.message] ?? this.messages[3]), 'text', area))
         if (recovery.back || recovery.action >= 0) {
           Row() {
             if (recovery.back) {
-              this.recoveryButton(this.appText('lx_gpu_back'), this.backed !== recovery,
+              this.recoveryButton(recovery, this.appText('lx_gpu_back'), this.backed !== recovery,
                 () => this.recoveryBack(recovery), 'back', () => this.appText('lx_gpu_back'))
             }
             if (recovery.action >= 0) {
-              this.recoveryButton(this.retried === recovery && recovery.action !== GpuPage.KEEP_WAITING
+              this.recoveryButton(recovery, this.retried === recovery && recovery.action !== GpuPage.KEEP_WAITING
                 ? this.appText('lx_gpu_retrying') : this.appText(this.actions[recovery.action]),
                 this.retried !== recovery, () => this.retry(recovery), 'action',
                 () => this.appText(this.actions[recovery.action]))
@@ -555,13 +557,8 @@ export struct GpuPage {
       top: px2vp(this.chromeInsets[0]), right: px2vp(this.chromeInsets[1]),
       bottom: recovery.retained ? 0 : px2vp(this.chromeInsets[2]), left: px2vp(this.chromeInsets[3]),
     })
-    .onAppear(() => HostOverlays.show(this.recoverySource()))
-    .onDisAppear(() => {
-      HostOverlays.hide(this.recoverySource());
-      HostOverlays.forget(this.recoverySource(), 'message');
-      HostOverlays.forget(this.recoverySource(), 'action');
-      HostOverlays.forget(this.recoverySource(), 'back');
-    })
+    .onAppear(() => HostOverlays.show(this.recoverySource(recovery)))
+    .onDisAppear(() => HostOverlays.drop(this.recoverySource(recovery)))
   }
 
   @Builder
@@ -736,9 +733,10 @@ export struct GpuPage {
       if (this.menuShown() !== null) {
         this.textMenu(this.menuShown() as GpuFrameTextMenu)
       }
-      if (this.page.recovery !== null) {
-        this.recoveryPanel(this.page.recovery)
-      }
+      // Keyed by panel: a new one gets new nodes, so its areas and presses are its own.
+      ForEach(this.page.recovery !== null ? [this.page.recovery] : [], (recovery: GpuRecovery) => {
+        this.recoveryPanel(recovery)
+      }, (recovery: GpuRecovery) => `${recovery.serial}`)
     }
     .id(`lx-gpu-page-${this.page.token}`)
     .width('100%')

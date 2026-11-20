@@ -87,9 +87,19 @@ internal object LxAppGesture {
             val density = activity.resources.displayMetrics.density
             val out = JSONArray()
             fun visit(view: View, area: String) {
-                if (view is com.lingxia.lxapp.GpuPage && view.isShown) {
+                if (view is com.lingxia.lxapp.GpuPage) {
                     // A GPU page's recovery panel is host chrome drawn inside the page.
-                    view.findViewWithTag<View>(com.lingxia.view.GpuView.RECOVERY_TAG)?.let { visit(it, area) }
+                    for (panel in tagged(view, com.lingxia.view.GpuView.RECOVERY_TAG)) {
+                        val before = out.length()
+                        if (view.isShown) visit(panel, area)
+                        if (out.length() == before) {
+                            val state = "page shown ${view.isShown}, panel shown ${panel.isShown}, " +
+                                "laid out ${panel.isLaidOut}, ${panel.width}x${panel.height}, " +
+                                "a11y ${panel.importantForAccessibility}"
+                            // Once per panel and state: readers poll.
+                            if (unread.put(panel, state) != state) android.util.Log.i("LingXia.Chrome", "recovery panel unread: $state")
+                        }
+                    }
                     return
                 }
                 if (!view.isShown || view is com.lingxia.lxapp.WebView || view is com.lingxia.lxapp.GpuPage) return
@@ -147,6 +157,15 @@ internal object LxAppGesture {
         }.toString()
     } catch (e: Throwable) {
         JSONObject().put("error", e.message ?: e.toString()).toString()
+    }
+
+    private val unread = java.util.WeakHashMap<View, String>()
+
+    /** Every view under `root` carrying `tag`, outermost first. */
+    private fun tagged(root: View, tag: Any): List<View> {
+        if (root.tag == tag) return listOf(root)
+        if (root !is ViewGroup) return emptyList()
+        return (0 until root.childCount).flatMap { tagged(root.getChildAt(it), tag) }
     }
 
     private fun hasClickableChild(view: View): Boolean = view is ViewGroup &&

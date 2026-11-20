@@ -32,10 +32,22 @@ impl AppGesture for Platform {
         false
     }
 
-    // Injected touches reach only the GPU page view, so the host's own views stay out of reach.
+    // Injected touches reach only the GPU page view; a chrome tap presses the host control
+    // under it. Of the chrome only the recovery panel over a GPU page is read.
     #[cfg(target_os = "ios")]
     fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
-        vec![crate::traits::gesture::HostCapability::RefreshIndicator]
+        vec![
+            crate::traits::gesture::HostCapability::Chrome,
+            crate::traits::gesture::HostCapability::RefreshIndicator,
+        ]
+    }
+
+    #[cfg(target_os = "ios")]
+    async fn chrome_elements(
+        &self,
+        scope: Option<String>,
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+        ios::chrome_elements(scope).await
     }
 
     #[cfg(target_os = "ios")]
@@ -1033,7 +1045,7 @@ mod ios {
     use dispatch2::DispatchQueue;
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
-    use objc2_core_foundation::CGRect;
+    use objc2_core_foundation::{CGPoint, CGRect};
     use std::collections::HashMap;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1172,6 +1184,9 @@ mod ios {
             ),
             None => None,
         };
+        if continued.is_none() && matches!(request.target, GestureTarget::Window { .. }) {
+            return press_control(&points, request.end).await;
+        }
         let view = match continued {
             Some(finger) => finger.view,
             None => {
@@ -1221,6 +1236,178 @@ mod ios {
             duration_ms: started.elapsed().as_secs_f64() * 1000.0,
             finger,
         })
+    }
+
+    /// A window tap: iOS has no public touch injection into a window, so the host control
+    /// under the point is pressed as a completed touch (`touchUpInside`).
+    async fn press_control(
+        points: &[GesturePoint],
+        end: GestureEnd,
+    ) -> Result<AppGestureResult, PlatformError> {
+        let (Some(first), Some(last)) = (points.first(), points.last()) else {
+            return Err(PlatformError::InvalidParameter("no points".into()));
+        };
+        if end != GestureEnd::Up || (first.x - last.x).abs() > 1.0 || (first.y - last.y).abs() > 1.0
+        {
+            return Err(PlatformError::NotSupported(
+                "iOS presses host chrome with a tap only; drags reach GPU pages".into(),
+            ));
+        }
+        let started = Instant::now();
+        let (x, y) = (last.x, last.y);
+        on_main(move || unsafe {
+            let window = key_window().ok_or("no key window")?;
+            let point = CGPoint { x, y };
+            let mut view: *mut AnyObject =
+                msg_send![window, hitTest: point, withEvent: std::ptr::null_mut::<AnyObject>()];
+            let control = objc2::class!(UIControl);
+            while !view.is_null() {
+                let is_control: bool = msg_send![view, isKindOfClass: control];
+                if is_control {
+                    let enabled: bool = msg_send![view, isEnabled];
+                    if !enabled {
+                        return Err("the control under the tap is disabled".to_string());
+                    }
+                    // UIControlEventTouchUpInside
+                    let _: () = msg_send![view, sendActionsForControlEvents: 1usize << 6];
+                    return Ok(());
+                }
+                if is_gpu_page(view) {
+                    return Err("the tap lands on a GPU page; tap it as a page".to_string());
+                }
+                view = msg_send![view, superview];
+            }
+            Err(format!("no host control at {x:.0},{y:.0}"))
+        })
+        .await?;
+        Ok(AppGestureResult {
+            input: GestureInput::Touch,
+            delivered: GestureDelivery::Window,
+            events: 1,
+            duration_ms: started.elapsed().as_secs_f64() * 1000.0,
+            finger: None,
+        })
+    }
+
+    fn key_window() -> Option<*mut AnyObject> {
+        unsafe {
+            let app: *mut AnyObject = msg_send![objc2::class!(UIApplication), sharedApplication];
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            let mut fallback = None;
+            for index in 0..count {
+                let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+                let key: bool = msg_send![window, isKeyWindow];
+                if key {
+                    return Some(window);
+                }
+                fallback.get_or_insert(window);
+            }
+            fallback
+        }
+    }
+
+    fn text(value: *const AnyObject) -> String {
+        if value.is_null() {
+            return String::new();
+        }
+        unsafe { (*(value as *const objc2_foundation::NSString)).to_string() }
+    }
+
+    /// The recovery panel over the GPU page on screen, in key-window points: its message and
+    /// buttons. Bars and tabs are not read on iOS.
+    pub(super) async fn chrome_elements(
+        scope: Option<String>,
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+        use crate::traits::gesture::ChromeElement;
+        if let Some(other) = scope.as_deref().filter(|s| *s != "window") {
+            return Err(PlatformError::NotSupported(format!(
+                "iOS reads only the recovery panel over a GPU page, not {other}"
+            )));
+        }
+        unsafe fn visible(view: *mut AnyObject) -> bool {
+            unsafe {
+                let hidden: bool = msg_send![view, isHidden];
+                let alpha: f64 = msg_send![view, alpha];
+                !hidden && alpha > 0.01
+            }
+        }
+        unsafe fn collect(
+            view: *mut AnyObject,
+            window: *mut AnyObject,
+            out: &mut Vec<ChromeElement>,
+        ) {
+            unsafe {
+                if !visible(view) {
+                    return;
+                }
+                let button: bool = msg_send![view, isKindOfClass: objc2::class!(UIButton)];
+                let label: bool = msg_send![view, isKindOfClass: objc2::class!(UILabel)];
+                if button || label {
+                    let mut name = text(msg_send![view, accessibilityLabel]);
+                    if name.trim().is_empty() {
+                        name = if button {
+                            let title: *mut AnyObject = msg_send![view, titleLabel];
+                            if title.is_null() {
+                                String::new()
+                            } else {
+                                text(msg_send![title, text])
+                            }
+                        } else {
+                            text(msg_send![view, text])
+                        };
+                    }
+                    if !name.trim().is_empty() {
+                        let bounds: CGRect = msg_send![view, bounds];
+                        let frame: CGRect = msg_send![view, convertRect: bounds, toView: window];
+                        out.push(ChromeElement {
+                            label: name,
+                            role: if button { "button" } else { "text" }.into(),
+                            scope: "window".into(),
+                            selected: false,
+                            bounds: [
+                                frame.origin.x,
+                                frame.origin.y,
+                                frame.size.width,
+                                frame.size.height,
+                            ],
+                        });
+                    }
+                    return;
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                for index in 0..count {
+                    collect(msg_send![subviews, objectAtIndex: index], window, out);
+                }
+            }
+        }
+        unsafe fn walk(view: *mut AnyObject, window: *mut AnyObject, out: &mut Vec<ChromeElement>) {
+            unsafe {
+                if !visible(view) {
+                    return;
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                for index in 0..count {
+                    let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+                    if is_gpu_page(view) {
+                        if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
+                            collect(child, window, out);
+                        }
+                    } else {
+                        walk(child, window, out);
+                    }
+                }
+            }
+        }
+        on_main(|| {
+            let window = key_window().ok_or("no key window")?;
+            let mut out = Vec::new();
+            unsafe { walk(window, window, &mut out) };
+            Ok(out)
+        })
+        .await
     }
 
     /// A GPU page's pull-to-refresh indicator; `None` when the page has none.
