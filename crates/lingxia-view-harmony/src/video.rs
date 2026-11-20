@@ -619,7 +619,7 @@ impl Drop for Video {
             let shared = Box::from_raw(shared as *mut Shared);
             frames.release(&mut Image {
                 image,
-                shared: &*shared,
+                shared: &shared,
             });
             // Detached above, so destroying it touches no context.
             OH_NativeImage_Destroy(&mut image);

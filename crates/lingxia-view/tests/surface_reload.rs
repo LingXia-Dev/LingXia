@@ -9,6 +9,8 @@ use std::ffi::{CStr, c_char, c_void};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
+// One `#[link]` per framework: clippy reads the repeated `kind` as a duplicate.
+#[allow(clippy::duplicated_attributes)]
 #[link(name = "QuartzCore", kind = "framework")]
 #[link(name = "Metal", kind = "framework")]
 #[link(name = "objc")]

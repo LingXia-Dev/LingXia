@@ -195,6 +195,7 @@ pub(crate) const APPLE_BOOTSTRAP_SCRIPT: &str = embed_install_body!(
 /// Windows document-created bootstrap. WebView2 reports the top-level document's own URL as
 /// each message's source, and gives the element fullscreen API natively.
 #[cfg(any(windows, test))]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const WINDOWS_BOOTSTRAP_SCRIPT: &str = embed_install_body!(
     concat!(
         "  var w = window.chrome && window.chrome.webview;\n",

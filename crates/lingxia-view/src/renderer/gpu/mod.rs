@@ -474,7 +474,7 @@ pub enum Capture {
     /// Read already: width, height and straight-alpha RGBA rows, or none held.
     Pixels(Option<(u32, u32, Vec<u8>)>),
     /// To draw off screen at the device's pixels, with the presenter released.
-    Offscreen(Offscreen),
+    Offscreen(Box<Offscreen>),
 }
 
 /// A kept frame to draw again at the device's pixels.
@@ -1374,7 +1374,7 @@ impl Presenter {
         }
         display.web_pictures = true;
         let job = self.offscreen(*revision, &display)?;
-        Ok(Capture::Offscreen(Offscreen { job, display }))
+        Ok(Capture::Offscreen(Box::new(Offscreen { job, display })))
     }
 
     /// Draws `display` whole into a target of its own.

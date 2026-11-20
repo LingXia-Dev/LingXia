@@ -9,6 +9,8 @@ use std::ffi::{CStr, c_char, c_void};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
+// One `#[link]` per framework: clippy reads the repeated `kind` as a duplicate.
+#[allow(clippy::duplicated_attributes)]
 #[link(name = "QuartzCore", kind = "framework")]
 #[link(name = "Metal", kind = "framework")]
 #[link(name = "objc")]
@@ -87,14 +89,12 @@ fn a_page_drawn_off_the_device_scale_shows_again_after_hide_and_capture() {
         assert_eq!(drawable(layer), Size(200.0, 200.0));
         let shown = surfaces::readback(id).unwrap().expect("a shown frame");
         assert_eq!((shown.0, shown.1), (200, 200));
-        let mut revision = 3;
-        for _ in 0..3 {
+        for revision in 3..6 {
             if capture {
                 let (w, h, _) = surfaces::capture(id).unwrap().expect("a capture");
                 assert_eq!((w, h), (600, 600), "the capture is at the device's pixels");
             }
             assert!(show(id, revision, &display));
-            revision += 1;
             assert_eq!(drawable(layer), Size(200.0, 200.0), "capture={capture}");
             let again = surfaces::readback(id).unwrap().expect("a shown frame");
             assert_eq!((again.0, again.1), (200, 200));

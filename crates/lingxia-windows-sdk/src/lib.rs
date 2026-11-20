@@ -262,13 +262,19 @@ pub type Result<T> = std::result::Result<T, WindowsHostError>;
 #[cfg(feature = "runtime")]
 pub struct WindowsHost {
     runtime: RuntimeInfo,
-    #[cfg_attr(not(feature = "device-frame"), allow(dead_code))]
+    #[cfg_attr(
+        not(all(target_os = "windows", feature = "device-frame")),
+        allow(dead_code)
+    )]
     content: Option<MountedContent>,
 }
 
 #[derive(Debug, Clone)]
 #[cfg(feature = "runtime")]
-#[cfg_attr(not(feature = "device-frame"), allow(dead_code))]
+#[cfg_attr(
+    not(all(target_os = "windows", feature = "device-frame")),
+    allow(dead_code)
+)]
 enum MountedContent {
     LxApp(String),
     Browser,

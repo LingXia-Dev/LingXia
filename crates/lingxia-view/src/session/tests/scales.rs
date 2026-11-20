@@ -30,6 +30,16 @@ fn bounds(frame: &crate::DisplayList, id: &str) -> [f32; 4] {
     frame.nodes.iter().find(|n| n.test_id == id).unwrap().bounds
 }
 
+/// Presents frame `index` (`true`: the frame the motion starts at): its nodes and wakeup.
+type Present<'a> = dyn FnMut(
+        &mut ViewSession,
+        u64,
+        bool,
+    ) -> (
+        Vec<crate::scene::node::NodeSnapshot>,
+        crate::animation::Wakeup,
+    ) + 'a;
+
 #[test]
 fn a_scales_push_resolves_steps_again_without_running_the_view() {
     let (space, text, leading) = (slot("space"), slot("text.base"), slot("leading.base"));
@@ -216,14 +226,7 @@ fn a_running_transition_keeps_its_length_across_a_scales_push() {
         assert!(page.click(page.generation(), handle).unwrap());
     };
     // Frames until the motion that the frame at `from` starts settles.
-    let settle = |page: &mut ViewSession,
-                  from: u64,
-                  present: &mut dyn FnMut(
-        &mut ViewSession,
-        u64,
-        bool,
-    )
-        -> (Vec<crate::scene::node::NodeSnapshot>, Wakeup)| {
+    let settle = |page: &mut ViewSession, from: u64, present: &mut Present| {
         (from..from + 120)
             .find(|&index| present(page, index, index == from).1 == Wakeup::None)
             .expect("the transition never ends")

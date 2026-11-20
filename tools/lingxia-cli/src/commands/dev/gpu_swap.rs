@@ -11,14 +11,15 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 type Inputs = BTreeMap<PathBuf, BTreeSet<String>>;
+/// Each project's last record: when it was written, its length, and what it resolved to.
+type ReadInputs = BTreeMap<PathBuf, (SystemTime, u64, Arc<Inputs>)>;
 
 /// The files the last dev build's GPU pages compiled from (`.lingxia/gpu-inputs.json`), resolved,
 /// each with the pages it feeds. A linked package's files sit outside `dir` (`../kit/src/x.tsx`).
 /// Resolving them costs a file-system call per input of every page, and the watcher asks on
 /// every save: the answer is kept until the build writes the record again.
 fn inputs(dir: &Path) -> Option<Arc<Inputs>> {
-    static READ: Mutex<BTreeMap<PathBuf, (SystemTime, u64, Arc<Inputs>)>> =
-        Mutex::new(BTreeMap::new());
+    static READ: Mutex<ReadInputs> = Mutex::new(BTreeMap::new());
     let record = dir.join(".lingxia").join("gpu-inputs.json");
     let written = std::fs::metadata(&record)
         .and_then(|record| Ok((record.modified()?, record.len())))

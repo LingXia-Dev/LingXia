@@ -94,7 +94,7 @@ mod measure {
             eprintln!("video_memory: no GPU adapter, skipped");
             return;
         };
-        let (device, _queue) =
+        let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let clip = concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -115,7 +115,7 @@ mod measure {
         while start.elapsed() < Duration::from_secs(seconds) {
             if player.has_new() {
                 let at = Instant::now();
-                if let Some((texture, _)) = player.next_frame(&device).unwrap() {
+                if let Some((texture, _)) = player.next_frame(&device, &queue).unwrap() {
                     import_us.push(at.elapsed().as_micros() as u64);
                     // The renderer keeps the newest frame and drops the one before.
                     shown = Some(texture);

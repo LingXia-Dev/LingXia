@@ -148,7 +148,7 @@ pub fn occlude(mounts: &mut [WebViewMount]) {
             // Clipped by an ancestor, the hole's corners are the clip's: the visible box is the
             // nearest shape a mask can take.
             let whole = mount.visible_bounds == mount.bounds;
-            live.then(|| ClipSnapshot {
+            live.then_some(ClipSnapshot {
                 bounds: mount.visible_bounds,
                 radius: if whole { mount.radius } else { 0.0 },
                 radii: if whole { mount.radii } else { None },
