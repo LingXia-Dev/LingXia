@@ -365,6 +365,12 @@ impl Shell for Bridge {
     fn text(&self, key: &str, fallback: &str) -> String {
         lingxia_platform::i18n::text(key, fallback)
     }
+    fn can_go_back(&self, token: i64) -> bool {
+        gpu_page::can_go_back(token)
+    }
+    fn go_back(&self, token: i64) -> bool {
+        gpu_page::go_back(token)
+    }
     fn host_chrome(&self, _: i64, _: &lingxia_view_windows::lingxia_view::platform::HostChrome) {}
     fn top_layer(&self, token: i64, modal: bool) {
         if let Some(page) = gpu_page::page_of(token) {

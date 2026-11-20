@@ -86,13 +86,20 @@ fn child_buttons(window: isize) -> Vec<ChromeElement> {
         // SAFETY: `found` is the pair below, alive for the enumeration.
         let (window, found) = unsafe { &mut *(found.0 as *mut (HWND, Vec<ChromeElement>)) };
         let mut class = [0u16; 32];
-        let mut text = [0u16; 128];
+        let mut text = [0u16; 512];
         // SAFETY: buffers of their stated lengths; reads of a live child.
         unsafe {
             let len = GetClassNameW(child, &mut class) as usize;
-            if !IsWindowVisible(child).as_bool()
-                || !String::from_utf16_lossy(&class[..len]).eq_ignore_ascii_case("button")
-            {
+            let class = String::from_utf16_lossy(&class[..len]);
+            // A GPU page's recovery panel carries its message as its window text.
+            let role = if class.eq_ignore_ascii_case("button") {
+                "button"
+            } else if class == "LingXiaGpuRecovery" {
+                "text"
+            } else {
+                return BOOL(1);
+            };
+            if !IsWindowVisible(child).as_bool() {
                 return BOOL(1);
             }
             let len = GetWindowTextW(child, &mut text) as usize;
@@ -105,7 +112,7 @@ fn child_buttons(window: isize) -> Vec<ChromeElement> {
             let _ = ScreenToClient(*window, &mut origin);
             found.push(ChromeElement {
                 label: String::from_utf16_lossy(&text[..len]),
-                role: "button".into(),
+                role: role.into(),
                 scope: "window".into(),
                 selected: false,
                 bounds: [

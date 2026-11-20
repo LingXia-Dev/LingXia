@@ -66,6 +66,16 @@ pub trait Shell: Send + Sync + 'static {
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, token: i64, connection: u64) -> bool;
     fn recovery(&self, token: i64, failure: Option<&Failure>);
+    /// Whether the recovery panel offers Back: the page has somewhere to go.
+    fn can_go_back(&self, token: i64) -> bool {
+        let _ = token;
+        false
+    }
+    /// The recovery panel's Back; false when the page could not leave.
+    fn go_back(&self, token: i64) -> bool {
+        let _ = token;
+        false
+    }
     /// Host chrome text for a localizer `key`, else `fallback`.
     fn text(&self, key: &str, fallback: &str) -> String {
         let _ = key;
