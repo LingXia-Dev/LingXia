@@ -371,6 +371,8 @@ export struct LxAppContainer {
   // Presented through `present` already, oldest first: the prop catching up must not
   // present them again.
   private presentedTags: string[] = []
+  /** The page last asked for: the prop lags a direct present, so a late create checks this. */
+  private wantedWebTag: string = ''
 
   // Listen for navigation trigger changes (unified method for all LxApps)
   @Watch('onNavigationTriggerChange') @Prop navigationTrigger: number = 0
@@ -465,7 +467,7 @@ export struct LxAppContainer {
         // A navigation waited for this page: it replaces the shown one once it has a frame.
         this.pendingWebTag = '';
         this.navigateToPage(page.webTag);
-      } else if (page.webTag === this.targetWebTag) {
+      } else if (page.webTag === this.wantedTag()) {
         hilog.info(DOMAIN, TAG, `GPU page ${page.webTag} is the target: current on create`);
         this.currentWebTag = page.webTag;
         GpuPages.reveal(page, () => {});
@@ -892,7 +894,7 @@ export struct LxAppContainer {
         // Mark current BEFORE inserting into the ForEach. Harmony ArkWeb
         // never paints a Web that first lays out translated off-screen;
         // overflow tabs then stay blank after switchTab.
-        const wantCurrent: boolean = info.webtag === this.targetWebTag;
+        const wantCurrent: boolean = info.webtag === this.wantedTag();
         if (wantCurrent) {
           this.currentWebTag = info.webtag;
         }
@@ -1766,7 +1768,12 @@ export struct LxAppContainer {
   /**
    * Present the page instance `newWebTag` names, with animation support
    */
+  private wantedTag(): string {
+    return this.wantedWebTag || this.targetWebTag;
+  }
+
   private navigateToPage(newWebTag: string): boolean {
+    this.wantedWebTag = newWebTag;
     const path: string = extractWebTag(newWebTag)?.path ?? '';
     hilog.info(DOMAIN, TAG, `navigate: ${newWebTag} with type: ${AnimationType[this.currentAnimationType]}`);
 
