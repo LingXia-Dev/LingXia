@@ -13,7 +13,6 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-const SURFACE_DISPOSE_TTL_MS: u64 = 30_000;
 static SURFACE_CLOSE_OBSERVER: OnceLock<fn(&str, &str) -> bool> = OnceLock::new();
 type SurfaceActiveMainObserver = fn(Option<&str>, Option<&str>) -> bool;
 static SURFACE_ACTIVE_MAIN_OBSERVER: OnceLock<SurfaceActiveMainObserver> = OnceLock::new();
@@ -1897,20 +1896,8 @@ impl LxApp {
         };
         let (path, page_instance_id, content, page_path) = match request.target {
             PageSurfaceTarget::Page(target) => {
-                let dispose_ttl = match request.kind {
-                    // A standalone window surface is a persistent window that
-                    // lives until explicitly closed; only hideable overlays are
-                    // reclaimed by the dispose timer after a long hide.
-                    SurfaceKind::Window => None,
-                    SurfaceKind::Overlay => Some(Duration::from_millis(SURFACE_DISPOSE_TTL_MS)),
-                };
-                let created = self.create_page_instance(
-                    owner,
-                    target,
-                    request.query,
-                    presentation_kind,
-                    dispose_ttl,
-                )?;
+                let created =
+                    self.create_page_instance(owner, target, request.query, presentation_kind)?;
                 (
                     created.resolved_path.clone(),
                     created.page_instance_id.to_string(),
@@ -2112,14 +2099,11 @@ impl LxApp {
             .unwrap_or_else(|| PageOwner::Scene(SceneId("system".to_string())));
         let (path, page_instance_id, content, page_path) = match request.target {
             PageSurfaceTarget::Page(target) => {
-                // A standalone window is persistent (lives until explicitly
-                // closed): no dispose TTL, like the window branch in open_surface.
                 let created = self.create_page_instance(
                     owner,
                     target,
                     request.query,
                     PresentationKind::Window,
-                    None,
                 )?;
                 (
                     created.resolved_path.clone(),
@@ -2265,7 +2249,7 @@ impl LxApp {
                     removed.push(id.to_string());
                 }
                 for removed_id in removed {
-                    remove_surface_record_from_owner(&removed_id);
+                    remove_surface_record_from_owner(&removed_id, reason);
                 }
                 Ok(())
             }
@@ -3392,8 +3376,11 @@ impl LxApp {
             .state
             .lock()
             .ok()
-            .and_then(|state| state.surfaces.lock().unwrap().remove(id))
-            .is_some();
+            .and_then(|state| state.surfaces.lock().unwrap().remove(id));
+        if let Some(record) = &removed {
+            dispose_surface_content(record, reason);
+        }
+        let removed = removed.is_some();
         // Keep the Adaptive Surface Layout core in sync with removals; the
         // controller re-derives and reconciles aside docking.
         let closed = matches!(
@@ -3639,6 +3626,38 @@ impl LxApp {
             record.content_page_instance_id.as_deref() == Some(content_page_instance_id.as_str())
         });
         self.close_surfaces(ids, reason);
+    }
+
+    /// Unload every page held by a hidden surface. Each owner's handle closes
+    /// with `reclaimed`.
+    pub(crate) fn reclaim_hidden_surface_pages(&self) {
+        let ids: Vec<String> = {
+            let Ok(state) = self.state.lock() else {
+                return;
+            };
+            let runtime = state.page_instance_runtime.lock().unwrap();
+            state
+                .surfaces
+                .lock()
+                .unwrap()
+                .values()
+                .filter_map(|record| record.content_page_instance_id.clone())
+                .filter(|id| {
+                    runtime.get(id).is_some_and(|record| {
+                        record.lifecycle == crate::page::runtime::PageInstanceLifecycleState::Hidden
+                    })
+                })
+                .collect()
+        };
+        for id in ids {
+            if self.page_instance_is_retained(&id) {
+                continue;
+            }
+            if let Err(err) = dispose_page_instance_by_id(&id, CloseReason::Reclaimed) {
+                warn!("Failed to reclaim hidden surface page {}: {}", id, err)
+                    .with_appid(self.appid.clone());
+            }
+        }
     }
 
     pub(crate) fn close_all_surfaces(&self, reason: CloseReason) {
@@ -3903,19 +3922,40 @@ fn surface_owner_appid(id: &str) -> Option<String> {
         .map(|info| info.appid)
 }
 
-fn remove_surface_record_from_owner(id: &str) -> bool {
+fn remove_surface_record_from_owner(id: &str, reason: &str) -> bool {
     let Some(appid) = surface_owner_appid(id) else {
         return false;
     };
-    crate::lxapp::try_get(&appid)
-        .and_then(|owner| {
-            owner
-                .state
-                .lock()
-                .ok()
-                .and_then(|state| state.surfaces.lock().ok()?.remove(id))
-        })
-        .is_some()
+    let removed = crate::lxapp::try_get(&appid).and_then(|owner| {
+        owner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.surfaces.lock().ok()?.remove(id))
+    });
+    if let Some(record) = &removed {
+        dispose_surface_content(record, reason);
+    }
+    removed.is_some()
+}
+
+/// A closed surface unloads its page at once; only `hide` keeps it. A page
+/// that is also on its app's stack or pinned there outlives the surface.
+fn dispose_surface_content(record: &SurfaceRecord, reason: &str) {
+    let Some(page_instance_id) = record.content_page_instance_id.as_deref() else {
+        return;
+    };
+    let Some(page) = crate::lxapp::runtime_registry::find_page_by_instance_id(page_instance_id)
+    else {
+        return;
+    };
+    let Some(app) = crate::lxapp::try_get(&page.appid()) else {
+        return;
+    };
+    if app.page_instance_is_retained(page_instance_id) {
+        return;
+    }
+    let _ = dispose_page_instance_by_id(page_instance_id, CloseReason::from_reason_str(reason));
 }
 
 fn finite_or_nan(value: Option<f64>) -> f64 {

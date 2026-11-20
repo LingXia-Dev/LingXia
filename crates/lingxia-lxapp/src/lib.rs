@@ -139,9 +139,8 @@ pub use lxapp::{
     release_retained_surfaces, resolve_open_channel, restart_lxapp, resume_lxapp_admission,
     set_display_language_preference, set_display_language_preference_in,
     set_host_appearance_preference, shell_presence, show_lxapp_in_region, shutdown_lxapps_except,
-    subscribe_display_language_effective,
-    subscribe_display_language_state, tabbar, terminate_lxapp, touch_page_instance_by_id, try_get,
-    uninstall_lxapp,
+    subscribe_display_language_effective, subscribe_display_language_state, tabbar,
+    terminate_lxapp, try_get, uninstall_lxapp,
 };
 #[doc(hidden)]
 pub use native_authority::NativeControlPlaneAuthority;

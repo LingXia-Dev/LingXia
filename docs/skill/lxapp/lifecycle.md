@@ -114,5 +114,6 @@ but get no hook until first selected.
   page (video, camera) are paused and resumed with it, as they are for a main
   page. Maximizing an aside over the main fires nothing, for the aside or for
   the main underneath: both keep their frames and stay shown.
-- **Surface pages** opened with `lx.surface.open` get `onHide` on close and
-  `onUnload` 30 seconds later unless reopened first.
+- **Surface pages** get `onHide` then `onUnload` as soon as the surface
+  closes. `hide()` keeps the page (only `onHide`); under memory pressure the
+  host may unload a hidden one, and its handle closes with `reclaimed`.

@@ -404,7 +404,6 @@ fn java_webview_of<'l>(
     let Some(webview) = page.webview() else {
         return Ok(JObject::null());
     };
-    let _ = lxapp::touch_page_instance_by_id(&page.instance_id_string());
     if let Some(app) = lxapp::try_get(&page.appid()) {
         app.republish_page_scheme(page);
     }
@@ -417,7 +416,6 @@ fn java_page_view_of<'l>(
     page: &lxapp::PageInstance,
 ) -> Result<JObject<'l>, jni::errors::Error> {
     if page.renderer() == lxapp::PageRenderer::Gpu {
-        let _ = lxapp::touch_page_instance_by_id(&page.instance_id_string());
         gpu_page::java_view(env, page)
     } else {
         java_webview_of(env, page)
@@ -570,7 +568,6 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findWebViewByPageInstanceI
         if page_instance_id.is_empty() {
             return Ok(JObject::null());
         }
-        let _ = lxapp::touch_page_instance_by_id(page_instance_id);
         let Some(page) = lxapp::find_page_by_instance_id(page_instance_id) else {
             return Ok(JObject::null());
         };
@@ -591,7 +588,6 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_findPageViewByPageInstance
         if page_instance_id.is_empty() {
             return Ok(JObject::null());
         }
-        let _ = lxapp::touch_page_instance_by_id(page_instance_id);
         let Some(page) = lxapp::find_page_by_instance_id(page_instance_id) else {
             return Ok(JObject::null());
         };

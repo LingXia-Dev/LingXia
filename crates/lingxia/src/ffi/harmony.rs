@@ -618,9 +618,6 @@ pub fn get_page_instance_id(appid: String, path: String, session_id: i64) -> Str
     let page_instance_id = lxapp_instance
         .page_instance_id_for_path(&resolved_path)
         .unwrap_or_default();
-    if !page_instance_id.is_empty() {
-        let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
-    }
     page_instance_id
 }
 

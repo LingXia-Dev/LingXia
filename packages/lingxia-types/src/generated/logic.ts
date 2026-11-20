@@ -2245,7 +2245,7 @@ export type SurfaceBase = {
  */
 export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
- * The SDK reclaimed a long-hidden overlay surface for resource reasons.
+ * The host unloaded a hidden surface's page under memory pressure.
  * Treat as a normal close: the page instance is gone; further postMessage /
  * show / hide calls will fail. The opener may immediately reopen if needed.
  */

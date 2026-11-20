@@ -2158,7 +2158,6 @@ pub fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize {
     if page_instance_id.is_empty() {
         return 0;
     }
-    let _ = lxapp::touch_page_instance_by_id(page_instance_id);
 
     lxapp::find_page_by_instance_id(page_instance_id)
         .and_then(|page| page.webview())
@@ -2204,7 +2203,6 @@ fn page_binding_of(page: Option<lxapp::PageInstance>) -> self::bridge::PageBindi
         };
     };
     let page_instance_id = page.instance_id_string();
-    let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
     self::bridge::PageBindingResult {
         page_instance_id,
         path: page.path(),
