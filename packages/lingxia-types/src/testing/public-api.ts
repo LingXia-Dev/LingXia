@@ -449,6 +449,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.device',
     members: DEVICE_API,
+    properties: ['info', 'orientation'],
   },
   {
     name: 'lx.device.orientation',
@@ -461,6 +462,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.network',
     members: NETWORK_API,
+    properties: ['wifi'],
   },
   {
     name: 'lx.network.wifi',
@@ -543,7 +545,7 @@ export const LX_RUNTIME_SURFACES = [
   },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
-  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API },
+  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'tabBar'] },
   {
     name: 'Automation',
     layer: 'automation',

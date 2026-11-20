@@ -1,6 +1,6 @@
 import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
-import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+import { bindFixture, expectReject, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
@@ -289,10 +289,12 @@ test('request permission and replace local notifications by id', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
-  const offered = await app.logic.eval(({ lx }) => !!(lx.host.notification && typeof lx.host.notification.show === 'function'));
-  expect(offered).toBe(true);
+  // The member is always present; a host without notifications refuses the call.
   const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.notification'));
-  expect(supported).toBe(true);
+  if (!supported) {
+    await expectReject(() => app.logic.eval(({ lx }) => lx.host.notification.getPermission()), { message: 'E_NOT_SUPPORTED' });
+    return;
+  }
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     const n = lx.host.notification;
@@ -478,12 +480,10 @@ test('report autostart state and accept an idempotent write', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-AUTOSTART-001');
 
-  // Autostart is a login-item concept the inventory marks optional; a phone
-  // host does not build it, and asking is how a caller finds out.
-  const offered = await app.logic.eval(({ lx }) => !!(lx.host.autostart && typeof lx.host.autostart.isEnabled === 'function'));
-  if (!offered) {
-    const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.autostart'));
-    expect(supported).toBe(false);
+  // The member is always present; a host without login items refuses the call.
+  const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.autostart'));
+  if (!supported) {
+    await expectReject(() => app.logic.eval(({ lx }) => lx.host.autostart.isEnabled()), { message: 'E_NOT_SUPPORTED' });
     return;
   }
 

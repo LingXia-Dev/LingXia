@@ -78,11 +78,11 @@ test('a guest lxapp gets attention for itself only', {
         return (error as { code?: string }).code ?? String(error);
       }
     };
-    let activate = 'returned';
+    let shellActivate = 'returned';
     try {
       lx.shell.activate();
     } catch (error) {
-      activate = (error as { code?: string }).code ?? String(error);
+      shellActivate = (error as { code?: string }).code ?? String(error);
     }
     return {
       activate: await code({ kind: 'activate' }),
@@ -92,7 +92,7 @@ test('a guest lxapp gets attention for itself only', {
       otherApp: await code({ kind: 'app', appId: 'lingxia-showcase' }),
       bannerActivate: await bannerCode({ kind: 'activate' }),
       bannerOtherApp: await bannerCode({ kind: 'app', appId: 'lingxia-showcase' }),
-      activate,
+      shellActivate,
     };
   });
   expect(refused).toEqual({
@@ -103,7 +103,7 @@ test('a guest lxapp gets attention for itself only', {
     otherApp: 'E_PERMISSION_DENIED',
     bannerActivate: 'E_PERMISSION_DENIED',
     bannerOtherApp: 'E_PERMISSION_DENIED',
-    activate: 'E_PERMISSION_DENIED',
+    shellActivate: 'E_PERMISSION_DENIED',
   });
 
   // Its own notification, opening itself, under its own id.
@@ -143,7 +143,7 @@ test('a guest lxapp gets attention for itself only', {
       id,
       title: 'Run finished',
       body: 'DESKTOP-GUEST-ATTENTION-001',
-      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', query: { run: 'probe' } } }],
+      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', appId: 'lingxia-chat', query: { run: 'probe' } } }],
       timeoutMs: 0,
     }).then(
       (result) => { probe.result = result; },
