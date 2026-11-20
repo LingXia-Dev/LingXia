@@ -71,9 +71,10 @@ pub trait Player: Send {
     fn qualities(&self) -> Vec<String> {
         Vec::new()
     }
-    /// Whether a pin applies to the playing player rather than through a second one of the stream.
-    fn pins_in_place(&self) -> bool {
-        false
+    /// Whether choosing `label` applies to the playing player rather than through a second one
+    /// of the stream: auto only lifts limits, a pin would wait out the buffered segments.
+    fn quality_in_place(&self, label: Option<&str>) -> bool {
+        label.is_none()
     }
     /// Pins the rendition `label`, or gives the choice back to the player with `None`.
     fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
@@ -600,9 +601,10 @@ fn set_quality(key: &str, entry: &mut Entry, label: Option<String>) -> Result<()
             return Ok(());
         }
         let now = player.status();
-        let pin_now = label.is_some() && player.pins_in_place();
-        if pin_now || label.is_none() || (now.paused && now.current_time == 0.0) {
+        if player.quality_in_place(label.as_deref()) || (now.paused && now.current_time == 0.0) {
             player.set_quality(label.as_deref())?;
+            // The latest choice wins: a switch still opening for an earlier one is dropped.
+            entry.switch = None;
             entry.quality = label;
             return Ok(());
         }
@@ -1068,6 +1070,14 @@ fn open_player(key: &str) {
             entry.ready_at = Some(now);
             if let State::Ready(player) = &mut state {
                 entry.applied = settings_of(key);
+                // A reopened stream keeps its pin; auto never replaces it.
+                if entry.quality.is_some()
+                    && source_of(key).is_some_and(|source| source.labels().is_empty())
+                    && let Err(error) = player.set_quality(entry.quality.as_deref())
+                {
+                    log::warn!(target: "lingxia_view", "video {key} quality: {}", error.message);
+                    entry.quality = None;
+                }
                 // A reopened player picks up where its still left off.
                 let resume = stills()
                     .iter()
@@ -1176,7 +1186,16 @@ fn open_switch(key: &str, url: &str) {
     };
     let _ = next.command(&VideoOp::Seek(target));
     match &mut entry.switch {
-        Some(switch) if switch.url == url && switch.label == label => {
+        Some(switch) if switch.url == url => {
+            // A choice made while this opened wins: a stream pins it now, a file's label follows.
+            if switch.label != label
+                && source.labels().is_empty()
+                && let Err(error) = next.set_quality(switch.label.as_deref())
+            {
+                log::warn!(target: "lingxia_view", "video {key} quality: {}", error.message);
+                entry.switch = None;
+                return;
+            }
             switch.player = Some(next);
             switch.target = target;
         }
@@ -1709,6 +1728,151 @@ pub fn stats() -> serde_json::Value {
     })
 }
 
+/// An HLS master playlist cut to the renditions `height` pixels tall, every URI made absolute
+/// against `base`: a player handed it can only play that rendition. `None` when none is that tall.
+#[cfg(any(test, target_vendor = "apple"))]
+fn pin_master(master: &str, base: &str, height: u32) -> Option<String> {
+    let tall = |line: &str| {
+        attribute(line, "RESOLUTION")
+            .and_then(|size| size.split_once('x'))
+            .and_then(|(_, h)| h.parse::<u32>().ok())
+            == Some(height)
+    };
+    let mut out = String::new();
+    let mut kept = 0;
+    let mut lines = master.lines();
+    while let Some(line) = lines.next() {
+        let line = line.trim_end();
+        if line.starts_with("#EXT-X-STREAM-INF:") {
+            let uri = lines
+                .by_ref()
+                .map(str::trim)
+                .find(|l| !l.is_empty() && !l.starts_with('#'));
+            if let Some(uri) = uri
+                && tall(line)
+            {
+                out.push_str(line);
+                out.push('\n');
+                out.push_str(&absolute(base, uri));
+                out.push('\n');
+                kept += 1;
+            }
+        } else if line.starts_with("#EXT-X-I-FRAME-STREAM-INF:") {
+            if tall(line) {
+                out.push_str(&absolute_uri_attribute(line, base));
+                out.push('\n');
+            }
+        } else if line.starts_with('#') {
+            out.push_str(&absolute_uri_attribute(line, base));
+            out.push('\n');
+        } else if !line.is_empty() {
+            out.push_str(&absolute(base, line));
+            out.push('\n');
+        }
+    }
+    (kept > 0).then_some(out)
+}
+
+/// The value of attribute `name` in a playlist tag line, unquoted.
+#[cfg(any(test, target_vendor = "apple"))]
+fn attribute<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    let (_, list) = line.split_once(':')?;
+    let mut rest = list;
+    while !rest.is_empty() {
+        let (key, after) = rest.split_once('=')?;
+        let (value, next) = match after.strip_prefix('"') {
+            Some(quoted) => {
+                let end = quoted.find('"')?;
+                (&quoted[..end], quoted[end + 1..].trim_start_matches(','))
+            }
+            None => match after.split_once(',') {
+                Some((value, next)) => (value, next),
+                None => (after, ""),
+            },
+        };
+        if key.trim() == name {
+            return Some(value);
+        }
+        rest = next;
+    }
+    None
+}
+
+#[cfg(any(test, target_vendor = "apple"))]
+fn absolute_uri_attribute(line: &str, base: &str) -> String {
+    match line.find("URI=\"") {
+        Some(at) => {
+            let start = at + 5;
+            let end = line[start..].find('"').map_or(line.len(), |e| start + e);
+            format!(
+                "{}{}{}",
+                &line[..start],
+                absolute(base, &line[start..end]),
+                &line[end..]
+            )
+        }
+        None => line.to_owned(),
+    }
+}
+
+#[cfg(any(test, target_vendor = "apple"))]
+fn absolute(base: &str, uri: &str) -> String {
+    if uri.contains("://") {
+        return uri.to_owned();
+    }
+    let base = base.split(['?', '#']).next().unwrap_or(base);
+    if uri.starts_with('/') {
+        let origin = base
+            .find("://")
+            .and_then(|at| {
+                base[at + 3..]
+                    .find('/')
+                    .map(|slash| &base[..at + 3 + slash])
+            })
+            .unwrap_or(base);
+        return format!("{origin}{uri}");
+    }
+    let dir = base.rfind('/').map_or(base, |slash| &base[..=slash]);
+    format!("{dir}{uri}")
+}
+
+#[cfg(test)]
+mod pin_master_tests {
+    use super::pin_master;
+
+    const MASTER: &str = "#EXTM3U\n\
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"Alt\",URI=\"alt/prog.m3u8\"\n\
+#EXT-X-STREAM-INF:BANDWIDTH=263851,CODECS=\"mp4a.40.2, avc1.4d400d\",RESOLUTION=416x234,AUDIO=\"a\"\n\
+gear1/prog_index.m3u8\n\
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=28451,RESOLUTION=416x234,URI=\"gear1/iframe.m3u8\"\n\
+#EXT-X-STREAM-INF:BANDWIDTH=1924009,CODECS=\"mp4a.40.2, avc1.4d401f\",RESOLUTION=1920x1080,AUDIO=\"a\"\n\
+gear5/prog_index.m3u8\n\
+#EXT-X-STREAM-INF:BANDWIDTH=41457,CODECS=\"mp4a.40.2\",AUDIO=\"a\"\n\
+gear0/prog_index.m3u8\n";
+
+    #[test]
+    fn keeps_only_the_pinned_height_with_absolute_uris() {
+        let cut = pin_master(MASTER, "https://h.test/x/master.m3u8?t=1", 1080).unwrap();
+        assert!(cut.contains("RESOLUTION=1920x1080"));
+        assert!(cut.contains("\nhttps://h.test/x/gear5/prog_index.m3u8\n"));
+        assert!(!cut.contains("gear1") && !cut.contains("gear0"));
+        assert!(cut.contains("URI=\"https://h.test/x/alt/prog.m3u8\""));
+        assert!(cut.starts_with("#EXTM3U\n"));
+    }
+
+    #[test]
+    fn a_height_no_rendition_has_gives_none() {
+        assert!(pin_master(MASTER, "https://h.test/master.m3u8", 720).is_none());
+    }
+
+    #[test]
+    fn root_relative_uris_keep_the_origin() {
+        let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=640x360\n/v/360.m3u8\n";
+        let cut = pin_master(master, "https://h.test/a/b/master.m3u8", 360).unwrap();
+        assert!(cut.contains("\nhttps://h.test/v/360.m3u8\n"));
+    }
+}
+
 #[cfg(target_vendor = "apple")]
 mod platform {
     //! AVPlayer → AVPlayerItemVideoOutput (BGRA, Metal-compatible) → CVMetalTextureCache.
@@ -1806,6 +1970,114 @@ mod platform {
         fn CACurrentMediaTime() -> f64;
     }
 
+    unsafe extern "C" {
+        fn dispatch_get_global_queue(identifier: isize, flags: usize) -> *mut c_void;
+    }
+
+    /// The scheme a forced rendition's cut playlist is served under.
+    const PINNED_URL: &std::ffi::CStr = c"lingxia-pinned://stream/master.m3u8";
+
+    objc2::define_class!(
+        #[unsafe(super(objc2::runtime::NSObject))]
+        #[name = "LingXiaViewPinnedPlaylist"]
+        #[ivars = Vec<u8>]
+        struct PinnedPlaylist;
+
+        impl PinnedPlaylist {
+            #[unsafe(method(resourceLoader:shouldWaitForLoadingOfRequestedResource:))]
+            fn should_wait(
+                &self,
+                _loader: *mut objc2::runtime::AnyObject,
+                request: *mut objc2::runtime::AnyObject,
+            ) -> objc2::runtime::Bool {
+                use objc2::DefinedClass;
+                unsafe { serve(request.cast(), self.ivars()) };
+                objc2::runtime::Bool::YES
+            }
+        }
+    );
+
+    impl PinnedPlaylist {
+        fn new(body: Vec<u8>) -> Retained<Self> {
+            use objc2::AllocAnyThread;
+            let this = Self::alloc().set_ivars(body);
+            unsafe { objc2::msg_send![super(this), init] }
+        }
+    }
+
+    /// Answers a loading request with the whole playlist.
+    unsafe fn serve(request: Id, body: &[u8]) {
+        unsafe {
+            let info = send0(request, c"contentInformationRequest");
+            if !info.is_null() {
+                send1(info, c"setContentType:", ns_string(c"public.m3u-playlist"));
+                let set_long: unsafe extern "C" fn(Id, *const c_void, i64) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                set_long(info, sel(c"setContentLength:"), body.len() as i64);
+                set_bool(info, c"setByteRangeAccessSupported:", false);
+            }
+            let data_request = send0(request, c"dataRequest");
+            if !data_request.is_null() {
+                let bytes: unsafe extern "C" fn(Id, *const c_void, *const c_void, usize) -> Id =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                let data = bytes(
+                    objc_getClass(c"NSData".as_ptr()),
+                    sel(c"dataWithBytes:length:"),
+                    body.as_ptr().cast(),
+                    body.len(),
+                );
+                send1(data_request, c"respondWithData:", data);
+            }
+            send0(request, c"finishLoading");
+        }
+    }
+
+    unsafe fn ns_string(text: &std::ffi::CStr) -> Id {
+        unsafe {
+            let f: unsafe extern "C" fn(Id, *const c_void, *const c_char) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            f(
+                objc_getClass(c"NSString".as_ptr()),
+                sel(c"stringWithUTF8String:"),
+                text.as_ptr(),
+            )
+        }
+    }
+
+    unsafe fn utf8(object: Id) -> Option<String> {
+        if object.is_null() {
+            return None;
+        }
+        unsafe {
+            let f: unsafe extern "C" fn(Id, *const c_void) -> *const c_char =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let raw = f(object, sel(c"UTF8String"));
+            (!raw.is_null()).then(|| std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned())
+        }
+    }
+
+    /// The BGRA, Metal-compatible pixel buffer attributes frames are read in; the caller releases.
+    unsafe fn pixel_attributes() -> *const c_void {
+        unsafe {
+            let format = CFNumberCreate(std::ptr::null(), 3, (&BGRA as *const i32).cast());
+            let keys = [
+                kCVPixelBufferPixelFormatTypeKey,
+                kCVPixelBufferMetalCompatibilityKey,
+            ];
+            let values = [format, kCFBooleanTrue];
+            let attributes = CFDictionaryCreate(
+                std::ptr::null(),
+                keys.as_ptr(),
+                values.as_ptr(),
+                2,
+                (&raw const kCFTypeDictionaryKeyCallBacks).cast(),
+                (&raw const kCFTypeDictionaryValueCallBacks).cast(),
+            );
+            CFRelease(format);
+            attributes
+        }
+    }
+
     const BGRA: i32 = 0x4247_5241;
     const MTL_PIXEL_FORMAT_BGRA8_UNORM: usize = 80;
 
@@ -1897,6 +2169,10 @@ mod platform {
         output: Id,
         cache: *mut c_void,
         renditions: Vec<Rendition>,
+        /// An HLS stream's URL and master playlist, read at open.
+        master: Option<(String, String)>,
+        /// Serves the cut playlist of a forced rendition; the resource loader holds it weakly.
+        loader: Option<Retained<PinnedPlaylist>>,
         /// The page pinned a rendition; otherwise auto stays within `view`.
         pinned: bool,
         view: Option<([f32; 2], super::Fit)>,
@@ -1915,7 +2191,13 @@ mod platform {
     unsafe impl Sync for Held {}
 
     pub(super) fn open(url: &str) -> Result<Box<dyn super::Player>, String> {
-        Ok(Box::new(Player::open(url)?))
+        Ok(Box::new(pooled(|| Player::open(url))?))
+    }
+
+    /// The opener and closer threads have no run loop to drain autoreleased objects: without a
+    /// pool every asset, item and player opened there lives, decoder and all, until the process ends.
+    fn pooled<T>(job: impl FnOnce() -> T) -> T {
+        objc2::rc::autoreleasepool(|_| job())
     }
 
     impl super::Player for Player {
@@ -1939,6 +2221,43 @@ mod platform {
         }
 
         fn apply(&mut self, settings: &Settings, previous: Option<&Settings>) {
+            pooled(|| self.apply_now(settings, previous))
+        }
+
+        fn command(&mut self, op: &VideoOp) -> Result<(), VideoError> {
+            pooled(|| self.command_now(op))
+        }
+
+        fn qualities(&self) -> Vec<String> {
+            self.renditions.iter().map(|r| r.label.clone()).collect()
+        }
+
+        fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+            pooled(|| self.set_quality_now(label))
+        }
+
+        fn set_view(&mut self, px: [f32; 2], fit: super::Fit) {
+            if self.view == Some((px, fit)) {
+                return;
+            }
+            self.view = Some((px, fit));
+            if !self.pinned {
+                pooled(|| self.cap());
+            }
+        }
+
+        fn status(&self) -> Status {
+            pooled(|| self.status_now())
+        }
+
+        fn quality_in_place(&self, label: Option<&str>) -> bool {
+            // Leaving a forced rendition replaces the item, which a second player hides.
+            label.is_none() && self.loader.is_none()
+        }
+    }
+
+    impl Player {
+        fn apply_now(&mut self, settings: &Settings, previous: Option<&Settings>) {
             let changed = |field: fn(&Settings) -> f32| {
                 previous.is_none_or(|previous| field(previous) != field(settings))
             };
@@ -1966,7 +2285,7 @@ mod platform {
             }
         }
 
-        fn command(&mut self, op: &VideoOp) -> Result<(), VideoError> {
+        fn command_now(&mut self, op: &VideoOp) -> Result<(), VideoError> {
             unsafe {
                 match *op {
                     VideoOp::Play => self.play(),
@@ -1999,16 +2318,24 @@ mod platform {
             Ok(())
         }
 
-        fn qualities(&self) -> Vec<String> {
-            self.renditions.iter().map(|r| r.label.clone()).collect()
-        }
-
-        fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+        fn set_quality_now(&mut self, label: Option<&str>) -> Result<(), VideoError> {
             let Some(label) = label else {
+                if self.loader.is_some() {
+                    self.replace_item(None);
+                }
                 self.pinned = false;
                 self.cap();
                 return Ok(());
             };
+            let cut = self.master.as_ref().and_then(|(url, master)| {
+                let height = label.strip_suffix('p')?.parse().ok()?;
+                super::pin_master(master, url, height)
+            });
+            if let Some(cut) = cut {
+                self.replace_item(Some(cut));
+                self.pinned = true;
+                return Ok(());
+            }
             let rendition = self
                 .renditions
                 .iter()
@@ -2020,17 +2347,7 @@ mod platform {
             Ok(())
         }
 
-        fn set_view(&mut self, px: [f32; 2], fit: super::Fit) {
-            if self.view == Some((px, fit)) {
-                return;
-            }
-            self.view = Some((px, fit));
-            if !self.pinned {
-                self.cap();
-            }
-        }
-
-        fn status(&self) -> Status {
+        fn status_now(&self) -> Status {
             unsafe {
                 let seconds = |time: CMTime| CMTimeGetSeconds(time);
                 let duration = seconds(send_time(self.item, c"duration", None));
@@ -2176,21 +2493,7 @@ mod platform {
                     c"playerItemWithAsset:",
                     asset,
                 ));
-                let format = CFNumberCreate(std::ptr::null(), 3, (&BGRA as *const i32).cast());
-                let keys = [
-                    kCVPixelBufferPixelFormatTypeKey,
-                    kCVPixelBufferMetalCompatibilityKey,
-                ];
-                let values = [format, kCFBooleanTrue];
-                let attributes = CFDictionaryCreate(
-                    std::ptr::null(),
-                    keys.as_ptr(),
-                    values.as_ptr(),
-                    2,
-                    (&raw const kCFTypeDictionaryKeyCallBacks).cast(),
-                    (&raw const kCFTypeDictionaryValueCallBacks).cast(),
-                );
-                CFRelease(format);
+                let attributes = pixel_attributes();
                 let output = send1(
                     send0(objc_getClass(c"AVPlayerItemVideoOutput".as_ptr()), c"alloc"),
                     c"initWithPixelBufferAttributes:",
@@ -2224,15 +2527,26 @@ mod platform {
                 }
                 // Paused on the first frame until the page's props say play.
                 send0(player, c"pause");
-                let renditions = if url
+                let stream = url
                     .to_bytes()
                     .split(|b| *b == b'?')
                     .next()
-                    .is_some_and(|path| path.ends_with(b".m3u8"))
-                {
-                    renditions(item)
+                    .is_some_and(|path| path.ends_with(b".m3u8"));
+                let renditions = if stream { renditions(item) } else { Vec::new() };
+                // A pin cuts this to one rendition: AVPlayer only takes a limit, never a choice.
+                let master = if stream {
+                    let read: unsafe extern "C" fn(Id, *const c_void, Id, usize, *mut Id) -> Id =
+                        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                    let text = read(
+                        objc_getClass(c"NSString".as_ptr()),
+                        sel(c"stringWithContentsOfURL:encoding:error:"),
+                        nsurl,
+                        4,
+                        std::ptr::null_mut(),
+                    );
+                    utf8(text).map(|text| (url.to_string_lossy().into_owned(), text))
                 } else {
-                    Vec::new()
+                    None
                 };
                 Ok(Self {
                     player,
@@ -2240,6 +2554,8 @@ mod platform {
                     output,
                     cache: std::ptr::null_mut(),
                     renditions,
+                    master,
+                    loader: None,
                     pinned: false,
                     view: None,
                     looped: std::cell::Cell::new(false),
@@ -2247,6 +2563,75 @@ mod platform {
                     rate: 1.0,
                     first: std::cell::Cell::new(first),
                 })
+            }
+        }
+
+        /// Plays the stream's cut playlist `cut`, or with `None` the whole stream again, from
+        /// the same position: a new item with its own output replaces the playing one.
+        fn replace_item(&mut self, cut: Option<String>) {
+            let Some((url, _)) = &self.master else {
+                return;
+            };
+            unsafe {
+                let at = send_time(self.item, c"currentTime", None);
+                let address = match &cut {
+                    Some(_) => ns_string(PINNED_URL),
+                    None => match std::ffi::CString::new(url.as_str()) {
+                        Ok(url) => ns_string(&url),
+                        Err(_) => return,
+                    },
+                };
+                let nsurl = send1(objc_getClass(c"NSURL".as_ptr()), c"URLWithString:", address);
+                let two: unsafe extern "C" fn(Id, *const c_void, Id, Id) -> Id =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                let asset = two(
+                    objc_getClass(c"AVURLAsset".as_ptr()),
+                    sel(c"URLAssetWithURL:options:"),
+                    nsurl,
+                    std::ptr::null_mut(),
+                );
+                if asset.is_null() {
+                    return;
+                }
+                let loader = cut.map(|cut| PinnedPlaylist::new(cut.into_bytes()));
+                if let Some(loader) = &loader {
+                    let set: unsafe extern "C" fn(Id, *const c_void, Id, *mut c_void) =
+                        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                    set(
+                        send0(asset, c"resourceLoader"),
+                        sel(c"setDelegate:queue:"),
+                        Retained::as_ptr(loader) as Id,
+                        dispatch_get_global_queue(0, 0),
+                    );
+                }
+                let item = objc_retain(send1(
+                    objc_getClass(c"AVPlayerItem".as_ptr()),
+                    c"playerItemWithAsset:",
+                    asset,
+                ));
+                let attributes = pixel_attributes();
+                let output = send1(
+                    send0(objc_getClass(c"AVPlayerItemVideoOutput".as_ptr()), c"alloc"),
+                    c"initWithPixelBufferAttributes:",
+                    attributes as Id,
+                );
+                CFRelease(attributes);
+                send1(item, c"addOutput:", output);
+                send1(self.player, c"replaceCurrentItemWithPlayerItem:", item);
+                objc_release(self.output);
+                objc_release(self.item);
+                self.item = item;
+                self.output = output;
+                self.loader = loader;
+                let seek: unsafe extern "C" fn(Id, *const c_void, CMTime, CMTime, CMTime) =
+                    std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+                seek(
+                    self.player,
+                    sel(c"seekToTime:toleranceBefore:toleranceAfter:"),
+                    at,
+                    kCMTimeZero,
+                    kCMTimeZero,
+                );
             }
         }
 
@@ -2501,7 +2886,7 @@ mod platform {
 
     impl Drop for Player {
         fn drop(&mut self) {
-            unsafe {
+            pooled(|| unsafe {
                 send0(self.player, c"pause");
                 let first = self.first.get();
                 if !first.is_null() {
@@ -2513,7 +2898,7 @@ mod platform {
                 if !self.cache.is_null() {
                     CFRelease(self.cache);
                 }
-            }
+            })
         }
     }
 }
@@ -2770,7 +3155,106 @@ mod opener_tests {
         }
         COUNTED.fetch_add(1, Ordering::SeqCst);
         RUNNING.fetch_sub(1, Ordering::SeqCst);
+        if url.ends_with(".m3u8") {
+            return Ok(Box::new(Stream {
+                url: url.to_owned(),
+                pin: None,
+            }));
+        }
         Ok(Box::new(Idle(url.to_owned())))
+    }
+
+    /// Pins each stream player was given last, per URL.
+    static PINS: LazyLock<Mutex<HashMap<String, Vec<Option<String>>>>> =
+        LazyLock::new(Default::default);
+
+    /// An adaptive stream mid-play, with two renditions.
+    struct Stream {
+        url: String,
+        pin: Option<String>,
+    }
+
+    impl Player for Stream {
+        fn has_new(&self) -> bool {
+            false
+        }
+
+        fn next_frame(
+            &mut self,
+            _: &wgpu::Device,
+            _: &wgpu::Queue,
+        ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
+            Ok(None)
+        }
+
+        fn status(&self) -> Status {
+            Status {
+                current_time: 3.0,
+                ..Status::default()
+            }
+        }
+
+        fn qualities(&self) -> Vec<String> {
+            vec!["1080p".into(), "360p".into()]
+        }
+
+        fn set_quality(&mut self, label: Option<&str>) -> Result<(), VideoError> {
+            self.pin = label.map(str::to_owned);
+            PINS.lock()
+                .unwrap()
+                .entry(self.url.clone())
+                .or_default()
+                .push(self.pin.clone());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn auto_chosen_while_a_pin_opens_wins_over_it() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(true, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_006, "name:stream-auto");
+        let url = "https://example.invalid/slow-auto.m3u8";
+        configure(&key, file(url));
+        settle();
+        GATE.store(false, Ordering::SeqCst);
+        command(&key, VideoOp::SetQuality(Some("1080p".into()))).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        command(&key, VideoOp::SetQuality(None)).unwrap();
+        GATE.store(true, Ordering::SeqCst);
+        settle();
+        opens();
+        let players = players();
+        assert!(
+            players[&key].switch.is_none(),
+            "the pin's switch was dropped"
+        );
+        assert_eq!(players[&key].quality, None, "auto is the choice that stays");
+    }
+
+    #[test]
+    fn a_reopened_stream_keeps_its_pin() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(true, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_007, "name:stream-reopen");
+        let url = "https://example.invalid/reopen.m3u8";
+        configure(&key, file(url));
+        settle();
+        players().get_mut(&key).unwrap().quality = Some("360p".into());
+        command(&key, VideoOp::Retry).unwrap();
+        settle();
+        opens();
+        settle();
+        assert!(matches!(players()[&key].state, State::Ready(_)));
+        assert_eq!(players()[&key].quality.as_deref(), Some("360p"));
+        let pins = PINS.lock().unwrap();
+        assert_eq!(
+            pins[url].last(),
+            Some(&Some("360p".to_owned())),
+            "the new player is pinned"
+        );
     }
 
     fn opened(url: &str) -> usize {
