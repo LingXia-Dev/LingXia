@@ -225,7 +225,8 @@ export function reset() {
 }
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9
-  : kind === 'text' ? validInputText(value) : value === undefined;
+  : kind === 'text' ? validInputText(value)
+  : kind === 'check' ? value === undefined || typeof value === 'boolean' : value === undefined;
 
 export function dispatch(handle, value) {
   outsideRender('dispatch');

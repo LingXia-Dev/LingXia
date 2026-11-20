@@ -5009,14 +5009,14 @@
         label(props.accessibilityLabel, "UI_CHECK");
         if (props.value !== void 0 && typeof props.value !== "boolean") throw Error("UI_CHECK: value must be boolean");
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
-        wire("checked", +(props.value ?? false));
+        if (props.value !== void 0) wire("checked", +props.value);
         if (props.indeterminate !== void 0) {
           if (tag !== "checkbox" || typeof props.indeterminate !== "boolean") throw Error("UI_CHECK: indeterminate is a boolean on a <checkbox>");
           if (props.indeterminate) wire("mixed", 1);
         }
-        if (props.onChange && !disabled) {
+        if (!disabled && (props.onChange || props.value === void 0)) {
           const { onChange, value, indeterminate } = props;
-          on("onCheckedChange", () => onChange(indeterminate === true || !(value ?? false)));
+          on("onCheckedChange", (next) => onChange?.(next ?? (indeterminate === true || !value)), "check");
         }
         break;
       case "slider": {
@@ -6270,7 +6270,7 @@
     resetWebViews();
     wireReset();
   }
-  var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : value === void 0;
+  var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
   function dispatch(handle2, value) {
     outsideRender("dispatch");
     const entry = page.callbacks.get(handle2);

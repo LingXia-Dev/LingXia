@@ -281,6 +281,27 @@ test('boolean controls dispatch the inverse controlled value and expire old hand
   }
 });
 
+test('an unbound checkbox or switch leaves its state to the core and reports the value the core sends', () => {
+  for (const tag of ['checkbox', 'switch']) {
+    const seen = [];
+    const free = rendered(() => h(tag, { onChange: value => seen.push(value), 'aria-label': 'Free' }));
+    // No `checked` on the wire marks it unbound; the core fills it in.
+    assert.equal(free.props.checked, undefined);
+    assert.equal(dispatch(free.props.onCheckedChange, true), true);
+    assert.equal(dispatch(free.props.onCheckedChange, false), true);
+    assert.deepEqual(seen, [true, false]);
+    assert.equal(dispatch(free.props.onCheckedChange, 1), false);
+    // Without onChange it still works, so it keeps a handler and is not drawn disabled.
+    const silent = rendered(() => h(tag, { 'aria-label': 'Silent' }));
+    assert.equal(silent.props.checked, undefined); assert.equal(silent.props.enabled, undefined);
+    assert.equal(dispatch(silent.props.onCheckedChange, true), true);
+    // A controlled control is unchanged: `checked` wired, no handler without onChange.
+    const fixed = rendered(() => h(tag, { value: false, 'aria-label': 'Fixed' }));
+    assert.equal(fixed.props.checked, 0); assert.equal(fixed.props.onCheckedChange, undefined);
+    assert.equal(rendered(() => h(tag, { disabled: true, 'aria-label': 'Off' })).props.onCheckedChange, undefined);
+  }
+});
+
 test('boolean control bindings persist and reject invalid values or children', () => {
   const render = () => h('switch', { bind: useLocal('preference', false), 'aria-label': 'Sync' }, 'Preference');
   const first = rendered(render);

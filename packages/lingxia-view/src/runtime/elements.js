@@ -539,13 +539,19 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.label(props.accessibilityLabel, 'UI_CHECK');
       if (props.value !== undefined && typeof props.value !== 'boolean') throw Error('UI_CHECK: value must be boolean');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      wire('checked', +(props.value ?? false));
+      // Unbound (no value or bind): the core keeps the checked state and paints it.
+      if (props.value !== undefined) wire('checked', +props.value);
       if (props.indeterminate !== undefined) {
         if (tag !== 'checkbox' || typeof props.indeterminate !== 'boolean') throw Error('UI_CHECK: indeterminate is a boolean on a <checkbox>');
         if (props.indeterminate) wire('mixed', 1);
       }
-      // A press on a mixed checkbox checks it, as in the DOM; the page clears `indeterminate`.
-      if (props.onChange && !disabled) { const { onChange, value, indeterminate } = props; on('onCheckedChange', () => onChange(indeterminate === true || !(value ?? false))); }
+      // The core sends an unbound control's new value; a controlled press sends none, and on a
+      // mixed checkbox it checks, as in the DOM (the page clears `indeterminate`). An unbound
+      // control needs the handler even without onChange, or it draws disabled.
+      if (!disabled && (props.onChange || props.value === undefined)) {
+        const { onChange, value, indeterminate } = props;
+        on('onCheckedChange', next => onChange?.(next ?? (indeterminate === true || !value)), 'check');
+      }
       break;
     case 'slider': {
       check.slider(props);
