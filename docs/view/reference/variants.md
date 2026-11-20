@@ -24,7 +24,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `focus-visible:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; while focused from a key, switch or assistive tool (editors on any focus); paint only |
 | `active:` | `<button>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>`; paint only |
 | `disabled:` | `<button>` `<input>` `<textarea>` `<checkbox>` `<switch>` `<radio>` `<slider>` `<link>` `<select>`; replaces the whole class cascade |
-| `has:` | any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only |
+| `has:` | any element, alone; `has-checked:` (a descendant checkbox, switch or radio option that reads checked, bound or not), `has-disabled:` (a disabled descendant) and `has-focus:`; paint only |
 | `data:` | any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included |
 | `motion-safe:` | any element |
 | `motion-reduce:` | any element |
@@ -40,11 +40,13 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `dark:` | any element; not on colours, which follow appearance |
 | `starting:` | any element; paint only, the values it enters from |
 | `exit:` | any element; paint only, the values a removed element leaves toward |
-| `track:` | `<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch, eased over 150 ms |
+| `track:` | `<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch (while it reads checked, bound or not; another state may not keep part of its paint on the same part), eased over 150 ms |
 | `range:` | `<slider>`; its range, min to value: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
 | `secondary:` | `<slider>`; its secondary range, min to `secondaryValue`: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
 | `thumb:` | `<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*` (with `ring-offset-*`, `inset-ring-*`), `scale-*`; after a state like the track |
 | `group-active:` | any element inside a pressable control; while that control is pressed; paint only |
+
+There is no `group-checked:` or `peer-checked:`: a container reads the controls inside it with `has-checked:`.
 
 `space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.
 

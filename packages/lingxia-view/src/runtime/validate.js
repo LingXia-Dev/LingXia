@@ -122,6 +122,13 @@ export function slider(props) {
   if (value !== undefined) props.value = sliderValue(props, value);
 }
 
+/** Where an unbound slider starts: snapped as its value would be. */
+export function sliderDefault(props) {
+  const value = props.defaultValue;
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 1e9) throw Error('UI_SLIDER: defaultValue must be a finite number');
+  return sliderValue(props, value);
+}
+
 /** A second value drawn behind the range, such as buffered media: clamped, never snapped. */
 export function sliderSecondary({ min, max, secondaryValue: value }) {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw Error('UI_SLIDER: secondaryValue must be a finite number');

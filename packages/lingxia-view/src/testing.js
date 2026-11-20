@@ -10,7 +10,7 @@ import { scales, scaleDefaults, scaledFields } from './generated/contract.js';
 
 const tagNames = Object.fromEntries(Object.entries(tags).map(([name, id]) => [id, name]));
 const fieldNames = Object.fromEntries(Object.entries(field).map(([name, id]) => [id, name]));
-const states = new Set(['focusStyle', 'focusVisibleStyle', 'pressedStyle', 'hoverStyle']);
+const states = new Set(['focusStyle', 'focusVisibleStyle', 'pressedStyle', 'hoverStyle', 'checkedStyle', 'hasCheckedStyle']);
 
 // A `[slot, times, plus]` step reference, as theme-scaled lengths, durations and easings reach the wire.
 const isStep = value => Array.isArray(value) && value.length === 3 && Number.isInteger(value[0]) && scales[value[0]] !== undefined

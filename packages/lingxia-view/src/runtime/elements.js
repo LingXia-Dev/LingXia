@@ -151,7 +151,7 @@ export function takeLowered() {
 }
 
 // Whether JSON carries a style unchanged. The only fields it may drop are these, read solely by value.
-const droppable = new Set(['children', 'every', 'release']);
+const droppable = new Set(['children', 'every', 'release', 'descendants']);
 function portable(style) {
   return Object.entries(style).every(([name, value]) => value === undefined ? droppable.has(name)
     : name === 'typography' ? Object.entries(value).every(([field, size]) => size === undefined ? field === 'lineHeight' : plainJson(size))
@@ -198,7 +198,7 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
     if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
   }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${checkedSwitch(tag, props)}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
@@ -225,14 +225,12 @@ const disabledField = { color: 'text-muted', backgroundColor: 'surface-sunken', 
 // A player's box is black before its first frame and behind letterboxing, as native players are.
 const videoBacking = { backgroundColor: '#000000' };
 
-// `checked:` before a switch part follows the switch's own value.
-const checkedSwitch = (tag, props) => tag === 'switch' && props.value === true;
 // `indeterminate:` follows a checkbox's own mixed state.
 const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
-  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, checked: checkedSwitch(tag, props), indeterminate: mixedCheckbox(tag, props) };
+  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -275,15 +273,23 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   }
   state('focusWithin', 'focusWithinStyle', true);
   state('groupActive', 'groupPressedStyle', true);
-  if (classes?.backdrop && !props[backdropOwner]) throw Error(`UI_STYLE: backdrop: styles the backdrop of a <dialog> or a light-dismiss popover, not <${tag}>`);
-  // `has-checked:`/`has-disabled:` depend on descendants, known once the children resolve.
-  const descendants = {};
-  for (const [name, kind] of [['hasChecked', 'checked'], ['hasDisabled', 'disabled']]) {
-    const delta = classes?.[name];
-    if (!delta || !Object.keys(delta).length) continue;
-    paintOnly(name.replace(/^has/, 'has-').toLowerCase(), tag, delta);
-    descendants[kind] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
+  // The core paints `checked:` while the control reads checked, bound or not, and `has-checked:`
+  // while a descendant does; each lays over the base before any interaction state.
+  const checked = classes?.checked && (disabled ? classes.checked.disabled : classes.checked.base);
+  if (checked && Object.keys(checked).length) {
+    if (!accepts('checkedStyle', tag)) throw Error(`UI_STYLE: checked: requires a <checkbox>, <switch> or radio option, not <${tag}>`);
+    paintOnly('checked', tag, checked);
+    states.checkedStyle = lowerStyle(tag, checked, env, { fontSize: typography.fontSize }).fields;
   }
+  if (classes?.hasChecked && Object.keys(classes.hasChecked).length) {
+    paintOnly('has-checked', tag, classes.hasChecked);
+    states.hasCheckedStyle = lowerStyle(tag, classes.hasChecked, env, { fontSize: typography.fontSize }).fields;
+  }
+  if (classes?.backdrop && !props[backdropOwner]) throw Error(`UI_STYLE: backdrop: styles the backdrop of a <dialog> or a light-dismiss popover, not <${tag}>`);
+  // `has-disabled:` depends on descendants, known once the children resolve.
+  const hasDisabled = classes?.hasDisabled && Object.keys(classes.hasDisabled).length ? classes.hasDisabled : undefined;
+  if (hasDisabled) paintOnly('has-disabled', tag, hasDisabled);
+  const descendants = hasDisabled ? lowerStyle(tag, hasDisabled, env, { fontSize: typography.fontSize }).fields : undefined;
   return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release };
 }
 
@@ -541,6 +547,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       // Unbound (no value or bind): the core keeps the checked state and paints it.
       if (props.value !== undefined) wire('checked', +props.value);
+      if (props.defaultChecked !== undefined) {
+        if (typeof props.defaultChecked !== 'boolean') throw Error('UI_CHECK: defaultChecked must be boolean');
+        if (props.value !== undefined) throw Error('UI_CHECK: defaultChecked starts a control without value or bind');
+        // The core takes it once per element; a later change does nothing.
+        wire('defaultValue', props.defaultChecked);
+      }
       if (props.indeterminate !== undefined) {
         if (tag !== 'checkbox' || typeof props.indeterminate !== 'boolean') throw Error('UI_CHECK: indeterminate is a boolean on a <checkbox>');
         if (props.indeterminate) wire('mixed', 1);
@@ -560,6 +572,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const within = value => !thumb ? value : thumb.upper ? Math.max(value, thumb.other) : Math.min(value, thumb.other);
       const unbound = props.value === undefined;
       if (!unbound) { props.value = within(props.value); wire('sliderValue', props.value); }
+      if (props.defaultValue !== undefined) {
+        if (!unbound) throw Error('UI_SLIDER: defaultValue starts a slider without value or bind');
+        // The core takes it once per element; a later change does nothing.
+        wire('defaultValue', check.sliderDefault(props));
+      }
       for (const [key, name] of [['sliderMin', 'min'], ['sliderMax', 'max'], ['sliderStep', 'step'], ['accessibilityLabel', 'accessibilityLabel']])
         wire(key, props[name]);
       if (thumb) { wire('sliderOther', thumb.other); wire('sliderThumb', thumb.upper ? 'upper' : 'lower'); }
@@ -647,13 +664,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const options = selectOptions(props);
       if (props.value !== undefined && typeof props.value !== 'string') throw Error('UI_SELECT: value must be a string');
       if (props.placeholder !== undefined && !validInputText(props.placeholder)) throw Error('UI_SELECT: invalid placeholder');
-      const chosen = options.find(option => option.value === props.value);
+      if (props.defaultValue !== undefined && (props.value !== undefined || !options.some(option => option.value === props.defaultValue)))
+        throw Error('UI_SELECT: defaultValue names an option of a select without value or bind');
+      // The core takes the default once per element and shows each later choice itself.
+      const chosen = options.find(option => option.value === (props.value ?? props.defaultValue));
       // The box shows the chosen label, else the placeholder in placeholder colour.
       result.text = chosen?.label ?? props.placeholder ?? '';
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       // Unbound (no value or bind): the core keeps the choice and shows its label.
       const unbound = props.value === undefined;
       if (!unbound) wire('inputValue', chosen ? chosen.value : '');
+      else if (props.defaultValue !== undefined) wire('defaultValue', props.defaultValue);
       if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
       wire('selectOptions', JSON.stringify(options));
       // The core sends an unbound select only a new choice; without onChange it still needs the handler.
@@ -831,8 +852,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (at !== undefined && at !== String(ordinal)) placed[ordinal] = { ...placed[ordinal], slot: at };
     }
   }
-  for (const kind in style.descendants)
-    if (result.children.some(child => holds(child, kind))) Object.assign(result.fields, style.descendants[kind]);
+  if (style.descendants && result.children.some(holdsDisabled)) Object.assign(result.fields, style.descendants);
   return result;
 }
 
@@ -841,12 +861,8 @@ export function liftedFrom(node, part) {
   return (node.lifted ?? []).map(layer => ({ ...layer, props: { ...layer.props, key: `lx-lifted:${part}${layer.identity.slice(node.identity.length)}` } }));
 }
 
-// Whether a resolved node or one below it is checked (a checkbox, switch or answered radio) or disabled.
-function holds(node, kind) {
-  const own = kind === 'disabled' ? node.props?.disabled === true
-    : (['checkbox', 'switch'].includes(node.element) && node.props.value === true) || (node.element === 'radio' && node.props.value != null);
-  return own || (node.children ?? []).some(child => holds(child, kind));
-}
+// Whether a resolved node or one below it is disabled.
+const holdsDisabled = node => node.props?.disabled === true || (node.children ?? []).some(holdsDisabled);
 
 // The structural pseudo-classes a node matches: position among its siblings, or no content.
 function structure(sibling, flat) {
