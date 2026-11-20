@@ -320,6 +320,8 @@ final class GpuWebView extends FrameLayout {
         private long awaitedRequest = Long.MAX_VALUE;
         /** Bumped per resize so an older size probe stops. */
         private int sizeProbe;
+        /** The page size the running probe last logged. */
+        private String lastProbe;
         private final Runnable drawTimeout = () -> {
             if (awaitingDraw) {
                 awaitingDraw = false;
@@ -399,6 +401,10 @@ final class GpuWebView extends FrameLayout {
                 // the page has drawn.
                 awaitingDraw = true;
                 awaitingSince = android.os.SystemClock.uptimeMillis();
+                lastProbe = null;
+                android.util.Log.i("LingXia.GpuWebView", "resize " + key + " box " + width + "x" + height
+                    + " over capture " + capturedWidth + "x" + capturedHeight + " web view "
+                    + webview.getWidth() + "x" + webview.getHeight() + " shown " + webview.isShown());
                 awaitedRequest = Long.MAX_VALUE;
                 removeCallbacks(drawTimeout);
                 postDelayed(drawTimeout, 300);
@@ -526,6 +532,14 @@ final class GpuWebView extends FrameLayout {
                         awaitedRequest = NEXT_VISUAL_REQ.get();
                         scheduleVisualStateCapture();
                     } else {
+                        if (!result.equals(lastProbe)) {
+                            // Says whether the view or the page is late: the web view's own size
+                            // against what the page reports.
+                            lastProbe = result;
+                            android.util.Log.i("LingXia.GpuWebView", "resize " + key + " page still at " + result
+                                + " after " + (android.os.SystemClock.uptimeMillis() - awaitingSince) + " ms, web view "
+                                + webview.getWidth() + "x" + webview.getHeight());
+                        }
                         postOnAnimation(() -> probePageSize(probe));
                     }
                 });
@@ -614,6 +628,16 @@ final class GpuWebView extends FrameLayout {
             }
             GpuVideo sink = GpuVideo.webSink(key);
             if (sink == null) {
+                return;
+            }
+            if (capturedWidth > 0 && webview instanceof WebView && customView == null && sink.resizeWebSink(w, h)) {
+                // The first draw into resized buffers can come out of the old frame, part black:
+                // the box keeps the old picture until the page answers after the resize.
+                awaitingDraw = true;
+                awaitedRequest = NEXT_VISUAL_REQ.get();
+                removeCallbacks(drawTimeout);
+                postDelayed(drawTimeout, 300);
+                scheduleVisualStateCapture();
                 return;
             }
             capturing = true;

@@ -1346,8 +1346,8 @@ impl Renderer {
                             settings: Default::default(),
                         }),
                     );
-                    // The capture at its own size, top-left: one taken at a smaller box (a sheet
-                    // opening) leaves room, never stretched; a larger one shrinks into the box.
+                    // The capture at its own size, top-left, clipped by the box: one taken at
+                    // another size (a sheet opening or closing) is never scaled.
                     commands.push(Paint::Video {
                         player: key,
                         bounds: inner_bounds,

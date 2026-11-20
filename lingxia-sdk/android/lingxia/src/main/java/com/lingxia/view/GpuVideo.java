@@ -431,6 +431,17 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
         return matrix;
     }
 
+    /** Sizes the web sink's buffers for a capture at [w]x[h]; true when that changed them. */
+    synchronized boolean resizeWebSink(int w, int h) {
+        if (closed || w <= 0 || h <= 0 || (width == w && height == h)) {
+            return false;
+        }
+        texture.setDefaultBufferSize(w, h);
+        width = w;
+        height = h;
+        return true;
+    }
+
     synchronized boolean drawWebView(android.view.View target, int w, int h) {
         if (closed || w <= 0 || h <= 0 || !surface.isValid()) {
             return false;

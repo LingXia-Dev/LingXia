@@ -177,8 +177,8 @@ pub enum Fit {
     Cover,
     Contain,
     Fill,
-    /// At its own size, one texel per device pixel: a web view's capture taken at a smaller box
-    /// shows with room to spare until a new one lands; one that covers the box shrinks into it.
+    /// At its own size, one texel per device pixel, clipped by the box: a web view's capture
+    /// taken at another box size shows unscaled until one at the new size lands.
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     Natural,
 }
@@ -213,16 +213,9 @@ pub fn placement_at(
     let [iw, ih] = size.map(f64::from);
     let (w, h) = match fit {
         Fit::Fill => (width, height),
-        Fit::Natural if texels > 0.0 => {
-            let natural = (iw / f64::from(texels), ih / f64::from(texels));
-            // A capture that covers the box (a closing sheet's) shrinks to it until a capture
-            // at the new size lands; a smaller one (an opening sheet's) stays at its own size.
-            if natural.0 >= width - 0.5 && natural.1 >= height - 0.5 {
-                (width, height)
-            } else {
-                natural
-            }
-        }
+        // A wrong picture early is worse than the right one late: an old capture keeps its
+        // own size, cropped by a smaller box, never scaled.
+        Fit::Natural if texels > 0.0 => (iw / f64::from(texels), ih / f64::from(texels)),
         Fit::Natural => return Err("UI_IMAGE: invalid image geometry".into()),
         _ => {
             let scale = if fit == Fit::Cover {
@@ -270,17 +263,17 @@ mod tests {
                 [10.0, 20.0, 100.0, 200.0]
             );
         }
-        // One that covers the box shrinks into it.
+        // One that covers a smaller box keeps its size too; the box clips it.
         assert_eq!(
             placement_at(
                 [300, 600],
-                [10.0, 20.0, 100.0, 120.0],
+                [10.0, 20.0, 50.0, 120.0],
                 Fit::Natural,
                 [0.0, 0.0],
                 3.0
             )
             .unwrap(),
-            [10.0, 20.0, 100.0, 120.0]
+            [10.0, 20.0, 100.0, 200.0]
         );
         assert!(placement_at([300, 600], [0.0; 4], Fit::Natural, [0.0, 0.0], 0.0).is_err());
     }
