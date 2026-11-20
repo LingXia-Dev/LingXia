@@ -522,7 +522,7 @@ impl LxApp {
     ///
     /// Native apply does not need a live page. Page-chrome paint is
     /// best-effort when one exists.
-    pub(crate) async fn refresh_appearance(&self) -> Result<(), LxAppError> {
+    pub async fn refresh_appearance(&self) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let Some((resolved, revision)) = self.adopt_host_appearance() else {
             return Ok(());

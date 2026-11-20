@@ -107,9 +107,16 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
     let preference = preference
         .parse::<AppearancePreference>()
         .map_err(js_invalid_parameter_error)?;
+    let app = lxapp::LxApp::from_ctx(&ctx)?;
     lxapp::set_host_appearance_preference(preference)
-        .map(|_| ())
-        .map_err(|error| js_error_from_lxapp_error(&error))
+        .map_err(|error| js_error_from_lxapp_error(&error))?;
+    // Resolve once the caller's own appearance follows, so `get()` right after reads it.
+    if app.appearance_state().preference == AppearancePreference::Auto {
+        app.refresh_appearance()
+            .await
+            .map_err(|error| js_error_from_lxapp_error(&error))?;
+    }
+    Ok(())
 }
 
 /// Follow the choice, not what it resolves to: a system flip under `'auto'`
