@@ -4476,6 +4476,9 @@
               if (name !== void 0) updateStatus(name, { url: event.url, title: event.title, error: null });
               props.onLoad?.(Object.freeze({ url: event.url, title: event.title }));
               break;
+            case "title":
+              if (name !== void 0) updateStatus(name, { title: event.title });
+              break;
             case "message":
               props.onMessage?.(Object.freeze({ data: JSON.parse(event.json), origin: event.origin }));
               break;
