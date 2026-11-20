@@ -6,15 +6,7 @@ use rong::{JSContext, JSObject, JSResult};
 
 /// The tab bar declared by this lxapp: visibility, items, badges, and style.
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
-    let lx = ctx.global().get::<_, JSObject>("lx")?;
-    match lx.get::<_, JSObject>("tabBar") {
-        Ok(namespace) => Ok(namespace),
-        Err(_) => {
-            let namespace = JSObject::new(ctx);
-            lx.set("tabBar", namespace.clone())?;
-            Ok(namespace)
-        }
-    }
+    crate::namespace::child(ctx, &crate::namespace::app(ctx)?, "tabBar")
 }
 
 /// Patch this lxapp's tab bar; unset fields stay as they are.
@@ -46,7 +38,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_property(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        namespace LxAppApi = crate::namespace::app(ctx)?;
         const tabBar: "TabBarApi" = namespace(ctx)?;
     }
 }

@@ -205,14 +205,14 @@ test('reject a badge value that is neither a string, a number, nor null', {
 
 test('answer checkUpdate with a decision instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
-  covers: ['lx.host.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
+  covers: ['lx.host.checkUpdate', 'lx.app.onUpdateReady', 'lx.app.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-UPDATE-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
     const decision = await lx.host.checkUpdate();
-    const manager = lx.getUpdateManager();
+    const manager = lx.app;
     const ready = manager.onUpdateReady(() => {});
     const failed = manager.onUpdateFailed(() => {});
     ready();
@@ -840,14 +840,14 @@ test('set and restore the name and icon the host shows for this app', {
         return { ok: false, code: (error as { code?: string }).code ?? '' };
       }
     };
-    const packageName = lx.getAppInfo().name;
+    const packageName = lx.app.info.name;
     const set = await attempt({ name: '  Showcase Brand  ', icon: 'public/showcase-icon.png' });
     const again = await attempt({ name: 'Showcase Brand', icon: 'public/showcase-icon.png' });
     return {
       set,
       again,
       svg: await attempt({ icon: 'public/showcase-icon.svg' }),
-      nameAfterSet: lx.getAppInfo().name === packageName,
+      nameAfterSet: lx.app.info.name === packageName,
       empty: await attempt({}),
       unknown: await attempt({ title: 'x' }),
       notObject: await attempt('x'),
@@ -881,7 +881,7 @@ test('refuse to move the root main out of main', {
 
   const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      await lx.shell.openApp(lx.getAppInfo().appId, { as: 'aside' });
+      await lx.shell.openApp(lx.app.info.appId, { as: 'aside' });
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

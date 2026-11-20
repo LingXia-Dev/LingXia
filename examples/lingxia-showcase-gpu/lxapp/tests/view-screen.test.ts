@@ -42,7 +42,7 @@ test('a page reads its screen: safe area, insets, size class, contrast, appearan
 });
 
 test('a page without a nav bar knows where the capsule floats, inside the top band', {
-  covers: ['view:environment'], start: { page: 'view-screen', query: { lang: 'en' } },
+  covers: ['view:environment'], start: { page: 'view-screen', params: { lang: 'en' } },
 }, async (t) => {
   const { capsule, safeTop } = await wellFormed(t);
   const { width } = await t.app.view.testId('view-screen').boundingBox();

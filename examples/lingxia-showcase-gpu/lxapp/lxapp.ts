@@ -10,7 +10,7 @@ App({
   async onLaunch(this: ShowcaseAppInstance) {
     this.globalData.lifecycle.launches++;
     this.globalData.lifecycle.last = 'launch';
-    lx.setMoreActions([{
+    lx.app.setMoreActions([{
       icon: 'public/showcase-icon.png',
       label: 'Feedback',
       onClick: async () => {

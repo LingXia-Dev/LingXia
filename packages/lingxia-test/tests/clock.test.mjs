@@ -49,7 +49,7 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   const world = createWorld();
   const { events, attachments } = installFakeHost(world);
 
-  lxTest("tab bar rejects a bad index", { covers: ["lx.tabBar.update"], id: "UI-TABBAR-001" }, async (t) => {
+  lxTest("tab bar rejects a bad index", { covers: ["lx.app.tabBar.update"], id: "UI-TABBAR-001" }, async (t) => {
     await t.step("outer", async (step) => {
       await step.step("inner", async () => {
         expect(1).toBe(1);
@@ -60,7 +60,7 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   await globalThis.__LINGXIA_TEST__.run();
   const started = events.find((event) => event.type === "case_started");
   assert.ok(started);
-  assert.deepEqual(started.covers, ["lx.tabBar.update"]);
+  assert.deepEqual(started.covers, ["lx.app.tabBar.update"]);
   assert.equal(started.timeout_ms, DEFAULT_TEST_TIMEOUT_MS);
 
   const report = reportJson(attachments);
@@ -70,7 +70,7 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   assert.equal(steps[0].steps[0].path, "outer > inner");
   assert.equal(steps[0].steps[0].assertions[0].matcher, "toBe");
   assert.equal(steps[0].steps[0].assertions[0].passed, true);
-  assert.deepEqual(report.cases[0].covers, ["lx.tabBar.update"]);
+  assert.deepEqual(report.cases[0].covers, ["lx.app.tabBar.update"]);
   assert.equal(report.cases[0].id, "UI-TABBAR-001");
 });
 

@@ -561,34 +561,34 @@ export default definePage({
       // TabBar API functions
       enableTabBarRedDot(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
         );
       },
       disableTabBarRedDot(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
         );
       },
       updateTabBarBadge(options: { index: number; text: string }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
         );
       },
       clearTabBarBadge(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, badge: null }] }),
         );
       },
       revealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
-          const result = await lx.tabBar.update({ visibility: "visible" });
+          const result = await lx.app.tabBar.update({ visibility: "visible" });
           void actions.showToastWithParams({ title: "shown", icon: "success", durationMs: 800 });
           return result;
         });
       },
       concealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
-          const result = await lx.tabBar.update({ visibility: "hidden" });
+          const result = await lx.app.tabBar.update({ visibility: "hidden" });
           void actions.showToastWithParams({ title: "hidden", icon: "success", durationMs: 800 });
           return result;
         });
@@ -596,7 +596,7 @@ export default definePage({
       updateTabBarItem(options: TabBarItemPatch) {
         console.log("updateTabBarItem called with:", options);
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [options] }),
+          lx.app.tabBar.update({ items: [options] }),
         );
       },
     };

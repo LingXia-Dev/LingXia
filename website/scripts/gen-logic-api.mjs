@@ -58,7 +58,7 @@ const GROUPS = [
     summary:
       'Open host surfaces and drive the chrome around the page — navigation bar, tab bar, tray, shell, and pull-to-refresh.',
     members: [
-      'surface', 'navigationBar', 'tabBar', 'setMoreActions',
+      'surface', 'navigationBar',
       'startPullDownRefresh', 'stopPullDownRefresh',
       'tray', 'shell',
     ],
@@ -104,7 +104,7 @@ const GROUPS = [
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
-      'host', 'env', 'getAppInfo', 'getUpdateManager', 'openExternal',
+      'host', 'app', 'env', 'openExternal',
       'supports', 'terminal',
     ],
   },

@@ -4,11 +4,11 @@ import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
-test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.getAppInfo', 'lx.device.info', 'lx.device.screen', 'lx.network.status', 'lx.device.systemSettings', 'lx.host.getBaseInfo', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.app.info', 'lx.device.info', 'lx.device.screen', 'lx.network.status', 'lx.device.systemSettings', 'lx.host.getBaseInfo', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const app = lx.getAppInfo();
+    const app = lx.app.info;
     const device = lx.device.info;
     const screen = lx.device.screen();
     const network = await lx.network.status();

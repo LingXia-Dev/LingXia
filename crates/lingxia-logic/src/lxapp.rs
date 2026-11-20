@@ -25,12 +25,20 @@ fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_api(ctx)?;
+    register_app_api(ctx)
 }
 
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getAppInfo(ts_return = "AppInfo") = get_app_info;
+        const app: "LxAppApi" = crate::namespace::app(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_app_api(ctx) {
+        namespace LxAppApi = crate::namespace::app(ctx)?;
+        const info: "Readonly<AppInfo>" = get_app_info(ctx.clone())?;
     }
 }

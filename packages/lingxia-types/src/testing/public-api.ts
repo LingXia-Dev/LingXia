@@ -71,21 +71,20 @@ import type {
   TerminalPreviewController,
   TerminalSettingsApi,
   TrayApi,
-  UpdateManager,
+  LxAppApi,
   UploadTask,
   VideoContext,
 } from '../generated/logic.js';
 
 export const LX_API_NAMES = [
   'host',
+  'app',
   'automation',
   'clipboard',
   'createVideoContext',
   'env',
   'fs',
-  'getAppInfo',
   'getStorage',
-  'getUpdateManager',
   'nav',
   'navigationBar',
   'openExternal',
@@ -94,14 +93,12 @@ export const LX_API_NAMES = [
   'network',
   'openFile',
   'pick',
-  'setMoreActions',
   'share',
   'shell',
   'startPullDownRefresh',
   'stopPullDownRefresh',
   'supports',
   'surface',
-  'tabBar',
   'terminal',
   'tray',
   'ui',
@@ -202,7 +199,7 @@ const LX_FILE_API = [
   'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
-const UPDATE_MANAGER_API = ['applyUpdate', 'onUpdateFailed', 'onUpdateReady'] as const;
+const APP_API = ['applyUpdate', 'info', 'onUpdateFailed', 'onUpdateReady', 'setMoreActions', 'tabBar'] as const;
 const VIDEO_CONTEXT_API = [
   'exitFullScreen',
   'pause',
@@ -385,6 +382,7 @@ export const LX_RUNTIME_SURFACES = [
     members: LX_API_NAMES,
     optionalMembers: ['terminal'],
     properties: [
+      'app',
       'clipboard',
       'env',
       'fs',
@@ -397,7 +395,6 @@ export const LX_RUNTIME_SURFACES = [
       'pick',
       'shell',
       'surface',
-      'tabBar',
       'terminal',
       'tray',
       'ui',
@@ -479,9 +476,9 @@ export const LX_RUNTIME_SURFACES = [
     members: NAVIGATION_BAR_API,
   },
   {
-    name: 'lx.tabBar',
+    name: 'lx.app.tabBar',
     layer: 'logic',
-    expression: 'lx.tabBar',
+    expression: 'lx.app.tabBar',
     members: TAB_BAR_API,
   },
   {
@@ -599,7 +596,7 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
-  { name: 'UpdateManager', layer: 'logic', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
+  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API },
   {
     name: 'Automation',
     layer: 'automation',
@@ -912,7 +909,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
-  AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,
+  AssertTrue<Exact<LxAppApi, typeof APP_API>>,
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,

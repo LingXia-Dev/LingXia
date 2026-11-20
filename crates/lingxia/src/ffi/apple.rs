@@ -54,7 +54,7 @@ mod bridge {
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
-        /// Hidden by an explicit `lx.tabBar.update()` visibility patch (not navigation-derived) —
+        /// Hidden by an explicit `lx.app.tabBar.update()` visibility patch (not navigation-derived) —
         /// what desktop skins map to group collapse.
         pub is_api_hidden: bool,
         pub selected_index: i32,

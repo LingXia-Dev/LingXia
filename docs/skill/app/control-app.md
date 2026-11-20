@@ -38,7 +38,7 @@ These act on the product, not on the calling lxapp:
 - `lx.host.setBadge(...)` and `lx.tray.*` ([Badges](../lxapp/lx-api.md#badges))
 - `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
 - `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`
-  — the host app, not your bundle (that is `lx.getUpdateManager()`)
+  — the host app, not your bundle (that is `lx.app.onUpdateReady`)
 - `lx.host.autostart.*`
 - `lx.host.control.displayLanguage` / `.appearance` — the setting writers
   ([Product settings](../lxapp/lx-api.md#product-settings))

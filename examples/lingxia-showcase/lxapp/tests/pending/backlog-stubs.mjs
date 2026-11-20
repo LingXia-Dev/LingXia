@@ -24,7 +24,7 @@ export default [
     id: "PEND-DESTRUCTIVE-001",
     title: "exit and applyUpdate end the host process under test",
     mode: "planned",
-    covers: ["lx.host.exit", "UpdateManager.applyUpdate"],
+    covers: ["lx.host.exit", "lx.app.applyUpdate"],
     reason: "lx.host.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
   },
   {
@@ -81,7 +81,7 @@ export default [
     id: "PEND-MORE-ACTIONS-001",
     title: "setMoreActions overflow item opens the declared surface",
     mode: "external-ui",
-    covers: ["lx.setMoreActions"],
+    covers: ["lx.app.setMoreActions"],
     reason: "host chrome overflow menu is not exposed as a Logic contract yet",
   },
   {

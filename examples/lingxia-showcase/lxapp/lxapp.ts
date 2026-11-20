@@ -116,7 +116,7 @@ async function applyHostChrome(os: string, tag: string) {
     },
   });
   await lx.shell.sidebarActions.replace(sidebarActions);
-  lx.setMoreActions([
+  lx.app.setMoreActions([
     {
       icon: "public/showcase-icon.png",
       label: t("moreFeedback"),
@@ -161,8 +161,7 @@ App({
       applyChrome();
     });
 
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
+    lx.app.onUpdateReady(async () => {
       console.log("Update ready; asking user to apply...");
       const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       const applyNow = await lx.ui.confirm({
@@ -172,10 +171,10 @@ App({
         confirmText: t("updateApply"),
       });
       if (applyNow) {
-        um.applyUpdate();
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn("Update failed", info);
     });
 

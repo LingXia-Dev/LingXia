@@ -96,7 +96,7 @@ pub struct TabBarItem {
     /// [`Self::text`], which is this resolved for the current language.
     #[serde(rename = "text", default, skip_serializing_if = "Option::is_none")]
     pub declared_text: Option<LocalizedText>,
-    /// The label to draw: a runtime override (`lx.tabBar.update`) if one is
+    /// The label to draw: a runtime override (`lx.app.tabBar.update`) if one is
     /// set, otherwise [`Self::declared_text`] for the effective display
     /// language. Kept as a plain string so every host reads it unchanged.
     #[serde(skip)]

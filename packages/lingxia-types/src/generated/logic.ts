@@ -1253,6 +1253,8 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
+export type LxAppApi = globalThis.LxAppApi;
+
 export type LxAppEnvVersion = 'release' | 'draft';
 
 /** LxApp metadata APIs. */
@@ -2352,7 +2354,7 @@ export type TabBarItemPatch = {
 };
 
 /**
- * Patch for `lx.tabBar.update()`. Items, badges, red dots, and
+ * Patch for `lx.app.tabBar.update()`. Items, badges, red dots, and
  * visibility only — a `style` field is rejected. Colors stay in
  * static `lxapp.json` `tabBar.style`. `backgroundColor` is
  * mobile-only; the desktop sidebar follows the host
@@ -2560,22 +2562,6 @@ export type UiApi = globalThis.UiApi;
 
 export type UpdateFailedInfo = UpdateReadyInfo & {
     error?: string;
-};
-
-/**
- * Callback-based updates for this lxapp's bundle. Available to every
- * lxapp. To update the native host app, the Control app uses the
- * task-based `lx.host.checkUpdate()` API instead.
- * Listeners are a set: later subscriptions do not replace earlier ones.
- * The last pending ready/failed event is replayed to each new
- * subscriber until a newer event replaces it.
- */
-export type UpdateManager = {
-    applyUpdate(): void;
-    /** Subscribes to a ready update and returns the unsubscribe fn. */
-    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
-    /** Subscribes to a failed update and returns the unsubscribe fn. */
-    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
 };
 
 export type UpdateReadyInfo = {
@@ -3212,8 +3198,7 @@ declare global {
      */
     openFile(options: OpenFileOptions): Promise<void>;
     readonly fs: FileSystemApi;
-    /** Identify the running lxapp: its id, display name, version, and channel. */
-    getLxAppInfo(): LxAppInfo;
+    readonly app: LxAppApi;
     /**
      * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
      * `useVideo` name or `<video id>`.
@@ -3236,12 +3221,6 @@ declare global {
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     readonly surface: SurfaceApi;
-    /**
-     * Replace the current lxapp's complete app-declared More action list (seven
-     * entries maximum). Pass an empty array to clear it. Native hosts append these
-     * entries after their own lifecycle actions.
-     */
-    setMoreActions(items: MoreAction[]): void;
     readonly navigationBar: NavigationBarApi;
     /**
      * lx.startPullDownRefresh()
@@ -3259,15 +3238,31 @@ declare global {
     stopPullDownRefresh(): void;
     readonly nav: NavApi;
     readonly shell: ShellApi;
-    readonly tabBar: TabBarApi;
     readonly tray: TrayApi;
     readonly ui: UiApi;
+  }
+}
+
+declare global {
+  interface LxAppApi {
+    readonly info: Readonly<LxAppInfo>;
     /**
-     * Return the callback-based update manager for this lxapp's bundle. This is
-     * available to every lxapp and is distinct from the Control-app-only
-     * `lx.host.checkUpdate()`, which updates the native host app.
+     * Replace the current lxapp's complete app-declared More action list (seven
+     * entries maximum). Pass an empty array to clear it. Native hosts append these
+     * entries after their own lifecycle actions.
      */
-    getUpdateManager(): UpdateManager;
+    setMoreActions(items: MoreAction[]): void;
+    readonly tabBar: TabBarApi;
+    /** Restarts this lxapp on the update `onUpdateReady` announced. */
+    applyUpdate(): void;
+    /**
+     * Calls `callback` when a newer bundle is downloaded and ready. Each
+     * subscription adds a listener; the last event that arrived before it is
+     * delivered at once. Returns the unsubscribe fn.
+     */
+    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
+    /** Calls `callback` when downloading an update fails. Returns the unsubscribe fn. */
+    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
   }
 }
 

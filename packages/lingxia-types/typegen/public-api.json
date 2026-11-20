@@ -182,7 +182,7 @@
     "TrayMenuSeparator",
     "UiApi",
     "UpdateFailedInfo",
-    "UpdateManager",
+    "LxAppApi",
     "UpdateReadyInfo",
     "UploadIteratorResult",
     "UploadOptions",

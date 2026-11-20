@@ -1,4 +1,4 @@
-//! `lx.setMoreActions` — app-declared actions for the host's secondary menu.
+//! `lx.app.setMoreActions` — app-declared actions for the host's secondary menu.
 
 use lxapp::{
     LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, register_app_handler, unregister_app_handler,
@@ -202,7 +202,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        namespace LxAppApi = crate::namespace::app(ctx)?;
         fn setMoreActions(
             ts_params = "items: MoreAction[]"
         ) = set_more_actions;

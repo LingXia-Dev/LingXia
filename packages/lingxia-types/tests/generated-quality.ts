@@ -42,8 +42,8 @@ const appearanceSetResult: Promise<void> | undefined =
 const appearancePreference: AppearancePreference | undefined =
   lx.host.control?.appearance.getPreference();
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
-const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
-const forcedTabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "visible" });
+const tabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "auto" });
+const forcedTabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "visible" });
 // @ts-expect-error visible is TabBar-only; homeButton remains auto/hidden
 lx.navigationBar.update({ homeButton: "visible" });
 const backDefaultResult: Promise<void> = lx.nav.back();

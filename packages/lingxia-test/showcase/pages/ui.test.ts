@@ -71,7 +71,7 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
 
-test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
+test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.app.tabBar', 'lx.app.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-001");
 
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
@@ -86,7 +86,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         visibility: 'auto',
         items: [{
           index: 1,
@@ -122,7 +122,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(forced.effectiveVisible).toBeTruthy();
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{
         index: 1,
         text: 'Automation',
@@ -146,7 +146,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   const invalid: Caught = await app.logic.eval(async ({ lx }) => {
     try {
-      await lx.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
+      await lx.app.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
         return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -158,7 +158,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(await tabBar()).toEqual(styled);
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{ index: 1, badge: null, redDot: true }],
     });
   });
@@ -174,7 +174,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   );
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({ visibility: 'auto' });
+    await lx.app.tabBar.update({ visibility: 'auto' });
   });
   await waitForTabBar(
     ({ visibility, effectiveVisible }) => (
@@ -199,7 +199,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     (height) => height > 0,
     { describe: 'home WebView to expose a non-zero viewport' });
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{ index: 1, badge: 'chrome' }],
     });
   });

@@ -11,7 +11,7 @@ function moreFeedbackLabel(tag: string): string {
 }
 
 function applyMoreActions(tag = lx.host.displayLanguage.get()) {
-  lx.setMoreActions([
+  lx.app.setMoreActions([
     {
       icon: 'public/chat.png',
       label: moreFeedbackLabel(tag),
@@ -46,8 +46,7 @@ App({
       applyMoreActions();
     });
 
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
+    lx.app.onUpdateReady(async () => {
       const applyNow = await lx.ui.confirm({
         title: 'Update Available',
         message: 'A new version is ready. Apply now?',
@@ -55,10 +54,10 @@ App({
         confirmText: 'Apply',
       });
       if (applyNow) {
-        um.applyUpdate();
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn('Update failed', info);
     });
   },

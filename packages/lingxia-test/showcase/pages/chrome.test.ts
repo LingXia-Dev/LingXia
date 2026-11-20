@@ -62,7 +62,8 @@ async function caughtChromeUpdate(
 ): Promise<Caught> {
   return app.logic.eval(async ({ lx }, target, patch) => {
     try {
-      await (lx[target].update as (patch: unknown) => Promise<void>)(patch);
+      const bar = target === 'tabBar' ? lx.app.tabBar : lx.navigationBar;
+      await (bar.update as (patch: unknown) => Promise<void>)(patch);
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -374,14 +375,14 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
 test("assert tabBar failure codes, resets, and button-driven patches", {
   id: "UI-TABBAR-002",
-  covers: ['lx.tabBar', 'lx.tabBar.update', 'lx.nav.go'],
+  covers: ['lx.app.tabBar', 'lx.app.tabBar.update', 'lx.nav.go'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-002");
   defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         visibility: 'auto',
         items: [{
           index: 0,
@@ -420,7 +421,7 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
 
   await t.step('patch the selected tab and a second item together', async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         items: [
           { index: 0, badge: '1' },
           { index: 1, badge: '2', redDot: false },
@@ -461,8 +462,8 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
   await t.step('last concurrent update wins without a torn item', async () => {
     await app.logic.eval(async ({ lx }) => {
       await Promise.all([
-        lx.tabBar.update({ items: [{ index: 1, text: 'First', badge: 'A' }] }),
-        lx.tabBar.update({ items: [{ index: 1, text: 'Second', badge: 'B' }] }),
+        lx.app.tabBar.update({ items: [{ index: 1, text: 'First', badge: 'A' }] }),
+        lx.app.tabBar.update({ items: [{ index: 1, text: 'Second', badge: 'B' }] }),
       ]);
     });
     const after = await waitForTabBar(

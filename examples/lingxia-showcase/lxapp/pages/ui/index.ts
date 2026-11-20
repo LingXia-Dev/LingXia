@@ -562,38 +562,38 @@ export default definePage({
       // TabBar API functions
       enableTabBarRedDot(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
         );
       },
       disableTabBarRedDot(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
         );
       },
       updateTabBarBadge(options: { index: number; text: string }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
         );
       },
       clearTabBarBadge(options: { index: number }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+          lx.app.tabBar.update({ items: [{ index: options.index, badge: null }] }),
         );
       },
       revealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ visibility: "visible" }),
+          lx.app.tabBar.update({ visibility: "visible" }),
         );
       },
       concealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ visibility: "hidden" }),
+          lx.app.tabBar.update({ visibility: "hidden" }),
         );
       },
       updateTabBarItem(options: TabBarItemPatch) {
         console.log("updateTabBarItem called with:", options);
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.tabBar.update({ items: [options] }),
+          lx.app.tabBar.update({ items: [options] }),
         );
       },
     };

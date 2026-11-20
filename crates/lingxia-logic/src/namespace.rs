@@ -28,3 +28,7 @@ pub(crate) fn device(ctx: &JSContext) -> JSResult<JSObject> {
 pub(crate) fn orientation(ctx: &JSContext) -> JSResult<JSObject> {
     child(ctx, &device(ctx)?, "orientation")
 }
+
+pub(crate) fn app(ctx: &JSContext) -> JSResult<JSObject> {
+    child(ctx, &ctx.global().get::<_, JSObject>("lx")?, "app")
+}

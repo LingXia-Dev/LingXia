@@ -156,7 +156,7 @@ export default definePage({
         stopWatchingLanguagePreference =
           lx.host.control?.displayLanguage.watchPreference(() => helpers.syncLanguage()) ?? null;
         try {
-          const info = lx.getLxAppInfo();
+          const info = lx.app.info;
           const suffix =
             info.channel && info.channel !== "release"
               ? ` (${info.channel})`

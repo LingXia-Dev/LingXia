@@ -20,7 +20,7 @@ const outputs = [
 const UPSTREAM_HINT = "// Do not edit by hand — run `cargo run -p rong_typegen` to regenerate.";
 const REGEN_HINT = "// Do not edit by hand — run `npm run gen:logic` in packages/lingxia-types to regenerate.";
 // The `JS*` binding classes are how Rong names the native handles internally.
-// Nothing in the public surface refers to them — `lx.getUpdateManager()` and
+// Nothing in the public surface refers to them — `lx.media.preview()` and
 // friends return the TS-only shapes — so they are dropped rather than kept as
 // unreferenced declarations.
 const BINDING_CLASS_BLOCK =

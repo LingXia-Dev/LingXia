@@ -1173,7 +1173,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_host_color_mode_handler(Arc::new(|| {
         apply_windows_host_color_mode();
     }));
-    // Awaited `lx.tabBar.update()` calls: run the layout sync off
+    // Awaited `lx.app.tabBar.update()` calls: run the layout sync off
     // the caller's thread and complete the callback once it has applied.
     lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {
         std::mem::drop(lingxia::task::spawn(async move {

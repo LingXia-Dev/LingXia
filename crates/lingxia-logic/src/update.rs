@@ -257,7 +257,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSUpdateManager>()?;
     update_registry(ctx);
     // Register host event handlers early so UpdateReady/UpdateFailed are not lost
-    // before lx.getUpdateManager() is called by app logic.
+    // before app logic subscribes.
     ensure_update_handlers(ctx)?;
 
     register_update_api(ctx)
@@ -300,9 +300,41 @@ fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
 
 rong::js_api! {
     fn register_update_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getUpdateManager(ts_return = "UpdateManager") = get_update_manager;
+        namespace LxAppApi = crate::namespace::app(ctx)?;
+        fn applyUpdate(ts_return = "void") = apply_update;
+        fn onUpdateReady(
+            ts_params = "callback: (info: UpdateReadyInfo) => void",
+            ts_return = "() => void"
+        ) = on_update_ready;
+        fn onUpdateFailed(
+            ts_params = "callback: (info: UpdateFailedInfo) => void",
+            ts_return = "() => void"
+        ) = on_update_failed;
     }
+}
+
+/// Restarts this lxapp on the update `onUpdateReady` announced.
+fn apply_update(ctx: JSContext) -> JSResult<()> {
+    let manager = get_update_manager(ctx.clone())?;
+    manager.borrow::<JSUpdateManager>()?.apply_update(ctx)
+}
+
+/// Calls `callback` when a newer bundle is downloaded and ready. Each
+/// subscription adds a listener; the last event that arrived before it is
+/// delivered at once. Returns the unsubscribe fn.
+fn on_update_ready(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+    let manager = get_update_manager(ctx.clone())?;
+    manager
+        .borrow_mut::<JSUpdateManager>()?
+        .on_update_ready(ctx, callback)
+}
+
+/// Calls `callback` when downloading an update fails. Returns the unsubscribe fn.
+fn on_update_failed(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+    let manager = get_update_manager(ctx.clone())?;
+    manager
+        .borrow_mut::<JSUpdateManager>()?
+        .on_update_failed(ctx, callback)
 }
 
 /// Ensure the target app is installed at least once (first-launch preparation).

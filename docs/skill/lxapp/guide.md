@@ -424,7 +424,7 @@ host `surfaces`.
   extends behind it; omit `backgroundColor` and `dividerColor`).
 - Style keys are optional. Mobile uses them as declared (no OS dark mode by
   itself); desktop draws the sidebar from the host `theme` and ignores
-  `backgroundColor`. `lx.tabBar.update()` cannot change style.
+  `backgroundColor`. `lx.app.tabBar.update()` cannot change style.
 - A phone shows the first four items plus **More**; order items by use.
   Desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
@@ -443,7 +443,7 @@ first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
 const { uri } = await lx.network.download({ url: brand.logoUrl }).result;
-await lx.tabBar.update({
+await lx.app.tabBar.update({
   items: [{ index: 0, text: brand.shortName, iconPath: uri }],
 });
 ```
@@ -509,7 +509,7 @@ changes — no Logic needed. Other manifest strings are not localizable.
 Resolution: the exact tag; else an entry of the same language, matching
 script first, then region (a Chinese region implies its script, so
 `zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else `default`.
-Key order does not matter. A runtime value from `lx.tabBar.update` / `lx.navigationBar.update`
+Key order does not matter. A runtime value from `lx.app.tabBar.update` / `lx.navigationBar.update`
 wins until reset with `null`, so do not also translate the declared text
 through those calls. The map form needs a runtime that has it: raise
 `minRuntime` when you adopt it.
@@ -553,15 +553,15 @@ release();
 
 ### Runtime updates
 
-`lx.tabBar.update()` changes a declared tab bar (it rejects without one);
+`lx.app.tabBar.update()` changes a declared tab bar (it rejects without one);
 `lx.navigationBar.update()` patches the current page's bar. Each call is one
 transaction: `null` resets a field, omitted fields stay, an invalid patch
 applies nothing.
 
 ```ts
-await lx.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
-await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
-await lx.tabBar.update({ visibility: 'hidden' });   // or 'auto'
+await lx.app.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
+await lx.app.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
+await lx.app.tabBar.update({ visibility: 'hidden' });   // or 'auto'
 await lx.navigationBar.update({ title: 'Account' });
 await lx.navigationBar.update({ style: null, homeButton: 'auto' });
 ```

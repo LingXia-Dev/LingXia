@@ -630,7 +630,7 @@ rong::js_api! {
     redDot?: boolean;
 }"###;
 
-        /// Patch for `lx.tabBar.update()`. Items, badges, red dots, and
+        /// Patch for `lx.app.tabBar.update()`. Items, badges, red dots, and
         /// visibility only — a `style` field is rejected. Colors stay in
         /// static `lxapp.json` `tabBar.style`. `backgroundColor` is
         /// mobile-only; the desktop sidebar follows the host
@@ -2033,22 +2033,6 @@ true
     error?: string;
 }"###;
 
-        /// Callback-based updates for this lxapp's bundle. Available to every
-        /// lxapp. To update the native host app, the Control app uses the
-        /// task-based `lx.host.checkUpdate()` API instead.
-        ///
-        /// Listeners are a set: later subscriptions do not replace earlier ones.
-        /// The last pending ready/failed event is replayed to each new
-        /// subscriber until a newer event replaces it.
-        ///
-        type UpdateManager = r###"{
-    applyUpdate(): void;
-    /** Subscribes to a ready update and returns the unsubscribe fn. */
-    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
-    /** Subscribes to a failed update and returns the unsubscribe fn. */
-    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
-}"###;
-
         type UpdateReadyInfo = r###"{
     version?: string;
     channel?: "release" | "draft" | string;
@@ -2278,6 +2262,7 @@ true
         type ClipboardApi = "globalThis.ClipboardApi";
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
+        type LxAppApi = "globalThis.LxAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
         type DeviceApi = "globalThis.DeviceApi";
@@ -2324,7 +2309,7 @@ true
      * Change the name and icon the host shows for this app, above the
      * registry's and `lxapp.json`'s. Kept per service env and dropped on
      * uninstall; identical values are a no-op, so calling it on every launch
-     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     * is cheap. `lx.app.info.name` keeps the `lxapp.json` name.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     /**

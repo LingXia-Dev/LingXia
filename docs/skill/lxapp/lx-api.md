@@ -41,7 +41,7 @@ library, and the root `tsconfig.json` references both.
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
   (`lx.nav.go({ app })`, `lx.shell.openApp`) is a plain string.
 - Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
-  `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`, `lx.tray`, `lx.shell`.
+  `lx.clipboard`, `lx.navigationBar`, `lx.app.tabBar`, `lx.tray`, `lx.shell`.
 
 ## Web globals
 
