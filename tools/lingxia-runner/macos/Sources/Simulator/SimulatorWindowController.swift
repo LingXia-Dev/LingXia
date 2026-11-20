@@ -484,6 +484,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             vc.view.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
             vc.view.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor)
         ])
+        vc.presentSurface(in: window)
         
         // Phone UI overlay (status bar, nav bar, floating buttons) — phone only
         if Self.currentDeviceSize.usesPhoneChrome {
@@ -948,6 +949,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         toolbar?.setCurrentDevice(newDevice)
         DevToolsLogger.shared.log("Device → \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
         refitToCurrentScreen()
+        // A switch back from the desktop shell lands here too: the phone presents again.
+        viewController?.presentSurface(in: window)
     }
 
     /// Re-fit the selected device to the window's current screen and resize. Runs
@@ -1621,6 +1624,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             vc.view.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
             vc.view.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor),
         ])
+        vc.presentSurface(in: window)
         // Restart drops back to the entry page, so re-sync the navbar to it —
         // otherwise the previous page's nav state lingers (stale title/buttons).
         updateNavigationBar(with: RunnerSupport.Navigation.state(appId: appId, path: path))

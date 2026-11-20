@@ -395,6 +395,27 @@ import WebKit
         public static func presentBrowserTab(_ shell: LxAppShell, tabId: String) {
             RunnerBridge.presentBrowserTabInSurfaceShell(shell, tabId: tabId)
         }
+
+        /// The viewport `appId`'s page has in the shell, or nil before it is laid out.
+        public static func viewportSize(_ shell: LxAppShell, appId: String) -> CGSize? {
+            shell.surfaceViewportSize(appId: appId)
+        }
+    }
+
+    /// One viewport per lxapp reaches the core: the presenting host's.
+    @MainActor
+    public enum SurfaceViewport {
+        /// `host` (a window) presents `appId` from now on; other hosts' reports are dropped.
+        /// Once the switch settles, `measure` gives the page's viewport in its own points, or
+        /// nil while it cannot yet.
+        public static func present(appId: String, by host: AnyObject, measure: @escaping @MainActor () -> CGSize?) {
+            SurfaceViewportPresenter.present(appId: appId, by: host, measure: measure)
+        }
+
+        /// Whether a report from `host` reaches the core.
+        public static func admits(appId: String, from host: AnyObject?) -> Bool {
+            SurfaceViewportPresenter.admits(appId: appId, from: host)
+        }
     }
 
     /// GPU pages in the Runner's simulated phone, mounted as the macOS lxapp host mounts them.

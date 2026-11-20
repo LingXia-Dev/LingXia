@@ -144,14 +144,29 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    private func surfaceViewport() -> CGSize? {
+        let size = webViewContainer.bounds.size
+        return size.width > 0 && size.height > 0 ? size : nil
+    }
+
     /// Keep the adaptive surface context aligned with the selected device frame.
     private func reportSurfaceMetrics() {
-        guard !appId.isEmpty else { return }
-        let width = webViewContainer.bounds.width
-        let height = webViewContainer.bounds.height
-        guard width > 0, height > 0 else { return }
-        _ = setSurfaceWidth(appId, Double(width))
-        _ = setSurfaceViewport(appId, Double(width), Double(height))
+        guard !appId.isEmpty, let size = surfaceViewport(),
+              LingxiaRunnerSPI.SurfaceViewport.admits(appId: appId, from: view.window) else { return }
+        _ = setSurfaceWidth(appId, Double(size.width))
+        _ = setSurfaceViewport(appId, Double(size.width), Double(size.height))
+    }
+
+    /// The phone presents the lxapp from now on: only its viewport reaches the core, measured
+    /// once the switch settles (the desktop shell it replaces can still lay out meanwhile).
+    func presentSurface(in window: NSWindow?) {
+        guard !appId.isEmpty, let window else { return }
+        let appId = self.appId
+        LingxiaRunnerSPI.SurfaceViewport.present(appId: appId, by: window) { [weak self] in
+            guard let self, self.appId == appId, let size = self.surfaceViewport() else { return nil }
+            _ = setSurfaceWidth(appId, Double(size.width))
+            return size
+        }
     }
 
     // MARK: - UI Setup

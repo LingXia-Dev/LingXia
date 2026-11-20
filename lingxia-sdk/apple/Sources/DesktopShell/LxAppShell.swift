@@ -314,6 +314,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         getViewController(for: appId)?.reportSurfaceViewport() ?? false
     }
 
+    /// The viewport `appId`'s page has in this shell, or nil before it is laid out in a window.
+    func surfaceViewportSize(appId: String) -> CGSize? {
+        getViewController(for: appId)?.surfaceViewportSize()
+    }
+
     func getViewController(for appId: String) -> macOSLxAppViewController? {
         // An lxapp occupies one region; when it is an aside its controller
         // is the panel's, never a main.
@@ -652,7 +657,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func reportSurfaceWidth() {
         guard !isApplyingSurfaceSizeClass else { return }
         guard let appId = currentViewController?.appId ?? declaredBrowserOwnerAppId,
-              let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else { return }
+              let windowWidth = window?.contentView?.frame.width, windowWidth > 0,
+              SurfaceViewportPresenter.admits(appId: appId, from: window) else { return }
         // Size class uses the complete client area; the live sidebar width is
         // reported separately so physical aside admission uses real workspace.
         let sidebarWidth = sidebarChromeEnabled

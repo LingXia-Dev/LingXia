@@ -88,11 +88,17 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     /// The page's viewport: in an aside the view also holds the navigation
     /// bar and tabBar above the page.
+    func surfaceViewportSize() -> CGSize? {
+        guard isViewLoaded, view.window != nil else { return nil }
+        let size = (webViewContainer ?? view).bounds.size
+        return size.width > 0 && size.height > 0 ? size : nil
+    }
+
     @discardableResult
     func reportSurfaceViewport() -> Bool {
-        guard isViewLoaded, view.window != nil else { return false }
-        let size = (webViewContainer ?? view).bounds.size
-        guard size.width > 0, size.height > 0 else { return false }
+        guard let size = surfaceViewportSize() else { return false }
+        // Measured but not reported while another host presents this lxapp.
+        guard SurfaceViewportPresenter.admits(appId: appId, from: view.window) else { return true }
         _ = setSurfaceViewport(appId, Double(size.width), Double(size.height))
         return true
     }

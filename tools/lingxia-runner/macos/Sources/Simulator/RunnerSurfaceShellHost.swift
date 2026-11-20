@@ -9,9 +9,6 @@ import WebKit
 /// selection and window sizing policy here.
 @MainActor
 final class RunnerSurfaceShellHost {
-    private static let surfaceMetricsRetryDelay: TimeInterval = 0.05
-    private static let surfaceMetricsRetryLimit = 20
-
     let shell: LxAppShell
 
     private(set) var appId: String
@@ -86,6 +83,7 @@ final class RunnerSurfaceShellHost {
         if !headless {
             RunnerFront.show(shell.window)
         }
+        presentSurface()
     }
 
     func open(appId: String, path: String, sessionId: UInt64) {
@@ -97,7 +95,6 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
         activate()
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
-        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)
     }
 
@@ -124,46 +121,24 @@ final class RunnerSurfaceShellHost {
         device = newDevice
         toolbar.setCurrentDevice(newDevice)
         configureWindow(for: newDevice, center: false)
-        reportSurfaceMetricsWhenReady()
+        presentSurface()
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
 
-    /// A phone-to-shell switch reuses the existing page webview. Its previous
-    /// phone controller can publish one final compact viewport while closing,
-    /// so report the shell's attached webview after the host transition settles.
-    private func reportSurfaceMetricsWhenReady(attempt: Int = 0) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isHiddenForHostSwitch else { return }
-            guard RunnerSupport.Runtime.currentAppId() == self.appId else {
-                self.retrySurfaceMetricsReport(after: attempt)
-                return
+    /// The shell presents the lxapp from now on: only its viewport reaches the core, measured
+    /// once the switch settles (a phone frame closing can still lay out meanwhile).
+    private func presentSurface() {
+        guard let window = shell.window else { return }
+        let appId = self.appId
+        LingxiaRunnerSPI.SurfaceViewport.present(appId: appId, by: window) { [weak self] in
+            guard let self, RunnerSupport.Runtime.currentAppId() == appId else { return nil }
+            // A GPU page has no webview to measure: its view controller does.
+            guard let webView = RunnerSupport.WebView.page(appId: appId) else {
+                return LingxiaRunnerSPI.SurfaceShell.viewportSize(self.shell, appId: appId)
             }
-            // A GPU page has no webview to measure: its view controller reports.
-            guard let webView = RunnerSupport.WebView.page(appId: self.appId) else {
-                if !self.shell.reportSurfaceViewport(appId: self.appId) {
-                    self.retrySurfaceMetricsReport(after: attempt)
-                }
-                return
-            }
-            guard webView.window != nil else {
-                self.retrySurfaceMetricsReport(after: attempt)
-                return
-            }
-
+            guard webView.window != nil else { return nil }
             webView.layoutSubtreeIfNeeded()
-            let size = webView.bounds.size
-            guard size.width > 0, size.height > 0 else {
-                self.retrySurfaceMetricsReport(after: attempt)
-                return
-            }
-            _ = setSurfaceViewport(self.appId, Double(size.width), Double(size.height))
-        }
-    }
-
-    private func retrySurfaceMetricsReport(after attempt: Int) {
-        guard attempt < Self.surfaceMetricsRetryLimit else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.surfaceMetricsRetryDelay) { [weak self] in
-            self?.reportSurfaceMetricsWhenReady(attempt: attempt + 1)
+            return webView.bounds.size
         }
     }
 
