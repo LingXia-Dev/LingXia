@@ -313,8 +313,13 @@ final class GpuWebView extends FrameLayout {
         /** Resized over a good picture: capture again only once the page has drawn at the new size. */
         private boolean awaitingDraw;
         private long awaitingSince;
-        /** The first visual-state request made after the resize; earlier ones may predate it. */
-        private long awaitedRequest;
+        /**
+         * The first visual-state request made after the page saw the new size. One made earlier
+         * is answered by a frame of the old layout, as the resize reaches the page later.
+         */
+        private long awaitedRequest = Long.MAX_VALUE;
+        /** Bumped per resize so an older size probe stops. */
+        private int sizeProbe;
         private final Runnable drawTimeout = () -> {
             if (awaitingDraw) {
                 awaitingDraw = false;
@@ -394,9 +399,10 @@ final class GpuWebView extends FrameLayout {
                 // the page has drawn.
                 awaitingDraw = true;
                 awaitingSince = android.os.SystemClock.uptimeMillis();
-                awaitedRequest = NEXT_VISUAL_REQ.get();
+                awaitedRequest = Long.MAX_VALUE;
                 removeCallbacks(drawTimeout);
                 postDelayed(drawTimeout, 300);
+                probePageSize(++sizeProbe);
             }
             if (becameReady || (sizeChanged && ready) || (srcChanged && ready)) {
                 scheduleVisualStateCapture();
@@ -486,6 +492,43 @@ final class GpuWebView extends FrameLayout {
                 removeView(webview);
                 webview = null;
             }
+        }
+
+        /**
+         * Asks the page for its viewport in device pixels until it matches the box, then requests
+         * the frame that carries that layout. Without visualViewport the timeout releases the box.
+         */
+        private void probePageSize(int probe) {
+            if (!(webview instanceof WebView)) {
+                return;
+            }
+            ((WebView) webview).evaluateJavascript(
+                "(function(){var v=window.visualViewport;if(!v)return '';var r=devicePixelRatio*v.scale;"
+                    + "return Math.round(v.width*r)+'x'+Math.round(v.height*r)})()",
+                result -> {
+                    if (detached || !awaitingDraw || probe != sizeProbe || result == null) {
+                        return;
+                    }
+                    String[] size = result.replace("\"", "").split("x");
+                    if (size.length != 2) {
+                        return;
+                    }
+                    int pageWidth, pageHeight;
+                    try {
+                        pageWidth = Integer.parseInt(size[0]);
+                        pageHeight = Integer.parseInt(size[1]);
+                    } catch (NumberFormatException e) {
+                        return;
+                    }
+                    if (Math.abs(pageWidth - slotWidth) <= 2 && Math.abs(pageHeight - slotHeight) <= 2) {
+                        android.util.Log.i("LingXia.GpuWebView", "resize " + key + " page at " + result
+                            + " after " + (android.os.SystemClock.uptimeMillis() - awaitingSince) + " ms");
+                        awaitedRequest = NEXT_VISUAL_REQ.get();
+                        scheduleVisualStateCapture();
+                    } else {
+                        postOnAnimation(() -> probePageSize(probe));
+                    }
+                });
         }
 
         private void scheduleVisualStateCapture() {
