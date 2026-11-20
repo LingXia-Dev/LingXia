@@ -581,6 +581,7 @@ lxdev test args --preset ci                 # show the effective arguments
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
+- **`fill` sets text without focusing**: no keyboard rises, so no keyboard avoidance runs. To exercise the keyboard, `click()` the field, then `type()`.
 - **`fill` on a GPU date or time input sets it as its picker would**: ISO text only, and a value past `min`/`max` fails naming the bound (`E_EDIT_FAILED: 'back' takes a date from 2026-12-18`).
 - **`type` into a GPU number field** fails at once with `E_EDIT_REFUSED` when the field's keyboard has no such key (`.` in `inputMode="numeric"`, a second `.` in a decimal field).
 - **To see the slow-load recovery panel**, set `"devHoldFirstState": true` in a page's `index.json`: under `lingxia dev` that page never gets its first state. Ignored outside a dev session.

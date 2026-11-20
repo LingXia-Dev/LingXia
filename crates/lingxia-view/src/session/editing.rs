@@ -233,6 +233,33 @@ impl ViewSession {
         Ok(true)
     }
 
+    /// Automation's `fill` on editor `identity` while no input method holds it: replace its text
+    /// as typing would, with its input callback. The focus it needs lasts only this call, as a
+    /// picker's choice does, so no frame shows it and no keyboard rises. False when it is gone.
+    pub fn fill_editor(&mut self, identity: &str, text: String) -> Result<bool, String> {
+        use crate::text::input::Edit;
+        if self.read_only(identity) {
+            return Err("is read-only".into());
+        }
+        let held = self.inputs.focused() == Some(identity);
+        let Some(focused) = self.focus_now(identity)? else {
+            return Ok(false);
+        };
+        let edits = [
+            Edit::SelectAll,
+            Edit::Replace {
+                text,
+                cursor: 1,
+                composing: false,
+            },
+        ];
+        self.edit_input(focused.token, identity, &edits, false)?;
+        if !held {
+            self.blur_input(focused.token, identity)?;
+        }
+        Ok(true)
+    }
+
     /// Submit an editor as its input method action would, focusing it first.
     pub fn submit_editor(
         &mut self,

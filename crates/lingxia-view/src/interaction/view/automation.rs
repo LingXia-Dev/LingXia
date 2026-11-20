@@ -233,8 +233,18 @@ impl ViewInteraction {
         if !force && !visible {
             return Err(format!("Element not interactable: {selector} is hidden"));
         }
+        // `fill` sets text without the pointer: it brings an off-screen field into view itself.
+        let mut revealed = Vec::new();
+        if !in_viewport
+            && matches!(act, AutomationAct::Fill(_))
+            && let Some(frame) = self.frame.clone()
+            && let Some(node) = self.ids.index(id).map(|index| &frame.nodes[index])
+            && self.scroll.reveal(&frame, node)
+        {
+            revealed = vec![Effect::StopFling, Effect::Redraw];
+        }
         // Input reaches only what the presented frame shows; bring the match on screen first.
-        if !in_viewport && act != AutomationAct::ScrollIntoView {
+        if !in_viewport && revealed.is_empty() && act != AutomationAct::ScrollIntoView {
             return Err(format!(
                 "Element not interactable: {selector} is outside the viewport"
             ));
@@ -243,6 +253,33 @@ impl ViewInteraction {
             return Err(format!(
                 "Element not interactable: {selector} is not enabled"
             ));
+        }
+        // The presented frame still shows the field off screen: set its text as SetText would.
+        if !revealed.is_empty()
+            && let AutomationAct::Fill(text) = &act
+            && let Some(index) = self.ids.index(id)
+            && self
+                .frame
+                .as_ref()
+                .is_some_and(|frame| crate::interaction::frame::editable(&frame.nodes[index]))
+        {
+            if !editable {
+                return Err(format!(
+                    "Element not interactable: {selector} is not editable"
+                ));
+            }
+            if text.len() > crate::text::input::MAX_TEXT_BYTES {
+                return Err(format!(
+                    "Element not interactable: {selector}: the text is too long"
+                ));
+            }
+            revealed.push(Effect::EditText {
+                node: index,
+                text: Some(text.clone()),
+                start: -1,
+                end: -1,
+            });
+            return Ok(revealed);
         }
         if act == AutomationAct::ScrollIntoView {
             // Any match can be revealed, published to assistive input or not.
@@ -412,6 +449,9 @@ impl ViewInteraction {
             _ => self.accessibility(id, action, page),
         };
         let mut effects = effects;
+        if handled {
+            effects.extend(revealed);
+        }
         if handled && let (Some(caret), Some(index)) = (caret_after, self.ids.index(id)) {
             effects.push(Effect::EditText {
                 node: index,

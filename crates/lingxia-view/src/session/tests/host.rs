@@ -3310,8 +3310,9 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
     );
     host.set_visible(true);
     platform.settle(&[&host]);
-    let fill = |id: &str, text: &str| {
-        let request = serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "fill", "text": text}});
+    // `fill` on the focused editor and `type` into the other both go through the input method.
+    let act = |kind: &str, id: &str, text: &str| {
+        let request = serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": kind, "text": text}});
         host.automation_request(&request)
     };
     // As on a cold start: the second editor is still connecting when its edit arrives.
@@ -3320,8 +3321,8 @@ fn edits_for_two_editors_reach_the_platform_one_at_a_time() {
         .lock()
         .unwrap()
         .extend([EditOutcome::Applied, EditOutcome::NotReady]);
-    fill("amount", "12").unwrap();
-    fill("code", "ABC").unwrap();
+    act("fill", "amount", "12").unwrap();
+    act("type", "code", "ABC").unwrap();
     assert_eq!(
         sent_edits(&host),
         [Some("12".to_owned())],
@@ -3402,12 +3403,57 @@ fn an_edit_the_platform_cannot_apply_fails_its_caller() {
         .lock()
         .unwrap()
         .push_back(EditOutcome::Failed);
-    let request = serde_json::json!({"op": "act", "css": "[data-testid=\"amount\"]", "action": {"kind": "fill", "text": "7"}});
+    let request = serde_json::json!({"op": "act", "css": "[data-testid=\"amount\"]", "action": {"kind": "type", "text": "7"}});
     let failed = host.automation_request(&request).unwrap_err();
     assert!(failed.contains("refused the edit"), "{failed}");
     assert!(
         host.accessibility(id, AccessibilityAction::SetText("9".into())),
         "a later edit goes through"
+    );
+}
+
+/// `fill` takes no focus: an editor without the input method gets its text from the core, its
+/// binding hears it, and the platform's input method is never asked (so no keyboard rises).
+#[test]
+fn fill_sets_an_unfocused_field_in_the_core_without_the_input_method() {
+    let worker = ViewWorker::spawn("test-fill-core").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){const a=useLocal('a','old');return h('view',{},h('input',{'data-testid':'amount',bind:a}),h('text',{'data-testid':'log'},'['+a.value+']'))}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let call = host
+        .automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"amount\"]", "action": {"kind": "fill", "text": "42"}}))
+        .unwrap();
+    platform.settle(&[&host]);
+    host.request_frame();
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.automation_request(&serde_json::json!({"op": "result", "call": call["call"]}))
+            .unwrap()["done"],
+        true,
+        "the call settles once a frame shows the text"
+    );
+    let query = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()
+    };
+    assert_eq!(query("amount")["value"], "42");
+    assert_eq!(
+        query("log")["text"],
+        "[42]",
+        "Logic heard it through the binding"
+    );
+    assert_eq!(query("amount")["focused"], false, "fill took no focus");
+    let log = host.adapter().log.lock().unwrap();
+    assert!(
+        log.edits.is_empty() && log.editors.is_empty(),
+        "the input method was never asked"
     );
 }
 

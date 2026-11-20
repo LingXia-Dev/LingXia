@@ -457,6 +457,8 @@ struct Main<F> {
     next_automation_call: u64,
     /// The automation act being delivered; the first activation it starts reports to it.
     act_call: Option<(u64, String)>,
+    /// The act in progress is a `fill`: its edit sets an unfocused editor's text in the core.
+    act_fill: bool,
     virtual_rows: virtual_rows::VirtualRows,
     snaps: snap::Snaps,
     drags: drag::Drags,
@@ -693,6 +695,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     settle_after: Default::default(),
                     next_automation_call: 0,
                     act_call: None,
+                    act_fill: false,
                     virtual_rows: Default::default(),
                     snaps: Default::default(),
                     drags: Default::default(),
@@ -1580,10 +1583,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 let force = action["force"].as_bool().unwrap_or(false);
                 // The reply names a call; `result` reports once the worker applied the act.
                 let call = self.automation_call()?;
-                self.inner.main().act_call = Some((call, css.to_owned()));
+                {
+                    let mut main = self.inner.main();
+                    main.act_call = Some((call, css.to_owned()));
+                    main.act_fill = matches!(act, AutomationAct::Fill(_));
+                }
                 let acted = self.automate(css, index, act, force);
                 let mut main = self.inner.main();
                 let unclaimed = main.act_call.take().is_some();
+                main.act_fill = false;
                 match acted {
                     Err(error) => {
                         main.automation_calls.remove(&call);

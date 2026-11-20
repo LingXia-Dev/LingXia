@@ -30,6 +30,8 @@ struct Edit {
     waiting_since: Option<Duration>,
     /// The automation call this edit completes.
     call: Option<u64>,
+    /// Automation's `fill`: an editor without the input method takes it in the core.
+    fill: bool,
 }
 
 #[derive(Debug, Default)]
@@ -76,6 +78,7 @@ impl<A: PlatformAdapter> Inner<A> {
             };
             // The call that asked for these edits (a fill) settles when the last one shows.
             let call = main.act_call.take().map(|(call, _)| call);
+            let fill = std::mem::take(&mut main.act_fill);
             let queued = main.edits.waiting.len();
             effects.retain(|effect| {
                 let Effect::EditText {
@@ -96,6 +99,7 @@ impl<A: PlatformAdapter> Inner<A> {
                         sends: 0,
                         waiting_since: None,
                         call: None,
+                        fill,
                     });
                 }
                 false
@@ -251,12 +255,31 @@ impl<A: PlatformAdapter> Inner<A> {
                             edit.sends += 1;
                             main.edits.sent = Some((edit, 0));
                             drop(main);
-                            self.choose_picker_value(serial, identity, text);
+                            self.apply_in_session(serial, identity, text, true);
                             self.edit_timer(serial, PATIENCE_TIME);
                             return;
                         }
                     }
                     continue;
+                }
+                let node = &snapshot.frame.nodes[index];
+                let connected = node
+                    .input
+                    .as_ref()
+                    .is_some_and(|input| input.edit_token.is_some_and(|token| token > 0));
+                if edit.fill
+                    && !connected
+                    && let Some(text) = edit.text.clone()
+                {
+                    // `fill` takes no focus: the core sets the text and no keyboard rises.
+                    let serial = main.edits.serial;
+                    let identity = edit.identity.clone();
+                    edit.sends += 1;
+                    main.edits.sent = Some((edit, 0));
+                    drop(main);
+                    self.apply_in_session(serial, identity, text, false);
+                    self.edit_timer(serial, PATIENCE_TIME);
+                    return;
                 }
                 (edit, index, main.edits.serial)
             };
@@ -301,15 +324,26 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
-    /// Apply `text` to picker editor `identity` in the session; the sent edit settles when a
-    /// frame shows it, or here when the editor is gone.
-    fn choose_picker_value(self: &Arc<Self>, serial: u64, identity: String, text: String) {
+    /// Apply `text` to editor `identity` in the session (a picker's choice, or a fill), not
+    /// through the input method; the sent edit settles when a frame shows it, or here when the
+    /// editor is gone.
+    fn apply_in_session(
+        self: &Arc<Self>,
+        serial: u64,
+        identity: String,
+        text: String,
+        picker: bool,
+    ) {
         let page = self.lifecycle.page();
         self.work(
             super::Guard::Page(page),
             move |inner, session| {
-                session.close_view_picker_on(&identity)?;
-                let changed = session.choose_editor_value(&identity, text)?;
+                let changed = if picker {
+                    session.close_view_picker_on(&identity)?;
+                    session.choose_editor_value(&identity, text)?
+                } else {
+                    session.fill_editor(&identity, text)?
+                };
                 let update = if changed {
                     inner.drained(session)?
                 } else {

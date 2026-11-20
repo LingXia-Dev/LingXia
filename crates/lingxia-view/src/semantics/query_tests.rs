@@ -287,6 +287,30 @@ fn offscreen_matches_are_visible_but_must_be_revealed_before_input() {
 }
 
 #[test]
+fn fill_brings_an_off_screen_field_into_view_and_sets_its_text() {
+    let mut i = interaction(
+        "h('scroll',{style:{height:100}},h('view',{style:{height:400}}),h('input',{'data-testid':'far','aria-label':'Far',onInput(){}}))",
+    );
+    let page = PageTicket::new(1);
+    let effects = i
+        .automate(
+            "[data-testid=\"far\"]",
+            None,
+            AutomationAct::Fill("Bo".into()),
+            false,
+            page,
+        )
+        .unwrap();
+    assert!(effects.contains(&Effect::Redraw), "{effects:?}");
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, Effect::EditText { text: Some(t), .. } if t == "Bo")),
+        "{effects:?}"
+    );
+}
+
+#[test]
 fn press_submits_editors_and_drives_keyboard_focus() {
     let mut i = interaction(PAGE);
     let page = PageTicket::new(1);
@@ -990,7 +1014,11 @@ fn an_editor_reads_the_keyboard_it_asks_for_as_inputmode() {
     assert_eq!(mode("pin").as_deref(), Some("numeric"));
     assert_eq!(mode("mail").as_deref(), Some("email"));
     assert_eq!(mode("name"), None, "plain text asks for nothing");
-    assert_eq!(mode("day"), None, "a date field has a picker, not a keyboard");
+    assert_eq!(
+        mode("day"),
+        None,
+        "a date field has a picker, not a keyboard"
+    );
     // The tree dump carries the same key.
     let tree = i.automation_tree().unwrap().to_string();
     assert!(tree.contains(r#""inputmode":"numeric""#), "{tree}");
