@@ -1,5 +1,6 @@
 import { expect, spec } from '@lingxia/test';
 import { openDemo } from './open-demo';
+import { reveal } from './pixels';
 
 type Box = { x: number; y: number; width: number; height: number };
 // How far a note sits from what it is anchored to: just above or below it, overlapping it across.
@@ -64,7 +65,9 @@ spec('a mouse resting on a link shows its hint, on either line of a link that wr
   await expect(view.testId('lab-hint-note')).toBeVisible({ timeout: 3_000 });
   await move(away);
   await expect(view.testId('lab-hint-note')).toHaveCount(0, { timeout: 3_000 });
-  // The start of the second line, away from the first line's piece.
+  // The start of the second line, away from the first line's piece. Where the text wraps
+  // follows the platform's fonts, so the link may sit lower than the first one brought on screen.
+  await reveal(t, view.testId('lab-wrap-link'));
   const two = await view.testId('lab-wrap-link').boundingBox();
   await move([Math.round(two.x + 8), Math.round(two.y + two.height - 6)]);
   await expect(view.testId('lab-wrap-note')).toBeVisible({ timeout: 3_000 });

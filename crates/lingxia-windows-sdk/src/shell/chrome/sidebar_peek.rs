@@ -141,6 +141,18 @@ impl SidebarPeekLayout {
         }
     }
 
+    /// The peek's tab rows, in owner client coordinates.
+    pub(crate) fn rows(&self) -> Vec<ChromeItem> {
+        let (dx, dy) = (self.frame.left, self.frame.top);
+        sidebar_rows(self.local_body(), &self.layout)
+            .into_iter()
+            .map(|item| ChromeItem {
+                rect: offset_rect(item.rect, dx, dy),
+                ..item
+            })
+            .collect()
+    }
+
     /// The rail's expand control, exactly where the rail draws it.
     pub(crate) fn expand_rect(&self) -> RECT {
         sidebar_rail_expand_rect(offset_rect(self.rail, -self.frame.left, -self.frame.top))
@@ -497,6 +509,7 @@ mod tests {
                 visible: true,
                 position,
                 dimension: 220,
+                item_offset: 0,
                 app_name: "App".to_string(),
                 app_icon_path: String::new(),
                 group_id: "app".to_string(),

@@ -138,7 +138,7 @@ impl Appearance for Platform {
             WindowsPreferredColorScheme::Light
         };
         set_windows_lxapp_preferred_color_scheme(appid, scheme);
-        for webtag in lingxia_webview::runtime::list_webviews() {
+        for webtag in lingxia_webview::platform::windows::list_content_webtags() {
             if webtag.extract_appid() != appid {
                 continue;
             }

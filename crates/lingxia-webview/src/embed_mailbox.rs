@@ -17,7 +17,6 @@ pub(crate) const ANDROID_EMBED_OBJECT: &str = "__LingXiaEmbedBridge";
 pub(crate) const HARMONY_EMBED_PORT_INIT: &str = "LingXia-embed-port";
 
 /// Maximum wire bytes accepted from the page shim (`'0'|'1'`|'f'|'x' tag + JSON).
-#[cfg_attr(target_os = "windows", allow(dead_code))]
 pub(crate) const MAX_EMBED_WIRE_BYTES: usize = 1 + MAX_WEB_MESSAGE_BYTES;
 
 /// Validated message from `window.lingxia.postMessage(data, options?)`.
@@ -32,7 +31,6 @@ pub struct EmbedWebMessage {
 }
 
 /// Decoded wire frame emitted by the injected embed bootstrap script.
-#[cfg_attr(target_os = "windows", allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum EmbedWireFrame {
     Message { json: String, queued: bool },
@@ -40,7 +38,6 @@ pub(crate) enum EmbedWireFrame {
 }
 
 /// Parse and validate a raw wire string from the injected page shim.
-#[cfg_attr(target_os = "windows", allow(dead_code))]
 pub(crate) fn parse_wire_frame(raw: &str) -> Option<EmbedWireFrame> {
     if raw.is_empty() || raw.len() > MAX_EMBED_WIRE_BYTES {
         return None;
@@ -105,7 +102,7 @@ pub fn canonical_origin(raw: &str) -> Option<String> {
 
 /// Shared JS body that installs `window.lingxia.postMessage(data, options)`
 /// given a closure-private `sendWire(str)` function.
-#[cfg(any(target_os = "ios", target_os = "macos", test))]
+#[cfg(any(target_os = "ios", target_os = "macos", windows, test))]
 macro_rules! embed_install_body {
     ($send_setup:expr, $fullscreen_polyfill:expr) => {
         concat!(
@@ -192,6 +189,22 @@ pub(crate) const APPLE_BOOTSTRAP_SCRIPT: &str = embed_install_body!(
         "      };\n",
         "    } catch (_) {}\n",
         "  }\n",
+    )
+);
+
+/// Windows document-created bootstrap. WebView2 reports the top-level document's own URL as
+/// each message's source, and gives the element fullscreen API natively.
+#[cfg(any(windows, test))]
+pub(crate) const WINDOWS_BOOTSTRAP_SCRIPT: &str = embed_install_body!(
+    concat!(
+        "  var w = window.chrome && window.chrome.webview;\n",
+        "  if (!w || typeof w.postMessage !== 'function') return;\n",
+        "  var sendWire = w.postMessage.bind(w);\n",
+    ),
+    concat!(
+        "  document.addEventListener('fullscreenchange', function() {\n",
+        "    try { sendWire(document.fullscreenElement ? 'f1' : 'f0'); } catch (_) {}\n",
+        "  }, true);\n",
     )
 );
 

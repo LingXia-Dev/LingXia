@@ -165,7 +165,7 @@ fn post_wheel_message(
 /// Walks `ChildWindowFromPointEx` down from `window` to the deepest child
 /// containing `point`; returns that window and the point translated into
 /// its client coordinates.
-fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
+pub(super) fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
     use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
 
     let mut target = HWND(window as *mut core::ffi::c_void);
@@ -181,7 +181,14 @@ fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
                 CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT,
             )
         };
-        if child.is_invalid() || child == target {
+        // A child rounded by its window region does not hit at its corners; posted input
+        // still goes to the topmost visible child whose rectangle holds the point.
+        let child = if child.is_invalid() || child == target {
+            child_rect_at(target, client).unwrap_or(target)
+        } else {
+            child
+        };
+        if child == target {
             break;
         }
         let mut translated = client;
@@ -193,6 +200,41 @@ fn deepest_child_at(window: isize, point: (f64, f64)) -> (HWND, POINT) {
         client = translated;
     }
     (target, client)
+}
+
+/// The topmost visible, enabled, hit-testable child of `parent` whose rectangle holds client
+/// point `at`.
+fn child_rect_at(parent: HWND, at: POINT) -> Option<HWND> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
+    let mut screen = at;
+    // SAFETY: reads of live windows; the walk follows z-order from the top child down.
+    unsafe {
+        let _ = ClientToScreen(parent, &mut screen);
+        let mut child = WindowsAndMessaging::GetWindow(parent, WindowsAndMessaging::GW_CHILD).ok();
+        while let Some(current) = child {
+            let mut rect = RECT::default();
+            let transparent =
+                WindowsAndMessaging::GetWindowLongPtrW(current, WindowsAndMessaging::GWL_EXSTYLE)
+                    as u32
+                    & WindowsAndMessaging::WS_EX_TRANSPARENT.0
+                    != 0;
+            if WindowsAndMessaging::IsWindowVisible(current).as_bool()
+                && IsWindowEnabled(current).as_bool()
+                && !transparent
+                && WindowsAndMessaging::GetWindowRect(current, &mut rect).is_ok()
+                && screen.x >= rect.left
+                && screen.x < rect.right
+                && screen.y >= rect.top
+                && screen.y < rect.bottom
+            {
+                return Some(current);
+            }
+            child = WindowsAndMessaging::GetWindow(current, WindowsAndMessaging::GW_HWNDNEXT).ok();
+        }
+    }
+    None
 }
 
 fn button_message(button: AppMouseButton, down: bool) -> u32 {

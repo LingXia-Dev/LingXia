@@ -42,7 +42,7 @@ spec('a slider styled by parts reads its valuetext and grows its line and thumb 
   // The touch target is the slider's box though its thumb draws nothing at rest.
   const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
   const rest = await lineRows(t, scrub);
-  const finger = await view.touch(at);
+  const finger = await view.touch(at, { press: true });
   await new Promise<void>(resolve => setTimeout(resolve, 400));
   const held = await lineRows(t, scrub);
   await finger.moveTo([at[0] + box.width / 6, at[1]], { durationMs: 300 });

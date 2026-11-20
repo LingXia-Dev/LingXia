@@ -161,7 +161,8 @@ pub(super) fn resolve_screenshot_window(
 /// content windows, as opposed to the device frame's companion windows.
 fn webview_host_window_ids() -> std::collections::HashSet<usize> {
     let mut ids = std::collections::HashSet::new();
-    for webtag in webview_runtime::list_webviews() {
+    // GPU pages present as native content in the same hosts.
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         if let Ok(snapshot) = lingxia_windows_contract::webview_window_snapshot(&webtag)
             && snapshot.visible
             && snapshot.content_width > 0
@@ -206,6 +207,7 @@ async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> 
     for (snapshot, webview_png) in visible_webview_screenshots_for_window(window_id).await {
         overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
     }
+    overlay_gpu_pages(&mut image, hwnd_from_usize(window_id));
     overlay_window_screenshots(&mut image, hwnd_from_usize(window_id))?;
     overlay_surface_captures(&mut image, window_id);
     encode_rgba_png(width, height, image)
@@ -234,6 +236,122 @@ fn overlay_surface_captures(image: &mut image::RgbaImage, window_id: usize) {
                 );
             }
         }
+    }
+}
+
+/// Paint in the GPU pages: they compose through DirectComposition, with their embedded web
+/// views under them, which only `PrintWindow` renders.
+fn overlay_gpu_pages(image: &mut image::RgbaImage, window: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumChildWindows, GetWindowRect, IsWindowVisible,
+    };
+    use windows::core::BOOL;
+
+    unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let pages = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
+        if window_class_name(hwnd) == "LingXiaGpuPage" && unsafe { IsWindowVisible(hwnd) }.as_bool()
+        {
+            pages.push(hwnd);
+        }
+        BOOL(1)
+    }
+
+    let Ok(base) = content_window_rect(window) else {
+        return;
+    };
+    let mut pages: Vec<HWND> = Vec::new();
+    // SAFETY: the callback only reads the windows it is handed.
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(window),
+            Some(collect),
+            LPARAM((&mut pages as *mut Vec<HWND>) as isize),
+        );
+    }
+    // Children come topmost first; paint the lowest first.
+    for page in pages.into_iter().rev() {
+        let mut rect = RECT::default();
+        // SAFETY: reads a live window's rectangle.
+        if unsafe { GetWindowRect(page, &mut rect) }.is_err() {
+            continue;
+        }
+        let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+        // A page settling behind a one-pixel region is not on screen yet.
+        if width <= 1 || height <= 1 || page_region_hides(page) {
+            continue;
+        }
+        let Some(pixels) = print_window_bgra(page, width, height) else {
+            continue;
+        };
+        let Ok(page_image) = bgra_top_down_image(width as u32, height as u32, &pixels) else {
+            continue;
+        };
+        image::imageops::replace(
+            image,
+            &page_image,
+            i64::from(rect.left - base.left),
+            i64::from(rect.top - base.top),
+        );
+    }
+}
+
+fn page_region_hides(page: windows::Win32::Foundation::HWND) -> bool {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{GetWindowRgnBox, NULLREGION, SIMPLEREGION};
+    let mut region = RECT::default();
+    // SAFETY: reads a live window's region box.
+    let kind = unsafe { GetWindowRgnBox(page, &mut region) };
+    (kind == SIMPLEREGION || kind == NULLREGION)
+        && (region.right - region.left <= 1 || region.bottom - region.top <= 1)
+}
+
+fn print_window_bgra(
+    hwnd: windows::Win32::Foundation::HWND,
+    width: i32,
+    height: i32,
+) -> Option<Vec<u8>> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+        DeleteDC, DeleteObject, HGDIOBJ, SelectObject,
+    };
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+    use windows::Win32::UI::WindowsAndMessaging::PW_RENDERFULLCONTENT;
+
+    let info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    // SAFETY: a memory DC and DIB made and released here.
+    unsafe {
+        let dc = CreateCompatibleDC(None);
+        if dc.is_invalid() {
+            return None;
+        }
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            return None;
+        };
+        let old = SelectObject(dc, HGDIOBJ(bitmap.0));
+        let printed = PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        let pixels = (printed && !bits.is_null()).then(|| {
+            std::slice::from_raw_parts(bits.cast::<u8>(), width as usize * height as usize * 4)
+                .to_vec()
+        });
+        let _ = SelectObject(dc, old);
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(dc);
+        pixels
     }
 }
 

@@ -115,7 +115,7 @@ export const groups: Group[] = [
 
 export function render({ data, actions, env }: View) {
   const expanded = useLocal<Record<string, boolean>>('api-sections', {});
-  const desktop = env.os === 'macOS' || env.os === 'Windows';
+  const desktop = env.os === 'macos' || env.os === 'windows';
   const toggle = (id: string) => expanded.set({ ...expanded.value, [id]: !expanded.value[id] });
   return (
     <Page testId="api-page">

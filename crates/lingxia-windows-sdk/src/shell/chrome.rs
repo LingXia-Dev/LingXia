@@ -1412,6 +1412,71 @@ pub(crate) fn transparent_tabbar_overlay_rect(
     compute_chrome_rects(client, layout).tab_bar
 }
 
+/// Paints an opaque bottom tab bar into a `width × height` overlay surface; false when the
+/// layout has none to paint.
+pub(crate) fn paint_opaque_tabbar_overlay(
+    hdc: HDC,
+    layout: &WindowsWindowLayout,
+    width: i32,
+    height: i32,
+) -> bool {
+    let Some(tabbar) = shell_layout(layout).and_then(|layout| layout.tab_bar.as_ref()) else {
+        return false;
+    };
+    if !tabbar.visible
+        || tabbar.background_transparent
+        || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+    {
+        return false;
+    }
+    let rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+    draw_tab_bar(hdc, rect, tabbar, None, 0, height);
+    true
+}
+
+/// The lxapp navigation bar, when one shows: the address bar owns the top bar otherwise.
+pub(crate) fn navigation_bar_rect(client: RECT, layout: &WindowsWindowLayout) -> Option<RECT> {
+    let layout = shell_layout(layout)?;
+    layout.navigation_bar.as_ref()?;
+    if address_bar_visible(layout) {
+        return None;
+    }
+    compute_chrome_rects(client, layout).navigation_bar
+}
+
+/// Paints the navigation bar into a `width × height` overlay surface.
+pub(crate) fn paint_navigation_bar_overlay(
+    hdc: HDC,
+    layout: &WindowsWindowLayout,
+    width: i32,
+    height: i32,
+) {
+    let Some(navbar) = shell_layout(layout).and_then(|layout| layout.navigation_bar.as_ref())
+    else {
+        return;
+    };
+    let rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+    draw_navigation_bar(
+        hdc,
+        rect,
+        [0; 4],
+        false,
+        navbar_buttons_left(rect),
+        navbar,
+        None,
+    );
+}
+
 pub(crate) fn bottom_tabbar_rect(client: RECT, layout: &WindowsWindowLayout) -> Option<RECT> {
     let layout = shell_layout(layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
@@ -2966,6 +3031,162 @@ pub(super) fn sidebar_hit_test(
     None
 }
 
+/// One pressable piece of the shell's own chrome, as host automation reads it.
+pub(crate) struct ChromeItem {
+    pub label: String,
+    pub scope: &'static str,
+    pub selected: bool,
+    pub rect: RECT,
+}
+
+/// The chrome a user can press, at the rects [`chrome_hit_test`] answers for.
+pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
+    let mut items = Vec::new();
+    let Some(layout) = shell_layout(&state.layout) else {
+        return items;
+    };
+    let covered_layout = covering_panel_layout(state, layout);
+    let layout = covered_layout.as_ref().unwrap_or(layout);
+    let rects = chrome_rects_for_state(state, layout);
+    let mut push = |label: &str, scope, selected, rect: RECT| {
+        if rect.right > rect.left && rect.bottom > rect.top {
+            items.push(ChromeItem {
+                label: label.to_owned(),
+                scope,
+                selected,
+                rect,
+            });
+        }
+    };
+    if !layout.suppress_window_controls {
+        for (button, rect) in window_frame_button_rects(state.client) {
+            let label = match button {
+                WindowsFrameButton::Minimize => "Minimize",
+                WindowsFrameButton::Maximize => "Maximize",
+                WindowsFrameButton::Close => "Close",
+            };
+            push(label, "window", false, rect);
+        }
+    }
+    if !address_bar_visible(layout)
+        && let (Some(navbar), Some(navbar_rect)) = (&layout.navigation_bar, rects.navigation_bar)
+    {
+        let left = navbar_buttons_left(navbar_rect);
+        if navbar.show_back_button {
+            push(
+                "Back",
+                "navigationBar",
+                false,
+                nav_button_rect(navbar_rect, left, 0),
+            );
+        }
+        if navbar.show_home_button {
+            let index = i32::from(navbar.show_back_button);
+            push(
+                "Home",
+                "navigationBar",
+                false,
+                nav_button_rect(navbar_rect, left, index),
+            );
+        }
+    }
+    let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) else {
+        return items;
+    };
+    let selected = |index: usize| tabbar.selected_index == index as i32;
+    match tabbar.position {
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
+            if tabbar.collapsed || tabbar.icon_rail {
+                // A rail lists apps, not tabs: its expand control shows them.
+                if !tabbar.rail_expand_disabled {
+                    push(
+                        "Show sidebar",
+                        "sidebar",
+                        false,
+                        sidebar_rail_expand_rect(tabbar_rect),
+                    );
+                }
+                return items;
+            }
+            items.extend(sidebar_rows(tabbar_rect, layout));
+        }
+        WindowsShellTabBarPosition::Bottom => {
+            let count = tabbar.bottom_slot_count();
+            for slot in 0..count {
+                let rect = tab_item_rect(tabbar_rect, tabbar.position, count, slot);
+                match tabbar.bottom_slot(slot) {
+                    Some(BottomSlot::Tab(visible)) => {
+                        if let Some(item) = tabbar.items.get(visible) {
+                            push(&item.text, "tabBar", selected(item.index), rect);
+                        }
+                    }
+                    Some(BottomSlot::More) => push("More", "tabBar", false, rect),
+                    None => {}
+                }
+            }
+        }
+    }
+    items
+}
+
+/// The expanded sidebar's tab rows a press can reach; the list scrolls under its header.
+pub(super) fn sidebar_rows(
+    tabbar_rect: RECT,
+    layout: &WindowsShellWindowLayout,
+) -> Vec<ChromeItem> {
+    let Some(tabbar) = layout.tab_bar.as_ref() else {
+        return Vec::new();
+    };
+    if tabbar.items_collapsed || tabbar.items_api_hidden {
+        return Vec::new();
+    }
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let viewport_top = tabbar_rect.top + sidebar_header_height();
+    tabbar
+        .items
+        .iter()
+        .enumerate()
+        .map(|(slot, item)| ChromeItem {
+            label: item.text.clone(),
+            scope: "sidebar",
+            selected: tabbar.selected_index == item.index as i32,
+            rect: sidebar_item_rect(tabbar_rect, tabbar, slot, scroll_offset),
+        })
+        .filter(|item| item.rect.top >= viewport_top && item.rect.bottom <= viewport_bottom)
+        .collect()
+}
+
+/// The sidebar's width handle under `point`: the x of the sidebar's fixed
+/// edge, and whether the sidebar is on the left (its width grows with x).
+pub(crate) fn sidebar_resize_anchor(
+    state: &WindowsChromeState,
+    point: (i32, i32),
+) -> Option<(i32, bool)> {
+    let layout = shell_layout(&state.layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    let left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => true,
+        WindowsShellTabBarPosition::Right => false,
+        _ => return None,
+    };
+    if tabbar.collapsed || tabbar.rail_expand_disabled {
+        return None;
+    }
+    let rects = chrome_rects_for_state(state, layout);
+    let bar = rects.tab_bar?;
+    let edge = if left { bar.right } else { bar.left };
+    // The whole gutter up to the workspace, which no page covers.
+    let (inside, outside) = (crate::dpi::px(3), crate::dpi::px(6));
+    let near = if left {
+        point.0 >= edge - inside && point.0 < (edge + outside).max(rects.workspace.left)
+    } else {
+        point.0 > (edge - outside).min(rects.workspace.right) && point.0 <= edge + inside
+    };
+    let beside_workspace = point.1 >= rects.workspace.top && point.1 < rects.workspace.bottom;
+    (near && beside_workspace).then_some((if left { bar.left } else { bar.right }, left))
+}
+
 fn sidebar_caption_contains(rect: RECT, point: (i32, i32)) -> bool {
     rect_contains(
         &RECT {
@@ -3298,6 +3519,7 @@ mod scroll_tests {
             visible,
             position: WindowsShellTabBarPosition::Bottom,
             dimension: 64,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
@@ -4183,6 +4405,7 @@ mod scroll_tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 56,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
@@ -4250,6 +4473,7 @@ mod scroll_tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 220,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
@@ -4497,6 +4721,87 @@ mod scroll_tests {
     }
 
     #[test]
+    fn every_readable_chrome_element_presses_what_it_names() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        };
+        for position in [
+            WindowsShellTabBarPosition::Left,
+            WindowsShellTabBarPosition::Right,
+            WindowsShellTabBarPosition::Bottom,
+        ] {
+            let mut tabbar = bottom_tabbar(true, false);
+            tabbar.position = position;
+            if position != WindowsShellTabBarPosition::Bottom {
+                tabbar.dimension = 220;
+            }
+            // Declared index 2 is hidden here: a row's position is not its index.
+            tabbar.selected_index = 3;
+            tabbar.items.push(WindowsShellTabBarItemLayout {
+                index: 3,
+                page_path: "api".to_string(),
+                text: "API".to_string(),
+                ..tabbar.items[0].clone()
+            });
+            let layout = WindowsShellWindowLayout {
+                navigation_bar: Some(WindowsShellNavigationBarLayout {
+                    visible: true,
+                    title: "API".to_string(),
+                    background_color: 0,
+                    text_color: 0,
+                    show_back_button: true,
+                    show_home_button: true,
+                    height: 38,
+                }),
+                tab_bar: Some(tabbar),
+                ..Default::default()
+            };
+            let state = tooltip_state(client, &WindowsWindowLayout::new(layout.clone()));
+            let items = super::chrome_items(&state);
+            let labels: Vec<_> = items
+                .iter()
+                .map(|i| (i.label.as_str(), i.selected))
+                .collect();
+            for expected in [("Back", false), ("Home", false), ("API", true)] {
+                assert!(labels.contains(&expected), "{position:?}: {labels:?}");
+            }
+            for item in &items {
+                let center = (
+                    (item.rect.left + item.rect.right) / 2,
+                    (item.rect.top + item.rect.bottom) / 2,
+                );
+                let hit = chrome_hit_test(&state, &layout, center);
+                let pressed = match &hit {
+                    Some(WindowsChromeHit::FrameButton(_)) => item.scope == "window",
+                    Some(WindowsChromeHit::Command(command))
+                    | Some(WindowsChromeHit::CommandWithContext { command, .. }) => {
+                        match item.label.as_str() {
+                            "Back" => command.id == super::command_id::NAVIGATION_BACK,
+                            "Home" if item.scope == "navigationBar" => {
+                                command.id == super::command_id::NAVIGATION_HOME
+                            }
+                            "API" => {
+                                command.id == super::command_id::TAB_BAR_CLICK
+                                    && command.payload["index"].as_u64() == Some(3)
+                            }
+                            _ => command.id == super::command_id::TAB_BAR_CLICK,
+                        }
+                    }
+                    _ => false,
+                };
+                assert!(
+                    pressed,
+                    "{position:?} {} at {center:?}: {hit:?}",
+                    item.label
+                );
+            }
+        }
+    }
+
+    #[test]
     fn maximized_native_panel_covers_lxapp_sidebar_and_navigation() {
         let client = RECT {
             left: 0,
@@ -4612,6 +4917,7 @@ mod scroll_tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 220,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),
@@ -4676,6 +4982,7 @@ mod scroll_tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 220,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),

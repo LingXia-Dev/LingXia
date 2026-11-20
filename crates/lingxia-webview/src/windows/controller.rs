@@ -1239,6 +1239,9 @@ pub(crate) fn run_ui_thread_inner(
             let inject_platform_baseline = effective_options.rules().platform_baseline;
             install_document_scripts(&webview, inject_platform_baseline)?;
         }
+        if effective_options.rules().embed_mailbox {
+            install_embed_mailbox(&webview)?;
+        }
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         let document_authority = Arc::new(document::WindowsDocumentAuthority::default());
         register_event_handlers(

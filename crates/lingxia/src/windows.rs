@@ -10,9 +10,20 @@ use lingxia_webview::{
     NavigationPolicy, NewWindowPolicy, WebTag, WebViewController, WebViewDataMode,
 };
 
+#[path = "ffi/windows/gpu_page.rs"]
+mod gpu_page;
+
 type AppVisibilityKey = (String, Option<u64>);
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<AppVisibilityKey, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub use lingxia_view_windows::Simulation as GpuSimulation;
+
+/// Lay GPU pages out as the simulated device `simulation` (the Runner), or (`None`) as the
+/// window they are shown in.
+pub fn set_gpu_simulation(simulation: Option<GpuSimulation>) {
+    lingxia_view_windows::set_simulation(simulation);
+}
 
 /// Starts the configured home lxapp's Logic worker without opening a page.
 ///
@@ -34,6 +45,7 @@ pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     install_lifecycle_bridge();
     install_url_surface_bridge();
     install_aside_panel_bridge();
+    gpu_page::install();
     lingxia_platform::set_toast_activate_handler(|token| {
         let _ = crate::navigation::activate_notification(token);
     });

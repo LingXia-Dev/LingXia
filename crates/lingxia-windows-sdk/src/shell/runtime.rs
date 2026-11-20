@@ -51,9 +51,8 @@ use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTAT
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 184;
 const MAX_SIDEBAR_WIDTH: i32 = 400;
-/// Bottom tab bar height (icons + labels). The strip sits just above the
-/// content area's bottom, which is already inset for the home-indicator safe
-/// area, so no extra height is reserved here.
+/// Bottom tab bar height (icons + labels) outside a simulated phone, whose
+/// host's bar comes from its device frame.
 const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
 
 /// How many times to retry presenting a freshly opened browser tab whose
@@ -592,8 +591,80 @@ fn persist_sidebar_chrome(rail: bool) {
     }
 }
 
+/// A sidebar width drag's live state: 0 none, `RAIL_LIVE` the icon rail, else
+/// the expanded 96-DPI width.
+static LIVE_SIDEBAR_WIDTH: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+const RAIL_LIVE: i32 = -1;
+/// A drag that ends narrower than this snaps the sidebar to its icon rail.
+const RAIL_SNAP_WIDTH: f64 = 160.0;
+
+fn live_sidebar_rail() -> Option<bool> {
+    match LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire) {
+        0 => None,
+        live => Some(live == RAIL_LIVE),
+    }
+}
+
+/// Drag the sidebar to `width` (96-DPI, `None` keeps the dragged one); `done`
+/// ends the drag and settles on the icon rail or the expanded width.
+pub(crate) fn resize_sidebar(width: Option<f64>, done: bool) {
+    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
+    let next = match width {
+        Some(width) if width < RAIL_SNAP_WIDTH => RAIL_LIVE,
+        Some(width) => width
+            .round()
+            .min(f64::from(MAX_SIDEBAR_WIDTH))
+            .max(f64::from(MIN_SIDEBAR_WIDTH)) as i32,
+        None if live != 0 => live,
+        None => return,
+    };
+    LIVE_SIDEBAR_WIDTH.store(if done { 0 } else { next }, Ordering::Release);
+    let Some(owner) = shell_owner_appid() else {
+        return;
+    };
+    if done {
+        let rail = next == RAIL_LIVE;
+        let medium = resolved_shell_size_class(None) == SizeClass::Medium;
+        update_sidebar_ui_state(&owner, |state| {
+            state.collapsed = false;
+            if medium {
+                // Medium already projects a rail; the drag only reveals or
+                // dismisses the full sidebar for this session.
+                state.medium_expanded = !rail;
+                state.icon_rail = false;
+            } else {
+                state.medium_expanded = false;
+                state.icon_rail = rail;
+                state.seeded = true;
+            }
+        });
+        let remembered = lingxia_shell::sidebar_chrome();
+        let chrome = if rail {
+            lingxia_shell::SidebarChrome::with_expanded(
+                medium && remembered.expanded,
+                remembered.expanded_width,
+            )
+        } else {
+            lingxia_shell::SidebarChrome::with_expanded(
+                !medium || remembered.expanded,
+                f64::from(next),
+            )
+        };
+        if let Err(error) = lingxia_shell::set_sidebar_chrome(chrome) {
+            log::warn!("could not persist the sidebar width: {error}");
+        }
+    }
+    if done || next != live {
+        sync_shell_layout(&owner);
+    }
+}
+
 /// The persisted width is a 96-DPI value; the layout it feeds is physical.
 fn persisted_expanded_sidebar_width() -> i32 {
+    let live = LIVE_SIDEBAR_WIDTH.load(Ordering::Acquire);
+    if live > 0 {
+        return crate::dpi::px(live);
+    }
     let logical = lingxia_shell::sidebar_chrome()
         .expanded_width
         .round()
@@ -1067,7 +1138,7 @@ fn apply_windows_host_color_mode() {
     // and a hidden WebView can hold the reply for the whole command timeout
     // after the preference is already on disk. The settings page then reports
     // a failed save for a choice that did take effect.
-    for webtag in lingxia_webview::runtime::list_webviews() {
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         if let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag) {
             handler.post_preferred_color_scheme(scheme);
         }
@@ -1094,6 +1165,9 @@ pub(super) fn install() {
             done(true);
         }));
     }));
+    lingxia_platform::set_windows_chrome_provider(Arc::new(
+        crate::window_host::chrome_elements_for_window,
+    ));
     // Page Chrome capsule measurement: a framed simulated phone answers with
     // its floating pill's page-space rect, so a custom-navigation page lays
     // out around the capsule the way it does on iOS. Hosts without a device
@@ -2048,6 +2122,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         visible: true,
         position,
         dimension: MIN_SIDEBAR_WIDTH,
+        item_offset: 0,
         app_name: root
             .map(browser_tab_display_title)
             .unwrap_or_else(|| "New Tab".to_string()),
@@ -2070,7 +2145,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         items: Vec::new(),
         overflow_start_index: -1,
         collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail,
+        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail),
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
         items_api_hidden: false,
         items_collapsed: false,
@@ -2505,11 +2580,13 @@ fn build_tab_bar_layout(
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
-    // borrow the (much taller) sidebar minimum width. The content area is already
-    // inset by the home-indicator safe area, so the strip sits just above it and
-    // must not re-reserve that height (which would float it up by that much).
+    // borrow the (much taller) sidebar minimum width.
+    // A simulated phone's bar is its host's: the page is told it reaches that far.
+    let frame_tab_bar = owner_window.and_then(device_frame_tab_bar);
     let dimension = match position {
-        WindowsShellTabBarPosition::Bottom => crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT),
+        WindowsShellTabBarPosition::Bottom => frame_tab_bar
+            .map(|(band, growth)| band + growth)
+            .unwrap_or_else(|| crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT)),
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
             persisted_expanded_sidebar_width()
         }
@@ -2541,6 +2618,12 @@ fn build_tab_bar_layout(
         },
         position,
         dimension,
+        item_offset: match (position, frame_tab_bar) {
+            (WindowsShellTabBarPosition::Bottom, Some((band, _))) => {
+                ((band - crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT)) / 2).max(0)
+            }
+            _ => 0,
+        },
         app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
@@ -2565,7 +2648,7 @@ fn build_tab_bar_layout(
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail || force_icon_rail,
+        icon_rail: live_sidebar_rail().unwrap_or(ui_state.icon_rail || force_icon_rail),
         rail_expand_disabled: size_class == SizeClass::Compact,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
@@ -6257,6 +6340,17 @@ fn device_frame_owns_window_controls(_window: isize) -> bool {
 #[cfg(feature = "device-frame")]
 fn device_frame_status_bar_height(window: isize) -> i32 {
     crate::device_frame::device_frame_status_bar_height(window)
+}
+
+#[cfg(feature = "device-frame")]
+/// The simulated host's tab bar: its items' band and the strip below them.
+fn device_frame_tab_bar(window: isize) -> Option<(i32, i32)> {
+    crate::device_frame::device_frame_tab_bar(window).map(|bar| (bar.height, bar.growth))
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn device_frame_tab_bar(_window: isize) -> Option<(i32, i32)> {
+    None
 }
 
 #[cfg(not(feature = "device-frame"))]

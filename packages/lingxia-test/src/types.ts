@@ -632,6 +632,9 @@ export interface FlingOptions {
 
 export interface TouchOptions {
   input?: GestureInput;
+  /** Hold a pressed pointer, as `drag` does: a finger, or the mouse on a desktop. A desktop's
+   * default trackpad presses nothing while its fingers rest. Ignored with `input`. */
+  press?: boolean;
 }
 
 export interface PullToRefreshOptions {

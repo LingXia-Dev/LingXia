@@ -16,7 +16,7 @@ automation = ["dep:lingxia-automation", "dep:base64"]
 # automation facade does not pull native input, AX, clipboard, or snapshot code.
 desktop-automation = ["automation", "lingxia-automation/desktop"]
 automation-runtime = ["automation", "lingxia-automation/runtime"]
-devtool = ["lxapp/automation", "lxapp/dev-bundles", "lingxia-view-android/hot-swap", "lingxia-view-apple/hot-swap", "lingxia-view-harmony/hot-swap"]
+devtool = ["lxapp/automation", "lxapp/dev-bundles", "lingxia-view-android/hot-swap", "lingxia-view-apple/hot-swap", "lingxia-view-harmony/hot-swap", "lingxia-view-windows/hot-swap"]
 # Low-level managed browser tabs. Advanced hosts may provide their own native
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
@@ -98,6 +98,10 @@ lingxia-view-apple = { workspace = true, features = ["gpu"] }
 base64 = { workspace = true }
 swift-bridge = "0.1.59"
 oslog = "0.2.0"
+
+[target.'cfg(windows)'.dependencies]
+lingxia-view-windows = { workspace = true }
+base64 = { workspace = true }
 
 [target.'cfg(target_env = "ohos")'.dependencies]
 # ArkJS stays rong's primary engine (Logic) when QuickJS is linked for View isolates.

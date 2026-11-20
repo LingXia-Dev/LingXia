@@ -1,0 +1,47 @@
+[package]
+name = "lingxia-view-windows"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Windows adapter for the LingXia GPU View host: a page's child window, presentation and input"
+
+[features]
+default = []
+hot-swap = ["lingxia-view/hot-swap"]
+
+# Off Windows the crate is empty, so the workspace builds it on every host.
+[target.'cfg(windows)'.dependencies]
+# DX12 (or Vulkan) presentation through wgpu; a page whose attach fails rasterizes on the CPU.
+lingxia-view = { workspace = true, features = ["gpu"] }
+log = { workspace = true }
+raw-window-handle = { workspace = true }
+serde_json = { workspace = true }
+windows-core = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Performance",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_Ime",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Pointer",
+    "Win32_UI_WindowsAndMessaging",
+] }

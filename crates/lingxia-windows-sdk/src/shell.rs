@@ -80,6 +80,7 @@ pub use chrome::{
 pub use chrome::begin_address_edit;
 
 pub(crate) use chrome::shell_chrome_dirty_rects;
+pub(crate) use chrome::{ChromeItem, chrome_items, sidebar_resize_anchor};
 pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
     paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
@@ -97,12 +98,13 @@ pub(crate) use chrome::{
 pub(crate) use chrome::{aside_tab_drag_source, set_aside_tab_drop_targeted, sidebar_drop_rect};
 pub(crate) use chrome::{
     bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, paint_collapsed_sidebar_tabbar_popup,
-    paint_sidebar_tooltip, paint_transparent_tabbar_overlay, rail_expand_hit,
-    sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius, sidebar_tooltip,
-    transparent_tabbar_overlay_rect,
+    collapsed_sidebar_tabbar_popup_hit, navigation_bar_rect, paint_collapsed_sidebar_tabbar_popup,
+    paint_navigation_bar_overlay, paint_opaque_tabbar_overlay, paint_sidebar_tooltip,
+    paint_transparent_tabbar_overlay, rail_expand_hit, sidebar_rail_tooltip_radius,
+    sidebar_tabbar_popup_radius, sidebar_tooltip, transparent_tabbar_overlay_rect,
 };
 pub(crate) use runtime::promote_aside_tab;
+pub(crate) use runtime::resize_sidebar;
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
 

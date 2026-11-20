@@ -3652,6 +3652,7 @@ dependencies = [
  "lingxia-view-android",
  "lingxia-view-apple",
  "lingxia-view-harmony",
+ "lingxia-view-windows",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
@@ -4380,6 +4381,7 @@ dependencies = [
  "vello_cpu",
  "vello_gpu",
  "wgpu",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -4419,6 +4421,18 @@ dependencies = [
  "raw-window-handle",
  "serde_json",
  "wgpu",
+]
+
+[[package]]
+name = "lingxia-view-windows"
+version = "0.28.0"
+dependencies = [
+ "lingxia-view",
+ "log",
+ "raw-window-handle",
+ "serde_json",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]

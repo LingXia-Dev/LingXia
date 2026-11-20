@@ -43,13 +43,18 @@ pub use app::{
     set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
     set_windows_tray_menu_handler,
 };
+pub use gesture::{WindowsChromeProvider, set_windows_chrome_provider};
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
 pub use notification::{
     ensure_toast_activator, remove_toast_registration, set_toast_activate_handler,
 };
-pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
+pub use pull_to_refresh::{
+    PagePull, report_windows_page_pull, set_windows_page_pull_handler,
+    set_windows_pull_refresh_indicator_reader, set_windows_pull_to_refresh_handler,
+    windows_pull_refresh_indicator,
+};
 pub use surface::{
     WindowsUrlSurfaceWebTag, install_windows_aside_panel_bridge, set_windows_layout_plan_handler,
     set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,

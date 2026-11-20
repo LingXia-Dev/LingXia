@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
-import { requireTurn, turn } from '../helpers/orientation.js';
+import { requirePhone, requireTurn, turn } from '../helpers/orientation.js';
 
 const wide = async (view: { viewport(): Promise<{ width: number; height: number }> }) => {
   const { width, height } = await view.viewport();
@@ -35,10 +35,10 @@ spec('a landscape page lies down while the phone is upright, and the next page s
   id: 'ORIENT-LANDSCAPE-001',
   covers: ['page:pageOrientation=landscape'],
   app: SHOWCASE_APP_ID,
-  // A desktop window keeps the shape its user gave it.
   requires: { input: ['touch'] },
 }, async (t) => {
   const { app } = bindFixture(t, 'ORIENT-LANDSCAPE-001');
+  await requirePhone(t);
   await requireTurn(t);
   t.defer(async () => { await turn(t, 'restore'); });
   await turn(t, 'portrait');

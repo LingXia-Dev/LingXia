@@ -251,6 +251,8 @@ pub use windows::{
     set_windows_ui_update_async_handler, set_windows_ui_update_handler,
     set_windows_url_surface_handler, sync_windows_ui,
 };
+#[cfg(target_os = "windows")]
+pub use windows::{WindowsChromeProvider, set_windows_chrome_provider};
 
 #[cfg(not(any(
     target_os = "android",

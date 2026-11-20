@@ -1,0 +1,121 @@
+//! The text menu the core asks for, as a popup menu at its anchor. Static text's items run
+//! in the core, an editor's through its input connection.
+use lingxia_view::session::host::{MenuAction, MenuTarget, TextMenu, WeakViewHost};
+use std::sync::atomic::Ordering;
+use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::UI::WindowsAndMessaging::{
+    AppendMenuW, CreatePopupMenu, DestroyMenu, EndMenu, MF_STRING, TPM_LEFTALIGN, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TPM_TOPALIGN, TrackPopupMenu,
+};
+use windows::core::HSTRING;
+
+use crate::WindowsAdapter;
+
+const ACTIONS: [MenuAction; 6] = [
+    MenuAction::Cut,
+    MenuAction::Copy,
+    MenuAction::Paste,
+    MenuAction::SelectAll,
+    MenuAction::Undo,
+    MenuAction::Redo,
+];
+
+/// The localizer key and fallback title of `action`.
+fn title(action: MenuAction) -> (&'static str, &'static str) {
+    match action {
+        MenuAction::Cut => ("text_menu.cut", "Cut"),
+        MenuAction::Copy => ("text_menu.copy", "Copy"),
+        MenuAction::Paste => ("text_menu.paste", "Paste"),
+        MenuAction::SelectAll => ("text_menu.select_all", "Select All"),
+        MenuAction::Undo => ("text_menu.undo", "Undo"),
+        MenuAction::Redo => ("text_menu.redo", "Redo"),
+    }
+}
+
+/// Show `menu` (or close the open one) once the current message returns: the popup runs its
+/// own loop. On the page's thread.
+pub(crate) fn show(adapter: &WindowsAdapter, menu: Option<&TextMenu>) {
+    let id = adapter.menu.fetch_add(1, Ordering::AcqRel) + 1;
+    // SAFETY: ends a popup this thread is tracking, if any.
+    let _ = unsafe { EndMenu() };
+    let Some(menu) = menu else {
+        return;
+    };
+    let editor = matches!(menu.target, MenuTarget::Editor { .. });
+    let Some(host) = adapter.host.get().cloned() else {
+        return;
+    };
+    let scale = scale(adapter);
+    let hwnd = adapter.hwnd.load(Ordering::Acquire);
+    let items: Vec<(MenuAction, String)> = menu
+        .actions
+        .iter()
+        .map(|action| {
+            let (key, fallback) = title(*action);
+            (*action, adapter.shell.text(key, fallback))
+        })
+        .collect();
+    let [x, y, _, height] = menu.anchor;
+    let anchor = ((x * scale) as i32, ((y + height) * scale) as i32);
+    adapter.dispatcher.post(Box::new(move || {
+        let current = |host: &WeakViewHost<WindowsAdapter>| {
+            host.upgrade()
+                .is_some_and(|host| host.adapter().menu.load(Ordering::Acquire) == id)
+        };
+        if !current(&host) {
+            return;
+        }
+        let chosen = popup(hwnd, anchor, &items);
+        if current(&host) {
+            run(&host, chosen, editor);
+        }
+    }));
+}
+
+fn run(host: &WeakViewHost<WindowsAdapter>, chosen: Option<MenuAction>, editor: bool) {
+    let Some(host) = host.upgrade() else { return };
+    match chosen {
+        Some(action) if editor => {
+            crate::ime::menu_action(&host, action);
+        }
+        Some(action) => {
+            host.text_menu_action(action);
+        }
+        None => host.text_menu_dismissed(),
+    }
+}
+
+fn popup(hwnd: isize, (x, y): (i32, i32), items: &[(MenuAction, String)]) -> Option<MenuAction> {
+    let owner = HWND(hwnd as *mut _);
+    // SAFETY: a menu made, tracked and destroyed on this thread, owned by its window.
+    unsafe {
+        let menu = CreatePopupMenu().ok()?;
+        for (action, title) in items {
+            let Some(index) = ACTIONS.iter().position(|a| a == action) else {
+                continue;
+            };
+            let _ = AppendMenuW(menu, MF_STRING, index + 1, &HSTRING::from(title.as_str()));
+        }
+        let mut at = POINT { x, y };
+        let _ = ClientToScreen(owner, &mut at);
+        let command = TrackPopupMenu(
+            menu,
+            TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            at.x,
+            at.y,
+            None,
+            owner,
+            None,
+        );
+        let _ = DestroyMenu(menu);
+        usize::try_from(command.0)
+            .ok()
+            .and_then(|command| command.checked_sub(1))
+            .and_then(|index| ACTIONS.get(index).copied())
+    }
+}
+
+fn scale(adapter: &WindowsAdapter) -> f32 {
+    adapter.shown_scale()
+}

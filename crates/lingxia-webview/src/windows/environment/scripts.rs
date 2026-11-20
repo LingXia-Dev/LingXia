@@ -161,6 +161,22 @@ pub(crate) fn install_document_scripts(
     Ok(())
 }
 
+/// An embedded document's one-way `window.lingxia.postMessage`, in its top-level frame only.
+pub(crate) fn install_embed_mailbox(webview: &ICoreWebView2) -> StdResult<()> {
+    let webview = webview.clone();
+    AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+        Box::new(move |handler| unsafe {
+            let script = CoTaskMemPWSTR::from(crate::embed_mailbox::WINDOWS_BOOTSTRAP_SCRIPT);
+            webview
+                .AddScriptToExecuteOnDocumentCreated(*script.as_ref().as_pcwstr(), &handler)
+                .map_err(webview2_com::Error::WindowsError)
+        }),
+        Box::new(|result, _id| result),
+    )
+    .map_err(map_webview2_error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

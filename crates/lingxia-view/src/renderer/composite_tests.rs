@@ -460,3 +460,49 @@ fn sibling_groups_share_one_pass_into_the_surface_they_sit_in() {
         }
     }
 }
+
+#[test]
+fn a_fill_that_covers_another_leaves_no_seam_at_a_fractional_scale() {
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{style:{padding:1,backgroundColor:'#ffffff'}},h('view',{style:{display:'grid',width:31,height:11}},h('view',{style:{gridColumn:'1',gridRow:'1',width:31,height:11,backgroundColor:'#ff0000'}}),h('view',{style:{gridColumn:'1',gridRow:'1',width:31,height:11,backgroundColor:'#ffffff'}})))}",
+    );
+    for scale in [1.0, 1.25, 1.5, 1.75] {
+        let mut page = ViewSession::new(&module).unwrap();
+        let layout = page.layout(48, 24, scale).unwrap();
+        let frame = layout
+            .retained
+            .compose(&HashMap::new())
+            .unwrap()
+            .rasterize()
+            .unwrap();
+        let bleed = frame
+            .pixels
+            .data_as_u8_slice()
+            .chunks_exact(4)
+            .position(|pixel| pixel[0].saturating_sub(pixel[1]) > 4);
+        assert_eq!(bleed, None, "the red underlay shows at scale {scale}");
+    }
+}
+
+#[test]
+fn a_clipped_fill_that_covers_its_clip_leaves_no_seam_at_a_fractional_scale() {
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{style:{padding:1,backgroundColor:'#ffffff'}},h('view',{style:{width:31,height:11,overflow:'hidden',borderRadius:0,backgroundColor:'#ff0000'}},h('view',{style:{width:31,height:11,backgroundColor:'#ffffff'}})))}",
+    );
+    for scale in [1.25, 1.5, 1.75] {
+        let mut page = ViewSession::new(&module).unwrap();
+        let layout = page.layout(48, 24, scale).unwrap();
+        let frame = layout
+            .retained
+            .compose(&HashMap::new())
+            .unwrap()
+            .rasterize()
+            .unwrap();
+        let bleed = frame
+            .pixels
+            .data_as_u8_slice()
+            .chunks_exact(4)
+            .position(|pixel| pixel[0].saturating_sub(pixel[1]) > 4);
+        assert_eq!(bleed, None, "the red clip owner shows at scale {scale}");
+    }
+}

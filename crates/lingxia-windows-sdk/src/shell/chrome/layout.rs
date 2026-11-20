@@ -157,6 +157,8 @@ pub struct WindowsShellTabBarLayout {
     pub visible: bool,
     pub position: WindowsShellTabBarPosition,
     pub dimension: i32,
+    /// A bottom bar's items sit this far down it: centred in the simulated host's band.
+    pub item_offset: i32,
     pub app_name: String,
     /// Absolute path to the lxapp's own icon (resolved via the app-info API),
     /// shown in the group header and the icon rail. Empty falls back to the
@@ -318,6 +320,7 @@ mod click_index_tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 184,
+            item_offset: 0,
             app_name: "App".to_string(),
             app_icon_path: String::new(),
             group_id: "app".to_string(),

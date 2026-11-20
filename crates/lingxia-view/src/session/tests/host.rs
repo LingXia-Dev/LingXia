@@ -2080,7 +2080,7 @@ fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
     let Some(clock) = crate::engine::thread_clock::ThreadClock::current() else {
         return;
     };
-    let probe = 2_000_000u64;
+    let probe = 200_000u64;
     let mut calibration = crate::session::ViewSession::new(&source(&format!(
         "function render(){{let s=0;for(let i=0;i<{probe};i++)s+=i;return h('text',{{}},'probe')}}"
     )))
@@ -2934,6 +2934,33 @@ fn abandoned_automation_calls_expire_instead_of_exhausting_the_slots() {
         serde_json::json!({"n": 0}),
         "a new call still gets a slot"
     );
+}
+
+#[test]
+fn a_page_parked_while_still_shown_stays_blank() {
+    let worker = ViewWorker::spawn("test-park-shown").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{'data-testid':'t'},'page')}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let presents = || host.adapter().log.lock().unwrap().presented.len();
+    let before = presents();
+    // Parked before the next page hides it, as a desktop host can.
+    host.park();
+    host.surface_changed();
+    host.request_frame();
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_secs(2));
+    platform.settle(&[&host]);
+    assert_eq!(presents(), before, "a shown parked page renders nothing");
+    let found = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"t\"]"}))
+        .unwrap();
+    assert_eq!(found["exists"], false, "no old frame un-parks it");
 }
 
 #[test]

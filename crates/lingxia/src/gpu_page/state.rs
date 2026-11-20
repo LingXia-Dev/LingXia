@@ -5,6 +5,8 @@ use lingxia_view_android::lingxia_view;
 use lingxia_view_apple::lingxia_view;
 #[cfg(target_env = "ohos")]
 use lingxia_view_harmony::lingxia_view;
+#[cfg(windows)]
+use lingxia_view_windows::lingxia_view;
 
 pub(crate) use lingxia_view::session::logic::ToLogic;
 use lingxia_view::session::logic::{BridgeError, ToView, UiRequest, VideoCommand, ViewRequest};

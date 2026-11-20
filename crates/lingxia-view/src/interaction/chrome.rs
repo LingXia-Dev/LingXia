@@ -99,6 +99,29 @@ impl ChromeNode {
     pub fn parse(json: &str) -> Result<Self, String> {
         serde_json::from_str(json).map_err(|e| format!("UI_CHROME: {e}"))
     }
+
+    /// The shape fields of an in-process node, as `parse` reads them from its JSON.
+    pub fn from_snapshot(node: &crate::scene::node::NodeSnapshot) -> Self {
+        let bounds = |bounds: [f32; 4]| Some(bounds.map(f64::from));
+        let radii = |radii: Option<[[f32; 2]; 4]>| radii.map(|radii| serde_json::json!(radii));
+        Self {
+            bounds: bounds(node.bounds),
+            visible_bounds: bounds(node.visible_bounds),
+            radius: f64::from(node.radius),
+            radii: radii(node.radii),
+            clips: node
+                .clips
+                .iter()
+                .map(|clip| Clip {
+                    bounds: bounds(clip.bounds),
+                    radius: f64::from(clip.radius),
+                    radii: radii(clip.radii),
+                })
+                .collect(),
+            input: None,
+            text_selection: None,
+        }
+    }
 }
 
 /// Per-corner radii (top-left, top-right, bottom-right, bottom-left), CSS-scaled

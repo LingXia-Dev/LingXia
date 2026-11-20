@@ -229,18 +229,34 @@ page stays on screen, frozen, until the incoming one presents: at most 300 ms wh
 surface still holds a stale frame; a first visit or a recreated surface waits for its first
 frame (a 2 s watchdog, paused while the window is hidden, logs one that never does).
 
+Windows runs each GPU page on its own UI thread, as a WebView2 page runs, with a parent
+window from the host's native-view host and a child content window inside it
+(`crates/lingxia-view-windows`). The page registers under its webtag as
+`WindowsNativeContent`, so `find_webview_handler` returns it and the host presents,
+moves, hides and reparents it exactly as a WebView; a call that only a WebView2 controller
+supports is a no-op for it. The swap chain is bound to the content window: release the
+presenter before that window is destroyed, including when a host destroys the window
+holding it (`WM_DESTROY`), and wait out an attach still running on the render thread —
+a swap chain made for a window that is gone poisons the shared GPU context for every page.
+Touch arrives as `WM_POINTER` (and the registered `LingXiaViewTouch` message automation
+posts); text input runs through IMM32 against the page's editor mirror. Press and
+focus-ring feedback are drawn into the frame (a window over the swap chain cannot blend),
+recovery chrome is a native child panel, and UI Automation answers `WM_GETOBJECT` with a
+fragment tree over the semantic projection. UIA may call from any thread: providers hold
+only the window and a node id and reach the page with a message sent to its thread.
+
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
 
 ## Capability matrix
 
 | Capability | Android | iOS | macOS | HarmonyOS | Windows |
 | --- | --- | --- | --- | --- | --- |
-| GPU page adapter | yes | no | no | no | no |
+| GPU page adapter | yes | no | no | no | yes |
 | Bounded JS jobs | yes | no (JSC) | no (JSC) | no (ArkJS) | yes |
 | CPU raster (tests, previews) | yes | yes | yes | yes | yes |
 | System text scaling | yes | — | — | — | — |
-| Accessibility projection | yes | — | — | — | — |
-| Hover state styles | no (reports a coarse pointer) | — | — | — | — |
+| Accessibility projection | yes | — | — | — | yes (UI Automation) |
+| Hover state styles | no (reports a coarse pointer) | — | — | — | yes |
 | GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
 | GPU device limits | WebGL2 downlevel + 4096 px textures (pipelines bind ≤5 sampled textures, 1 sampler and 1 uniform per stage, 4 bind groups; no storage buffers or compute), else CPU | — | — | — | — |
 

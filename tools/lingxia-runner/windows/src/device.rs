@@ -98,6 +98,26 @@ pub(crate) struct DevicePreset {
     #[serde(rename = "screenRadius")]
     screen_radius: i32,
     notch: DeviceNotch,
+    /// What a phone's host gives a page, in device points.
+    chrome: Option<DeviceChrome>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeviceChrome {
+    /// The host the phone runs: `ios`, `android` or `harmony`.
+    host: String,
+    #[serde(rename = "safeArea")]
+    safe_area: SafeArea,
+    #[serde(rename = "navigationBar")]
+    navigation_bar: f32,
+    #[serde(rename = "tabBar")]
+    tab_bar: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct SafeArea {
+    portrait: [f32; 4],
+    landscape: [f32; 4],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -183,8 +203,91 @@ pub(crate) fn is_phone(index: usize) -> bool {
         .is_some_and(|preset| preset.group == "phone")
 }
 
+/// How far the host's tab bar reaches above the screen's bottom edge. The Android host stacks
+/// it on the system bar; iOS grows it through the home indicator; HarmonyOS grows it by its
+/// extra bottom (TabBar.ets).
+fn tab_bar_reach(chrome: &DeviceChrome, landscape: bool) -> f32 {
+    let bottom = if landscape {
+        chrome.safe_area.landscape[2]
+    } else {
+        chrome.safe_area.portrait[2]
+    };
+    chrome.tab_bar
+        + match chrome.host.as_str() {
+            "android" | "ios" => bottom,
+            "harmony" => (bottom - 6.0).max(12.0) - 12.0,
+            _ => 0.0,
+        }
+}
+
+/// The host tab bar a phone preset gives its pages: its items' band, and the reach past it
+/// that [`gpu_simulation`] reports to GPU pages.
+fn tab_bar_spec(
+    preset: &DevicePreset,
+    landscape: bool,
+) -> lingxia_windows_sdk::WindowsDeviceFrameTabBar {
+    let (band, reach) = match &preset.chrome {
+        Some(chrome) => (chrome.tab_bar, tab_bar_reach(chrome, landscape)),
+        None => (64.0, 64.0),
+    };
+    lingxia_windows_sdk::WindowsDeviceFrameTabBar {
+        height: band.round() as i32,
+        growth: (reach - band).max(0.0).round() as i32,
+    }
+}
+
+/// What GPU pages measure on phone `index`: its viewport, ratio, safe area and host bars in
+/// its points, whatever size the frame shows it at. Tablets and desktops lay out in the window.
+pub(crate) fn gpu_simulation(
+    index: usize,
+    landscape: bool,
+    text_scale: f32,
+    high_contrast: bool,
+) -> Option<lingxia::windows::GpuSimulation> {
+    let preset = presets().get(index).filter(|_| is_phone(index))?;
+    let viewport = if landscape {
+        [preset.height, preset.width]
+    } else {
+        [preset.width, preset.height]
+    };
+    let (safe_area, navigation_bar, tab_bar_reach) = match &preset.chrome {
+        Some(chrome) => {
+            let safe = if landscape {
+                chrome.safe_area.landscape
+            } else {
+                chrome.safe_area.portrait
+            };
+            (
+                safe,
+                chrome.navigation_bar,
+                tab_bar_reach(chrome, landscape),
+            )
+        }
+        None => (
+            [preset.notch.status_bar_height as f32, 0.0, 0.0, 0.0],
+            44.0,
+            64.0,
+        ),
+    };
+    Some(lingxia::windows::GpuSimulation {
+        viewport,
+        pixel_ratio: preset.pixel_ratio,
+        safe_area,
+        navigation_bar,
+        tab_bar_reach,
+        smallest_width: preset.width.min(preset.height),
+        text_scale,
+        high_contrast,
+    })
+}
+
 pub(crate) fn device_label(preset: &DevicePreset) -> String {
-    format!("{}\t{} x {}", preset.name, preset.width.round(), preset.height.round())
+    format!(
+        "{}\t{} x {}",
+        preset.name,
+        preset.width.round(),
+        preset.height.round()
+    )
 }
 
 /// Status-bar text/glyph color, contrasting the shell chrome it sits over so
@@ -240,6 +343,7 @@ pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> Window
                 transparent: false,
             },
         ),
+        tab_bar: is_phone(index).then(|| tab_bar_spec(preset, landscape)),
         bezel_color: preset.bezel_color,
         // Keep clipped screen corners backed by the device shell instead of
         // exposing the desktop through the rounded edge.

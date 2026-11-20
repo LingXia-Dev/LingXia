@@ -43,10 +43,12 @@ pub trait Player: Send {
     fn has_new(&self) -> bool;
     /// Drops a first frame decoded ahead of the player, for a player that starts elsewhere.
     fn discard_first(&mut self) {}
-    /// The frame due now, when it is new.
+    /// The frame due now, when it is new. A player whose frames reach the CPU writes them
+    /// through `queue`.
     fn next_frame(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
     ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String>;
     /// The page's props changed: only the fields that differ from `previous` apply, so a
     /// handle's change stands until its prop changes.
@@ -192,6 +194,7 @@ pub(crate) fn open_nothing_real() {
         fn next_frame(
             &mut self,
             _: &wgpu::Device,
+            _: &wgpu::Queue,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
             Ok(None)
         }
@@ -1241,7 +1244,7 @@ fn step(now: &Status, target: f64, started: bool, looped: bool) -> Step {
 
 /// Moves a switch on at a refresh: starts the next player just before the playing one reaches
 /// its position, then binds its frame once the playing one has, so the picture never stalls.
-fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
+fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device, queue: &wgpu::Queue) {
     let Some(switch) = &mut entry.switch else {
         return;
     };
@@ -1290,7 +1293,7 @@ fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device) {
             Step::Bind => {}
         }
     }
-    let Ok(Some((texture, size))) = next.next_frame(device) else {
+    let Ok(Some((texture, size))) = next.next_frame(device, queue) else {
         return;
     };
     let after = next.status().current_time;
@@ -1502,7 +1505,11 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
 
 /// Imports the frame due now of every player `display` draws: whether it draws a video, and
 /// whether a player gave a new frame.
-pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList) -> (bool, bool) {
+pub(crate) fn import_frames(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    display: &crate::DisplayList,
+) -> (bool, bool) {
     let mut imported = false;
     let keys = keys(display);
     let mut players = players();
@@ -1511,7 +1518,7 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
             continue;
         };
         let frames = entry.frames;
-        advance_switch(key, entry, device);
+        advance_switch(key, entry, device, queue);
         if entry.frames != frames {
             imported = true;
             continue;
@@ -1520,7 +1527,7 @@ pub(crate) fn import_frames(device: &wgpu::Device, display: &crate::DisplayList)
             continue;
         };
         let started = Instant::now();
-        match player.next_frame(device) {
+        match player.next_frame(device, queue) {
             Ok(Some((texture, size))) => {
                 if entry.frame.as_ref().is_none_or(|frame| frame.size != size) {
                     EPOCH.fetch_add(1, Ordering::Relaxed);
@@ -1926,6 +1933,7 @@ mod platform {
         fn next_frame(
             &mut self,
             device: &wgpu::Device,
+            _queue: &wgpu::Queue,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
             self.frame(device)
         }
@@ -2744,6 +2752,7 @@ mod opener_tests {
         fn next_frame(
             &mut self,
             _: &wgpu::Device,
+            _: &wgpu::Queue,
         ) -> Result<Option<(wgpu::Texture, [u16; 2])>, String> {
             Ok(None)
         }

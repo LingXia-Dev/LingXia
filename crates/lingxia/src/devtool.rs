@@ -512,6 +512,7 @@ fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
         target_os = "ios",
         target_os = "macos",
         target_env = "ohos",
+        target_os = "windows",
         test
     ))]
     // The dev terminal prints this beside the page path: say what happened, not its category.
@@ -524,6 +525,7 @@ fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
         target_os = "ios",
         target_os = "macos",
         target_env = "ohos",
+        target_os = "windows",
         test
     )))]
     {

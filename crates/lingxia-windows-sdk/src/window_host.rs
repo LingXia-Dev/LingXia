@@ -32,7 +32,6 @@ use lingxia_webview::platform::windows::{
     ParentRetirement, ParkOutcome, WindowsWebViewHandler, WindowsWebViewNativeView,
     WindowsWebViewNativeViewHost, find_webview_handler, set_webview_native_view_host,
 };
-use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
 // Contract types/handlers are consumed straight from the contract crate. This
 // module is the host-window *implementation*; it does not re-export the
@@ -348,6 +347,61 @@ struct TransparentTabbarOverlay {
     window: isize,
     rect: RECT,
 }
+
+/// Native (GPU) pages span the whole screen under the host's bars, which draw over them: set
+/// while the Runner simulates a phone, whose pages pad by the bars themselves.
+static NATIVE_PAGES_SPAN_SCREEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Lay native pages out across the whole screen, the host's bars drawn over them, as a phone's
+/// host does; `false` restores the WebView layout below the navigation bar.
+pub fn set_native_pages_span_screen(span: bool) {
+    NATIVE_PAGES_SPAN_SCREEN.store(span, std::sync::atomic::Ordering::Release);
+}
+
+/// Pages whose top layer (an open dialog) is up: the tab bar goes under its backdrop and takes
+/// no clicks, as on a phone.
+static TOP_LAYERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn under_top_layer(webtag_key: &str) -> bool {
+    TOP_LAYERS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .any(|key| key == webtag_key)
+}
+
+fn set_top_layer(webtag_key: &str, modal: bool) {
+    {
+        let mut layers = TOP_LAYERS.lock().unwrap_or_else(|p| p.into_inner());
+        layers.retain(|key| key != webtag_key);
+        if modal {
+            layers.push(webtag_key.to_owned());
+        }
+    }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(host) = window_handle_for_key(webtag_key) {
+        let handle = hwnd_handle(host);
+        let _ = post_to_window_thread(
+            handle,
+            Box::new(move || {
+                let host = hwnd_from_handle(handle);
+                sync_chrome_overlays(host, active_webtag_key_for_window(host).as_deref());
+            }),
+        );
+    }
+}
+
+fn spans_screen(webtag_key: &str) -> bool {
+    NATIVE_PAGES_SPAN_SCREEN.load(std::sync::atomic::Ordering::Acquire)
+        && webtag_for_key(webtag_key)
+            .and_then(|tag| find_webview_handler(&tag))
+            .is_some_and(|handler| handler.content_window().is_some())
+}
+
+#[cfg(feature = "shell-chrome")]
+static NAVIGATION_BAR_OVERLAYS: OnceLock<Mutex<HashMap<isize, TransparentTabbarOverlay>>> =
+    OnceLock::new();
 
 #[cfg(feature = "shell-chrome")]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -690,6 +744,10 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
 
     fn find_webview_content_window(&self, webtag: &WebTag) -> Option<WindowsWebViewContentWindow> {
         find_webview_content_window(webtag)
+    }
+
+    fn set_webview_top_layer(&self, webtag: &WebTag, modal: bool) {
+        set_top_layer(webtag.key(), modal);
     }
 
     fn webview_window_snapshot(&self, webtag: &WebTag) -> StdResult<WindowsWebViewWindowSnapshot> {
@@ -1100,6 +1158,9 @@ fn present_webview_in_active_group_with_policy(
     // browser row to an already-selected lxapp tab can show the new page for
     // one frame under the old browser address bar.
     repaint_window_now(host);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
@@ -1124,6 +1185,9 @@ fn present_webview_in_active_group_with_policy(
     // Re-run without explicit candidates to converge a controller registered
     // into the host while the incoming main was being laid out.
     retire_other_group_main_controllers(host, webtag.key(), &[]);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
 
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
@@ -3019,6 +3083,9 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             return normalize_rect(rect);
         }
     }
+    if spans_screen(webtag_key) {
+        return client;
+    }
     normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
 }
 
@@ -3292,8 +3359,241 @@ fn sync_window_layout(hwnd: HWND) {
 fn sync_chrome_overlays(hwnd: HWND, webtag_key: Option<&str>) {
     sidebar_peek::sync(hwnd);
     sync_transparent_tabbar_overlay(hwnd, webtag_key);
+    sync_navigation_bar_overlay(hwnd, webtag_key);
     full_chrome_caption::sync_full_chrome_caption_overlay(hwnd);
     tabbar_overflow::reposition_tabbar_overflow(hwnd);
+}
+
+/// The navigation bar over a page that spans the screen, in its own window above the page.
+#[cfg(feature = "shell-chrome")]
+fn sync_navigation_bar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
+    let placed = webtag_key
+        .filter(|key| spans_screen(key))
+        .filter(|_| is_window_visible(hwnd) && !is_minimized(hwnd))
+        .and_then(|key| {
+            let mut client = RECT::default();
+            unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.ok()?;
+            let layout = current_window_layout(key);
+            crate::shell::navigation_bar_rect(client, &layout).map(|rect| (layout, rect))
+        })
+        .filter(|(_, rect)| rect.right > rect.left && rect.bottom > rect.top);
+    let overlays = NAVIGATION_BAR_OVERLAYS.get_or_init(|| Mutex::new(HashMap::new()));
+    let existing = overlays
+        .lock()
+        .ok()
+        .and_then(|overlays| overlays.get(&hwnd_handle(hwnd)).copied())
+        .filter(|overlay| is_window_handle_valid(overlay.window));
+    let Some((layout, rect)) = placed else {
+        if let Some(overlay) = existing {
+            unsafe {
+                let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(overlay.window));
+            }
+        }
+        if let Ok(mut overlays) = overlays.lock() {
+            overlays.remove(&hwnd_handle(hwnd));
+        }
+        return;
+    };
+    let window = match existing {
+        Some(overlay) => overlay.window,
+        None => create_chrome_overlay_window(hwnd, navigation_bar_overlay_class(), rect),
+    };
+    if window == 0 {
+        return;
+    }
+    if let Ok(mut overlays) = overlays.lock() {
+        overlays.insert(hwnd_handle(hwnd), TransparentTabbarOverlay { window, rect });
+    }
+    let mut origin = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd_from_handle(window),
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+    }
+    upload_navigation_bar_overlay(hwnd_from_handle(window), &layout);
+}
+
+#[cfg(feature = "shell-chrome")]
+fn navigation_bar_overlay_class() -> PCWSTR {
+    static CLASS: OnceLock<()> = OnceLock::new();
+    CLASS.get_or_init(|| {
+        let class = WNDCLASSW {
+            style: WindowsAndMessaging::CS_DBLCLKS,
+            lpfnWndProc: Some(navigation_bar_overlay_proc),
+            hInstance: unsafe { LibraryLoader::GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            hCursor: unsafe {
+                WindowsAndMessaging::LoadCursorW(None, WindowsAndMessaging::IDC_ARROW)
+            }
+            .unwrap_or_default(),
+            lpszClassName: w!("LingXiaNavigationBarOverlay"),
+            ..Default::default()
+        };
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
+        }
+    });
+    w!("LingXiaNavigationBarOverlay")
+}
+
+#[cfg(feature = "shell-chrome")]
+fn navigation_bar_overlay_entry(hwnd: HWND) -> Option<(HWND, RECT)> {
+    let overlay = hwnd_handle(hwnd);
+    NAVIGATION_BAR_OVERLAYS
+        .get()?
+        .lock()
+        .ok()?
+        .iter()
+        .find(|(_, entry)| entry.window == overlay)
+        .map(|(host, entry)| (hwnd_from_handle(*host), entry.rect))
+}
+
+#[cfg(feature = "shell-chrome")]
+unsafe extern "system" fn navigation_bar_overlay_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let host_point = || {
+        navigation_bar_overlay_entry(hwnd).map(|(host, rect)| {
+            let local = lparam_client_point(lparam);
+            (host, (rect.left + local.0, rect.top + local.1))
+        })
+    };
+    match msg {
+        WindowsAndMessaging::WM_PAINT => {
+            validate_empty_paint(hwnd);
+            if let Some((host, _)) = navigation_bar_overlay_entry(hwnd)
+                && let Some(key) = active_webtag_key_for_window(host)
+            {
+                upload_navigation_bar_overlay(hwnd, &current_window_layout(&key));
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
+        WindowsAndMessaging::WM_NCHITTEST => LRESULT(WindowsAndMessaging::HTCLIENT as isize),
+        WindowsAndMessaging::WM_MOUSEMOVE => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_mouse_move(host, point, false);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDOWN => {
+            if let Some((host, point)) = host_point() {
+                unsafe {
+                    let _ = SetFocus(Some(host));
+                }
+                let _ = handle_chrome_left_down(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_left_up(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONDBLCLK => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_left_double_click(host, point);
+            }
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_RBUTTONUP => {
+            if let Some((host, point)) = host_point() {
+                let _ = handle_chrome_right_up(host, point);
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// The bar is opaque: paint it, then make every pixel solid.
+#[cfg(feature = "shell-chrome")]
+fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
+        return;
+    }
+    let width = (client.right - client.left).max(1);
+    let height = (client.bottom - client.top).max(1);
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return;
+        }
+        let dc = CreateCompatibleDC(Some(screen));
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let bitmap = CreateDIBSection(Some(screen), &info, DIB_RGB_COLORS, &mut bits, None, 0);
+        if let Ok(bitmap) = bitmap
+            && !dc.is_invalid()
+            && !bits.is_null()
+        {
+            let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+            crate::shell::paint_navigation_bar_overlay(dc, layout, width, height);
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            let pixels =
+                std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
+            for pixel in pixels {
+                *pixel |= 0xff00_0000;
+            }
+            let size = SIZE {
+                cx: width,
+                cy: height,
+            };
+            let origin = POINT { x: 0, y: 0 };
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as u8,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as u8,
+            };
+            let _ = WindowsAndMessaging::UpdateLayeredWindow(
+                hwnd,
+                Some(screen),
+                None,
+                Some(&size),
+                Some(dc),
+                Some(&origin),
+                COLORREF(0),
+                Some(&blend),
+                WindowsAndMessaging::ULW_ALPHA,
+            );
+            if !old_bitmap.is_invalid() {
+                let _ = SelectObject(dc, old_bitmap);
+            }
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        }
+        if !dc.is_invalid() {
+            let _ = DeleteDC(dc);
+        }
+        let _ = ReleaseDC(None, screen);
+    }
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -3304,8 +3604,8 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             return None;
         }
         // A full-screen drill surface covers the whole device screen, tab
-        // bar included.
-        if fullscreen_drill_visible(hwnd) {
+        // bar included; so does an open dialog's backdrop.
+        if fullscreen_drill_visible(hwnd) || under_top_layer(webtag_key) {
             return None;
         }
         let mut client = RECT::default();
@@ -3326,7 +3626,14 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
             return None;
         }
         let layout = current_window_layout(webtag_key);
-        crate::shell::transparent_tabbar_overlay_rect(client, &layout).map(|rect| (layout, rect))
+        // A page that spans the screen covers an opaque bar too, so that one draws over it.
+        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+            .or_else(|| {
+                spans_screen(webtag_key)
+                    .then(|| crate::shell::bottom_tabbar_rect(client, &layout))
+                    .flatten()
+            })
+            .map(|rect| (layout, rect))
     });
     let Some((layout, rect)) =
         overlay_layout.filter(|(_, rect)| rect.right > rect.left && rect.bottom > rect.top)
@@ -3542,8 +3849,19 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             0,
             pixel_count * std::mem::size_of::<u32>(),
         );
-        let text_runs = crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height);
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
+        let opaque = crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
+        if opaque {
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            for pixel in pixels.iter_mut() {
+                *pixel |= 0xff00_0000;
+            }
+        }
+        let text_runs = if opaque {
+            Vec::new()
+        } else {
+            crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height)
+        };
         for text_run in text_runs {
             crate::layered_text::draw_supersampled_text_mask(
                 dc,
@@ -3625,7 +3943,12 @@ fn ensure_transparent_tabbar_overlay(hwnd: HWND, rect: RECT) -> isize {
         return existing.window;
     }
 
-    let class = transparent_tabbar_overlay_class();
+    create_chrome_overlay_window(hwnd, transparent_tabbar_overlay_class(), rect)
+}
+
+/// A layered popup owned by `hwnd`, for chrome drawn over its pages.
+#[cfg(feature = "shell-chrome")]
+fn create_chrome_overlay_window(hwnd: HWND, class: PCWSTR, rect: RECT) -> isize {
     let instance = unsafe { LibraryLoader::GetModuleHandleW(None) }
         .ok()
         .map(|module| HINSTANCE(module.0));
@@ -4783,7 +5106,8 @@ fn apply_corner_alpha_mask(pixels: &mut [u32], width: i32, height: i32, radii: [
         let distance = (dx * dx + dy * dy).sqrt();
         ((radius as f32 - distance + 0.5).clamp(0.0, 1.0) * 255.0) as u32
     };
-    for y in 0..height {
+    let (top, bottom) = (tl.max(tr), height - br.max(bl));
+    for y in (0..height).filter(|y| *y < top || *y >= bottom) {
         for x in 0..width {
             let coverage = coverage_at(x, y);
             if coverage == 255 {
@@ -5297,7 +5621,7 @@ fn reconcile_host_webview_visibility(
     let mut to_show = Vec::new();
     let mut to_hide = Vec::new();
 
-    for webtag in lingxia_webview::runtime::list_webviews() {
+    for webtag in lingxia_webview::platform::windows::list_content_webtags() {
         let key = webtag.key().to_string();
         let Some(window) = window_handle_for_key(&key) else {
             continue;
@@ -5410,7 +5734,7 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
 }
 
 fn webtag_for_key(webtag_key: &str) -> Option<WebTag> {
-    lingxia_webview::runtime::list_webviews()
+    lingxia_webview::platform::windows::list_content_webtags()
         .into_iter()
         .find(|webtag| webtag.key() == webtag_key)
 }
@@ -5791,8 +6115,20 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
-    restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
+    let previous = slot
+        .lock()
+        .ok()
+        .and_then(|slot| *slot)
+        .filter(|previous| *previous != hwnd_handle(hwnd));
+    // A relaunch moves the workspace to a new window: the frame the user (or a resize)
+    // gave the old one comes along instead of the first-launch default.
+    if let Some(previous) = previous {
+        remember_primary_frame(hwnd_from_handle(previous));
+    }
+    if previous.is_none() || !adopt_primary_frame(hwnd, previous.map(hwnd_from_handle)) {
+        restore_primary_window_frame(hwnd);
+    }
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
     }
@@ -5802,6 +6138,77 @@ fn set_primary_host_window(hwnd: HWND) {
     // default until the user manually resizes the window.
     #[cfg(feature = "shell-chrome")]
     report_shell_surface_width(hwnd);
+}
+
+/// The last primary host's screen frame, while it was neither maximized nor minimized.
+static PRIMARY_FRAME: Mutex<Option<RECT>> = Mutex::new(None);
+
+fn frame_follows_workspace(hwnd: HWND) -> bool {
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
+        return false;
+    }
+    !DEFAULT_HOST_HEADLESS.load(Ordering::Acquire)
+        && TRAY_POPOVER_HWND.load(Ordering::Relaxed) != hwnd_handle(hwnd)
+}
+
+fn remember_primary_frame(hwnd: HWND) {
+    let is_window = unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() };
+    if !is_window || !frame_follows_workspace(hwnd) {
+        return;
+    }
+    let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
+        length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    let mut rect = RECT::default();
+    let read = unsafe {
+        WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_ok()
+            && WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_ok()
+    };
+    let normal = read
+        && !placement_is_maximized(&placement)
+        && placement.showCmd as i32 != WindowsAndMessaging::SW_SHOWMINIMIZED.0
+        && rect.right > rect.left
+        && rect.bottom > rect.top;
+    if let Ok(mut frame) = PRIMARY_FRAME.lock() {
+        *frame = normal.then_some(rect);
+    }
+}
+
+/// Takes the old primary's frame and, while it is still up, its place in the z-order: a
+/// window shown at the top from a background process can land under the foreground app.
+fn adopt_primary_frame(hwnd: HWND, previous: Option<HWND>) -> bool {
+    if !frame_follows_workspace(hwnd) {
+        return false;
+    }
+    let Some(rect) = PRIMARY_FRAME.lock().ok().and_then(|frame| *frame) else {
+        return false;
+    };
+    let above = previous
+        .filter(|previous| unsafe { WindowsAndMessaging::IsWindow(Some(*previous)).as_bool() })
+        .map(|previous| {
+            unsafe { WindowsAndMessaging::GetWindow(previous, WindowsAndMessaging::GW_HWNDPREV) }
+                .ok()
+                .filter(|above| *above != hwnd)
+                .unwrap_or(WindowsAndMessaging::HWND_TOP)
+        });
+    let mut flags = WindowsAndMessaging::SWP_NOACTIVATE;
+    if above.is_none() {
+        flags |= WindowsAndMessaging::SWP_NOZORDER;
+    }
+    unsafe {
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            above,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            flags,
+        )
+        .is_ok()
+    }
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
@@ -7422,6 +7829,10 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     if is_full_chrome_window(hwnd) && point.y < full_chrome_drag_strip_pixels(hwnd) {
         return LRESULT(WindowsAndMessaging::HTCAPTION as isize);
     }
+    #[cfg(feature = "shell-chrome")]
+    if sidebar_resize_anchor_at(hwnd, point_tuple).is_some() {
+        return LRESULT(WindowsAndMessaging::HTCLIENT as isize);
+    }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
         // Windows 11 discovers custom-titlebar snap layouts through
@@ -7851,6 +8262,111 @@ pub fn center_host_window_on_work_area(window: isize) {
 /// for the resize cursor.
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG: AtomicBool = AtomicBool::new(false);
+/// A sidebar width drag: the sidebar's fixed edge x and whether it sits on the left.
+#[cfg(feature = "shell-chrome")]
+static SIDEBAR_DRAG: Mutex<Option<(i32, bool)>> = Mutex::new(None);
+
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn chrome_elements_for_window(
+    window: isize,
+    reveal_tabs: bool,
+) -> (Vec<lingxia_platform::traits::gesture::ChromeElement>, bool) {
+    let hwnd = HWND(window as *mut _);
+    let Some(state) = chrome_state_for_window(hwnd) else {
+        return (Vec::new(), false);
+    };
+    let mut items = crate::shell::chrome_items(&state);
+    if active_webtag_key_for_window(hwnd).is_some_and(|key| under_top_layer(&key)) {
+        items.retain(|item| item.scope != "tabBar");
+    }
+    let mut opening = false;
+    // A rail shows no tabs; as on macOS, a query for tabs peeks it as a pointer would.
+    if reveal_tabs && crate::shell::sidebar_peek_layout(state.client, &state.layout).is_some() {
+        match sidebar_peek::rows(hwnd) {
+            Some(rows) => {
+                items.retain(|item| item.scope != "sidebar");
+                items.extend(rows);
+            }
+            None => {
+                opening = post_to_window_thread(
+                    window,
+                    Box::new(move || {
+                        sidebar_peek::open(hwnd_from_handle(window));
+                    }),
+                );
+            }
+        }
+    }
+    let elements = items
+        .into_iter()
+        .map(|item| lingxia_platform::traits::gesture::ChromeElement {
+            role: if item.scope == "sidebar" || item.scope == "tabBar" {
+                "tab"
+            } else {
+                "button"
+            }
+            .into(),
+            label: item.label,
+            scope: item.scope.into(),
+            selected: item.selected,
+            bounds: [
+                item.rect.left,
+                item.rect.top,
+                item.rect.right - item.rect.left,
+                item.rect.bottom - item.rect.top,
+            ]
+            .map(f64::from),
+        })
+        .collect();
+    (elements, opening)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_anchor_at(hwnd: HWND, point: (i32, i32)) -> Option<(i32, bool)> {
+    crate::shell::sidebar_resize_anchor(&chrome_state_for_window(hwnd)?, point)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sidebar_resize_cursor_wanted(hwnd: HWND) -> bool {
+    if SIDEBAR_DRAG
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .is_some()
+    {
+        return true;
+    }
+    let mut cursor = POINT::default();
+    unsafe {
+        if WindowsAndMessaging::GetCursorPos(&mut cursor).is_err()
+            || !ScreenToClient(hwnd, &mut cursor).as_bool()
+        {
+            return false;
+        }
+    }
+    sidebar_resize_anchor_at(hwnd, (cursor.x, cursor.y)).is_some()
+}
+
+/// Apply a sidebar width drag at `point`; `done` ends it. False when none is running.
+#[cfg(feature = "shell-chrome")]
+fn drive_sidebar_drag(hwnd: HWND, point: Option<(i32, i32)>, done: bool) -> bool {
+    let mut drag = SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner());
+    let Some((anchor, left)) = *drag else {
+        return false;
+    };
+    if done {
+        *drag = None;
+    }
+    drop(drag);
+    let width = point.map(|point| {
+        f64::from(if left {
+            point.0 - anchor
+        } else {
+            anchor - point.0
+        }) / crate::dpi::window_scale(hwnd)
+    });
+    crate::shell::resize_sidebar(width, done);
+    true
+}
 #[cfg(feature = "shell-chrome")]
 static DIVIDER_DRAG_VERTICAL: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "shell-chrome")]
@@ -8121,6 +8637,18 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
     }
     #[cfg(feature = "shell-chrome")]
     {
+        if drive_sidebar_drag(hwnd, Some(point), false) {
+            set_divider_cursor(true);
+            return true;
+        }
+        if sidebar_resize_anchor_at(hwnd, point).is_some() {
+            clear_chrome_hover(hwnd);
+            set_divider_cursor(true);
+            return true;
+        }
+    }
+    #[cfg(feature = "shell-chrome")]
+    {
         if DIVIDER_DRAG.load(Ordering::Acquire) {
             crate::shell::update_divider_drag(point.0, point.1);
             set_divider_cursor(DIVIDER_DRAG_VERTICAL.load(Ordering::Acquire));
@@ -8294,6 +8822,15 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
         set_divider_cursor(vertical);
         return true;
     }
+    #[cfg(feature = "shell-chrome")]
+    if let Some(anchor) = sidebar_resize_anchor_at(hwnd, point) {
+        *SIDEBAR_DRAG.lock().unwrap_or_else(|p| p.into_inner()) = Some(anchor);
+        unsafe {
+            let _ = SetCapture(hwnd);
+        }
+        set_divider_cursor(true);
+        return true;
+    }
     let Some(hit) = chrome_hit_for_window(hwnd, point) else {
         return false;
     };
@@ -8457,6 +8994,13 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             let _ = ReleaseCapture();
         }
         crate::shell::end_divider_drag();
+        return true;
+    }
+    #[cfg(feature = "shell-chrome")]
+    if drive_sidebar_drag(hwnd, Some(point), true) {
+        unsafe {
+            let _ = ReleaseCapture();
+        }
         return true;
     }
     let webtag_key = active_webtag_key_for_window(hwnd);
@@ -8698,6 +9242,35 @@ fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool)
     }
 }
 
+/// Shows a pull `share` of the way to the trigger on the page's bar; `None` takes it down.
+pub(crate) fn show_page_pull(webtag_key: &str, share: Option<f32>) {
+    let Some(hwnd) = window_handle_for_key(webtag_key) else {
+        return;
+    };
+    let webtag_key = webtag_key.to_string();
+    let show = move || {
+        let Some(share) = share else {
+            crate::refresh_bar::cancel_pull(&webtag_key);
+            return;
+        };
+        let Some(hwnd) = window_handle_for_key(&webtag_key) else {
+            return;
+        };
+        if crate::refresh_bar::show_pull(hwnd, &webtag_key, share, refresh_bar_color()) {
+            let rect = content_rect_for_window(hwnd, &webtag_key);
+            let (radii, _) = surface_clip_style(hwnd, &webtag_key, rect);
+            place_refresh_bar(hwnd, &webtag_key, rect, radii);
+        }
+    };
+    if unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) }
+        == unsafe { GetCurrentThreadId() }
+    {
+        show();
+    } else {
+        post_to_window_thread(hwnd_handle(hwnd), Box::new(show));
+    }
+}
+
 /// A refresh is running on the page (started, not yet stopped).
 #[cfg(feature = "components")]
 pub(crate) fn is_pull_down_refreshing(webtag: &WebTag) -> bool {
@@ -8816,6 +9389,21 @@ pub fn show_webview_window_with_chrome(
     #[cfg(feature = "shell-chrome")]
     sync_chrome_overlays(hwnd, Some(webtag.key()));
     Ok(())
+}
+
+/// Laying out and retiring controllers wait on other threads, and the UI thread
+/// handles sent messages meanwhile: a relaunch can destroy this page and present
+/// its successor before the present resumes. Its tail must then not reshow the
+/// old host or hide the successor's as a duplicate.
+fn presentation_outlived(webtag: &WebTag) -> bool {
+    let gone = find_webview_handler(webtag).is_none();
+    if gone {
+        log::info!(
+            "abandoning the present of {}: the page closed meanwhile",
+            webtag.key()
+        );
+    }
+    gone
 }
 
 fn show_webview_window_replacing(
@@ -8940,6 +9528,9 @@ fn show_webview_window_replacing(
     handler.set_content_visible(true)?;
 
     retire_other_group_main_controllers(target, webtag.key(), &[]);
+    if presentation_outlived(webtag) {
+        return Ok(());
+    }
 
     let defer_initial_show = defer_initial_home_window(webtag, target);
     if !defer_initial_show && (!is_window_visible(target) || activate) {
@@ -8973,7 +9564,7 @@ fn show_webview_window_replacing(
 /// unconditionally. Attached asides are deliberately excluded.
 fn retire_other_group_main_controllers(host: HWND, active_key: &str, explicitly_hidden: &[WebTag]) {
     let mut candidates = explicitly_hidden.to_vec();
-    for candidate in webview_runtime::list_webviews() {
+    for candidate in lingxia_webview::platform::windows::list_content_webtags() {
         if candidate.key() == active_key
             || webtag_is_registered_panel(candidate.key())
             || window_handle_for_key(candidate.key()) != Some(host)
@@ -9139,8 +9730,21 @@ struct NavSnapshotSlide {
     source_dc: isize,
     source_bitmap: isize,
     source_old_bitmap: isize,
+    /// The overlay's own pixels, composed from the source each frame.
+    frame: NavSlideFrame,
+    /// The screen's corners, clipped out of every frame.
+    radii: [i32; 4],
     forward: bool,
     started: Option<Instant>,
+}
+
+#[cfg(feature = "components")]
+#[derive(Clone, Copy)]
+struct NavSlideFrame {
+    dc: isize,
+    bitmap: isize,
+    old_bitmap: isize,
+    bits: usize,
 }
 
 #[cfg(feature = "components")]
@@ -9183,13 +9787,30 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
     let Ok(decoded) = image::load_from_memory(&png) else {
         return false;
     };
-    let rgba = decoded.into_rgba8();
+    let rect = content_rect_for_window(host, prev_key);
+    let mut rgba = decoded.into_rgba8();
+    // A GPU page on a simulated device captures at the device's pixels, not the shown size.
+    let (shown_width, shown_height) = (
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    );
+    if shown_width > 0
+        && shown_height > 0
+        && (rgba.width(), rgba.height()) != (shown_width, shown_height)
+    {
+        rgba = image::imageops::resize(
+            &rgba,
+            shown_width,
+            shown_height,
+            image::imageops::FilterType::Triangle,
+        );
+    }
     let (width, height) = (rgba.width() as i32, rgba.height() as i32);
     if width <= 0 || height <= 0 {
         return false;
     }
     // Premultiplied BGRA, as UpdateLayeredWindow's AC_SRC_ALPHA expects.
-    let mut pixels: Vec<u32> = rgba
+    let pixels: Vec<u32> = rgba
         .pixels()
         .map(|p| {
             let [r, g, b, a] = p.0;
@@ -9199,17 +9820,9 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
         })
         .collect();
 
-    let rect = content_rect_for_window(host, prev_key);
-    // CapturePreview sees content pre-clip; carry the live surface's rounded
-    // corners into the snapshot so the slide doesn't ghost square ones.
-    if handler.is_composition_hosted() {
-        apply_corner_alpha_mask(
-            &mut pixels,
-            width,
-            height,
-            surface_clip_style(host, prev_key, rect).0,
-        );
-    }
+    // A capture is unclipped and the overlay is its own window: each frame takes the live
+    // surface's rounded corners, fixed to the screen while the image slides under them.
+    let radii = surface_clip_style(host, prev_key, rect).0;
     let mut origin = POINT {
         x: rect.left,
         y: rect.top,
@@ -9235,6 +9848,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
                     height,
                     pixels,
                     forward,
+                    radii,
                 );
                 let _ = done_tx.send(mounted);
             }),
@@ -9244,7 +9858,7 @@ fn prepare_nav_snapshot_slide(host: HWND, prev_key: &str, forward: bool) -> bool
                 .recv_timeout(std::time::Duration::from_secs(5))
                 .unwrap_or(false);
     }
-    mount_nav_snapshot_overlay(host, origin, width, height, pixels, forward)
+    mount_nav_snapshot_overlay(host, origin, width, height, pixels, forward, radii)
 }
 
 /// Creates the layered overlay window on the host thread, uploads the snapshot
@@ -9259,6 +9873,7 @@ fn mount_nav_snapshot_overlay(
     height: i32,
     pixels: Vec<u32>,
     forward: bool,
+    radii: [i32; 4],
 ) -> bool {
     static NAV_OVERLAY_CLASS: OnceLock<()> = OnceLock::new();
     NAV_OVERLAY_CLASS.get_or_init(|| {
@@ -9308,6 +9923,13 @@ fn mount_nav_snapshot_overlay(
         }
         return false;
     };
+    let Some(frame) = create_nav_slide_dib(width, height) else {
+        release_nav_snapshot_source(source_dc, source_bitmap, source_old_bitmap);
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(overlay);
+        }
+        return false;
+    };
     let start_src_x = if forward { 0 } else { width };
     let presented = present_nav_snapshot_frame(
         overlay,
@@ -9315,10 +9937,13 @@ fn mount_nav_snapshot_overlay(
         width,
         height,
         hdc_from_handle(source_dc),
+        frame,
+        radii,
         start_src_x,
     );
     if !presented {
         release_nav_snapshot_source(source_dc, source_bitmap, source_old_bitmap);
+        release_nav_snapshot_source(frame.dc, frame.bitmap, frame.old_bitmap);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(overlay);
         }
@@ -9352,6 +9977,8 @@ fn mount_nav_snapshot_overlay(
             source_dc,
             source_bitmap,
             source_old_bitmap,
+            frame,
+            radii,
             forward,
             started: None,
         },
@@ -9365,6 +9992,8 @@ fn mount_nav_snapshot_overlay(
             previous.source_bitmap,
             previous.source_old_bitmap,
         );
+        let frame = previous.frame;
+        release_nav_snapshot_source(frame.dc, frame.bitmap, frame.old_bitmap);
     }
     true
 }
@@ -9378,6 +10007,25 @@ fn create_nav_snapshot_source(
     pixels: &[u32],
     forward: bool,
 ) -> Option<(isize, isize, isize)> {
+    let source = create_nav_slide_dib(width * 2, height)?;
+    let (w, sw) = (width as usize, width as usize * 2);
+    // SAFETY: the DIB holds `sw × height` pixels and lives until the slide releases it.
+    let dst =
+        unsafe { std::slice::from_raw_parts_mut(source.bits as *mut u32, sw * height as usize) };
+    let image_col = if forward { 0 } else { w };
+    for y in 0..height as usize {
+        let src_row = y * w;
+        if src_row + w <= pixels.len() {
+            dst[y * sw + image_col..y * sw + image_col + w]
+                .copy_from_slice(&pixels[src_row..src_row + w]);
+        }
+    }
+    Some((source.dc, source.bitmap, source.old_bitmap))
+}
+
+/// A zeroed top-down 32-bit DIB selected into its own memory DC.
+#[cfg(feature = "components")]
+fn create_nav_slide_dib(width: i32, height: i32) -> Option<NavSlideFrame> {
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -9388,11 +10036,10 @@ fn create_nav_snapshot_source(
             let _ = ReleaseDC(None, screen);
             return None;
         }
-        let source_width = width * 2;
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: source_width,
+                biWidth: width,
                 biHeight: -height,
                 biPlanes: 1,
                 biBitCount: 32,
@@ -9414,19 +10061,13 @@ fn create_nav_snapshot_source(
             return None;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-
-        let (w, sw) = (width as usize, source_width as usize);
-        let dst = std::slice::from_raw_parts_mut(bits.cast::<u32>(), sw * height as usize);
-        dst.fill(0);
-        let image_col = if forward { 0 } else { w };
-        for y in 0..height as usize {
-            let src_row = y * w;
-            if src_row + w <= pixels.len() {
-                dst[y * sw + image_col..y * sw + image_col + w]
-                    .copy_from_slice(&pixels[src_row..src_row + w]);
-            }
-        }
-        Some((dc.0 as isize, bitmap.0 as isize, old_bitmap.0 as isize))
+        std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize).fill(0);
+        Some(NavSlideFrame {
+            dc: dc.0 as isize,
+            bitmap: bitmap.0 as isize,
+            old_bitmap: old_bitmap.0 as isize,
+            bits: bits as usize,
+        })
     }
 }
 
@@ -9435,22 +10076,48 @@ fn hdc_from_handle(handle: isize) -> HDC {
     HDC(handle as *mut c_void)
 }
 
-/// Presents one slide frame: re-blends the fixed overlay window from the
-/// persistent source DC at horizontal offset `src_x`. No pixel copies.
+/// Presents one slide frame: copies the source at horizontal offset `src_x` into the fixed
+/// overlay's frame, clips the screen's corners out of it, and re-blends the overlay.
 #[cfg(feature = "components")]
+#[allow(clippy::too_many_arguments)]
 fn present_nav_snapshot_frame(
     overlay: HWND,
     origin: POINT,
     width: i32,
     height: i32,
     source_dc: HDC,
+    frame: NavSlideFrame,
+    radii: [i32; 4],
     src_x: i32,
 ) -> bool {
+    let frame_dc = hdc_from_handle(frame.dc);
+    unsafe {
+        if BitBlt(
+            frame_dc,
+            0,
+            0,
+            width,
+            height,
+            Some(source_dc),
+            src_x,
+            0,
+            SRCCOPY,
+        )
+        .is_err()
+        {
+            return false;
+        }
+        let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+        // SAFETY: the frame DIB holds `width × height` pixels and outlives this call.
+        let pixels =
+            std::slice::from_raw_parts_mut(frame.bits as *mut u32, (width * height) as usize);
+        apply_corner_alpha_mask(pixels, width, height, radii);
+    }
     let size = SIZE {
         cx: width,
         cy: height,
     };
-    let src_origin = POINT { x: src_x, y: 0 };
+    let src_origin = POINT { x: 0, y: 0 };
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
@@ -9463,7 +10130,7 @@ fn present_nav_snapshot_frame(
             None,
             Some(&origin),
             Some(&size),
-            Some(source_dc),
+            Some(frame_dc),
             Some(&src_origin),
             COLORREF(0),
             Some(&blend),
@@ -9587,6 +10254,8 @@ fn advance_nav_snapshot_slide(host: HWND) {
         state.width,
         state.height,
         hdc_from_handle(state.source_dc),
+        state.frame,
+        state.radii,
         src_x,
     );
     drop(slides_guard);
@@ -9623,12 +10292,13 @@ fn finish_nav_snapshot_slide(host: HWND) {
         state.source_bitmap,
         state.source_old_bitmap,
     );
+    release_nav_snapshot_source(state.frame.dc, state.frame.bitmap, state.frame.old_bitmap);
 }
 
 fn normal_group_webtags(active: &WebTag) -> Vec<WebTag> {
     let appid = active.extract_appid();
     let session_id = active.session_id();
-    webview_runtime::list_webviews()
+    lingxia_webview::platform::windows::list_content_webtags()
         .into_iter()
         .filter(|webtag| {
             webtag.key() != active.key()
@@ -10296,6 +10966,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     if DIVIDER_DRAG.swap(false, Ordering::AcqRel) {
                         crate::shell::end_divider_drag();
                     }
+                    let _ = drive_sidebar_drag(hwnd, None, true);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
@@ -10303,6 +10974,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 snap_window_after_caption_drag(hwnd);
                 persist_primary_window_frame(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            #[cfg(feature = "shell-chrome")]
+            WindowsAndMessaging::WM_SETCURSOR
+                if (lparam.0 & 0xffff) as u32 == WindowsAndMessaging::HTCLIENT
+                    && sidebar_resize_cursor_wanted(hwnd) =>
+            {
+                set_divider_cursor(true);
+                LRESULT(1)
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
                 if update_window_resize_drag(hwnd) {
@@ -10385,6 +11064,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_DESTROY => {
+                if stored_primary_host_window() == Some(hwnd) {
+                    remember_primary_frame(hwnd);
+                }
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -11432,7 +12114,7 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
 fn park_foreign_webview_controllers(host: HWND) -> StdResult<ParentRetirement> {
     // Snapshot before marshaling to controller threads. Never hold a registry
     // lock across those calls, and include panels as well as parked group mains.
-    let children = webview_runtime::list_webviews();
+    let children = lingxia_webview::platform::windows::list_content_webtags();
     let mut retirement = ParentRetirement::Ready;
     for tag in children {
         let Some(handler) = find_webview_handler(&tag) else {

@@ -1,5 +1,5 @@
 //! GPU scene encoding of a display list.
-use crate::renderer::cpu_paint::image_geometry;
+use crate::renderer::cpu_paint::{image_geometry, pixel_snapped, snapped_clip};
 use crate::scene::display::*;
 use crate::scene::node::*;
 use crate::scene::paint::*;
@@ -333,7 +333,7 @@ impl DisplayList {
                     context.set_stroke(check_stroke(*width, *round));
                     context.stroke_path(&check_path(points));
                 }
-                Paint::Clip(shape) => push_clip(context, shape),
+                Paint::Clip(shape) => push_clip(context, &snapped_clip(shape, transform)),
                 Paint::PopClip => context.pop_clip(),
                 Paint::PopOpacity => context.pop_layer(),
                 Paint::Mask { .. } => context.push_layer(None, None, None, None, None),
@@ -380,7 +380,7 @@ impl DisplayList {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
                     context.fill_path(
                         &crate::scene::border::Border::with_radii(
-                            *bounds,
+                            pixel_snapped(*bounds, transform),
                             *widths,
                             corners.unwrap_or([[*radius; 2]; 4]),
                         )
@@ -398,7 +398,7 @@ impl DisplayList {
                     context.set_paint_transform(brush.transform);
                     context.fill_path(
                         &ClipSnapshot {
-                            bounds: [*x, *y, *w, *h],
+                            bounds: pixel_snapped([*x, *y, *w, *h], transform),
                             radius: *radius,
                             radii: *corners,
                             transform: None,
@@ -410,13 +410,13 @@ impl DisplayList {
                 Paint::Rect {
                     corners,
                     color: [r, g, b, a],
-                    bounds: [x, y, w, h],
+                    bounds,
                     radius,
                 } => {
                     context.set_paint(AlphaColor::<Srgb>::from_rgba8(*r, *g, *b, *a));
                     context.fill_path(
                         &ClipSnapshot {
-                            bounds: [*x, *y, *w, *h],
+                            bounds: pixel_snapped(*bounds, transform),
                             radius: *radius,
                             radii: *corners,
                             transform: None,
@@ -432,8 +432,13 @@ impl DisplayList {
                     position,
                 } => {
                     if let Some(bitmap) = self.images.get(src) {
-                        let (rect, transform, clip) =
-                            image_geometry(bitmap, *bounds, *radius, *fit, *position)?;
+                        let (rect, transform, clip) = image_geometry(
+                            bitmap,
+                            pixel_snapped(*bounds, transform),
+                            *radius,
+                            *fit,
+                            *position,
+                        )?;
                         let id = image_ids
                             .get(&(Arc::as_ptr(bitmap.pixels()) as usize))
                             .ok_or("UI_IMAGE: texture not uploaded")?;

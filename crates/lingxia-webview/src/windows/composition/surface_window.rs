@@ -490,8 +490,20 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         // Activate/focus the surface first, WebView2 sample style: the
         // engine then takes real focus onto its hidden input window and
         // keyboard/IME flow natively.
+        use WindowsAndMessaging::{GWL_STYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_DISABLED};
+        // A surface under a GPU page is disabled so the page takes its mouse, and focus
+        // refuses a disabled window's children. Lift the bit for the focus change only:
+        // writing the style back, unlike `EnableWindow`, leaves the focus where it went.
         unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            let disabled = style & WS_DISABLED.0 as isize != 0;
+            if disabled {
+                SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(WS_DISABLED.0 as isize));
+            }
             let _ = SetFocus(Some(hwnd));
+            if disabled {
+                SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+            }
         }
     }
     if actions.set_capture {

@@ -412,6 +412,7 @@ mod tests {
             visible: true,
             position: WindowsShellTabBarPosition::Left,
             dimension: 184,
+            item_offset: 0,
             app_name: "Home".to_string(),
             app_icon_path: String::new(),
             group_id: "home".to_string(),
