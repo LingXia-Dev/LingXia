@@ -127,6 +127,14 @@ pub enum WindowsDeviceFrameSheetIcon {
     Path(String),
 }
 
+/// A simulated phone host's bottom tab bar: its items' band, and the strip it grows by below
+/// them (an iPhone's home indicator), in screen pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowsDeviceFrameTabBar {
+    pub height: i32,
+    pub growth: i32,
+}
+
 /// Generic info displayed by a device-frame bottom sheet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsDeviceFrameInfoSheet {
@@ -158,6 +166,8 @@ pub struct WindowsDeviceFrame {
     /// Optional simulated status bar (time + signal/battery) across the top.
     /// `None` leaves the screen's top edge bare.
     pub status_bar: Option<WindowsDeviceFrameStatusBar>,
+    /// The simulated host's bottom tab bar, as its pages are told it reaches.
+    pub tab_bar: Option<WindowsDeviceFrameTabBar>,
     /// Bezel fill color as `0xRRGGBB`.
     pub bezel_color: u32,
     /// Fill color of the anti-aliased bezel mask outside the rounded screen,
@@ -294,6 +304,10 @@ pub(crate) fn device_frame_owns_window_controls(window: isize) -> bool {
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
 pub(crate) fn device_frame_status_bar_height(window: isize) -> i32 {
     native::status_bar_height(window)
+}
+
+pub(crate) fn device_frame_tab_bar(window: isize) -> Option<WindowsDeviceFrameTabBar> {
+    native::tab_bar(window)
 }
 
 /// Sets the simulated status bar's foreground + background colors for `window`

@@ -509,6 +509,7 @@ mod tests {
                 visible: true,
                 position,
                 dimension: 220,
+                item_offset: 0,
                 app_name: "App".to_string(),
                 app_icon_path: String::new(),
                 group_id: "app".to_string(),

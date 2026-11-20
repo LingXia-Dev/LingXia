@@ -572,6 +572,10 @@ pub(super) fn status_bar_height(content: isize) -> i32 {
     .unwrap_or(0)
 }
 
+pub(super) fn tab_bar(content: isize) -> Option<super::WindowsDeviceFrameTabBar> {
+    frame_state(content, |state| state.spec.tab_bar).flatten()
+}
+
 pub(super) fn set_frame_overlays_visible(content: isize, visible: bool) {
     if !window_has_frame(content) || !is_window_handle_valid(content) {
         return;
@@ -1587,6 +1591,7 @@ mod tests {
             screen_corner_radius: 54,
             cutout: None,
             status_bar: None,
+            tab_bar: None,
             bezel_color: 0x141414,
             screen_corner_color: 0x141414,
             toolbar: None,

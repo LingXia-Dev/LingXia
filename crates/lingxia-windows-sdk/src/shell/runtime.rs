@@ -51,9 +51,8 @@ use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTAT
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 184;
 const MAX_SIDEBAR_WIDTH: i32 = 400;
-/// Bottom tab bar height (icons + labels). The strip sits just above the
-/// content area's bottom, which is already inset for the home-indicator safe
-/// area, so no extra height is reserved here.
+/// Bottom tab bar height (icons + labels) outside a simulated phone, whose
+/// host's bar comes from its device frame.
 const BOTTOM_TABBAR_CONTENT_HEIGHT: i32 = 49;
 
 /// How many times to retry presenting a freshly opened browser tab whose
@@ -2123,6 +2122,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         visible: true,
         position,
         dimension: MIN_SIDEBAR_WIDTH,
+        item_offset: 0,
         app_name: root
             .map(browser_tab_display_title)
             .unwrap_or_else(|| "New Tab".to_string()),
@@ -2580,11 +2580,13 @@ fn build_tab_bar_layout(
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
-    // borrow the (much taller) sidebar minimum width. The content area is already
-    // inset by the home-indicator safe area, so the strip sits just above it and
-    // must not re-reserve that height (which would float it up by that much).
+    // borrow the (much taller) sidebar minimum width.
+    // A simulated phone's bar is its host's: the page is told it reaches that far.
+    let frame_tab_bar = owner_window.and_then(device_frame_tab_bar);
     let dimension = match position {
-        WindowsShellTabBarPosition::Bottom => crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT),
+        WindowsShellTabBarPosition::Bottom => frame_tab_bar
+            .map(|(band, growth)| band + growth)
+            .unwrap_or_else(|| crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT)),
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
             persisted_expanded_sidebar_width()
         }
@@ -2616,6 +2618,12 @@ fn build_tab_bar_layout(
         },
         position,
         dimension,
+        item_offset: match (position, frame_tab_bar) {
+            (WindowsShellTabBarPosition::Bottom, Some((band, _))) => {
+                ((band - crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT)) / 2).max(0)
+            }
+            _ => 0,
+        },
         app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
@@ -6332,6 +6340,17 @@ fn device_frame_owns_window_controls(_window: isize) -> bool {
 #[cfg(feature = "device-frame")]
 fn device_frame_status_bar_height(window: isize) -> i32 {
     crate::device_frame::device_frame_status_bar_height(window)
+}
+
+#[cfg(feature = "device-frame")]
+/// The simulated host's tab bar: its items' band and the strip below them.
+fn device_frame_tab_bar(window: isize) -> Option<(i32, i32)> {
+    crate::device_frame::device_frame_tab_bar(window).map(|bar| (bar.height, bar.growth))
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn device_frame_tab_bar(_window: isize) -> Option<(i32, i32)> {
+    None
 }
 
 #[cfg(not(feature = "device-frame"))]
