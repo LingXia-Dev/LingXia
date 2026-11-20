@@ -141,8 +141,6 @@ export struct LingXiaWebView {
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
   /// A GPU page's `<webview>`: true when ArkWeb's own pan should yield a drag of `dx`, `dy` vp.
   yieldsPan?: (dx: number, dy: number) => boolean
-  /** The Web's touch recognizers, as its parent's judge saw them on the current touch. */
-  private webTouches: Array<TouchRecognizer> = [];
 
   // Same-level rendering state (simplified: single webTag, no Map wrappers)
   @State private embedComponentIds: string[] = []
@@ -188,17 +186,6 @@ export struct LingXiaWebView {
     // visible islands inside the same viewport contract as the page itself.
     .clip(true)
     .translate(this.renderTranslate)
-    // The Web's own judge is not handed its touch recognizers; a parent on the response chain
-    // is, so this pan (which never claims a drag) records them for the hand-off below.
-    .parallelGesture(PanGesture({ distance: 1 }), GestureMask.Normal)
-    .onGestureRecognizerJudgeBegin((event: BaseGestureEvent, current: GestureRecognizer,
-      recognizers: Array<GestureRecognizer>, touchRecognizers?: Array<TouchRecognizer>): GestureJudgeResult => {
-      if (this.yieldsPan !== undefined) {
-        const id = this.webInspectorId();
-        this.webTouches = (touchRecognizers ?? []).filter(touch => touch.getEventTargetInfo().getId() === id);
-      }
-      return GestureJudgeResult.CONTINUE;
-    })
   }
 
   // ============================================================================
@@ -608,8 +595,7 @@ export struct LingXiaWebView {
             // The page saw the finger go down and move; the screen takes the drag, so the page
             // gets a touchcancel rather than a touchend that would finish its gesture.
             const id = this.webInspectorId();
-            const own: Array<TouchRecognizer> = touchRecognizers ?? [];
-            const touches: Array<TouchRecognizer> = own.length > 0 ? own : this.webTouches;
+            const touches: Array<TouchRecognizer> = touchRecognizers ?? [];
             const targets: string[] = [];
             let cancelled = 0;
             for (const touch of touches) {
@@ -621,8 +607,7 @@ export struct LingXiaWebView {
               }
             }
             // Device runs read whether the page's touch recognizer was found and cancelled.
-            LxLog.i(TAG, `webview yields pan ${id}: touch recognizers [${targets.join(',')}] (own ${own.length}), cancelled ${cancelled}`);
-            this.webTouches = [];
+            LxLog.i(TAG, `webview yields pan ${id}: touch recognizers [${targets.join(',')}], cancelled ${cancelled}`);
             return GestureJudgeResult.REJECT;
           }
         }
