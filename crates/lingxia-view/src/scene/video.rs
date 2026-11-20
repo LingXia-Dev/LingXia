@@ -74,6 +74,11 @@ impl Source {
             .map(|(_, label)| *label)
     }
 
+    /// Whether "auto" picks among the files by the box's height.
+    pub fn picks_by_box(&self) -> bool {
+        self.auto_label(f32::MAX).is_some()
+    }
+
     /// The labels a page can pick between; empty for a plain `src`.
     pub fn labels(&self) -> Vec<String> {
         self.variants

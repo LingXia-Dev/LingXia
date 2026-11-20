@@ -254,8 +254,10 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
         .entry(key.to_owned())
         .or_insert_with(Instant::now);
     drop(configured);
-    // Open as the scene names the source, not at its first paint a frame later.
-    {
+    // Open as the scene names the source, not at its first paint a frame later; files auto
+    // picks by box wait for that paint, so the right one opens once.
+    let by_box = source_of(key).is_some_and(|source| source.picks_by_box());
+    if !by_box {
         let mut open = players();
         if !open.contains_key(key) {
             touch(&mut open, key);
@@ -579,6 +581,15 @@ pub(crate) fn command(key: &str, op: VideoOp) -> Result<(), VideoError> {
 /// The label a player's file resolves from: its pin, else what auto chose.
 fn wanted(entry: &Entry) -> Option<String> {
     entry.quality.clone().or_else(|| entry.auto.clone())
+}
+
+/// A player just asked to open in a box `height` device px tall: the opener reads its file only
+/// once the players' lock is released, so its first open already takes auto's file.
+fn first_auto(key: &str, entry: &mut Entry, height: f32) {
+    if height >= 1.0 && entry.quality.is_none() {
+        entry.auto_decided = true;
+        entry.auto = source_of(key).and_then(|source| source.auto_label(height).map(str::to_owned));
+    }
 }
 
 /// Auto's file for a box `height` device px tall, chosen when the box is first laid out: a
@@ -1461,7 +1472,17 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     let mut new = false;
     let views = views(display);
     for key in keys(display) {
-        if let Some(entry) = touch(&mut players, key) {
+        let fresh = !players.contains_key(key);
+        if touch(&mut players, key).is_none() {
+            if fresh
+                && let Some(&(px, _)) = views.get(key)
+                && let Some(entry) = players.get_mut(key)
+            {
+                first_auto(key, entry, px[1]);
+            }
+            continue;
+        }
+        if let Some(entry) = players.get_mut(key) {
             if let Some(&(px, fit)) = views.get(key) {
                 let now = Instant::now();
                 let larger = entry.view.is_none_or(|(held, _, at)| {
@@ -3328,6 +3349,12 @@ mod opener_tests {
             "https://example.invalid/auto-720.mp4",
         );
         configure(&key, files(&[("360p", low), ("720p", high)]));
+        assert!(
+            !players().contains_key(&key),
+            "files auto picks by box wait for a draw"
+        );
+        // Drawn before layout: the first file.
+        touch(&mut players(), &key);
         settle();
         opens();
         settle();
@@ -3369,6 +3396,29 @@ mod opener_tests {
         entry.state = State::Opening;
         drop(players);
         settle();
+    }
+
+    #[test]
+    fn a_first_draw_with_a_box_opens_auto_s_file_once() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _ = TEST_OPENER.set(counted);
+        GATE.store(true, Ordering::SeqCst);
+        let key = crate::scene::video::key(7_700_010, "name:auto-first");
+        let (low, high) = (
+            "https://example.invalid/first-360.mp4",
+            "https://example.invalid/first-720.mp4",
+        );
+        configure(&key, files(&[("360p", low), ("720p", high)]));
+        {
+            let mut players = players();
+            touch(&mut players, &key);
+            first_auto(&key, players.get_mut(&key).unwrap(), 558.0);
+        }
+        settle();
+        opens();
+        settle();
+        assert_eq!((opened(low), opened(high)), (0, 1));
+        assert_eq!(players()[&key].url, high);
     }
 
     fn opened(url: &str) -> usize {
@@ -3517,6 +3567,7 @@ mod opener_tests {
             "https://example.invalid/choice-360.mp4",
         );
         configure(&key, files(&[("720p", high), ("360p", low)]));
+        touch(&mut players(), &key);
         std::thread::sleep(Duration::from_millis(100));
         command(&key, VideoOp::SetQuality(Some("360p".into()))).unwrap();
         GATE.store(true, Ordering::SeqCst);
