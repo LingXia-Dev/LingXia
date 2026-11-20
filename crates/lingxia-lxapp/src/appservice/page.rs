@@ -2179,6 +2179,14 @@ impl PageSvc {
         let definition_path =
             crate::resolve_page_path(&lxapp, path).unwrap_or_else(|| path.to_string());
         let gpu = lxapp.config().renderer == crate::PageRenderer::Gpu;
+        // `page.name` and `page.params`, which `setup` can read before onLoad.
+        let identity = serde_json::json!({
+            "name": lxapp.config().page_name_by_path(path),
+            "params": page_instance_id
+                .and_then(|id| lxapp.get_page_by_instance_id_str(id))
+                .map(|page| page.automation_state().query),
+        })
+        .to_string();
 
         let create_page = ctx
             .global()
@@ -2195,6 +2203,7 @@ impl PageSvc {
                     definition_path,
                     page_instance_id.unwrap_or_default().to_string(),
                     gpu,
+                    identity,
                 ),
             )
             .map_err(|e: RongJSError| e.into_host_in(ctx))

@@ -24,3 +24,145 @@ export type PageContract<Data = unknown, Actions = unknown> =
   [Data] extends [JsonData<Data>]
     ? { readonly data: Data; readonly actions: Actions }
     : { readonly __pageDataMustBeJson: "PageContract data must be JSON: no functions, Dates, Maps, Sets or class instances" };
+
+import type { DeepReadonly, JsonValue, PageLoadOptions, PageMessagePort, PageSurface } from './generated/logic.js';
+
+declare const typeTag: unique symbol;
+
+/** A type a page declares: `params: type<{ id: string }>()`. Nothing at run time. */
+export interface Declared<T> {
+  readonly [typeTag]?: T;
+}
+
+/** Declare a page's `params`, `result` or `messages` type. */
+export function type<T>(): Declared<T> {
+  return undefined as unknown as Declared<T>;
+}
+
+/** Lifecycle hook names a page's `setup` may return. */
+export type PageHookName = 'onLoad' | 'onShow' | 'onReady' | 'onHide' | 'onUnload' | 'onPullDownRefresh';
+
+type Hook = () => void | Promise<void>;
+
+/** What `setup` returns: lifecycle hooks under their names, and `actions`. */
+export interface PageSetup<Params, Actions> {
+  onLoad?: (params: Params) => void | Promise<void>;
+  onShow?: Hook;
+  onReady?: Hook;
+  onHide?: Hook;
+  onUnload?: Hook;
+  onPullDownRefresh?: Hook;
+  /** The page's whole View-callable surface. */
+  actions?: Actions;
+}
+
+type ExactSetup<R> = {
+  [K in keyof R]: K extends PageHookName | 'actions'
+    ? R[K]
+    : Lowercase<K & string> extends Lowercase<PageHookName>
+      ? { 'LingXia type error': `'${K & string}' differs only in case from a lifecycle hook` }
+      : { 'LingXia type error': `'${K & string}' is not a lifecycle hook; put View-callable functions under actions` };
+};
+
+type SyncSetup<R> = R extends PromiseLike<unknown>
+  ? { 'LingXia type error': 'setup is synchronous; start async work in onLoad' }
+  : unknown;
+
+/** A recipe changes the draft in place and returns nothing. */
+export type UpdateRecipe<Data> = (draft: Data) => undefined;
+
+/** One page instance, as `setup` and everything it returns see it. */
+export interface PageApi<Data, Params, Result> {
+  /** The current data. Readonly: change it with `update`. */
+  readonly data: DeepReadonly<Data>;
+  /**
+   * The one way to change data: `page.update(d => { d.n += 1; })`. `page.data`
+   * changes at once; the View gets the changes once per turn. Throws inside
+   * another `update`; ignored after the page unloads.
+   */
+  update(recipe: UpdateRecipe<Data>): void;
+  /** Resolves when the View has everything updated so far. Rejects on unload. */
+  flush(): Promise<void>;
+  /** The params this instance was opened with. */
+  readonly params: Params;
+  /** This page's name in `lxapp.json`. */
+  readonly name: string;
+  /** Aborted as the page unloads, before `onUnload`. */
+  readonly signal: AbortSignal;
+  /**
+   * Leave, with `value` as the opener's result. A pushed page goes back; a
+   * surface page closes its surface. Throws for a root or tab page, or a
+   * pushed page that is not on top.
+   */
+  close(value?: Result): Promise<void>;
+  /** What the opener's result is when this page leaves another way (Back, a dismiss). */
+  setResult(value: Result): void;
+  /** The page that opened this one by navigation; absent for a root, a tab, or after a restart. */
+  readonly opener?: PageMessagePort;
+  /** This page's surface when it was opened by `lx.surface.openPage`. */
+  readonly surface?: PageSurface;
+}
+
+type ViewCallable<A> = {
+  readonly [K in keyof A]: A[K] extends (...args: infer P) => infer R
+    ? R extends AsyncIterable<unknown> ? A[K] : (...args: P) => Promise<Awaited<R>>
+    : never;
+};
+
+/**
+ * What `definePage` returns, the page's type. `View<typeof page>` and
+ * `t.app.page<typeof page>()` read `data` and `actions` from it; `lx.nav`
+ * reads params and result. `data` holds the initial data at run time; the
+ * rest is type-only.
+ */
+export interface PageDefinition<Data = unknown, Actions = unknown, Params = unknown, Result = unknown, Messages = unknown> {
+  readonly data: Data;
+  readonly actions: ViewCallable<Actions>;
+  readonly __lxPage: { readonly params: Params; readonly result: Result; readonly messages: Messages };
+}
+
+/** The params a page definition declares. */
+export type ParamsOf<P> = P extends { readonly __lxPage: { readonly params: infer T } } ? T : never;
+/** The result a page definition declares. */
+export type ResultOf<P> = P extends { readonly __lxPage: { readonly result: infer T } } ? T : never;
+
+/**
+ * Define a page. Declare what it takes and returns at the top; `setup(page)`
+ * runs once per instance, before `onLoad`, and returns its hooks and
+ * `actions`, which close over `page` and over per-instance state.
+ *
+ * ```ts
+ * export default definePage({
+ *   params: type<{ id: string }>(),
+ *   data: { order: null as Order | null },
+ *   setup(page) {
+ *     return {
+ *       async onLoad({ id }) { const order = await load(id); page.update(d => { d.order = order; }); },
+ *       actions: { close() { return page.close(); } },
+ *     };
+ *   },
+ * });
+ * ```
+ */
+export function definePage<
+  Data extends object = {},
+  Params = PageLoadOptions,
+  Result = never,
+  Messages = never,
+  Actions extends object = {},
+  R = {},
+>(definition: {
+  params?: Declared<Params>;
+  result?: Declared<Result>;
+  messages?: Declared<Messages>;
+  data?: Data & JsonData<Data>;
+  setup?: (page: PageApi<Data, Params, Result>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
+}): PageDefinition<Data, Actions, Params, Result, Messages> {
+  if (definition === null || typeof definition !== 'object') {
+    throw new TypeError('definePage takes { params?, result?, messages?, data?, setup? }');
+  }
+  Object.defineProperty(definition, Symbol.for('lingxia.page'), { value: true });
+  return definition as never;
+}
+
+export type { JsonValue };

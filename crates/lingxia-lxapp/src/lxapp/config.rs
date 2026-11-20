@@ -161,6 +161,23 @@ impl LxAppConfig {
         self.pages.clone()
     }
 
+    /// The configured name of the page at `path`, with or without the
+    /// renderer's file extension.
+    pub fn page_name_by_path(&self, path: &str) -> Option<String> {
+        fn stem(path: &str) -> &str {
+            let file_start = path.rfind('/').map_or(0, |slash| slash + 1);
+            match path[file_start..].rfind('.') {
+                Some(dot) => &path[..file_start + dot],
+                None => path,
+            }
+        }
+        let path = stem(path);
+        self.pages
+            .iter()
+            .find(|page| stem(&page.path) == path)
+            .map(|page| page.name.clone())
+    }
+
     pub fn page_path_by_name(&self, name: &str) -> Option<String> {
         self.pages
             .iter()

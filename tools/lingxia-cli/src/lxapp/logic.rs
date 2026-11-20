@@ -642,6 +642,7 @@ fn rewrite_module_source(
     let mut cursor = 0usize;
     let mut exports = Vec::<(String, String)>::new();
     let mut star_exports = Vec::<String>::new();
+    let mut registered_by_call = false;
 
     for statement in &program.body {
         let span = statement.span();
@@ -756,6 +757,7 @@ fn rewrite_module_source(
                 if let Some(rewritten) =
                     rewrite_registration_call(project, source, &expr_stmt.expression, role)?
                 {
+                    registered_by_call = true;
                     output.push_str(&rewritten);
                 } else {
                     output.push_str(slice(source, span)?);
@@ -780,6 +782,16 @@ fn rewrite_module_source(
     }
     for (exported, local) in &exports {
         output.push_str(&format!("__lx_module_exports[\"{exported}\"] = {local};\n"));
+    }
+    // `export default definePage({ ... })` is the page.
+    if let ModuleRole::Page { page_path } = role
+        && !registered_by_call
+        && exports.iter().any(|(exported, _)| exported == "default")
+    {
+        output.push_str(&format!(
+            "globalThis.__registerDefinedPage({}, __lx_module_exports[\"default\"]);\n",
+            json_string_literal(&page_registration_path(project, page_path)?)
+        ));
     }
     Ok(output)
 }
@@ -1006,17 +1018,7 @@ fn rewrite_registration_call(
                     handlers: Vec::new(),
                 })?,
             };
-            let final_path = match project.kind {
-                ProjectKind::LxApp => page_path.clone(),
-                ProjectKind::LxPlugin => format!(
-                    "plugin/{}/{}",
-                    project
-                        .plugin_id
-                        .as_deref()
-                        .ok_or_else(|| anyhow!("Missing plugin id"))?,
-                    page_path
-                ),
-            };
+            let final_path = page_registration_path(project, page_path)?;
             Ok(Some(format!(
                 "globalThis.__registerPage({}, {}, {});",
                 json_string_literal(&final_path),
@@ -1026,6 +1028,21 @@ fn rewrite_registration_call(
         }
         _ => Ok(None),
     }
+}
+
+/// The path a page registers under: plugin pages are namespaced by plugin.
+fn page_registration_path(project: &Project, page_path: &str) -> Result<String> {
+    Ok(match project.kind {
+        ProjectKind::LxApp => page_path.to_string(),
+        ProjectKind::LxPlugin => format!(
+            "plugin/{}/{}",
+            project
+                .plugin_id
+                .as_deref()
+                .ok_or_else(|| anyhow!("Missing plugin id"))?,
+            page_path
+        ),
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -1439,6 +1456,42 @@ mod tests {
         let path = root.join(path);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn a_page_module_default_export_is_its_page() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "define.ts",
+            "export const definePage = (d: object) => d;
+",
+        );
+        write(
+            root,
+            "pages/home/index.ts",
+            "import { definePage } from '../../define';
+             export default definePage({ data: { n: 0 } });
+",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .unwrap();
+        let bundle = bundler.render_bundle(false).unwrap();
+        assert!(
+            bundle.contains(
+                "globalThis.__registerDefinedPage(\"pages/home/index\", __lx_module_exports[\"default\"]);"
+            ),
+            "{bundle}"
+        );
     }
 
     #[test]

@@ -687,6 +687,10 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
     }
     let function_bindings = collect_top_level_function_bindings(&parse_result.program);
 
+    if let Some(actions) = define_page_actions(&parse_result.program, &function_bindings) {
+        return Ok(actions);
+    }
+
     for statement in &parse_result.program.body {
         let Statement::ExpressionStatement(expression_statement) = statement else {
             continue;
@@ -736,6 +740,131 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
     Ok(Vec::new())
 }
 
+/// The actions of `export default definePage({ setup(page) { return { actions } } })`:
+/// the `actions` object that `setup` returns, read statically.
+fn define_page_actions<'a>(
+    program: &'a oxc_ast::ast::Program<'a>,
+    top_level: &HashMap<String, FunctionBinding>,
+) -> Option<Vec<PageAction>> {
+    let mut default = program.body.iter().find_map(|statement| match statement {
+        Statement::ExportDefaultDeclaration(export) => export.declaration.as_expression(),
+        _ => None,
+    })?;
+    if let Expression::Identifier(identifier) = unwrap_expression(default) {
+        default = variable_init(&program.body, identifier.name.as_str())?;
+    }
+    let Expression::CallExpression(call) = unwrap_expression(default) else {
+        return None;
+    };
+    let Expression::ObjectExpression(definition) =
+        unwrap_expression(call.arguments.first()?.as_expression()?)
+    else {
+        return None;
+    };
+    let mut actions = Vec::new();
+    let Some(setup) = object_property(definition, "setup") else {
+        return Some(actions);
+    };
+    let (statements, returned) = match unwrap_expression(&setup.value) {
+        Expression::FunctionExpression(function) => {
+            let body = function.body.as_ref()?;
+            (&body.statements[..], returned_object(&body.statements))
+        }
+        Expression::ArrowFunctionExpression(arrow) => match arrow.get_function_body() {
+            Some(body) => (&body.statements[..], returned_object(&body.statements)),
+            None => {
+                let returned = match arrow.get_expression().map(unwrap_expression) {
+                    Some(Expression::ObjectExpression(object)) => Some(&**object),
+                    _ => None,
+                };
+                (&[][..], returned)
+            }
+        },
+        _ => return Some(actions),
+    };
+    let Some(returned) = returned else {
+        return Some(actions);
+    };
+    let Some(actions_property) = object_property(returned, "actions") else {
+        return Some(actions);
+    };
+    let actions_object = match unwrap_expression(&actions_property.value) {
+        Expression::ObjectExpression(object) => &**object,
+        Expression::Identifier(identifier) => {
+            match variable_init(statements, identifier.name.as_str()).map(unwrap_expression) {
+                Some(Expression::ObjectExpression(object)) => &**object,
+                _ => return Some(actions),
+            }
+        }
+        _ => return Some(actions),
+    };
+    let mut bindings = top_level.clone();
+    bindings.extend(collect_function_bindings(statements));
+    for property in &actions_object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        let Some(name) = property_name(&property.key) else {
+            continue;
+        };
+        if is_function_like_property(property, &bindings) {
+            actions.push(PageAction {
+                mode: infer_property_mode(property, &bindings),
+                name,
+            });
+        }
+    }
+    Some(actions)
+}
+
+fn object_property<'a>(
+    object: &'a oxc_ast::ast::ObjectExpression<'a>,
+    name: &str,
+) -> Option<&'a oxc_ast::ast::ObjectProperty<'a>> {
+    object
+        .properties
+        .iter()
+        .find_map(|property| match property {
+            ObjectPropertyKind::ObjectProperty(property)
+                if property_name(&property.key).as_deref() == Some(name) =>
+            {
+                Some(&**property)
+            }
+            _ => None,
+        })
+}
+
+fn returned_object<'a>(
+    statements: &'a [Statement<'a>],
+) -> Option<&'a oxc_ast::ast::ObjectExpression<'a>> {
+    statements
+        .iter()
+        .rev()
+        .find_map(|statement| match statement {
+            Statement::ReturnStatement(ret) => match ret.argument.as_ref().map(unwrap_expression) {
+                Some(Expression::ObjectExpression(object)) => Some(&**object),
+                _ => None,
+            },
+            _ => None,
+        })
+}
+
+fn variable_init<'a>(statements: &'a [Statement<'a>], name: &str) -> Option<&'a Expression<'a>> {
+    statements.iter().find_map(|statement| {
+        let Statement::VariableDeclaration(declaration) = statement else {
+            return None;
+        };
+        declaration.declarations.iter().find_map(|declarator| {
+            match (&declarator.id, &declarator.init) {
+                (BindingPattern::BindingIdentifier(id), Some(init)) if id.name == name => {
+                    Some(init)
+                }
+                _ => None,
+            }
+        })
+    })
+}
+
 #[derive(Clone, Copy)]
 struct FunctionBinding {
     is_generator: bool,
@@ -744,10 +873,14 @@ struct FunctionBinding {
 fn collect_top_level_function_bindings<'a>(
     program: &'a oxc_ast::ast::Program<'a>,
 ) -> HashMap<String, FunctionBinding> {
+    collect_function_bindings(&program.body)
+}
+
+fn collect_function_bindings(statements: &[Statement<'_>]) -> HashMap<String, FunctionBinding> {
     let mut direct = HashMap::new();
     let mut aliases = HashMap::new();
 
-    for statement in &program.body {
+    for statement in statements {
         match statement {
             Statement::FunctionDeclaration(function) => {
                 let Some(identifier) = &function.id else {
@@ -1008,6 +1141,39 @@ mod tests {
                 ("directArrow".to_string(), PageActionMode::Call),
             ]
         );
+    }
+
+    #[test]
+    fn define_page_actions_come_from_what_setup_returns() {
+        // Block-bodied setup, a named local action and an `actions` binding.
+        let block = extract_action_modes(
+            r#"
+            import { definePage } from '@lingxia/types/page';
+            export default definePage({
+              data: { n: 0 },
+              setup(page) {
+                async function* watch() { yield 1; }
+                const actions = { inc() { page.update(d => { d.n += 1; }); }, watch };
+                return { onLoad() {}, actions };
+              },
+            });
+            "#,
+        );
+        assert_eq!(
+            block,
+            vec![
+                ("inc".to_string(), PageActionMode::Call),
+                ("watch".to_string(), PageActionMode::Stream),
+            ]
+        );
+        // Expression-bodied arrow, through a named const default export.
+        let arrow = extract_action_modes(
+            r#"
+            const page = definePage({ setup: (page) => ({ actions: { save: async () => {} } }) });
+            export default page;
+            "#,
+        );
+        assert_eq!(arrow, vec![("save".to_string(), PageActionMode::Call)]);
     }
 
     #[test]

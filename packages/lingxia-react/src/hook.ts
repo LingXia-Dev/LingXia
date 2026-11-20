@@ -46,14 +46,26 @@ import {
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
->(): { data: DeepReadonly<TData>; actions: PageActions<TActions> } {
+>(): LxPage<TData, TActions> {
   const data = React.useSyncExternalStore(
     subscribePageSnapshot,
     getPageSnapshot<DeepReadonly<TData>>,
     getPageSnapshot<DeepReadonly<TData>>,
   );
-  return { data, actions: getPageActions<TActions>() };
+  return { data, actions: getPageActions<TActions>() } as LxPage<TData, TActions>;
 }
+
+/**
+ * `useLxPage<typeof page>()` with the page's `definePage` type imported
+ * (`import type page from './index.ts'`), or `useLxPage<Data, Actions>()`.
+ */
+export type LxPage<TData, TActions extends ActionMap> = TData extends {
+  readonly __lxPage: unknown;
+  readonly data: infer D;
+  readonly actions: infer A extends ActionMap;
+}
+  ? { data: DeepReadonly<D>; actions: PageActions<A> }
+  : { data: DeepReadonly<TData>; actions: PageActions<TActions> };
 
 /**
  * What the host decided for this page: `sizeClass`, `canDock`,

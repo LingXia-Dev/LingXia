@@ -32,7 +32,7 @@
     return timers().clear(id);
   }
 
-  function createPageInstance(definition, pagePath, pageInstanceId, gpu) {
+  function createPageInstance(definition, pagePath, pageInstanceId, gpu, lifetime = new AbortController()) {
     const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
@@ -69,7 +69,6 @@
     // Aborted as the page unloads — just before `onUnload` runs, or when the
     // page is retired without one — so work the page started (a fetch, a
     // subscription) stops with it instead of resolving into a page that is gone.
-    const lifetime = new AbortController();
     Object.defineProperty(pageSvc, "signal", {
       value: lifetime.signal,
       enumerable: false,
@@ -227,6 +226,19 @@
       settle(result ? { status: "ok", value: result.value } : { status: "canceled", reason });
     };
 
+    // `page.update`: the recipe ran on a clone; what differs joins the batch.
+    pageSvc._applyDraft = function (draft) {
+      if (disposed) return;
+      const changes = [];
+      diffData(pageSvc.data, draft, [], changes);
+      for (const [segments, value] of changes) {
+        applyUpdateSegments(pageSvc.data, pendingBaseState, pendingOps, segments, value);
+      }
+      if (changes.length > 0 && updateTimer === null) {
+        updateTimer = setTimer(submitPending, BATCH_DELAY);
+      }
+    };
+
     pageSvc.setPath = function (path, value) {
       return pageSvc.setData({ [pathSegmentsToKey(path)]: value });
     };
@@ -239,6 +251,141 @@
     };
 
     return pageSvc;
+  }
+
+  const PAGE_BRAND = Symbol.for("lingxia.page");
+  const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onPullDownRefresh"];
+  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "opens"]);
+
+  // `definePage({ data, setup(page) { return { onLoad, actions } } })`. The
+  // hooks and actions `setup` returns become the config a `PageSvc` runs, so
+  // dispatch is the same as for any page; `page` is what they close over.
+  function instantiateDefinedPage(definition, pagePath, pageInstanceId, gpu, identityJson) {
+    const def = definition.config;
+    for (const key of Object.keys(def)) {
+      if (!DEFINITION_KEYS.has(key)) {
+        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data and setup`);
+      }
+    }
+    if (def.setup !== undefined && typeof def.setup !== "function") {
+      throw new TypeError("definePage: setup must be a function");
+    }
+    assertPageData(def.data || {});
+    const identity = identityJson ? JSON.parse(identityJson) : {};
+    const lifetime = new AbortController();
+    let svc = null;
+    let initial = cloneJsonValue(def.data || {});
+    let params = identity.params || {};
+    let updating = false;
+    let warnedUnloaded = false;
+
+    function live() {
+      if (!svc) throw new Error("page: not available until setup has returned");
+      return svc;
+    }
+
+    const page = Object.freeze({
+      get data() {
+        return svc ? svc.data : initial;
+      },
+      update(recipe) {
+        if (typeof recipe !== "function") {
+          throw new TypeError("page.update takes a recipe: page.update(d => { d.n += 1; })");
+        }
+        if (updating) throw new Error("page.update cannot be called inside page.update");
+        if (lifetime.signal.aborted) {
+          if (!warnedUnloaded) {
+            warnedUnloaded = true;
+            console.warn(`page.update after '${page.name}' unloaded is ignored`);
+          }
+          return;
+        }
+        const draft = cloneJsonValue(svc ? svc.data : initial);
+        updating = true;
+        let returned;
+        try {
+          returned = recipe(draft);
+        } finally {
+          updating = false;
+        }
+        if (returned !== undefined) {
+          throw new TypeError(returned && typeof returned.then === "function"
+            ? "page.update: the recipe must be synchronous; await first, then update"
+            : "page.update: change the draft in place; the recipe returns nothing");
+        }
+        assertPageData(draft);
+        if (svc) {
+          svc._applyDraft(draft);
+        } else {
+          initial = draft;
+        }
+      },
+      flush() {
+        return live().flush();
+      },
+      get params() {
+        return params;
+      },
+      get name() {
+        return identity.name || pagePath.replace(/\.[^./]+$/, "");
+      },
+      signal: lifetime.signal,
+      close(value) {
+        return arguments.length > 0 ? live().close(value) : live().close();
+      },
+      setResult(value) {
+        live().setResult(value);
+      },
+      get opener() {
+        return svc ? svc.opener : undefined;
+      },
+      get surface() {
+        return svc ? svc.surface : undefined;
+      },
+    });
+
+    const returned = def.setup ? def.setup(page) : {};
+    if (returned && typeof returned.then === "function") {
+      throw new TypeError("definePage: setup must be synchronous; start async work in onLoad");
+    }
+    if (returned !== undefined && (returned === null || typeof returned !== "object")) {
+      throw new TypeError("definePage: setup returns { onLoad?, …, actions? }");
+    }
+    const config = { data: initial };
+    for (const [key, value] of Object.entries(returned || {})) {
+      if (key === "actions") continue;
+      if (!PAGE_HOOKS.includes(key)) {
+        throw new TypeError(typeof value === "function"
+          ? `definePage: '${key}' is not a lifecycle hook; put View-callable functions under actions`
+          : `definePage: setup returned an unknown key '${key}'`);
+      }
+      if (typeof value !== "function") throw new TypeError(`definePage: ${key} must be a function`);
+      config[key] = value;
+    }
+    const userOnLoad = config.onLoad;
+    config.onLoad = function (options) {
+      params = options || {};
+      return userOnLoad ? userOnLoad(params) : undefined;
+    };
+    const actions = (returned && returned.actions) || {};
+    if (typeof actions !== "object") {
+      throw new TypeError("definePage: actions must be an object of functions");
+    }
+    for (const [name, fn] of Object.entries(actions)) {
+      if (typeof fn !== "function") throw new TypeError(`definePage: action '${name}' must be a function`);
+      if (name.startsWith("_") || PAGE_HOOKS.includes(name) || name === "data") {
+        throw new TypeError(`definePage: '${name}' cannot be an action name`);
+      }
+      config[name] = fn;
+    }
+    svc = createPageInstance(
+      { config, bindingMetaJson: JSON.stringify({ handlers: Object.keys(actions) }) },
+      pagePath,
+      pageInstanceId,
+      gpu,
+      lifetime,
+    );
+    return svc;
   }
 
   globalThis.__registerPage = function (
@@ -255,6 +402,15 @@
       config: pageConfig,
       bindingMetaJson: bindingMetaJson || '{"handlers":[]}',
     });
+  };
+
+  globalThis.__registerDefinedPage = function (pagePath, definition) {
+    if (!definition || definition[PAGE_BRAND] !== true) {
+      throw new TypeError(
+        `Page '${pagePath}' must default-export definePage({ ... }) from '@lingxia/types/page'`,
+      );
+    }
+    pageDefinitions.set(pagePath, { config: definition });
   };
 
   function pageRegistrationTransformError(symbolName) {
@@ -276,6 +432,7 @@
     definitionPath,
     pageInstanceId,
     gpu,
+    identityJson,
   ) {
     const resolvedDefinitionPath = definitionPath || pagePath;
     const definition = pageDefinitions.get(resolvedDefinitionPath);
@@ -283,13 +440,19 @@
       throw new Error(`PageInstance not found: ${resolvedDefinitionPath}`);
     }
     // The route is the configured page path, not the renderer's file.
+    if (definition.config[PAGE_BRAND] === true) {
+      return instantiateDefinedPage(definition, pagePath, pageInstanceId, gpu === true, identityJson);
+    }
     definition.config.route = pagePath.replace(/\.[^./]+$/, "");
     return createPageInstance(definition, pagePath, pageInstanceId, gpu === true);
   };
 })();
 
 function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
-  const segments = parseDataPath(path);
+  applyUpdateSegments(root, pendingBaseState, pendingOps, parseDataPath(path), nextValue);
+}
+
+function applyUpdateSegments(root, pendingBaseState, pendingOps, segments, nextValue) {
   captureBaseState(root, pendingBaseState, segments);
 
   const previous = getValueAtPath(root, segments);
@@ -310,6 +473,29 @@ function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
 
   setValueBySegments(root, segments, nextValue);
   enqueuePendingPatch(root, pendingOps, segments, existedBefore);
+}
+
+// The smallest set of writes that turns `prev` into `next`: objects by key,
+// equal-length arrays by index, anything else replaced whole.
+function diffData(prev, next, segments, out) {
+  if (isPlainObject(prev) && isPlainObject(next)) {
+    for (const key of Object.keys(prev)) {
+      if (!Object.prototype.hasOwnProperty.call(next, key)) out.push([[...segments, key], undefined]);
+    }
+    for (const key of Object.keys(next)) {
+      if (Object.prototype.hasOwnProperty.call(prev, key)) {
+        diffData(prev[key], next[key], [...segments, key], out);
+      } else if (next[key] !== undefined) {
+        out.push([[...segments, key], next[key]]);
+      }
+    }
+    return;
+  }
+  if (Array.isArray(prev) && Array.isArray(next) && prev.length === next.length) {
+    for (let i = 0; i < next.length; i++) diffData(prev[i], next[i], [...segments, String(i)], out);
+    return;
+  }
+  if (!isDeepEqual(prev, next)) out.push([segments, next]);
 }
 
 function pathSegmentsToKey(path) {

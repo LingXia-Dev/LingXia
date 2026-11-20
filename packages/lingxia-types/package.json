@@ -38,7 +38,9 @@
       "require": "./dist/error.js"
     },
     "./page": {
-      "types": "./dist/page.d.ts"
+      "types": "./dist/page.d.ts",
+      "import": "./dist/esm/page.js",
+      "require": "./dist/page.js"
     }
   },
   "files": [

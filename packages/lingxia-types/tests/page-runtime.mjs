@@ -84,3 +84,44 @@ globalThis.fourth = resultPage._bindResult(); resultPage.close('done'); resultPa
 assert.equal(run('left'), 1);
 assert.deepEqual(await settled('fourth'), { status: 'ok', value: 'done' });
 console.log('Page state validation, acknowledgement, teardown and result checks passed.');
+
+// definePage: setup's hooks and actions run as the page; update diffs a draft.
+run(`globalThis.define = (def) => Object.defineProperty(def, Symbol.for('lingxia.page'), { value: true });
+__registerPage('order', define({
+  data: { list: [{ n: 1 }, { n: 2 }], meta: { a: 1, b: 2 } },
+  setup(page) {
+    page.update(d => { d.meta.a = 10; });
+    globalThis.orderPage = page;
+    return {
+      onLoad(params) { globalThis.loadedWith = params; },
+      actions: { bump() { page.update(d => { d.list[1].n = 3; delete d.meta.b; }); } },
+    };
+  },
+}));
+globalThis.orderSvc = __LX_CREATE_PAGE__('pages/order/index', 'order', 'o1', false, JSON.stringify({ name: 'order', params: { id: 7 } }));
+acks.length = 0;`);
+assert.equal(run('orderPage.data.meta.a'), 10, 'an update in setup is the initial data');
+assert.equal(run('orderPage.name'), 'order');
+assert.equal(run('orderPage.params.id'), 7);
+run('orderSvc.onLoad({ id: 8 })');
+assert.equal(run('orderPage.params.id'), 8, 'onLoad refreshes params');
+run('orderSvc.bump()');
+await new Promise(resolve => setTimeout(resolve, 30));
+assert.deepEqual(JSON.parse(JSON.stringify(run('acks[0].ops'))), [
+  { op: 'replace', path: '/list/1/n', value: 3 },
+  { op: 'remove', path: '/meta/b' },
+], 'update sends only what changed');
+assert.throws(() => run('orderPage.update(d => { orderPage.update(e => {}); })'), /inside page.update/);
+assert.throws(() => run('orderPage.update(async d => { d.list = []; })'), /synchronous/);
+assert.throws(() => run('orderPage.update(d => ({ ...d }))'), /in place/);
+assert.equal(run('orderPage.data.list.length'), 2, 'a rejected recipe changes nothing');
+assert.throws(
+  () => run(`__registerPage('loose', define({ setup: () => ({ save() {} }) })); __LX_CREATE_PAGE__('loose', null, 'l1');`),
+  /under actions/,
+);
+assert.throws(
+  () => run(`__registerPage('later', define({ setup: async () => ({}) })); __LX_CREATE_PAGE__('later', null, 'l2');`),
+  /synchronous/,
+);
+run('orderSvc._cancelPendingSetData(); orderPage.update(d => { d.meta.a = 0; });');
+assert.equal(run('orderPage.data.meta.a'), 10, 'update after unload is ignored');

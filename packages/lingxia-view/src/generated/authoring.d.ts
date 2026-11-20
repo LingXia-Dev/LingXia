@@ -83,9 +83,15 @@ export interface ChannelEndpoint<T = unknown, S = unknown> {
 }
 
 export type ViewActions<A> = { readonly [K in keyof A]: A[K] extends (...args: infer P) => Promise<infer R> ? (...args: P) => Promise<ReadonlyData<R>> : A[K] };
-export interface View<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> {
+export interface PageView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> {
   readonly data: ReadonlyData<D>; readonly actions: ViewActions<A>; readonly channels: Channels; readonly env: Env;
 }
+/**
+ * The View of a page: `View<typeof page>` with the page's `definePage` type
+ * imported (`import type page from './index.ts'`), or `View<Actions, Data>`.
+ */
+export type View<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> =
+  A extends { readonly __lxPage: unknown; readonly data: infer PD; readonly actions: infer PA } ? PageView<PA, PD> : PageView<A, D>;
 /** The View of the page being rendered; components needing typed data take it as props. */
 export declare function useView(): View;
 

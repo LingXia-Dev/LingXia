@@ -194,3 +194,19 @@ export function Joined({ on, size }: { on: boolean; size: 'sm' | 'md' }) {
 }
 // @ts-expect-error cx takes class text, maps and arrays, not functions
 cx(() => 'p-1');
+
+// `View<typeof page>`: a `definePage` type supplies data and actions.
+type CounterPage = {
+  readonly data: { count: number };
+  readonly actions: { inc(by: number): Promise<void> };
+  readonly __lxPage: { readonly params: {}; readonly result: never; readonly messages: never };
+};
+export function counter({ data, actions }: View<CounterPage>) {
+  const count: number = data.count;
+  actions.inc(count);
+  // @ts-expect-error action payloads come from the page
+  actions.inc('one');
+  // @ts-expect-error page data is immutable
+  data.count = 2;
+  return <text>{String(count)}</text>;
+}
