@@ -96,7 +96,7 @@ export default [
     title: "VideoContext commands against a mounted native video component",
     mode: "external-fixture",
     covers: [
-      "lx.createVideoContext",
+      "page.video",
       "VideoContext.play",
       "VideoContext.pause",
       "VideoContext.stop",
@@ -174,7 +174,7 @@ export default [
     id: "PEND-PTR-GESTURE-001",
     title: "onPullDownRefresh fires from the native gesture",
     mode: "planned",
-    covers: ["lx.startPullDownRefresh"],
+    covers: ["page.refresh"],
     reason: "ANDROID-PULL-GESTURE-001 covers Android; other hosts still only click start/stop buttons",
     implementedOn: ["android"],
   },
@@ -233,7 +233,7 @@ export default [
     id: "PEND-ANDROID-001",
     title: "wave-1 chrome cases on the Android shared entry",
     mode: "planned",
-    covers: ["lx.navigationBar.update"],
+    covers: ["page.navigationBar.update"],
     reason: "Android entry is shared-only; chrome cases are not required there yet",
   },
   {
@@ -255,7 +255,7 @@ export default [
     implementedOn: ["android"],
     title: "page JSON enablePullDownRefresh and navigationStyle",
     mode: "planned",
-    covers: ["lx.startPullDownRefresh"],
+    covers: ["page.refresh"],
     reason: "ANDROID-PAGE-CONFIG-001 checks JSON titles, native default/custom chrome, and refresh eligibility; other host presenters remain pending",
   },
 ];

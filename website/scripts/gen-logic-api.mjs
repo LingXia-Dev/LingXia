@@ -56,11 +56,9 @@ const GROUPS = [
     slug: 'surfaces',
     title: 'Surfaces and host chrome',
     summary:
-      'Open host surfaces and drive the chrome around the page — navigation bar, tab bar, tray, shell, and pull-to-refresh.',
+      'Open host surfaces and arrange the window and its panes.',
     members: [
-      'surface', 'navigationBar',
-      'startPullDownRefresh', 'stopPullDownRefresh',
-      'shell',
+      'surface', 'shell',
     ],
   },
   {
@@ -82,7 +80,7 @@ const GROUPS = [
     title: 'Media',
     summary: 'Preview, transcode, and save images and video.',
     members: [
-      'media', 'createVideoContext',
+      'media',
     ],
   },
   {

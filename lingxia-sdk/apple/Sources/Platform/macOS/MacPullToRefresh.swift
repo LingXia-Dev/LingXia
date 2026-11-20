@@ -19,7 +19,7 @@ import WebKit
 /// keep firing refreshes.
 ///
 /// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
-/// `lx.startPullDownRefresh()`), so a running refresh always shows the same
+/// `page.refresh()`), so a running refresh always shows the same
 /// way: the page stays where it is and a full-width bar flows along its top
 /// edge, for at least 0.6s before it completes so an instant refresh still
 /// reads as one. A pull fills that same bar as it nears the trigger and,
@@ -446,7 +446,7 @@ final class MacPullToRefreshController {
 
     // MARK: - Refresh state
 
-    /// Also the entry point for `lx.startPullDownRefresh()`, the context menu
+    /// Also the entry point for `page.refresh()`, the context menu
     /// and ⌘R, so every refresh looks the same: the page at rest and the bar
     /// running along its top. A start while the bar finishes the previous
     /// refresh takes it straight back to running.

@@ -432,7 +432,7 @@ export default definePage({
         page.update(d => { Object.assign(d, state); });
 
         const title = getModeTitle(state.mediaType);
-        void lx.navigationBar.update({ title });
+        void page.navigationBar.update({ title });
       },
       async runPreviewSession({
         sources,

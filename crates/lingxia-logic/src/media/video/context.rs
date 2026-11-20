@@ -15,23 +15,18 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSVideoContext>()?;
-    register_video_context_api(ctx)
+    Ok(())
 }
 
-/// A control handle for the native video component with this id, or on a GPU page for the player
-/// of this `useVideo` name or `<video id>`.
-fn create_video_context(ctx: JSContext, component_id: String) -> JSResult<JSVideoContext> {
-    JSVideoContext::create(&ctx, component_id)
-}
-
-rong::js_api! {
-    fn register_video_context_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn createVideoContext(
-            ts_params = "name: string",
-            ts_return = "VideoContext"
-        ) = create_video_context;
-    }
+/// `page.video(name)`: a control handle for `page`'s native video component
+/// with this id, or on a GPU page for the player of this `useVideo` name or
+/// `<video id>`.
+pub(crate) fn for_page(
+    ctx: &JSContext,
+    page: lxapp::PageInstance,
+    name: String,
+) -> JSResult<JSVideoContext> {
+    JSVideoContext::create(ctx, page, name)
 }
 
 #[js_class(clone)]
@@ -162,7 +157,11 @@ fn shared_state_for(runtime: &Arc<Platform>, component_id: &str) -> Arc<VideoCon
 }
 
 impl JSVideoContext {
-    pub(super) fn create(ctx: &JSContext, component_id: String) -> JSResult<Self> {
+    pub(super) fn create(
+        ctx: &JSContext,
+        page: lxapp::PageInstance,
+        component_id: String,
+    ) -> JSResult<Self> {
         let component_id = component_id.trim().to_string();
         if component_id.is_empty() {
             return Err(js_invalid_parameter_error("componentId required"));
@@ -170,9 +169,7 @@ impl JSVideoContext {
 
         let lxapp = LxApp::from_ctx(ctx)?;
         let runtime = lxapp.runtime.clone();
-        if let Ok(page) = lxapp.current_page()
-            && page.renderer() == lxapp::PageRenderer::Gpu
-        {
+        if page.renderer() == lxapp::PageRenderer::Gpu {
             return Ok(Self {
                 shared: Arc::new(VideoContextSharedState::new(runtime.clone())),
                 player_handle: Arc::new(

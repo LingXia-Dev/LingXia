@@ -1,17 +1,17 @@
 import { definePage } from '@lingxia/types/page';
 export default definePage({
   data: {},
-  setup() {
+  setup(page) {
     const actions = {
       // Logic drives the page's useVideo('hero') player by name.
       async pauseHero() {
-        await lx.createVideoContext('hero').pause();
+        await page.video('hero').pause();
       },
       async playHero() {
-        await lx.createVideoContext('hero').play();
+        await page.video('hero').play();
       },
       async qualityFromLogic(params: { quality: string }) {
-        await lx.createVideoContext('quality').setQuality(params.quality);
+        await page.video('quality').setQuality(params.quality);
       },
     };
     return {

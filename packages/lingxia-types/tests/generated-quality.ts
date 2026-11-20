@@ -23,11 +23,13 @@ import type {
   SystemDownloadsPath,
   VideoInfo,
 } from "../src/index.js";
+import type { PageApi } from "../src/page.js";
 
 type Assert<T extends true> = T;
 type Not<T extends boolean> = T extends true ? false : true;
 
 declare const lx: Lx;
+declare const page: PageApi<{}, {}, never>;
 declare const appDownload: AppDownloadOptions;
 declare const downloadsDownload: DownloadsDownloadOptions;
 declare const previewOptions: PreviewMediaOptions;
@@ -41,11 +43,11 @@ const appearanceSetResult: Promise<void> | undefined =
   lx.host.appearance.setPreference("dark");
 const appearancePreference: AppearancePreference | undefined =
   lx.host.appearance.getPreference();
-const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
+const navigationUpdateResult: Promise<void> = page.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "visible" });
 // @ts-expect-error visible is TabBar-only; homeButton remains auto/hidden
-lx.navigationBar.update({ homeButton: "visible" });
+page.navigationBar.update({ homeButton: "visible" });
 const backDefaultResult: Promise<void> = lx.nav.back();
 const backCountResult: Promise<void> = lx.nav.back(2);
 // @ts-expect-error back takes a page count

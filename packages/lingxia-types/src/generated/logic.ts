@@ -1265,8 +1265,6 @@ export type NavApi = globalThis.NavApi;
 
 export type NavTarget = PageTarget | TabTarget | AppTarget | UrlTarget;
 
-export type NavigationBarApi = globalThis.NavigationBarApi;
-
 export type NavigationBarPatch = {
     title?: string | null;
     homeButton?: VisibilityPreference;
@@ -3182,11 +3180,6 @@ declare global {
     openFile(options: OpenFileOptions): Promise<void>;
     readonly fs: FileSystemApi;
     readonly app: LxAppApi;
-    /**
-     * A control handle for the `<lx-video>` with this id, or on a GPU page for the player of this
-     * `useVideo` name or `<video id>`.
-     */
-    createVideoContext(name: string): VideoContext;
     readonly media: MediaApi;
     readonly pick: PickApi;
     /**
@@ -3204,21 +3197,6 @@ declare global {
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     readonly surface: SurfaceApi;
-    readonly navigationBar: NavigationBarApi;
-    /**
-     * lx.startPullDownRefresh()
-     * Programmatically start the pull-to-refresh animation.
-     * This will show the refresh indicator and trigger the onPullDownRefresh lifecycle method.
-     * Throws `E_INVALID_STATE` (`data.bizCode === 4004`) unless the current page
-     * config sets `enablePullDownRefresh: true`.
-     */
-    startPullDownRefresh(): void;
-    /**
-     * lx.stopPullDownRefresh()
-     * Stop the pull-to-refresh animation.
-     * This should be called after the refresh operation is complete.
-     */
-    stopPullDownRefresh(): void;
     readonly nav: NavApi;
     readonly shell: ShellApi;
     readonly ui: UiApi;
@@ -3292,13 +3270,6 @@ declare global {
      * wired up before transcoding starts.
      */
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
-  }
-}
-
-declare global {
-  interface NavigationBarApi {
-    /** Patch the navigation bar of the active page; unset fields stay as they are. */
-    update(patch: NavigationBarPatch): Promise<void>;
   }
 }
 

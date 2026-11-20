@@ -25,7 +25,15 @@ export type PageContract<Data = unknown, Actions = unknown> =
     ? { readonly data: Data; readonly actions: Actions }
     : { readonly __pageDataMustBeJson: "PageContract data must be JSON: no functions, Dates, Maps, Sets or class instances" };
 
-import type { DeepReadonly, JsonValue, PageLoadOptions, PageMessagePort, PageSurface } from './generated/logic.js';
+import type {
+  DeepReadonly,
+  JsonValue,
+  NavigationBarPatch,
+  PageLoadOptions,
+  PageMessagePort,
+  PageSurface,
+  VideoContext,
+} from './generated/logic.js';
 
 declare const typeTag: unique symbol;
 
@@ -51,6 +59,7 @@ export interface PageSetup<Params, Actions> {
   onReady?: Hook;
   onHide?: Hook;
   onUnload?: Hook;
+  /** A pull, or `page.refresh()`. The indicator stays until the returned promise settles. */
   onPullDownRefresh?: Hook;
   /** The page's whole View-callable surface. */
   actions?: Actions;
@@ -107,6 +116,18 @@ export interface PageApi<Data, Params, Result> {
   readonly opener?: PageMessagePort;
   /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
   readonly surface?: PageSurface;
+  /** This page's navigation bar, reached even while another page is on top. */
+  readonly navigationBar: {
+    /** Patch it; unset fields stay as they are. */
+    update(patch: NavigationBarPatch): Promise<void>;
+  };
+  /**
+   * Show the refresh indicator and run `onPullDownRefresh`, as a pull would.
+   * Throws `E_INVALID_STATE` unless the page config sets `enablePullDownRefresh`.
+   */
+  refresh(): void;
+  /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */
+  video(name: string): VideoContext;
 }
 
 type ViewCallable<A> = {

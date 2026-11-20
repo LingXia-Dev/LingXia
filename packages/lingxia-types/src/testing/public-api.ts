@@ -44,7 +44,6 @@ import type {
   HostAppUpdateInfo,
   HostAppUpdateTask,
   LxFile,
-  NavigationBarApi,
   UiApi,
   NavApi,
   PickApi,
@@ -78,10 +77,8 @@ export const LX_API_NAMES = [
   'app',
   'automation',
   'clipboard',
-  'createVideoContext',
   'fs',
   'nav',
-  'navigationBar',
   'openExternal',
   'device',
   'media',
@@ -91,8 +88,6 @@ export const LX_API_NAMES = [
   'share',
   'storage',
   'shell',
-  'startPullDownRefresh',
-  'stopPullDownRefresh',
   'supports',
   'surface',
   'ui',
@@ -145,7 +140,6 @@ const DISPLAY_LANGUAGE_API = [
   'watchPreference',
 ] as const;
 const APPEARANCE_API = DISPLAY_LANGUAGE_API;
-const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
@@ -380,7 +374,6 @@ export const LX_RUNTIME_SURFACES = [
       'media',
       'nav',
       'network',
-      'navigationBar',
       'pick',
       'shell',
       'surface',
@@ -436,12 +429,7 @@ export const LX_RUNTIME_SURFACES = [
     members: APPEARANCE_API,
   },
 
-  {
-    name: 'lx.navigationBar',
-    layer: 'logic',
-    expression: 'lx.navigationBar',
-    members: NAVIGATION_BAR_API,
-  },
+
   {
     name: 'lx.app.tabBar',
     layer: 'logic',
@@ -726,7 +714,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: [],
     optionalProperties: [],
     fixture: 'native-component',
-    factory: 'lx.createVideoContext',
+    factory: 'page.video',
   },
   {
     name: 'DownloadTask',
@@ -850,7 +838,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
-  AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
   AssertTrue<Exact<UiApi, typeof UI_API>>,
   AssertTrue<Exact<PickApi, typeof PICK_API>>,

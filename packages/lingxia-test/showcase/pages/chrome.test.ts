@@ -60,9 +60,9 @@ async function caughtChromeUpdate(
   target: 'navigationBar' | 'tabBar',
   patch: JsonValue,
 ): Promise<Caught> {
-  return app.logic.eval(async ({ lx }, target, patch) => {
+  return app.logic.eval(async ({ lx, currentPage }, target, patch) => {
     try {
-      const bar = target === 'tabBar' ? lx.app.tabBar : lx.navigationBar;
+      const bar = target === 'tabBar' ? lx.app.tabBar : currentPage()!.navigationBar;
       await (bar.update as (patch: unknown) => Promise<void>)(patch);
       return { ok: true };
     } catch (error) {
@@ -74,14 +74,14 @@ async function caughtChromeUpdate(
 
 test("apply navigationBar title, colors, home button, and reset", {
   id: "UI-NAVBAR-001",
-  covers: ['lx.navigationBar', 'lx.navigationBar.update'],
+  covers: ['page.navigationBar.update'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-NAVBAR-001");
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({ title: null, style: null, homeButton: 'auto' });
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({ title: null, style: null, homeButton: 'auto' });
     }).catch(() => undefined);
   });
 
@@ -101,8 +101,8 @@ test("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('set divider color and hide the home button', async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({
         style: { dividerColor: '#112233' },
         homeButton: 'hidden',
       });
@@ -145,8 +145,8 @@ test("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('survive reLaunch', async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({
         title: 'Kept Title',
         style: { backgroundColor: '#10B981', foregroundColor: '#FFFFFF', dividerColor: '#0F766E' },
       });

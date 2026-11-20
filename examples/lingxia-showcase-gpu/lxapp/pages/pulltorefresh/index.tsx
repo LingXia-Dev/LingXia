@@ -29,10 +29,10 @@ export function render({ data, actions }: View) {
       </Section>
       <Section title="API Controls" description="Control refresh programmatically">
         <Button testId="pull-refresh-start" disabled={refreshing} onClick={() => actions.startRefresh()}>
-          lx.startPullDownRefresh()
+          page.refresh()
         </Button>
         <Button variant="secondary" testId="pull-refresh-stop" onClick={() => actions.stopRefresh()}>
-          lx.stopPullDownRefresh()
+          Finish refresh
         </Button>
       </Section>
       <Section title="Sample Rows" description="Scroll the page: a pull refreshes only from the top">

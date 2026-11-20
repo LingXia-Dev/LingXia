@@ -40,6 +40,8 @@ page instance. They advance independently.
   settles before that page's `onShow` starts. Different pages do not wait on
   each other.
 - **`page.signal` aborts before `onUnload`.**
+- **`onPullDownRefresh` holds the indicator until it settles.** A pull and
+  `page.refresh()` both run it; return the fetch's promise. There is no stop call.
 
 ## App hooks
 

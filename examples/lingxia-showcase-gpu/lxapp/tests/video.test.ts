@@ -96,7 +96,7 @@ test('a quality switch keeps the position and the frames moving', { start: { pag
   await expect(state).toContainText('360p · 360p', { timeout: 5_000 });
 });
 
-test('lx.createVideoContext pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
+test('page.video pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');

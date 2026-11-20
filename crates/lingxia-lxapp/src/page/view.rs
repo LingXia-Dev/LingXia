@@ -161,7 +161,7 @@ pub enum GpuViewRequest {
     Video(GpuVideoRequest),
 }
 
-/// `lx.createVideoContext(name)`: one command to the page's player `name`, which is a
+/// `page.video(name)`: one command to the page's player `name`, which is a
 /// `useVideo` name or a `<video id>`.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct GpuVideoRequest {

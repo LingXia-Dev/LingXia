@@ -169,7 +169,7 @@ export default definePage({
     let pageActive = false;
     const helpers = {
       async applyPageType(pageType: CloudPageType) {
-        void lx.navigationBar.update({
+        void page.navigationBar.update({
           title: getNavigationTitle(pageType),
         });
 

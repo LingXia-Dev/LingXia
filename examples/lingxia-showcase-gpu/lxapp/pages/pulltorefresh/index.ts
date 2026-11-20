@@ -6,16 +6,16 @@ export default definePage({
     isRefreshing: false,
   },
   setup(page) {
+    // The indicator stays until onPullDownRefresh settles; the stop button
+    // settles it here, standing in for a fetch.
+    let finishRefresh: (() => void) | null = null;
     const actions = {
       async goBack() { await lx.nav.back(); },
       startRefresh() {
-        console.log("startPullDownRefresh called");
-        lx.startPullDownRefresh();
+        page.refresh();
       },
       stopRefresh() {
-        console.log("stopPullDownRefresh called");
-        page.update(d => { d.isRefreshing = false; });
-        lx.stopPullDownRefresh();
+        finishRefresh?.();
       },
     };
     return {
@@ -30,14 +30,18 @@ export default definePage({
       },
       // Page lifecycle: Called when user pulls down to refresh
       onPullDownRefresh() {
-        console.log("onPullDownRefresh triggered");
-        const now = new Date();
-        const timeString = now.toLocaleTimeString();
-
+        const timeString = new Date().toLocaleTimeString();
         page.update(d => {
           d.isRefreshing = true;
           d.refreshCount = page.data.refreshCount + 1;
           d.lastRefreshTime = timeString;
+        });
+        return new Promise<void>((resolve) => {
+          finishRefresh = () => {
+            finishRefresh = null;
+            page.update(d => { d.isRefreshing = false; });
+            resolve();
+          };
         });
       },
       actions,

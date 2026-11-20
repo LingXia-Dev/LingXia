@@ -6,6 +6,7 @@ mod preview;
 mod save;
 mod scan;
 mod video;
+pub(crate) use video::{JSVideoContext as VideoContextHandle, for_page as video_for_page};
 mod video_file;
 
 use rong::{JSContext, JSObject, JSResult};

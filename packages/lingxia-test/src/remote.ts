@@ -59,6 +59,7 @@ export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.
     '  getPage: typeof __lxGetPage === "function" ? __lxGetPage : undefined,',
     '  getApp: typeof getApp === "function" ? getApp : undefined,',
     '  getCurrentPages: typeof getCurrentPages === "function" ? getCurrentPages : undefined,',
+    '  currentPage: () => { const pages = typeof getCurrentPages === "function" ? getCurrentPages() : []; return pages.length ? pages[pages.length - 1].page : undefined; },',
     `}, ...__lxArgs)).then(value => __lxResult(value, ${JSON.stringify(api)})))(`,
     source,
     `, ${argsLiteral(args, api)}, ${(result === "snapshot" ? jsonSnapshot : jsonResult).toString()})`,

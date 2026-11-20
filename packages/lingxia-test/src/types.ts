@@ -1,6 +1,6 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 /// <reference types="@lingxia/types/logic-globals" preserve="true" />
-import type { PageContract } from "@lingxia/types/page";
+import type { PageApi, PageContract } from "@lingxia/types/page";
 export type { PageContract } from "@lingxia/types/page";
 import type {
   ActionSheetAnswer,
@@ -368,6 +368,8 @@ export interface LogicPage<TData = Record<string, unknown>> {
   setData(patch: Record<string, unknown>): void;
   /** Resolves once pending `setData` writes reached the View. */
   flush(): Promise<void>;
+  /** The object a `definePage` page's `setup` received, with `navigationBar`, `refresh` and `video`. */
+  readonly page?: PageApi<any, any, any>;
 }
 
 /** A page whose declared methods are not typed: any member may be read. */
@@ -392,6 +394,8 @@ export interface LogicScope {
   getCurrentPages<T extends LogicPage<any> = AnyLogicPage>(): T[];
   /** A live page by instance id, surface pages included; `undefined` once it is gone. */
   getPage<T extends LogicPage<any> = AnyLogicPage>(instanceId: string): T | undefined;
+  /** The object the top page's `setup` received: `navigationBar`, `refresh`, `video`. */
+  currentPage(): PageApi<any, any, any> | undefined;
 }
 
 type PageGlobal<K extends string, Fallback> = typeof globalThis extends { [P in K]: infer V } ? V : Fallback;

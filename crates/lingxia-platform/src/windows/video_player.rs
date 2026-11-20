@@ -1,6 +1,6 @@
 //! Video-player command routing for Windows.
 //!
-//! The logic layer's video context (`lx.createVideoContext`) binds a player
+//! The logic layer's video context (`page.video`) binds a player
 //! by native-component id and dispatches [`VideoPlayerCommand`]s through it.
 //! Native players are owned by the UI layer's component host (the shell's
 //! `video.native` manager), which the platform layer deliberately cannot

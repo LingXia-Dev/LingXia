@@ -8,7 +8,7 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 // the other pull specs use: the path a finger takes, system touch slop and batching included.
 test('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
+  covers: ['page.refresh', 'PageSetup.onPullDownRefresh'],
   requires: { args: ['androidDevice'] },
   reason: 'requires the Android OS input fixture',
   start: { page: 'pullToRefresh' },

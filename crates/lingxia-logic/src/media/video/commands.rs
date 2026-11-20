@@ -467,7 +467,7 @@ fn video_error(error: &lxapp::LxAppError) -> rong::RongJSError {
 impl JSVideoContext {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(js_invalid_parameter_error("Use lx.createVideoContext()"))
+        Err(js_invalid_parameter_error("Use page.video(name)"))
     }
 
     #[js_method(ts_return = "Promise<void>")]

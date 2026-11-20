@@ -37,7 +37,7 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
   );
 }
 
-test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+test("page.refresh runs onPullDownRefresh, and the indicator stays until it settles", { id: "PULL-001", covers: ['page.refresh', 'PageSetup.onPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.reset({ page: 'pullToRefresh' });
@@ -59,13 +59,18 @@ test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
 
   await t.step('a restart while the stopped indicator still lingers refreshes again', async () => {
     const idle = await refreshState(app);
-    // Start, stop and start again in one Logic turn: the native indicator
-    // stays up for a minimum time after a stop, and a start that lands in
-    // that window must still reach onPullDownRefresh.
-    await app.logic.eval(({ lx }) => {
-      lx.startPullDownRefresh();
-      lx.stopPullDownRefresh();
-      lx.startPullDownRefresh();
+    await pull.testId("pull-refresh-start").click();
+    await waitForRefreshState(app, (state) => state.refreshing && state.count === idle.count + 1);
+    // Finish and start again in one Logic turn: the native indicator stays up
+    // for a minimum time after a stop, and a start that lands in that window
+    // must still reach onPullDownRefresh.
+    await app.logic.eval(async ({ getCurrentPages, currentPage }) => {
+      const pages = getCurrentPages();
+      const top = pages[pages.length - 1];
+      (top.stopRefresh as () => void)();
+      await Promise.resolve();
+      await Promise.resolve();
+      currentPage()!.refresh();
     });
     const restarted = await waitForRefreshState(
       app,
@@ -78,14 +83,14 @@ test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
     expect(await waitForStatus(t, pull, 'Idle')).toContain('Idle');
   });
 
-  await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
+  await t.step('refresh throws when the page has not enabled pull-down refresh', async () => {
     await app.nav.reset({ page: 'home' });
     // The relaunch waited for home to be ready, so it is the current page.
     await app.view.testId('home-page').waitFor({ timeout: 30_000 });
 
-    const rejected: Caught = await app.logic.eval(async ({ lx }) => {
+    const rejected: Caught = await app.logic.eval(async ({ currentPage }) => {
       try {
-        await lx.startPullDownRefresh();
+        currentPage()!.refresh();
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

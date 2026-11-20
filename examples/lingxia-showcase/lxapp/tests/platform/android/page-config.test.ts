@@ -11,7 +11,7 @@ test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' 
 
 test('page JSON controls native navigation chrome and refresh eligibility', {
   id: 'ANDROID-PAGE-CONFIG-001', app: SHOWCASE_APP_ID,
-  covers: ['PageConfig.navigationStyle', 'PageConfig.enablePullDownRefresh', 'lx.navigationBar.update'],
+  covers: ['PageConfig.navigationStyle', 'PageConfig.enablePullDownRefresh', 'page.navigationBar.update'],
   requires: { args: ['androidDevice'] }, reason: 'requires Android native hierarchy', timeout: 60000,
 }, async (t) => {
   const { app, defer, namespace } = bindFixture(t, 'ANDROID-PAGE-CONFIG-001');
@@ -25,21 +25,21 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
 
   await app.nav.reset({ page: 'ui' });
   // The demo sets a runtime title onLoad; null must restore the JSON title.
-  await app.logic.eval(({ lx }) => lx.navigationBar.update({ title: null }));
+  await app.logic.eval(({ currentPage }) => currentPage()!.navigationBar.update({ title: null }));
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(uiConfig));
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === title(uiConfig))).toBe(true);
   // Unique runtime titles distinguish native chrome from matching page text.
   const marker = `Navbar ${namespace}`;
-  await app.logic.eval(({ lx }, title) => lx.navigationBar.update({ title }), marker);
+  await app.logic.eval(({ currentPage }, title) => currentPage()!.navigationBar.update({ title }), marker);
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === marker)).toBe(true);
 
   await app.nav.reset({ page: 'home' });
-  await app.logic.eval(({ lx }, title) => lx.navigationBar.update({ title }), marker);
+  await app.logic.eval(({ currentPage }, title) => currentPage()!.navigationBar.update({ title }), marker);
   expect((await app.info()).navigationBar?.title).toBe(marker);
   expect((await device.nodes()).some((node) => node.text === marker)).toBe(false);
 
-  const disabled = await app.logic.eval(async ({ lx }) => {
-    try { await lx.startPullDownRefresh(); return { code: '', bizCode: 0 }; }
+  const disabled = await app.logic.eval(async ({ currentPage }) => {
+    try { currentPage()!.refresh(); return { code: '', bizCode: 0 }; }
     catch (error) {
       const value = error as { code: string; data?: { bizCode?: number } };
       return { code: value.code, bizCode: value.data?.bizCode ?? 0 };
@@ -51,11 +51,11 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(pullConfig));
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === title(pullConfig))).toBe(true);
   const page = await app.page({ name: 'pullToRefresh' });
-  await app.logic.eval(({ lx }) => lx.startPullDownRefresh());
+  await app.logic.eval(({ currentPage }) => currentPage()!.refresh());
   try {
     await expect(page.view.testId('pull-refresh-count')).toHaveText('1');
     await expect(page.view.testId('pull-refresh-status')).toContainText('Refreshing');
   } finally {
-    await app.logic.eval(({ lx }) => lx.stopPullDownRefresh());
+    await app.logic.eval(({ getCurrentPages }) => { const pages = getCurrentPages(); (pages[pages.length - 1].stopRefresh as () => void)(); });
   }
 });

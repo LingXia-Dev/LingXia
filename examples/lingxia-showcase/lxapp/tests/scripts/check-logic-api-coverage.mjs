@@ -52,6 +52,17 @@ function directLxPath(node) {
     : null;
 }
 
+// A handle factory is an `lx.*` call, or a member of the `page` a page's setup received.
+function factoryPath(node) {
+  const lxPath = directLxPath(node);
+  if (lxPath) return lxPath;
+  return ts.isPropertyAccessExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === 'page'
+    ? `page.${node.name.text}`
+    : null;
+}
+
 function scan() {
   const usages = new Map();
   for (const file of logicFiles()) {
@@ -152,7 +163,7 @@ function scanReturnedObjects() {
     const factorySurfaces = (expression) => {
       const current = unwrapExpression(expression);
       if (!ts.isCallExpression(current)) return null;
-      const factory = directLxPath(current.expression);
+      const factory = factoryPath(current.expression);
       return factory ? surfacesByFactory.get(factory) ?? null : null;
     };
     const inferred = (expression) => {

@@ -1202,7 +1202,7 @@ export default definePage({
       },
       // A tab page loads in the background; `navigationBar.update` patches whichever page is current.
       onShow() {
-        void lx.navigationBar.update({ title: getModeTitle(page.data.mediaType) });
+        void page.navigationBar.update({ title: getModeTitle(page.data.mediaType) });
       },
       onHide() {
         helpers.stopCompression();

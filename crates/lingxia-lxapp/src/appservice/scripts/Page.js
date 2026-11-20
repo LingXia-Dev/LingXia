@@ -301,6 +301,16 @@
       return svc;
     }
 
+    function native() {
+      return globalThis.__LX_PAGE_NATIVE__;
+    }
+
+    const navigationBar = Object.freeze({
+      update(patch) {
+        return native().navigationBarUpdate(pageInstanceId, patch);
+      },
+    });
+
     const page = Object.freeze({
       get data() {
         return svc ? svc.data : initial;
@@ -359,6 +369,13 @@
       get surface() {
         return svc ? svc.surface : undefined;
       },
+      navigationBar,
+      refresh() {
+        native().startRefresh(pageInstanceId);
+      },
+      video(name) {
+        return native().video(pageInstanceId, name);
+      },
     });
 
     const returned = def.setup ? def.setup(page) : {};
@@ -379,6 +396,27 @@
       if (typeof value !== "function") throw new TypeError(`definePage: ${key} must be a function`);
       config[key] = value;
     }
+    // The indicator goes away when the hook settles; a page without one
+    // still gets it put away.
+    const userRefresh = config.onPullDownRefresh;
+    config.onPullDownRefresh = function () {
+      const stop = () => {
+        try {
+          native().stopRefresh(pageInstanceId);
+        } catch (error) {
+          console.warn("Could not stop the refresh indicator:", error);
+        }
+      };
+      let result;
+      try {
+        result = userRefresh ? userRefresh() : undefined;
+      } catch (error) {
+        stop();
+        throw error;
+      }
+      Promise.resolve(result).then(stop, stop);
+      return result;
+    };
     const userOnLoad = config.onLoad;
     config.onLoad = function (options) {
       params = options || {};
@@ -403,6 +441,8 @@
       gpu,
       lifetime,
     );
+    // What a test's getPage(id) reaches the page-scoped members through.
+    Object.defineProperty(svc, "page", { value: page, enumerable: false });
     return svc;
   }
 

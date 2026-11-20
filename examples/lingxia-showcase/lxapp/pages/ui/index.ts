@@ -531,7 +531,7 @@ export default definePage({
       },
       updateNavigationBarTitle(options: { title: string }) {
         return helpers.runChromeUpdate("Navigation bar update", () =>
-          lx.navigationBar.update({ title: options.title }),
+          thisPage.navigationBar.update({ title: options.title }),
         );
       },
       updateNavigationBarColors(options: {
@@ -540,7 +540,7 @@ export default definePage({
         dividerColor?: string;
       }) {
         return helpers.runChromeUpdate("Navigation bar update", () =>
-          lx.navigationBar.update({
+          thisPage.navigationBar.update({
             style: {
               backgroundColor: options.backgroundColor,
               foregroundColor: options.frontColor,
@@ -551,12 +551,12 @@ export default definePage({
       },
       updateNavigationBarHomeButton(options: { homeButton: NavigationBarPatch["homeButton"] }) {
         return helpers.runChromeUpdate("Navigation bar update", () =>
-          lx.navigationBar.update({ homeButton: options.homeButton }),
+          thisPage.navigationBar.update({ homeButton: options.homeButton }),
         );
       },
       resetNavigationBar() {
         return helpers.runChromeUpdate("Navigation bar update", () =>
-          lx.navigationBar.update({ title: null, style: null, homeButton: "auto" }),
+          thisPage.navigationBar.update({ title: null, style: null, homeButton: "auto" }),
         );
       },
       // TabBar API functions

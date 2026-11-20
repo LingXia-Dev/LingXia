@@ -214,7 +214,7 @@ export default definePage({
     return {
       onLoad() {
         try {
-          void lx.navigationBar.update({ title: 'AI Chat' });
+          void page.navigationBar.update({ title: 'AI Chat' });
         } catch (_) {}
       },
       actions,
