@@ -1,15 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
+import { bundlePage, mountPage } from './page-harness.mjs';
 
-const require = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url));
-const { buildSync } = require('esbuild');
-const source = buildSync({
-  entryPoints: [fileURLToPath(new URL('../lxapp/pages/cloud/index.ts', import.meta.url))],
-  bundle: true, write: false, platform: 'neutral', format: 'iife', logLevel: 'silent',
-}).outputFiles[0].text;
+const source = bundlePage('../lxapp/pages/cloud/index.ts');
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -33,16 +26,9 @@ function fixture() {
       },
     },
   };
-  vm.runInNewContext(source, {
+  page = mountPage(source, {
     lx, console: { log() {}, warn() {}, error() {} },
-    getCurrentPages: () => disposed ? [] : [page],
-    Page(definition) {
-      page = { ...definition, data: structuredClone(definition.data), setData(patch) {
-        if (disposed) lateWrites++;
-        Object.assign(this.data, patch);
-      } };
-    },
-  });
+  }, { onWrite() { if (disposed) lateWrites++; } });
   return {
     page, pending, lx, lateWrites: () => lateWrites, listeners: () => listeners,
     async unload() { disposed = true; await page.onUnload(); },
@@ -65,7 +51,6 @@ test('subscription completed after unload closes without writing into the dispos
   await f.unload();
   f.pending[0].resolve(late); await start;
   assert.equal(late.closes, 1);
-  assert.equal(f.page.mqttSubscription, null);
   assert.equal(f.listeners(), 0);
   assert.equal(f.lateWrites(), 0);
 });
@@ -79,7 +64,6 @@ test('stop cancels a pending subscription and a newer start owns the returned ha
   f.pending[1].resolve(current); await second;
   f.pending[0].resolve(old); await first;
   assert.equal(old.closes, 1);
-  assert.equal(f.page.mqttSubscription, current);
   assert.equal(f.page.data.mqttSubscribed, true);
   await f.unload(); assert.equal(current.closes, 1);
 });
@@ -100,10 +84,10 @@ test('a slow close cannot overwrite a newer subscription state', async () => {
   const second = f.page.startMqttDemo();
   f.pending[1].resolve(current); await second;
   closing.resolve(); await stop;
-  assert.equal(f.page.mqttSubscription, current);
   assert.equal(f.page.data.mqttSubscribed, true);
   assert.equal(f.page.data.mqttStatus, 'Subscribed to demo/mqtt');
-  await f.unload();
+  // The page still owns the newer handle: unload closes it.
+  await f.unload(); assert.equal(current.closes, 1);
 });
 
 test('function results and failures retain the original Logic contract', async () => {
