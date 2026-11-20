@@ -527,6 +527,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
             }
         }
 
+        // Its host dialogs go with it: they sit over this controller and would cover the next app.
+        LxAppModal.dismissForClosedApp()
+        LxAppActionSheet.dismissForClosedApp()
+
         // Hide the app if it's currently active
         if LxAppCore.currentAppId == appId {
             hideCurrentLxApp()

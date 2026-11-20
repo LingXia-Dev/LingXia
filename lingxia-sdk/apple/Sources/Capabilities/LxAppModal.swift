@@ -89,6 +89,21 @@ class LxAppModal {
     }
 
     #if os(iOS)
+    /// The alert on screen and its request, so closing its app can take it down.
+    @MainActor private static weak var shownAlert: UIAlertController?
+    @MainActor private static var shownCallback: CallbackOnce?
+
+    /// The app that asked for it closed: the alert goes, its caller hears a dismissal.
+    @MainActor
+    static func dismissForClosedApp() {
+        shownCallback?.send(success: false, payload: LxAppDismissal.userDismissedCode)
+        shownCallback = nil
+        if let alert = shownAlert, alert.presentingViewController != nil {
+            alert.dismiss(animated: false)
+        }
+        shownAlert = nil
+    }
+
     /// The topmost view controller, when it can present right now.
     @MainActor
     private static func stableModalPresenter() -> UIViewController? {
@@ -174,6 +189,8 @@ class LxAppModal {
     }
 
     // Present the alert
+    shownAlert = alert
+    shownCallback = callback
     topViewController.present(alert, animated: true)
     DispatchQueue.main.async {
         guard alert.presentingViewController != nil || alert.viewIfLoaded?.window != nil else {

@@ -55,6 +55,8 @@ import com.lingxia.app.PageWebViewCallback
 import com.lingxia.app.Lingxia
 import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
+import com.lingxia.lxapp.APIs.LxAppActionSheet
+import com.lingxia.lxapp.APIs.LxAppModal
 import com.lingxia.lxapp.APIs.LxAppSurface
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 
@@ -3187,6 +3189,9 @@ class LxAppActivity : AppCompatActivity() {
         }
         ++gpuTransitionVersion
         clearGpuTransitionCover()
+        // Its host dialogs go with it: they sit on this Activity and would cover the next app.
+        LxAppModal.hideModal()
+        LxAppActionSheet.hideActionSheet()
 
         // Pause and clean up current WebView
         currentWebView?.let { webView ->

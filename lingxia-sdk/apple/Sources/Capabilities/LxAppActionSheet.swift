@@ -101,6 +101,18 @@ class LxAppActionSheet {
     }
 
     #if os(iOS)
+    /// The sheet on screen (its tag is its callback), so closing its app can take it down.
+    @MainActor private static weak var shownSheet: UIView?
+
+    /// The app that asked for it closed: the sheet goes, its caller hears a dismissal.
+    @MainActor
+    static func dismissForClosedApp() {
+        guard let sheet = shownSheet, sheet.superview != nil else { return }
+        shownSheet = nil
+        sheet.removeFromSuperview()
+        sendResult(callback_id: UInt64(sheet.tag), tapIndex: -1)
+    }
+
     @MainActor
     private static func showIOSActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -122,6 +134,7 @@ class LxAppActionSheet {
             sendPresentationFailure(callback_id: callback_id)
             return
         }
+        shownSheet = actionSheetView
     }
 
     @MainActor
@@ -324,6 +337,10 @@ class LxAppActionSheet {
 
     @MainActor
     internal static func dismissActionSheet(_ actionSheetView: UIView, completion: @escaping () -> Void) {
+        // Already answering: a close during the slide-out must not answer again.
+        if shownSheet === actionSheetView {
+            shownSheet = nil
+        }
         guard let containerView = actionSheetView.subviews.first else {
             completion()
             return
