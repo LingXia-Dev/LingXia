@@ -32,7 +32,7 @@ async function project(files, run, { install = 'link' } = {}) {
     }
     if (files['../kit/package.json']) {
       await mkdir(join(root, 'node_modules'), { recursive: true });
-      if (install === 'link') await symlink(join(base, 'kit'), join(root, 'node_modules/view-kit'), 'dir');
+      if (install === 'link') await symlink(join(base, 'kit'), join(root, 'node_modules/view-kit'), 'junction');
       else await cp(join(base, 'kit'), join(root, 'node_modules/view-kit'), { recursive: true });
     }
     await run(root, (options = {}) => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, options));

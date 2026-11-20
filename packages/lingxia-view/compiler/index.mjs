@@ -35,10 +35,22 @@ async function writeAtomic(path, contents) {
   const temp = `${path}.${process.pid}.${++temps}.tmp`;
   try {
     await writeFile(temp, contents);
-    await rename(temp, path);
+    await renameOver(temp, path);
   } catch (error) {
     await rm(temp, { force: true });
     throw error;
+  }
+}
+
+// On Windows a scanner or indexer briefly holds a file it just saw written, and a rename over
+// it fails EPERM/EBUSY until it lets go; retry for up to a second, as npm's graceful-fs does.
+async function renameOver(from, to) {
+  for (let delay = 10; ; delay *= 2) {
+    try { return await rename(from, to); }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'EACCES'].includes(error.code) || delay > 640) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 }
 
