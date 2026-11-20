@@ -62,11 +62,12 @@ test('reject malformed navigation arguments with stable codes', {
   const before = await app.nav.current();
 
   await assertRejections(t, app, [
-    { label: 'navigateTo no page', api: 'navigateTo', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'navigateTo empty page', api: 'navigateTo', args: [{ page: '' }], code: 'E_INVALID_ARG' },
-    { label: 'navigateTo unknown page', api: 'navigateTo', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
-    { label: 'redirectTo unknown page', api: 'redirectTo', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
-    { label: 'switchTab unknown page', api: 'switchTab', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
+    { label: 'go no target', api: 'nav.go', args: [{}], code: 'E_INVALID_ARG' },
+    { label: 'go empty page', api: 'nav.go', args: [{ page: '' }], code: 'E_INVALID_ARG' },
+    { label: 'go unknown key', api: 'nav.go', args: [{ page: 'home', query: {} }], code: 'E_INVALID_ARG' },
+    { label: 'go unknown page', api: 'nav.go', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
+    { label: 'replace unknown page', api: 'nav.go', args: [{ page: 'no-such-page' }, { replace: true }], code: 'E_NOT_FOUND' },
+    { label: 'go unknown tab', api: 'nav.go', args: [{ tab: 'no-such-page' }], code: 'E_NOT_FOUND' },
   ]);
 
   // A rejected navigation must not have moved the stack.

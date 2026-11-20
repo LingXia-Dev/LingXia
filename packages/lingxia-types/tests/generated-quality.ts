@@ -64,7 +64,7 @@ lx.nav.go({ tab: "home" }, { replace: true });
 lx.nav.reset({ url: "https://example.com" });
 // @ts-expect-error navigation takes configured page names, not routes
 lx.nav.go({ path: "/pages/chat/index" });
-// @ts-expect-error query was renamed params
+// @ts-expect-error a target takes params, not query
 lx.nav.go({ page: "detail", query: {} });
 // @ts-expect-error going back is lx.nav.back(n)
 lx.nav.go(-1);

@@ -23,10 +23,9 @@ struct NavTargetInput {
     params: Option<JSObject>,
     channel: Option<String>,
     version: Option<String>,
-    // Read only to name their replacements.
-    query: Option<JSObject>,
-    path: Option<String>,
 }
+
+const TARGET_KEYS: &[&str] = &["page", "tab", "app", "url", "params", "channel", "version"];
 
 #[derive(FromJSObject)]
 #[ts_skip]
@@ -53,24 +52,18 @@ fn js_invalid(message: impl Into<String>) -> rong::RongJSError {
 }
 
 fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
-    if value.is_number() {
-        return Err(invalid(
-            "lx.nav.go takes a target; use lx.nav.back(n) to go back",
-        ));
-    }
-    if !value.is_object() {
+    let Some(object) = value.clone().into_object() else {
         return Err(invalid("a target is { page }, { tab }, { app } or { url }"));
+    };
+    for key in object.keys_as::<String>().map_err(|e| invalid(e.to_string()))? {
+        if !TARGET_KEYS.contains(&key.as_str()) {
+            return Err(invalid(format!("unknown target key '{key}'")));
+        }
     }
     let input = value
         .clone()
         .to_rust::<NavTargetInput>()
         .map_err(|e| invalid(e.to_string()))?;
-    if input.query.is_some() {
-        return Err(invalid("query was renamed params"));
-    }
-    if input.path.is_some() {
-        return Err(invalid("path is not supported; name the page in page"));
-    }
     // With `app`, `page` names a page of that app.
     let page = if input.app.is_some() {
         &None
