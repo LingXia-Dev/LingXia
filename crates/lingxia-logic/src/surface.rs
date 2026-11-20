@@ -13,7 +13,7 @@ use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     AppHandlerUnsub, BROWSER_TAB_CLOSED_EVENT, LxApp, LxAppError, PageQueryInput,
     PageSurfaceRequest, PageSurfaceTarget, PageTarget, app_handler_unsub, publish_app_event,
-    register_app_handler, try_get, unregister_app_handler_token,
+    register_app_handler, try_get,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -250,95 +250,7 @@ rong::js_api! {
             ts_params = "key: string",
             ts_return = "PageSurface | TabSurface | undefined"
         ) = get_surface;
-        fn watchContext(
-            ts_params = "handler: (context: SurfaceContext) => void",
-            ts_return = "() => void"
-        ) = surface_on_change;
-        fn bringToFront(
-            ts_params = "options?: BringToFrontOptions",
-            ts_return = "Promise<void>"
-        ) = surface_bring_to_front;
     }
-}
-
-#[derive(rong::FromJSObject)]
-#[ts_skip]
-struct BringToFrontOptions {
-    page: Option<String>,
-    query: Option<JSObject>,
-}
-
-/// `lx.surface.bringToFront(options?)` — bring the product forward on this
-/// lxapp, the way a notification tap with `{ kind: 'app', appId: <self> }`
-/// does: a docked aside comes back where it is, otherwise it opens in main,
-/// and `page` / `query` reach it as a reopen. A guest may do this only right
-/// after the person picked an action on its banner; the Control app may
-/// whenever it likes.
-async fn surface_bring_to_front(
-    ctx: JSContext,
-    options: Optional<BringToFrontOptions>,
-) -> JSResult<()> {
-    use lingxia_service::navigation::{
-        self, NavigationRequest, NavigationSource, NavigationTarget,
-    };
-    const ROUTE: &str = "lx.surface.bringToFront";
-
-    let invocation = authorization::require(&ctx, LogicRoute::SurfaceBringToFront)?;
-    let app = invocation.lxapp();
-    let BringToFrontOptions { page, query } = options.0.unwrap_or(BringToFrontOptions {
-        page: None,
-        query: None,
-    });
-    let query = match query {
-        None => serde_json::Map::new(),
-        Some(object) => {
-            let json = object.to_json_string().map_err(|error| {
-                crate::i18n::js_invalid_parameter_error(format!(
-                    "{ROUTE} query must be a plain object: {error}"
-                ))
-            })?;
-            match serde_json::from_str::<Value>(&json) {
-                Ok(Value::Object(map)) => map,
-                _ => {
-                    return Err(crate::i18n::js_invalid_parameter_error(format!(
-                        "{ROUTE} query must be a plain object"
-                    )));
-                }
-            }
-        }
-    };
-    let target = NavigationTarget::App {
-        appid: app.appid.clone(),
-        page,
-        query,
-    };
-    let navigation_error = |error: navigation::NavigationError| -> rong::RongJSError {
-        match error {
-            navigation::NavigationError::InvalidTarget(message) => {
-                crate::i18n::js_invalid_parameter_error(format!("{ROUTE} {message}"))
-            }
-            navigation::NavigationError::Unavailable(message)
-            | navigation::NavigationError::Internal(message) => {
-                HostError::new(rong::error::E_INTERNAL, message).into()
-            }
-        }
-    };
-    navigation::validate(&target).map_err(navigation_error)?;
-    if authorization::AttentionScope::of(&invocation)
-        .owner()
-        .is_some()
-        && !crate::user_activation::take(&app.appid, app.session_id())
-    {
-        return Err(crate::i18n::js_error_from_business_code_with_detail(
-            3000,
-            format!(
-                "{ROUTE}: a guest lxapp may come forward only right after the person picks an action on its lx.host.banner"
-            ),
-        ));
-    }
-    navigation::activate();
-    navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
-        .map_err(navigation_error)
 }
 
 rong::js_api! {
@@ -404,22 +316,26 @@ fn surface_context_flipped(appid: &str, context: &JSSurfaceContext) -> bool {
     seen.insert(appid.to_string(), key.clone()).as_ref() != Some(&key)
 }
 
-/// `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
-/// lxapp's JS context), invoke it immediately, then again whenever that
-/// presentation's `sizeClass` or host docking availability changes. Returns an unsubscribe fn.
-fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let initial = surface_context_for(&lxapp);
-    surface_context_flipped(&lxapp.appid, &initial);
-    let token = register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
-    let payload = JSValue::from_rust(&ctx, initial);
-    if let Err(err) = handler.call::<_, ()>(None, (payload,)) {
-        unregister_app_handler_token(&ctx, SURFACE_CONTEXT_EVENT, token);
-        return Err(err);
-    }
-    let off = app_handler_unsub(&ctx, SURFACE_CONTEXT_EVENT, token);
+/// `page.env`: the lxapp's `{ sizeClass, canDock }`. Pixels stay in the View.
+pub(crate) fn page_env(ctx: &JSContext) -> JSResult<JSObject> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let context = surface_context_for(&lxapp);
+    surface_context_flipped(&lxapp.appid, &context);
+    let env = JSObject::new(ctx);
+    env.set("sizeClass", context.size_class)?;
+    env.set("canDock", context.can_dock)?;
+    Ok(env)
+}
+
+/// `page.env.watch(handler)`: called when `sizeClass` or `canDock` flips, not
+/// on every resize. Returns an unsubscribe function.
+pub(crate) fn page_env_watch(ctx: &JSContext, handler: JSFunc) -> JSResult<JSFunc> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    surface_context_flipped(&lxapp.appid, &surface_context_for(&lxapp));
+    let token = register_app_handler(ctx, SURFACE_CONTEXT_EVENT, handler)?;
+    let off = app_handler_unsub(ctx, SURFACE_CONTEXT_EVENT, token);
     let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
+    JSFunc::new(ctx, move || {
         if unsubscribed.replace(true) {
             return;
         }

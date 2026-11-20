@@ -66,7 +66,7 @@ impl SizeClass {
     }
 }
 
-/// Viewport band exposed to lxapp content via `lx.surface.watchContext`.
+/// Viewport band exposed to lxapp content via the View `env` and Logic `page.env`.
 /// Compact `< 600`; Regular `≥ 600`. Shell `medium`/`expanded` are not
 /// distinct values here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

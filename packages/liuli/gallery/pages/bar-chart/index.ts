@@ -3,7 +3,7 @@ import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 import { definePage } from '@lingxia/types/page';
 
 export default definePage({
-  setup() {
+  setup(thisPage) {
     let unwatch = undefined as (() => void) | undefined;
     const actions = {
       async open({ page }: { page: string }) {
@@ -18,7 +18,7 @@ export default definePage({
     };
     return {
       onLoad() {
-        unwatch = returnToWorkspaceWhenWide("bar-chart");
+        unwatch = returnToWorkspaceWhenWide("bar-chart", thisPage.env);
       },
       onUnload() {
         unwatch?.();

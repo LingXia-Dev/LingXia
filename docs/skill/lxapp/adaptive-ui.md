@@ -3,14 +3,13 @@
 Change an lxapp's component tree by available size. Never infer a device from
 the user agent, `screen.width`, or a browser media query.
 
-## Surface context
+## Size class
 
 ```ts
-type SurfaceContext = {
+// View: useLxHost() / env. Logic: page.env (no pixels).
+type SizeContext = {
   canDock: boolean;                  // can `as: 'aside'` dock beside the main right now
   sizeClass: 'compact' | 'regular';
-  width: number;
-  height: number;
 };
 ```
 
@@ -45,10 +44,10 @@ that only picks a layout needs no Logic subscription. Size spacing and columns
 with CSS and container queries. Older hosts report `compact`, so keep
 `minRuntime` current.
 
-Logic subscribes with `lx.surface.watchContext(cb)` only when Logic itself acts
-on the context; it is called immediately, then only when `sizeClass` or
-`canDock` changes (not on every resize), and returns an unsubscribe (tear it down as in
-[`lx.on*` subscriptions](./guide.md#lxon-subscriptions)).
+Logic reads `page.env.sizeClass` / `.canDock`, and calls `page.env.watch(cb)`
+only when Logic itself acts on a change. `cb` runs when `sizeClass` or
+`canDock` changes (not on every resize, and not on subscribe); the watcher
+stops when the page unloads, and the returned function stops it earlier.
 
 ## CSS or separate Views
 

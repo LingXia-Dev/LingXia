@@ -159,10 +159,13 @@ lx.surface.openUrl("https://example.com", { as: "tab" });
 // The retired API is gone.
 // @ts-expect-error openSurface no longer exists
 lx.openSurface;
-// @ts-expect-error onSurfaceContext moved to lx.surface.watchContext
+// @ts-expect-error onSurfaceContext is gone
 lx.onSurfaceContext;
-
-const unsubscribeContext: () => void = lx.surface.watchContext(() => {});
+// @ts-expect-error the size class is per page: page.env.watch
+lx.surface.watchContext;
+// @ts-expect-error a banner action's target brings the lxapp forward
+lx.surface.bringToFront;
+lx.shell.activate();
 
 export type SurfaceNamespaceGate = [
   typeof preferenceKeepsPerPlacementOptions,
@@ -178,7 +181,6 @@ export type SurfaceNamespaceGate = [
   typeof orderedPreference,
   typeof identityReplacesCaching,
   typeof windowOffered,
-  typeof unsubscribeContext,
   SurfaceErrorCodesAreExhaustive,
 ];
 

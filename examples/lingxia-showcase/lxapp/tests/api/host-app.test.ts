@@ -891,28 +891,29 @@ test('refuse to move the root main out of main', {
   expect(result.code).toBe('E_SURFACE_ROLE_LOCKED');
 });
 
-test('subscribe to and release the surface context listener', {
+test('read the page size class and release its watcher', {
   id: 'HOSTAPP-SURFACE-CTX-001',
-  covers: ['lx.surface', 'lx.surface.watchContext'],
+  covers: ['lx.surface'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
 
-  const result = await app.logic.eval(async ({ lx }) => {
-    let context: { canDock?: unknown } | undefined;
-    const first = lx.surface.watchContext(value => { context = value; });
-    const second = lx.surface.watchContext(() => {});
+  const result = await app.logic.eval(({ currentPage }) => {
+    const env = currentPage()!.env;
+    const first = env.watch(() => {});
+    const second = env.watch(() => {});
     first();
     second();
     // Releasing twice must stay inert rather than throwing.
     first();
     return {
       kinds: [typeof first, typeof second], distinct: first !== second,
-      canDock: typeof context?.canDock,
+      sizeClass: env.sizeClass, canDock: typeof env.canDock,
     };
   });
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
+  expect(['compact', 'regular']).toContain(result.sizeClass);
   expect(result.canDock).toBe('boolean');
 });

@@ -980,7 +980,7 @@ impl LxApp {
     }
 
     /// Send every live page's View this lxapp's adaptive context — the JSON
-    /// Logic's `watchContext` was just sent — after it changed. A page whose
+    /// the Logic `page.env` event was just sent — after it changed. A page whose
     /// bridge is not up yet gets it once it is.
     pub fn push_surface_context_to_views(&self, context_json: &str, revision: u64) {
         for page in self.live_page_instances() {

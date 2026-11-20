@@ -26,7 +26,7 @@ export default definePage({
       async onLoad(query?: { page?: string }) {
         const page = query?.page || (await rememberedEntry());
         if (page) thisPage.update(d => { d.page = page; });
-        unwatch = pushEntryWhenNarrow(() => thisPage.data.page);
+        unwatch = pushEntryWhenNarrow(() => thisPage.data.page, thisPage.env);
       },
       onShow() {
         const page = takeHandedOff();

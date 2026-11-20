@@ -87,7 +87,7 @@ Use the generated [Components reference](../../reference/components/) for attrib
 
 ## Adapt to the surface
 
-Use CSS or container queries for spacing and column changes. When the interaction model changes, subscribe in Logic with `lx.surface.watchContext`, replicate the serializable context through `page.update`, and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
+Use CSS or container queries for spacing and column changes. When the interaction model changes, read `env.sizeClass` in the View (Logic has `page.env` when it acts on a change itself) and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
 
 ## Develop and verify
 

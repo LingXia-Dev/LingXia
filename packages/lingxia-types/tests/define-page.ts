@@ -79,3 +79,16 @@ definePage({
 });
 
 export type DefinePageGate = [typeof asContract, typeof counted, typeof params, typeof done];
+
+definePage({
+  setup(page) {
+    const compact: boolean = page.env.sizeClass === 'compact';
+    const stop: () => void = page.env.watch(({ sizeClass, canDock }) => {
+      void sizeClass;
+      void canDock;
+    });
+    // @ts-expect-error pixels stay in the View's env
+    page.env.width;
+    return { onUnload: () => stop(), onLoad: () => void compact };
+  },
+});

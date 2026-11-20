@@ -274,7 +274,9 @@ window and drives sidebar and aside arbitration:
 | `expanded` | `> 840 dp/pt` |
 
 **Content size class** is computed per surface from its actual viewport width
-and is the only size class exposed on `lx.surface.watchContext`:
+and is the only size class content sees: the View's `env` (with the viewport
+in pixels) and Logic's `page.env` (size class and `canDock` only; Logic is
+called when one of them flips, never on a resize):
 
 `canDock` separately reports whether the window has a dock region right now:
 true when the shell size class is Medium or Expanded, false when it is Compact
@@ -1090,9 +1092,11 @@ semantics every language surface MUST share.
 
 - The selector is the method, not a field: `openDeclared` takes a declaration
   id, `openApp` an appId, `openPage` a page name, `openUrl` a URL. Provider
-  kinds such as YAML `lxapp` and `native` are not JS selectors. Composition —
-  choosing `as`, or opening another lxapp — lives on `lx.shell`; an lxapp's own
-  presentations live on `lx.surface`.
+  kinds such as YAML `lxapp` and `native` are not JS selectors. Every opener
+  lives on `lx.surface`, by subject. The calls that change shared composition —
+  `openApp`, and `openDeclared` with `key`, `as` or `edge` — are the Control
+  app's and are refused for other sessions at run time; the namespace is not
+  the privilege.
 - `lx.surface.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
@@ -1204,13 +1208,13 @@ Surface, navigation fails with
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
-- Content can subscribe to its surface context (content size class
-  `compact` | `regular`, viewport dimensions, and `canDock` — whether the
-  window has a dock region right now, never where the content is shown;
-  content is not told its own role or edge); the subscription fires
-  once immediately with the current value, then only on actual change.
-  Crossing the shell's 840 boundary MUST NOT by itself change content
-  `sizeClass`.
+- Content reads its context: content size class `compact` | `regular` and
+  `canDock` — whether the window has a dock region right now, never where the
+  content is shown; content is not told its own role or edge. The View also
+  gets the viewport in pixels on every change. Logic reads it per page
+  (`page.env`) and `page.env.watch` fires only when the size class or `canDock`
+  flips, never on a resize. Crossing the shell's 840 boundary MUST NOT by
+  itself change content `sizeClass`.
 
 ### 7.3 Shell writer
 

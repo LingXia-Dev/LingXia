@@ -4,6 +4,7 @@ use lingxia_platform::traits::app_runtime::{
     AppRuntime, DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
     DesktopBannerOutcome, DesktopBannerShow, DesktopBannerSource,
 };
+use lingxia_service::navigation::{self, NavigationError, NavigationRequest, NavigationSource};
 use rong::{FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
 
 const MAX_ID_CHARS: usize = 64;
@@ -15,6 +16,7 @@ struct JSAction {
     id: Option<String>,
     label: Option<String>,
     style: Option<String>,
+    target: Option<JSObject>,
 }
 
 #[derive(Debug, Clone, Default, FromJSObject)]
@@ -44,13 +46,22 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 }
 
 async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
-    let (invocation, request) =
+    let (invocation, (request, raw_targets)) =
         authorization::require_before_decode(&ctx, LogicRoute::AppBannerShow, || {
             decode_show(options)
         })?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
     let scope = AttentionScope::of(&invocation);
+    // Scoped and checked before anything is shown, like a notification target.
+    let mut targets = Vec::with_capacity(raw_targets.len());
+    for (action, target) in raw_targets {
+        let target = scope
+            .notification_target("lx.host.banner.show", Some(target))
+            .map_err(|refusal| refusal.into_js())?;
+        navigation::validate(&target).map_err(navigation_error)?;
+        targets.push((action, target));
+    }
     let caller_id = request.id.clone();
     let mut request = request;
     request.id = scope.platform_id(&caller_id);
@@ -70,8 +81,15 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         pending.wait()
     })
     .await?;
-    if scope.owner().is_some() && matches!(outcome, DesktopBannerOutcome::Action { .. }) {
-        crate::user_activation::grant(&app.appid, app.session_id());
+    if let DesktopBannerOutcome::Action { action, .. } = &outcome
+        && let Some((_, target)) = targets.into_iter().find(|(id, _)| id == action)
+    {
+        navigation::activate();
+        if let Err(error) =
+            navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
+        {
+            log::warn!("banner action target failed: {}", error.message());
+        }
     }
     encode_outcome(&ctx, &caller_id, outcome)
 }
@@ -188,7 +206,9 @@ where
         .map_err(|error| js_error_from_platform_error(&error))
 }
 
-fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
+type ActionTargets = Vec<(String, serde_json::Value)>;
+
+fn decode_show(options: JSValue) -> JSResult<(DesktopBannerShow, ActionTargets)> {
     let parsed = options.to_rust::<JSShowOptions>()?;
     let title = parsed
         .title
@@ -198,7 +218,7 @@ fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
         Some(id) => validate_id(&id)?,
         None => uuid::Uuid::new_v4().to_string(),
     };
-    let actions = decode_actions(parsed.actions)?;
+    let (actions, targets) = decode_actions(parsed.actions)?;
     let timeout_ms = match parsed.timeout_ms {
         None => None,
         Some(ms) if ms >= 0.0 => Some(ms as u64),
@@ -214,26 +234,32 @@ fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
             DesktopBannerBackground::parse(&value).map_err(js_invalid_parameter_error)?
         }
     };
-    Ok(DesktopBannerShow {
-        id,
-        title,
-        body: parsed.body.unwrap_or_default(),
-        actions,
-        timeout_ms,
-        background,
-    })
+    Ok((
+        DesktopBannerShow {
+            id,
+            title,
+            body: parsed.body.unwrap_or_default(),
+            actions,
+            timeout_ms,
+            background,
+        },
+        targets,
+    ))
 }
 
-fn decode_actions(actions: Option<Vec<JSAction>>) -> JSResult<Vec<DesktopBannerAction>> {
+fn decode_actions(
+    actions: Option<Vec<JSAction>>,
+) -> JSResult<(Vec<DesktopBannerAction>, ActionTargets)> {
     let Some(actions) = actions else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     };
     if actions.len() > MAX_ACTIONS {
         return Err(js_invalid_parameter_error(
             "lx.host.banner.show accepts at most two actions",
         ));
     }
-    actions
+    let mut targets = Vec::new();
+    let actions = actions
         .into_iter()
         .map(|action| {
             let id = action
@@ -254,9 +280,32 @@ fn decode_actions(actions: Option<Vec<JSAction>>) -> JSResult<Vec<DesktopBannerA
                     )));
                 }
             };
+            if let Some(target) = action.target {
+                let json = target.to_json_string().map_err(|error| {
+                    js_invalid_parameter_error(format!(
+                        "banner action target must be a plain object: {error}"
+                    ))
+                })?;
+                let value = serde_json::from_str(&json).map_err(|error| {
+                    js_invalid_parameter_error(format!("banner action target: {error}"))
+                })?;
+                targets.push((id.clone(), value));
+            }
             Ok(DesktopBannerAction { id, label, style })
         })
-        .collect()
+        .collect::<JSResult<Vec<_>>>()?;
+    Ok((actions, targets))
+}
+
+fn navigation_error(error: NavigationError) -> rong::RongJSError {
+    match error {
+        NavigationError::InvalidTarget(message) => {
+            js_invalid_parameter_error(format!("lx.host.banner.show {message}"))
+        }
+        NavigationError::Unavailable(message) | NavigationError::Internal(message) => {
+            HostError::new(rong::error::E_INTERNAL, message).into()
+        }
+    }
 }
 
 fn validate_id(id: &str) -> JSResult<String> {

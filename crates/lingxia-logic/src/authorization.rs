@@ -49,7 +49,7 @@ pub(crate) enum LogicRoute {
     ShellGetDeclared,
     ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
-    SurfaceBringToFront,
+    ShellActivate,
     #[cfg(feature = "terminal")]
     TerminalSettingsGet,
     #[cfg(feature = "terminal")]
@@ -122,7 +122,7 @@ impl LogicRoute {
         Self::ShellGetDeclared,
         Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
-        Self::SurfaceBringToFront,
+        Self::ShellActivate,
         #[cfg(feature = "terminal")]
         Self::TerminalSettingsGet,
         #[cfg(feature = "terminal")]
@@ -154,8 +154,8 @@ impl LogicRoute {
     ];
 
     /// `lx.host.terminal.*` serves the host-bundled Settings surface. The
-    /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`,
-    /// `lx.surface.bringToFront`) admit every lxapp session and then scope
+    /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`)
+    /// admit every lxapp session and then scope
     /// what each may touch with [`AttentionScope`]. Every other direct route
     /// belongs to the ControlApp.
     ///
@@ -196,6 +196,7 @@ impl LogicRoute {
             | Self::ShellGetApp
             | Self::ShellGetDeclared
             | Self::ShellSetAppDisplay
+            | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
@@ -203,8 +204,7 @@ impl LogicRoute {
             | Self::AppNotificationCancel
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
-            | Self::AppBannerDismiss
-            | Self::SurfaceBringToFront => RouteAudience::AppSessionOnly,
+            | Self::AppBannerDismiss => RouteAudience::AppSessionOnly,
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet
             | Self::TerminalSettingsUpdate
@@ -266,7 +266,7 @@ impl LogicRoute {
             Self::ShellGetDeclared => "lx.shell.getDeclared",
             Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
-            Self::SurfaceBringToFront => "lx.surface.bringToFront",
+            Self::ShellActivate => "lx.shell.activate",
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
             #[cfg(feature = "terminal")]
@@ -652,7 +652,6 @@ mod tests {
     fn is_attention_route(route: LogicRoute) -> bool {
         route.name().starts_with("lx.host.notification.")
             || route.name().starts_with("lx.host.banner.")
-            || route == LogicRoute::SurfaceBringToFront
     }
 
     #[test]
@@ -672,7 +671,6 @@ mod tests {
                 "lx.host.notification.cancelAll",
                 "lx.host.banner.show",
                 "lx.host.banner.dismiss",
-                "lx.surface.bringToFront",
             ]
         );
         // Composing other lxapps into the shell stays with the Control app.

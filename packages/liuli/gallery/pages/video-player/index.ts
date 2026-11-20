@@ -3,11 +3,11 @@ import { definePage } from '@lingxia/types/page';
 import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 
 export default definePage({
-  setup() {
+  setup(thisPage) {
     let unwatch: (() => void) | undefined;
     return {
       onLoad() {
-        unwatch = returnToWorkspaceWhenWide("video-player");
+        unwatch = returnToWorkspaceWhenWide("video-player", thisPage.env);
       },
       onUnload() {
         unwatch?.();

@@ -30,6 +30,7 @@ import type {
   JsonValue,
   NavigationBarPatch,
   PageLoadOptions,
+  PageEnvContext,
   PageMessagePort,
   PageSurface,
   VideoContext,
@@ -128,6 +129,13 @@ export interface PageApi<Data, Params, Result> {
   refresh(): void;
   /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */
   video(name: string): VideoContext;
+  /**
+   * The size class this page lays out for. `watch` runs when `sizeClass` or
+   * `canDock` changes, not on every resize, and stops when the page unloads.
+   */
+  readonly env: PageEnvContext & {
+    watch(callback: (env: PageEnvContext) => void): () => void;
+  };
 }
 
 type ViewCallable<A> = {

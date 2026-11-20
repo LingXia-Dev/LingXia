@@ -311,6 +311,31 @@
       },
     });
 
+    // Size class only; a watcher goes with the page.
+    const env = Object.freeze({
+      get sizeClass() {
+        return native().env().sizeClass;
+      },
+      get canDock() {
+        return native().env().canDock;
+      },
+      watch(callback) {
+        if (typeof callback !== "function") {
+          throw new TypeError("page.env.watch takes a callback");
+        }
+        if (lifetime.signal.aborted) return () => {};
+        const off = native().envWatch((context) => {
+          const parsed = typeof context === "string" ? JSON.parse(context) : context;
+          callback({ sizeClass: parsed.sizeClass, canDock: parsed.canDock });
+        });
+        lifetime.signal.addEventListener("abort", off, { once: true });
+        return () => {
+          lifetime.signal.removeEventListener("abort", off);
+          off();
+        };
+      },
+    });
+
     const page = Object.freeze({
       get data() {
         return svc ? svc.data : initial;
@@ -376,6 +401,7 @@
       video(name) {
         return native().video(pageInstanceId, name);
       },
+      env,
     });
 
     const returned = def.setup ? def.setup(page) : {};

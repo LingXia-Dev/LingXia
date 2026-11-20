@@ -902,7 +902,7 @@ export interface LxAppEvalOptions extends LogicLxAppEvalOptions {
   captureCalls?: boolean;
 }
 
-/** Shell admission class. Content `lx.surface.watchContext` uses `compact` | `regular`. */
+/** Shell admission class. Content `page.env` / View `env` use `compact` | `regular`. */
 export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
 export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
 export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';

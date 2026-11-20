@@ -1,5 +1,5 @@
 //! The native half of the page-scoped members `definePage` hands to `setup`:
-//! `page.navigationBar`, `page.refresh()` and `page.video()`. Each call names
+//! `page.navigationBar`, `page.refresh()`, `page.video()` and `page.env`. Each call names
 //! its page by instance id, so it reaches that page whether or not it is on top.
 
 use crate::i18n::js_service_unavailable_error;
@@ -45,6 +45,14 @@ fn video(
     crate::media::video_for_page(&ctx, page, name)
 }
 
+fn env(ctx: JSContext) -> JSResult<JSObject> {
+    crate::surface::page_env(&ctx)
+}
+
+fn env_watch(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
+    crate::surface::page_env_watch(&ctx, handler)
+}
+
 pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
     let native = JSObject::new(ctx);
     native.set(
@@ -54,6 +62,8 @@ pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
     native.set("startRefresh", JSFunc::new(ctx, start_refresh)?)?;
     native.set("stopRefresh", JSFunc::new(ctx, stop_refresh)?)?;
     native.set("video", JSFunc::new(ctx, video)?)?;
+    native.set("env", JSFunc::new(ctx, env)?)?;
+    native.set("envWatch", JSFunc::new(ctx, env_watch)?)?;
     ctx.global().set(NATIVE_SLOT, native)?;
     Ok(())
 }

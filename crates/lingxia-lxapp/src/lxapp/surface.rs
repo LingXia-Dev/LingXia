@@ -21,7 +21,7 @@ static SURFACE_VISIBILITY_OBSERVER: OnceLock<SurfaceVisibilityObserver> = OnceLo
 /// Observer fired when one lxapp presentation's actual viewport changes.
 /// Receives that lxapp's app id.
 static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
-/// The adaptive context Logic's `lx.surface.watchContext` delivers, as JSON,
+/// The adaptive context Views and Logic `page.env` read, as JSON,
 /// for one lxapp. Views are sent the same value, so both sides agree.
 static SURFACE_CONTEXT_SNAPSHOT: OnceLock<fn(&str) -> Option<String>> = OnceLock::new();
 static SURFACE_VIEWPORTS: OnceLock<std::sync::Mutex<HashMap<String, SurfaceViewportContext>>> =
@@ -3423,7 +3423,7 @@ impl LxApp {
 
     /// Report this lxapp presentation's actual viewport. Unlike shell width,
     /// this is measured after sidebar/navbar/aside layout and therefore drives
-    /// the content-facing `lx.surface.watchContext` size class (`compact` |
+    /// the content-facing size class (`page.env`, View `env`) (`compact` |
     /// `regular`).
     pub fn set_surface_viewport(&self, width: f64, height: f64) -> bool {
         if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {

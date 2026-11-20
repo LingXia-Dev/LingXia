@@ -179,14 +179,17 @@ A guest (any lxapp but the Control app) may use `lx.host.notification` and
 - Per guest: 32 live notifications; 3 banners showing or queued, each up for
   60 s at most and queued behind the product's. Its banner shows its name and icon.
 - One permission prompt per launch, only while it is open: ask from a user action.
-- `lx.surface.bringToFront({ page?, query? })` comes forward the way a tap on
-  its notification would. A guest may call it once, within 10 s of the person
-  picking an action on its banner:
+- A banner action's `target` is where picking it goes, scoped like a
+  notification target; the product comes forward and the target opens:
 
 ```ts
-const r = await lx.host.banner.show({ title: 'Run finished', actions: [{ id: 'open', label: 'Open' }] })
-if (r.status === 'ok') await lx.surface.bringToFront({ query: { run: runId } })
+await lx.host.banner.show({
+  title: 'Run finished',
+  actions: [{ id: 'open', label: 'Open', target: { kind: 'app', query: { run: runId } } }],
+})
 ```
+
+- Only the Control app brings the product forward on its own: `lx.shell.activate()`.
 
 ## Errors
 

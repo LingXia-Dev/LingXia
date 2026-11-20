@@ -3,11 +3,11 @@ import { definePage } from '@lingxia/types/page';
 import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 
 export default definePage({
-  setup() {
+  setup(thisPage) {
     let unwatch: (() => void) | undefined;
     return {
       onLoad() {
-        unwatch = returnToWorkspaceWhenWide("dropdown-menu");
+        unwatch = returnToWorkspaceWhenWide("dropdown-menu", thisPage.env);
       },
       onUnload() {
         unwatch?.();

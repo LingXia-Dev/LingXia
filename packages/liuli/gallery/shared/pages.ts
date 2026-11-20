@@ -36,25 +36,28 @@ export async function rememberedEntry(): Promise<string> {
 }
 
 type SizeClass = 'compact' | 'regular';
+type PageEnv = { readonly sizeClass: SizeClass; watch(callback: (env: { sizeClass: SizeClass }) => void): () => void };
 
 /** Calls `onClass(sizeClass, crossed)` with the class the page opened in, then on every change of it. */
-function watchClass(onClass: (sizeClass: SizeClass, crossed: boolean) => void): () => void {
+function watchClass(env: PageEnv, onClass: (sizeClass: SizeClass, crossed: boolean) => void): () => void {
   let last: SizeClass | null = null;
-  return lx.surface.watchContext(context => {
-    if (context.sizeClass === last) return;
+  const report = (sizeClass: SizeClass) => {
+    if (sizeClass === last) return;
     const crossed = last !== null;
-    last = context.sizeClass;
-    // Off the subscribe call, which runs inside onLoad, so navigation never starts mid-load.
-    setTimeout(() => onClass(context.sizeClass, crossed), 0);
-  });
+    last = sizeClass;
+    // Off the caller, which runs inside onLoad, so navigation never starts mid-load.
+    setTimeout(() => onClass(sizeClass, crossed), 0);
+  };
+  report(env.sizeClass);
+  return env.watch(({ sizeClass }) => report(sizeClass));
 }
 
 /**
  * A pushed page: in a wide window, hand `page` to the workspace and go back to it, whether the window
  * widened or the page came back wide. Returns the unsubscribe.
  */
-export function returnToWorkspaceWhenWide(page: string): () => void {
-  return watchClass(sizeClass => {
+export function returnToWorkspaceWhenWide(page: string, env: PageEnv): () => void {
+  return watchClass(env, sizeClass => {
     const depth = getCurrentPages().length;
     if (sizeClass !== 'regular' || depth < 2) return;
     handedOff = page;
@@ -67,8 +70,8 @@ export function returnToWorkspaceWhenWide(page: string): () => void {
  * Home: in a narrow window with an entry open, push that entry's page, whether the window narrowed or
  * home came back narrow with a remembered entry. Returns the unsubscribe.
  */
-export function pushEntryWhenNarrow(entry: () => string): () => void {
-  return watchClass(sizeClass => {
+export function pushEntryWhenNarrow(entry: () => string, env: PageEnv): () => void {
+  return watchClass(env, sizeClass => {
     const page = entry();
     if (sizeClass !== 'compact' || !page || page === 'home' || getCurrentPages().length > 1) return;
     rememberEntry('');

@@ -738,8 +738,7 @@ export type AutostartApi = {
  * A guest lxapp's banner carries its name and icon, so
  * it cannot pass as the product's. Its ids are its own, it may have
  * three banners showing or waiting, each closes after 60s at most
- * (`timeoutMs` is capped), the product's banners go first, and picking
- * one of its actions lets it call `lx.surface.bringToFront` once.
+ * (`timeoutMs` is capped), and the product's banners go first.
  * No buttons: an informational card that auto-dismisses (5s unless
  * `timeoutMs` is set). With buttons: a gate that waits for a choice,
  * dismiss, timeout, or replace. User outcomes resolve; presentation
@@ -754,6 +753,13 @@ export type BannerApi = {
             id: string;
             label: string;
             style?: 'default' | 'primary' | 'destructive';
+            /**
+             * Where picking this action goes, as a notification target: the
+             * product comes forward and the target opens. A guest may only
+             * target itself (`{ kind: 'app' }`). Checked before the banner
+             * shows. Omitted, picking it only resolves `show`.
+             */
+            target?: NavigationTarget;
         }>;
         timeoutMs?: number;
         /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
@@ -767,12 +773,6 @@ export type BannerApi = {
 };
 
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
-
-export type BringToFrontOptions = {
-    /** Configured page name from this lxapp's `lxapp.json`. */
-    page?: ExternalPageName;
-    query?: PageQuery;
-};
 
 /**
  * Built-in browser product page. Opening one requires
@@ -1529,6 +1529,21 @@ export type OverlaySurfaceSize = {
 export type OverlaySurfaceSizeValue = number | `${number}%`;
 
 /**
+ * `page.env`: the size class Logic acts on. Pixels and insets stay in
+ * the View's `env`.
+ */
+export type PageEnvContext = {
+    /**
+     * Whether the window currently has a dock region, so `as: 'aside'` docks
+     * beside the main instead of being reprojected as an overlay. A capability
+     * of the window, not where this lxapp is presented.
+     */
+    readonly canDock: boolean;
+    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
+    readonly sizeClass: 'compact' | 'regular';
+};
+
+/**
  * What `onLoad` receives: each param with the type it was passed with.
  * Validate a query from outside (an app link, a URL): it is usually
  * strings.
@@ -1986,6 +2001,8 @@ export type ShellApi = {
      * is cheap. `lx.app.info.name` keeps the `lxapp.json` name.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /** Bring the product window forward without navigating. */
+    activate(): void;
 };
 
 /**
@@ -2151,25 +2168,6 @@ export type SurfaceApi = {
      * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
     get(key: string): PageSurface | TabSurface | undefined;
-    /**
-     * Observe this presentation's adaptive context. Invoked immediately with
-     * the current context, then again only when `sizeClass` or `canDock`
-     * changes; a resize within the class does not call it. Returns an
-     * unsubscribe function.
-     */
-    watchContext(handler: (context: SurfaceContext) => void): () => void;
-    /**
-     * Bring the product forward on this lxapp, the way a notification tap
-     * with `{ kind: 'app', appId: <this app> }` does: a docked aside comes
-     * back where it is, otherwise the lxapp opens in main. `page` and `query`
-     * reach it as a reopen (App `onShow`, `reason: 'switch_back'`).
-     *
-     * A guest lxapp may call this only right after the person picked an
-     * action on one of its `lx.host.banner` cards (within 10 seconds, once
-     * per action); otherwise it rejects with `E_PERMISSION_DENIED`. The
-     * Control app may call it at any time.
-     */
-    bringToFront(options?: BringToFrontOptions): Promise<void>;
 };
 
 /** What every surface handle carries, whatever opened it. */
@@ -2214,26 +2212,6 @@ export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app
 
 export type SurfaceClosedEvent = {
     reason: SurfaceCloseReason;
-};
-
-/**
- * The current surface viewport context, delivered to `lx.surface.watchContext()`
- * so an lxapp can choose a compact or workspace View. Column count and
- * spacing inside `regular` use CSS or the raw `width` / `height`.
- */
-export type SurfaceContext = {
-    /**
-     * Whether the window currently has a dock region, so `as: 'aside'` docks
-     * beside the main instead of being reprojected as an overlay. A capability
-     * of the window, not where this lxapp is presented.
-     */
-    canDock: boolean;
-    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
-    sizeClass: 'compact' | 'regular';
-    /** Surface viewport width in logical pixels when this context was delivered. */
-    width: number;
-    /** Surface viewport height in logical pixels when this context was delivered. */
-    height: number;
 };
 
 /**
@@ -3418,6 +3396,8 @@ declare global {
      * when a value changed, so calling it on every launch is cheap.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /** `lx.shell.activate()` — bring the product window forward. Control app only. */
+    activate(): void;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }
@@ -3481,21 +3461,6 @@ declare global {
     openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /** Find a live surface by its explicit caller-owned key. Runtime ids are not keys. */
     get(key: string): PageSurface | TabSurface | undefined;
-    /**
-     * `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
-     * lxapp's JS context), invoke it immediately, then again whenever that
-     * presentation's `sizeClass` or host docking availability changes. Returns an unsubscribe fn.
-     */
-    watchContext(handler: (context: SurfaceContext) => void): () => void;
-    /**
-     * `lx.surface.bringToFront(options?)` — bring the product forward on this
-     * lxapp, the way a notification tap with `{ kind: 'app', appId: <self> }`
-     * does: a docked aside comes back where it is, otherwise it opens in main,
-     * and `page` / `query` reach it as a reopen. A guest may do this only right
-     * after the person picked an action on its banner; the Control app may
-     * whenever it likes.
-     */
-    bringToFront(options?: BringToFrontOptions): Promise<void>;
   }
 }
 

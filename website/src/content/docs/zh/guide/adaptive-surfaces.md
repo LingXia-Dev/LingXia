@@ -56,7 +56,7 @@ surfaces:
 
 ## 尺寸等级
 
-lxapp 通过 `lx.surface.watchContext` 获得自己的 surface viewport 等级：
+lxapp 的 View 从 `env.sizeClass`、Logic 从 `page.env.sizeClass` 读取自己的 surface viewport 等级：
 
 | 尺寸等级 | viewport 宽度 |
 |---|---:|
@@ -85,8 +85,9 @@ lx.surface.openUrl('https://example.com', { as: 'aside' })
 lx.surface.openPage('inspector', { as: 'float' })
 lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 
-// Logic：仅当 Logic 自己要根据尺寸类别做事时才订阅。
-const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
+// Logic（在页面中）：仅当 Logic 自己要根据尺寸类别做事时才订阅。
+// sizeClass 或 canDock 变化时调用；页面卸载时自动停止。
+page.env.watch(({ sizeClass }) => { /* … */ })
 ```
 
 View 直接用 `@lingxia/react` 的 `useLxHost().sizeClass` 读取同一个尺寸类别，
@@ -99,7 +100,7 @@ View 直接用 `@lingxia/react` 的 `useLxHost().sizeClass` 读取同一个尺�
 - `hide()` 保留状态，`close()` 销毁 surface。page overlay 的 form 在打开时确定，已声明 surface 则继续随 shell 自适应。
 - `lx.surface.get(key)` 只返回本 lxapp **带 `key` 打开**的页面与 URL 句柄。Control app 用 `lx.shell.getApp(appId)` 查找存活的应用，用 `lx.shell.getDeclared(id, key?)` 查找已声明 surface；句柄不携带运行时 id。
 
-`lx.openSurface` 与 `lx.onSurfaceContext` 已不存在。
+`lx.openSurface`、`lx.onSurfaceContext` 与 `lx.surface.watchContext` 已不存在。
 
 ## 需要记住的构建规则
 

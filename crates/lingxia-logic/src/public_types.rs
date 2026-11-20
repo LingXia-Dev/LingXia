@@ -253,8 +253,7 @@ rong::js_api! {
         /// A guest lxapp's banner carries its name and icon, so
         /// it cannot pass as the product's. Its ids are its own, it may have
         /// three banners showing or waiting, each closes after 60s at most
-        /// (`timeoutMs` is capped), the product's banners go first, and picking
-        /// one of its actions lets it call `lx.surface.bringToFront` once.
+        /// (`timeoutMs` is capped), and the product's banners go first.
         ///
         /// No buttons: an informational card that auto-dismisses (5s unless
         /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
@@ -269,6 +268,13 @@ rong::js_api! {
             id: string;
             label: string;
             style?: 'default' | 'primary' | 'destructive';
+            /**
+             * Where picking this action goes, as a notification target: the
+             * product comes forward and the target opens. A guest may only
+             * target itself (`{ kind: 'app' }`). Checked before the banner
+             * shows. Omitted, picking it only resolves `show`.
+             */
+            target?: NavigationTarget;
         }>;
         timeoutMs?: number;
         /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
@@ -1877,31 +1883,6 @@ true
      * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
     get(key: string): PageSurface | TabSurface | undefined;
-    /**
-     * Observe this presentation's adaptive context. Invoked immediately with
-     * the current context, then again only when `sizeClass` or `canDock`
-     * changes; a resize within the class does not call it. Returns an
-     * unsubscribe function.
-     */
-    watchContext(handler: (context: SurfaceContext) => void): () => void;
-    /**
-     * Bring the product forward on this lxapp, the way a notification tap
-     * with `{ kind: 'app', appId: <this app> }` does: a docked aside comes
-     * back where it is, otherwise the lxapp opens in main. `page` and `query`
-     * reach it as a reopen (App `onShow`, `reason: 'switch_back'`).
-     *
-     * A guest lxapp may call this only right after the person picked an
-     * action on one of its `lx.host.banner` cards (within 10 seconds, once
-     * per action); otherwise it rejects with `E_PERMISSION_DENIED`. The
-     * Control app may call it at any time.
-     */
-    bringToFront(options?: BringToFrontOptions): Promise<void>;
-}"###;
-
-        type BringToFrontOptions = r###"{
-    /** Configured page name from this lxapp's `lxapp.json`. */
-    page?: ExternalPageName;
-    query?: PageQuery;
 }"###;
 
         /// Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
@@ -1916,23 +1897,18 @@ true
  */
  | 'reclaimed' | 'unknown'"###;
 
-        /// The current surface viewport context, delivered to `lx.surface.watchContext()`
-        /// so an lxapp can choose a compact or workspace View. Column count and
-        /// spacing inside `regular` use CSS or the raw `width` / `height`.
+        /// `page.env`: the size class Logic acts on. Pixels and insets stay in
+        /// the View's `env`.
         ///
-        type SurfaceContext = r###"{
+        type PageEnvContext = r###"{
     /**
      * Whether the window currently has a dock region, so `as: 'aside'` docks
      * beside the main instead of being reprojected as an overlay. A capability
      * of the window, not where this lxapp is presented.
      */
-    canDock: boolean;
+    readonly canDock: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
-    sizeClass: 'compact' | 'regular';
-    /** Surface viewport width in logical pixels when this context was delivered. */
-    width: number;
-    /** Surface viewport height in logical pixels when this context was delivered. */
-    height: number;
+    readonly sizeClass: 'compact' | 'regular';
 }"###;
 
         /// Preferred docking side for an aside when the Host has room for a docked
@@ -2293,6 +2269,8 @@ true
      * is cheap. `lx.app.info.name` keeps the `lxapp.json` name.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /** Bring the product window forward without navigating. */
+    activate(): void;
 }"###;
 
         /// Where an action lives in the desktop sidebar.

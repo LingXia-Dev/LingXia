@@ -17,7 +17,7 @@ import { getSurfaceContext, subscribeSurfaceContext } from './surface-context';
  * queries), not here.
  */
 export interface LxHost {
-  /** `compact` (< 600 logical px) or `regular`, with hysteresis; the same value Logic's `lx.surface.watchContext()` reports. */
+  /** `compact` (< 600 logical px) or `regular`, with hysteresis; the same value Logic's `page.env` reports. */
   readonly sizeClass: 'compact' | 'regular';
   /** Whether the window currently has a dock region for `as: 'aside'`; not where this page is shown. */
   readonly canDock: boolean;
