@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
 import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
+// What the region reads out: its message, without the hidden icon line.
+const announced = node => node.children.filter(child => child.props.accessibilityHidden !== 1).map(textOf).join('');
+
 test('WrappedSelect: the visible label is hidden from assistive tech, the control carries the name', async () => {
   const screen = await renderExample('Field/Field', 'WrappedSelect');
   const field = screen.getByTestId('field');
@@ -32,13 +35,13 @@ test('the status region stays mounted and empties when the status goes', async (
   `);
   const region = () => screen.queryAll(node => node.props.role === 'status');
   assert.equal(region().length, 1);
-  assert.equal(textOf(region()[0]), 'Choose a period.');
+  assert.equal(announced(region()[0]), 'Choose a period.');
   assert.deepEqual(described(screen, screen.getByTestId('period')), ['Choose a period.']);
   assert.equal(screen.getByTestId('period').props.stateInvalid, 1);
-  assert.ok(region()[0].children.some(node => node.tag === 'vector' && node.props.accessibilityHidden === 1), 'icon, hidden');
+  assert.ok(region()[0].children.some(node => node.props.accessibilityHidden === 1 && node.children.some(child => child.tag === 'vector')), 'icon, hidden');
   screen.select(screen.getByTestId('period'), 'yearly');
   assert.equal(region().length, 1, 'still mounted');
-  assert.equal(textOf(region()[0]), '');
+  assert.equal(announced(region()[0]), '');
   assert.equal(region()[0].props.opacity, 0, 'visually hidden while empty');
   assert.equal(screen.getByTestId('period').props.ariaDescribedBy, undefined, 'nothing to describe');
   assert.equal(screen.getByTestId('period').props.stateInvalid, undefined);

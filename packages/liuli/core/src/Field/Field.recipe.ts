@@ -9,6 +9,8 @@ export const fieldParts = {
   optional: 'text',
   description: 'text',
   status: 'view',
+  statusLine: 'view',
+  statusGhost: 'text',
   statusIcon: 'vector',
   statusText: 'text',
 } as const;
@@ -49,8 +51,17 @@ export const fieldRecipe = {
     empty: 'sr-only',
     shown: 'flex-row items-start gap-1.5',
   },
+  /** The message's first line box, holding the icon centred on it at any text size. */
+  statusLine: {
+    base: 'shrink-0 flex-row items-center text-footnote',
+  },
+  /** An empty run in the message's type: it gives the line its height. */
+  statusGhost: {
+    base: 'opacity-0',
+  },
   statusIcon: {
-    base: 'size-4 shrink-0 mt-px',
+    // In the message's type (its line box sets it), so the icon grows with the text, capped by the View at 1.5×.
+    base: 'size-[1.23em] shrink-0',
     type: { error: 'text-danger', warning: 'text-warning', success: 'text-success' } satisfies Record<FieldStatusType, string>,
   },
   statusText: {

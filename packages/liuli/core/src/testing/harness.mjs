@@ -57,11 +57,14 @@ export function harnessFor(packageDir) {
 
 export const { renderPage, renderExample } = harnessFor(core);
 
-/** The text of each element `node` names in `aria-describedby`, in order; the device reads these after the name. */
+// As the device reads it: a hidden target is still read, but no `aria-hidden` subtree under it.
+const readable = node => node.children?.length ? node.children.map(child => child.props.accessibilityHidden === 1 ? '' : readable(child)).join('') : textOf(node);
+
+/** The text of each element `node` names in `aria-describedby`, in order, without the `aria-hidden` text under them; the device reads these after the name. */
 export function described(screen, node) {
   const ids = node.props.ariaDescribedBy?.split(' ') ?? [];
   return ids.map(id => {
     const target = screen.queryAll(other => other.props.elementId === id);
-    return target.length === 1 ? textOf(target[0]) : `<${target.length} elements with id ${id}>`;
+    return target.length === 1 ? readable(target[0]) : `<${target.length} elements with id ${id}>`;
   });
 }

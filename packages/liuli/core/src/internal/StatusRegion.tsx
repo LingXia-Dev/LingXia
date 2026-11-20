@@ -14,7 +14,10 @@ export function StatusRegion({ id, status, className }: { id: string; status: Fi
     <view id={id} role="status" className={cx(status && message ? r.status.shown : r.status.empty, className)}>
       {status && message ? (
         <>
-          <Glyph name={status.type} className={cx(r.statusIcon.base, r.statusIcon.type[status.type])} />
+          <view aria-hidden className={r.statusLine.base}>
+            <text className={r.statusGhost.base}>{'\u200B'}</text>
+            <Glyph name={status.type} className={cx(r.statusIcon.base, r.statusIcon.type[status.type])} />
+          </view>
           <text className={r.statusText.base}>{message}</text>
         </>
       ) : null}

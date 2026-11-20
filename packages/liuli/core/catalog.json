@@ -7736,6 +7736,8 @@
         "optional": "text",
         "description": "text",
         "status": "view",
+        "statusLine": "view",
+        "statusGhost": "text",
         "statusIcon": "vector",
         "statusText": "text"
       },
