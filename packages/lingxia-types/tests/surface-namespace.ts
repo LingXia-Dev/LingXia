@@ -29,7 +29,7 @@ async function conditionalOpenTypeChecks(): Promise<string> {
 // Probe 3: a union of handles narrows on `kind`, with no runtime sniffing.
 function narrowsByKind(surface: AnySurface): string {
   if (surface.kind === "page") {
-    surface.postMessage({ hello: true });
+    surface.send({ hello: true });
     return surface.realized;
   }
   if (surface.kind === "tab") {

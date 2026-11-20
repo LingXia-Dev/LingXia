@@ -24,7 +24,7 @@ impl JSMessagePort {
         .into())
     }
 
-    #[js_method(rename = "postMessage")]
+    #[js_method(rename = "send")]
     fn post_message(this: This<JSObject>, payload: JSValue) -> JSResult<()> {
         emit_message(&this, payload)
     }
@@ -121,7 +121,7 @@ pub(crate) fn add_message_listener(port: &JSObject, handler: JSFunc) -> JSResult
 fn attach_methods(ctx: &JSContext, port: &JSObject) -> JSResult<()> {
     let post_port = port.clone();
     port.set(
-        "postMessage",
+        "send",
         JSFunc::new(ctx, move |payload: JSValue| {
             emit_message(&post_port, payload)
         })?,

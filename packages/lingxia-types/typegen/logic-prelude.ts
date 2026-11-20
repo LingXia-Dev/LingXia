@@ -283,7 +283,7 @@ export type PageHandle<R = JsonValue> = {
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;

@@ -26,7 +26,7 @@ interface SurfaceHandle {
   readonly alive: boolean;
   readonly visible: boolean;
   close(): Promise<void>;
-  postMessage(message: unknown): void;
+  send(message: unknown): void;
   onClose(handler: (event: { reason?: string }) => void): () => void;
   onMessage(handler: (message: { message?: string; timestamp?: number }) => void): () => void;
 }
@@ -445,7 +445,7 @@ test('caption buttons stay on top and can close both chrome modes', {
 
 test('deliver a child page message to its opener before closing', {
   id: 'DESKTOP-SURFACE-MESSAGE-001',
-  covers: ['PageSurface.onMessage', 'PageHandle.postMessage'],
+  covers: ['PageSurface.onMessage', 'PageHandle.send'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-MESSAGE-001');
@@ -518,7 +518,7 @@ test('deliver a child page message to its opener before closing', {
 
 test('push a message from the opener into its page window', {
   id: 'DESKTOP-SURFACE-POST-001',
-  covers: ['PageSurface.postMessage', 'PageSurface.close', 'PageSurface.onClose', 'PageSurface.alive'],
+  covers: ['PageSurface.send', 'PageSurface.close', 'PageSurface.onClose', 'PageSurface.alive'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-POST-001');
@@ -534,7 +534,7 @@ test('push a message from the opener into its page window', {
   await app.logic.eval(({ lx }, key, namespace) => {
     const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
     if (!handle) throw new Error('post surface was not registered');
-    handle.postMessage({ ping: namespace });
+    handle.send({ ping: namespace });
   }, key, namespace);
   const inbound = await eventually(
     () => surface.eval(({ document }) => {

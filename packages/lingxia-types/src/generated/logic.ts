@@ -298,7 +298,7 @@ export type PageHandle<R = JsonValue> = {
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
     readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
@@ -1614,7 +1614,7 @@ export type PageLoadOptions = {
 
 /** A pushed page's line to the page that opened it (`page.opener`). */
 export type PageMessagePort = {
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
 };
 
@@ -2233,7 +2233,7 @@ export type SurfaceBase = {
 export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
  * The host unloaded a hidden surface's page under memory pressure.
- * Treat as a normal close: the page instance is gone; further postMessage /
+ * Treat as a normal close: the page instance is gone; further send /
  * show / hide calls will fail. The opener may immediately reopen if needed.
  */
  | 'reclaimed' | 'unknown';
@@ -2333,7 +2333,7 @@ export type SurfaceMessaging = {
      * Send to the other side. For the opener this targets the opened page;
      * for the opened page it targets the opener.
      */
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
 };
 

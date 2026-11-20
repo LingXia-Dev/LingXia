@@ -162,7 +162,7 @@ impl JSSurface {
         })
     }
 
-    #[js_method(rename = "postMessage")]
+    #[js_method(rename = "send")]
     fn post_message(&self, payload: JSValue) -> JSResult<()> {
         crate::message_port::emit_message(&self.message_port, payload)
     }
@@ -2024,7 +2024,7 @@ fn ensure_handle_cache_scope(ctx: &JSContext, caller: &LxApp) {
 }
 
 /// Lifecycle-complete handle for a host-managed native surface. Native
-/// capabilities without messaging omit only postMessage/onMessage.
+/// capabilities without messaging omit only send/onMessage.
 fn managed_surface_handle(
     ctx: &JSContext,
     lxapp: Arc<LxApp>,
@@ -2693,7 +2693,7 @@ fn attach_surface_methods(
 
     let post_surface = surface_ref.clone();
     surface.set(
-        "postMessage",
+        "send",
         JSFunc::new(ctx, move |payload: JSValue| {
             let surface = post_surface.borrow::<JSSurface>()?;
             if !surface.alive.get() {

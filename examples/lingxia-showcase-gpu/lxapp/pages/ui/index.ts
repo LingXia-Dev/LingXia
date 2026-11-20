@@ -507,7 +507,7 @@ export default definePage({
       },
       sendToSurface({ message }: { message: string }) {
         const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
-        if (surface?.kind === "page") surface.postMessage({ message });
+        if (surface?.kind === "page") surface.send({ message });
       },
       // Show modal with custom parameters
       async showModalWithParams(params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {

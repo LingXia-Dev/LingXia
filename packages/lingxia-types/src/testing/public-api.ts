@@ -708,11 +708,11 @@ const PAGE_SURFACE_API = [
   'onHide',
   'onMessage',
   'onShow',
-  'postMessage',
   'realized',
   'result',
   'show',
   'visible',
+  'send',
 ] as const;
 const TAB_SURFACE_API = [
   'activate',
@@ -725,7 +725,7 @@ const TAB_SURFACE_API = [
   'scope',
   'visible',
 ] as const;
-const PAGE_HANDLE_API = ['close', 'onMessage', 'opened', 'postMessage', 'result'] as const;
+const PAGE_HANDLE_API = ['close', 'onMessage', 'opened', 'result', 'send'] as const;
 
 export const LX_RETURNED_OBJECT_SURFACES = [
   {

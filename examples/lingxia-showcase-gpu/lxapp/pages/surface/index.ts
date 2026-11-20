@@ -52,12 +52,12 @@ export default definePage({
         const payload = { message, timestamp: Date.now() };
         console.log("surface page message:", payload);
         if (page.surface) {
-          page.surface.postMessage(payload);
+          page.surface.send(payload);
           await actions.closeSelf();
           return;
         }
         if (page.opener) {
-          page.opener.postMessage(payload);
+          page.opener.send(payload);
           await lx.nav.back();
         }
       },

@@ -23,7 +23,7 @@ const MESSAGE_INPUT = 'input[placeholder="Message to parent page"]';
 
 test('exchange messages over the port navigateTo returns', {
   id: 'NAV-PORT-001',
-  covers: ['lx.nav.go', 'PageHandle.onMessage', 'PageHandle.postMessage'],
+  covers: ['lx.nav.go', 'PageHandle.onMessage', 'PageHandle.send'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'NAV-PORT-001');
@@ -71,7 +71,7 @@ test('exchange messages over the port navigateTo returns', {
       const state = (globalThis as unknown as PortStates)[key];
       return {
         error: state?.error ?? null,
-        shape: state?.port ? typeof state.port.postMessage === 'function' && typeof state.port.onMessage === 'function' : null,
+        shape: state?.port ? typeof state.port.send === 'function' && typeof state.port.onMessage === 'function' : null,
       };
     }, stateKey),
     (value) => value.error !== null || value.shape !== null,
@@ -82,7 +82,7 @@ test('exchange messages over the port navigateTo returns', {
 
   await t.step('opener → page', async () => {
     await app.logic.eval((_, key, ping) => {
-      (globalThis as unknown as PortStates)[key]?.port?.postMessage({ ping });
+      (globalThis as unknown as PortStates)[key]?.port?.send({ ping });
     }, stateKey, namespace);
     const inbound = await waitForElementText(
       t,

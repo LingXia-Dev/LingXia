@@ -1213,7 +1213,7 @@ rong::js_api! {
 
         /// A pushed page's line to the page that opened it (`page.opener`).
         type PageMessagePort = r###"{
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
 }"###;
 
@@ -1693,7 +1693,7 @@ true
      * Send to the other side. For the opener this targets the opened page;
      * for the opened page it targets the opener.
      */
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
 }"###;
 
@@ -1924,7 +1924,7 @@ true
         type SurfaceCloseReason = r###"'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
  * The host unloaded a hidden surface's page under memory pressure.
- * Treat as a normal close: the page instance is gone; further postMessage /
+ * Treat as a normal close: the page instance is gone; further send /
  * show / hide calls will fail. The opener may immediately reopen if needed.
  */
  | 'reclaimed' | 'unknown'"###;
