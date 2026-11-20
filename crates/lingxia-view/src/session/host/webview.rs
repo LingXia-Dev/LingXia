@@ -19,6 +19,31 @@ struct Mailbox {
 }
 
 impl Mailbox {
+    /// A coalesced message waiting when a queued one arrives was sent first: it moves into the
+    /// queue ahead of it, so a drag's last move cannot land after the end that follows it.
+    fn post(&mut self, json: String, origin: String, queued: bool) {
+        if !queued {
+            self.coalesced = Some((json, origin));
+            return;
+        }
+        let earlier = self.coalesced.take();
+        for message in earlier.into_iter().chain([(json, origin)]) {
+            if self.queued.len() >= WEB_MESSAGE_QUEUE {
+                self.queued.pop_front();
+                if self.lifecycle.len() < WEB_MESSAGE_QUEUE {
+                    self.lifecycle.push(serde_json::json!({
+                        "type": "error",
+                        "code": "WEBVIEW_MESSAGE_DROPPED",
+                        "message": format!(
+                            "queued message limit ({WEB_MESSAGE_QUEUE}) exceeded; oldest message dropped"
+                        ),
+                    }));
+                }
+            }
+            self.queued.push_back(message);
+        }
+    }
+
     fn is_empty(&self) -> bool {
         self.queued.is_empty() && self.coalesced.is_none() && self.lifecycle.is_empty()
     }
@@ -385,23 +410,8 @@ impl<A: PlatformAdapter> Inner<A> {
                             }));
                         }
                         flush_now = true;
-                    } else if queued {
-                        if mailbox.queued.len() >= WEB_MESSAGE_QUEUE {
-                            mailbox.queued.pop_front();
-                            if mailbox.lifecycle.len() < WEB_MESSAGE_QUEUE {
-                                mailbox.lifecycle.push(serde_json::json!({
-                                    "type": "error",
-                                    "code": "WEBVIEW_MESSAGE_DROPPED",
-                                    "message": format!(
-                                        "queued message limit ({WEB_MESSAGE_QUEUE}) exceeded; oldest message dropped"
-                                    ),
-                                }));
-                            }
-                        }
-                        mailbox.queued.push_back((json, origin));
-                        request_vsync = true;
                     } else {
-                        mailbox.coalesced = Some((json, origin));
+                        mailbox.post(json, origin, queued);
                         request_vsync = true;
                     }
                 }
@@ -565,5 +575,33 @@ impl<A: PlatformAdapter> Inner<A> {
         for web_id in exit_fullscreen {
             self.adapter.exit_webview_fullscreen(&web_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Mailbox;
+
+    fn sent(mailbox: &mut Mailbox) -> Vec<String> {
+        mailbox
+            .drain()
+            .into_iter()
+            .map(|event| event["json"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    /// The pin page's moves are coalesced and its end is queued: within one frame the end must
+    /// still arrive last, or the page reads a drag that never ended.
+    #[test]
+    fn a_queued_message_never_overtakes_a_coalesced_one_sent_before_it() {
+        let mut mailbox = Mailbox::default();
+        let origin = || "https://example.test".to_owned();
+        mailbox.post("move1".into(), origin(), false);
+        mailbox.post("move2".into(), origin(), false);
+        mailbox.post("done".into(), origin(), true);
+        assert_eq!(sent(&mut mailbox), ["move2", "done"]);
+        mailbox.post("queued".into(), origin(), true);
+        mailbox.post("later".into(), origin(), false);
+        assert_eq!(sent(&mut mailbox), ["queued", "later"]);
     }
 }

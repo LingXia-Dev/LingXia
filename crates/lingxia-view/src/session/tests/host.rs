@@ -6199,8 +6199,18 @@ fn webview_host_coalesces_messages_caps_fifo_queue_and_reconciles_fullscreen_wit
     assert_eq!(mounts[0].web_id, "wv-1");
     assert_eq!(mounts[0].bounds, [0.0, 0.0, 120.0, 80.0]);
 
-    // Coalesced messages within one frame keep only the latest ("c"), while queued messages
-    // preserve FIFO order up to 64 and report WEBVIEW_MESSAGE_DROPPED on overflow!
+    // Queued messages keep FIFO order up to 64 and report WEBVIEW_MESSAGE_DROPPED on overflow;
+    // coalesced ones sent after them within one frame keep only the latest ("c"), delivered last.
+    for i in 0..65 {
+        host.webview_event(
+            "wv-1".into(),
+            WebViewInbound::Message {
+                json: i.to_string(),
+                origin: "https://example.com".into(),
+                queued: true,
+            },
+        );
+    }
     host.webview_event(
         "wv-1".into(),
         WebViewInbound::Message {
@@ -6217,16 +6227,6 @@ fn webview_host_coalesces_messages_caps_fifo_queue_and_reconciles_fullscreen_wit
             queued: false,
         },
     );
-    for i in 0..65 {
-        host.webview_event(
-            "wv-1".into(),
-            WebViewInbound::Message {
-                json: i.to_string(),
-                origin: "https://example.com".into(),
-                queued: true,
-            },
-        );
-    }
     platform.settle(&[&host]);
     let text = press_log(&host);
     // 0 was dropped, 1..=64 delivered in order, then coalesced "c", then WEBVIEW_MESSAGE_DROPPED!
