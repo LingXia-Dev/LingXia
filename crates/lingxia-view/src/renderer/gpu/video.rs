@@ -254,10 +254,8 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
         .entry(key.to_owned())
         .or_insert_with(Instant::now);
     drop(configured);
-    // Open as the scene names the source, not at its first paint a frame later; files auto
-    // picks by box wait for that paint, so the right one opens once.
-    let by_box = source_of(key).is_some_and(|source| source.picks_by_box());
-    if !by_box {
+    // Open as the scene names the source, not at its first paint a frame later.
+    {
         let mut open = players();
         if !open.contains_key(key) {
             touch(&mut open, key);
@@ -269,8 +267,12 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
             entry.applied = None;
             entry.switch = None;
             entry.quality = None;
-            entry.auto = None;
-            entry.auto_decided = false;
+            // A laid-out box picks the new source's file before it opens.
+            entry.auto = entry.view.and_then(|(px, _, _)| {
+                source_of(key).and_then(|source| source.auto_label(px[1]).map(str::to_owned))
+            });
+            entry.auto_decided = entry.view.is_some();
+            entry.box_wait = false;
             let _closed = std::mem::replace(&mut entry.state, State::Opening);
             request(key, &mut entry.state, Reason::Reopen);
         }
@@ -583,13 +585,22 @@ fn wanted(entry: &Entry) -> Option<String> {
     entry.quality.clone().or_else(|| entry.auto.clone())
 }
 
-/// A player just asked to open in a box `height` device px tall: the opener reads its file only
-/// once the players' lock is released, so its first open already takes auto's file.
-fn first_auto(key: &str, entry: &mut Entry, height: f32) {
-    if height >= 1.0 && entry.quality.is_none() {
-        entry.auto_decided = true;
-        entry.auto = source_of(key).and_then(|source| source.auto_label(height).map(str::to_owned));
+/// A player waiting for its box opens on auto's file for a box `height` device px tall, unless
+/// a pin already opened it.
+fn start_by_box(key: &str, entry: &mut Entry, height: f32) {
+    if !entry.box_wait || !(height >= 1.0) {
+        return;
     }
+    entry.box_wait = false;
+    entry.auto_decided = true;
+    if entry.quality.is_some()
+        || !matches!(entry.state, State::Opening)
+        || flights().open.contains_key(key)
+    {
+        return;
+    }
+    entry.auto = source_of(key).and_then(|source| source.auto_label(height).map(str::to_owned));
+    request(key, &mut entry.state, Reason::First);
 }
 
 /// Auto's file for a box `height` device px tall, chosen when the box is first laid out: a
@@ -807,6 +818,8 @@ struct Entry {
     /// The file auto chose for the box (`None`: the first), and whether the box has chosen.
     auto: Option<String>,
     auto_decided: bool,
+    /// Not opened yet: auto picks its file by the box, which no draw has laid out.
+    box_wait: bool,
     switch: Option<Switch>,
     /// When the last frame was imported.
     imported: Option<Instant>,
@@ -1472,14 +1485,13 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     let mut new = false;
     let views = views(display);
     for key in keys(display) {
-        let fresh = !players.contains_key(key);
-        if touch(&mut players, key).is_none() {
-            if fresh
-                && let Some(&(px, _)) = views.get(key)
-                && let Some(entry) = players.get_mut(key)
-            {
-                first_auto(key, entry, px[1]);
-            }
+        let touched = touch(&mut players, key).is_some();
+        if let Some(&(px, _)) = views.get(key)
+            && let Some(entry) = players.get_mut(key)
+        {
+            start_by_box(key, entry, px[1]);
+        }
+        if !touched {
             continue;
         }
         if let Some(entry) = players.get_mut(key) {
@@ -1528,6 +1540,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
             return None;
         }
         let now = Instant::now();
+        let mut box_wait = false;
         let (state, url, synchronous) = if let Some(url) = webview_url {
             let state = match open(&url) {
                 Ok(player) => State::Ready(player),
@@ -1541,7 +1554,11 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
             } else {
                 Reason::First
             };
-            request(key, &mut state, reason);
+            // Files auto picks by box open once the box is known, on the file it picks.
+            box_wait = source_of(key).is_some_and(|source| source.picks_by_box());
+            if !box_wait {
+                request(key, &mut state, reason);
+            }
             (state, String::new(), false)
         };
         players.insert(
@@ -1554,6 +1571,7 @@ fn touch<'a>(players: &'a mut HashMap<String, Entry>, key: &str) -> Option<&'a m
                 quality: None,
                 auto: None,
                 auto_decided: false,
+                box_wait,
                 switch: None,
                 imported: None,
                 resume: false,
@@ -3349,35 +3367,29 @@ mod opener_tests {
             "https://example.invalid/auto-720.mp4",
         );
         configure(&key, files(&[("360p", low), ("720p", high)]));
-        assert!(
-            !players().contains_key(&key),
-            "files auto picks by box wait for a draw"
-        );
-        // Drawn before layout: the first file.
-        touch(&mut players(), &key);
-        settle();
         opens();
-        settle();
-        assert_eq!(players()[&key].url, low, "no box yet: the first file");
+        assert_eq!((opened(low), opened(high)), (0, 0), "they wait for the box");
         {
             let mut players = players();
             let entry = players.get_mut(&key).unwrap();
             entry.view = Some(([993.0, 558.0], Fit::Contain, Instant::now()));
+            start_by_box(&key, entry, 558.0);
             choose_auto(&key, entry, 558.0);
         }
         settle();
         opens();
         settle();
         assert_eq!(
-            players()[&key].url,
-            high,
-            "a 558 px box takes the 720p file"
+            (opened(low), opened(high)),
+            (0, 1),
+            "one open, of the 720p file"
         );
         assert_eq!(players()[&key].quality, None, "still auto");
         // A smaller box later changes nothing until auto is asked for again.
         let mut players = players();
         let entry = players.get_mut(&key).unwrap();
         entry.view = Some(([400.0, 225.0], Fit::Contain, Instant::now()));
+        start_by_box(&key, entry, 225.0);
         choose_auto(&key, entry, 225.0);
         assert!(
             entry.switch.is_none() && entry.url == high,
@@ -3399,7 +3411,7 @@ mod opener_tests {
     }
 
     #[test]
-    fn a_first_draw_with_a_box_opens_auto_s_file_once() {
+    fn a_pin_before_the_first_draw_opens_the_pinned_file_alone() {
         let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
         let _ = TEST_OPENER.set(counted);
         GATE.store(true, Ordering::SeqCst);
@@ -3409,16 +3421,17 @@ mod opener_tests {
             "https://example.invalid/first-720.mp4",
         );
         configure(&key, files(&[("360p", low), ("720p", high)]));
+        command(&key, VideoOp::SetQuality(Some("360p".into()))).unwrap();
         {
             let mut players = players();
-            touch(&mut players, &key);
-            first_auto(&key, players.get_mut(&key).unwrap(), 558.0);
+            let entry = players.get_mut(&key).unwrap();
+            start_by_box(&key, entry, 558.0);
         }
         settle();
         opens();
         settle();
-        assert_eq!((opened(low), opened(high)), (0, 1));
-        assert_eq!(players()[&key].url, high);
+        assert_eq!((opened(low), opened(high)), (1, 0));
+        assert_eq!(players()[&key].url, low);
     }
 
     fn opened(url: &str) -> usize {
@@ -3566,10 +3579,9 @@ mod opener_tests {
             "https://example.invalid/slow-choice-720.mp4",
             "https://example.invalid/choice-360.mp4",
         );
-        configure(&key, files(&[("720p", high), ("360p", low)]));
-        touch(&mut players(), &key);
+        configure(&key, files(&[("high", high), ("low", low)]));
         std::thread::sleep(Duration::from_millis(100));
-        command(&key, VideoOp::SetQuality(Some("360p".into()))).unwrap();
+        command(&key, VideoOp::SetQuality(Some("low".into()))).unwrap();
         GATE.store(true, Ordering::SeqCst);
         settle();
         opens();
