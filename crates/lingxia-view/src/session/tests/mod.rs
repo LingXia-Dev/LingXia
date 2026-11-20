@@ -2568,3 +2568,75 @@ fn a_list_at_its_end_that_shrinks_to_fit_is_at_both_edges() {
         "the offset clamps with the content"
     );
 }
+
+/// An unbound field's text lives in the core: another field taking focus keeps it, committed
+/// or still composing.
+#[test]
+fn an_unbound_field_keeps_its_text_when_another_field_takes_focus() {
+    use crate::text::input::Edit;
+    for composing in [false, true] {
+        let module = source(
+            "function render(){return h('view',{},h('input',{key:'name','aria-label':'Name',autoFocus:true}),h('input',{key:'code','aria-label':'Code'}))}",
+        );
+        let mut page = ViewSession::new(&module).unwrap();
+        let first = page.layout(300, 300, 1.0).unwrap();
+        let name = first.nodes[1].identity.clone();
+        let code = first.nodes[2].identity.clone();
+        let token = first.nodes[1].input.as_ref().unwrap().edit_token.unwrap();
+        page.edit_input(
+            token,
+            &name,
+            &[Edit::Replace {
+                text: "Nm".into(),
+                cursor: 1,
+                composing,
+            }],
+            false,
+        )
+        .unwrap();
+        page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
+        let shown = page.layout(300, 300, 1.0).unwrap();
+        assert!(
+            page.focus_input(page.generation(), &code)
+                .unwrap()
+                .is_some()
+        );
+        let _ = shown;
+        let after = page.layout(300, 300, 1.0).unwrap();
+        let value = &after.nodes[1].input.as_ref().unwrap().value;
+        assert_eq!(value, "Nm", "composing={composing}");
+        assert_eq!(after.nodes[1].text, "Nm", "composing={composing}");
+    }
+}
+
+#[test]
+fn an_unbound_date_field_shows_the_users_date_not_an_empty_display() {
+    use crate::text::input::Edit;
+    let module = source(
+        "function render(){return h('view',{},h('input',{key:'day','aria-label':'Day',type:'date',autoFocus:true}),h('input',{key:'note','aria-label':'Note'}))}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let first = page.layout(300, 300, 1.0).unwrap();
+    let day = first.nodes[1].identity.clone();
+    let note = first.nodes[2].identity.clone();
+    let token = first.nodes[1].input.as_ref().unwrap().edit_token.unwrap();
+    page.edit_input(
+        token,
+        &day,
+        &[Edit::Replace {
+            text: "2026-11-19".into(),
+            cursor: 1,
+            composing: false,
+        }],
+        false,
+    )
+    .unwrap();
+    page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
+    page.layout(300, 300, 1.0).unwrap();
+    assert!(page.focus_input(page.generation(), &note).unwrap().is_some());
+    let after = page.layout(300, 300, 1.0).unwrap();
+    let input = after.nodes[1].input.as_ref().unwrap();
+    assert_eq!(input.value, "2026-11-19");
+    assert_eq!(input.display, None);
+    assert_eq!(after.nodes[1].text, "2026-11-19");
+}

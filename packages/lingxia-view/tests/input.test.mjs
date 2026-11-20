@@ -13,6 +13,15 @@ test('editor labels are distinct from values and placeholder hints', () => {
   }
 });
 
+test('an unbound editor sends no value, so it keeps what is typed; a bound one sends its value, empty included', () => {
+  reset();
+  for (const [tag, kind] of [['input', {}], ['textarea', {}], ['input', { type: 'search' }]]) {
+    assert.equal(Object.hasOwn(rendered(() => h(tag, { ...kind })).props, 'inputValue'), false, `${tag} unbound`);
+    assert.equal(rendered(() => h(tag, { ...kind, value: '' })).props.inputValue, '', `${tag} value=""`);
+    assert.equal(rendered(() => h(tag, { ...kind, bind: useLocal(`${tag}-${kind.type}`, '') })).props.inputValue, '', `${tag} bound`);
+  }
+});
+
 test('local string bindings receive only typed committed text events', () => {
   reset();
   const render = () => { const draft = useLocal('draft', ''); return h('view', {}, h('input', { bind: draft }), h('text', {}, draft.value)); };

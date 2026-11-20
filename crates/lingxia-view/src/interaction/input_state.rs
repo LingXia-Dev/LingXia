@@ -112,9 +112,13 @@ impl Inputs {
             .zip(&ids)
             .filter(|(r, _)| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
             .map(|(r, id)| {
-                let value = r.string(field::INPUT_VALUE).unwrap_or("");
-                self.entries
-                    .get(id)
+                let entry = self.entries.get(id);
+                // An uncontrolled editor's own text is its value.
+                let value = r
+                    .string(field::INPUT_VALUE)
+                    .or_else(|| entry.map(|e| e.editor.text()))
+                    .unwrap_or("");
+                entry
                     .map(|e| {
                         e.editor
                             .projected_value_bytes(value, r.number(field::ENABLED) != Some(0.0))
@@ -136,7 +140,9 @@ impl Inputs {
             .enumerate()
             .filter(|(_, (r, _))| matches!(r.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
         {
-            let value = record.string(field::INPUT_VALUE).unwrap_or("");
+            // No value is an uncontrolled field: its text lives here, never reset by a render.
+            let controlled = record.string(field::INPUT_VALUE);
+            let value = controlled.unwrap_or("");
             let focus_request = record.number(field::FOCUS_REQUEST).unwrap_or(0.0) as u64;
             if !self.entries.contains_key(&id) {
                 self.entries.insert(
@@ -177,7 +183,10 @@ impl Inputs {
                 .iter()
                 .find(|(id, _)| *id == field::ON_SUBMIT)
                 .and_then(|(_, v)| v.as_u64());
-            renderer.edit_text(&mut entry.editor, &[Edit::Value(value.into())])?;
+            entry.editor.set_uncontrolled(controlled.is_none());
+            if let Some(value) = controlled {
+                renderer.edit_text(&mut entry.editor, &[Edit::Value(value.into())])?;
+            }
             if !entry.enabled && self.focused.as_deref() == Some(&id) {
                 self.blur(renderer)?;
             }
@@ -200,7 +209,9 @@ impl Inputs {
                 {
                     *old = value;
                 } else {
-                    record.fields.push((21, value));
+                    record.fields.push((field::INPUT_VALUE, value));
+                    // A shown form made from no value would cover the user's own text.
+                    record.fields.retain(|(field, _)| *field != field::DISPLAY_VALUE);
                 }
             }
         }

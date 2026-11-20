@@ -585,7 +585,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const attributes = check.editor(tag, props, keyboard);
       if (props.onSubmit !== undefined && typeof props.onSubmit !== 'function') throw Error('UI_INPUT: onSubmit');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
-      wire('inputValue', props.value ?? '');
+      // Unbound, the editor keeps the user's text: an empty value would make it controlled.
+      if (props.value !== undefined) wire('inputValue', props.value);
       if (props.placeholder !== undefined) wire('placeholder', props.placeholder);
       if (keyboard !== undefined) wire('keyboard', keyboard);
       if (keyboard === 'date' || keyboard === 'time') {
@@ -596,7 +597,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
           language: env?.contentLanguage ?? env?.displayLanguage,
           hourCycle: env?.hourCycle,
         });
-        wire('displayValue', shown.displayValue);
+        // Unbound, the field shows the user's pick; its width never depends on the value.
+        if (props.value !== undefined) wire('displayValue', shown.displayValue);
         wire('sizeText', shown.sizeText);
       }
       if (secure) wire('secure', 1);

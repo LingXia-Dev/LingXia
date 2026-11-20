@@ -84,6 +84,8 @@ pub struct Editor {
     /// Values already echoed; one arriving again out of order must not end a composition.
     echoed: std::collections::VecDeque<String>,
     focused: bool,
+    /// No `value` from Logic: the text is the editor's own, as an uncontrolled DOM input's.
+    uncontrolled: bool,
     history: History,
 }
 
@@ -134,8 +136,19 @@ impl Editor {
             unechoed: Default::default(),
             echoed: Default::default(),
             focused: false,
+            uncontrolled: false,
             history: History::default(),
         })
+    }
+
+    /// The text shown, typed or installed.
+    pub(crate) fn text(&self) -> &str {
+        self.visual.raw_text()
+    }
+
+    /// An uncontrolled editor keeps its text on blur instead of showing Logic's value.
+    pub(crate) fn set_uncontrolled(&mut self, uncontrolled: bool) {
+        self.uncontrolled = uncontrolled;
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -269,7 +282,11 @@ impl Editor {
             }
             Edit::Blur => {
                 self.focused = false;
-                self.install_value(self.controlled.clone());
+                if self.uncontrolled {
+                    self.controlled = self.visual.raw_text().to_owned();
+                } else {
+                    self.install_value(self.controlled.clone());
+                }
                 return Ok(false);
             }
             Edit::Value(value) => {
@@ -617,6 +634,16 @@ mod tests {
         assert_eq!(c.edit(Edit::Redo).unwrap().snapshot.text, "one");
         c.replace("different", false);
         assert!(!c.editor.snapshot().can_redo);
+    }
+
+    #[test]
+    fn an_uncontrolled_editor_keeps_typed_and_composing_text_on_blur() {
+        for composing in [false, true] {
+            let mut c = Client::new("");
+            c.editor.set_uncontrolled(true);
+            c.replace("Nm", composing);
+            assert_eq!(c.edit(Edit::Blur).unwrap().snapshot.text, "Nm");
+        }
     }
 
     #[test]

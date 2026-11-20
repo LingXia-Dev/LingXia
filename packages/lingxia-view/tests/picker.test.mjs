@@ -159,6 +159,18 @@ test('on touch a date field with a value opens with that day chosen', () => {
   assert.equal(JSON.parse(takePickerResults())[0].value, '2026-10-29');
 });
 
+test('an unbound date or time field sends no display text, only its width', () => {
+  reset();
+  const view = () => h('view', {}, h('input', { 'data-testid': 'at', type: 'time' }), h('input', { 'data-testid': 'on', type: 'date' }));
+  const nodes = render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  for (const id of ['at', 'on']) {
+    const props = nodes.find(n => n.testId === id).props;
+    assert.equal(Object.hasOwn(props, 'displayValue'), false, id);
+    assert.equal(Object.hasOwn(props, 'inputValue'), false, id);
+    assert.ok(props.sizeText.length > 0, `${id} keeps its width`);
+  }
+});
+
 test('a time field shows its ISO value in the user\'s clock and re-lowers when the clock or language changes', () => {
   reset();
   const view = () => h('view', {}, h('input', { 'data-testid': 'at', type: 'time', value: '13:05' }),

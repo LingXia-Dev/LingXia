@@ -5059,7 +5059,7 @@
         const attributes = editor(tag, props, keyboard);
         if (props.onSubmit !== void 0 && typeof props.onSubmit !== "function") throw Error("UI_INPUT: onSubmit");
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
-        wire("inputValue", props.value ?? "");
+        if (props.value !== void 0) wire("inputValue", props.value);
         if (props.placeholder !== void 0) wire("placeholder", props.placeholder);
         if (keyboard !== void 0) wire("keyboard", keyboard);
         if (keyboard === "date" || keyboard === "time") {
@@ -5069,7 +5069,7 @@
             language: env?.contentLanguage ?? env?.displayLanguage,
             hourCycle: env?.hourCycle
           });
-          wire("displayValue", shown.displayValue);
+          if (props.value !== void 0) wire("displayValue", shown.displayValue);
           wire("sizeText", shown.sizeText);
         }
         if (secure) wire("secure", 1);
