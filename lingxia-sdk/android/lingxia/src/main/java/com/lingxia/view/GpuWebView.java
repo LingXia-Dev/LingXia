@@ -287,6 +287,10 @@ final class GpuWebView extends FrameLayout {
         }
     }
 
+    private static boolean turns(int fromWidth, int fromHeight, int toWidth, int toHeight) {
+        return (fromWidth > fromHeight && toWidth < toHeight) || (fromWidth < fromHeight && toWidth > toHeight);
+    }
+
     private final class Slot extends FrameLayout implements LingXiaWebView.CustomViewListener {
         final String webId;
         String key;
@@ -388,11 +392,14 @@ final class GpuWebView extends FrameLayout {
                 setImportantForAccessibility(importance);
             }
             if (sizeChanged) {
-                measure(
-                    MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
-                );
-                layout(left, top, left + width, top + height);
+                View view = webview;
+                if (view instanceof WebView && turnsAgainstScreen(view.getWidth(), view.getHeight(), width, height)) {
+                    // Chromium reads a web view turning against the screen's orientation as a
+                    // rotation and holds the page at its old size for 200 ms; one axis at a time
+                    // is a plain resize.
+                    place(left, top, view.getWidth(), height);
+                }
+                place(left, top, width, height);
             }
             if (sizeChanged && ready && capturedWidth > 0 && webview instanceof WebView && customView == null
                 && (width != capturedWidth || height != capturedHeight)) {
@@ -416,6 +423,23 @@ final class GpuWebView extends FrameLayout {
             } else if (sizeChanged || stateChanged) {
                 invalidateCapture();
             }
+        }
+
+        private void place(int left, int top, int width, int height) {
+            measure(
+                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
+            );
+            layout(left, top, left + width, top + height);
+        }
+
+        private boolean turnsAgainstScreen(int oldWidth, int oldHeight, int width, int height) {
+            if (oldWidth <= 0 || oldHeight <= 0 || oldWidth == width || oldHeight == height) {
+                return false;
+            }
+            android.util.DisplayMetrics screen = getResources().getDisplayMetrics();
+            return turns(oldWidth, oldHeight, width, height)
+                && turns(width, height, screen.widthPixels, screen.heightPixels);
         }
 
         /**
