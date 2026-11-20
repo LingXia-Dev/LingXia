@@ -2324,6 +2324,7 @@ export struct LxAppContainer {
         chromeInsets: this.getGpuChromeInsets(page.webTag),
         pageVisible: this.isGpuPageShown(page.webTag),
         floor: resolveCanvasColor(this.appearanceDark),
+        appearanceDark: this.appearanceDark,
       })
         .translate(this.getRenderTranslation(page.webTag))
         .visibility(this.getRenderVisibility(page.webTag))

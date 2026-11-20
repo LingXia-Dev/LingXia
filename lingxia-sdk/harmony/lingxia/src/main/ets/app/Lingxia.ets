@@ -81,6 +81,8 @@ export class Lingxia {
   /** True while the application is in the foreground (any ability). */
   public static inForeground: boolean = true;
   private static environmentCallback: EnvironmentCallback | null = null;
+  /** The app's colour mode: under a pin the configuration reports the pin, not the system. */
+  private static hostColorMode: string = 'auto';
   private static applicationStateCallback: ApplicationStateChangeCallback | null = null;
   /** Suspend delays held for Rust's background callbacks: token -> requestId. */
   private static backgroundGrace: Map<number, number> = new Map<number, number>();
@@ -233,8 +235,14 @@ export class Lingxia {
     } else if (mode === 'light') {
       colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
     }
+    Lingxia.hostColorMode = mode === 'dark' || mode === 'light' ? mode : 'auto';
     try {
-      context.getApplicationContext().setColorMode(colorMode);
+      const appContext = context.getApplicationContext();
+      appContext.setColorMode(colorMode);
+      // Back to following the system: its scheme now, which a pin hid from the callback.
+      if (Lingxia.hostColorMode === 'auto' && context.config?.colorMode !== undefined) {
+        onHostAppearanceChanged(context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      }
     } catch (error) {
       LxLog.e(TAG, `setColorMode(${mode}) failed: ${error}`);
     }
@@ -247,8 +255,10 @@ export class Lingxia {
     const callback: EnvironmentCallback = {
       onConfigurationUpdated: (config: Configuration): void => {
         onHostLocaleChanged(Lingxia.getSystemLocale());
-        const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
-        onHostAppearanceChanged(dark);
+        // Under a pin the configuration carries the pin; the system's own scheme is unknown.
+        if (Lingxia.hostColorMode === 'auto') {
+          onHostAppearanceChanged(config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+        }
       },
       onMemoryLevel: (level: number): void => {
         if (level >= AbilityConstant.MemoryLevel.MEMORY_LEVEL_LOW) {

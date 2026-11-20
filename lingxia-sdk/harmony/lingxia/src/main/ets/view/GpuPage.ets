@@ -244,6 +244,9 @@ export struct GpuPage {
   @Prop @Watch('visibilityChanged') pageVisible: boolean = true;
   /** The page floor, shown until the surface holds a frame: an empty surface is black. */
   @Prop floor: ResourceColor = Color.White;
+  /** The lxapp's resolved scheme, as its chrome draws it: a pin or Auto changes it at once,
+   *  where the window configuration lags or hides the system's own. */
+  @Prop @Watch('remeasure') appearanceDark: boolean = false;
   private rect: GpuRect = new GpuRect();
   private win: window.Window | null = null;
   /** This page's own window listeners: `off` without them drops every page's on the window. */
@@ -418,6 +421,7 @@ export struct GpuPage {
     const context = Lingxia.context as common.UIAbilityContext;
     const facts = sampleFacts(context, this.win, this.rect, this.chromeInsets, getDisplayLanguage(), this.config,
       this.keyboardTop);
+    facts.dark = this.appearanceDark;
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
   }
 

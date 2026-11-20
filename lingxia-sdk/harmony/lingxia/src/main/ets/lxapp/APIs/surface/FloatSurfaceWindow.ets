@@ -379,7 +379,8 @@ struct LingXiaFloatSurfacePage {
             GpuPage({
               page: this.gpuPage,
               pageVisible: true,
-              floor: this.appearanceDark ? Color.Black : Color.White
+              floor: this.appearanceDark ? Color.Black : Color.White,
+              appearanceDark: this.appearanceDark
             })
           } else if (this.pageWebTag.length > 0) {
             LingXiaWebView({
