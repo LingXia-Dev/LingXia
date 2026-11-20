@@ -39,7 +39,7 @@ export const doc: ComponentDoc = {
       'The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.',
       'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
       'The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.',
-      'Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.',
+      'Keyboard focus rings a standalone switch; on a row it rings the row and its help text.',
     ],
   },
   guidance: {
@@ -60,7 +60,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     {
-      missing: 'Keyboard focus shown only by the thumb ring or the row fill.',
+      missing: 'Keyboard focus shown only by the thumb ring or the row ring.',
       needs: 'the switch primitive\'s built-in focus ring giving way to authored focus styles',
       today: 'The built-in ring also draws around the track.',
     },

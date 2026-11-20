@@ -48,9 +48,9 @@ export const itemRecipe = {
     base: 'flex-row items-center gap-3 px-4 self-stretch text-start',
     density: { comfortable: 'py-2.5 min-h-control-lg', compact: 'py-1.5 min-h-control-md' } satisfies Record<ItemDensity, string>,
     pressable: 'transition-colors duration-fast ease-standard disabled:opacity-40',
-    idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     /** The current choice: ToggleButton's on wash, deepening on hover, press and focus. */
-    selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
+    selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
   },
   /** One tint for every row, so a list of them reads as a set and the icons carry the difference. */
   iconTile: {

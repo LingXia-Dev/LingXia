@@ -30,10 +30,10 @@ test('the track turns to the deepened accent when on, and the thumb rings on key
   assert.match(control.props.focusVisibleStyle.thumbStyle, /focus/);
 });
 
-test('a row shows keyboard focus as a fill, not a thumb ring', async () => {
+test('a row rings keyboard focus inside its edges, not round the thumb', async () => {
   const screen = await renderExample('Switch/Switch', 'InList');
   const focus = screen.getByTestId('mentions').props.focusVisibleStyle;
-  assert.ok(focus.background !== undefined || focus.backgroundColor !== undefined, JSON.stringify(focus));
+  assert.deepEqual(JSON.parse(focus.ring), { inner: { width: 2, color: 'focus' } });
   assert.equal(focus.thumbStyle, undefined);
 });
 

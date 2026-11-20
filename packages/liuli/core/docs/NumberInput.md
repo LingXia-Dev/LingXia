@@ -141,7 +141,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `numberInputRecipe` from `@liulidesign/core/NumberInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - It reads no Liuli scale token.
-- Colour roles it paints with, set by the theme pack: `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `focus`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

@@ -172,7 +172,7 @@ export function Stoppable() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The surface, and under it the reason while disabled. |
-| surface | `<view>` | yes | The one bordered box; the focus ring goes round all of it. |
+| surface | `<view>` | yes | The one bordered box; focus turns all of its border to a 2 px accent edge. |
 | attachments | `<view>` | no | What is attached, over the text. |
 | start | `<view>` | no | A button that attaches: before the text, or under it at the start. |
 | field | `<view>` | yes | The text's place: between the buttons, or the full width over them. |

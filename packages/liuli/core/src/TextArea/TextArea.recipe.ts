@@ -3,13 +3,13 @@ import type { FieldSize, FieldStatusType } from '../Field/Field';
 export const textAreaParts = { box: 'view', editor: 'textarea', count: 'text' } as const;
 
 /**
- * The same box as TextInput: a 3:1 boundary, the focus colour through `focus-within:`, the status
+ * The same box as TextInput: a 3:1 boundary, the 2 px accent edge on focus, the status
  * colour otherwise. The editor fills the box and keeps its own inset, so the first line sits where a
  * TextInput's text does.
  */
 export const textAreaRecipe = {
   box: {
-    base: 'rounded-control border border-line-strong bg-surface transition duration-fast ease-standard focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
+    base: 'rounded-control border border-line-strong bg-surface transition duration-fast ease-standard focus-within:border-accent focus-within:inset-ring-1 focus-within:inset-ring-accent',
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
     disabled: 'bg-text/5 border-text/8',
   },

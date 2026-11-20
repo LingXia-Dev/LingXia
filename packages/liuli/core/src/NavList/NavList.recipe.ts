@@ -22,7 +22,7 @@ export const navListRecipe = {
     base: 'absolute top-0 start-0 size-px',
   },
   group: {
-    base: 'flex-row items-center gap-2 min-h-8 px-3 mt-3 first:mt-0 rounded-control text-start transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+    base: 'flex-row items-center gap-2 min-h-8 px-3 mt-3 first:mt-0 rounded-control text-start transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
   },
   groupLabel: {
     base: 'grow shrink basis-0 text-footnote font-semibold text-muted',
@@ -35,9 +35,9 @@ export const navListRecipe = {
   item: {
     /** Keyboard focus draws the focus ring inside the row, so the sidebar's edge never clips it. */
     base: 'flex-row items-center gap-2 min-h-9 px-3 rounded-control text-start transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus disabled:opacity-40',
-    idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     /** Item's selected wash, deepening on hover, press and focus. */
-    selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:bg-accent/20',
+    selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
   },
   label: {
     base: 'grow shrink basis-0 truncate text-body text-text',

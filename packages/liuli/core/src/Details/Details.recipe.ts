@@ -25,7 +25,7 @@ export const detailsRecipe = {
     base: 'transition-layout duration-base ease-standard',
   },
   summary: {
-    base: 'flex-row items-center gap-3 min-h-control-lg py-2.5 text-start transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7 disabled:opacity-40',
+    base: 'flex-row items-center gap-3 min-h-control-lg py-2.5 text-start transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus disabled:opacity-40',
     /** Alone, the hover wash reaches past the text, which stays in line with the content around it. */
     alone: '-mx-3 px-3 rounded-control',
     inGroup: 'px-4',

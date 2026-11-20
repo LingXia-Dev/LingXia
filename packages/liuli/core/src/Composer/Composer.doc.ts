@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'composerRecipe', parts: 'composerParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The surface, and under it the reason while disabled.' },
-    { part: 'surface', required: true, description: 'The one bordered box; the focus ring goes round all of it.' },
+    { part: 'surface', required: true, description: 'The one bordered box; focus turns all of its border to a 2 px accent edge.' },
     { part: 'attachments', required: false, description: 'What is attached, over the text.' },
     { part: 'start', required: false, description: 'A button that attaches: before the text, or under it at the start.' },
     { part: 'field', required: true, description: 'The text\'s place: between the buttons, or the full width over them.' },

@@ -121,7 +121,7 @@ export function Applying() {
 - The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.
 - Disabled and on, the track keeps its accent at reduced strength, so the state still reads.
 - The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.
-- Keyboard focus rings a standalone switch; on a row it is a fill across the row and its help text, as on an Item.
+- Keyboard focus rings a standalone switch; on a row it rings the row and its help text.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -143,6 +143,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Keyboard focus shown only by the thumb ring or the row fill. | the switch primitive's built-in focus ring giving way to authored focus styles | The built-in ring also draws around the track. |
+| Keyboard focus shown only by the thumb ring or the row ring. | the switch primitive's built-in focus ring giving way to authored focus styles | The built-in ring also draws around the track. |
 
 Related: CheckboxInput, Item.

@@ -14,8 +14,8 @@ export const tabsParts = {
  * A row of tabs over one panel: equal shares of the row, or each as wide as its label. No label is
  * ever cut: a tab is never narrower than its label, and a row that cannot hold them scrolls. The
  * indicator is one box a tab wide that slides to the chosen tab; reduced motion lands it at once.
- * Keyboard focus is a fill on an underline tab, kept 4 px above the indicator by the list's
- * padding. The segmented variant draws SegmentedControl's medium pieces (track, thumb, segment,
+ * Keyboard focus rings an underline tab inside its edges, which the scroll would clip outside,
+ * 4 px above the indicator by the list's padding. The segmented variant draws SegmentedControl's medium pieces (track, thumb, segment,
  * label), so the two never drift apart.
  */
 export const tabsRecipe = {
@@ -54,7 +54,7 @@ export const tabsRecipe = {
     /** An equal share, but never narrower than its label. */
     equal: 'grow basis-0',
     content: 'shrink-0',
-    underline: 'h-control-md rounded-control hover:bg-text/4 focus-visible:bg-text/7',
+    underline: 'h-control-md rounded-control hover:bg-text/4 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     pad: { equal: 'px-2', content: 'px-3' },
     /** Fills its tab, so the indicator can follow tabs of unequal width. */
     extent: 'absolute inset-0',

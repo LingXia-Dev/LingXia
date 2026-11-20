@@ -76,7 +76,7 @@ export const messageBubbleRecipe = {
     afterAvatar: 'ms-10',
   },
   reasoningToggle: {
-    base: 'flex-row items-center gap-1.5 self-start min-h-8 -mx-2 px-2 rounded-control text-muted transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:bg-text/7',
+    base: 'flex-row items-center gap-1.5 self-start min-h-8 -mx-2 px-2 rounded-control text-muted transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   reasoningSpinner: {
     base: 'size-3.5 shrink-0 motion-safe:animate-spin',

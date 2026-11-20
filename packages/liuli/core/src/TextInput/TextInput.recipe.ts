@@ -3,18 +3,18 @@ import type { FieldSize, FieldStatusType } from '../Field/Field';
 export const textInputParts = { box: 'view', icon: 'view', searchIcon: 'vector', adornment: 'text', input: 'input', clear: 'button', clearIcon: 'vector' } as const;
 
 /**
- * An editor keeps a 3:1 boundary (`line-strong`) so it never reads as a button. The box draws the border, so a leading icon and the clear button sit inside it, and takes the
- * focus colour through `focus-within:`. The editor is borderless and fills the box height, so a tap
+ * An editor keeps a 3:1 boundary (`line-strong`) so it never reads as a button. The box draws the border, so a leading icon and the clear button sit inside it, and on any focus
+ * turns a 2 px accent edge, the second pixel an inset ring so nothing shifts. The editor is borderless and fills the box height, so a tap
  * anywhere but the icon lands in it.
  */
 export const textInputRecipe = {
   box: {
-    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface transition duration-fast ease-standard focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
+    base: 'flex-row items-center gap-2 px-3 rounded-control border border-line-strong bg-surface transition duration-fast ease-standard focus-within:border-accent focus-within:inset-ring-1 focus-within:inset-ring-accent',
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
     disabled: 'bg-text/5 border-text/8',
     /** Read-only keeps the text at full strength on a sunken box with a quiet edge: there to read, not to fill in. */
-    readOnly: 'bg-surface-sunken border-text/12 focus-within:border-line-strong focus-within:ring-0',
+    readOnly: 'bg-surface-sunken border-text/12 focus-within:border-line-strong focus-within:inset-ring-0',
   },
   spinner: {
     base: 'size-4 shrink-0 text-muted motion-safe:animate-spin',

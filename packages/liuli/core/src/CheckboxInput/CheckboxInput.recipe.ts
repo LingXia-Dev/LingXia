@@ -24,8 +24,8 @@ export const checkboxInputRecipe = {
     base: 'gap-1',
   },
   control: {
-    /** A row: keyboard focus is a fill, given room past the box and text by the negative margins. */
-    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 focus-visible:bg-text/7',
+    /** A row: keyboard focus rings it, with room past the box and text from the negative margins. */
+    base: '-mx-2 px-2 -my-1 py-1 rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   /** Centred in the primitive's minimum height when the content is shorter. */
   row: {

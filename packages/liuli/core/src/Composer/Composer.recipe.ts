@@ -12,7 +12,7 @@ export const composerParts = {
 } as const;
 
 /**
- * One surface: its border is the field's edge, and the focus ring goes round all of it. In one
+ * One surface: its border is the field's edge, and focus turns all of it to a 2 px accent edge. In one
  * row it is start, text, send; stacked, the text takes the first row whole and the buttons the
  * row under it, at its two ends. The same three children in the same order either way, placed
  * by the grid, so the editor keeps its caret through the change.
@@ -22,7 +22,7 @@ export const composerRecipe = {
     base: 'self-stretch gap-1.5',
   },
   surface: {
-    base: 'grid grid-cols-[auto_1fr_auto] items-center gap-x-1 gap-y-1 p-1.5 rounded-container border border-line-strong bg-surface transition-size duration-base ease-standard focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/20',
+    base: 'grid grid-cols-[auto_1fr_auto] items-center gap-x-1 gap-y-1 p-1.5 rounded-container border border-line-strong bg-surface transition-size duration-base ease-standard focus-within:border-accent focus-within:inset-ring-1 focus-within:inset-ring-accent',
     disabled: 'bg-text/5 border-text/8',
   },
   /** Over the text, the whole width. */
