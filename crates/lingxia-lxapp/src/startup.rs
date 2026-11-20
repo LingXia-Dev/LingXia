@@ -55,29 +55,36 @@ impl serde::Serialize for LxAppStartupOptions {
     }
 }
 
-/// Parse query string into serde_json::Value
-/// This is the centralized query parsing function used by both startup options and page navigation
-pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_json::Error> {
-    if query_str.is_empty() {
-        return Ok(serde_json::Value::Object(serde_json::Map::new()));
-    }
+/// Query key carrying a page's non-string params as one JSON object, so a
+/// number, boolean, null, array or object reaches `onLoad` with its type.
+const TYPED_PARAMS_KEY: &str = "__lxparams";
 
+/// Largest encoded typed-params value. Params are persisted with the stack
+/// for restart replay; anything bigger belongs in storage, passed by key.
+pub const PAGE_PARAMS_MAX_BYTES: usize = 8 * 1024;
+
+/// Parse a page query into the object `onLoad` receives. Plain pairs are
+/// strings; typed params win over a plain pair of the same name.
+pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_json::Error> {
     let mut query_map = serde_json::Map::new();
-    for pair in query_str.split('&') {
-        if let Some(eq_pos) = pair.find('=') {
-            let key = &pair[..eq_pos];
-            let value = &pair[eq_pos + 1..];
-            let decoded_value =
-                urlencoding::decode(value).unwrap_or(std::borrow::Cow::Borrowed(value));
-            query_map.insert(
-                key.to_string(),
-                serde_json::Value::String(decoded_value.to_string()),
-            );
-        } else {
-            query_map.insert(pair.to_string(), serde_json::Value::String("".to_string()));
+    let mut typed = Vec::new();
+    for pair in query_str.split('&').filter(|pair| !pair.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let decoded_value = urlencoding::decode(value).unwrap_or(std::borrow::Cow::Borrowed(value));
+        if key == TYPED_PARAMS_KEY {
+            // Malformed typed params (an outside URL can carry the key too)
+            // are dropped instead of discarding the rest of the query.
+            if let Ok(Value::Object(params)) = serde_json::from_str::<Value>(&decoded_value) {
+                typed.push(params);
+            }
+            continue;
         }
+        query_map.insert(key.to_string(), Value::String(decoded_value.to_string()));
     }
-    Ok(serde_json::Value::Object(query_map))
+    for params in typed {
+        query_map.extend(params);
+    }
+    Ok(Value::Object(query_map))
 }
 
 /// Splits a full URL (path?query) into path and raw query string (without the '?').
@@ -107,6 +114,9 @@ pub fn parse_requested_channel(env_version: Option<&str>) -> Result<Option<Chann
         .transpose()
 }
 
+/// Append page params to `path`. Strings stay readable `key=value` pairs;
+/// every other JSON value travels in one typed-params object. `null` means
+/// absent, as it always has here.
 pub fn append_page_query(path: String, query: &Value) -> Result<String, String> {
     let Some(object) = query.as_object() else {
         return Err("query must be an object".to_string());
@@ -114,20 +124,34 @@ pub fn append_page_query(path: String, query: &Value) -> Result<String, String> 
     let mut entries = object.iter().collect::<Vec<_>>();
     entries.sort_unstable_by_key(|(key, _)| *key);
     let mut pairs = Vec::new();
+    let mut typed = serde_json::Map::new();
     for (key, value) in entries {
-        if value.is_null() {
-            continue;
+        if key == TYPED_PARAMS_KEY {
+            return Err(format!("query key '{TYPED_PARAMS_KEY}' is reserved"));
         }
-        let value = match value {
-            Value::String(value) => value.clone(),
-            Value::Bool(value) => value.to_string(),
-            Value::Number(value) => value.to_string(),
-            other => other.to_string(),
-        };
+        match value {
+            Value::Null => {}
+            Value::String(value) => pairs.push(format!(
+                "{}={}",
+                urlencoding::encode(key),
+                urlencoding::encode(value)
+            )),
+            other => {
+                typed.insert(key.clone(), other.clone());
+            }
+        }
+    }
+    if !typed.is_empty() {
+        let encoded = Value::Object(typed).to_string();
+        if encoded.len() > PAGE_PARAMS_MAX_BYTES {
+            return Err(format!(
+                "page params are {} bytes as JSON; the limit is {PAGE_PARAMS_MAX_BYTES}. Keep large values in storage and pass their key.",
+                encoded.len()
+            ));
+        }
         pairs.push(format!(
-            "{}={}",
-            urlencoding::encode(key),
-            urlencoding::encode(&value)
+            "{TYPED_PARAMS_KEY}={}",
+            urlencoding::encode(&encoded)
         ));
     }
     if pairs.is_empty() {
@@ -267,11 +291,56 @@ impl LxAppStartupOptions {
 
 #[cfg(test)]
 mod tests {
-    use super::{LxAppStartupOptions, parse_query_string};
+    use super::{
+        LxAppStartupOptions, PAGE_PARAMS_MAX_BYTES, append_page_query, parse_query_string,
+    };
 
     #[test]
     fn empty_query_is_an_options_object() {
         assert_eq!(parse_query_string("").unwrap(), serde_json::json!({}));
+    }
+
+    #[test]
+    fn typed_params_survive_the_url_round_trip() {
+        let params = serde_json::json!({
+            "id": "42",
+            "count": 3,
+            "draft": true,
+            "tags": ["a", "b&c"],
+            "filter": { "from": "2026-01-01" },
+        });
+        let url = append_page_query("pages/order/index".to_string(), &params).unwrap();
+        assert!(
+            url.starts_with("pages/order/index?id=42&__lxparams="),
+            "{url}"
+        );
+        let (_, query) = url.split_once('?').unwrap();
+        assert_eq!(parse_query_string(query).unwrap(), params);
+        // Re-encoding what onLoad received yields the same URL.
+        assert_eq!(
+            append_page_query("pages/order/index".to_string(), &params).unwrap(),
+            url
+        );
+    }
+
+    #[test]
+    fn typed_params_win_over_a_plain_pair_and_have_a_size_limit() {
+        let typed = urlencoding::encode(r#"{"id":7}"#);
+        assert_eq!(
+            parse_query_string(&format!("id=7&__lxparams={typed}")).unwrap(),
+            serde_json::json!({ "id": 7 })
+        );
+
+        let big = serde_json::json!({ "blob": vec![0; PAGE_PARAMS_MAX_BYTES] });
+        let error = append_page_query("p".to_string(), &big).unwrap_err();
+        assert!(error.contains("the limit is 8192"), "{error}");
+        assert!(
+            append_page_query("p".to_string(), &serde_json::json!({ "__lxparams": 1 })).is_err()
+        );
+        assert_eq!(
+            parse_query_string("id=7&__lxparams=%7Bnot-json").unwrap(),
+            serde_json::json!({ "id": "7" })
+        );
     }
 
     #[test]
@@ -284,7 +353,10 @@ mod tests {
 
         assert_eq!(options.page.as_deref(), Some("tray"));
         assert_eq!(options.path, "");
-        assert_eq!(options.query, "compact=true&source=menu%20bar");
+        assert_eq!(
+            options.query,
+            "source=menu%20bar&__lxparams=%7B%22compact%22%3Atrue%7D"
+        );
     }
 
     #[test]

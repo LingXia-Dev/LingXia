@@ -179,14 +179,15 @@ lx.surface.openPage("settings", { as: "float", chrome: "full" });
 // An ordered preference cannot know which it will be, so both stay open.
 lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", position: "center" });
 
-// A query value is serialized into the page's URL, so a structured value is a
-// compile error here exactly as it is on `lx.navigateTo`.
-async function queryRejectsStructuredValues(): Promise<void> {
-  // @ts-expect-error query values are strings, numbers, booleans or nullish
+// Params keep their JSON type through the page URL, as on `lx.navigateTo`;
+// only a non-JSON value is a compile error.
+async function queryTakesJson(): Promise<void> {
   await lx.surface.openPage("editor", { as: "float", query: { filter: { open: true } } });
+  // @ts-expect-error a Date is not JSON
+  await lx.surface.openPage("editor", { as: "float", query: { at: new Date() } });
 }
 
-export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];
+export type SurfaceQueryGate = [typeof queryTakesJson];
 
 // `lx.shell` resolves to the global `ShellApi`, not the exported alias, so a
 // member declared on only one of the two is unreachable at the call site it

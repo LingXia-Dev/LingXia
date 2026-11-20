@@ -1499,8 +1499,13 @@ export type OverlaySurfaceSize = {
  */
 export type OverlaySurfaceSizeValue = number | `${number}%`;
 
+/**
+ * What `onLoad` receives: each param with the type it was passed with.
+ * Validate a query from outside (an app link, a URL): it is usually
+ * strings.
+ */
 export type PageLoadOptions = {
-    [key: string]: string | undefined;
+    [key: string]: JsonValue | undefined;
 };
 
 export type PageMessagePort = {
@@ -1510,7 +1515,11 @@ export type PageMessagePort = {
 
 export type PageQuery = Record<string, PageQueryValue>;
 
-export type PageQueryValue = string | number | boolean | null | undefined;
+/**
+ * A page param: any JSON value. `null` and `undefined` mean absent. The
+ * whole set of non-string params is limited to 8 KB as JSON.
+ */
+export type PageQueryValue = JsonValue | undefined;
 
 /** One of this lxapp's own pages, opened as a float or a window. */
 export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {

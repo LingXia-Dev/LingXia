@@ -1213,8 +1213,11 @@ rong::js_api! {
         ///
         type OverlaySurfaceSizeValue = r###"number | `${number}%`"###;
 
+        /// What `onLoad` receives: each param with the type it was passed with.
+        /// Validate a query from outside (an app link, a URL): it is usually
+        /// strings.
         type PageLoadOptions = r###"{
-    [key: string]: string | undefined;
+    [key: string]: JsonValue | undefined;
 }"###;
 
         type PageMessagePort = r###"{
@@ -1224,7 +1227,9 @@ rong::js_api! {
 
         type PageQuery = r###"Record<string, PageQueryValue>"###;
 
-        type PageQueryValue = r###"string | number | boolean | null | undefined"###;
+        /// A page param: any JSON value. `null` and `undefined` mean absent. The
+        /// whole set of non-string params is limited to 8 KB as JSON.
+        type PageQueryValue = r###"JsonValue | undefined"###;
 
         type PreviewMediaAdvance = r###"'manual' | 'next' | 'loop'"###;
 

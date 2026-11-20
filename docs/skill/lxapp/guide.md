@@ -106,7 +106,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 | Hook | When it fires |
 | --- | --- |
-| `onLoad(options)` | Entering the page, with its query. |
+| `onLoad(options)` | Entering the page, with its query: each value keeps the JSON type it was passed with (`{ count: 3 }` arrives as `3`); validate what arrives from outside (an app link): it is usually strings. Non-string values are limited to 8 KB. |
 | `onShow()` | Becoming visible, on entry and every return. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |

@@ -24,7 +24,6 @@ use rong::{
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -3175,26 +3174,9 @@ fn parse_query(obj: &JSObject) -> JSResult<Option<PageQueryInput>> {
             format!("query must be JSON serializable: {err}"),
         )
     })?;
-    let Some(map) = json.as_object() else {
-        return Err(surface_error(
-            SurfaceErrorCode::InvalidArg,
-            "query must be an object",
-        ));
-    };
-
-    let mut params = BTreeMap::new();
-    for (key, value) in map {
-        if value.is_null() {
-            continue;
-        }
-        let value = match value {
-            Value::String(value) => value.clone(),
-            other => other.to_string(),
-        };
-        params.insert(key.clone(), value);
-    }
-
-    Ok(Some(PageQueryInput::Params(params)))
+    let query = lxapp::append_page_query(String::new(), &json)
+        .map_err(|err| surface_error(SurfaceErrorCode::InvalidArg, err))?;
+    Ok(Some(PageQueryInput::Raw(query)))
 }
 
 fn parse_surface_kind(obj: &JSObject) -> JSResult<SurfaceKind> {
