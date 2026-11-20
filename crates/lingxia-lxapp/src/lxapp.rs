@@ -3523,6 +3523,8 @@ impl LxApp {
             .launch_options_json();
         if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, Some(payload)) {
             self.app_launch_dispatched.store(false, Ordering::SeqCst);
+            // No onLaunch will settle; pages must not wait on it.
+            self.launch_settled.send_replace(true);
             return Err(error);
         }
         // Cold AppLink is delivered once via onLaunch. Clear so the following

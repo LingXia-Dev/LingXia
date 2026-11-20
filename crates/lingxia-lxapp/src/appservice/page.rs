@@ -1962,6 +1962,10 @@ impl PageSvc {
                     }
                     break;
                 };
+                if event == PageLifecycleEvent::OnLoad && !page_svc.wait_launch_settled(&ctx).await
+                {
+                    continue;
+                }
                 if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
                     let error = super::eval_error_from_rong(&ctx, e);
                     let page = page_svc.get_page();
@@ -1977,6 +1981,25 @@ impl PageSvc {
                 }
             }
         });
+    }
+
+    /// `onLoad` runs after `App.onLaunch` has settled, so pages can rely on
+    /// what it set up. The first frame is not held. False if the page was torn
+    /// down meanwhile.
+    async fn wait_launch_settled(&self, ctx: &JSContext) -> bool {
+        let Ok(app) = LxApp::from_ctx(ctx) else {
+            return true;
+        };
+        let mut settled = app.launch_settled.subscribe();
+        while !*settled.borrow_and_update() {
+            if self.terminated.get() {
+                return false;
+            }
+            // `terminated` has no wake-up of its own.
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(100), settled.changed())
+                .await;
+        }
+        !self.terminated.get()
     }
 
     pub(crate) async fn call_page_event(

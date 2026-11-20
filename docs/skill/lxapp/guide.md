@@ -379,7 +379,8 @@ Page({
 ```
 
 - `globalData` is not reactive; push changes to a page with `setData`.
-- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`.
+- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
+  `Page.onLoad` waits for an `async onLaunch` to settle.
   Foregrounding: `App.onShow` → top page's `onShow`.
 - `getCurrentPages()` returns the stack, top last.
 

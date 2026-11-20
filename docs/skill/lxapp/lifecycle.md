@@ -9,31 +9,30 @@ navigation does to the pages it enters and leaves. Hook signatures are in
 `App({})` hooks belong to the lxapp session. `Page({})` hooks belong to one
 page instance. They advance independently.
 
-- **App hooks do not wait for each other.** An `async onLaunch` is still
-  running when `App.onShow` and the first page's `onLoad` run. Share start-up
-  work as a promise instead of assuming `globalData` is filled:
+- **Every page `onLoad` waits for `App.onLaunch` to settle**, so a page can
+  read what an `async onLaunch` set up:
 
   ```ts
   // app.ts
   App({
-    globalData: { ready: null as Promise<void> | null, userId: '' },
-    onLaunch() {
-      this.globalData.ready = (async () => {
-        this.globalData.userId = (await lx.getStorage().get<string>('userId')) ?? '';
-      })();
+    globalData: { userId: '' },
+    async onLaunch() {
+      this.globalData.userId = (await lx.getStorage().get<string>('userId')) ?? '';
     },
   });
 
   // pages/home/index.ts
   Page({
-    async onLoad() {
-      const app = getApp<AppInstance & { globalData: { ready: Promise<void>; userId: string } }>();
-      await app?.globalData.ready;
+    onLoad() {
+      const app = getApp<AppInstance & { globalData: { userId: string } }>();
       this.setData({ userId: app?.globalData.userId ?? '' });
     },
   });
   ```
 
+  The first frame is not held: the page paints its initial `data` meanwhile.
+  An `onLaunch` that never settles leaves every `onLoad` waiting. `App.onShow`
+  does not wait for `onLaunch`.
 - **Page hooks of one page run in order, each awaited.** An `async onLoad`
   settles before that page's `onShow` starts. Different pages do not wait on
   each other.
