@@ -35,5 +35,15 @@ final class SurfaceViewportPresenterTests: XCTestCase {
         XCTAssertTrue(presenters.admits("app", from: phone))
     }
 
+    func testAFrameDrawnSmallerReportsTheDevicesPoints() {
+        let phone = CGSize(width: 393, height: 659)
+        for scale in [1.0, 0.75, 0.4] as [CGFloat] {
+            let shown = CGSize(width: phone.width * scale, height: phone.height * scale)
+            let reported = SurfaceViewportPresenter.devicePoints(shown, displayScale: scale)
+            XCTAssertEqual(reported.width, phone.width, accuracy: 0.001)
+            XCTAssertEqual(reported.height, phone.height, accuracy: 0.001)
+        }
+        XCTAssertEqual(SurfaceViewportPresenter.devicePoints(phone, displayScale: 0), phone)
+    }
 }
 #endif

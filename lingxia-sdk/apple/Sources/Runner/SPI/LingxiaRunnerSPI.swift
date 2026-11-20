@@ -416,6 +416,10 @@ import WebKit
         public static func admits(appId: String, from host: AnyObject?) -> Bool {
             SurfaceViewportPresenter.admits(appId: appId, from: host)
         }
+
+        public static func devicePoints(_ size: CGSize, displayScale: CGFloat) -> CGSize {
+            SurfaceViewportPresenter.devicePoints(size, displayScale: displayScale)
+        }
     }
 
     /// GPU pages in the Runner's simulated phone, mounted as the macOS lxapp host mounts them.

@@ -57,5 +57,12 @@ enum SurfaceViewportPresenter {
             report(appId: appId, by: host, measure: measure, attempt: attempt + 1)
         }
     }
+
+    /// A frame drawn at `displayScale` window points per device point, in device points: what
+    /// the device would give the page, at any fit.
+    nonisolated static func devicePoints(_ size: CGSize, displayScale: CGFloat) -> CGSize {
+        guard displayScale > 0 else { return size }
+        return CGSize(width: size.width / displayScale, height: size.height / displayScale)
+    }
 }
 #endif

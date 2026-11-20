@@ -144,8 +144,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    /// The page's viewport in the device's points: the frame is drawn at `displayScale`.
     private func surfaceViewport() -> CGSize? {
-        let size = webViewContainer.bounds.size
+        let size = LingxiaRunnerSPI.SurfaceViewport.devicePoints(
+            webViewContainer.bounds.size, displayScale: displayScale)
         return size.width > 0 && size.height > 0 ? size : nil
     }
 
