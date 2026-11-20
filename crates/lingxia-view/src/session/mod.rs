@@ -32,6 +32,15 @@ mod video;
 mod webview;
 use frame_animation::FrameAnimations;
 
+/// Where a keyboard reveal moved the focused field's scroll from and to.
+#[derive(Clone, Debug, PartialEq)]
+struct KeyboardReveal {
+    identity: String,
+    scroll: String,
+    origin: f32,
+    set: f32,
+}
+
 /// Thread-confined View context. Candidates commit only after native validation and layout.
 pub struct ViewSession {
     context: crate::engine::JSContext,
@@ -87,6 +96,9 @@ pub struct ViewSession {
     /// and must not put the field back, while any scroll input since wins.
     revealed_offsets: HashMap<String, f32>,
     revealed_revision: Option<u64>,
+    /// The keyboard reveal of the focused field: a shrinking keyboard settles it back, down to
+    /// where the page was, while the user has not scrolled since.
+    keyboard_reveal: Option<KeyboardReveal>,
     /// The host's scroll input revision for the frame being prepared, when it has one.
     offsets_revision: Option<u64>,
     lists: crate::layout::list_layout::Lists,
@@ -353,6 +365,7 @@ impl ViewSession {
             scroll_offsets: HashMap::new(),
             revealed_offsets: HashMap::new(),
             revealed_revision: None,
+            keyboard_reveal: None,
             offsets_revision: None,
             lists: HashMap::new(),
             images: HashMap::new(),

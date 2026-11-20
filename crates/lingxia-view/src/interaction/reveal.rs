@@ -85,4 +85,55 @@ impl DisplayList {
             Ok(display)
         }
     }
+
+    /// After a keyboard shrank: brings a revealed field in `scroll` back down until it keeps
+    /// `margin` above the visible end, never scrolling back past `floor` (where the page was
+    /// before the keyboard moved it).
+    pub(crate) fn settle_reveal(
+        self,
+        identity: &str,
+        margin: f32,
+        offsets: &mut HashMap<String, f32>,
+        scroll_id: &str,
+        floor: f32,
+    ) -> Result<Self, String> {
+        let Some(target) = self.nodes.iter().find(|node| node.identity == identity) else {
+            return Ok(self);
+        };
+        if target.scroll_parent.as_deref() != Some(scroll_id) {
+            return Ok(self);
+        }
+        let Some((scroll, bounds)) = self.nodes.iter().find_map(|node| {
+            let scroll = node
+                .scroll
+                .as_ref()
+                .filter(|scroll| scroll.id == scroll_id)?;
+            let bounds = if scroll.parent.is_none() {
+                node.visible_bounds
+            } else {
+                node.bounds
+            };
+            Some((scroll, bounds))
+        }) else {
+            return Ok(self);
+        };
+        let axis = scroll.axis.index();
+        let room = bounds[axis] + bounds[axis + 2]
+            - (target.bounds[axis] + target.bounds[axis + 2] + margin);
+        let floor = floor.clamp(0.0, scroll.max_offset);
+        if room <= 0.5 || scroll.offset <= floor {
+            return Ok(self);
+        }
+        let next = (scroll.offset - room).max(floor);
+        log::info!(
+            target: "lingxia_view",
+            "reveal: {identity} in {}: {room:.0} past the margin, offset {:.0} -> {next:.0} (floor {floor:.0})",
+            scroll.id, scroll.offset
+        );
+        let mut candidate = offsets.clone();
+        candidate.insert(scroll.id.clone(), next);
+        let display = self.retained.compose(&candidate)?;
+        *offsets = candidate;
+        Ok(display)
+    }
 }

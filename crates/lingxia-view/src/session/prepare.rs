@@ -612,6 +612,7 @@ impl ViewSession {
         };
         let mut prepared_js = !native_input;
         let mut revealed = HashMap::new();
+        let mut keyboard_reveal = self.keyboard_reveal.clone();
         let candidate = (|| {
             let mut records = if native_input {
                 self.input_records.as_ref().unwrap().clone()
@@ -686,14 +687,61 @@ impl ViewSession {
                     let started = std::time::Instant::now();
                     let before = offsets.clone();
                     display = display.reveal(identity, FIELD_REVEAL_MARGIN, &mut offsets)?;
+                    let keyboard = self.renderer.safe_area.keyboard > 0.0;
+                    let at = |offsets: &HashMap<String, f32>, id: &str| {
+                        offsets.get(id).copied().unwrap_or(0.0)
+                    };
+                    // The same field, its scroll where the last reveal left it: a keyboard that
+                    // shrank since leaves too much room, so the field settles back down.
+                    if keyboard
+                        && let Some(memo) = keyboard_reveal
+                            .as_ref()
+                            .filter(|memo| memo.identity == identity)
+                        && (at(&before, &memo.scroll) - memo.set).abs() < 0.5
+                        && (at(&offsets, &memo.scroll) - memo.set).abs() < 0.5
+                    {
+                        display = display.settle_reveal(
+                            identity,
+                            FIELD_REVEAL_MARGIN,
+                            &mut offsets,
+                            &memo.scroll,
+                            memo.origin,
+                        )?;
+                    }
+                    let scroll = display
+                        .nodes
+                        .iter()
+                        .find(|node| node.identity == identity)
+                        .and_then(|node| node.scroll_parent.clone());
                     for (id, to) in &offsets {
-                        if (to - before.get(id).copied().unwrap_or(0.0)).abs() > 0.01 {
+                        if (to - at(&before, id)).abs() > 0.01 {
                             revealed.insert(id.clone(), *to);
                         }
                     }
+                    keyboard_reveal = match scroll {
+                        Some(scroll) if keyboard && revealed.contains_key(&scroll) => {
+                            let to = revealed[&scroll];
+                            let origin = keyboard_reveal
+                                .as_ref()
+                                .filter(|memo| memo.identity == identity && memo.scroll == scroll)
+                                .map_or(at(&before, &scroll), |memo| memo.origin);
+                            Some(KeyboardReveal {
+                                identity: identity.to_owned(),
+                                scroll,
+                                origin,
+                                set: to,
+                            })
+                        }
+                        _ if keyboard => keyboard_reveal
+                            .take()
+                            .filter(|memo| memo.identity == identity),
+                        _ => None,
+                    };
                     metrics.compose_us += crate::session::metrics::micros(started);
-                } else if reveal_input && self.renderer.safe_area.keyboard > 0.0 {
-                    log::info!(target: "lingxia_view", "reveal: keyboard up, no editor focused yet");
+                } else if reveal_input {
+                    // The focus lands in the frame after the keyboard's inset when the platform
+                    // raises the keyboard first; that frame reveals the field.
+                    keyboard_reveal = None;
                 }
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
@@ -826,6 +874,7 @@ impl ViewSession {
                 self.lists = lists;
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
+                self.keyboard_reveal = keyboard_reveal;
                 if !revealed.is_empty() && self.offsets_revision.is_some() {
                     self.revealed_offsets.extend(revealed);
                     self.revealed_revision = self.offsets_revision;

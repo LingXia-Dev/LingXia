@@ -6625,6 +6625,81 @@ fn a_field_stays_clear_of_a_keyboard_that_grows_in_two_steps() {
     }
 }
 
+/// Gboard's order on the Pixel: the keyboard reports a tall height, then its final one. The
+/// field ends 12 above the final keyboard, not 12 above the first.
+#[test]
+fn a_revealed_field_settles_back_when_the_keyboard_shrinks() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','');return h('page',{},h('scroll',{style:{flexGrow:1,flexBasis:0}},h('view',{style:{padding:16,paddingBottom:40,gap:16}},h('view',{style:{height:700}}),h('input',{'data-testid':'f',bind:v,'aria-label':'Number',inputMode:'decimal',style:{height:48}}))))}",
+        ),
+        false,
+    );
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        (environment.width, environment.height) = (414 * 2, 896 * 2);
+        environment.value["insets"]["bottom"] = 34.into();
+    }
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let field = |host: &ViewHost<Fake>| {
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+            .unwrap()["rect"]
+            .clone();
+        rect["top"].as_f64().unwrap() as f32 + rect["height"].as_f64().unwrap() as f32
+    };
+    let keyboard = |host: &ViewHost<Fake>, height: f64| {
+        if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+            environment.value["keyboard"]["height"] = height.into();
+        }
+        host.environment_changed();
+    };
+    let resting = field(&host);
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "f")
+        .unwrap()["identity"]
+        .clone();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+            .to_string(),
+        |_| {},
+    );
+    platform.settle(&[&host]);
+    keyboard(&host, 337.8);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let tall = field(&host);
+    assert!(
+        (tall - (896.0 - 337.8 - 12.0)).abs() < 1.0,
+        "12 above the tall keyboard: {tall}"
+    );
+    keyboard(&host, 293.8);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let settled = field(&host);
+    assert!(
+        (settled - (896.0 - 293.8 - 12.0)).abs() < 1.0,
+        "12 above the final keyboard, not {:.1}: {settled}",
+        896.0 - 293.8 - settled
+    );
+    // A smaller keyboard still never scrolls the page back past where it rested.
+    keyboard(&host, 40.0);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert!(
+        (field(&host) - resting).abs() < 1.0,
+        "back where it rested, no further: {} vs {resting}",
+        field(&host)
+    );
+}
+
 /// The device order: a tap focuses the field, then the keyboard's final frame arrives.
 /// Worker jobs and posted tasks only: no vsync, as when a platform request lands between frames.
 fn drain_without_frames(platform: &Platform) {
