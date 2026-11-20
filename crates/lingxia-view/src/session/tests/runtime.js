@@ -6320,6 +6320,16 @@
   }
 
   // src/host.js
+  function unboundFieldText(kind, iso3, opts) {
+    if (typeof iso3 !== "string") return "";
+    try {
+      if (kind !== "date" && kind !== "time") return iso3;
+      const env = envOf(page.committed?.view);
+      return fieldText(kind, iso3, { seconds: opts?.seconds === true, language: env?.contentLanguage ?? env?.displayLanguage, hourCycle: env?.hourCycle }).displayValue;
+    } catch {
+      return iso3;
+    }
+  }
   function publishHost(render2, catalog) {
     Object.assign(globalThis, {
       __lingxiaRender: render2,
@@ -6370,6 +6380,7 @@
       __lingxiaEvalSpans: takeSpans,
       __lingxiaTakeLowered: takeLowered,
       __lingxiaSeedLowered: seedLowered,
+      __lingxiaFieldText: unboundFieldText,
       // Cleared when a render completes, so it names only a render that never returned.
       __lingxiaSite: () => render.site || "",
       __lingxiaThrown: takeThrown

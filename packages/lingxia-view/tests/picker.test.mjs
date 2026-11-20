@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { h, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
 import { openPicker, pickerKey, takePickerResults, hasPicker } from '../src/runtime/picker.js';
 import { decode } from './support/wire.mjs';
+import { publishHost } from '../src/host.js';
 
 const open = request => openPicker({ identity: '/i:0:0/i:0:0', ...request });
 const render = (view, env) => { const out = decode(prepare(view, { env })); commit(); return out; };
@@ -169,6 +170,25 @@ test('an unbound date or time field sends no display text, only its width', () =
     assert.equal(Object.hasOwn(props, 'inputValue'), false, id);
     assert.ok(props.sizeText.length > 0, `${id} keeps its width`);
   }
+});
+
+test('the core reads an unbound field\'s own value in the committed page\'s clock and language', () => {
+  reset(); publishHost(() => h('view', {}));
+  const text = globalThis.__lingxiaFieldText;
+  const view = () => h('input', { type: 'time' });
+  render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  assert.equal(text('time', '13:05', {}), '1:05 PM');
+  assert.equal(text('time', '09:30:15', {}), '9:30:15 AM');
+  assert.equal(text('date', '2026-11-14', {}), 'Nov 14, 2026');
+  render(view, { hourCycle: 'h23', displayLanguage: 'zh-Hans-CN' });
+  assert.equal(text('time', '13:05', {}), '13:05');
+  assert.equal(text('date', '2026-11-14', {}), '2026年11月14日');
+  // Text that does not parse, an unknown kind or a missing env comes back as given; nothing throws.
+  assert.equal(text('date', 'soon', {}), 'soon');
+  assert.equal(text('week', '2026-W46', {}), '2026-W46');
+  assert.equal(text('time', 5, undefined), '');
+  reset();
+  assert.equal(text('time', '13:05'), '13:05');
 });
 
 test('a time field shows its ISO value in the user\'s clock and re-lowers when the clock or language changes', () => {
