@@ -143,6 +143,9 @@ struct Video {
     /// The engine said a new frame is due and it is not taken yet.
     due: Cell<bool>,
     rate: f32,
+    /// Where a pause stopped the clock: the engine pauses asynchronously and its time runs on
+    /// for a few frames after `IsPaused` turns true.
+    paused_at: Cell<Option<f64>>,
     /// The source as opened, and the URL now playing: a pinned rendition's playlist.
     master: String,
     playing: String,
@@ -209,6 +212,7 @@ impl Video {
                 texture: None,
                 due: Cell::new(false),
                 rate: 1.0,
+                paused_at: Cell::new(None),
                 master: url.to_owned(),
                 playing: url.to_owned(),
             })
@@ -365,7 +369,19 @@ impl Video {
             if self.engine.IsEnded().as_bool() && !self.engine.GetLoop().as_bool() {
                 let _ = self.engine.SetCurrentTime(0.0);
             }
+            self.paused_at.set(None);
             let _ = self.engine.Play();
+        }
+    }
+
+    fn pause(&self) {
+        // SAFETY: plain engine calls.
+        unsafe {
+            if !self.engine.IsPaused().as_bool() {
+                self.paused_at
+                    .set(Some(self.engine.GetCurrentTime().max(0.0)));
+            }
+            let _ = self.engine.Pause();
         }
     }
 
@@ -380,8 +396,11 @@ impl Video {
         }
         // SAFETY: plain engine calls.
         unsafe {
-            let at = self.engine.GetCurrentTime();
             let paused = self.engine.IsPaused().as_bool();
+            let at = match self.paused_at.get() {
+                Some(at) if paused => at,
+                _ => self.engine.GetCurrentTime(),
+            };
             self.engine.SetSource(&BSTR::from(url.as_str()))?;
             if at > 0.0 {
                 self.engine.SetCurrentTime(at)?;
@@ -462,8 +481,7 @@ impl Player for Video {
         }
         if changed(|s| f32::from(u8::from(s.paused))) {
             if settings.paused {
-                // SAFETY: a plain engine call.
-                let _ = unsafe { self.engine.Pause() };
+                self.pause();
             } else {
                 self.play();
             }
@@ -476,11 +494,10 @@ impl Player for Video {
         unsafe {
             match *op {
                 VideoOp::Play => self.play(),
-                VideoOp::Pause => {
-                    let _ = self.engine.Pause();
-                }
+                VideoOp::Pause => self.pause(),
                 VideoOp::Seek(seconds) => {
                     self.events.ended.store(false, Ordering::Release);
+                    self.paused_at.set(None);
                     let _ = self.engine.SetCurrentTime(seconds);
                 }
                 VideoOp::SetMuted(muted) => {
@@ -526,10 +543,15 @@ impl Player for Video {
         unsafe {
             let duration = self.engine.GetDuration();
             let looped = self.engine.GetLoop().as_bool();
+            let paused = self.engine.IsPaused().as_bool();
+            let current_time = match self.paused_at.get() {
+                Some(at) if paused => at,
+                _ => self.engine.GetCurrentTime().max(0.0),
+            };
             Status {
-                current_time: self.engine.GetCurrentTime().max(0.0),
+                current_time,
                 duration: (duration.is_finite() && duration > 0.0).then_some(duration),
-                paused: self.engine.IsPaused().as_bool(),
+                paused,
                 ended: !looped
                     && (self.events.ended.load(Ordering::Acquire)
                         || self.engine.IsEnded().as_bool()),
