@@ -55,7 +55,10 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
     let Some(object) = value.clone().into_object() else {
         return Err(invalid("a target is { page }, { tab }, { app } or { url }"));
     };
-    for key in object.keys_as::<String>().map_err(|e| invalid(e.to_string()))? {
+    for key in object
+        .keys_as::<String>()
+        .map_err(|e| invalid(e.to_string()))?
+    {
         if !TARGET_KEYS.contains(&key.as_str()) {
             return Err(invalid(format!("unknown target key '{key}'")));
         }
