@@ -22,6 +22,12 @@ class ReportedElement {
   selected: boolean = false;
 }
 
+/** What Rust reads: the elements, and how many overlays are still laying out. */
+class OverlayReport {
+  elements: ReportedElement[] = [];
+  pending: number = 0;
+}
+
 /**
  * The host's own overlays (toast, modal, action sheet) and tab bar items as chrome for automation:
  * their labels, bounds, and the press a window tap at those bounds runs. HarmonyOS keeps window
@@ -31,6 +37,17 @@ export class HostOverlays {
   private static elements: Map<string, HostOverlayElement> = new Map();
   /** Overlays on screen; a closing one keeps its nodes for a frame but takes no more taps. */
   private static shown: Set<string> = new Set();
+  /** Overlays the host has put up whose named elements have not laid out yet. */
+  private static expected: Map<string, string[]> = new Map();
+
+  /**
+   * Overlay `source` is going up with elements `ids`: until each has been placed, readers wait
+   * for it instead of reading a screen without it.
+   */
+  static expect(source: string, ids: string[]): void {
+    HostOverlays.expected.set(source, ids);
+    HostOverlays.report();
+  }
 
   /**
    * Place element `id` of overlay `source` where `area` says; `press` runs on a tap. Labels are
@@ -78,6 +95,7 @@ export class HostOverlays {
   /** Overlay `source` went away with all its elements. */
   static drop(source: string): void {
     HostOverlays.shown.delete(source);
+    HostOverlays.expected.delete(source);
     HostOverlays.elements.forEach((element: HostOverlayElement, key: string) => {
       if (element.source === source) {
         HostOverlays.elements.delete(key);
@@ -116,6 +134,14 @@ export class HostOverlays {
         out.selected = element.selected();
         return out;
       });
-    reportHostOverlays(JSON.stringify(reported));
+    HostOverlays.expected.forEach((ids: string[], source: string) => {
+      if (HostOverlays.shown.has(source) && ids.every((id: string) => HostOverlays.elements.has(`${source}:${id}`))) {
+        HostOverlays.expected.delete(source);
+      }
+    });
+    const report = new OverlayReport();
+    report.elements = reported;
+    report.pending = HostOverlays.expected.size;
+    reportHostOverlays(JSON.stringify(report));
   }
 }

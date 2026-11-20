@@ -1,3 +1,4 @@
+import { HostOverlays } from '../lxapp/HostOverlays';
 import { componentSnapshot, NodeContent } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
@@ -240,8 +241,24 @@ export class GpuPages {
       case 'recovery':
         if (payload.length > 0) {
           const recovery = JSON.parse(payload) as GpuRecovery;
+          const shown = page.recovery;
+          // The same panel again keeps its nodes: a new one would leave the chrome empty
+          // until it lays out.
+          if (shown !== null && shown.retained === recovery.retained && shown.message === recovery.message
+            && shown.action === recovery.action && shown.back === recovery.back) {
+            break;
+          }
           recovery.serial = ++recoverySerial;
           page.recovery = recovery;
+          const parts: string[] = ['message'];
+          if (recovery.back) {
+            parts.push('back');
+          }
+          if (recovery.action >= 0) {
+            parts.push('action');
+          }
+          // Readers wait for these until the panel has laid them out.
+          HostOverlays.expect(`gpu-recovery-${page.token}-${recovery.serial}`, parts);
         } else {
           page.recovery = null;
         }

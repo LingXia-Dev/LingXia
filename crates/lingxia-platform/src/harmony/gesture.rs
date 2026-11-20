@@ -50,6 +50,21 @@ pub fn set_refresh_indicator(app_id: &str, webtag: &str, indicator: Option<PullR
 /// The host's own overlays (toast, modal, action sheet) and tab bar items: the only chrome Harmony
 /// can read, and the only window targets a tap reaches. Keys name the element to the shell; bounds are vp.
 static OVERLAYS: Mutex<Vec<(String, ChromeElement)>> = Mutex::new(Vec::new());
+/// Overlays the shell has put up that have not laid out their elements yet.
+static PENDING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// The shell's report: its elements, and overlays still laying out (an older shell sends the
+/// bare list).
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum OverlayReport {
+    Pending {
+        elements: Vec<Overlay>,
+        #[serde(default)]
+        pending: usize,
+    },
+    Bare(Vec<Overlay>),
+}
 
 #[derive(serde::Deserialize)]
 struct Overlay {
@@ -69,10 +84,15 @@ fn window_scope() -> String {
 
 /// Replace the overlay elements with the shell's `[{key,label,role,bounds}]`.
 pub fn set_host_overlays(elements: &str) {
-    let Ok(elements) = serde_json::from_str::<Vec<Overlay>>(elements) else {
+    let Ok(report) = serde_json::from_str::<OverlayReport>(elements) else {
         log::warn!("host overlays: unreadable report");
         return;
     };
+    let (elements, pending) = match report {
+        OverlayReport::Pending { elements, pending } => (elements, pending),
+        OverlayReport::Bare(elements) => (elements, 0),
+    };
+    PENDING.store(pending, std::sync::atomic::Ordering::Release);
     *OVERLAYS.lock().unwrap_or_else(|p| p.into_inner()) = elements
         .into_iter()
         .map(|o| {
@@ -242,6 +262,14 @@ impl AppGesture for Platform {
             return Err(PlatformError::NotSupported(format!(
                 "HarmonyOS reads only the host's overlays and tab bar, not {other}"
             )));
+        }
+        // An overlay the shell has put up (a recovery panel) is read once it has laid out, not
+        // as a screen without it.
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while PENDING.load(std::sync::atomic::Ordering::Acquire) > 0
+            && std::time::Instant::now() < until
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
         Ok(OVERLAYS
             .lock()
