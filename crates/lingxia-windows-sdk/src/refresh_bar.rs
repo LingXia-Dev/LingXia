@@ -78,6 +78,8 @@ struct Frame {
     solid: f32,
     /// Left edge of the band as a share of the width; `None` without animations.
     band: Option<f32>,
+    /// Share of the width painted, from the left: under 1 only while a pull fills it.
+    fill: f32,
 }
 
 impl Frame {
@@ -125,6 +127,8 @@ struct Bar {
     surface: Option<Surface>,
     /// The start was announced, so the end is too.
     announced: bool,
+    /// A pull under way fills the bar to this share of the way to the trigger; no refresh yet.
+    pull: Option<f32>,
 }
 
 impl Bar {
@@ -151,10 +155,20 @@ impl Bar {
             parked: false,
             surface: None,
             announced,
+            pull: None,
         }
     }
 
     fn frame(&self, now: Instant) -> Option<Frame> {
+        if let Some(share) = self.pull {
+            return Some(Frame {
+                envelope: 1.0,
+                breath: 1.0,
+                solid: share,
+                band: None,
+                fill: share,
+            });
+        }
         frame(
             now - self.started,
             self.stopped.map(|stopped| stopped - self.started),
@@ -260,7 +274,74 @@ fn from_handle(value: isize) -> HWND {
 /// A refresh is running on the page: started and not yet stopped.
 #[cfg(feature = "components")]
 pub(crate) fn is_refreshing(webtag_key: &str) -> bool {
-    with_bar(webtag_key, |bar| bar.stopped.is_none()).unwrap_or(false)
+    running(webtag_key).unwrap_or(false)
+}
+
+/// `Some(true)` while a refresh runs, `Some(false)` while its bar finishes; `None` with no
+/// refresh, a pull included.
+pub(crate) fn running(webtag_key: &str) -> Option<bool> {
+    with_bar(webtag_key, |bar| {
+        bar.pull.is_none().then_some(bar.stopped.is_none())
+    })
+    .flatten()
+}
+
+/// Fills the bar for a pull `share` of the way to the trigger. Ignored while a refresh shows;
+/// returns whether a bar was made, to be placed.
+pub(crate) fn show_pull(host: HWND, webtag_key: &str, share: f32, rgb: Option<u32>) -> bool {
+    let share = share.clamp(0.0, 1.0);
+    if let Some(pulling) = with_bar(webtag_key, |bar| {
+        let pulling = bar.pull.is_some();
+        if pulling {
+            bar.pull = Some(share);
+        }
+        pulling.then_some(bar.host)
+    }) {
+        if let Some(host) = pulling {
+            schedule(from_handle(host));
+        }
+        return false;
+    }
+    let Some(window) = create_window(host) else {
+        return false;
+    };
+    let mut bar = Bar::new(
+        host,
+        window,
+        Instant::now(),
+        animations_enabled(),
+        rgb.unwrap_or(DEFAULT_RGB),
+        false,
+    );
+    bar.pull = Some(share);
+    let inserted = match bars().entry(webtag_key.to_string()) {
+        Entry::Occupied(_) => false,
+        Entry::Vacant(slot) => {
+            slot.insert(bar);
+            true
+        }
+    };
+    if !inserted {
+        destroy_window(window);
+        return false;
+    }
+    schedule(host);
+    true
+}
+
+/// A pull let go short of the trigger: its bar goes.
+pub(crate) fn cancel_pull(webtag_key: &str) {
+    let pulled = {
+        let mut bars = bars();
+        match bars.get(webtag_key) {
+            Some(bar) if bar.pull.is_some() => bars.remove(webtag_key),
+            _ => None,
+        }
+    };
+    if let Some(bar) = pulled {
+        destroy_window(bar.window);
+        schedule(from_handle(bar.host));
+    }
 }
 
 /// The page has a bar, running or completing.
@@ -274,6 +355,30 @@ pub(crate) fn start(host: HWND, webtag_key: &str, page_visible: bool, rgb: Optio
     let rgb = rgb.unwrap_or(DEFAULT_RGB);
     let animate = animations_enabled();
     let now = Instant::now();
+    // A pull let go past the trigger: its full bar starts running where it is.
+    let from_pull = with_bar(webtag_key, |bar| {
+        bar.pull.take().map(|_| {
+            bar.epoch = now;
+            bar.started = now;
+            bar.stopped = None;
+            bar.origin = Origin {
+                opacity: 1.0,
+                solid: 1.0,
+            };
+            bar.animate = animate;
+            bar.rgb = rgb;
+            bar.announced = page_visible;
+            page_visible
+        })
+    })
+    .flatten();
+    if let Some(announce_start) = from_pull {
+        schedule(host);
+        if announce_start {
+            announce(host, false);
+        }
+        return true;
+    }
     let restarted = with_bar(webtag_key, |bar| {
         bar.restart(now, animate, rgb, page_visible)
     });
@@ -309,7 +414,7 @@ pub(crate) fn start(host: HWND, webtag_key: &str, page_visible: bool, rgb: Optio
 pub(crate) fn stop(webtag_key: &str) {
     let now = Instant::now();
     let host = with_bar(webtag_key, |bar| {
-        bar.stopped.is_none().then(|| {
+        (bar.pull.is_none() && bar.stopped.is_none()).then(|| {
             bar.stopped = Some(now);
             bar.host
         })
@@ -624,6 +729,7 @@ fn frame(
             breath: if animate { 1.0 } else { breath(t) },
             solid: lerp(origin.solid, if animate { 0.0 } else { 1.0 }, x),
             band,
+            fill: 1.0,
         }
     };
     let Some(complete_at) = stopped_after.map(completion_at).filter(|at| t >= *at) else {
@@ -638,6 +744,7 @@ fn frame(
             breath: lerp(from.breath, 1.0, x),
             solid: lerp(from.solid, 1.0, x),
             band,
+            fill: 1.0,
         });
     }
     let fade = 1.0 - (since - SOLID_MS) / FADE_OUT_MS;
@@ -646,6 +753,7 @@ fn frame(
         breath: 1.0,
         solid: 1.0,
         band,
+        fill: 1.0,
     })
 }
 
@@ -669,6 +777,9 @@ fn paint_bar(pixels: &mut [u32], width: usize, rgb: u32, frame: Frame, radii: [i
     let opacity = frame.opacity();
     let solid = frame.solid.clamp(0.0, 1.0);
     let alpha = |x: usize| {
+        if (x as f32 + 0.5) / width as f32 > frame.fill {
+            return 0.0;
+        }
         let band = frame.band.map_or(0.0, |left| {
             band_coverage((x as f32 + 0.5) / width as f32, left)
         });
@@ -1044,6 +1155,7 @@ mod tests {
             breath: 1.0,
             solid: 0.0,
             band: Some(0.3),
+            fill: 1.0,
         };
         let still = Frame {
             band: None,

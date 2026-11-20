@@ -31,8 +31,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
     WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
-    WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-    WS_VISIBLE,
+    WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN,
+    WS_CLIPSIBLINGS, WS_VISIBLE,
 };
 use windows::core::w;
 
@@ -55,6 +55,7 @@ pub(crate) struct InputState {
     finger: Option<u32>,
     velocity: crate::touch::Velocity,
     pub(crate) web: crate::web_input::WebInput,
+    pub(crate) pull: crate::pull::PullState,
 }
 
 /// The finger id synthetic touch uses; real pointer ids are small.
@@ -224,19 +225,26 @@ fn handle(
         }
         let pixels = page.scale() / page.shown_scale();
         let delta = |shift: usize| f32::from(((wparam.0 >> shift) & 0xffff) as u16 as i16) * pixels;
-        let phase = match wparam.0 >> 32 {
-            0 => WheelPhase::Began,
-            1 => WheelPhase::Changed,
-            2 => WheelPhase::Ended,
-            _ => WheelPhase::Momentum,
+        let (phase, pull) = match wparam.0 >> 32 {
+            0 => (WheelPhase::Began, crate::pull::Phase::Began),
+            1 => (WheelPhase::Changed, crate::pull::Phase::Changed),
+            2 => (WheelPhase::Ended, crate::pull::Phase::Ended),
+            _ => (WheelPhase::Momentum, crate::pull::Phase::Momentum),
         };
         let (x, y) = at(page, lparam);
         host.input_age(input_age());
+        let down = f32::from(((wparam.0 >> 16) & 0xffff) as u16 as i16) / page.shown_scale();
+        let pulled = crate::pull::scroll(page, pull, [x, y], down);
+        // The pull keeps the movement; the page still sees the gesture begin.
+        if pulled && phase != WheelPhase::Began {
+            return Some(LRESULT(0));
+        }
+        let moved = |v: f32| if pulled { 0.0 } else { v };
         host.wheel(Wheel {
             x,
             y,
-            dx: delta(0),
-            dy: delta(16),
+            dx: moved(delta(0)),
+            dy: moved(delta(16)),
             precise: true,
             phase,
         });
@@ -250,6 +258,10 @@ fn handle(
     }
     match msg {
         WM_GETOBJECT => crate::uia::get_object(hwnd, wparam, lparam),
+        WM_TIMER if wparam.0 == crate::pull::TIMER_ID => {
+            crate::pull::wheel_idle(page, hwnd);
+            Some(LRESULT(0))
+        }
         WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP | WM_POINTERCAPTURECHANGED => {
             let id = (wparam.0 & 0xffff) as u32;
             let mut kind = Default::default();
@@ -396,6 +408,9 @@ fn handle(
             };
             host.input_age(input_age());
             let (x, y) = page.page_pixels((at.x as f32, at.y as f32));
+            if msg == WM_MOUSEWHEEL && crate::pull::wheel(page, hwnd, [x, y], notches) {
+                return Some(LRESULT(0));
+            }
             host.wheel(Wheel {
                 x,
                 y,

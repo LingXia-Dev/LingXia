@@ -1,10 +1,76 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
+use lingxia_platform::traits::gesture::PullRefreshIndicator;
+use lingxia_platform::windows::PagePull;
 use lingxia_webview::WebTag;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
 
 pub(crate) fn install() {
     lingxia_platform::set_windows_pull_to_refresh_handler(Arc::new(set_page_refreshing));
+    lingxia_platform::windows::set_windows_page_pull_handler(Arc::new(page_pull));
+    lingxia_platform::windows::set_windows_pull_refresh_indicator_reader(Arc::new(indicator));
+}
+
+/// Pulls under way on pages that measure their own (GPU pages): travel and whether armed.
+static PULLS: Mutex<Option<HashMap<String, (f64, bool)>>> = Mutex::new(None);
+
+fn pulls<R>(f: impl FnOnce(&mut HashMap<String, (f64, bool)>) -> R) -> R {
+    f(PULLS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get_or_insert_default())
+}
+
+/// The bar fills as a pull nears the trigger; let go past it, the bar runs and the page refreshes.
+fn page_pull(webtag: &str, pull: PagePull) {
+    match pull {
+        PagePull::Moved { travel, armed } => {
+            pulls(|pulls| pulls.insert(webtag.to_string(), (travel, armed)));
+            let share = if armed {
+                1.0
+            } else {
+                (travel / TRIGGER) as f32
+            };
+            crate::window_host::show_page_pull(webtag, Some(share));
+        }
+        PagePull::Cancelled => {
+            pulls(|pulls| pulls.remove(webtag));
+            crate::window_host::show_page_pull(webtag, None);
+        }
+        PagePull::Released => {
+            pulls(|pulls| pulls.remove(webtag));
+            if !set_page_refreshing(webtag, true) {
+                crate::window_host::show_page_pull(webtag, None);
+            }
+        }
+    }
+}
+
+/// Where the bar is full: the pages' own trigger, in points.
+const TRIGGER: f64 = 80.0;
+
+/// `None` for a page that did not declare `enablePullDownRefresh`.
+fn indicator(webtag: &str) -> Option<PullRefreshIndicator> {
+    let tag = WebTag::from(webtag);
+    let enabled = lxapp::find_page_by_webtag(&tag.extract_appid(), webtag)
+        .is_some_and(|page| page.is_pull_down_refresh_enabled());
+    if !enabled {
+        return None;
+    }
+    let (phase, offset) = match crate::refresh_bar::running(webtag) {
+        Some(true) => ("refreshing", 0.0),
+        Some(false) => ("ending", 0.0),
+        None => match pulls(|pulls| pulls.get(webtag).copied()) {
+            Some((travel, true)) => ("armed", travel),
+            Some((travel, false)) => ("pulling", travel),
+            None => ("idle", 0.0),
+        },
+    };
+    Some(PullRefreshIndicator {
+        phase: phase.to_string(),
+        offset,
+    })
 }
 
 /// Start a pull-down refresh on the page a webtag names — e.g. from the lxapp

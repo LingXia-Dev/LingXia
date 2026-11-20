@@ -7,7 +7,7 @@ use super::screenshot::resolve_screenshot_window;
 use crate::error::PlatformError;
 use crate::traits::gesture::{
     AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, GestureDelivery, GestureEnd,
-    GestureInput, GesturePoint, GestureTarget, HostCapability,
+    GestureInput, GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -138,7 +138,7 @@ impl AppGesture for Platform {
     }
 
     fn host_capabilities(&self) -> Vec<HostCapability> {
-        if CHROME_PROVIDER
+        let mut capabilities = if CHROME_PROVIDER
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .is_some()
@@ -146,7 +146,19 @@ impl AppGesture for Platform {
             vec![HostCapability::Chrome, HostCapability::HostInput]
         } else {
             Vec::new()
+        };
+        if super::pull_to_refresh::has_indicator_reader() {
+            capabilities.push(HostCapability::RefreshIndicator);
         }
+        capabilities
+    }
+
+    async fn pull_refresh_indicator(
+        &self,
+        _app_id: &str,
+        webtag: &str,
+    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+        super::pull_to_refresh::windows_pull_refresh_indicator(webtag)
     }
 
     // Bounds are host client pixels: the unit a window gesture takes here.

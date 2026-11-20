@@ -411,6 +411,31 @@ impl Shell for Bridge {
     fn clear_webviews(&self, token: i64) {
         gpu_page::webviews::clear_webviews(token, Some(embedded::clear));
     }
+    fn can_pull_refresh(&self, token: i64) -> bool {
+        let Some(page) = gpu_page::page_of(token) else {
+            return false;
+        };
+        page.is_pull_down_refresh_enabled()
+            && lingxia_platform::windows::windows_pull_refresh_indicator(page.webtag().key())
+                .ok()
+                .flatten()
+                .is_some_and(|indicator| indicator.phase != "refreshing")
+    }
+    fn pull_refresh(&self, token: i64, pull: lingxia_view_windows::Pull) {
+        use lingxia_platform::windows::PagePull;
+        let Some(page) = gpu_page::page_of(token) else {
+            return;
+        };
+        let pull = match pull {
+            lingxia_view_windows::Pull::Moved { travel, armed } => PagePull::Moved {
+                travel: f64::from(travel),
+                armed,
+            },
+            lingxia_view_windows::Pull::Cancelled => PagePull::Cancelled,
+            lingxia_view_windows::Pull::Released => PagePull::Released,
+        };
+        lingxia_platform::windows::report_windows_page_pull(page.webtag().key(), pull);
+    }
 }
 
 /// Embedded `<webview>`s: each one's composition surface window becomes a child of its page's

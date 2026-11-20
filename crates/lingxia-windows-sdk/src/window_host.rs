@@ -9242,6 +9242,35 @@ fn set_webtag_pull_down_refreshing_on_window(webtag_key: &str, refreshing: bool)
     }
 }
 
+/// Shows a pull `share` of the way to the trigger on the page's bar; `None` takes it down.
+pub(crate) fn show_page_pull(webtag_key: &str, share: Option<f32>) {
+    let Some(hwnd) = window_handle_for_key(webtag_key) else {
+        return;
+    };
+    let webtag_key = webtag_key.to_string();
+    let show = move || {
+        let Some(share) = share else {
+            crate::refresh_bar::cancel_pull(&webtag_key);
+            return;
+        };
+        let Some(hwnd) = window_handle_for_key(&webtag_key) else {
+            return;
+        };
+        if crate::refresh_bar::show_pull(hwnd, &webtag_key, share, refresh_bar_color()) {
+            let rect = content_rect_for_window(hwnd, &webtag_key);
+            let (radii, _) = surface_clip_style(hwnd, &webtag_key, rect);
+            place_refresh_bar(hwnd, &webtag_key, rect, radii);
+        }
+    };
+    if unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) }
+        == unsafe { GetCurrentThreadId() }
+    {
+        show();
+    } else {
+        post_to_window_thread(hwnd_handle(hwnd), Box::new(show));
+    }
+}
+
 /// A refresh is running on the page (started, not yet stopped).
 #[cfg(feature = "components")]
 pub(crate) fn is_pull_down_refreshing(webtag: &WebTag) -> bool {

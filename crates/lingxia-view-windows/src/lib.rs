@@ -28,6 +28,7 @@ mod dispatch;
 mod environment;
 mod fonts;
 mod ime;
+mod pull;
 mod recovery;
 mod surface;
 mod text_menu;
@@ -37,6 +38,7 @@ mod video;
 mod view;
 mod vsync;
 mod web_input;
+pub use pull::Pull;
 pub use web_input::adopt_web_surfaces;
 
 pub use adapter::WindowsAdapter;
@@ -96,6 +98,11 @@ pub trait Shell: Send + Sync + 'static {
     fn exit_webview_fullscreen(&self, token: i64, web_id: &str);
     /// Tear down every embedded `<webview>` of the page.
     fn clear_webviews(&self, token: i64);
+    /// Whether a pull to refresh may begin: the page declared `enablePullDownRefresh` and is
+    /// not refreshing.
+    fn can_pull_refresh(&self, token: i64) -> bool;
+    /// A step of a pull to refresh, for the host's indicator; a release refreshes the page.
+    fn pull_refresh(&self, token: i64, pull: Pull);
 }
 
 /// Pump this thread's messages until [`quit_message_loop`] runs on it.
