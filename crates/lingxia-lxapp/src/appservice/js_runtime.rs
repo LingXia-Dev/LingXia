@@ -1061,6 +1061,8 @@ async fn handle_service_message(
                     if page_svc.lifecycle_pending() {
                         runtime_ctx::retire_page_svc(ctx, page_svc.clone());
                     } else {
+                        // No owed `onUnload` will settle the opener's result.
+                        page_svc.settle_result(ctx);
                         page_svc.release_js();
                     }
 

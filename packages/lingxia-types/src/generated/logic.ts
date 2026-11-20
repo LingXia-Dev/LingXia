@@ -153,6 +153,17 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
+  /**
+   * Set what the opener's `result` resolves with when this page leaves, by
+   * Back or any other way. JSON only.
+   */
+  setResult(value: JsonValue): void;
+  /**
+   * Leave this page, with `value` as its result when given. A pushed page
+   * goes back; a surface page closes its surface. Throws for a root or tab
+   * page, and for a pushed page that is not on top.
+   */
+  close(value?: JsonValue): Promise<void>;
   setData<TPatch extends Record<string, unknown>>(
     data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
   ): void;
@@ -1508,9 +1519,19 @@ export type PageLoadOptions = {
     [key: string]: JsonValue | undefined;
 };
 
+/**
+ * What `lx.navigateTo` resolves with: a message port to the pushed page,
+ * and its result.
+ */
 export type PageMessagePort = {
     postMessage(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
+    /**
+     * Settles once, after the pushed page's `onUnload`: `ok` with the value
+     * it set by `setResult` or `close(value)`, otherwise `canceled`.
+     * Present on the opener's side only.
+     */
+    readonly result?: Promise<PageResult>;
 };
 
 export type PageQuery = Record<string, PageQueryValue>;
@@ -1520,6 +1541,15 @@ export type PageQuery = Record<string, PageQueryValue>;
  * whole set of non-string params is limited to 8 KB as JSON.
  */
 export type PageQueryValue = JsonValue | undefined;
+
+/**
+ * A pushed page's outcome. `canceled` means it left without a result:
+ * `user` (Back), `opener` (a newer result promise replaced this one),
+ * `app_closed`.
+ */
+export type PageResult = 
+    | { status: 'ok'; value: JsonValue }
+    | { status: 'canceled'; reason: 'user' | 'opener' | 'app_closed' };
 
 /** One of this lxapp's own pages, opened as a float or a window. */
 export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {

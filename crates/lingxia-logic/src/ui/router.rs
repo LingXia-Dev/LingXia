@@ -158,6 +158,10 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
     page_svc
         .bind_opener(page_port)
         .map_err(|e| js_internal_error(format!("Failed to bind page opener: {}", e)))?;
+    let result = page_svc
+        .bind_result()
+        .map_err(|e| js_internal_error(format!("Failed to bind page result: {}", e)))?;
+    opener_port.set("result", result)?;
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, false)
         .await

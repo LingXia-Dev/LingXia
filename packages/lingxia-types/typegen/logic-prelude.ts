@@ -150,6 +150,17 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
+  /**
+   * Set what the opener's `result` resolves with when this page leaves, by
+   * Back or any other way. JSON only.
+   */
+  setResult(value: JsonValue): void;
+  /**
+   * Leave this page, with `value` as its result when given. A pushed page
+   * goes back; a surface page closes its surface. Throws for a root or tab
+   * page, and for a pushed page that is not on top.
+   */
+  close(value?: JsonValue): Promise<void>;
   setData<TPatch extends Record<string, unknown>>(
     data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
   ): void;

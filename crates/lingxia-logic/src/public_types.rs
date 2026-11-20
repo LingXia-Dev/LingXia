@@ -1220,10 +1220,25 @@ rong::js_api! {
     [key: string]: JsonValue | undefined;
 }"###;
 
+        /// What `lx.navigateTo` resolves with: a message port to the pushed page,
+        /// and its result.
         type PageMessagePort = r###"{
     postMessage(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
+    /**
+     * Settles once, after the pushed page's `onUnload`: `ok` with the value
+     * it set by `setResult` or `close(value)`, otherwise `canceled`.
+     * Present on the opener's side only.
+     */
+    readonly result?: Promise<PageResult>;
 }"###;
+
+        /// A pushed page's outcome. `canceled` means it left without a result:
+        /// `user` (Back), `opener` (a newer result promise replaced this one),
+        /// `app_closed`.
+        type PageResult = r###"
+    | { status: 'ok'; value: JsonValue }
+    | { status: 'canceled'; reason: 'user' | 'opener' | 'app_closed' }"###;
 
         type PageQuery = r###"Record<string, PageQueryValue>"###;
 

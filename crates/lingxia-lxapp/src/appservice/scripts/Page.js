@@ -38,7 +38,7 @@
       throw new Error("setData: Invalid page configuration");
     }
 
-    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', '_abortLifetime', '_cancelPendingSetData', '_setData']) {
+    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', 'close', 'setResult', '_abortLifetime', '_cancelPendingSetData', '_setData', '_leave', '_bindResult', '_settleResult']) {
       if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
         throw new TypeError(`Page member '${key}' is reserved by the runtime`);
       }
@@ -192,6 +192,39 @@
         clearTimer(updateTimer);
         submitPending();
       });
+    };
+
+    // What the opener's `result` resolves with. It settles once, after
+    // `onUnload`: `{ status: 'ok', value }` when a result was set, otherwise
+    // `{ status: 'canceled', reason }`.
+    let result = null;
+    let settleOpener = null;
+
+    pageSvc.setResult = function (value) {
+      assertPageData(value);
+      result = { value: cloneJsonValue(value) };
+    };
+
+    pageSvc.close = function (value) {
+      if (arguments.length > 0) pageSvc.setResult(value);
+      if (pageSvc.surface) return pageSvc.surface.close();
+      pageSvc._leave();
+      return Promise.resolve();
+    };
+
+    pageSvc._bindResult = function () {
+      if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
+      result = null;
+      return new Promise((resolve) => {
+        settleOpener = resolve;
+      });
+    };
+
+    pageSvc._settleResult = function (reason) {
+      const settle = settleOpener;
+      settleOpener = null;
+      if (!settle) return;
+      settle(result ? { status: "ok", value: result.value } : { status: "canceled", reason });
     };
 
     pageSvc.setPath = function (path, value) {

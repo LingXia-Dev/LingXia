@@ -1259,6 +1259,17 @@ impl PageSvc {
         Ok(instance)
     }
 
+    /// `this.close()` for a page on the stack (a surface page closes its
+    /// surface instead). Synchronous: a misuse throws at the call.
+    #[js_method(rename = "_leave")]
+    fn leave(&self) -> JSResult<()> {
+        let id = self.page.instance_id_string();
+        self.page
+            .owning_lxapp()
+            .leave_page_instance(&id)
+            .map_err(|err| HostError::new(rong::error::E_INVALID_STATE, err.to_string()).into())
+    }
+
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops: JSValue, callback: Optional<JSFunc>) -> JSResult<()> {
         let sent_us = crate::bridge::probe::now_us();
@@ -1957,7 +1968,9 @@ impl PageSvc {
                     page_svc.lifecycle_pump_running.set(false);
                     if page_svc.terminated.get() {
                         // The owed `onUnload` has run: nothing uses the
-                        // retired service's JS values any more.
+                        // retired service's JS values any more. Settling is
+                        // a no-op once that `onUnload` settled the result.
+                        page_svc.settle_result(&ctx);
                         page_svc.release_js();
                     }
                     break;
@@ -1966,7 +1979,11 @@ impl PageSvc {
                 {
                     continue;
                 }
-                if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
+                let outcome = page_svc.call_page_event(&ctx, event, args.as_deref()).await;
+                if event == PageLifecycleEvent::OnUnload {
+                    page_svc.settle_result(&ctx);
+                }
+                if let Err(e) = outcome {
                     let error = super::eval_error_from_rong(&ctx, e);
                     let page = page_svc.get_page();
                     if page.document_is_departing() {
@@ -1981,6 +1998,22 @@ impl PageSvc {
                 }
             }
         });
+    }
+
+    /// Settle the opener's `result` once the page has unloaded. Without a
+    /// result set it is canceled: by the app closing, or else by the user.
+    pub(crate) fn settle_result(&self, ctx: &JSContext) {
+        let closing = LxApp::from_ctx(ctx).is_ok_and(|app| !app.is_opened());
+        self.settle_result_with(if closing { "app_closed" } else { "user" });
+    }
+
+    fn settle_result_with(&self, reason: &str) {
+        let Some(this) = self.this.get() else {
+            return;
+        };
+        if let Ok(settle) = this.get::<_, JSFunc>("_settleResult") {
+            let _ = settle.call::<_, ()>(Some(this), (reason.to_string(),));
+        }
     }
 
     /// `onLoad` runs after `App.onLaunch` has settled, so pages can rely on
@@ -2110,6 +2143,14 @@ impl PageSvc {
     pub fn bind_opener(&self, opener: JSObject) -> JSResult<()> {
         self.this.require()?.set("opener", opener)?;
         Ok(())
+    }
+
+    /// A fresh promise for this page's result, settled once after it unloads.
+    /// A result promise handed out earlier settles as canceled by the opener.
+    pub fn bind_result(&self) -> JSResult<JSObject> {
+        let this = self.this.require()?;
+        let bind: JSFunc = this.get("_bindResult")?;
+        bind.call::<_, JSObject>(Some(this), ())
     }
 
     pub fn clear_opener(&self) -> JSResult<()> {

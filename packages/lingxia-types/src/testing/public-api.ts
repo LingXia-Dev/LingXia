@@ -717,7 +717,7 @@ const TAB_SURFACE_API = [
   'scope',
   'visible',
 ] as const;
-const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage'] as const;
+const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage', 'result'] as const;
 
 export const LX_RETURNED_OBJECT_SURFACES = [
   {

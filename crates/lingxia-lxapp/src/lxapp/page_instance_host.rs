@@ -438,6 +438,32 @@ impl LxApp {
         Ok(())
     }
 
+    /// Leave a stack page the way Back does: `this.close()` on a pushed page.
+    /// Only the top entry can leave; a root or a tab page never does.
+    pub(crate) fn leave_page_instance(&self, id: &str) -> Result<(), LxAppError> {
+        let (stack, pinned) = {
+            let state = self.state.lock().unwrap();
+            let stack: Vec<String> = state.page_stack.lock().unwrap().iter().cloned().collect();
+            let pinned = state
+                .path_pins
+                .lock()
+                .is_ok_and(|pins| pins.values().any(|pinned| pinned == id));
+            (stack, pinned)
+        };
+        let invalid = |detail: &str| LxAppError::UnsupportedOperation(detail.to_string());
+        if pinned {
+            return Err(invalid("a tab page cannot be closed; switch tabs instead"));
+        }
+        match stack.iter().position(|entry| entry == id) {
+            None => Err(invalid("this page is not on the page stack")),
+            Some(0) => Err(invalid("the root page cannot be closed")),
+            Some(index) if index + 1 != stack.len() => Err(invalid(
+                "only the top page can close itself; a page under it cannot yet",
+            )),
+            Some(_) => self.current_page()?.navigate_back(1),
+        }
+    }
+
     /// On this app's stack or path-pinned, so not owned by a surface alone.
     pub(crate) fn page_instance_is_retained(&self, id: &str) -> bool {
         let Ok(state) = self.state.lock() else {

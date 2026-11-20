@@ -66,4 +66,21 @@ assert.throws(
   () => run(`__registerPage('taken', { signal: null }); __LX_CREATE_PAGE__('taken');`),
   /reserved by the runtime/,
 );
-console.log('Page state validation, acknowledgement, and teardown checks passed.');
+// The opener's result settles once, after the page leaves.
+const settled = async (expr) => JSON.parse(JSON.stringify(await run(expr)));
+run(`globalThis.resultPage = __LX_CREATE_PAGE__('home');
+globalThis.first = resultPage._bindResult();
+globalThis.second = resultPage._bindResult();`);
+assert.deepEqual(await settled('first'), { status: 'canceled', reason: 'opener' });
+run(`resultPage.setResult({ id: 7 });
+resultPage._settleResult('user');
+resultPage._settleResult('app_closed');`);
+assert.deepEqual(await settled('second'), { status: 'ok', value: { id: 7 } });
+run(`globalThis.third = resultPage._bindResult(); resultPage._settleResult('user');`);
+assert.deepEqual(await settled('third'), { status: 'canceled', reason: 'user' }, 'a new opener starts without a result');
+assert.throws(() => run('resultPage.setResult(new Date())'), /class instances/);
+run(`globalThis.left = 0; resultPage._leave = () => { left += 1; };
+globalThis.fourth = resultPage._bindResult(); resultPage.close('done'); resultPage._settleResult('user');`);
+assert.equal(run('left'), 1);
+assert.deepEqual(await settled('fourth'), { status: 'ok', value: 'done' });
+console.log('Page state validation, acknowledgement, teardown and result checks passed.');
