@@ -130,7 +130,8 @@ pub(crate) fn sidebar_resize_edge(
 ) -> Option<(i32, bool)> {
     let layout = shell_layout(&state.layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
-    if tabbar.collapsed {
+    // A compact window cannot keep an expanded sidebar, so it has no width to drag.
+    if tabbar.collapsed || tabbar.rail_expand_disabled {
         return None;
     }
     let left = match tabbar.position {

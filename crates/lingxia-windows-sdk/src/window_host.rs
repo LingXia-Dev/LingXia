@@ -6513,6 +6513,28 @@ fn sidebar_resize_hit(hwnd: HWND, point: (i32, i32)) -> Option<SidebarResizeDrag
     })
 }
 
+/// The sidebar's resize cursor holds while the pointer is on its edge or dragging it:
+/// otherwise each `WM_SETCURSOR` puts the class arrow back between moves.
+#[cfg(feature = "shell-chrome")]
+fn keep_sidebar_resize_cursor(hwnd: HWND) -> bool {
+    let dragging = SIDEBAR_RESIZE_DRAG
+        .lock()
+        .is_ok_and(|active| active.is_some());
+    let on_edge = || {
+        let mut cursor = POINT::default();
+        unsafe {
+            WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok()
+                && ScreenToClient(hwnd, &mut cursor).as_bool()
+        }
+        &&sidebar_resize_hit(hwnd, (cursor.x, cursor.y)).is_some()
+    };
+    if dragging || on_edge() {
+        set_divider_cursor(true);
+        return true;
+    }
+    false
+}
+
 #[cfg(feature = "shell-chrome")]
 fn begin_sidebar_resize_drag(hwnd: HWND, point: (i32, i32)) -> bool {
     let Some(drag) = sidebar_resize_hit(hwnd, point) else {
@@ -11043,6 +11065,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     return hit_test_window(hwnd, lparam);
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+            #[cfg(feature = "shell-chrome")]
+            WindowsAndMessaging::WM_SETCURSOR
+                if (lparam.0 & 0xffff) == WindowsAndMessaging::HTCLIENT as isize
+                    && windows_chrome_renderer().is_some()
+                    && keep_sidebar_resize_cursor(hwnd) =>
+            {
+                LRESULT(1)
             }
             WindowsAndMessaging::WM_NCMOUSEMOVE => {
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
