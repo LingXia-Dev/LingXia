@@ -650,6 +650,10 @@ impl NativePage for WindowsPage {
         on_page(self.token, |page| page.host().park());
         Ok(())
     }
+    fn page_left(&self) -> Result<(), LxAppError> {
+        on_page(self.token, |page| page.host().page_left());
+        Ok(())
+    }
     fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
         Ok(())
     }

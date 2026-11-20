@@ -1313,6 +1313,25 @@ impl<A: PlatformAdapter> ViewHost<A> {
         true
     }
 
+    /// The page was covered or left inside the app (a push over it, a tab switched away, its
+    /// surface closed): its passing layers close as a tap outside would. Not for the app going
+    /// to the background, which keeps them for the return.
+    pub fn page_left(&self) {
+        if !self.inner.lifecycle.accepts_input() {
+            return;
+        }
+        let page = self.inner.lifecycle.page();
+        // The editor blurs first: a typeahead list held open by its own state closes on it.
+        self.inner.activate(
+            page,
+            false,
+            Box::new(|session| {
+                let blurred = session.blur_focused_editor()?;
+                Ok(session.page_left()? || blurred)
+            }),
+        );
+    }
+
     /// After a session failure the page takes no input at all, platform gestures
     /// (refresh, selection handles) included, until it reloads.
     pub fn input_blocked(&self) -> bool {

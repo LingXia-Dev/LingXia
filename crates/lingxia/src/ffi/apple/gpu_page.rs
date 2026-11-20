@@ -1290,6 +1290,10 @@ mod live {
             on_page(self.token, |page| page.host().park());
             Ok(())
         }
+        fn page_left(&self) -> Result<(), LxAppError> {
+            on_page(self.token, |page| page.host().page_left());
+            Ok(())
+        }
         // A hidden Apple page is already suspended; only giving up its layer is left to do.
         fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
             if !retained {

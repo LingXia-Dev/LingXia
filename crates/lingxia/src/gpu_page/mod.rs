@@ -79,6 +79,9 @@ pub(crate) trait NativePage: Send + Sync + 'static {
         self.reload(source)
     }
     fn park(&self) -> Result<(), LxAppError>;
+    fn page_left(&self) -> Result<(), LxAppError> {
+        Ok(())
+    }
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     fn trim_surface(&self) -> Result<(), LxAppError> {
         Ok(())
@@ -325,6 +328,13 @@ impl GpuPageView for Endpoint {
     fn park(&self) -> Result<(), LxAppError> {
         *self.generation() = None;
         self.native.park()
+    }
+
+    fn page_left(&self) -> Result<(), LxAppError> {
+        if self.lease.disposed() {
+            return Ok(());
+        }
+        self.native.page_left()
     }
 
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {

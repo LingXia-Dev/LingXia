@@ -1114,6 +1114,17 @@ impl PageInstance {
             .is_ok_and(|state| state.document_is_departing())
     }
 
+    /// The page was covered or left inside the app; see [`view::GpuPageView::page_left`].
+    pub(crate) fn leave_view(&self) {
+        if let Some(PageView::Gpu(view)) = self.page_view()
+            && let Err(error) = view.page_left()
+        {
+            warn!("Failed to tell the GPU View its page was left: {}", error)
+                .with_appid(self.appid())
+                .with_path(self.path());
+        }
+    }
+
     pub(crate) fn park_view(&self) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.parked = true;
@@ -2633,6 +2644,7 @@ impl PageInstance {
                         .get_tabbar()
                         .is_some_and(|tabbar| tabbar.is_tabbar_page(&self.path()));
                 if !unloaded_by_tab_switch {
+                    self.leave_view();
                     self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
                 }
             }

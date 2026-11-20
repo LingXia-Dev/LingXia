@@ -315,6 +315,11 @@ pub trait GpuPageView: Send + Sync {
     fn reload(&self) -> Result<(), LxAppError>;
     /// Clear local state and stop presenting until the next entry.
     fn park(&self) -> Result<(), LxAppError>;
+    /// Covered or left inside the app, not by the app going to the background: the page's
+    /// passing layers (a select's sheet, a menu, a popover) close as a tap outside would.
+    fn page_left(&self) -> Result<(), LxAppError> {
+        Ok(())
+    }
     /// Whether a hidden page keeps its presented surface; see `surface_retention`.
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
     /// A hidden page that keeps its surface drops the render targets a redraw rebuilds.

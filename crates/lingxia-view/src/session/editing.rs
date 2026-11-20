@@ -289,6 +289,14 @@ impl ViewSession {
             .is_some())
     }
 
+    /// Blur whichever editor holds focus, as the platform's blur does. False when none does.
+    pub fn blur_focused_editor(&mut self) -> Result<bool, String> {
+        let Some(identity) = self.inputs.focused().map(str::to_owned) else {
+            return Ok(false);
+        };
+        self.blur_editor(&identity)
+    }
+
     /// Blur editor `identity` when it holds focus, as the platform's blur does. False otherwise.
     pub fn blur_editor(&mut self, identity: &str) -> Result<bool, String> {
         if self.inputs.focused() != Some(identity) {

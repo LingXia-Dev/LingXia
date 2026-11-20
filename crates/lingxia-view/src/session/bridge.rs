@@ -155,6 +155,18 @@ impl ViewSession {
         })
     }
 
+    /// The page was covered or left inside the app: what a tap outside would close, closes (the
+    /// View's picker, light-dismiss popovers and hints); dialogs and manual popovers stay.
+    pub fn page_left(&self) -> Result<bool, String> {
+        self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(
+                    "typeof __lingxiaPageLeft === 'function' && __lingxiaPageLeft()",
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// Open the View's own picker for a date or time editor: `{identity, kind, value, min, max, step}`.
     pub fn open_view_picker(&self, request: &serde_json::Value) -> Result<bool, String> {
         let request = serde_json::to_string(&request.to_string()).map_err(|e| e.to_string())?;

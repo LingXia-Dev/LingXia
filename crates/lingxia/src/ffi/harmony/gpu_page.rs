@@ -363,6 +363,12 @@ impl NativePage for HarmonyPage {
         });
         Ok(())
     }
+    fn page_left(&self) -> std::result::Result<(), LxAppError> {
+        on_page(self.token, |page| {
+            page.with_host(|host| host.page_left());
+        });
+        Ok(())
+    }
     fn retain_surface(&self, retained: bool) -> std::result::Result<(), LxAppError> {
         arkts(
             self.token,

@@ -441,6 +441,12 @@ impl LxApp {
                 page.mark_active();
             }
             PageInstanceEvent::Hidden { reason } => {
+                if matches!(
+                    reason,
+                    CloseReason::User | CloseReason::Programmatic | CloseReason::OwnerClosed
+                ) {
+                    page.leave_view();
+                }
                 page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
                 if matches!(reason, CloseReason::AppClosed) {
                     self.dispose_page_instance_internal(id, reason, false)?;

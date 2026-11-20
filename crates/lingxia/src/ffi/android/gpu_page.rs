@@ -187,6 +187,10 @@ impl NativePage for AndroidPage {
         lingxia_view_android::mark_stale(self.token);
         operation(self.token, jni_str!("park"))
     }
+    fn page_left(&self) -> Result<(), LxAppError> {
+        lingxia_view_android::page_left(self.token);
+        Ok(())
+    }
     fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
         let token = self.token;
         with_env(|env| {

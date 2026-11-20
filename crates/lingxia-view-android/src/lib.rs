@@ -295,6 +295,14 @@ pub fn deliver(owner: i64, connection: u64, message: lingxia_view::session::logi
     port.is_some_and(|port| port.deliver(ConnectionTicket::new(connection), message))
 }
 
+/// Any thread: the page `owner` names was covered or left inside the app.
+pub fn page_left(owner: i64) {
+    let weak = ports().get(&owner).map(|(_, _, weak)| weak.clone());
+    if let Some(host) = weak.and_then(|w| w.upgrade()) {
+        host.page_left();
+    }
+}
+
 /// Any thread: deliver an embedded `<webview>` event or readiness flag to `owner`'s host.
 pub fn webview_event(owner: i64, web_id: String, event: lingxia_view::WebViewInbound) {
     let weak = ports().get(&owner).map(|(_, _, weak)| weak.clone());
