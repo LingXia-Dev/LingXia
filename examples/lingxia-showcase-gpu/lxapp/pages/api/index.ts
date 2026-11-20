@@ -8,7 +8,7 @@ export default definePage({
   setup(page) {
     const actions = {
       async openOtherApp() {
-        try { await lx.navigateToApp({ appId: 'lingxia-chat', page: 'chat' }); }
+        try { await lx.nav.go({ app: 'lingxia-chat', page: 'chat' }); }
         catch (error) { await lx.ui.toast({ title: errorMessage(error, 'Unable to open the app. Please try again.'), icon: 'none' }); }
       },
       async openDeepSeek() {
@@ -29,34 +29,34 @@ export default definePage({
         const exit = await lx.ui.confirm({ title: 'Exit app', message: 'Close the app now?', tone: 'danger', confirmText: 'Exit', cancelText: 'Cancel' });
         if (exit) await lx.host.exit();
       },
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async openDevice({ type = 'device' }: { type?: string } = {}) {
-        await lx.navigateTo({ page: 'device', query: { type } });
+        await lx.nav.go({ page: 'device', params: { type } }).opened;
       },
       async openSystem({ type = 'appBaseInfo' }: { type?: string } = {}) {
-        await lx.navigateTo({ page: 'system', query: { type } });
+        await lx.nav.go({ page: 'system', params: { type } }).opened;
       },
-      async openClipboard() { await lx.navigateTo({ page: 'clipboard' }); },
-      async openShare() { await lx.navigateTo({ page: 'share' }); },
-      async openWifi() { await lx.navigateTo({ page: 'wifi' }); },
-      async openLocation() { await lx.navigateTo({ page: 'location' }); },
+      async openClipboard() { await lx.nav.go({ page: 'clipboard' }).opened; },
+      async openShare() { await lx.nav.go({ page: 'share' }).opened; },
+      async openWifi() { await lx.nav.go({ page: 'wifi' }).opened; },
+      async openLocation() { await lx.nav.go({ page: 'location' }).opened; },
       async openFile({ section = 'openFile' }: { section?: 'openFile' | 'chooseFile' } = {}) {
-        await lx.navigateTo({ page: 'file', query: { section } });
+        await lx.nav.go({ page: 'file', params: { section } }).opened;
       },
-      async openStream() { await lx.navigateTo({ page: 'stream' }); },
-      async openRefresh() { await lx.navigateTo({ page: 'pullToRefresh' }); },
-      async openLeaveGuard() { await lx.navigateTo({ page: 'leaveGuard' }); },
+      async openStream() { await lx.nav.go({ page: 'stream' }).opened; },
+      async openRefresh() { await lx.nav.go({ page: 'pullToRefresh' }).opened; },
+      async openLeaveGuard() { await lx.nav.go({ page: 'leaveGuard' }).opened; },
       async openFeedback() { await openFeedback(); },
       async openCloud({ type = 'auth' }: { type?: string } = {}) {
-        await lx.navigateTo({ page: 'cloud', query: { type } });
+        await lx.nav.go({ page: 'cloud', params: { type } }).opened;
       },
       async openMedia({ type = 'Pictures' }: { type?: string } = {}) {
-        await lx.navigateTo({ page: 'media', query: { type } });
+        await lx.nav.go({ page: 'media', params: { type } }).opened;
       },
-      async openChannel() { await lx.navigateTo({ page: 'channel' }); },
-      async openBridge() { await lx.navigateTo({ page: 'bridge-repro' }); },
+      async openChannel() { await lx.nav.go({ page: 'channel' }).opened; },
+      async openBridge() { await lx.nav.go({ page: 'bridge-repro' }).opened; },
       async openUi({ type = 'navigation' }: { type?: string } = {}) {
-        await lx.navigateTo({ page: 'ui', query: { type } });
+        await lx.nav.go({ page: 'ui', params: { type } }).opened;
       },
     };
     return {

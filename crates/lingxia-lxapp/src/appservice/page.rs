@@ -2166,6 +2166,20 @@ impl PageSvc {
         self.this.require()?.delete("opener")?;
         Ok(())
     }
+
+    /// Move this page's opener and the result it is owed to `to`.
+    pub fn hand_over_opener(&self, to: &PageSvc) -> JSResult<()> {
+        let this = self.this.require()?;
+        let hand_over: JSFunc = this.get("_handOver")?;
+        hand_over.call::<_, ()>(Some(this), (to.this.require()?,))
+    }
+
+    /// Leave this page as if it closed itself.
+    pub fn leave_page(&self) -> Result<(), LxAppError> {
+        self.page
+            .owning_lxapp()
+            .leave_page_instance(&self.page.instance_id_string())
+    }
 }
 
 impl PageSvc {
@@ -2228,6 +2242,14 @@ impl LxApp {
         url: &str,
     ) -> JSResult<PageSvc> {
         let page = self.create_page_for_entry(url);
+        self.ensure_page_svc_in_ctx(ctx, page).await
+    }
+
+    /// The service of the page on top of the stack.
+    pub async fn current_page_svc_in_ctx(&self, ctx: &JSContext) -> JSResult<PageSvc> {
+        let page = self.current_page().map_err(|e| {
+            RongJSError::from(HostError::new(rong::error::E_INVALID_STATE, e.to_string()))
+        })?;
         self.ensure_page_svc_in_ctx(ctx, page).await
     }
 

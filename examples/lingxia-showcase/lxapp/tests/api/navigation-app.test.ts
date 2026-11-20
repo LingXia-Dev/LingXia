@@ -25,7 +25,7 @@ test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 test('hop to the bundled chat lxapp and back', {
   id: 'NAV-APP-001',
-  covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
+  covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.nav.go', 'lx.nav.leaveApp', 'LxAppManager.list', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'navigateBackApp does not return to the caller on Windows, and the hop disturbs the chat lxapp the desktop workspace cases reuse',
@@ -95,7 +95,7 @@ test('hop to the bundled chat lxapp and back', {
       type Settled = { ok: boolean; code?: string; message?: string };
       const state: { settled: Settled | null } = { settled: null };
       (globalThis as Record<string, unknown>)[key] = state;
-      lx.navigateToApp({ appId })
+      lx.nav.go({ app: appId })
         .then(() => { state.settled = { ok: true }; })
         .catch((error: { code?: string; message?: string } | null) => {
           state.settled = { ok: false, code: error?.code ?? '', message: String(error?.message) };
@@ -141,7 +141,7 @@ test('hop to the bundled chat lxapp and back', {
       retryIf: () => true,
     });
     await chat.logic.eval(({ lx }) => {
-      void lx.navigateBackApp();
+      void lx.nav.leaveApp();
       return 'scheduled';
     });
     await eventually(currentApp, (appid) => appid === SHOWCASE_APP_ID, {
@@ -161,7 +161,7 @@ test('hop to the bundled chat lxapp and back', {
   await t.step('navigateToApp rejects an unknown page name without leaving the caller', async () => {
     const rejected = await app.logic.eval(async ({ lx }, appId) => {
       try {
-        await lx.navigateToApp({ appId, page: 'no-such-page' });
+        await lx.nav.go({ app: appId, page: 'no-such-page' });
         return { ok: true };
       } catch (error) {
         return { ok: false, code: (error as { code?: string } | null)?.code };

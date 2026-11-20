@@ -5,7 +5,7 @@ export default definePage({
     const actions = {
       async goBack() {
         if (page.surface) await page.surface.close();
-        else await lx.navigateBack();
+        else await lx.nav.back();
       },
       async submitFeedback(params: { category?: string; message?: string; email?: string }) {
         const category = typeof params?.category === 'string' ? params.category.trim() : 'Other';

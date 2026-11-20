@@ -64,7 +64,6 @@ impl LxLogicExtension for LxLogicRuntime {
         clipboard::init(ctx)?;
         display::init(ctx)?;
         location::init(ctx)?;
-        navigator::init(ctx)?;
         update::init(ctx)?;
         message_port::init(ctx)?;
         surface::init(ctx)?;

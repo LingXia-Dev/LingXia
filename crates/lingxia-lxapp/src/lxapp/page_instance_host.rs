@@ -52,8 +52,8 @@ fn validate_navigation_stack(
                 nav_type,
                 target_path,
                 format!(
-                    "navigateTo target '{target_path}' is already on the page stack; \
-                     use lx.switchTab or lx.navigateBack to return to it."
+                    "'{target_path}' is already on the page stack; \
+                     use lx.nav.go({{ tab }}) or lx.nav.back() to return to it."
                 ),
             ))
         }
@@ -63,7 +63,7 @@ fn validate_navigation_stack(
                 nav_type,
                 target_path,
                 format!(
-                    "navigateTo cannot open '{target_path}': the page stack is full \
+                    "cannot push '{target_path}': the page stack is full \
                      (capacity: {PAGE_STACK_MAX})."
                 ),
             ))

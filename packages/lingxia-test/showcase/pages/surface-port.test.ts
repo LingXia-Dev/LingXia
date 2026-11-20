@@ -8,11 +8,11 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
-import type { PageMessagePort } from '@lingxia/types';
+import type { PageHandle } from '@lingxia/types';
 
 /** What the probe keeps on Logic's `globalThis` under its spec's key. */
 interface PortState {
-  port: PageMessagePort | null;
+  port: PageHandle | null;
   messages: Array<{ message?: string; timestamp?: number }>;
   off: (() => void) | null;
   error: string | null;
@@ -23,7 +23,7 @@ const MESSAGE_INPUT = 'input[placeholder="Message to parent page"]';
 
 test('exchange messages over the port navigateTo returns', {
   id: 'NAV-PORT-001',
-  covers: ['lx.navigateTo', 'PageMessagePort.onMessage', 'PageMessagePort.postMessage'],
+  covers: ['lx.nav.go', 'PageHandle.onMessage', 'PageHandle.postMessage'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'NAV-PORT-001');
@@ -44,20 +44,18 @@ test('exchange messages over the port navigateTo returns', {
     await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   });
 
-  // The opener keeps the port; the pushed page sees it as `this.opener`.
-  // Navigation must not be awaited inside the eval that starts it: the
-  // promise settles only after the new page is ready, which this eval blocks.
+  // The opener keeps the handle; the pushed page sees its end as `page.opener`.
+  // `opened` must not be awaited inside the eval that starts it: it settles
+  // only after the new page is ready, which this eval blocks.
   await app.logic.eval(({ lx }, key, fixture) => {
     const state: PortState = { port: null, messages: [], off: null, error: null };
     (globalThis as unknown as PortStates)[key] = state;
-    lx.navigateTo({ page: 'surface', query: { fixture } })
-      .then((port) => {
-        state.port = port;
-        state.off = port.onMessage((message) => {
-          state.messages.push(message as PortState['messages'][number]);
-        });
-      })
-      .catch((error: { message?: string } | null) => { state.error = String(error?.message ?? error); });
+    const handle = lx.nav.go({ page: 'surface', params: { fixture } });
+    state.port = handle;
+    state.off = handle.onMessage((message) => {
+      state.messages.push(message as PortState['messages'][number]);
+    });
+    handle.opened.catch((error: { message?: string } | null) => { state.error = String(error?.message ?? error); });
     return 'scheduled';
   }, stateKey, namespace);
   // Desktop only preloads the landing tab. This spec is the first visit to

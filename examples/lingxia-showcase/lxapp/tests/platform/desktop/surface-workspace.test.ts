@@ -1963,7 +1963,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       // reject it, not ignore the extra field.
       const openApp = lx.shell.openApp as (appId: string, options: unknown) => Promise<unknown>;
       const openPage = lx.surface.openPage as (page: string, options: unknown) => Promise<unknown>;
-      const navigateToApp = lx.navigateToApp as (options: unknown) => Promise<unknown>;
+      const go = lx.nav.go as (target: unknown) => Promise<unknown>;
       const rejected: Partial<Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', Rejection>> = {};
       try {
         await openApp('lingxia-chat', {
@@ -1973,8 +1973,8 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         rejected.path = rejection(error);
       }
       try {
-        await navigateToApp({
-          appId: 'lingxia-chat', path: 'pages/chat/index.tsx',
+        await go({
+          app: 'lingxia-chat', path: 'pages/chat/index.tsx',
         });
       } catch (error) {
         rejected.navigatePath = rejection(error);
@@ -3006,7 +3006,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage', 'lx.surface.getByKey'],
+  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.nav.go', 'lx.nav.back', 'lx.surface.openPage', 'lx.surface.getByKey'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -3061,7 +3061,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // navigateTo from the aside lxapp's Logic: the page pushes inside the aside.
     const pushFeedback = async (phase: string) => {
       await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.navigateTo({ page: 'feedback' });
+        await lx.nav.go({ page: 'feedback' }).opened;
       });
       await waitForValue(async () => {
         const current = await chat.nav.current();
@@ -3138,7 +3138,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // navigateBack pops inside the aside and reveals the chat page there again.
     await pushFeedback('navigateBack');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.navigateBack();
+      await lx.nav.back();
     });
     await expectChatBackInAside('navigateBack');
 
@@ -3253,7 +3253,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       expect(inRightAside(host, reopened.rect)).toBeTruthy();
       await pushFeedback('after reopen');
       await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.navigateBack();
+        await lx.nav.back();
       });
       await expectChatBackInAside('navigateBack after reopen');
     }
@@ -4374,7 +4374,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     // The main chrome now drives Chat: a pushed page pops with the main Back.
     const chat = t.automation.lxapp('lingxia-chat');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.navigateTo({ page: 'about' });
+      await lx.nav.go({ page: 'about' }).opened;
     });
     await waitForValue(async () => {
       const current = await chat.nav.current();

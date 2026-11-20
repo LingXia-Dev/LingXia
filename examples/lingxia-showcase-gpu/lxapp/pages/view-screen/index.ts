@@ -3,8 +3,8 @@ export default definePage({
   data: { lang: '' },
   setup(thisPage) {
     const actions = {
-      async back() { await lx.navigateBack(); },
-      async open({ page }: { page: keyof LxAppPages }) { await lx.navigateTo({ page }); },
+      async back() { await lx.nav.back(); },
+      async open({ page }: { page: keyof LxAppPages }) { await lx.nav.go({ page }).opened; },
     };
     return {
       // Specs pin the page's language with `lang`, whatever the device is set to.

@@ -72,10 +72,10 @@ export default definePage({
       },
     };
     const actions = {
-      async openApi() { await lx.navigateTo({ page: 'api' }); },
-      async openTodo() { await lx.navigateTo({ page: 'todo' }); },
-      async openClipboard() { await lx.navigateTo({ page: 'clipboard' }); },
-      async openShare() { await lx.navigateTo({ page: 'share' }); },
+      async openApi() { await lx.nav.go({ page: 'api' }).opened; },
+      async openTodo() { await lx.nav.go({ page: 'todo' }).opened; },
+      async openClipboard() { await lx.nav.go({ page: 'clipboard' }).opened; },
+      async openShare() { await lx.nav.go({ page: 'share' }).opened; },
       async setAppearance(options: Partial<AppearanceRequest> = {}) {
         const preference = options.preference || "auto";
         try {

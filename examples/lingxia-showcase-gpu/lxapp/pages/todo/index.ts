@@ -113,7 +113,7 @@ export default definePage({
         if (filter && ['all', 'active', 'completed'].includes(filter)) await helpers.commit({ currentFilter: filterValue(filter) });
       },
       async goBack() {
-        await lx.navigateBack();
+        await lx.nav.back();
       },
     };
     return {

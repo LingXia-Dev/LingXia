@@ -1361,8 +1361,8 @@ fn sync_related_shell_layouts(appid: &str) {
 /// The app, the shell owner, the visible main, and the stack-top app.
 ///
 /// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
-/// stack top, which can lag the on-screen main (a later `navigateToApp`, a
-/// presented browser tab), so the visible main is added separately; without
+/// stack top, which can lag the on-screen main (a later `lx.nav.go({ app })`,
+/// a presented browser tab), so the visible main is added separately; without
 /// it, toggling that guest rebuilds home's hidden webtag and the last-opened
 /// guest, never the one the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
@@ -2201,7 +2201,7 @@ fn tab_bar_owner_for_layout<'a>(
     visible_main: Option<&'a LxApp>,
 ) -> &'a LxApp {
     // The visible lxapp owns the tab pages the user is looking at. Desktop
-    // used to keep drawing the shell owner's items after `navigateToApp`, so
+    // used to keep drawing the shell owner's items after `lx.nav.go({ app })`, so
     // sidebar clicks SwitchTab'd a background home app (macOS had the same
     // hole). Present-time callers pass the incoming app here so the first
     // chrome pass does not wait for a later switcher snapshot. Sidebar

@@ -315,27 +315,25 @@ export default definePage({
       // drills as deep as the 10-entry cap allows.
       async demoNavigateTo() {
         try {
-          await lx.navigateTo({ page: "ui", query: { type: "navigation" } });
+          await lx.nav.go({ page: "ui", params: { type: "navigation" } }).opened;
         } catch (err) {
           lx.ui.toast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
           console.warn("[UI] navigateTo rejected", err);
         }
       },
       async demoNavigateBack() {
-        await lx.navigateBack({
-          delta: 1,
-        });
+        await lx.nav.back(1);
       },
       async demoSwitchTab() {
-        await lx.switchTab({
-          page: "home",
+        await lx.nav.go({
+          tab: "home",
         });
       },
       async demoRedirectTo() {
-        await lx.redirectTo({
+        await lx.nav.go({
           page: "ui",
-          query: { type: "navigation" },
-        });
+          params: { type: "navigation" },
+        }, { replace: true });
       },
       // Show toast with custom parameters
       async showToastWithParams(params: Partial<ToastOptions>) {

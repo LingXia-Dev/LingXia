@@ -138,7 +138,7 @@ export default [
     id: "PEND-APPLINK-001",
     title: "inbound App Link opens the declared lxapp",
     mode: "external-fixture",
-    covers: ["lx.navigateToApp"],
+    covers: ["lx.nav.go"],
     reason: "needs an /lxapp/open?appId= fixture host",
   },
   {
@@ -153,7 +153,7 @@ export default [
     id: "PEND-NAVAPP-DESKTOP-001",
     title: "the cross-lxapp hop on a desktop host",
     mode: "planned",
-    covers: ["lx.navigateToApp", "lx.navigateBackApp"],
+    covers: ["lx.nav.go", "lx.nav.leaveApp"],
     reason: "Windows leaves the target current after navigateBackApp instead of returning to the caller, and on both desktops the hop leaves the bundled chat lxapp in a state the workspace cases cannot reuse; NAV-APP-001 proves the contract on Android",
   },
   {
@@ -191,7 +191,7 @@ export default [
     implementedOn: ["android"],
     title: "LxPicker value change, cancel, and columns",
     mode: "planned",
-    covers: ["lx.navigateTo"],
+    covers: ["lx.nav.go"],
     reason: "Android native-picker cases cover wheel changes, cancellation, confirmation, and multiple columns; other hosts still only open the page in COMPONENTS-001",
   },
   {

@@ -86,7 +86,7 @@ pub struct ResolvedTabBarStyle {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TabBarItem {
     /// Configured page name from `pages[]`. The join key with the catalog;
-    /// same token `lx.switchTab({ page })` takes.
+    /// same token `lx.nav.go({ tab })` takes.
     pub page: String,
     /// Resolved `pages[].path`. Empty until [`TabBar::validate`]; matching
     /// treats an empty path as no page.

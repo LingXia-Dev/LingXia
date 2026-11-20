@@ -35,7 +35,7 @@ export default definePage({
       },
     };
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async shareText() {
         await helpers.runShare({
           title: "LingXia Showcase",

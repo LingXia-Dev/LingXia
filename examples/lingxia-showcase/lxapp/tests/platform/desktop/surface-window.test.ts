@@ -351,12 +351,7 @@ async function invokeCaption(
 
 test('caption buttons stay on top and can close both chrome modes', {
   id: 'DESKTOP-SURFACE-WINDOW-CHROME-001',
-  covers: [
-    'lx.surface.openPage',
-    'PageSurface.alive',
-    'PageSurface.visible',
-    'PageSurface.onClose',
-  ],
+  covers: ['lx.surface.openPage', 'PageSurface.alive', 'PageSurface.visible', 'PageSurface.onClose'],
   app: SHOWCASE_APP_ID,
   timeout: 120_000,
 }, async (t) => {
@@ -450,7 +445,7 @@ test('caption buttons stay on top and can close both chrome modes', {
 
 test('deliver a child page message to its opener before closing', {
   id: 'DESKTOP-SURFACE-MESSAGE-001',
-  covers: ['PageSurface.onMessage', 'PageMessagePort.postMessage'],
+  covers: ['PageSurface.onMessage', 'PageHandle.postMessage'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-MESSAGE-001');

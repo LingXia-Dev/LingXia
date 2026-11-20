@@ -4,7 +4,7 @@ import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 // A page pushed again loads a new instance onto the surface that still holds the old one's
 // frame; that frame is not the new page's, so the reveal must wait for a fresh present.
 test('a page pushed again is not revealed on its previous frame', {
-  id: 'CHROME-REPUSH-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
+  id: 'CHROME-REPUSH-001', covers: ['lx.nav.go', 'lx.nav.back'],
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;

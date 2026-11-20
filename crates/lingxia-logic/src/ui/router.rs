@@ -2,62 +2,132 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
 };
 use crate::message_port;
-use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObject, JSContext, JSObject, JSResult, function::Optional};
+use crate::navigator::{self, NavigateToAppOptions};
+use futures::channel::oneshot;
+use lxapp::{LxApp, LxAppError, NavigationType, PageSvc, startup};
+use rong::{
+    FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise, function::Optional,
+};
 use serde_json::Value;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(FromJSObject)]
 #[ts_skip]
-struct PageTargetOptions {
+struct NavTargetInput {
     page: Option<String>,
-    // Kept only so legacy route input is rejected instead of ignored by the
-    // object decoder. Public JS types expose `page` only.
-    path: Option<String>,
+    tab: Option<String>,
+    app: Option<String>,
+    url: Option<String>,
+    params: Option<JSObject>,
+    channel: Option<String>,
+    version: Option<String>,
+    // Read only to name their replacements.
     query: Option<JSObject>,
+    path: Option<String>,
 }
 
 #[derive(FromJSObject)]
 #[ts_skip]
-struct NavigateBack {
-    delta: Option<u32>,
+struct GoOptions {
+    replace: Option<bool>,
 }
 
-fn navigate_back_delta(options: Option<NavigateBack>) -> u32 {
-    options.and_then(|options| options.delta).unwrap_or(1)
+enum NavTarget {
+    Page {
+        name: String,
+        params: Option<JSObject>,
+    },
+    Tab(String),
+    App(NavigateToAppOptions),
+    Url(String),
 }
 
-fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
-    lxapp
-        .peek_current_page_path()
-        .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+fn invalid(message: impl Into<String>) -> LxAppError {
+    LxAppError::InvalidParameter(message.into())
 }
 
-fn resolve_page_target(lxapp: &LxApp, options: &PageTargetOptions) -> Result<String, LxAppError> {
-    let page = configured_page_name(options)?;
-    let path = lxapp
-        .find_page_path_by_name(page)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?;
-
-    append_query(path, options.query.as_ref())
+fn js_invalid(message: impl Into<String>) -> rong::RongJSError {
+    js_error_from_lxapp_error(&invalid(message))
 }
 
-fn configured_page_name(options: &PageTargetOptions) -> Result<&str, LxAppError> {
-    if options.path.is_some() {
-        return Err(LxAppError::InvalidParameter(
-            "path is not supported; pass the configured page name in page".to_string(),
+fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
+    if value.is_number() {
+        return Err(invalid(
+            "lx.nav.go takes a target; use lx.nav.back(n) to go back",
         ));
     }
-    options
-        .page
-        .as_deref()
-        .map(str::trim)
-        .filter(|page| !page.is_empty())
-        .ok_or_else(|| {
-            LxAppError::InvalidParameter(
-                "page must be a non-empty configured page name".to_string(),
-            )
-        })
+    if !value.is_object() {
+        return Err(invalid("a target is { page }, { tab }, { app } or { url }"));
+    }
+    let input = value
+        .clone()
+        .to_rust::<NavTargetInput>()
+        .map_err(|e| invalid(e.to_string()))?;
+    if input.query.is_some() {
+        return Err(invalid("query was renamed params"));
+    }
+    if input.path.is_some() {
+        return Err(invalid("path is not supported; name the page in page"));
+    }
+    // With `app`, `page` names a page of that app.
+    let page = if input.app.is_some() {
+        &None
+    } else {
+        &input.page
+    };
+    let named = [page, &input.tab, &input.app, &input.url]
+        .iter()
+        .filter(|key| key.is_some())
+        .count();
+    if named != 1 {
+        return Err(invalid(
+            "a target names exactly one of page, tab, app or url",
+        ));
+    }
+    let non_empty = |key: &str, value: String| {
+        let value = value.trim().to_string();
+        if value.is_empty() {
+            Err(invalid(format!("{key} must not be empty")))
+        } else {
+            Ok(value)
+        }
+    };
+    if input.app.is_none() && (input.channel.is_some() || input.version.is_some()) {
+        return Err(invalid("channel and version apply to an { app } target"));
+    }
+    if let Some(app) = input.app {
+        return Ok(NavTarget::App(NavigateToAppOptions {
+            appid: non_empty("app", app)?,
+            path: None,
+            page: input.page.map(|page| non_empty("page", page)).transpose()?,
+            query: input.params,
+            channel: input.channel,
+            target_version: input.version,
+        }));
+    }
+    if let Some(name) = input.page {
+        return Ok(NavTarget::Page {
+            name: non_empty("page", name)?,
+            params: input.params,
+        });
+    }
+    if input.params.is_some() {
+        return Err(invalid("params apply to a { page } or { app } target"));
+    }
+    match (input.tab, input.url) {
+        (Some(name), _) => Ok(NavTarget::Tab(non_empty("tab", name)?)),
+        (_, Some(url)) => Ok(NavTarget::Url(non_empty("url", url)?)),
+        _ => unreachable!("exactly one key is named"),
+    }
+}
+
+fn page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> Result<String, LxAppError> {
+    let path = lxapp
+        .find_page_path_by_name(name)
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {name}")))?;
+    append_query(path, params)
 }
 
 fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
@@ -97,6 +167,12 @@ fn is_tabbar_page_url(lxapp: &LxApp, url: &str) -> bool {
         .any(|item| normalize_tabbar_path(&item.page_path) == target)
 }
 
+fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
+    lxapp
+        .peek_current_page_path()
+        .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+}
+
 async fn navigate_with_url(
     lxapp: Arc<LxApp>,
     target_url: String,
@@ -122,64 +198,183 @@ async fn navigate_with_url(
     }
 }
 
-fn navigate_back_impl(lxapp: &LxApp, delta: u32) -> Result<(), LxAppError> {
-    let current_path = current_page_path(lxapp)?;
-
-    if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_back(delta)?;
-        Ok(())
-    } else {
-        Err(LxAppError::Runtime("Current page not found".to_string()))
-    }
+fn configured_page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<String> {
+    let url = page_url(lxapp, name, params).map_err(|e| js_error_from_lxapp_error(&e))?;
+    ensure_page_exists_js(lxapp, &url)?;
+    Ok(url)
 }
 
-/// Push a configured page onto the stack.
-///
-/// A route can appear on the stack only once. The promise rejects with
-/// `data.reason === "duplicate_route"` when the target is already present,
-/// or `data.reason === "stack_full"` when the ten-page limit is reached.
-async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let target_url =
-        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
+fn tab_url(lxapp: &LxApp, name: &str) -> JSResult<String> {
+    let url = page_url(lxapp, name, None).map_err(|e| js_error_from_lxapp_error(&e))?;
+    ensure_page_exists_js(lxapp, &url)?;
+    if !is_tabbar_page_url(lxapp, &url) {
+        return Err(js_invalid(format!(
+            "'{name}' is not a tab; go to it with {{ page: '{name}' }}"
+        )));
+    }
+    Ok(url)
+}
 
-    ensure_page_exists_js(&lxapp, &target_url)?;
-    // Reject before resolving the target: a rejected navigateTo must not
-    // touch the query or opener of a page already on the stack.
+/// Push a page and return its handle at once. `opened` settles when the page
+/// is on screen and `result` when it leaves; a failed open rejects both. A tab
+/// root pushes its one instance, refused while that instance is on the stack.
+fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSObject> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
+    // Refuse before resolving the target: a refused push must not touch the
+    // query or opener of a page already on the stack.
     lxapp
         .validate_navigation_entry(&target_url, NavigationType::Forward)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    let page_svc = lxapp
-        .create_page_for_entry_in_ctx(&ctx, &target_url)
-        .await
-        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
-    let (opener_port, page_port) = message_port::pair(&ctx)?;
-    page_svc
-        .bind_opener(page_port)
-        .map_err(|e| js_internal_error(format!("Failed to bind page opener: {}", e)))?;
-    let result = page_svc
-        .bind_result()
-        .map_err(|e| js_internal_error(format!("Failed to bind page result: {}", e)))?;
-    opener_port.set("result", result)?;
+    let (handle, page_port) = message_port::pair(ctx)?;
+    let pushed: Rc<RefCell<Option<PageSvc>>> = Rc::default();
+    let (result_tx, result_rx) = oneshot::channel::<JSResult<JSObject>>();
 
-    navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, false)
-        .await
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let open_ctx = ctx.clone();
+    let open_slot = pushed.clone();
+    let opened = Promise::from_future(ctx, None, async move {
+        let opened = async {
+            let page_svc = lxapp
+                .create_page_for_entry_in_ctx(&open_ctx, &target_url)
+                .await
+                .map_err(|e| js_internal_error(format!("Failed to create the page: {e}")))?;
+            page_svc.bind_opener(page_port)?;
+            let result = page_svc.bind_result()?;
+            *open_slot.borrow_mut() = Some(page_svc);
+            navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, true)
+                .await
+                .map_err(|e| js_error_from_lxapp_error(&e))?;
+            Ok::<_, rong::RongJSError>(result)
+        }
+        .await;
+        match opened {
+            Ok(result) => {
+                let _ = result_tx.send(Ok(result));
+                Ok(())
+            }
+            Err(error) => {
+                let _ = result_tx.send(Err(error.clone()));
+                Err(error)
+            }
+        }
+    })?;
+    let result = Promise::from_future(ctx, None, async move {
+        match result_rx.await {
+            Ok(result) => result,
+            Err(_) => Err(js_internal_error("the page was never opened")),
+        }
+    })?;
 
-    Ok(opener_port)
+    let close = JSFunc::new(ctx, move || -> JSResult<()> {
+        let page_svc = pushed.borrow().clone().ok_or_else(|| {
+            js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
+                "the page has not opened yet; await handle.opened first".to_string(),
+            ))
+        })?;
+        page_svc
+            .leave_page()
+            .map_err(|e| js_error_from_lxapp_error(&e))
+    })?
+    .name("close")?;
+
+    handle.set("opened", opened)?;
+    handle.set("result", result)?;
+    handle.set("close", close)?;
+    Ok(handle)
 }
 
-/// Pop one or more pages and reveal the destination page.
-///
-/// `options` and `options.delta` are optional; both default to one page. The
-/// promise resolves once the destination WebView is ready, so callers can
-/// safely continue with work that targets the revealed page.
-async fn navigate_back(ctx: JSContext, options: Optional<NavigateBack>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let delta = navigate_back_delta(options.0);
+/// Replace the current page. The new page takes over the opener and the
+/// result it is owed; replacing a page with its own route reloads it.
+async fn replace(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
+    if is_tabbar_page_url(&lxapp, &target_url) {
+        return Err(js_error_from_business_code_with_detail(
+            1002,
+            &format!("a tab cannot replace a page; go to it with {{ tab: '{name}' }}"),
+        ));
+    }
+    let current = lxapp.current_page_svc_in_ctx(ctx).await?;
+    let to_self = current_page_path(&lxapp)
+        .ok()
+        .is_some_and(|path| lxapp.resolve_entry_path(&target_url) == path);
+    if !to_self {
+        let page_svc = lxapp
+            .create_page_for_entry_in_ctx(ctx, &target_url)
+            .await
+            .map_err(|e| js_internal_error(format!("Failed to create the page: {e}")))?;
+        current.hand_over_opener(&page_svc)?;
+    }
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)
+        .await
+        .map_err(|e| js_error_from_lxapp_error(&e))
+}
 
-    navigate_back_impl(&lxapp, delta).map_err(|e| js_error_from_lxapp_error(&e))?;
+async fn switch_tab(ctx: &JSContext, name: String) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let target_url = tab_url(&lxapp, &name)?;
+    let page_svc = lxapp.get_or_create_page_in_ctx(ctx, &target_url).await?;
+    let _ = page_svc.clear_opener();
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
+        .await
+        .map_err(|e| js_error_from_lxapp_error(&e))
+}
+
+/// `lx.nav.go`: pushing a `{ page }` returns its handle at once; every other
+/// move returns a promise.
+fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult<JSObject> {
+    let target = nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let replace_current = options.0.and_then(|options| options.replace) == Some(true);
+    if replace_current && !matches!(target, NavTarget::Page { .. }) {
+        return Err(js_invalid("replace applies to a { page } target"));
+    }
+    let task_ctx = ctx.clone();
+    let promise = match target {
+        NavTarget::Page { name, params } if !replace_current => return push(&ctx, name, params),
+        NavTarget::Page { name, params } => {
+            Promise::from_future(
+                &ctx,
+                None,
+                async move { replace(&task_ctx, name, params).await },
+            )?
+        }
+        NavTarget::Tab(name) => {
+            Promise::from_future(&ctx, None, async move { switch_tab(&task_ctx, name).await })?
+        }
+        NavTarget::App(options) => Promise::from_future(&ctx, None, async move {
+            navigator::navigate_to_app(task_ctx, options).await
+        })?,
+        NavTarget::Url(url) => Promise::from_future(&ctx, None, async move {
+            crate::surface::open_url(task_ctx, url, Optional(None))
+                .await
+                .map(|_| ())
+        })?,
+    };
+    Ok(promise.into_object())
+}
+
+/// Pop `n` pages (default one), stopping at the root. Resolves once the
+/// revealed page is ready.
+async fn back(ctx: JSContext, n: Optional<f64>) -> JSResult<()> {
+    let n = n.0.unwrap_or(1.0);
+    if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0) {
+        return Err(js_invalid(
+            "back(n) takes a whole number of pages, at least 1",
+        ));
+    }
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let depth = lxapp.get_page_stack().len().saturating_sub(1);
+    let delta = (n as usize).min(depth);
+    if delta == 0 {
+        return Ok(());
+    }
+    let current_path = current_page_path(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let page = lxapp.get_page(&current_path).ok_or_else(|| {
+        js_error_from_lxapp_error(&LxAppError::Runtime("Current page not found".into()))
+    })?;
+    page.navigate_back(delta as u32)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
     if let Some(path) = lxapp.peek_current_page()
         && let Some(page) = lxapp.get_page(&path)
     {
@@ -190,79 +385,17 @@ async fn navigate_back(ctx: JSContext, options: Optional<NavigateBack>) -> JSRes
     Ok(())
 }
 
-/// Replace the current stack entry with a configured page.
-///
-/// Redirecting to the current route keeps its page instance and runs `onLoad`
-/// again with the new query. Redirecting to a route lower in the stack rejects
-/// with `data.reason === "duplicate_route"`.
-async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
+/// Clear the stack and start again at a page or tab. Every discarded page's
+/// result settles canceled.
+async fn reset(ctx: JSContext, target: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let target_url =
-        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
-
-    ensure_page_exists_js(&lxapp, &target_url)?;
-    if is_tabbar_page_url(&lxapp, &target_url) {
-        return Err(js_error_from_business_code_with_detail(
-            1002,
-            "redirectTo cannot navigate to a tabBar page",
-        ));
-    }
-
-    // Redirecting the current page to its own route keeps the instance;
-    // any other target resolves like a fresh entry.
-    let redirect_to_self = current_page_path(&lxapp)
-        .ok()
-        .is_some_and(|current| lxapp.resolve_entry_path(&target_url) == current);
-    let page_svc = if redirect_to_self {
-        lxapp
-            .get_or_create_page_in_ctx(&ctx, &target_url)
-            .await
-            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
-    } else {
-        lxapp
-            .create_page_for_entry_in_ctx(&ctx, &target_url)
-            .await
-            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
+    let target_url = match nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))? {
+        NavTarget::Page { name, params } => configured_page_url(&lxapp, &name, params.as_ref())?,
+        NavTarget::Tab(name) => tab_url(&lxapp, &name)?,
+        NavTarget::App(_) | NavTarget::Url(_) => {
+            return Err(js_invalid("reset takes a { page } or { tab } target"));
+        }
     };
-    let _ = page_svc.clear_opener();
-
-    navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)
-        .await
-        .map_err(|e| js_error_from_lxapp_error(&e))
-}
-
-/// Switch to a configured tab page.
-///
-/// The tab page being left is hidden and retained. Non-tab pages pushed above
-/// a tab leave the stack and receive `onUnload`.
-async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let target_url =
-        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
-
-    ensure_page_exists_js(&lxapp, &target_url)?;
-
-    let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
-        .await
-        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
-    let _ = page_svc.clear_opener();
-
-    navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
-        .await
-        .map_err(|e| js_error_from_lxapp_error(&e))
-}
-
-/// Clear the page stack and launch a configured page as the new root.
-///
-/// Resolves once the navigation is dispatched, like `redirectTo` and `switchTab`;
-/// the new page loads after.
-async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let target_url =
-        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
-
-    ensure_page_exists_js(&lxapp, &target_url)?;
     lxapp
         .relaunch(&target_url)
         .map(|_| ())
@@ -270,61 +403,26 @@ async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_nav_property(ctx)
+}
+
+// Typed by hand in the prelude: `go`'s return depends on its target, which
+// js_api cannot express.
+fn nav_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    let namespace = JSObject::new(ctx);
+    namespace.set("go", JSFunc::new(ctx, go)?.name("go")?)?;
+    namespace.set("back", JSFunc::new(ctx, back)?.name("back")?)?;
+    namespace.set("reset", JSFunc::new(ctx, reset)?.name("reset")?)?;
+    namespace.set(
+        "leaveApp",
+        JSFunc::new(ctx, navigator::navigate_back_app)?.name("leaveApp")?,
+    )?;
+    Ok(namespace)
 }
 
 rong::js_api! {
-    fn register_api(ctx) {
+    fn register_nav_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn navigateTo(
-            ts_params = "options: NavigateToOptions",
-            ts_return = "Promise<PageMessagePort>"
-        ) = navigate_to;
-        fn navigateBack(
-            ts_params = "options?: NavigateBackOptions",
-            ts_return = "Promise<void>"
-        ) = navigate_back;
-        fn redirectTo(ts_params = "options: RedirectToOptions") = redirect_to;
-        fn switchTab(ts_params = "options: SwitchTabOptions") = switch_tab;
-        fn reLaunch(ts_params = "options: ReLaunchOptions") = re_launch;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn page_navigation_rejects_route_paths() {
-        let options = PageTargetOptions {
-            page: None,
-            path: Some("/pages/home/index".to_string()),
-            query: None,
-        };
-
-        let error = configured_page_name(&options).unwrap_err().to_string();
-        assert!(error.contains("path is not supported"));
-    }
-
-    #[test]
-    fn page_navigation_requires_a_non_empty_page_name() {
-        let options = PageTargetOptions {
-            page: Some("  ".to_string()),
-            path: None,
-            query: None,
-        };
-
-        let error = configured_page_name(&options).unwrap_err().to_string();
-        assert!(error.contains("page must be a non-empty configured page name"));
-    }
-
-    #[test]
-    fn navigate_back_defaults_to_one_page() {
-        assert_eq!(navigate_back_delta(None), 1);
-        assert_eq!(navigate_back_delta(Some(NavigateBack { delta: None })), 1);
-        assert_eq!(
-            navigate_back_delta(Some(NavigateBack { delta: Some(3) })),
-            3
-        );
+        const nav: "NavApi" = nav_namespace(ctx)?;
     }
 }

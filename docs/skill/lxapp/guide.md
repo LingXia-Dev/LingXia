@@ -104,7 +104,7 @@ export default definePage({
 | `await flush()` | Resolves once every update so far reached the View; rejects if the page unloads first or a write was discarded. |
 | `params`, `name` | This instance's params, its page name. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
-| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from `(await lx.navigateTo(...)).result`, or from the handle `lx.surface.openPage` returned: `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
 | `opener`, `surface` | The page that pushed this one, or this page's surface; absent otherwise. |
 
 ### Lifecycle
@@ -117,7 +117,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | `onShow()` | Becoming visible, on entry and every return. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
-| `onUnload()` | Left the stack (`navigateBack`, `redirectTo`, a `switchTab` that drops it). |
+| `onUnload()` | Left the stack (`lx.nav.back`, a replace, a tab switch that drops it, `lx.nav.reset`). |
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
@@ -125,12 +125,12 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 - **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
   desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
   and the next show brings `onShow` and a new `onReady`.
-- `redirectTo` onto the current page keeps the instance and calls `onLoad`
-  again.
-- Every `navigateTo` is its own instance, so `detail?id=1 → detail?id=2`
-  stacks. Tab pages are singletons. Rejections carry `error.data.reason`:
-  `"duplicate_route"` or `"stack_full"` (ten pages).
-- `await lx.navigateBack()` pops one; `lx.navigateBack({ delta: 2 })` pops more.
+- Replacing the current page with its own route keeps the instance and calls
+  `onLoad` again.
+- Every push is its own instance, so `detail {id: 1} → detail {id: 2}`
+  stacks. Tab pages are singletons. Refusals carry `error.data.reason`:
+  `"duplicate_route"` (a tab already on the stack) or `"stack_full"` (ten pages).
+- `await lx.nav.back()` pops one; `lx.nav.back(2)` pops more, stopping at the root.
 
 ### What resets
 
@@ -450,14 +450,26 @@ await lx.tabBar.update({
 
 `iconPath: null` restores the declared icon.
 
-### Switching tabs
+### Navigating
 
-`navigateTo` and `redirectTo` reject tab pages; use `lx.switchTab`. Navigation
-always takes a page name ([lx-api](./lx-api.md#find-a-method-or-type)).
+`lx.nav` takes a target naming one destination: `{ page, params? }`,
+`{ tab }`, `{ app, page?, params? }` or `{ url }`. Names come from
+`lxapp.json`; `params` is checked against what the page declares.
 
 ```ts
-lx.switchTab({ page: 'profile' }); // page name from lxapp.json
+const order = lx.nav.go({ page: 'order', params: { id } }); // handle, at once
+await order.opened;                          // on screen; rejects if it could not open
+const r = await order.result;                // { status: 'ok', value } | { status: 'canceled', reason }
+
+await lx.nav.go({ page: 'login' }, { replace: true }); // inherits this page's opener and result
+await lx.nav.go({ tab: 'profile' });
+await lx.nav.reset({ page: 'home' });        // new stack; discarded pages' results settle canceled
+await lx.nav.go({ app: 'lingxia-chat', page: 'chat' });
+await lx.nav.leaveApp();                     // back to the lxapp that opened this one
 ```
+
+A tab page cannot replace another page. `{ url }` opens the in-app browser and
+does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
 ### Navigation bar
 
@@ -534,8 +546,7 @@ release();
 - Several guards on one page are independent: the page is held while any is
   live, and all must return `true` to leave.
 - While a request is being answered, further back/home presses are ignored.
-- Not guarded: programmatic navigation (`lx.navigateBack`, `redirectTo`,
-  `reLaunch`, `<lx-navigator>`), tab switches, closing the lxapp from the
+- Not guarded: programmatic navigation (`lx.nav`, `<lx-navigator>`), tab switches, closing the lxapp from the
   capsule, and the root page (nothing to pop).
 - The guard belongs to the current document: a reload, or leaving the stack,
   clears it.
@@ -609,6 +620,6 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Touching the DOM from Logic; Logic has no DOM.
 - Expecting `_`-prefixed helpers or hooks to be actions.
 - Expecting `App({}).globalData` changes to re-render.
-- `navigateTo` / `redirectTo` on a tab page.
+- Pushing a tab page instead of `lx.nav.go({ tab })`.
 - Dropping the function an `lx.on*` call returns.
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

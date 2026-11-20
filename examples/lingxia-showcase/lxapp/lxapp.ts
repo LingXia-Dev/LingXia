@@ -33,7 +33,7 @@ function routeFromAppLink(options?: AppLaunchOptions) {
   delete query.page;
   // A link carries whatever the sender wrote, so the name cannot be checked
   // here — navigateTo rejects one this lxapp does not have.
-  void lx.navigateTo({ page: page as ConfiguredPageName, query });
+  void lx.nav.go({ page: page as ConfiguredPageName, params: query });
 }
 
 async function applyHostChrome(os: string, tag: string) {

@@ -225,7 +225,7 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
 
 test("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
   id: "LOGIC-007",
-  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.reLaunch'],
+  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.nav.reset'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "LOGIC-007");

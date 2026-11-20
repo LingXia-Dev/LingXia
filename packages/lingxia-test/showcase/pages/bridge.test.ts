@@ -88,7 +88,7 @@ async function startAtHome(app: TestApp): Promise<void> {
 
 test('hand every preloaded tab a working port once it is shown', {
   id: 'BRIDGE-001',
-  covers: ['lx.switchTab'],
+  covers: ['lx.nav.go'],
   app: SHOWCASE_APP_ID,
   timeout: 120_000,
 }, async (t) => {
@@ -115,7 +115,7 @@ test('hand every preloaded tab a working port once it is shown', {
 
 test('bootstrap a pushed page through its own port', {
   id: 'BRIDGE-002',
-  covers: ['lx.navigateTo'],
+  covers: ['lx.nav.go'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -133,7 +133,7 @@ test('bootstrap a pushed page through its own port', {
 
 test("keep a covered page's port across navigateTo and back", {
   id: 'BRIDGE-003',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  covers: ['lx.nav.go', 'lx.nav.back'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -160,7 +160,7 @@ test("keep a covered page's port across navigateTo and back", {
 
 test('bootstrap a re-entered route as a fresh document', {
   id: 'BRIDGE-004',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  covers: ['lx.nav.go', 'lx.nav.back'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -190,7 +190,7 @@ test('bootstrap a re-entered route as a fresh document', {
 
 test('settle on a working port after rapid re-entry', {
   id: 'BRIDGE-005',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  covers: ['lx.nav.go', 'lx.nav.back'],
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
 }, async (t) => {
@@ -250,7 +250,7 @@ test('bring the bridge back up after the app restarts', {
 
 test('re-enter a route the moment it bootstraps without stalling its port', {
   id: 'BRIDGE-007',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  covers: ['lx.nav.go', 'lx.nav.back'],
   app: SHOWCASE_APP_ID,
   timeout: 150_000,
 }, async (t) => {

@@ -1,4 +1,4 @@
-//! `{ kind: 'page' | 'app' }` resolve the way `navigateTo` / `navigateToApp` do.
+//! `{ kind: 'page' | 'app' }` resolve the way `lx.nav.go` does.
 //!
 //! The service crate does not load lxapps. The host facade installs a
 //! validator and an opener once at bootstrap.

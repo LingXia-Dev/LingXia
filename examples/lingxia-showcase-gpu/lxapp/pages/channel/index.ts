@@ -35,7 +35,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       tickerSession(
         _params: Record<string, unknown>,
         ch: ChannelHandle<ServerMessage, ClientCommand>,

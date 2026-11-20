@@ -326,7 +326,7 @@ fn is_tabbar_page_url(app: &LxApp, url: &str) -> bool {
 /// caller (`lx.automation()` from an lxapp's own Logic) **must** pass `false`:
 /// awaiting readiness there deadlocks, since the single logic thread that would
 /// signal readiness is the one blocked on this call. That matches the
-/// fire-and-forget semantics of `lx.navigateTo`.
+/// fire-and-forget semantics of `lx.nav.go`.
 pub async fn navigate(
     app: &Arc<LxApp>,
     page_name: &str,
@@ -452,7 +452,7 @@ const COVERED_GRACE: Duration = Duration::from_millis(1000);
 /// Wait until `page` has dispatched `onReady`, bounded by `timeout`.
 ///
 /// Fails when the page WebView reports an error, or when the instance is
-/// disposed first — e.g. the app's own pending `lx.reLaunch` replaced it. Only
+/// disposed first — e.g. the app's own pending `lx.nav.reset` replaced it. Only
 /// an off-Logic-thread caller may await this; see [`navigate`].
 pub async fn wait_page_runtime_ready(
     app: &Arc<LxApp>,

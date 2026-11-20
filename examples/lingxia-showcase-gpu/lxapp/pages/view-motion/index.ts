@@ -3,7 +3,7 @@ export default definePage({
   data: { lang: '', dipped: false },
   setup(thisPage) {
     const actions = {
-      async open({ page }: { page: keyof LxAppPages }) { await lx.navigateTo({ page }); },
+      async open({ page }: { page: keyof LxAppPages }) { await lx.nav.go({ page }).opened; },
       // Reverses the fade 100 ms in, sooner than two taps can land.
       interrupt() {
         thisPage.update(d => { d.dipped = true; });

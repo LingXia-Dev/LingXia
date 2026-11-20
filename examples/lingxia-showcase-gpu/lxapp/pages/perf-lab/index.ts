@@ -48,9 +48,9 @@ export default definePage({
         try {
           if (scene === 'transition') {
             while (Date.now() < until) {
-              await lx.navigateTo({ page: 'perf-target', query: { rows: String(count) } });
+              await lx.nav.go({ page: 'perf-target', params: { rows: String(count) } }).opened;
               await sleep(400);
-              await lx.navigateBack();
+              await lx.nav.back();
               await sleep(400);
             }
           } else if (scene === 'animation') {

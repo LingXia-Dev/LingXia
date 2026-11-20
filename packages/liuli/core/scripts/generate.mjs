@@ -330,7 +330,7 @@ const pageLogic = page => [
   '      },',
   '      actions: {',
   '        async open({ page }: { page: string }) {',
-  '          await lx.navigateTo({ page });',
+  '          await lx.nav.go({ page }).opened;',
   '        },',
   '        publish,',
   '        signIn,',

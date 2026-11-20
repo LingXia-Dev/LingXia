@@ -45,7 +45,7 @@ test('streams a complete response from real page input', { app: SHOWCASE_APP_ID 
 test('cancel an active response, finish Logic cleanup, and send again', {
   id: 'STREAM-CANCEL-001',
   app: SHOWCASE_APP_ID,
-  covers: ['lx.navigateTo'],
+  covers: ['lx.nav.go'],
   start: { page: 'stream' },
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'STREAM-CANCEL-001');

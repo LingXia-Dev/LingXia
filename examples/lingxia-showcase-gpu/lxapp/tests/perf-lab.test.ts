@@ -131,7 +131,7 @@ test('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH
   withinBudget(t, metrics, verdict.pass, verdict.line);
 });
 
-test('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.navigateTo', 'lx.navigateBack'] }, async (t) => {
+test('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.nav.go', 'lx.nav.back'] }, async (t) => {
   await scene(t, 'transition', 100);
   const back = await runBudget(t, 'transition', 100);
   await t.attach('pop-metrics', back);

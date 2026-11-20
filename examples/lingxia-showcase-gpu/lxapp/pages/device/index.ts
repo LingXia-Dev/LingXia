@@ -48,7 +48,7 @@ export default definePage({
     }
 
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async selectSection({ type }: { type: string }) {
         actions.stopNetworkChangeListen();
         actions.stopDeviceOrientationListen();

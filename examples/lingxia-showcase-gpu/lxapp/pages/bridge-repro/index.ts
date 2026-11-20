@@ -31,7 +31,7 @@ export default definePage({
   } satisfies BootstrapData,
   setup(page) {
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       // Called immediately when the View mounts. On Apple this request is queued
       // until helloAck + ready have arrived, so it exposes a stalled bootstrap.
       onBootstrapProbe(params: { nonce: number; viewSentAt: number }): BootstrapProbe {

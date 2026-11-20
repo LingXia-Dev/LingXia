@@ -762,7 +762,7 @@ export interface PageDriver {
  * When a nav action resolves. `'commit'` (default) resolves once the page
  * stack changed, before the landed page is ready. `'ready'` also waits for its
  * `onReady` and rejects if the page is disposed or replaced first (e.g. by the
- * app's own `lx.reLaunch`); it is available only in a host automation run
+ * app's own `lx.nav.reset`); it is available only in a host automation run
  * ({@link NavDriver}), since app Logic awaiting its own `onReady` would
  * deadlock. The `@lingxia/test` fixture's `t.app.nav` defaults to `'ready'`.
  */
@@ -822,7 +822,7 @@ export interface PageInfo {
 /**
  * Page-stack navigation for the selected lxapp, as app Logic sees it. Action
  * verbs take a configured page name (`redirect` rejects a tab-bar page);
- * `back` pops; `current`/`stack` read. Unlike the JS `lx.navigateTo` family
+ * `back` pops; `current`/`stack` read. Unlike `lx.nav`,
  * this returns the landed page. It resolves once the stack changed, before the
  * destination is ready.
  */

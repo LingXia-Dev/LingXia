@@ -48,7 +48,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
 | First open of this session | `onLaunch(options)`, then `onShow` | `lxapp` | `open` |
-| Reopened while alive (link, notification tap, `navigateToApp`, `openApp`, `bringToFront`) | `onShow` with path/query | `lxapp` | `switch_back` |
+| Reopened while alive (link, notification tap, `lx.nav.go({ app })`, `openApp`, `bringToFront`) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
@@ -90,12 +90,12 @@ but get no hook until first selected.
 
 | Action | Page entered | Page left |
 | --- | --- | --- |
-| `navigateTo` | New instance: `onLoad` → `onShow` → `onReady` | `onHide`, `data` kept |
-| `redirectTo` another page | New instance: `onLoad` → `onShow` → `onReady` | `onUnload` |
-| `navigateBack` | `onShow` only, `data` kept | Each popped page: `onUnload` |
-| `switchTab`, first visit | `onLoad` → `onShow` → `onReady` | Left tab: `onHide`; pushed pages: `onUnload` |
-| `switchTab`, later visits | `onShow` only, `data` kept | Same |
-| `reLaunch` | New instance: `onLoad` → `onShow` → `onReady` | Every loaded page, tabs included: `onUnload` |
+| `lx.nav.go({ page })` | New instance: `onLoad` → `onShow` → `onReady` | `onHide`, `data` kept |
+| `go(…, { replace: true })` to another page | New instance: `onLoad` → `onShow` → `onReady` | `onUnload` |
+| `lx.nav.back` | `onShow` only, `data` kept | Each popped page: `onUnload` |
+| `go({ tab })`, first visit | `onLoad` → `onShow` → `onReady` | Left tab: `onHide`; pushed pages: `onUnload` |
+| `go({ tab })`, later visits | `onShow` only, `data` kept | Same |
+| `lx.nav.reset` | New instance: `onLoad` → `onShow` → `onReady` | Every loaded page, tabs included: `onUnload` |
 | Reopen at a named page (link, notification) in main, not the current page | `onLoad` with the new query | — |
 | Reopen at the current page, or on a live aside | App `onShow` (`switch_back`) carries `path` and `query`; the page stack is kept | — |
 | Host background / foreground | `onShow` | `onHide` |

@@ -9,7 +9,7 @@ interface UiPage extends LogicPage<{ logicCounter: number; instanceTag: string; 
 
 test('keep App identity across pages and merge setData into the correct View', {
   id: 'PAGE-GLOBALS-001', app: SHOWCASE_APP_ID,
-  covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.navigateTo'],
+  covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.nav.go'],
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-001');
   defer(async () => {

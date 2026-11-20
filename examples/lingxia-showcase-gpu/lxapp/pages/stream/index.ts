@@ -131,7 +131,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async *onSend(params: SendMessage): AsyncGenerator<ChatChunk, void> {
         const text = (params?.text ?? '').trim();
         if (!text || page.data.isStreaming) return;

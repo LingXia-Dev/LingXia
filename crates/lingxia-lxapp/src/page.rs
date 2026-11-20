@@ -2589,8 +2589,8 @@ impl PageInstance {
                         .is_some_and(|page| id == &page.instance_id_string())
                 }) {
                     return Err(LxAppError::InvalidParameter(format!(
-                        "navigateTo target '{path}' is already on the page stack; \
-                         use lx.switchTab or lx.navigateBack to return to it."
+                        "'{path}' is already on the page stack; \
+                         use lx.nav.go({{ tab }}) or lx.nav.back() to return to it."
                     )));
                 }
             }

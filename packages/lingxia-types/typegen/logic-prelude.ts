@@ -124,7 +124,7 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    */
   surface?: PageSurface;
   /**
-   * Available when this page was opened by `lx.navigateTo(...)`.
+   * Available when this page was pushed by `lx.nav.go(...)`.
    */
   opener?: PageMessagePort;
   /**
@@ -263,6 +263,32 @@ export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   resume(): Promise<void>;
 }
 
+/** The params page `N` declares; any JSON params before the registry exists. */
+export type NavParams<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly params: infer T } } ? T : PageQuery
+    : PageQuery;
+
+/** The result page `N` declares; any JSON value before the registry exists. */
+export type NavResult<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly result: infer T } } ? T : JsonValue
+    : JsonValue;
+
+/** A page to push or replace. `params` is required when the page's declared params have a required key. */
+export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
+    & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
+
+/** What `lx.nav.go` returns for a pushed page. */
+export type PageHandle<R = JsonValue> = {
+    /** Settles when the page is on screen; rejects when it could not open. */
+    readonly opened: Promise<void>;
+    /** Settles once, after the page's `onUnload`. */
+    readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    postMessage(message: unknown): void;
+    onMessage(handler: (message: unknown) => void): () => void;
+    /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
+    close(): void;
+};
+
 declare global {
   /**
    * The lxapp's configured page names, one key per page.
@@ -272,6 +298,31 @@ declare global {
    * stays `string` and every navigation call compiles exactly as before.
    */
   interface LxAppPages {}
+
+  /** The lxapp's tab roots, one key per tab page. Generated beside `LxAppPages`. */
+  interface LxAppTabs {}
+
+  /** Each page's `definePage` type, generated for Logic; `lx.nav` reads params and result from it. */
+  interface LxAppPageTypes {}
+
+  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  interface NavApi {
+    /**
+     * Push a page. The handle is returned at once: `opened` settles when the
+     * page is on screen, `result` when it leaves.
+     */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>>;
+    /** Replace the current page; the new page inherits its opener and pending result. */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
+    /** Switch tabs, open another lxapp, or open a URL in the in-app browser. */
+    go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
+    /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
+    back(n?: number): Promise<void>;
+    /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
+    reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
+    /** Back to the lxapp that opened this one. */
+    leaveApp(): Promise<void>;
+  }
 
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member

@@ -11,10 +11,10 @@ export default definePage({
           return;
         }
         if (query && typeof query === "object") {
-          await lx.navigateTo({ page, query });
+          await lx.nav.go({ page, params: query }).opened;
           return;
         }
-        await lx.navigateTo({ page });
+        await lx.nav.go({ page }).opened;
       },
     };
     return {

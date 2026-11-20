@@ -53,7 +53,7 @@ async function assertRejections(
 
 test('reject malformed navigation arguments with stable codes', {
   id: 'ARGS-NAV-001',
-  covers: ['lx.navigateTo', 'lx.redirectTo', 'lx.switchTab'],
+  covers: ['lx.nav.go'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ARGS-NAV-001');

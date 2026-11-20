@@ -42,7 +42,7 @@ export default definePage({
       },
     };
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async writeText(params?: { text?: string }) {
         const text = params?.text ?? "";
         try {

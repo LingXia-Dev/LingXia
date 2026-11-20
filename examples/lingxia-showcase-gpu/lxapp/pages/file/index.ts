@@ -224,7 +224,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       selectSection({ section }: { section: string }) {
         if (section === "openFile" || section === "chooseFile") {
           page.update(d => { d.activeDemo = section; });

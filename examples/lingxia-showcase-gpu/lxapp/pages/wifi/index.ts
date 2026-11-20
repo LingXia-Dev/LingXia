@@ -54,7 +54,7 @@ export default definePage({
     }
 
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       // WiFi APIs
       async startWifi() {
         try {

@@ -14,74 +14,74 @@ export default definePage({
   setup(page) {
     const actions = {
       async navigateToStreamPage() {
-        await lx.navigateTo({ page: "stream" });
+        await lx.nav.go({ page: "stream" }).opened;
       },
       async navigateToChannelPage() {
-        await lx.navigateTo({ page: "channel" });
+        await lx.nav.go({ page: "channel" }).opened;
       },
       async navigateToBridgeReproPage() {
-        await lx.navigateTo({ page: "bridge-repro" });
+        await lx.nav.go({ page: "bridge-repro" }).opened;
       },
       // Navigate to UI API page with specific type parameter
       async navigateToUIPage(params: { type?: string } | undefined) {
         const { type = "navigation" } = params || {};
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "ui",
-          query: { type },
-        });
+          params: { type },
+        }).opened;
       },
       // Navigate to Device API page with specific type parameter
       async navigateToDevicePage(params: { type?: string } | undefined) {
         const { type = "device" } = params || {};
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "device",
-          query: { type },
-        });
+          params: { type },
+        }).opened;
       },
       // Navigate to WiFi API page
       async navigateToWifiPage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "wifi",
-        });
+        }).opened;
       },
       // Navigate to System API page with specific type parameter
       async navigateToSystemPage(params: { type?: string } | undefined) {
         const { type = "appBaseInfo" } = params || {};
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "system",
-          query: { type },
-        });
+          params: { type },
+        }).opened;
       },
       // Navigate to Location API page
       async navigateToLocationPage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "location",
-        });
+        }).opened;
       },
       // Navigate to Media API page with specific type parameter
       async navigateToMediaPage(params: { type?: string } | undefined) {
         const { type = "Pictures" } = params || {};
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "media",
-          query: { type },
-        });
+          params: { type },
+        }).opened;
       },
       async navigateToOpenFilePage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "file",
-          query: { section: "openFile" },
-        });
+          params: { section: "openFile" },
+        }).opened;
       },
       async navigateToChooseFilePage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "file",
-          query: { section: "chooseFile" },
-        });
+          params: { section: "chooseFile" },
+        }).opened;
       },
       async navigateToTestMiniApp() {
         try {
-          await lx.navigateToApp({
-            appId: "lingxia-chat",
+          await lx.nav.go({
+            app: "lingxia-chat",
             page: "chat",
           });
         } catch (err) {
@@ -91,10 +91,10 @@ export default definePage({
       },
       async navigateToCloudPage(params: { type?: string } | undefined) {
         const { type = "auth" } = params || {};
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "cloud",
-          query: { type },
-        });
+          params: { type },
+        }).opened;
       },
       async openDeepSeek() {
         const targets: Array<"self" | "aside" | "external"> = ["self", "aside", "external"];
@@ -120,17 +120,17 @@ export default definePage({
         }
       },
       async navigateToSharePage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "share",
-        });
+        }).opened;
       },
       async navigateToClipboardPage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "clipboard",
-        });
+        }).opened;
       },
       async navigateToLeaveGuardPage() {
-        await lx.navigateTo({ page: "leaveGuard" });
+        await lx.nav.go({ page: "leaveGuard" }).opened;
       },
       async exitApp() {
         const exit = await lx.ui.confirm({
@@ -146,9 +146,9 @@ export default definePage({
       },
       // Navigate to PullDownRefresh API page
       async navigateToPullDownRefreshPage() {
-        await lx.navigateTo({
+        await lx.nav.go({
           page: "pullToRefresh",
-        });
+        }).opened;
       },
     };
     return {

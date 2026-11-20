@@ -4,7 +4,7 @@ import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js'
 import { bindFixture, eventually, specNamespace, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
+test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.nav.go', 'lx.nav.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "UI-NAV-001");
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });

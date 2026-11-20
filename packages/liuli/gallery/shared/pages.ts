@@ -59,7 +59,7 @@ export function returnToWorkspaceWhenWide(page: string): () => void {
     if (sizeClass !== 'regular' || depth < 2) return;
     handedOff = page;
     rememberEntry(page);
-    void lx.navigateBack({ delta: depth - 1 });
+    void lx.nav.back(depth - 1);
   });
 }
 
@@ -72,7 +72,7 @@ export function pushEntryWhenNarrow(entry: () => string): () => void {
     const page = entry();
     if (sizeClass !== 'compact' || !page || page === 'home' || getCurrentPages().length > 1) return;
     rememberEntry('');
-    void lx.navigateTo({ page });
+    void lx.nav.go({ page });
   });
 }
 

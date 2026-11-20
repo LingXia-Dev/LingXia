@@ -251,7 +251,7 @@ impl LxAppStartupOptions {
     }
 
     /// JS `AppLaunchOptions`: `{ path, query, scene, url }`. Query is a nested
-    /// object so home lxapp Logic can route with `lx.navigateTo`. `url` is the
+    /// object so home lxapp Logic can route with `lx.nav.go`. `url` is the
     /// original inbound link and is present only for `scene: 8003`; `path` is
     /// the lxapp page, which for a product link is the initial page.
     pub fn launch_options_value(&self) -> Value {

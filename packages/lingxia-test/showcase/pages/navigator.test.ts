@@ -15,7 +15,7 @@ async function openNavigator(t: Fixture, id: string) {
 
 test('navigate through a component and return to the original page instances', {
   id: 'NAVIGATOR-STACK-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  covers: ['lx.nav.go', 'lx.nav.back'],
 }, async (t) => {
   const { app, page, home } = await openNavigator(t, 'NAVIGATOR-STACK-001');
   const navigator = await app.nav.current();
@@ -32,7 +32,7 @@ test('navigate through a component and return to the original page instances', {
 
 test('redirect through a component replaces only the current stack entry', {
   id: 'NAVIGATOR-REDIRECT-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.redirectTo'],
+  covers: ['lx.nav.go'],
 }, async (t) => {
   const { app, page, home } = await openNavigator(t, 'NAVIGATOR-REDIRECT-001');
   await page.view.css('lx-navigator[open-type="redirect"]').click();
@@ -45,7 +45,7 @@ test('redirect through a component replaces only the current stack entry', {
 
 test('relaunch through a component resets the stack and delivers its query', {
   id: 'NAVIGATOR-RELAUNCH-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.reLaunch'],
+  covers: ['lx.nav.reset'],
 }, async (t) => {
   const { app, page } = await openNavigator(t, 'NAVIGATOR-RELAUNCH-001');
   await page.view.css('lx-navigator[open-type="reLaunch"]').click();
@@ -56,7 +56,7 @@ test('relaunch through a component resets the stack and delivers its query', {
 
 test('switch tab through a component clears the pushed stack', {
   id: 'NAVIGATOR-TAB-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.switchTab'],
+  covers: ['lx.nav.go'],
 }, async (t) => {
   const { app, page } = await openNavigator(t, 'NAVIGATOR-TAB-001');
   await page.view.css('lx-navigator[open-type="switchTab"][page="todo"]').click();

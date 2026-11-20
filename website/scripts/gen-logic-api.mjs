@@ -50,10 +50,7 @@ const GROUPS = [
     slug: 'navigation',
     title: 'Navigation',
     summary: 'Move between pages of this lxapp, and between lxapps.',
-    members: [
-      'navigateTo', 'redirectTo', 'reLaunch', 'navigateBack', 'switchTab',
-      'navigateToApp', 'navigateBackApp',
-    ],
+    members: ['nav'],
   },
   {
     slug: 'surfaces',

@@ -49,8 +49,9 @@ import type {
   LxFile,
   NavigationBarApi,
   UiApi,
+  NavApi,
   NotificationApi,
-  PageMessagePort,
+  PageHandle,
   PreviewMediaHandle,
   TabSurface,
   PageSurface,
@@ -98,10 +99,7 @@ export const LX_API_NAMES = [
   'getVideoInfo',
   'getWifiList',
   'makePhoneCall',
-  'navigateBack',
-  'navigateBackApp',
-  'navigateTo',
-  'navigateToApp',
+  'nav',
   'navigationBar',
   'onDeviceOrientationChange',
   'onKeyDown',
@@ -111,8 +109,6 @@ export const LX_API_NAMES = [
   'openExternal',
   'openFile',
   'previewMedia',
-  'reLaunch',
-  'redirectTo',
   'saveImageToPhotosAlbum',
   'saveVideoToPhotosAlbum',
   'scanCode',
@@ -126,7 +122,6 @@ export const LX_API_NAMES = [
   'stopWifi',
   'supports',
   'surface',
-  'switchTab',
   'tabBar',
   'terminal',
   'tray',
@@ -190,6 +185,7 @@ const CONTROL_APPEARANCE_API = [
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
+const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
@@ -413,6 +409,7 @@ export const LX_RUNTIME_SURFACES = [
       'env',
       'fs',
       'host',
+      'nav',
       'navigationBar',
       'shell',
       'surface',
@@ -508,6 +505,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.ui',
     members: UI_API,
+  },
+  {
+    name: 'lx.nav',
+    layer: 'logic',
+    expression: 'lx.nav',
+    members: NAV_API,
   },
   {
     name: 'lx.terminal',
@@ -722,7 +725,7 @@ const TAB_SURFACE_API = [
   'scope',
   'visible',
 ] as const;
-const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage', 'result'] as const;
+const PAGE_HANDLE_API = ['close', 'onMessage', 'opened', 'postMessage', 'result'] as const;
 
 export const LX_RETURNED_OBJECT_SURFACES = [
   {
@@ -806,12 +809,11 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     factory: 'lx.surface.openUrl',
   },
   {
-    name: 'PageMessagePort',
-    members: PAGE_MESSAGE_PORT_API,
-    properties: ['result'],
-    optionalProperties: ['result'],
+    name: 'PageHandle',
+    members: PAGE_HANDLE_API,
+    properties: ['opened', 'result'],
     fixture: 'navigation',
-    factory: 'lx.navigateTo',
+    factory: 'lx.nav.go',
   },
 ] as const;
 
@@ -870,6 +872,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
   AssertTrue<Exact<UiApi, typeof UI_API>>,
+  AssertTrue<Exact<NavApi, typeof NAV_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
   AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,
   AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,
@@ -924,5 +927,5 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<SurfaceApi, typeof SURFACE_NAMESPACE_API>>,
   AssertTrue<Exact<PageSurface, typeof PAGE_SURFACE_API>>,
   AssertTrue<Exact<Extract<TabSurface, { scope: 'tab' }>, typeof TAB_SURFACE_API>>,
-  AssertTrue<Exact<PageMessagePort, typeof PAGE_MESSAGE_PORT_API>>,
+  AssertTrue<Exact<PageHandle, typeof PAGE_HANDLE_API>>,
 ];

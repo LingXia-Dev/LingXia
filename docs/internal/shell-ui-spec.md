@@ -666,7 +666,7 @@ Declaration model (owned by the single runtime writer, §7.2):
   fallback glyphs. A callback explicitly opens a declared Surface with
   `lx.shell.openDeclared(id, options?)`, a dynamic business app with
   `lx.shell.openApp(appId, options?)`, or performs app navigation with
-  `lx.navigateToApp({ appId: ... })`.
+  `lx.nav.go({ app: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
@@ -1166,16 +1166,16 @@ semantics every language surface MUST share.
 
 #### 7.1.1 App navigation versus App Surfaces
 
-`navigateToApp` and `openSurface` solve different navigation levels:
+`lx.nav.go({ app })` and `openSurface` solve different navigation levels:
 
 | Operation | Changes | Main switcher item | Back behavior | Result |
 |---|---|---|---|---|
-| `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
+| `lx.nav.go({ app, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.nav.leaveApp()` pops to the previous app | `Promise<void>` |
 | `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
 | `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
-`navigateToApp`: the former is a parallel shell workspace with its own runtime
+`lx.nav.go({ app })`: the former is a parallel shell workspace with its own runtime
 id, switcher lifecycle, role, and handle; the latter is sequential navigation
 inside the already-selected Surface and never creates or moves a shell item.
 The active app at the top of a navigation stack may change, but the owning
@@ -1361,7 +1361,7 @@ lowercase keys). Synonyms are not allowed.
 | open selector | `surface / app_id / page / url` | `surface / appId / page / url` | typed open-spec variants | native, lxapp |
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
 | runtime id | `surface_id` | not exposed to Logic; automation `surfaceLayout().identities` keys | `SurfaceId` | — |
-| app navigation | `navigate_to_app / navigate_back_app` | `navigateToApp / navigateBackApp` | same roots | navigateToLxApp, openApp |
+| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app }) / nav.leaveApp` | same roots | navigateToLxApp, openApp |
 | session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | never conflated with runtime id |
 | role | `role` | `SurfaceRole` | `SurfaceRole` | mode, kind |
 | presentation | `presentation` | `SurfacePresentation` | `Presentation` | form, style |

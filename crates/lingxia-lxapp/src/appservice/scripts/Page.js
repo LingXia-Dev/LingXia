@@ -38,7 +38,7 @@
       throw new Error("setData: Invalid page configuration");
     }
 
-    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', 'close', 'setResult', '_abortLifetime', '_cancelPendingSetData', '_setData', '_leave', '_bindResult', '_settleResult']) {
+    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', 'close', 'setResult', '_abortLifetime', '_cancelPendingSetData', '_setData', '_leave', '_bindResult', '_settleResult', '_handOver', '_adopt']) {
       if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
         throw new TypeError(`Page member '${key}' is reserved by the runtime`);
       }
@@ -217,6 +217,23 @@
       return new Promise((resolve) => {
         settleOpener = resolve;
       });
+    };
+
+    // A replacing page takes over the opener and the result it is owed.
+    pageSvc._handOver = function (target) {
+      const settle = settleOpener;
+      settleOpener = null;
+      const opener = pageSvc.opener;
+      delete pageSvc.opener;
+      target._adopt(opener, settle);
+    };
+
+    pageSvc._adopt = function (opener, settle) {
+      if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
+      result = null;
+      settleOpener = settle;
+      if (opener) pageSvc.opener = opener;
+      else delete pageSvc.opener;
     };
 
     pageSvc._settleResult = function (reason) {

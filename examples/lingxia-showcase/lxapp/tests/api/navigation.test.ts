@@ -79,15 +79,15 @@ test("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
 });
 
-test("reLaunch from Logic and reject invalid navigation", {
+test("reset from Logic and reject invalid navigation", {
   id: "NAV-LOGIC-001",
-  covers: ['lx.reLaunch', 'lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'],
+  covers: ['lx.nav.reset', 'lx.nav.go', 'lx.nav.back'],
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
 }, async (t) => {
   const { app } = bindFixture(t, "NAV-LOGIC-001");
 
-  await t.step('lx.reLaunch replaces the stack', async () => {
+  await t.step('lx.nav.reset replaces the stack', async () => {
     await app.nav.relaunch({ page: 'home' });
     await waitForCurrent(app, 'home');
     await relaunchFromLogic(app, 'device', { type: 'screen' });
@@ -98,7 +98,7 @@ test("reLaunch from Logic and reject invalid navigation", {
   await t.step('unknown page rejects', async () => {
     const rejected = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        await lx.navigateTo({ page: 'does-not-exist' });
+        await lx.nav.go({ page: 'does-not-exist' }).opened;
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -110,12 +110,12 @@ test("reLaunch from Logic and reject invalid navigation", {
     expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
   });
 
-  await t.step('navigateTo a tab already on the stack is duplicate_route', async () => {
+  await t.step('pushing a tab already on the stack is duplicate_route', async () => {
     await relaunchFromLogic(app, 'home');
     await waitForCurrent(app, 'home');
     const rejected = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        await lx.navigateTo({ page: 'home' });
+        await lx.nav.go({ page: 'home' }).opened;
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -128,11 +128,11 @@ test("reLaunch from Logic and reject invalid navigation", {
     expect(reason).toBe('duplicate_route');
   });
 
-  await t.step('navigateBack at root is a no-op', async () => {
+  await t.step('back at the root is a no-op', async () => {
     const before = (await app.nav.stack()).map((page) => page.name);
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
-        await lx.navigateBack({ delta: 1 });
+        await lx.nav.back(1);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -143,11 +143,11 @@ test("reLaunch from Logic and reject invalid navigation", {
     expect((await app.nav.stack()).map((page) => page.name)).toEqual(before);
   });
 
-  await t.step('redirectTo the current route keeps stack length 1', async () => {
+  await t.step('replacing the current route keeps stack length 1', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
     await waitForCurrent(app, 'ui');
     await app.logic.eval(({ lx }) => {
-      void lx.redirectTo({ page: 'ui', query: { type: 'navbar' } });
+      void lx.nav.go({ page: 'ui', params: { type: 'navbar' } }, { replace: true });
       return 'scheduled';
     });
     // `ui` is already current, so waiting on the route alone would pass before
@@ -235,7 +235,7 @@ async function expectFreshApiTab(app: TestApp, stale: PageInfo, landed?: PageInf
 
 test("relaunch onto a warm tab page opens a fresh instance", {
   id: "NAV-RELAUNCH-001",
-  covers: ['NavDriver.relaunch', 'NavDriver.switchTab', 'lx.reLaunch'],
+  covers: ['NavDriver.relaunch', 'NavDriver.switchTab', 'lx.nav.reset'],
   app: SHOWCASE_APP_ID,
   timeout: 90_000,
 }, async (t) => {
@@ -250,7 +250,7 @@ test("relaunch onto a warm tab page opens a fresh instance", {
     await expectFreshApiTab(app, stale, landed);
   });
 
-  await t.step('lx.reLaunch from another tab', async () => {
+  await t.step('lx.nav.reset from another tab', async () => {
     const stale = await markWarmApiTab(app, 'lx-relaunch');
     await relaunchFromLogic(app, 'api');
     await expectFreshApiTab(app, stale);

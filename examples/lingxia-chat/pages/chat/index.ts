@@ -188,7 +188,7 @@ export default definePage({
         }
       },
       async onOpenAbout() {
-        await lx.navigateTo({ page: 'about' });
+        await lx.nav.go({ page: 'about' }).opened;
       },
       onClear() {
         if (page.data.isStreaming) return;

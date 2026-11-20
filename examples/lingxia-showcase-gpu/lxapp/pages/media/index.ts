@@ -541,7 +541,7 @@ export default definePage({
       },
     };
     const actions = {
-      async goBack() { await lx.navigateBack(); },
+      async goBack() { await lx.nav.back(); },
       async openSourcePicker() {
         const choice = await pickOption(SOURCE_OPTIONS, page.data.sourceKey);
         if (!choice) {

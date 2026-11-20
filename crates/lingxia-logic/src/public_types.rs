@@ -164,8 +164,8 @@ rong::js_api! {
 
         /// Where a notification tap, a menu item, or the tray goes.
         ///
-        /// `page` and `app` are the same contract as `lx.navigateTo` /
-        /// `lx.navigateToApp`: a configured page name and a query, ordinary
+        /// `page` and `app` are the same contract as `lx.nav.go({ page })` /
+        /// `lx.nav.go({ app })`: a configured page name and a query, ordinary
         /// scene. `route` is a host-registered location that is not a page.
         /// `appLink` is an `https://` product URL that is also a real inbound
         /// App Link (`scene === 8003`). `activate` just brings the product
@@ -205,8 +205,8 @@ rong::js_api! {
      * its own `appId` or none, plus `page` / `query`; an omitted target opens
      * it too. Any other target rejects with `E_PERMISSION_DENIED`.
      * `{ kind: 'page' }` opens a page of this Control app the way
-     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
-     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * `lx.nav.go({ page })` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.nav.go({ app })` does. `{ kind: 'route' }` names a location the host
      * registered at startup that is not a page. `{ kind: 'appLink' }` takes
      * an `https://` URL that is also a real inbound App Link
      * (`scene === 8003`). An unknown page or route, a parameter the route
@@ -1122,31 +1122,29 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
-        /// Options for `lx.navigateBack()`. Omit the object or `delta` to pop
-        /// one page.
-        type NavigateBackOptions = r###"{
-    /** Number of pages to pop. Defaults to 1. */
-    delta?: number;
+        /// A tab root of this lxapp.
+        type TabName = r###"keyof LxAppPages extends never ? string : keyof LxAppTabs & string"###;
+
+        type TabTarget = r###"{ tab: TabName; page?: never; app?: never; url?: never; params?: never }"###;
+
+        /// Another lxapp, optionally at one of its pages.
+        type AppTarget = r###"{
+    app: string;
+    /** A page name of that lxapp; omit for its initial page. */
+    page?: ExternalPageName;
+    tab?: never;
+    url?: never;
+    params?: PageQuery;
+    /** Lxapp publish channel. Defaults to `release`. */
+    channel?: LxAppEnvVersion;
+    version?: string;
 }"###;
 
-        /// Navigate to another lxapp inside the current App Surface. JavaScript
-        /// callers address pages by their configured name; page routes are an
-        /// internal runtime detail and are not accepted as input.
-        type NavigateToAppOptions = r###"{
-    appId: string;
-    /**
-     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
-     * open the target app's initial page. Full routes such as
-     * `/pages/home/index` are not supported.
-     */
-    page?: ExternalPageName;
-    query?: PageQuery;
-    /**
-     * Lxapp publish channel. Defaults to `release` in every service environment.
-     */
-    channel?: LxAppEnvVersion;
-    targetVersion?: string;
-}"###;
+        /// A web page, opened in the in-app browser. `lx.openExternal` hands a URL to the system.
+        type UrlTarget = r###"{ url: string; page?: never; tab?: never; app?: never; params?: never }"###;
+
+        type NavTarget = r###"PageTarget | TabTarget | AppTarget | UrlTarget"###;
+
 
         type NetworkChangeCallback = r###"(info: NetworkInfo) => void"###;
 
@@ -1213,17 +1211,10 @@ rong::js_api! {
     [key: string]: JsonValue | undefined;
 }"###;
 
-        /// What `lx.navigateTo` resolves with: a message port to the pushed page,
-        /// and its result.
+        /// A pushed page's line to the page that opened it (`page.opener`).
         type PageMessagePort = r###"{
     postMessage(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
-    /**
-     * Settles once, after the pushed page's `onUnload`: `ok` with the value
-     * it set by `setResult` or `close(value)`, otherwise `canceled`.
-     * Present on the opener's side only.
-     */
-    readonly result?: Promise<PageResult>;
 }"###;
 
         /// A pushed or surface page's outcome. `canceled` means it left without a
@@ -1381,9 +1372,7 @@ rong::js_api! {
     durationMs?: number;
 }"###;
 
-        type RedirectToOptions = r###"PageTargetOptions"###;
 
-        type ReLaunchOptions = r###"PageTargetOptions"###;
 
         type FsRemoveOptions = r###"{
     recursive?: boolean;
@@ -1981,7 +1970,6 @@ true
     source: 'opener' | 'page' | 'shell';
 }"###;
 
-        type SwitchTabOptions = r###"PageTargetOptions"###;
 
         /// Native system Downloads path. Do not pass this to `lx.fs`.
         type SystemDownloadsPath = r###"string & {
@@ -2284,16 +2272,6 @@ true
     overwrite?: boolean;
 }"###;
 
-        /// Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
-        /// JavaScript navigation accepts only the configured page name; full routes
-        /// are internal runtime details. Discover names with `lxdev lxapp pages`.
-        type PageTargetOptions = r###"{
-    /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
-    page: ConfiguredPageName;
-    query?: PageQuery;
-}"###;
-
-        type NavigateToOptions = "PageTargetOptions";
 
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
@@ -2301,6 +2279,7 @@ true
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
+        type NavApi = "globalThis.NavApi";
         type NavigationBarApi = "globalThis.NavigationBarApi";
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";

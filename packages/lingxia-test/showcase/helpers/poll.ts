@@ -64,7 +64,7 @@ export type Caught<T = unknown> =
   | { ok: false; value?: undefined; code?: string; message: string; data?: unknown };
 
 /**
- * Schedule `lx.reLaunch` without awaiting the torn-down eval context, and resolve
+ * Schedule `lx.nav.reset` without awaiting the torn-down eval context, and resolve
  * once its new page instance is current and ready.
  */
 export async function relaunchFromLogic(
@@ -77,14 +77,14 @@ export async function relaunchFromLogic(
   // instance proves the relaunch landed, so a page bound afterwards is the one that stays.
   const before = (await currentOrNull(app))?.instanceId ?? null;
   await app.logic.eval(({ lx }, page, query) => {
-    void lx.reLaunch(query === null ? { page } : { page, query });
+    void lx.nav.reset(query === null ? { page } : { page, params: query });
     return 'scheduled';
   }, page, query ?? null);
   const landed = await eventually(
     () => currentOrNull(app),
     (current) => current !== null && current.name === page && current.ready
       && current.instanceId !== null && current.instanceId !== before,
-    { timeoutMs, describe: `a new '${page}' instance from lx.reLaunch to become current and ready` },
+    { timeoutMs, describe: `a new '${page}' instance from lx.nav.reset to become current and ready` },
   );
   return landed!;
 }

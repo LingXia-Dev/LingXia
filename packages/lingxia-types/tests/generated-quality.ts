@@ -1,4 +1,5 @@
 import type {
+  PageHandle,
   AppDownloadFilePath,
   AppDownloadOptions,
   AppDownloadResult,
@@ -45,21 +46,28 @@ const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" 
 const forcedTabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "visible" });
 // @ts-expect-error visible is TabBar-only; homeButton remains auto/hidden
 lx.navigationBar.update({ homeButton: "visible" });
-const backDefaultResult: Promise<void> = lx.navigateBack();
-const backEmptyResult: Promise<void> = lx.navigateBack({});
-const backDeltaResult: Promise<void> = lx.navigateBack({ delta: 2 });
-// @ts-expect-error delta must be numeric
-lx.navigateBack({ delta: "2" });
-// @ts-expect-error cross-app navigation accepts configured page names, not routes
-lx.navigateToApp({ appId: "lingxia-chat", path: "/pages/chat/index" });
-// @ts-expect-error page navigation accepts configured page names, not routes
-lx.navigateTo({ path: "/pages/chat/index" });
-// @ts-expect-error redirect accepts configured page names, not routes
-lx.redirectTo({ path: "/pages/chat/index" });
-// @ts-expect-error tab navigation accepts configured page names, not routes
-lx.switchTab({ path: "/pages/chat/index" });
-// @ts-expect-error relaunch accepts configured page names, not routes
-lx.reLaunch({ path: "/pages/chat/index" });
+const backDefaultResult: Promise<void> = lx.nav.back();
+const backCountResult: Promise<void> = lx.nav.back(2);
+// @ts-expect-error back takes a page count
+lx.nav.back({ delta: 2 });
+const pushed: PageHandle = lx.nav.go({ page: "detail", params: { id: 1 } });
+const replaced: Promise<void> = lx.nav.go({ page: "detail" }, { replace: true });
+const tabbed: Promise<void> = lx.nav.go({ tab: "home" });
+const otherApp: Promise<void> = lx.nav.go({ app: "lingxia-chat", params: { room: "a" } });
+// @ts-expect-error a target names one destination
+lx.nav.go({ page: "detail", tab: "home" });
+// @ts-expect-error a tab takes no params
+lx.nav.go({ tab: "home", params: {} });
+// @ts-expect-error only a page replaces the current one
+lx.nav.go({ tab: "home" }, { replace: true });
+// @ts-expect-error reset starts at a page or a tab
+lx.nav.reset({ url: "https://example.com" });
+// @ts-expect-error navigation takes configured page names, not routes
+lx.nav.go({ path: "/pages/chat/index" });
+// @ts-expect-error query was renamed params
+lx.nav.go({ page: "detail", query: {} });
+// @ts-expect-error going back is lx.nav.back(n)
+lx.nav.go(-1);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
 const downloadsResult: DownloadTask<DownloadsDownloadResult> = lx.downloadFile(downloadsDownload);
 const previewResult: PreviewMediaHandle = lx.previewMedia(previewOptions);
@@ -100,8 +108,11 @@ export type GeneratedQualityGate = [
   typeof tabBarUpdateResult,
   typeof forcedTabBarUpdateResult,
   typeof backDefaultResult,
-  typeof backEmptyResult,
-  typeof backDeltaResult,
+  typeof backCountResult,
+  typeof pushed,
+  typeof replaced,
+  typeof tabbed,
+  typeof otherApp,
   typeof appDownloadResult,
   typeof downloadsResult,
   typeof previewResult,

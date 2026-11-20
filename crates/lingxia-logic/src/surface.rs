@@ -567,7 +567,11 @@ async fn open_page(
 
 /// `lx.surface.openUrl(url, options?)` — external content in the in-app
 /// browser, as a tab or docked as an aside.
-async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> JSResult<JSObject> {
+pub(crate) async fn open_url(
+    ctx: JSContext,
+    url: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
     reject_unknown_options(
         &options,

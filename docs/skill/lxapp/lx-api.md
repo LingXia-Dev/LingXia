@@ -39,7 +39,7 @@ library, and the root `tsconfig.json` references both.
   [grant](../native/permissions.md).
 - Navigation takes a configured **page name**, never a path. A name computed
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
-  (`lx.navigateToApp`, `lx.shell.openApp`) is a plain string.
+  (`lx.nav.go({ app })`, `lx.shell.openApp`) is a plain string.
 - Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
   `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`, `lx.tray`, `lx.shell`.
 
@@ -158,8 +158,8 @@ yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 - `status: 'posted'` means the OS accepted it, nothing more.
 - `target` decides where a tap goes, resolved at tap time with no fallback:
   - omitted, or `{ kind: 'activate' }` — bring the product forward;
-  - `{ kind: 'page', page, query }` — a page of this app, as `lx.navigateTo`;
-  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.navigateToApp`;
+  - `{ kind: 'page', page, query }` — a page of this app, as `lx.nav.go({ page })`;
+  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.nav.go({ app })`;
     one already docked as an aside is brought back there, and the query
     reaches its App `onShow` (`switch_back`);
   - `{ kind: 'route', name, params }` — a host-registered location;

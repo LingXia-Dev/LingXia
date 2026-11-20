@@ -58,7 +58,7 @@ export default definePage({
         }
         if (page.opener) {
           page.opener.postMessage(payload);
-          await lx.navigateBack();
+          await lx.nav.back();
         }
       },
       async hideSelf() {

@@ -17,7 +17,7 @@ const slid = (slide: PageTransition, kind: PageTransition['kind']) => {
 };
 
 test('a push and a pop slide the GPU page on every display frame', {
-  id: 'CHROME-PUSH-POP-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
+  id: 'CHROME-PUSH-POP-001', covers: ['lx.nav.go', 'lx.nav.back'],
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;

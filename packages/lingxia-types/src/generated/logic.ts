@@ -134,7 +134,7 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    */
   surface?: PageSurface;
   /**
-   * Available when this page was opened by `lx.navigateTo(...)`.
+   * Available when this page was pushed by `lx.nav.go(...)`.
    */
   opener?: PageMessagePort;
   /**
@@ -278,6 +278,32 @@ export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   resume(): Promise<void>;
 }
 
+/** The params page `N` declares; any JSON params before the registry exists. */
+export type NavParams<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly params: infer T } } ? T : PageQuery
+    : PageQuery;
+
+/** The result page `N` declares; any JSON value before the registry exists. */
+export type NavResult<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly result: infer T } } ? T : JsonValue
+    : JsonValue;
+
+/** A page to push or replace. `params` is required when the page's declared params have a required key. */
+export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
+    & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
+
+/** What `lx.nav.go` returns for a pushed page. */
+export type PageHandle<R = JsonValue> = {
+    /** Settles when the page is on screen; rejects when it could not open. */
+    readonly opened: Promise<void>;
+    /** Settles once, after the page's `onUnload`. */
+    readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    postMessage(message: unknown): void;
+    onMessage(handler: (message: unknown) => void): () => void;
+    /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
+    close(): void;
+};
+
 declare global {
   /**
    * The lxapp's configured page names, one key per page.
@@ -287,6 +313,31 @@ declare global {
    * stays `string` and every navigation call compiles exactly as before.
    */
   interface LxAppPages {}
+
+  /** The lxapp's tab roots, one key per tab page. Generated beside `LxAppPages`. */
+  interface LxAppTabs {}
+
+  /** Each page's `definePage` type, generated for Logic; `lx.nav` reads params and result from it. */
+  interface LxAppPageTypes {}
+
+  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  interface NavApi {
+    /**
+     * Push a page. The handle is returned at once: `opened` settles when the
+     * page is on screen, `result` when it leaves.
+     */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>>;
+    /** Replace the current page; the new page inherits its opener and pending result. */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
+    /** Switch tabs, open another lxapp, or open a URL in the in-app browser. */
+    go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
+    /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
+    back(n?: number): Promise<void>;
+    /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
+    reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
+    /** Back to the lxapp that opened this one. */
+    leaveApp(): Promise<void>;
+  }
 
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
@@ -578,6 +629,19 @@ export type AppScreenshotResult = {
 export type AppSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'app';
     readonly realized: 'main' | 'aside';
+};
+
+/** Another lxapp, optionally at one of its pages. */
+export type AppTarget = {
+    app: string;
+    /** A page name of that lxapp; omit for its initial page. */
+    page?: ExternalPageName;
+    tab?: never;
+    url?: never;
+    params?: PageQuery;
+    /** Lxapp publish channel. Defaults to `release`. */
+    channel?: LxAppEnvVersion;
+    version?: string;
 };
 
 /** `lx.host.appearance` — the scheme this lxapp renders in. */
@@ -1340,37 +1404,9 @@ export type MoreAction = {
     onClick: () => void | Promise<void>;
 };
 
-/**
- * Options for `lx.navigateBack()`. Omit the object or `delta` to pop
- * one page.
- */
-export type NavigateBackOptions = {
-    /** Number of pages to pop. Defaults to 1. */
-    delta?: number;
-};
+export type NavApi = globalThis.NavApi;
 
-/**
- * Navigate to another lxapp inside the current App Surface. JavaScript
- * callers address pages by their configured name; page routes are an
- * internal runtime detail and are not accepted as input.
- */
-export type NavigateToAppOptions = {
-    appId: string;
-    /**
-     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
-     * open the target app's initial page. Full routes such as
-     * `/pages/home/index` are not supported.
-     */
-    page?: ExternalPageName;
-    query?: PageQuery;
-    /**
-     * Lxapp publish channel. Defaults to `release` in every service environment.
-     */
-    channel?: LxAppEnvVersion;
-    targetVersion?: string;
-};
-
-export type NavigateToOptions = PageTargetOptions;
+export type NavTarget = PageTarget | TabTarget | AppTarget | UrlTarget;
 
 export type NavigationBarApi = globalThis.NavigationBarApi;
 
@@ -1388,8 +1424,8 @@ export type NavigationBarStylePatch = {
 
 /**
  * Where a notification tap, a menu item, or the tray goes.
- * `page` and `app` are the same contract as `lx.navigateTo` /
- * `lx.navigateToApp`: a configured page name and a query, ordinary
+ * `page` and `app` are the same contract as `lx.nav.go({ page })` /
+ * `lx.nav.go({ app })`: a configured page name and a query, ordinary
  * scene. `route` is a host-registered location that is not a page.
  * `appLink` is an `https://` product URL that is also a real inbound
  * App Link (`scene === 8003`). `activate` just brings the product
@@ -1441,8 +1477,8 @@ export type NotificationApi = {
      * its own `appId` or none, plus `page` / `query`; an omitted target opens
      * it too. Any other target rejects with `E_PERMISSION_DENIED`.
      * `{ kind: 'page' }` opens a page of this Control app the way
-     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
-     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * `lx.nav.go({ page })` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.nav.go({ app })` does. `{ kind: 'route' }` names a location the host
      * registered at startup that is not a page. `{ kind: 'appLink' }` takes
      * an `https://` URL that is also a real inbound App Link
      * (`scene === 8003`). An unknown page or route, a parameter the route
@@ -1576,19 +1612,10 @@ export type PageLoadOptions = {
     [key: string]: JsonValue | undefined;
 };
 
-/**
- * What `lx.navigateTo` resolves with: a message port to the pushed page,
- * and its result.
- */
+/** A pushed page's line to the page that opened it (`page.opener`). */
 export type PageMessagePort = {
     postMessage(message: unknown): void;
     onMessage(handler: (message: unknown) => void): () => void;
-    /**
-     * Settles once, after the pushed page's `onUnload`: `ok` with the value
-     * it set by `setResult` or `close(value)`, otherwise `canceled`.
-     * Present on the opener's side only.
-     */
-    readonly result?: Promise<PageResult>;
 };
 
 export type PageQuery = Record<string, PageQueryValue>;
@@ -1619,17 +1646,6 @@ export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
      * `canceled`. On the opener's handle only.
      */
     readonly result?: Promise<PageResult>;
-};
-
-/**
- * Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
- * JavaScript navigation accepts only the configured page name; full routes
- * are internal runtime details. Discover names with `lxdev lxapp pages`.
- */
-export type PageTargetOptions = {
-    /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
-    page: ConfiguredPageName;
-    query?: PageQuery;
 };
 
 export type PickFileOptions = Omit<ChooseFileOptions, 'multiple'>;
@@ -1779,10 +1795,6 @@ export type PreviewMediaSource = {
      */
     durationMs?: number;
 };
-
-export type ReLaunchOptions = PageTargetOptions;
-
-export type RedirectToOptions = PageTargetOptions;
 
 export type ResolvedAppearance = 'light' | 'dark';
 
@@ -2365,8 +2377,6 @@ export type SurfaceVisibilityEvent = {
     source: 'opener' | 'page' | 'shell';
 };
 
-export type SwitchTabOptions = PageTargetOptions;
-
 /** Native system Downloads path. Do not pass this to `lx.fs`. */
 export type SystemDownloadsPath = string & {
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
@@ -2405,6 +2415,9 @@ export type TabBarPatch = {
 
 export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';
 
+/** A tab root of this lxapp. */
+export type TabName = keyof LxAppPages extends never ? string : keyof LxAppTabs & string;
+
 /** External content in the in-app browser. */
 export type TabSurface = (SurfaceBase & {
     readonly kind: 'tab';
@@ -2416,6 +2429,8 @@ export type TabSurface = (SurfaceBase & {
     readonly realized: 'tab' | 'aside';
     readonly scope: 'group';
 });
+
+export type TabTarget = { tab: TabName; page?: never; app?: never; url?: never; params?: never };
 
 export type TerminalApi = {
     /** Saved terminal settings, revision-checked on write. */
@@ -2726,6 +2741,9 @@ export type UploadResult = {
 };
 
 export type UploadTask = CancelableTask<UploadResult, UploadProgressEvent>;
+
+/** A web page, opened in the in-app browser. `lx.openExternal` hands a URL to the system. */
+export type UrlTarget = { url: string; page?: never; tab?: never; app?: never; params?: never };
 
 export type VideoCompressQuality = 'low' | 'medium' | 'high';
 
@@ -3296,15 +3314,6 @@ declare global {
      */
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
     /**
-     * Open another lxapp, optionally at one of its pages.
-     * Navigating to the lxapp already running is a no-op. Rejects with
-     * `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
-     * close that aside before opening it as a main.
-     */
-    navigateToApp(options: NavigateToAppOptions): Promise<void>;
-    /** Leave this lxapp and reveal the one that opened it. */
-    navigateBackApp(): Promise<void>;
-    /**
      * Hand content to the system share sheet.
      * Share text, files, or a page link — files cannot be combined with a page
      * target or with text; share those separately.
@@ -3342,39 +3351,7 @@ declare global {
      * This should be called after the refresh operation is complete.
      */
     stopPullDownRefresh(): void;
-    /**
-     * Push a configured page onto the stack.
-     * A route can appear on the stack only once. The promise rejects with
-     * `data.reason === "duplicate_route"` when the target is already present,
-     * or `data.reason === "stack_full"` when the ten-page limit is reached.
-     */
-    navigateTo(options: NavigateToOptions): Promise<PageMessagePort>;
-    /**
-     * Pop one or more pages and reveal the destination page.
-     * `options` and `options.delta` are optional; both default to one page. The
-     * promise resolves once the destination WebView is ready, so callers can
-     * safely continue with work that targets the revealed page.
-     */
-    navigateBack(options?: NavigateBackOptions): Promise<void>;
-    /**
-     * Replace the current stack entry with a configured page.
-     * Redirecting to the current route keeps its page instance and runs `onLoad`
-     * again with the new query. Redirecting to a route lower in the stack rejects
-     * with `data.reason === "duplicate_route"`.
-     */
-    redirectTo(options: RedirectToOptions): Promise<void>;
-    /**
-     * Switch to a configured tab page.
-     * The tab page being left is hidden and retained. Non-tab pages pushed above
-     * a tab leave the stack and receive `onUnload`.
-     */
-    switchTab(options: SwitchTabOptions): Promise<void>;
-    /**
-     * Clear the page stack and launch a configured page as the new root.
-     * Resolves once the navigation is dispatched, like `redirectTo` and `switchTab`;
-     * the new page loads after.
-     */
-    reLaunch(options: ReLaunchOptions): Promise<void>;
+    readonly nav: NavApi;
     readonly shell: ShellApi;
     readonly tabBar: TabBarApi;
     readonly tray: TrayApi;

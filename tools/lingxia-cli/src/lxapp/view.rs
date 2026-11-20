@@ -1056,7 +1056,7 @@ mod tests {
               setup: () => ({
                 actions: {
                   navigateToUIPage: async function (params) {
-                    await lx.navigateTo({ page: "ui", query: { type: "toast" } });
+                    await lx.nav.go({ page: "ui", params: { type: "toast" } }).opened;
                   },
                 },
               }),
@@ -1161,7 +1161,7 @@ mod tests {
         let actions = extract_action_modes(
             r#"
             async function navigateToUIPage() {
-              await lx.navigateTo({ page: "ui", query: { type: "toast" } });
+              await lx.nav.go({ page: "ui", params: { type: "toast" } }).opened;
             }
 
             const chooseToastIcon = async () => {

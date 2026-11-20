@@ -7,7 +7,7 @@ export default definePage({
     let unwatch = undefined as (() => void) | undefined;
     const actions = {
       async open({ page }: { page: string }) {
-        await lx.navigateTo({ page });
+        await lx.nav.go({ page }).opened;
       },
       // The workspace's choice, kept so the layout that follows a resize or relaunch opens on it.
       async select({ page }: { page: string }) {

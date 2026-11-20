@@ -164,13 +164,7 @@ test("apply navigationBar title, colors, home button, and reset", {
 
 test("round-trip appearance preference through the ui controls", {
   id: "UI-APPEARANCE-001",
-  covers: [
-    'lx.host.control',
-    'lx.host.appearance.get',
-    'lx.host.appearance.watch',
-    'lx.host.control.appearance.getPreference',
-    'lx.host.control.appearance.setPreference',
-  ],
+  covers: ['lx.host.control', 'lx.host.appearance.get', 'lx.host.appearance.watch', 'lx.host.control.appearance.getPreference', 'lx.host.control.appearance.setPreference'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -380,7 +374,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
 test("assert tabBar failure codes, resets, and button-driven patches", {
   id: "UI-TABBAR-002",
-  covers: ['lx.tabBar', 'lx.tabBar.update', 'lx.switchTab'],
+  covers: ['lx.tabBar', 'lx.tabBar.update', 'lx.nav.go'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -484,7 +478,7 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
 
   await t.step('switchTab agrees with selectedIndex after a badge change', async () => {
     await app.logic.eval(({ lx }) => {
-      void lx.switchTab({ page: 'todo' });
+      void lx.nav.go({ tab: 'todo' });
       return 'scheduled';
     });
     await waitForCurrentPage(app, 'todo');
