@@ -143,7 +143,9 @@ async function lowering(generated) {
   // This module sits in the compiler's package, so its ESM resolution matches the compiler's imports.
   const theme = resolveDependency('tailwindcss/theme.css');
   const plugin = { name: 'fresh-contract', setup(builder) {
-    builder.onResolve({ filter: /^[^./]/ }, ({ path }) => ({ path: path.startsWith('node:') ? path : resolveDependency(path), external: true }));
+    // `kind`: a Windows entry path (`D:\…`) also starts with neither `.` nor `/`.
+    builder.onResolve({ filter: /^[^./]/ }, ({ path, kind }) => kind === 'entry-point' ? undefined
+      : ({ path: path.startsWith('node:') ? path : resolveDependency(path), external: true }));
     builder.onResolve({ filter: /generated\/contract\.js$/ }, ({ path, resolveDir }) => ({ path: resolve(resolveDir, path) }));
     builder.onLoad({ filter: /generated[\\/]contract\.js$/ }, () => ({ contents: contract, loader: 'js' }));
   } };
