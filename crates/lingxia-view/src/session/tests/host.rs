@@ -7420,3 +7420,6 @@ fn tab_onto_a_field_starts_editing_it_as_a_click_does() {
         "Shift+Tab returns to the field and selects it"
     );
 }
+
+#[path = "uncontrolled.rs"]
+mod uncontrolled;
