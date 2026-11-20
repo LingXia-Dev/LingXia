@@ -14,7 +14,7 @@ test("open every component demo through rendered UI and the Logic bridge", { id:
     ['components-picker', 'picker'],
   ] as const;
 
-  await app.nav.relaunch({ page: 'components' });
+  await app.nav.reset({ page: 'components' });
   // Each demo is pushed above this instance and popped back to it.
   const components = (await app.page({ name: 'components' }, { timeout: 30_000 })).view;
   await components.testId('components-page').waitFor({ timeout: 30_000 });

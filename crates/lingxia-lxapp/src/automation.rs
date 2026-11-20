@@ -347,7 +347,7 @@ pub async fn navigate(
     };
 
     if kind == NavigationType::Replace && is_tabbar_page_url(app, &target_url) {
-        return Err("redirectTo cannot navigate to a tabBar page".to_string());
+        return Err("a tab page cannot replace a page".to_string());
     }
 
     app.ensure_page_exists(&target_url)

@@ -44,7 +44,7 @@ async function openPicker(t: Fixture, id: string) {
   defer(async () => {
     const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
     if (cancel) await device.tap(cancel);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
   const page = await app.page<PageContract<{ coffee?: string; location?: string[]; multiTime: string[]; activeTab: string }>>({ name: 'picker' });
   const advanceColumn = async (current: string, next: string) => {

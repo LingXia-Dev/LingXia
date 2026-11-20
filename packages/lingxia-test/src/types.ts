@@ -42,6 +42,7 @@ import type {
   Screenshot,
   TerminalDriver,
   ToastRecord,
+  NavDriverTarget,
 } from "@lingxia/types/automation";
 
 /**
@@ -823,12 +824,13 @@ export interface NavWaitOptions {
   timeout?: number;
 }
 
-/** `t.app.nav.to` / `redirect` / `switchTab` / `relaunch` options. */
-export interface NavOptions extends NavWaitOptions {
-  /** Configured page name (from lxapp.json). */
-  page: string;
-  /** Query forwarded to the destination page. */
-  query?: Record<string, unknown>;
+/** Where `t.app.nav.go` / `reset` land: a configured page with its params, or a tab. */
+export type NavTarget = NavDriverTarget;
+
+/** `t.app.nav.go` options. */
+export interface NavGoOptions extends NavWaitOptions {
+  /** Replace the current page instead of pushing (rejects tab targets). */
+  replace?: boolean;
 }
 
 /** A navigation bar button `t.app.nav.press` can press. */
@@ -842,14 +844,10 @@ export interface NavBackOptions extends NavWaitOptions {
 
 /** `t.app.nav`: the page stack. Actions resolve to the landed page. */
 export interface TestNav {
-  /** Push a page onto the stack. */
-  to(options: NavOptions): Promise<PageInfo>;
-  /** Replace the current page (rejects tab-bar targets). */
-  redirect(options: NavOptions): Promise<PageInfo>;
-  /** Switch to a configured tab page. */
-  switchTab(options: NavOptions): Promise<PageInfo>;
-  /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
-  relaunch(options: NavOptions): Promise<PageInfo>;
+  /** Push `{ page }`, replace with `{ replace: true }`, or switch to `{ tab }`. */
+  go(target: NavTarget, options?: NavGoOptions): Promise<PageInfo>;
+  /** Unload every page (cached tab pages included) and open a fresh instance of the target. */
+  reset(target: NavTarget, options?: NavWaitOptions): Promise<PageInfo>;
   /** Pop pages programmatically; a leave guard is not asked. */
   back(options?: NavBackOptions): Promise<PageInfo>;
   /**

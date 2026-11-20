@@ -633,7 +633,7 @@ async function bringForward(appId: string): Promise<string | undefined> {
 async function relaunchHome(app: LxAppDriver, start?: TestStart): Promise<void> {
   const page = start?.page ?? (await app.pages())[0]?.name ?? "home";
   try {
-    await app.nav.relaunch({ page, ...(start?.query ? { query: start.query } : {}), waitUntil: "ready" });
+    await app.nav.reset({ page, ...(start?.query ? { params: start.query } : {}) }, { waitUntil: "ready" });
   } catch (error) {
     // The home page may hand off to another page itself (a gate, a login
     // redirect); that is the app's own start, not a failed relaunch.

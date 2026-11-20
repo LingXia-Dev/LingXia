@@ -14,7 +14,7 @@ test('a page pushed again is not revealed on its previous frame', {
   const hostReveal = ['harmony', 'android'].includes(platform);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
-    await app.nav.to({ page: 'motion-target' });
+    await app.nav.go({ page: 'motion-target' });
     // Reveal statistics outlive a reload: wait for this push's own reveal.
     const shown = await t.waitFor(() => app.metrics({ page: 'motion-target' }), {
       until: m => m.firstPresentAt !== null && m.reveal.count > reveals

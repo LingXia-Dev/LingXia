@@ -1,5 +1,5 @@
 import { expect, test, type Fixture } from '@lingxia/test';
-import { openDemo } from './open-demo.js';
+import { openDemo, navTarget } from './open-demo.js';
 import { decodePng } from './png.js';
 
 type Locator = ReturnType<Fixture['app']['view']['testId']>;
@@ -130,11 +130,11 @@ test('view-media webview demo opens a 70% sheet via floating button and exits vi
 
   // Navigate into view-media, back out, and immediately back in: guards against retiring
   // native WebView teardown clobbering the replacement controller on the same page path.
-  await t.app.nav.relaunch({ page: 'view' });
-  await t.app.nav.to(openDemo('webview'));
+  await t.app.nav.reset({ page: 'view' });
+  await t.app.nav.go(navTarget(openDemo('webview')));
   await expect(readout).toHaveAttribute('data-state', 'title=Embed Demo hash= taps=0 sheet=false', { timeout: 8_000 });
   await t.app.nav.back();
-  await t.app.nav.to(openDemo('webview'));
+  await t.app.nav.go(navTarget(openDemo('webview')));
   await expect(readout).toHaveAttribute('data-state', 'title=Embed Demo hash= taps=0 sheet=false', { timeout: 8_000 });
 
   // Clicking #part-2 / #part-1 drives in-place hashchange inside the HTML document and round-trips via postMessage.

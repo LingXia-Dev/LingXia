@@ -27,7 +27,7 @@ test('an edge swipe goes back across a pager; a drag starting on the pager pages
     await expect(view.testId('motion-pager-state')).toHaveAttribute('data-state', `page=${page}`);
   };
 
-  await app.nav.to({ page: 'view-scrolling' });
+  await app.nav.go({ page: 'view-scrolling' });
   await view.testId('motion-pager-next').click();
   await onPage(1);
 

@@ -11,7 +11,7 @@ import {
 
 test('streams a complete response from real page input', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
-  await app.nav.relaunch({ page: 'stream' });
+  await app.nav.reset({ page: 'stream' });
   const page = await app.page<PageContract<{ messages: Message[] }>>({ name: 'stream' }, { timeout: 30_000 });
   const stream = page.view;
   await stream.testId('stream-page').waitFor({ timeout: 30_000 });
@@ -50,7 +50,7 @@ test('cancel an active response, finish Logic cleanup, and send again', {
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'STREAM-CANCEL-001');
   const page = await app.page<PageContract<{ messages: Message[]; isStreaming: boolean }>>({ name: 'stream' });
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
   await app.clock.install();
 
   for (let turn = 0; turn < 2; turn++) {

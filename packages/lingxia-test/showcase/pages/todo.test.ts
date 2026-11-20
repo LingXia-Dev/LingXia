@@ -36,7 +36,7 @@ let pendingTodo: string | undefined;
 
 test.reset(async t => {
   if (pendingTodo) await cleanupStoredTodo(t.app, pendingTodo);
-  await t.app.nav.relaunch({ page: 'todo' });
+  await t.app.nav.reset({ page: 'todo' });
 });
 
 test("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set', 'view:checkbox'], app: SHOWCASE_APP_ID }, async (t) => {

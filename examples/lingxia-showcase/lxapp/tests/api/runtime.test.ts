@@ -266,7 +266,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(first.afterClear).toEqual([]);
   expect(first.persistGone).toBe(null);
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home', 30_000);
   const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.getStorage().get(persistKey), persistKey);
   expect(persisted).toEqual({ kept: true });

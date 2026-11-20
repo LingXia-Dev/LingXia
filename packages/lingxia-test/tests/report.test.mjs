@@ -914,7 +914,7 @@ test("a spec that never calls t.step still records what it did", async () => {
   const { attachments } = installFakeHost(world);
 
   lxTest("flat spec", { id: "TRACE-1" }, async (t) => {
-    await t.app.nav.relaunch({ page: "home" });
+    await t.app.nav.reset({ page: "home" });
     await t.app.view.testId("home-name").fill("Ada");
     await t.app.logic.eval(() => 1 + 1);
   });
@@ -1057,7 +1057,7 @@ test("a failed toMatchSchema points at its own line, and a unit spec names no pa
     expect(slot).toMatchSchema("Slot");
   });
   lxTest("on a page", async (t) => {
-    await t.app.nav.to({ page: "onboarding" });
+    await t.app.nav.go({ page: "onboarding" });
     expect({ "at:10:20": 1 }).toMatchSchema("Slot");
   });
 

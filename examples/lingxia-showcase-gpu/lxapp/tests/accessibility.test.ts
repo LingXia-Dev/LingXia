@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import { openDemo } from './open-demo';
+import { openDemo, navTarget } from './open-demo';
 import { apart, fillOf } from './pixels';
 
 // GPU-only fixtures read through role and accessible name, the way a screen reader does.
@@ -66,12 +66,12 @@ test('controls report checked, selected, pressed and expanded as a screen reader
   await expect(wifi).toBeChecked();
   await wifi.click();
   await expect(wifi).not.toBeChecked();
-  await t.app.nav.to(openDemo('controls'));
+  await t.app.nav.go(navTarget(openDemo('controls')));
   await expect(view.testId('lab-controls-size-m')).toBeChecked();
   await view.testId('lab-controls-size-l').click();
   await expect(view.testId('lab-controls-size-l')).toBeChecked();
   await expect(view.testId('lab-controls-size-m')).not.toBeChecked();
-  await t.app.nav.to(openDemo('groups'));
+  await t.app.nav.go(navTarget(openDemo('groups')));
   await expect(view.getByRole('tab', { name: 'Week' })).toBeSelected();
   await view.getByRole('tab', { name: 'Day' }).click();
   await expect(view.getByRole('tab', { name: 'Week' })).not.toBeSelected();
@@ -87,7 +87,7 @@ test('controls report checked, selected, pressed and expanded as a screen reader
   const refused = await expect(view.testId('lab-tool-copy')).not.toBeChecked({ timeout: 300 }).then(() => '', (error: Error) => error.message);
   expect(refused).toContain('checked state');
 
-  await t.app.nav.to(openDemo('section'));
+  await t.app.nav.go(navTarget(openDemo('section')));
   const summary = view.testId('lab-disclosure-licenses-summary');
   await expect(summary).not.toBeExpanded();
   await summary.click();

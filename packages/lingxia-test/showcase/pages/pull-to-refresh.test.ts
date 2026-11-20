@@ -40,7 +40,7 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
 test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const pull = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await pull.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
 
@@ -79,7 +79,7 @@ test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   });
 
   await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
     // The relaunch waited for home to be ready, so it is the current page.
     await app.view.testId('home-page').waitFor({ timeout: 30_000 });
 
@@ -111,7 +111,7 @@ async function expectPageIntact(view: TestView, when: string): Promise<void> {
 
 test("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true, hostInput: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-002");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   await expectPageIntact(view, 'before the pull');
@@ -162,7 +162,7 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
 
 test("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-003");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   const status = view.testId('pull-refresh-status');
@@ -191,7 +191,7 @@ test("a swipe scrolls the page and a pull below the top scrolls back instead of 
 // so a desktop fling would measure the injector, not the page.
 test("a fling carries the page past where the finger stopped", { id: "PULL-004", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch'] } }, async (t) => {
   const { app } = bindFixture(t, "PULL-004");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   const lastRow = view.testId('pull-refresh-row').last();

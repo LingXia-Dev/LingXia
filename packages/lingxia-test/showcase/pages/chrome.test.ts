@@ -85,7 +85,7 @@ test("apply navigationBar title, colors, home button, and reset", {
   });
 
   const ui = await t.step('drive the ui page presets', async () => {
-    await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('navbar-preset-blue').click({ timeout: 30_000 });
     const styled = await waitForNavBar(
@@ -151,7 +151,7 @@ test("apply navigationBar title, colors, home button, and reset", {
       });
     });
     await waitForNavBar(app, (state) => state.title === 'Kept Title', 'title before relaunch');
-    await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
     await waitForCurrentPage(app, 'ui', 30_000);
     const relaunched = await app.page({ name: 'ui' });
     await relaunched.view.testId('navbar-preset-blue').waitFor({ state: 'visible', timeout: 30_000 });
@@ -174,7 +174,7 @@ test("round-trip appearance preference through the ui controls", {
       .catch(() => undefined);
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'appearance' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'appearance' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('ui-appearance-light').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -266,7 +266,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
   // Desktop overlays are drawn in the ui page's own document.
   const ui = await t.step('show and hide a toast', async () => {
-    await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'toast' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('toast-show').waitFor({ state: 'visible', timeout: 30_000 });
     // The handle stays in Logic: it is not JSON.
@@ -398,10 +398,10 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
         }],
       });
     }).catch(() => undefined);
-    await app.nav.relaunch({ page: 'home' }).catch(() => undefined);
+    await app.nav.reset({ page: 'home' }).catch(() => undefined);
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'tabbar' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').click({ timeout: 30_000 });
   await waitForTabBar(app, (state) => state.effectiveVisible, 'forced tab bar');

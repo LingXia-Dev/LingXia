@@ -221,10 +221,10 @@ test('page-scoped indexed locators preserve target on every read and input', asy
   installFakeHost(world);
   let editorId;
   lxTest('scoped input', async t => {
-    await t.app.nav.to({page:'editor'});
+    await t.app.nav.go({ page:'editor' });
     const editor = await t.app.page();
     editorId = editor.instanceId;
-    await t.app.nav.to({page:'other'});
+    await t.app.nav.go({ page:'other' });
     calls.length = 0;
     const input = editor.view.testId('field').nth(1);
     await input.fill('hello');

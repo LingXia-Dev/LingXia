@@ -69,7 +69,7 @@ lingxia dev stop
 
 **A successful build is not done.** Done means you watched the change work:
 
-1. Navigate to it (`lxdev lxapp nav to ...`) and use it
+1. Navigate to it (`lxdev lxapp nav go ...`) and use it
    (`lxdev lxapp page click/type ...`). A new control gets clicked.
 2. Assert the effect: DOM via `lxdev lxapp page eval`, Logic state via
    `lxdev lxapp eval`. Screenshot only visual changes.

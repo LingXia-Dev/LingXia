@@ -28,7 +28,7 @@ test('typed test boundary', async t => {
   // @ts-expect-error The fixture has no string eval; a script string is for the raw driver.
   await app.eval({script:'1'});
   await t.automation.browser.tabs();
-  const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
+  const landed = await app.nav.go({ page:'editor' }, { waitUntil:'commit' });
   landed.webviewAttached.valueOf();
   landed.instanceId?.toUpperCase();
   await t.reject(async () => (await app.page({ name: 'devices' })).view.css('#save').click(), {code:'E_PAGE_NOT_ACTIVE'});
@@ -41,13 +41,13 @@ test('typed test boundary', async t => {
   // @ts-expect-error `app.page()` waits with `timeout`.
   await app.page({ name: 'editor' }, { timeoutMs: 1_000 });
   await app.nav.back({waitUntil:'ready', timeout:5_000});
-  await app.nav.relaunch({page:'editor', timeout:5_000});
+  await app.nav.reset({ page:'editor' }, { timeout:5_000 });
   // @ts-expect-error Fixture waits take `timeout`; `timeoutMs` is the raw driver's.
-  await app.nav.to({page:'editor', timeoutMs:5_000});
+  await app.nav.go({ page:'editor' }, { timeoutMs:5_000 });
   const stack: string[] = (await app.nav.stack()).map((page) => page.path);
   void stack;
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
-  await app.nav.to({page:'editor', waitFor:'ready'});
+  await app.nav.go({ page:'editor' }, { waitFor:'ready' });
   await input.waitFor({state:'attached'});
   await input.waitFor({state:'inViewport'});
   const rows = app.view.css('li').filter({hasText:/ready/i});

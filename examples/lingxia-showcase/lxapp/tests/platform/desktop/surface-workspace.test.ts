@@ -1366,7 +1366,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         : undefined;
     }, `${platform} expanded root baseline`);
 
-    await app.nav.switchTab({ page: 'api' });
+    await app.nav.go({ tab: 'api' });
     const api = await app.page({ name: 'api' }, { timeout: 30_000 });
     await api.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
 
@@ -1649,7 +1649,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
       }
     }
     if (originalPage.name && (originalPage.name !== 'api' || browserTabId)) {
-      await app.nav.switchTab({ page: originalPage.name }).catch(() => undefined);
+      await app.nav.go({ tab: originalPage.name }).catch(() => undefined);
     }
     await restoreHostBounds(desktop, host.id, originalBounds);
   }
@@ -2337,7 +2337,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => (
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat baseline');
-    await app.nav.switchTab({ page: 'todo' });
+    await app.nav.go({ tab: 'todo' });
     // The tab stays alive under Chat, so the marker is removed from this instance.
     todo = (await app.page({ name: 'todo' })).view;
 
@@ -2837,7 +2837,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await restoreHostBounds(desktop, host.id, originalBounds);
     if (originalPageName) {
-      await app.nav.relaunch({ page: originalPageName });
+      await app.nav.reset({ page: originalPageName });
     }
   }
 });
@@ -3327,7 +3327,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
       nativeWindowExtent('macos', host, 1_000),
       nativeWindowExtent('macos', host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
@@ -3473,7 +3473,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     throw error;
   } finally {
     await closeChatSurface(t, app).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });
@@ -4015,7 +4015,7 @@ test('docks a URL aside on every edge, shows it, and closes it from the browser 
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
 
     for (const edge of BROWSER_ASIDE_EDGES) {
       const key = `${namespace}-${edge}`;
@@ -4092,7 +4092,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await waitForValue(async () => {
       const current = await app.nav.current();
       return current.name === 'home' && current.ready ? true : undefined;
@@ -4330,7 +4330,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
@@ -4417,7 +4417,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       .then((page) => page.view.css('textarea[placeholder="Message..."]').fill(''))
       .catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });
@@ -4599,7 +4599,7 @@ test('moves a dragged URL aside tab into the main browser without reloading it',
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     const url = await writeBrowserAsideFixture(app, namespace, key);
     const opened = await openBrowserAside(app, url, key, 'right');
     await waitForValue(async () => {
@@ -4653,7 +4653,7 @@ test('moves a dragged URL aside tab into the main browser without reloading it',
     await app.logic.eval(async ({ lx }, namespace) => {
       await lx.fs.remove('lx://userdata/' + namespace, { recursive: true }).catch(() => undefined);
     }, namespace).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });

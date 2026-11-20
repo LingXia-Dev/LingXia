@@ -76,13 +76,13 @@ async function isMarkedDocument(view: TestView): Promise<boolean> {
 
 /** Push `bridge-repro` and bind the instance it opened. */
 async function enterRepro(app: TestApp): Promise<TestView> {
-  await app.nav.to({ page: REPRO });
+  await app.nav.go({ page: REPRO });
   await waitForCurrentPage(app, REPRO, 20_000);
   return (await app.page({ name: REPRO }, { timeout: 20_000 })).view;
 }
 
 async function startAtHome(app: TestApp): Promise<void> {
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home', 20_000);
 }
 
@@ -94,7 +94,7 @@ test('hand every preloaded tab a working port once it is shown', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-001');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);
@@ -104,11 +104,11 @@ test('hand every preloaded tab a working port once it is shown', {
   await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
 
   for (const tab of TABS) {
-    await app.nav.switchTab({ page: tab });
+    await app.nav.go({ tab: tab });
     await waitForCurrentPage(app, tab, 20_000);
     expect(await bridgeReady(await tabView(app, tab), tab)).toBe(true);
   }
-  await app.nav.switchTab({ page: 'home' });
+  await app.nav.go({ tab: 'home' });
   await waitForCurrentPage(app, 'home', 20_000);
   expect(await bridgeReady(await tabView(app, 'home'), 'home')).toBe(true);
 });
@@ -121,7 +121,7 @@ test('bootstrap a pushed page through its own port', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-002');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);
@@ -139,7 +139,7 @@ test("keep a covered page's port across navigateTo and back", {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-003');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);
@@ -147,7 +147,7 @@ test("keep a covered page's port across navigateTo and back", {
   await expectBootstrap(t, repro);
   await expectEcho(t, repro, 1);
 
-  await app.nav.to({ page: 'device', query: { type: 'screen' } });
+  await app.nav.go({ page: 'device', params: { type: 'screen' } });
   await waitForCurrentPage(app, 'device', 20_000);
   await app.nav.back();
   await waitForCurrentPage(app, REPRO, 20_000);
@@ -166,7 +166,7 @@ test('bootstrap a re-entered route as a fresh document', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-004');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);
@@ -196,14 +196,14 @@ test('settle on a working port after rapid re-entry', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-005');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);
   // Leave each document before its handshake can finish, so late load and
   // port callbacks for a replaced document race the next one.
   for (let round = 0; round < 3; round += 1) {
-    await app.nav.to({ page: REPRO });
+    await app.nav.go({ page: REPRO });
     await app.nav.back();
   }
   await waitForCurrentPage(app, 'home', 20_000);
@@ -226,7 +226,7 @@ test('bring the bridge back up after the app restarts', {
   // the restart addresses the new instance through a fresh driver.
   const freshDriver = () => t.automation.lxapp(SHOWCASE_APP_ID);
   defer(async () => {
-    await freshDriver().nav.relaunch({ page: 'home' });
+    await freshDriver().nav.reset({ page: 'home' });
   });
 
   await startAtHome(before);
@@ -256,7 +256,7 @@ test('re-enter a route the moment it bootstraps without stalling its port', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'BRIDGE-007');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   await startAtHome(app);

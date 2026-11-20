@@ -11,10 +11,10 @@ test('route a warm AppLink onto the query page once', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'APPLINK-001');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const result = await t.automation.lxapps.applink({
@@ -51,10 +51,10 @@ test('route a warm AppLink from a product path', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'APPLINK-002');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   // No `/lxapp/` prefix: the host is the only gate, and Logic routes from the

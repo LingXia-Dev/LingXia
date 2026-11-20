@@ -27,3 +27,8 @@ export function openDemo(demo: DemoName, lang: 'en' | 'zh' = 'en'): { page: stri
 export function openUnderTabs(demo: DemoName, lang: 'en' | 'zh' = 'en'): { page: string; query: { group: string; lang: string } } {
   return { page: 'view', query: { group: groupOf(demo).id, lang } };
 }
+
+/** A spec `start` as a `t.app.nav` target. */
+export function navTarget(start: { page: string; query: Record<string, string> }): { page: string; params: Record<string, string> } {
+  return { page: start.page, params: start.query };
+}

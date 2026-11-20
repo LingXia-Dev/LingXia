@@ -5,10 +5,10 @@ import { waitForCurrentPage } from '../helpers/page.js';
 
 async function openNavigator(t: Fixture, id: string) {
   const { app, defer } = bindFixture(t, id);
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
-  await app.nav.relaunch({ page: 'home' });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
+  await app.nav.reset({ page: 'home' });
   const home = await app.nav.current();
-  await app.nav.to({ page: 'navigator' });
+  await app.nav.go({ page: 'navigator' });
   const page = await app.page({ name: 'navigator' });
   return { app, page, home };
 }

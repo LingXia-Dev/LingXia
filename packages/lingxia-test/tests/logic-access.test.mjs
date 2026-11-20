@@ -176,7 +176,7 @@ test("view eval takes only { timeout }: `page` is a TypeError; a bound page's vi
   const messages = [];
   let surfaceId;
   const result = await runOne(async (t) => {
-    await t.app.nav.to({ page: "surface" });
+    await t.app.nav.go({ page: "surface" });
     const surface = await t.app.page({ name: "surface" });
     surfaceId = surface.instanceId;
     values.push(await surface.view.eval(({ document }, suffix) => document.title + suffix, "!"));
@@ -205,7 +205,7 @@ test("an eval's own timeout is sent, clamped to the spec budget", async () => {
     await t.app.logic.eval(() => 1);
     await t.app.logic.eval({ timeout: 20_000 }, (_, n) => n, 2);
     await t.app.logic.eval({ timeout: 600_000 }, () => 3);
-    await t.app.nav.to({ page: "surface" });
+    await t.app.nav.go({ page: "surface" });
     const surface = await t.app.page({ name: "surface" });
     await surface.view.eval({ timeout: 15_000 }, ({ document }) => document.title);
     await surface.view.eval(({ document }) => document.title);
@@ -273,7 +273,7 @@ test("page.data() reads the bound instance's Logic data; page.actions invoke its
   const seen = {};
   const result = await runOne(async (t) => {
     const home = await t.app.page();
-    await t.app.nav.to({ page: "devices" });
+    await t.app.nav.go({ page: "devices" });
     const current = await t.app.page();
     const byName = await t.app.page({ name: "home" });
     const byId = await t.app.page({ instanceId: current.instanceId });

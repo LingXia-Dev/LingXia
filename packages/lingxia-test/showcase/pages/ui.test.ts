@@ -7,7 +7,7 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.nav.go', 'lx.nav.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "UI-NAV-001");
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'navigation' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('ui-navigate-to').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -97,10 +97,10 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
         }],
       });
     });
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'tabbar' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -183,7 +183,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'restored automatic visibility on a non-tab route',
   );
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const home = await app.page({ name: 'home' }, { timeout: 30_000 });
   await home.view.testId('home-page').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
@@ -215,7 +215,7 @@ test('rejects invalid native-surface dimensions before opening a host surface', 
   timeout: 60_000,
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
-  await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'surface' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('open-surface').waitFor({ timeout: 30_000 });
 

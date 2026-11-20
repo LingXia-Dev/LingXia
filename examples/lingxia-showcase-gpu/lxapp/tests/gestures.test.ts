@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import { openDemo } from './open-demo';
+import { openDemo, navTarget } from './open-demo';
 
 // Drag elements, driven by a finger and by their semantics-tree equivalents.
 test('a drag element follows the finger and lands on the nearest snap point', { covers: ['view:drag'], start: openDemo('stops') }, async (t) => {
@@ -136,7 +136,7 @@ test('a tap on a nested switch, a row button and a rich-text link reaches only t
   await view.testId('lab-nested-remove').click();
   await expect(state).toHaveAttribute('data-state', 'opened=0 wifi=false removed=1');
 
-  await t.app.nav.to(openDemo('runs'));
+  await t.app.nav.go(navTarget(openDemo('runs')));
   await view.testId('lab-rich-link').click();
   await expect(view.testId('lab-rich-presses')).toHaveAttribute('data-state', 'Link pressed 1 times');
 });

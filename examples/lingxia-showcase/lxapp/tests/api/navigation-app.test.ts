@@ -47,7 +47,7 @@ test('hop to the bundled chat lxapp and back', {
     async () => {
       const current = await app.nav.current().catch(() => null);
       if (current?.name === 'home' && current.current) return 'home';
-      await app.nav.relaunch({ page: 'home' }).catch(() => undefined);
+      await app.nav.reset({ page: 'home' }).catch(() => undefined);
       return current?.name ?? 'unknown';
     },
     (name) => name === 'home',
@@ -76,9 +76,9 @@ test('hop to the bundled chat lxapp and back', {
   // Recreating pages must not relaunch or hide/show the App instance.
   // The relaunch shows a new home page, so only App-level counts stay put.
   const appLevel = ({ launches, shows, hides }: typeof baseline) => ({ launches, shows, hides });
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   expect(appLevel(await lifecycle())).toEqual(appLevel(baseline));
-  await app.nav.to({ page: 'ui' });
+  await app.nav.go({ page: 'ui' });
 
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
   defer(async () => {

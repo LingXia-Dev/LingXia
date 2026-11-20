@@ -9,8 +9,8 @@ for (const mode of ['auth', 'mqtt', 'functions'] as const) {
     covers: ['lx.nav.go'],
     app: SHOWCASE_APP_ID,
   }, async (t) => {
-    t.defer(async () => { await t.app.nav.relaunch({ page: 'home' }); });
-    await t.app.nav.relaunch({ page: 'cloud', query: { type: mode } });
+    t.defer(async () => { await t.app.nav.reset({ page: 'home' }); });
+    await t.app.nav.reset({ page: 'cloud', params: { type: mode } });
     const page = await t.app.page<PageContract<Record<string, unknown>>>({ name: 'cloud' });
     await expect(page.view.testId('cloud-page')).toHaveAttribute('data-mode', mode);
     const key = mode === 'auth' ? 'status' : mode === 'mqtt' ? 'mqttStatus' : 'functionsStatus';

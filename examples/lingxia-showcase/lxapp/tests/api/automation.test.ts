@@ -93,7 +93,7 @@ test("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
   const { app, namespace, defer } = bindFixture(t, "AUT-004");
 
     const current = await currentPageOrNull(app);
-    if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+    if (current?.name !== 'home') await app.nav.reset({ page: 'home' });
     await waitForCurrentPage(app, 'home');
     const home = await app.page({ name: 'home' });
     await home.view.testId('home-page').waitFor({ state: 'visible', timeout: 30_000 });

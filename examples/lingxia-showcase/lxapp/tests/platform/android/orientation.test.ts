@@ -21,7 +21,7 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   reason: 'requires the Android host orientation implementation',
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'ANDROID-ORIENTATION-001');
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const page = await app.page({ name: 'home' });
   const dimensions = () => page.view.eval(({ window }) => ({ width: window.innerWidth, height: window.innerHeight }));
   const initial = await dimensions();

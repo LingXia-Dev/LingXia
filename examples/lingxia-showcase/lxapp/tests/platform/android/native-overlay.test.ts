@@ -62,10 +62,10 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
     defer(async () => {
       const cancel = (await device.nodes()).find((node) => node.text === 'CANCEL');
       if (cancel) await device.tap(cancel);
-      await app.nav.relaunch({ page: 'home' });
+      await app.nav.reset({ page: 'home' });
     });
-    await app.nav.relaunch({ page: 'home' });
-    await app.nav.to({ page: 'ui', query: { type: 'modal' } });
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'ui', params: { type: 'modal' } });
     const current = await app.nav.current();
     const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
     await page.view.testId('modal-show').click();
@@ -98,10 +98,10 @@ test('a confirm-only modal consumes Back and outside taps until confirmed', {
   defer(async () => {
     const ok = (await device.nodes()).find((node) => node.text === 'OK' && node.className === 'android.widget.Button');
     if (ok) await device.tap(ok);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'home' });
-  await app.nav.to({ page: 'ui', query: { type: 'modal' } });
+  await app.nav.reset({ page: 'home' });
+  await app.nav.go({ page: 'ui', params: { type: 'modal' } });
   const current = await app.nav.current();
   const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
   await page.view.css('#modalShowCancel').click();
@@ -129,10 +129,10 @@ for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
     defer(async () => {
       const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
       if (cancel) await device.tap(cancel);
-      await app.nav.relaunch({ page: 'home' });
+      await app.nav.reset({ page: 'home' });
     });
-    await app.nav.relaunch({ page: 'home' });
-    await app.nav.to({ page: 'ui', query: { type: 'actionsheet' } });
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'ui', params: { type: 'actionsheet' } });
     const current = await app.nav.current();
     const page = await app.page<PageContract<{ actionSheetResult: ActionSheetResult | null }>>();
     await page.view.testId('actionsheet-show').click();

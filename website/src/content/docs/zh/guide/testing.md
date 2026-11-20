@@ -25,7 +25,7 @@ npm install --save-dev @lingxia/test
 import { test, expect } from '@lingxia/test';
 
 test('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
-  await t.app.nav.relaunch({ page: 'home' });
+  await t.app.nav.reset({ page: 'home' });
   await expect(t.app.view.testId('home-page')).toBeVisible();
 
   await t.app.view.testId('name').fill('Ada');

@@ -1,5 +1,5 @@
 import { expect, test, type Fixture, type Locator } from '@lingxia/test';
-import { openDemo, openUnderTabs, rootOf } from './open-demo';
+import { openDemo, openUnderTabs, rootOf, navTarget } from './open-demo';
 
 // How a GPU page shares the bottom edge with the host tab bar: the page scroll runs under the bar
 // and its end scrolls clear of it; an open dialog (sheet, picker, its scrim) lies over the bar.
@@ -155,14 +155,14 @@ test('a tap at an element partly under the tab bar lands on its visible part wit
 test('a relaunch onto a page outside the tab bar hides the bar and keeps no room for it, and back onto a tab page shows it', { start: { page: 'view' } }, async (t) => {
   const before = await tabItems(t);
   console.log(`tab items readable before: ${before?.length ?? 'unsupported'}`);
-  await t.app.nav.relaunch(openDemo('press'));
+  await t.app.nav.reset(navTarget(openDemo('press')));
   const page = t.app.view.testId(rootOf('press'));
   await expect(page).toBeVisible();
   const inset = Number(await page.getAttribute('data-inset-bottom'));
   const safe = Number(await page.getAttribute('data-safe-bottom'));
   expect(inset, 'no room kept for a bar').toBe(safe);
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === 0 });
-  await t.app.nav.relaunch({ page: 'view' });
+  await t.app.nav.reset({ page: 'view' });
   await bars(t);
   if (before?.length) await t.waitFor(() => tabItems(t), { until: items => items?.length === before.length });
 });
@@ -185,7 +185,7 @@ test('every tab page ends its content above the tab bar', { covers: ['view:scrol
   });
   expect(shown.length, 'the tab bar lists its tabs').toBeGreaterThanOrEqual(5);
   for (const [name, root] of shown) {
-    await t.app.nav.switchTab({ page: name });
+    await t.app.nav.go({ tab: name });
     const page = view.testId(root);
     await expect(page).toBeVisible();
     const pageBox = await page.boundingBox();

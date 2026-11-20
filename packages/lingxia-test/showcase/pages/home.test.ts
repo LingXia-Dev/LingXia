@@ -32,7 +32,7 @@ test('home View MessagePort is up without relaunch', async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') {
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
   }
   // `ready` waits on View handshake. Do not relaunch: that remounts a visible
   // WebView and hides the cold-start MessagePort miss.
@@ -41,7 +41,7 @@ test('home View MessagePort is up without relaunch', async (t) => {
 
 test('greets through real page input and the Logic bridge', async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   await eventually(
     () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.displayLanguage.get),
@@ -88,7 +88,7 @@ test('switches display language from the home control', {
   timeout: 60_000,
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(
     () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.control?.displayLanguage?.setPreference),

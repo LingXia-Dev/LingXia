@@ -328,14 +328,14 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
   let refused;
 
   lxTest("navigates", { timeout: 10_000 }, async (t) => {
-    await t.app.nav.to({ page: "detail" });
-    await t.app.nav.to({ page: "other", waitUntil: "commit" });
-    await t.app.nav.to({ page: "slow", timeout: 5_000 });
-    await t.app.nav.to({ page: "slower", timeout: 60_000 });
+    await t.app.nav.go({ page: "detail" });
+    await t.app.nav.go({ page: "other" }, { waitUntil: "commit" });
+    await t.app.nav.go({ page: "slow" }, { timeout: 5_000 });
+    await t.app.nav.go({ page: "slower" }, { timeout: 60_000 });
     await t.app.nav.back();
     const current = await t.app.nav.current();
     assert.equal(current.name, "slow");
-    refused = await t.reject(() => t.app.nav.to({ page: "x", timeoutMs: 1 }));
+    refused = await t.reject(() => t.app.nav.go({ page: "x" }, { timeoutMs: 1 }));
   });
 
   const report = await globalThis.__LINGXIA_TEST__.run();
@@ -363,7 +363,7 @@ test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its c
   const seen = {};
 
   lxTest("times out", async (t) => {
-    seen.nav = await t.reject(() => t.app.nav.to({ page: "slow", timeout: 50 }), { code: "E_TIMEOUT" });
+    seen.nav = await t.reject(() => t.app.nav.go({ page: "slow" }, { timeout: 50 }), { code: "E_TIMEOUT" });
     seen.eval = await t.reject(() => t.app.logic.eval({ timeout: 100 }, () => 1), { code: "E_TIMEOUT" });
   });
   lxTest("runs after a relaunch", () => {});
@@ -817,12 +817,12 @@ test("a hidden-page note explains only a locator failure; a bound locator off th
     }, "hidden"],
     ["bound action off the current page", async (t) => {
       const home = await t.app.page();
-      await t.app.nav.to({ page: "other" });
+      await t.app.nav.go({ page: "other" });
       await home.view.testId("sheet").click({ timeout: 80 });
     }, "elsewhere"],
     ["bound assertion off the current page", async (t) => {
       const home = await t.app.page();
-      await t.app.nav.to({ page: "other" });
+      await t.app.nav.go({ page: "other" });
       await expect(home.view.testId("sheet")).toBeVisible({ timeout: 80 });
     }, "elsewhere"],
   ];
@@ -861,11 +861,11 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
 
   let instanceId;
   lxTest("bound", { forensics: false }, async (t) => {
-    await t.app.nav.to({ page: "todo" });
+    await t.app.nav.go({ page: "todo" });
     const page = await t.app.page({ name: "todo" });
     instanceId = page.instanceId;
     const todo = page.view;
-    await t.app.nav.to({ page: "other" });
+    await t.app.nav.go({ page: "other" });
     await todo.testId("todo-input").fill("milk");
     await expect(todo.testId("todo-input")).toHaveValue("milk");
     assert.throws(() => todo.testId("todo-input", { page: "other" }), /takes no options/);
@@ -900,7 +900,7 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
   const seen = {};
   lxTest("binding", { forensics: false }, async (t) => {
     // Opens later: the bind waits for it.
-    setTimeout(() => { void world.app.nav.to({ page: "detail" }); }, 60);
+    setTimeout(() => { void world.app.nav.go({ page: "detail" }); }, 60);
     const started = Date.now();
     const detail = await t.app.page({ name: "detail" }, { timeout: 2_000 });
     seen.waited = Date.now() - started;
@@ -912,7 +912,7 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
     // Never opens: the bind times out naming it.
     seen.timeout = await t.reject(() => t.app.page({ name: "settings" }, { timeout: 120 }), { code: "E_TIMEOUT" });
     // A second live instance of the name is ambiguous; its instance id is not.
-    await t.app.nav.to({ page: "detail" });
+    await t.app.nav.go({ page: "detail" });
     const second = await t.app.page();
     seen.ambiguous = await t.reject(() => t.app.page({ name: "detail" }));
     seen.byId = (await t.app.page({ instanceId: second.instanceId })).instanceId === second.instanceId;

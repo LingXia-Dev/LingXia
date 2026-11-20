@@ -15,7 +15,7 @@ test('pull down from the screen to refresh, then refresh again', {
   start: { page: 'pullToRefresh' },
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-PULL-GESTURE-001');
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
   const page = await app.page<PageContract<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
   const device = androidDevice(t);
   const { width, height } = await device.size();

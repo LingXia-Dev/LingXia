@@ -10,7 +10,7 @@ test('keeps bootstrap, calls, and streams healthy across the page bridge', { app
   const waitForText = (css: string, predicate: (text: string) => boolean) =>
     waitForElementText(t, repro, css, predicate, 30_000);
   try {
-    await app.nav.relaunch({ page: 'bridge-repro' });
+    await app.nav.reset({ page: 'bridge-repro' });
     repro = (await app.page({ name: 'bridge-repro' }, { timeout: 30_000 })).view;
     await repro.css('[data-testid="bridge-repro-page"][data-automation-contract="bridge-v1"]').first().waitFor({ timeout: 30_000 });
     await repro.css('[data-testid="bootstrap-verdict"]').first().waitFor({ timeout: 30_000 });
@@ -43,7 +43,7 @@ test('keeps bootstrap, calls, and streams healthy across the page bridge', { app
     throw error;
   } finally {
     try {
-      await app.nav.relaunch({ page: 'home' });
+      await app.nav.reset({ page: 'home' });
       await waitForCurrentPage(app, 'home');
     } catch {
       // Keep a cleanup failure from hiding the original bridge assertion.

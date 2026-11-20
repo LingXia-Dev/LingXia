@@ -11,8 +11,8 @@ import { bindFixture, eventually } from '../helpers/poll.js';
 // never held.
 
 async function openLeaveGuard(app: TestApp): Promise<TestView> {
-  await app.nav.relaunch({ page: 'api' });
-  await app.nav.to({ page: 'leaveGuard' });
+  await app.nav.reset({ page: 'api' });
+  await app.nav.go({ page: 'leaveGuard' });
   const view = (await app.page({ name: 'leaveGuard' }, { timeout: 30_000 })).view;
   await view.testId('leave-status').waitFor({ state: 'visible', timeout: 30_000 });
   return view;

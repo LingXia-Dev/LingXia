@@ -63,7 +63,8 @@ import type {
   TestNav,
   NavBackOptions,
   NavButton,
-  NavOptions,
+  NavGoOptions,
+  NavTarget,
   NavWaitOptions,
   TestView,
   ViewEnvironment,
@@ -1236,15 +1237,18 @@ export class LiveFixture implements Fixture {
    * reads retry a dropped transport.
    */
   private wrapNav(nav: () => NavDriver): TestNav {
-    const land = (verb: "to" | "redirect" | "switchTab" | "relaunch") => (options: NavOptions) =>
-      this.act(`nav.${verb}`, summarise(options), () => nav()[verb](this.navOptions(options, `t.app.nav.${verb}`)));
+    const land = (verb: "go" | "reset", target: NavTarget, options: NavGoOptions) => {
+      const { replace, ...wait } = options;
+      const driverOptions = this.navOptions(wait, `t.app.nav.${verb}`);
+      return this.act(`nav.${verb}`, summarise({ ...target, ...options }), () => verb === "go"
+        ? nav().go(target, { ...driverOptions, ...(replace === undefined ? {} : { replace }) })
+        : nav().reset(target, driverOptions));
+    };
     const read = <T,>(verb: string, op: () => Promise<T>, detail?: unknown) =>
       this.act(`nav.${verb}`, summarise(detail), () => this.readRetrying(op));
     return {
-      to: land("to"),
-      redirect: land("redirect"),
-      switchTab: land("switchTab"),
-      relaunch: land("relaunch"),
+      go: (target: NavTarget, options?: NavGoOptions) => land("go", target, options ?? {}),
+      reset: (target: NavTarget, options?: NavWaitOptions) => land("reset", target, options ?? {}),
       back: (options?: NavBackOptions) =>
         this.act("nav.back", summarise(options), () => nav().back(this.navOptions(options ?? {}, "t.app.nav.back"))),
       press: (button: NavButton, options?: NavWaitOptions) =>

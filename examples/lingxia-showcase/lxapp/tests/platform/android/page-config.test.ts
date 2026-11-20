@@ -16,14 +16,14 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
 }, async (t) => {
   const { app, defer, namespace } = bindFixture(t, 'ANDROID-PAGE-CONFIG-001');
   const device = androidDevice(t);
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
   const language = await app.logic.eval(({ lx }) => lx.host.displayLanguage.get());
   const title = (config: typeof uiConfig) => language.toLowerCase().split(/[-_]/)[0] === 'zh'
     ? config.navigationBar.title['zh-CN'] : config.navigationBar.title.default;
   expect(homeConfig.navigationStyle).toBe('custom');
   expect(pullConfig.enablePullDownRefresh).toBe(true);
 
-  await app.nav.relaunch({ page: 'ui' });
+  await app.nav.reset({ page: 'ui' });
   // The demo sets a runtime title onLoad; null must restore the JSON title.
   await app.logic.eval(({ lx }) => lx.navigationBar.update({ title: null }));
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(uiConfig));
@@ -33,7 +33,7 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
   await app.logic.eval(({ lx }, title) => lx.navigationBar.update({ title }), marker);
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === marker)).toBe(true);
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await app.logic.eval(({ lx }, title) => lx.navigationBar.update({ title }), marker);
   expect((await app.info()).navigationBar?.title).toBe(marker);
   expect((await device.nodes()).some((node) => node.text === marker)).toBe(false);
@@ -47,7 +47,7 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
   });
   expect(disabled).toEqual({ code: 'E_INVALID_STATE', bizCode: 4004 });
 
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(pullConfig));
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === title(pullConfig))).toBe(true);
   const page = await app.page({ name: 'pullToRefresh' });

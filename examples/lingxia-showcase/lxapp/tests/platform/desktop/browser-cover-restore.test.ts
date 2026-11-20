@@ -194,7 +194,7 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     const browser = t.automation.browser;
     const platform = await runtimePlatform(app);
 
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await waitForCurrentPage(app, 'home');
     // Web tabs cover this home instance and closing them uncovers the same one.
     const home = await app.page({ name: 'home' });

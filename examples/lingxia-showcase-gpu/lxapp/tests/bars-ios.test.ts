@@ -1,5 +1,5 @@
 import { expect, test, type Fixture } from '@lingxia/test';
-import { openUnderTabs, rootOf } from './open-demo';
+import { openUnderTabs, rootOf, navTarget } from './open-demo';
 import { rawAutomation } from '@lingxia/test/runner';
 import { decodePng } from './png.js';
 
@@ -81,6 +81,6 @@ test('after a page is unloaded with its dialog open, the next page dialog still 
   const view = t.app.view;
   await view.testId('lab-overlay-confirm').click();
   await expect(view.getByRole('dialog', { name: 'Delete note?' })).toBeVisible();
-  await t.app.nav.relaunch(openUnderTabs('dialog'));
+  await t.app.nav.reset(navTarget(openUnderTabs('dialog')));
   await dimsTheBar(t);
 });

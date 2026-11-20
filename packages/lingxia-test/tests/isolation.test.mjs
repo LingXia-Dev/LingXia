@@ -75,8 +75,8 @@ test("a body that resumes late is refused and charged its own late assertion, an
     resumed = true;
     for (const [name, act] of [
       ["captured", () => nav.relaunch({ page: "zombie-captured" })],
-      ["fresh", () => rawAutomation().lxapp().nav.relaunch({ page: "zombie-fresh" })],
-      ["global", () => globalThis.lx.automation().lxapp().nav.relaunch({ page: "zombie-global" })],
+      ["fresh", () => rawAutomation().lxapp().nav.reset({ page: "zombie-fresh" })],
+      ["global", () => globalThis.lx.automation().lxapp().nav.reset({ page: "zombie-global" })],
     ]) {
       try { await act(); outcomes[name] = "acted"; } catch (error) { outcomes[name] = error.code ?? error.message; }
     }
@@ -85,8 +85,8 @@ test("a body that resumes late is refused and charged its own late assertion, an
   lxTest("following body", { forensics: false }, async (t) => {
     followingRan = true;
     // The next spec's own drivers work.
-    await rawAutomation().lxapp().nav.to({ page: "following" });
-    await t.app.nav.to({ page: "fixture" });
+    await rawAutomation().lxapp().nav.go({ page: "following" });
+    await t.app.nav.go({ page: "fixture" });
     expect(resumed).toBe(true);
   });
 

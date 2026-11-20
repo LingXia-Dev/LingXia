@@ -13,13 +13,13 @@ interface SurfaceLifecycleState {
 test('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-008', covers: ['lx.nav.go', 'lx.nav.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-008');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
-  await app.nav.to({ page: 'bridge-repro' });
+  await app.nav.reset({ page: 'home' });
+  await app.nav.go({ page: 'bridge-repro' });
   await waitForCurrentPage(app, 'bridge-repro');
-  await app.nav.to({ page: 'feedback' });
+  await app.nav.go({ page: 'feedback' });
   await waitForCurrentPage(app, 'feedback');
   await app.nav.back();
   await waitForCurrentPage(app, 'bridge-repro');
@@ -56,20 +56,20 @@ test("fire onShow/onHide on the same page instance across navigation", { id: "PA
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-001");
 
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
-  await app.nav.to({ page: 'surface' });
+  await app.nav.go({ page: 'surface' });
   const shown = await waitForSurfaceLifecycle(app, (
     { showCount, hideCount },
   ) => showCount === 1 && hideCount === 0);
   expect(shown.lastLifecycle).toContain('onShow');
 
   // Pushing another page hides the surface page without unloading it.
-  await app.nav.to({ page: 'feedback' });
+  await app.nav.go({ page: 'feedback' });
   await waitForCurrentPage(app, 'feedback');
   const hidden = await waitForSurfaceLifecycle(app, ({ hideCount }) => hideCount === 1);
   expect(hidden.lastLifecycle).toContain('onHide');
@@ -91,13 +91,13 @@ test('relaunching the same route keeps the replacement page shown', {
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-009');
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
 
   for (let entry = 0; entry < 3; entry += 1) {
     const previous = await app.nav.current();
     if (!previous.instanceId) throw new Error('Missing outgoing lifecycle page instance ID');
     const previousId = previous.instanceId;
-    await app.nav.relaunch({ page: 'surface' });
+    await app.nav.reset({ page: 'surface' });
     const current = await eventually(() => currentPageOrNull(app), (candidate) =>
       candidate !== null && candidate.name === 'surface' && candidate.ready && Boolean(candidate.instanceId)
         && candidate.instanceId !== previousId, {
@@ -145,7 +145,7 @@ async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
 type ResetDemoEntry = ResetDemoState & { view: TestView };
 
 async function enterResetDemo(app: TestApp): Promise<ResetDemoEntry> {
-  await app.nav.to({ page: 'ui' });
+  await app.nav.go({ page: 'ui' });
   await waitForCurrentPage(app, 'ui');
   const { view } = await app.page({ name: 'ui' });
   await view.testId('ui-navigate-to').waitFor({ timeout: 30_000 });
@@ -171,10 +171,10 @@ test("reset logic data and the rendered document when a page is re-entered", { i
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-002");
 
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
@@ -216,7 +216,7 @@ test("stack two live instances of one route and unwind them independently", { id
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-003");
 
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
   const topDemoState = async (): Promise<ResetDemoState | null> => app.logic.eval(({ getCurrentPages }) => {
@@ -237,9 +237,9 @@ test("stack two live instances of one route and unwind them independently", { id
     describe: 'topmost drill-down instance to report its tag',
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
-  await app.nav.to({ page: 'ui' });
+  await app.nav.go({ page: 'ui' });
   await waitForCurrentPage(app, 'ui');
   const first = await waitForTopDemo();
   if (first === null) throw new Error('first drill-down entry left the stack');
@@ -252,7 +252,7 @@ test("stack two live instances of one route and unwind them independently", { id
   ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
 
   // Same route again: a second, independent live instance.
-  await app.nav.to({ page: 'ui' });
+  await app.nav.go({ page: 'ui' });
   const second = await eventually(topDemoState, (
     candidate,
   ) => candidate !== null && candidate.instanceTag !== ''
@@ -286,10 +286,10 @@ test('deliver exactly one onLoad and one onReady to a re-entered page', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-004');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
@@ -329,10 +329,10 @@ test("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-005");
 
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
@@ -358,10 +358,10 @@ test("fire onLoad once per tab instance, not on preload or later switchTab", {
 }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-007");
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
   // Let preloaded tab WebViews handshake. The bug fired onLoad off that
   // handshake, so switching too early would miss it.
@@ -373,16 +373,16 @@ test("fire onLoad once per tab instance, not on preload or later switchTab", {
     return page ? page.data.loadCount ?? -1 : null;
   });
 
-  await app.nav.switchTab({ page: 'api' });
+  await app.nav.go({ tab: 'api' });
   await waitForCurrentPage(app, 'api');
   const first = await eventually(apiLoadCount, (count) => count === 1, {
     describe: 'first switchTab onto api to deliver exactly one onLoad',
   });
   expect(first).toBe(1);
 
-  await app.nav.switchTab({ page: 'home' });
+  await app.nav.go({ tab: 'home' });
   await waitForCurrentPage(app, 'home');
-  await app.nav.switchTab({ page: 'api' });
+  await app.nav.go({ tab: 'api' });
   await waitForCurrentPage(app, 'api');
   const second = await eventually(apiLoadCount, (count) => count != null, {
     describe: 'api tab to still report its load count after a second switchTab',
@@ -394,10 +394,10 @@ test("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-006");
 
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
@@ -408,7 +408,7 @@ test("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
 
   // switchTab keeps the tab pages it leaves warm, but a pushed page drops off
   // the stack for good — that is a departure, and departures end instances.
-  await app.nav.switchTab({ page: 'api' });
+  await app.nav.go({ tab: 'api' });
   await waitForCurrentPage(app, 'api');
   const stack = await app.logic.eval(({ getCurrentPages }) => getCurrentPages().map((page) => page.route));
   expect(stack.some((route) => route.includes('/ui/'))).toBe(false);

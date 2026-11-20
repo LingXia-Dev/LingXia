@@ -78,7 +78,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
     // Until the page is bound, a failure shot takes whatever page is current.
     let view: TestView = app.view;
     try {
-      const landed = await app.nav.relaunch({ page: expectation.page });
+      const landed = await app.nav.reset({ page: expectation.page });
       expect(landed.name).toBe(expectation.page);
       expect(landed.path.toLowerCase()).toContain(
         `pages/${expectation.page.toLowerCase()}/index.`,

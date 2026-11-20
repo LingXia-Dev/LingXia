@@ -92,7 +92,7 @@ test('handles the macOS location permission sheet when it appears', {
   const doctor = await auto.desktop.doctor();
   const { permissions } = doctor;
 
-  await app.nav.relaunch({ page: 'location' });
+  await app.nav.reset({ page: 'location' });
   const location = await app.page({ name: 'location' }, { timeout: 30_000 });
   const request = location.view.css('button').first();
   await request.waitFor({ state: 'visible', timeout: 30_000 });

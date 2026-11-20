@@ -27,7 +27,7 @@ lxdev test tests/pages/notes.test.ts
 - `testId('x')` matches `[data-testid="x"]` on the current page and must match
   exactly one element (narrow with `.nth(i)`).
 - `test(title, { start: { page, query? } }, body)` relaunches the app on that
-  page before the body, like `t.app.nav.relaunch({ page })` mid-test: the stack
+  page before the body, like `t.app.nav.reset({ page })` mid-test: the stack
   is cleared and a fresh instance opens, ready after its `onReady`. Neither
   resets app or backend data.
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
@@ -97,8 +97,8 @@ everything once before pushing; CI runs it again.
 
 | Task | API |
 |---|---|
-| Relaunch mid-test | `t.app.nav.relaunch({ page, query? })` |
-| Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
+| Relaunch mid-test | `t.app.nav.reset({ page, params? })` |
+| Navigate | `t.app.nav.go({ page, params? } \| { tab }, { replace? })` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
@@ -345,7 +345,7 @@ import checkout from '../scenarios/checkout.json';
 
 test('an unknown payment result settles as paid', async (t) => {
   const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
-  await t.app.nav.relaunch({ page: 'checkout' });
+  await t.app.nav.reset({ page: 'checkout' });
   await t.app.view.testId('pay').click();
   await expect(t.app.view.testId('paid')).toBeVisible();
   const submit = await scenario.waitForCall({ function: 'orders.submit' });
@@ -437,7 +437,7 @@ lxdev test tests/ --tag routed --tag smoke   # routed and smoke
 test('status refreshes every 3 s', async (t) => {
   await t.app.network.route('**/v1/status', { json: { online: true } });
   await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
-  await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
+  await t.app.nav.reset({ page: 'status' });   // start the poll on test time
   const { fired } = await t.app.clock.tick(9_000);  // three polls, in order
   expect(fired).toBe(3);
   await expect(t.app.view.testId('status')).toHaveText('Online');

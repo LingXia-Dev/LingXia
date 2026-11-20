@@ -14,9 +14,9 @@ test('keep App identity across pages and merge setData into the correct View', {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-001');
   defer(async () => {
     await app.logic.eval((_, key) => { delete (globalThis as Record<string, unknown>)[key]; }, namespace);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'navigation' } });
   const page = await app.page({ name: 'ui' });
   const first = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
     const instance = getApp();
@@ -42,7 +42,7 @@ test('keep App identity across pages and merge setData into the correct View', {
   }, page.instanceId);
   expect(merged).toEqual({ counter: 8, tag: first.tag, type: 'navigation' });
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
-  await app.nav.to({ page: 'feedback' });
+  await app.nav.go({ page: 'feedback' });
   const next = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
     const pages = getCurrentPages();
     return {
@@ -66,9 +66,9 @@ test('inject the owning surface into a page opened as a float', {
       const surface = lx.surface.getByKey(key);
       if (surface?.kind === 'page') await surface.close();
     }, namespace);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
     const surface = await lx.surface.openPage('surface', { as: 'float', key, query: { fixture: key } });
     return { key: surface.key ?? null };

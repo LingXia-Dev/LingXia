@@ -113,7 +113,7 @@ test('a page under another holds its videos still and plays the playing ones aga
   const state = view.testId('video-hero-state');
   const at = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
   const away = async () => {
-    await t.app.nav.to({ page: 'todo' });
+    await t.app.nav.go({ page: 'todo' });
     await new Promise<void>(resolve => setTimeout(resolve, 2_500));
     await t.app.nav.back();
     await expect(state).toBeVisible();
