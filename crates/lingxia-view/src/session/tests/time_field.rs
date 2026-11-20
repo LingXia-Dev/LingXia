@@ -130,3 +130,26 @@ fn an_authored_wider_minimum_wins_and_dates_fit_too() {
         "the screen reader reads the date the field shows"
     );
 }
+
+#[test]
+fn an_unbound_time_field_shows_the_users_pick_in_their_clock() {
+    let mut field = page("h('input',{type:'time',style:{width:40,padding:8}})", "h12");
+    let display = field.prepare_native(400, 200, 1.0, true, None, Ok).unwrap();
+    let index = display.nodes.iter().position(|n| n.tag == "input").unwrap();
+    let identity = display.nodes[index].identity.clone();
+    assert!(
+        field
+            .choose_editor_value(&identity, "13:05".into())
+            .unwrap()
+    );
+    let display = field.prepare_native(400, 200, 1.0, true, None, Ok).unwrap();
+    let node = &display.nodes[index];
+    assert_eq!(node.input.as_ref().unwrap().value, "13:05");
+    assert_eq!(node.text, "1:05 PM", "unfocused, it shows the clock");
+    assert_eq!(spoken(&display, index), "1:05 PM");
+    // The clock changing re-formats the kept value.
+    field.set_environment(environment("h23")).unwrap();
+    let display = field.prepare_native(400, 200, 1.0, true, None, Ok).unwrap();
+    assert_eq!(display.nodes[index].text, "13:05");
+    assert_eq!(display.nodes[index].input.as_ref().unwrap().value, "13:05");
+}

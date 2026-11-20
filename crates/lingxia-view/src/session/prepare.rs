@@ -637,6 +637,12 @@ impl ViewSession {
                 strip_record_animations(&mut render_records);
                 inputs.apply_values(&mut render_records);
                 uncontrolled.apply(&mut render_records);
+                self.apply_field_texts(
+                    &records,
+                    &mut render_records,
+                    inputs.focused(),
+                    &mut uncontrolled,
+                );
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
                 self.renderer.pressed.clone_from(&self.pressed);

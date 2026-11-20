@@ -65,6 +65,9 @@ pub(crate) enum Proposal {
 pub(crate) struct Uncontrolled {
     values: HashMap<String, ControlValue>,
     unbound: HashMap<String, Unbound>,
+    /// An unbound date or time field's text as the user's clock shows it, by the field's own
+    /// ISO text and the language and hour cycle it was formatted for.
+    field_texts: HashMap<(String, String, String), String>,
 }
 
 /// The field holding a control's value and the one naming its change callback, when the tag is
@@ -200,6 +203,99 @@ impl Uncontrolled {
         let json = next.json();
         self.values.insert(id.clone(), next);
         Proposal::Changed(json)
+    }
+}
+
+/// The `date` or `time` keyboard of an editor the page leaves unbound.
+fn unbound_clock(record: &Record) -> Option<&'static str> {
+    if record.tag != tag::INPUT
+        || record
+            .fields
+            .iter()
+            .any(|(id, _)| *id == field::INPUT_VALUE)
+    {
+        return None;
+    }
+    match record.string(field::KEYBOARD) {
+        Some("date") => Some("date"),
+        Some("time") => Some("time"),
+        _ => None,
+    }
+}
+
+impl super::ViewSession {
+    /// An unbound date or time field keeps the user's ISO text; while unfocused it shows that
+    /// text in the user's clock, as a bound field does. The runtime formats it once per value.
+    pub(super) fn apply_field_texts(
+        &self,
+        records: &[Record],
+        render_records: &mut [Record],
+        focused: Option<&str>,
+        uncontrolled: &mut Uncontrolled,
+    ) {
+        if !records.iter().any(|record| unbound_clock(record).is_some()) {
+            return;
+        }
+        let env = &self.environment;
+        let language = env["contentLanguage"]
+            .as_str()
+            .or_else(|| env["displayLanguage"].as_str())
+            .unwrap_or_default()
+            .to_owned();
+        let cycle = env["hourCycle"].as_str().unwrap_or_default().to_owned();
+        let ids = identities(render_records);
+        let live: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        uncontrolled
+            .field_texts
+            .retain(|(id, _, _), _| live.contains(id.as_str()));
+        for ((record, shown), id) in records.iter().zip(render_records.iter_mut()).zip(&ids) {
+            let Some(kind) = unbound_clock(record) else {
+                continue;
+            };
+            if focused == Some(id.as_str()) {
+                continue;
+            }
+            let Some(iso) = shown
+                .string(field::INPUT_VALUE)
+                .filter(|iso| !iso.is_empty())
+            else {
+                continue;
+            };
+            let key = (id.clone(), iso.to_owned(), format!("{language}|{cycle}"));
+            let text = match uncontrolled.field_texts.get(&key) {
+                Some(text) => text.clone(),
+                None => {
+                    let text = self.field_text(kind, iso, &language, &cycle);
+                    // One value per field: the text of an older value is not shown again.
+                    uncontrolled
+                        .field_texts
+                        .retain(|(other, _, _), _| other != id);
+                    uncontrolled.field_texts.insert(key, text.clone());
+                    text
+                }
+            };
+            shown
+                .fields
+                .push((field::DISPLAY_VALUE, serde_json::Value::from(text)));
+        }
+    }
+
+    /// `iso` as the runtime's `__lingxiaFieldText` shows it; `iso` itself when that fails.
+    fn field_text(&self, kind: &str, iso: &str, language: &str, cycle: &str) -> String {
+        let quote = |text: &str| serde_json::Value::from(text).to_string();
+        let opts = serde_json::json!({"language": language, "hourCycle": cycle});
+        let call = format!(
+            "typeof __lingxiaFieldText === 'function' ? String(__lingxiaFieldText({}, {}, {opts})) : {}",
+            quote(kind),
+            quote(iso),
+            quote(iso),
+        );
+        self.execute(|| {
+            self.context
+                .eval::<String>(rong::Source::from_bytes(call.as_bytes()))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+        .unwrap_or_else(|_| iso.to_owned())
     }
 }
 
