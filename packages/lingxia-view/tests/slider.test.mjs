@@ -43,6 +43,29 @@ test('slider validates bounds, finite numeric binding, labels and disabled callb
   assert.equal(disabled.props.enabled, 0);
 });
 
+test('an unbound slider leaves its value to the core and reports each value the core sends', () => {
+  reset(); const calls = [];
+  const render = () => h('slider', { 'aria-label': 'Volume', min: 0, max: 10, step: 2,
+    onChange: next => calls.push(['change', next]), onChangeEnd: next => calls.push(['end', next]) });
+  const slider = rendered(render);
+  // No `sliderValue` on the wire marks it unbound; the core starts it at min.
+  assert.equal(slider.props.sliderValue, undefined);
+  assert.equal(slider.props.sliderMin, 0);
+  dispatch(rendered(render).props.onSliderPress);
+  assert.equal(dispatch(rendered(render).props.onSliderChange, 4), true);
+  assert.equal(dispatch(rendered(render).props.onSliderChange, 6), true);
+  assert.equal(releasePress(), true);
+  assert.deepEqual(calls, [['change', 4], ['change', 6], ['end', 6]]);
+  // Without a callback it still takes a drag, so it keeps a handler and is not drawn disabled.
+  const silent = rendered(() => h('slider', { 'aria-label': 'Silent' }));
+  assert.equal(silent.props.sliderValue, undefined); assert.equal(silent.props.enabled, undefined);
+  assert.equal(dispatch(silent.props.onSliderChange, 30), true);
+  // A controlled slider is unchanged: its value wired, no handler without a callback.
+  const fixed = rendered(() => h('slider', { 'aria-label': 'Fixed', value: 3 }));
+  assert.equal(fixed.props.sliderValue, 3); assert.equal(fixed.props.onSliderChange, undefined);
+  assert.equal(rendered(() => h('slider', { 'aria-label': 'Off', disabled: true })).props.onSliderChange, undefined);
+});
+
 test('onChangeEnd hears a change when its press lifts, and at once without a press', () => {
   reset(); const calls = [];
   const render = () => {

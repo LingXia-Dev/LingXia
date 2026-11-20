@@ -558,16 +558,19 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       // One thumb of two stops at the other.
       const thumb = props[thumbMark];
       const within = value => !thumb ? value : thumb.upper ? Math.max(value, thumb.other) : Math.min(value, thumb.other);
-      props.value = within(props.value);
-      for (const [key, name] of [['sliderValue', 'value'], ['sliderMin', 'min'], ['sliderMax', 'max'], ['sliderStep', 'step'], ['accessibilityLabel', 'accessibilityLabel']])
+      const unbound = props.value === undefined;
+      if (!unbound) { props.value = within(props.value); wire('sliderValue', props.value); }
+      for (const [key, name] of [['sliderMin', 'min'], ['sliderMax', 'max'], ['sliderStep', 'step'], ['accessibilityLabel', 'accessibilityLabel']])
         wire(key, props[name]);
       if (thumb) { wire('sliderOther', thumb.other); wire('sliderThumb', thumb.upper ? 'upper' : 'lower'); }
       if (props.secondaryValue !== undefined) wire('sliderSecondary', check.sliderSecondary(props));
       const { onChange, onChangeEnd, onPressChange } = props;
       if (onChangeEnd !== undefined && typeof onChangeEnd !== 'function') throw Error('UI_SLIDER: onChangeEnd takes a function');
-      if ((onChange || onChangeEnd) && !disabled) on('onSliderChange', value => {
+      // An unbound slider needs the handler even without a callback, or it draws disabled; the core
+      // sends it only a changed, snapped value.
+      if ((onChange || onChangeEnd || unbound) && !disabled) on('onSliderChange', value => {
         const next = within(check.sliderValue(props, value));
-        if (next === props.value) return;
+        if (!unbound && next === props.value) return;
         onChange?.(next);
         if (onChangeEnd) changeEnd(identity, next, onChangeEnd);
       }, 'number');

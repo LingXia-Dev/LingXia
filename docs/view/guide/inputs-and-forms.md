@@ -59,8 +59,8 @@ or pass `value` and the change callback, and store the value yourself:
 | `<radio>`, `<select>` | `string` (an option's `value`) | `onChange(value)` |
 | `<slider>` | `number` | `onChange(value)` |
 
-A `<checkbox>` or `<switch>` with neither keeps its own checked state, starting unchecked, and still
-reports each change to `onChange`. Its `checked:` and `has-checked:` styles follow `value` or `bind` only.
+A `<checkbox>`, `<switch>` or `<slider>` with neither keeps its own state, starting unchecked or at `min`,
+and still reports each change to its callbacks. `checked:` and `has-checked:` styles follow `value` or `bind` only.
 
 `<scroll>` snapping and `drag` take `bind` only (a `number` cell). `bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
 hold the control's type (`UI_INPUT`, `UI_CHECK`, `UI_RADIO`, `UI_SLIDER`).

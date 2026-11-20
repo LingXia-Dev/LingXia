@@ -3548,12 +3548,11 @@
   }
   function slider(props) {
     for (const [name, fallback] of [["min", 0], ["max", 100], ["step", 1]]) if (props[name] === void 0) props[name] = fallback;
-    if (props.value === void 0) props.value = props.min;
     const { min, max, step, value } = props;
-    if (![min, max, step, value].every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 || step > max - min || (max - min) / step > 1e6 || min + step === min || max - step === max)
+    if (![min, max, step, ...value === void 0 ? [] : [value]].every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 || step > max - min || (max - min) / step > 1e6 || min + step === min || max - step === max)
       throw Error("UI_SLIDER: invalid range or precision");
     label(props.accessibilityLabel, "UI_SLIDER", true);
-    props.value = sliderValue(props, value);
+    if (value !== void 0) props.value = sliderValue(props, value);
   }
   function sliderSecondary({ min, max, secondaryValue: value }) {
     if (typeof value !== "number" || !Number.isFinite(value)) throw Error("UI_SLIDER: secondaryValue must be a finite number");
@@ -5023,8 +5022,12 @@
         slider(props);
         const thumb = props[thumbMark];
         const within2 = (value) => !thumb ? value : thumb.upper ? Math.max(value, thumb.other) : Math.min(value, thumb.other);
-        props.value = within2(props.value);
-        for (const [key, name] of [["sliderValue", "value"], ["sliderMin", "min"], ["sliderMax", "max"], ["sliderStep", "step"], ["accessibilityLabel", "accessibilityLabel"]])
+        const unbound = props.value === void 0;
+        if (!unbound) {
+          props.value = within2(props.value);
+          wire("sliderValue", props.value);
+        }
+        for (const [key, name] of [["sliderMin", "min"], ["sliderMax", "max"], ["sliderStep", "step"], ["accessibilityLabel", "accessibilityLabel"]])
           wire(key, props[name]);
         if (thumb) {
           wire("sliderOther", thumb.other);
@@ -5033,9 +5036,9 @@
         if (props.secondaryValue !== void 0) wire("sliderSecondary", sliderSecondary(props));
         const { onChange, onChangeEnd, onPressChange } = props;
         if (onChangeEnd !== void 0 && typeof onChangeEnd !== "function") throw Error("UI_SLIDER: onChangeEnd takes a function");
-        if ((onChange || onChangeEnd) && !disabled) on("onSliderChange", (value) => {
+        if ((onChange || onChangeEnd || unbound) && !disabled) on("onSliderChange", (value) => {
           const next = within2(sliderValue(props, value));
-          if (next === props.value) return;
+          if (!unbound && next === props.value) return;
           onChange?.(next);
           if (onChangeEnd) changeEnd(identity, next, onChangeEnd);
         }, "number");

@@ -113,13 +113,13 @@ export function sliderValue({ min, max, step }, value) {
 
 export function slider(props) {
   for (const [name, fallback] of [['min', 0], ['max', 100], ['step', 1]]) if (props[name] === undefined) props[name] = fallback;
-  if (props.value === undefined) props.value = props.min;
+  // Unbound (no value or bind): the core keeps the value, starting at min.
   const { min, max, step, value } = props;
-  if (![min, max, step, value].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 ||
+  if (![min, max, step, ...(value === undefined ? [] : [value])].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 ||
       step > max - min || (max - min) / step > 1e6 || min + step === min || max - step === max)
     throw Error('UI_SLIDER: invalid range or precision');
   label(props.accessibilityLabel, 'UI_SLIDER', true);
-  props.value = sliderValue(props, value);
+  if (value !== undefined) props.value = sliderValue(props, value);
 }
 
 /** A second value drawn behind the range, such as buffered media: clamped, never snapped. */
