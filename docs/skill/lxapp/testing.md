@@ -185,6 +185,8 @@ test('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
 - iOS takes page gestures on GPU pages only (`delivered: 'view'`); a WebView
   app there reports no input, so `requires.input` skips. HarmonyOS behaves the same.
 - On HarmonyOS, `app.chrome` and window taps reach only the host's own toast, modal and action sheet (`delivered: 'view'`).
+- `app.chrome.elements()` bounds are in window points; measure them against `app.chrome.viewport()`, not
+  `app.view.viewport()`, which is in the page's own points (a desktop device frame scales those).
 - `requires: { chrome: true }` (likewise `refreshIndicator`, `hostInput`) skips where the host cannot
   read its bars, read pull to refresh, or reach either with input; an undeclared `E_UNSUPPORTED` fails.
 - `requires: { pointer: 'coarse' }` (or `'fine'`) runs only where GPU pages get that pointer: touch sheets

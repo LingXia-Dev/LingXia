@@ -1169,6 +1169,7 @@ export class LiveFixture implements Fixture {
             tap: (target, options) => typeof target === "string"
               ? gestures.chromeTap(target, undefined, options?.timeout)
               : gestures.chromeTap(target.label, target.scope ? [target.scope] : undefined, options?.timeout),
+            viewport: () => gestures.windowViewport(),
           },
           // A desktop shell shows the app's tabs as sidebar rows.
           tabBar: { tap: (label, options) => gestures.chromeTap(label, ["tabBar", "sidebar"], options?.timeout) },

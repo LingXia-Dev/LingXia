@@ -694,6 +694,11 @@ export interface TestChrome {
   elements(options?: { scope?: string }): Promise<ChromeElement[]>;
   /** Waits (5 s) for exactly one element with the label, then taps it. */
   tap(target: ChromeTarget, options?: { timeout?: number }): Promise<GestureTrace>;
+  /**
+   * The host window, in the frame `elements` reports bounds in. A page's
+   * `t.app.view.viewport()` is in its own points, which a desktop device frame scales.
+   */
+  viewport(): Promise<{ left: number; top: number; width: number; height: number }>;
 }
 
 /** The tab bar (`t.app.tabBar`); on a desktop shell, the app's sidebar rows. */

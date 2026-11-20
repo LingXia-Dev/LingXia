@@ -112,8 +112,8 @@ test('an update that fails after the page has shown keeps the page under a banne
     await t.app.logic.eval(({ lx }, look) => lx.host.appearance.setPreference(look), look);
     const before = await openFailing(t, 'lab-recovery-break', 'spec-break');
     await expect(t.app.view.testId('spec-break-shown')).toBeVisible();
-    // Measured while the page still renders: once its update fails, a page query answers the failure.
-    const window = await t.app.view.viewport();
+    // In the frame chrome bounds are in: a desktop device frame scales the page's own points.
+    const window = await t.app.chrome.viewport();
     // The tap's update is the one that throws, so the frame the click waits for never comes.
     const tapped = t.app.view.testId('spec-break-go').click().catch(() => undefined);
     let { elements, notice } = await banner();
