@@ -98,7 +98,7 @@ Page({
 | `this.setData(patch)` | Merge top-level keys into `data` and replicate to View. Nested writes: `setPath` (checked), `setDataPath` (unchecked). |
 | `await this.flush()` | Resolves once every `setData` so far reached the View; rejects if the page unloads first or a write was discarded. |
 | `this.signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: this.signal })`. |
-| `this.setResult(value)` / `this.close(value?)` | Return a JSON result to the page that pushed this one. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from `(await lx.navigateTo(...)).result`: `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles after `onUnload`. |
+| `this.setResult(value)` / `this.close(value?)` | Return a JSON result to the page that pushed this one. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from `(await lx.navigateTo(...)).result`, or from the handle `lx.surface.openPage` returned: `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
 | `this.yourMethod()` | Any other member is a page method. A name differing from a hook only in case (`onload`) is rejected. |
 
 ### Lifecycle

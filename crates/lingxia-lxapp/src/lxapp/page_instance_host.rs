@@ -559,6 +559,7 @@ impl LxApp {
         if dispatch_on_hide && !hidden {
             page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
         }
+        page.set_leave_reason(reason);
         page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
         let webview = page.webview();
         page.detach_webview();

@@ -2001,10 +2001,19 @@ impl PageSvc {
     }
 
     /// Settle the opener's `result` once the page has unloaded. Without a
-    /// result set it is canceled: by the app closing, or else by the user.
+    /// result set it is canceled, for the reason the instance was disposed;
+    /// a page that left the stack by Back left by the user.
     pub(crate) fn settle_result(&self, ctx: &JSContext) {
-        let closing = LxApp::from_ctx(ctx).is_ok_and(|app| !app.is_opened());
-        self.settle_result_with(if closing { "app_closed" } else { "user" });
+        use crate::page::runtime::CloseReason;
+        let reason = match self.page.take_leave_reason() {
+            Some(CloseReason::OwnerClosed) => "opener",
+            Some(CloseReason::Reclaimed) => "reclaimed",
+            Some(CloseReason::AppClosed) => "app_closed",
+            Some(_) => "user",
+            None if LxApp::from_ctx(ctx).is_ok_and(|app| !app.is_opened()) => "app_closed",
+            None => "user",
+        };
+        self.settle_result_with(reason);
     }
 
     fn settle_result_with(&self, reason: &str) {

@@ -703,6 +703,7 @@ const PAGE_SURFACE_API = [
   'onShow',
   'postMessage',
   'realized',
+  'result',
   'show',
   'visible',
 ] as const;
@@ -787,8 +788,8 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'PageSurface',
     members: PAGE_SURFACE_API,
-    properties: ['alive', 'key', 'kind', 'realized', 'visible'],
-    optionalProperties: ['key'],
+    properties: ['alive', 'key', 'kind', 'realized', 'result', 'visible'],
+    optionalProperties: ['key', 'result'],
     fixture: 'surface',
     factory: 'lx.surface.openPage',
   },
@@ -803,8 +804,8 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'PageMessagePort',
     members: PAGE_MESSAGE_PORT_API,
-    properties: [],
-    optionalProperties: [],
+    properties: ['result'],
+    optionalProperties: ['result'],
     fixture: 'navigation',
     factory: 'lx.navigateTo',
   },

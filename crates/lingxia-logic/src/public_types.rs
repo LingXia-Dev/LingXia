@@ -1233,12 +1233,13 @@ rong::js_api! {
     readonly result?: Promise<PageResult>;
 }"###;
 
-        /// A pushed page's outcome. `canceled` means it left without a result:
-        /// `user` (Back), `opener` (a newer result promise replaced this one),
-        /// `app_closed`.
+        /// A pushed or surface page's outcome. `canceled` means it left without a
+        /// result: `user` (Back, a dismiss, a close), `opener` (the opener went
+        /// away, or a newer result promise replaced this one), `reclaimed` (a
+        /// hidden surface page unloaded under memory pressure), `app_closed`.
         type PageResult = r###"
     | { status: 'ok'; value: JsonValue }
-    | { status: 'canceled'; reason: 'user' | 'opener' | 'app_closed' }"###;
+    | { status: 'canceled'; reason: 'user' | 'opener' | 'reclaimed' | 'app_closed' }"###;
 
         type PageQuery = r###"Record<string, PageQueryValue>"###;
 
@@ -1717,6 +1718,12 @@ true
         type PageSurface = r###"SurfaceBase & SurfaceShowable & SurfaceMessaging & {
     readonly kind: 'page';
     readonly realized: 'float' | 'window';
+    /**
+     * The page's result, settled once after the page unloads with its surface:
+     * `ok` with what it set by `setResult` or `close(value)`, otherwise
+     * `canceled`. On the opener's handle only.
+     */
+    readonly result?: Promise<PageResult>;
 }"###;
 
         /// A surface declared by the host in `lingxia.yaml`. A declaration that

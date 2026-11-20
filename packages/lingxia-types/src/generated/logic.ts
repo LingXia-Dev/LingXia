@@ -1543,18 +1543,25 @@ export type PageQuery = Record<string, PageQueryValue>;
 export type PageQueryValue = JsonValue | undefined;
 
 /**
- * A pushed page's outcome. `canceled` means it left without a result:
- * `user` (Back), `opener` (a newer result promise replaced this one),
- * `app_closed`.
+ * A pushed or surface page's outcome. `canceled` means it left without a
+ * result: `user` (Back, a dismiss, a close), `opener` (the opener went
+ * away, or a newer result promise replaced this one), `reclaimed` (a
+ * hidden surface page unloaded under memory pressure), `app_closed`.
  */
 export type PageResult = 
     | { status: 'ok'; value: JsonValue }
-    | { status: 'canceled'; reason: 'user' | 'opener' | 'app_closed' };
+    | { status: 'canceled'; reason: 'user' | 'opener' | 'reclaimed' | 'app_closed' };
 
 /** One of this lxapp's own pages, opened as a float or a window. */
 export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
     readonly kind: 'page';
     readonly realized: 'float' | 'window';
+    /**
+     * The page's result, settled once after the page unloads with its surface:
+     * `ok` with what it set by `setResult` or `close(value)`, otherwise
+     * `canceled`. On the opener's handle only.
+     */
+    readonly result?: Promise<PageResult>;
 };
 
 /**

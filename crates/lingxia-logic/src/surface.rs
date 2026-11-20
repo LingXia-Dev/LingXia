@@ -2579,11 +2579,14 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             page_surface.clone(),
             "page",
         )?;
-        page_svc.bind_surface(page_surface.clone()).map_err(|err| {
-            unregister_closed_sender(&surface_id);
-            let _ = lxapp.close_surface(&surface_id, "failed");
-            surface_error(SurfaceErrorCode::Failed, err)
-        })?;
+        page_svc
+            .bind_surface(page_surface.clone())
+            .and_then(|()| surface.set("result", page_svc.bind_result()?))
+            .map_err(|err| {
+                unregister_closed_sender(&surface_id);
+                let _ = lxapp.close_surface(&surface_id, "failed");
+                surface_error(SurfaceErrorCode::Failed, err)
+            })?;
         // Link the two surface objects so visibility events fired on one also
         // fire on the other. Borrow scope is tight so we never hold a borrow
         // across the JSObject.clone() call.

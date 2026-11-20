@@ -275,6 +275,8 @@ pub struct PageState {
     /// The View asked to confirm leaving (unsaved changes). Belongs to the
     /// current document: a new document, or leaving the stack, clears it.
     leave_guard: bool,
+    /// Why the instance was disposed, for the result its opener receives.
+    leave_reason: Option<crate::page::runtime::CloseReason>,
     // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
     /// The page's own `maxTextScale`, which may only lower the lxapp's.
@@ -530,6 +532,7 @@ impl PageInstance {
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             leave_guard: false,
+            leave_reason: None,
             presentation_orientation: None,
             orientation_override: page_config.get_orientation_override(),
             max_text_scale: page_config.max_text_scale,
@@ -2414,6 +2417,21 @@ impl PageInstance {
             .unwrap_or(false)
     }
 
+    pub(crate) fn set_leave_reason(&self, reason: crate::page::runtime::CloseReason) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.leave_reason = Some(reason);
+        }
+    }
+
+    /// The disposal reason recorded for this instance, consumed once.
+    pub(crate) fn take_leave_reason(&self) -> Option<crate::page::runtime::CloseReason> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|mut state| state.leave_reason.take())
+    }
+
     pub(crate) fn set_leave_guard(&self, enabled: bool) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.leave_guard = enabled;
@@ -3082,6 +3100,7 @@ mod tests {
             config_load_error: None,
             enable_pull_down_refresh: false,
             leave_guard: false,
+            leave_reason: None,
             presentation_orientation: None,
             orientation_override: OrientationOverride::default(),
             max_text_scale: None,
