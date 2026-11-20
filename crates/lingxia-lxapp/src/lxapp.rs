@@ -3999,7 +3999,6 @@ impl LxApp {
                     } else {
                         PresentationKind::Window
                     },
-                    None,
                 )?;
             }
             // Activate the main in the graph before the host shows it. Windows
