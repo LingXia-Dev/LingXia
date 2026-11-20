@@ -18,7 +18,7 @@ const over = { position: 'absolute', top: 0, left: 0, right: 0 };
 export function rangeSlider(props) {
   const { values, thumbLabels, onChange, onChangeEnd, onPressChange, className, style, min, max, step, disabled, key, id, role,
     'data-testid': testId, 'aria-label': ariaLabel, accessibilityLabel = ariaLabel, ...rest } = props;
-  for (const name of ['value', 'bind', 'secondaryValue', 'aria-valuetext']) if (rest[name] !== undefined) throw Error(`UI_SLIDER: ${name} belongs to a slider with one value`);
+  for (const name of ['value', 'bind', 'defaultValue', 'secondaryValue', 'aria-valuetext']) if (rest[name] !== undefined) throw Error(`UI_SLIDER: ${name} belongs to a slider with one value`);
   if (role !== undefined) throw Error('UI_SLIDER: a slider with two values is a group of two sliders; it takes no role');
   if (!Array.isArray(values) || values.length !== 2 || !values.every(value => typeof value === 'number' && Number.isFinite(value)) || values[0] > values[1])
     throw Error('UI_SLIDER: values is [lower, upper], two numbers in order');

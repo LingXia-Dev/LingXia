@@ -7,6 +7,7 @@ let byName = new Map();
 const cache = new Map();
 const states = ['focus', 'focusVisible', 'active', 'hover', 'disabled', 'starting', 'exit', 'hasChecked', 'hasDisabled', 'focusWithin', 'groupActive'];
 const parts = ['track', 'range', 'secondary', 'thumb'];
+const variantNames = { focusVisible: 'focus-visible', hasChecked: 'has-checked', hasDisabled: 'has-disabled', focusWithin: 'focus-within', groupActive: 'group-active', children: 'space-*/divide-*', every: '*' };
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {
@@ -33,12 +34,12 @@ export function configureClasses(compiled) {
   });
 }
 
-function applies(rule, env) {
+function applies(rule, env, checked) {
   const { theme, minWidth, maxWidth, direction } = rule.when ?? {};
   if (theme && (env.theme ?? 'light') !== theme) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
-  if (rule.when?.checked && env.checked !== true) return false;
+  if (rule.when?.checked && !checked) return false;
   if (rule.when?.indeterminate && env.indeterminate !== true) return false;
   if (rule.when?.data) {
     const [name, value] = rule.when.data, own = env.data?.[name];
@@ -154,18 +155,39 @@ function changed(full, base) {
 
 /**
  * The class cascade for one node: `base`, the full style under `disabled`,
- * paint deltas under `focus`/`active`/`hover`, and the style its non-last
- * children receive. Only a mouse, stylus or trackpad hovers, so `hover:` needs no pointer gate.
+ * paint deltas under `focus`/`active`/`hover`, `checked` (over `base` and over `disabled`)
+ * and the style its non-last children receive. Only a mouse, stylus or trackpad hovers,
+ * so `hover:` needs no pointer gate.
  */
 export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.checked === true}|${env.indeterminate === true}`;
+  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.indeterminate === true}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));
+  const result = cascadeFor(className, env, false);
+  // The core paints `checked:` while the control reads checked, bound or not: one delta over
+  // `base` and one over `disabled`. Every other state must not depend on it, since the core
+  // lays that state over the checked paint, not beside it.
+  if (result.checkable) {
+    const on = cascadeFor(className, env, true);
+    for (const state of [...states.filter(state => state !== 'disabled'), 'children', 'every', 'backdrop'])
+      if (JSON.stringify(on[state]) !== JSON.stringify(result[state]))
+        throw Error(`UI_CLASS: ${className}: checked: and ${variantNames[state] ?? state}: style the same part; a state of a checked part is not supported`);
+    result.checked = { base: changed(on.base, result.base), disabled: changed(on.disabled ?? on.base, result.disabled ?? result.base) };
+  }
+  delete result.checkable;
+  // Cache only the class cascade; inline values and inheritance resolve per node.
+  if (cache.size >= 1024) cache.delete(cache.keys().next().value);
+  cache.set(key, copy(result));
+  return result;
+}
+
+function cascadeFor(className, env, checked) {
   const matched = [];
+  let checkable = false;
   const tokens = className.split(/\s+/).filter(Boolean);
   // A repeated class counts where it last appears, as in tailwind-merge.
   const position = new Map(tokens.map((name, index) => [name, index]));
@@ -174,7 +196,8 @@ export function resolveClasses(className, env = {}) {
     if (!rules) throw Error(`UI_CLASS: ${name} was not compiled; use complete utility names in source`);
     for (const rule of rules) {
       if (rule.error) throw Error(`UI_CLASS: ${name}: ${rule.error.message}`);
-      if (applies(rule, env)) matched.push({ ...rule, position: position.get(name) });
+      if (rule.when?.checked && applies(rule, env, true)) checkable = true;
+      if (applies(rule, env, checked)) matched.push({ ...rule, position: position.get(name) });
     }
   }
   // A pseudo-class adds specificity above media-only rules; source order breaks ties.
@@ -241,8 +264,6 @@ export function resolveClasses(className, env = {}) {
   if (children.length) result.children = cascade(children);
   const every = matched.filter(rule => rule.when?.every);
   if (every.length) result.every = cascade(every);
-  // Cache only the class cascade; inline values and inheritance resolve per node.
-  if (cache.size >= 1024) cache.delete(cache.keys().next().value);
-  cache.set(key, copy(result));
+  if (checkable) result.checkable = true;
   return result;
 }

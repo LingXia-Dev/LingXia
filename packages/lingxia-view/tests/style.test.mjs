@@ -188,7 +188,9 @@ test('has-checked and has-disabled follow descendants; focus-within reaches nati
     ['focus-within:bg-danger', { backgroundColor: 'danger' }, { state: 'focusWithin' }], ['has-checked:p-2', { paddingTop: 8 }, { state: 'hasChecked' }]]);
   const card = (checked, disabled) => rendered(() => h('view', { style: { flexDirection: 'row' }, className: 'has-checked:bg-accent has-disabled:opacity-50' },
     h('view', {}, h('checkbox', { value: checked, onChange() {}, 'aria-label': 'x' }), h('input', { value: '', disabled })))).props;
-  assert.deepEqual([card(false, false).background, card(true, false).background], [undefined, 'accent']);
+  // The core applies has-checked: while a descendant control reads checked, bound or not.
+  assert.deepEqual([card(false, false).background, card(true, false).background], [undefined, undefined]);
+  assert.deepEqual(card(false, false).hasCheckedStyle, { background: 'accent' });
   assert.equal(card(false, true).opacity, 0.5);
   assert.ok(rendered(() => h('view', { className: 'focus-within:bg-danger' }, h('input', { value: '' }))).props.focusWithinStyle);
   assert.throws(() => describe(() => h('view', { className: 'has-checked:p-2' }), {}), /has-checked: supports paint properties only, not paddingTop/);

@@ -215,8 +215,11 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 | Prop | Type | Required |
 | --- | --- | --- |
 | `indeterminate` | `boolean` |  |
+| `defaultChecked` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
+
+`defaultChecked`: where a checkbox without `value` or `bind` starts; it applies once, and a later change does nothing.
 
 ## `<switch>`
 
@@ -226,8 +229,11 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `defaultChecked` | `boolean` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
+
+`defaultChecked`: where a switch without `value` or `bind` starts; it applies once, and a later change does nothing.
 
 ## `<radio>`
 
@@ -256,11 +262,14 @@ Two values: `values={[lower, upper]}` with `thumbLabels={[name, name]}` makes a 
 | `min` | `number` |  |
 | `max` | `number` |  |
 | `step` | `number` |  |
+| `defaultValue` | `number` |  |
 | `secondaryValue` | `number` |  |
 | `aria-label` | `string` | yes |
 | `aria-valuetext` | `string` |  |
 | `disabled` | `boolean` |  |
 | `onPressChange` | `(pressed: boolean) => void` |  |
+
+`defaultValue`: where a slider without `value` or `bind` starts, snapped to `step`; it applies once, and a later change does nothing.
 
 ## `<dialog>`
 
@@ -341,9 +350,12 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 | Prop | Type | Required |
 | --- | --- | --- |
 | `options` | `readonly RadioOption[]` | yes |
+| `defaultValue` | `string` |  |
 | `placeholder` | `string` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
+
+`defaultValue`: the option a select without `value` or `bind` starts on; it applies once, and a later change does nothing.
 
 ## `<video>`
 
