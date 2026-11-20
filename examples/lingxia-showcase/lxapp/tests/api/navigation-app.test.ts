@@ -123,14 +123,15 @@ test('hop to the bundled chat lxapp and back', {
     await expect.poll(lifecycle).toEqual({ ...baseline, hides: baseline.hides + 1, last: 'hide' });
   });
 
-  await t.step('guest cache APIs are absent', async () => {
+  await t.step('guest cache APIs are refused', async () => {
     const chat = t.automation.lxapp(CHAT_APP_ID);
     await eventually(() => chat.logic.eval(() => true), (ready) => ready === true, {
       describe: 'chat Logic runtime to answer for cache presence',
       retryIf: () => true,
     });
-    const present = await chat.logic.eval(({ lx }) => 'cache' in lx.host);
-    expect(present).toBe(false);
+    const refused = await chat.logic.eval(async ({ lx }) =>
+      lx.host.cache.size().then(() => 'ok', (error: { code?: string }) => error.code));
+    expect(refused).toBe('E_PERMISSION_DENIED');
   });
 
   await t.step('navigateBackApp from the target returns to the caller and closes the target', async () => {

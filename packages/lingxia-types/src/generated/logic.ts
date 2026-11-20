@@ -356,24 +356,23 @@ declare global {
     readonly env: HostAppEnv;
 
     /**
-     * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports('app.autostart')` always
-     * agree, so `lx.host.autostart?.…` and the query are interchangeable.
+     * Launch-at-startup control. Where the host cannot register a startup
+     * item every call fails `E_NOT_SUPPORTED`; ask `lx.supports('app.autostart')`
+     * first.
      */
-    autostart?: AutostartApi;
+    readonly autostart: AutostartApi;
 
     /**
-     * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports('app.notification')` always agree.
+     * Local notifications. Where the host cannot post them every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.notification')` first.
      */
-    notification?: NotificationApi;
+    readonly notification: NotificationApi;
 
     /**
-     * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports('app.banner')`
-     * always agree.
+     * Product-drawn desktop banner (top-right). Off desktop every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.banner')` first.
      */
-    banner?: BannerApi;
+    readonly banner: BannerApi;
 
     /**
      * The language this lxapp renders in. Every lxapp follows it; only the
@@ -388,17 +387,17 @@ declare global {
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app (`lx.app.info.role === 'control'`).
+     * Product-wide cache reporting and clearing for a settings screen. Control
+     * app only: another lxapp's calls fail `E_PERMISSION_DENIED`.
      */
-    cache?: AppCacheApi;
+    readonly cache: AppCacheApi;
 
     /**
-     * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
+     * Terminal product settings, for the host-bundled Terminal Settings lxapp.
+     * Without `capabilities.terminal` every call fails `E_NOT_SUPPORTED`; ask
+     * `lx.supports('terminal')` first.
      */
-    readonly terminal?: TerminalApi;
+    readonly terminal: TerminalApi;
 
     /**
      * Take over host updates for the rest of this process. Irreversible: the
@@ -1211,9 +1210,9 @@ export type InstalledTerminalFont = {
 
 /**
  * Local notifications as a resume affordance.
- * Absent unless the host declared `capabilities.notifications` and the
- * platform implements the local API. Presence and
- * `lx.supports('app.notification')` always agree.
+ * Without `capabilities.notifications`, or where the platform has no
+ * local API, every call fails `E_NOT_SUPPORTED`; ask
+ * `lx.supports('app.notification')` first.
  * Declaring the capability never prompts; permission runs on
  * `requestPermission()` or the first `show()` that reaches the OS.
  * Every lxapp may call it. The Control app speaks for the product; a

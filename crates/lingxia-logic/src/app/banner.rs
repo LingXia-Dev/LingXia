@@ -31,11 +31,18 @@ struct JSShowOptions {
     background: Option<String>,
 }
 
-/// `lx.host.banner` — product-drawn desktop overlay. Absent off desktop, so
-/// presence and `lx.supports('app.banner')` agree. A guest's banners are
+/// `lx.host.banner` — product-drawn desktop overlay; off desktop every call
+/// fails `E_NOT_SUPPORTED`. A guest's banners are
 /// scoped to it and carry its name and icon.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.banner") {
+        crate::capability::unsupported_namespace(
+            ctx,
+            app,
+            "banner",
+            "app.banner",
+            &["show", "dismiss"],
+        )?;
         return Ok(());
     }
     let banner = JSObject::new(ctx);

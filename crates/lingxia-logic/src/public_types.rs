@@ -152,9 +152,9 @@ rong::js_api! {
 
         /// Local notifications as a resume affordance.
         ///
-        /// Absent unless the host declared `capabilities.notifications` and the
-        /// platform implements the local API. Presence and
-        /// `lx.supports('app.notification')` always agree.
+        /// Without `capabilities.notifications`, or where the platform has no
+        /// local API, every call fails `E_NOT_SUPPORTED`; ask
+        /// `lx.supports('app.notification')` first.
         /// Declaring the capability never prompts; permission runs on
         /// `requestPermission()` or the first `show()` that reaches the OS.
         ///

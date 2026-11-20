@@ -59,14 +59,17 @@ test("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   expect(result).toBeTruthy();
 });
 
-test("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+test("answer capability questions and keep every capability member present", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const terminalAgrees = ('terminal' in lx) === lx.supports('terminal');
-    const autostartAgrees = !!lx.host.autostart === lx.supports('app.autostart');
-    const notificationAgrees = !!lx.host.notification === lx.supports('app.notification');
-    const bannerAgrees = !!lx.host.banner === lx.supports('app.banner');
+    // Rule 2: present whatever the host supports; a call without support fails E_NOT_SUPPORTED.
+    const present = (api: object) => Object.values(api).every((member) => typeof member === 'function' || typeof member === 'object');
+    const terminalAgrees = present(lx.host.terminal.settings) && present(lx.host.terminal.fonts);
+    const autostartAgrees = present(lx.host.autostart);
+    const notificationAgrees = present(lx.host.notification);
+    const bannerAgrees = present(lx.host.banner)
+      && (lx.supports('app.banner') || await lx.host.banner.dismiss('x').then(() => false, (error: { code?: string }) => error.code === 'E_NOT_SUPPORTED'));
     // Keys and values outside `LxFeature` on purpose: the contract is how it answers them.
     const supports = (value: unknown) => (lx.supports as (value: unknown) => boolean)(value);
     const rejects = (value: unknown) => {
@@ -79,7 +82,7 @@ test("answer capability questions consistently with the optional members", { id:
         'app.cache', 'surface.main', 'surface.float']
         .every(key => supports(key) === false),
       typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-      cacheIsControl: !!lx.host.cache === (lx.app.info.role === 'control'),
+      cacheIsControl: typeof lx.host.cache.size === 'function',
       surfaceAvailable: typeof lx.surface.openPage === 'function',
       dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
     };

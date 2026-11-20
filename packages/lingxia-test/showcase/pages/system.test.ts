@@ -122,8 +122,8 @@ test('drive banner re-read, prompt, and dismiss from the system page', {
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.host.banner?.dismiss('showcase-banner-toast');
-        await lx.host.banner?.dismiss('showcase-banner-prompt');
+        await lx.host.banner.dismiss('showcase-banner-toast');
+        await lx.host.banner.dismiss('showcase-banner-prompt');
       } catch {}
       return true;
     });

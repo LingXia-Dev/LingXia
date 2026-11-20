@@ -82,9 +82,9 @@ const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
 const clipboardWrite: Promise<void> = lx.clipboard.writeText("copied");
 const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
 const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
-const cacheSize: Promise<number> | undefined = lx.host.cache?.size();
-// @ts-expect-error cache is Control-only; guests do not have the member
-lx.host.cache.size();
+// Control-only is a run-time refusal, not an absent member (rule 2).
+const cacheSize: Promise<number> = lx.host.cache.size();
+const notifyPermission = lx.host.notification.getPermission();
 const hostOs: HostOs = lx.host.info.os;
 const deviceOs: HostOs = lx.device.info.osName;
 const applinkScene: AppLaunchScene = 8003;

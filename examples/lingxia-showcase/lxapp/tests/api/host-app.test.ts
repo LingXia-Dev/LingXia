@@ -295,7 +295,7 @@ test('request permission and replace local notifications by id', {
   expect(supported).toBe(true);
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-    const n = lx.host.notification!;
+    const n = lx.host.notification;
     const permission = await n.getPermission();
     // A pending OS prompt has nobody to answer it here, so only ask when
     // the answer is already known.
@@ -386,8 +386,8 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   id: 'HOSTAPP-BANNER-001',
   covers: [
     'lx.host.banner',
-    'lx.host.banner!.show',
-    'lx.host.banner!.dismiss',
+    'lx.host.banner.show',
+    'lx.host.banner.dismiss',
   ],
   app: SHOWCASE_APP_ID,
   reason: 'Desktop banner is Control-app / macOS / Windows only.',
@@ -396,8 +396,8 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.host.banner!.dismiss('automation-banner-toast');
-        await lx.host.banner!.dismiss('automation-banner-prompt');
+        await lx.host.banner.dismiss('automation-banner-toast');
+        await lx.host.banner.dismiss('automation-banner-prompt');
       } catch {}
             return true;
     });
@@ -409,7 +409,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   expect(supported).toBe(true);
 
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const banner = lx.host.banner!;
+    const banner = lx.host.banner;
     const toast = await banner.show({
       id: 'automation-banner-toast',
       title: 'LingXia automation',
@@ -491,9 +491,9 @@ test('report autostart state and accept an idempotent write', {
   // registering or removing a real login item on the developer's machine.
   // The macOS login-item service answers well past an eval's default budget.
   const result = await app.logic.eval({ timeout: 45_000 }, async ({ lx }) => {
-    const before = await lx.host.autostart!.isEnabled();
-    await lx.host.autostart!.setEnabled(before);
-    const after = await lx.host.autostart!.isEnabled();
+    const before = await lx.host.autostart.isEnabled();
+    await lx.host.autostart.setEnabled(before);
+    const after = await lx.host.autostart.isEnabled();
     return { before, after };
   });
 
@@ -519,9 +519,9 @@ test('clear product caches while preserving live app storage', {
     await lx.fs.write(durable, payload, { overwrite: true });
 
     await lx.storage().set('automation-cache-probe', 'keep');
-    const before = await lx.host.cache!.size();
-    const report = await lx.host.cache!.clear();
-    const after = await lx.host.cache!.size();
+    const before = await lx.host.cache.size();
+    const report = await lx.host.cache.clear();
+    const after = await lx.host.cache.size();
 
     const cachedSurvived = await lx.fs.exists(cached);
     const durableSurvived = await lx.fs.exists(durable);

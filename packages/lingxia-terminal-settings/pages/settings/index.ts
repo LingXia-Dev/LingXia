@@ -52,7 +52,7 @@ async function action<T>(operation: () => Promise<T>): Promise<ActionResult<T>> 
 }
 
 function terminal() {
-  if (!lx.host.terminal) {
+  if (!lx.supports('terminal')) {
     throw new Error('Terminal settings are unavailable in this host');
   }
   return lx.host.terminal;

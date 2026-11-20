@@ -76,6 +76,8 @@ impl LxLogicExtension for LxLogicRuntime {
         storage::init(ctx)?;
         #[cfg(feature = "terminal")]
         terminal::init(ctx)?;
+        #[cfg(not(feature = "terminal"))]
+        app::unsupported_terminal(ctx)?;
         Ok(())
     }
 }

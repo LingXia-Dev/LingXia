@@ -33,7 +33,7 @@ test('a guest lxapp gets attention for itself only', {
 
   defer(async () => {
     await app.logic.eval(async ({ lx }, id) => {
-      await lx.host.banner?.dismiss(id).catch(() => undefined);
+      await lx.host.banner.dismiss(id).catch(() => undefined);
     }, bannerId).catch(() => undefined);
     const manager = t.automation.lxapps;
     const chat = (await manager.list()).find((candidate) => candidate.appId === CHAT_APP_ID);
@@ -46,9 +46,9 @@ test('a guest lxapp gets attention for itself only', {
   const chat = t.automation.lxapp(CHAT_APP_ID);
 
   const offered = await chat.logic.eval(({ lx }) => ({
-    banner: typeof lx.host.banner?.show,
+    banner: typeof lx.host.banner.show,
     supportsBanner: lx.supports('app.banner'),
-    notification: typeof lx.host.notification?.show,
+    notification: typeof lx.host.notification.show,
     activate: typeof lx.shell.activate,
   }));
   expect(offered).toEqual({
@@ -60,7 +60,7 @@ test('a guest lxapp gets attention for itself only', {
 
   // Every refusal lands before anything is posted, so none of these prompts.
   const refused = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const show = lx.host.notification!.show as (options: unknown) => Promise<unknown>;
+    const show = lx.host.notification.show as (options: unknown) => Promise<unknown>;
     const code = async (target: unknown) => {
       try {
         await show({ id: 'guest-scope', title: 'scope', target });
@@ -69,7 +69,7 @@ test('a guest lxapp gets attention for itself only', {
         return (error as { code?: string }).code ?? String(error);
       }
     };
-    const banner = lx.host.banner!.show as (options: unknown) => Promise<unknown>;
+    const banner = lx.host.banner.show as (options: unknown) => Promise<unknown>;
     const bannerCode = async (target: unknown) => {
       try {
         await banner({ id: 'guest-scope', title: 'scope', actions: [{ id: 'go', label: 'Go', target }] });
@@ -108,7 +108,7 @@ test('a guest lxapp gets attention for itself only', {
 
   // Its own notification, opening itself, under its own id.
   const own = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const n = lx.host.notification!;
+    const n = lx.host.notification;
     const permission = await n.getPermission();
     try {
       const shown = await n.show({
@@ -139,7 +139,7 @@ test('a guest lxapp gets attention for itself only', {
     const probes = globalThis as unknown as Probes;
     const probe: BannerProbe = { result: null };
     probes[key] = probe;
-    void lx.host.banner!.show({
+    void lx.host.banner.show({
       id,
       title: 'Run finished',
       body: 'DESKTOP-GUEST-ATTENTION-001',
@@ -156,7 +156,7 @@ test('a guest lxapp gets attention for itself only', {
   ), namespace);
 
   // The Control app's ids are not the guest's: the same id names nothing.
-  await app.logic.eval(async ({ lx }, id) => { await lx.host.banner!.dismiss(id); }, bannerId);
+  await app.logic.eval(async ({ lx }, id) => { await lx.host.banner.dismiss(id); }, bannerId);
   await new Promise<void>((resolve) => setTimeout(resolve, 400));
   expect(await bannerResult()).toBe(null);
 
@@ -172,7 +172,7 @@ test('a guest lxapp gets attention for itself only', {
     expect(await eventually(bannerResult, (value) => value !== null, { describe: 'the banner action' }))
       .toEqual({ status: 'ok', id: bannerId, action: 'open' });
   } else {
-    await chat.logic.eval(async ({ lx }, id) => { await lx.host.banner!.dismiss(id); }, bannerId);
+    await chat.logic.eval(async ({ lx }, id) => { await lx.host.banner.dismiss(id); }, bannerId);
     expect(await eventually(bannerResult, (value) => value !== null, { describe: 'the guest dismissal' }))
       .toEqual({ status: 'canceled', id: bannerId, reason: 'dismissed' });
   }

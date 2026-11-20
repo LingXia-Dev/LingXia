@@ -126,7 +126,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
   });
 
   const result: SettingsRoundTrip = await terminal.logic.eval({ timeout: 30_000 }, async ({ lx }, key, probeScheme) => {
-    const t = lx.host.terminal!;
+    const t = lx.host.terminal;
     const state: TerminalProbeState = { overrides: null, off: null, events: [] };
     (globalThis as unknown as TerminalProbeStates)[key] = state;
 
@@ -217,8 +217,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       const state = states[key];
       state?.off?.();
       if (state?.overrides) {
-        const latest = await lx.host.terminal!.settings.get();
-        await lx.host.terminal!.settings.update(state.overrides, { ifRevision: latest.revision });
+        const latest = await lx.host.terminal.settings.get();
+        await lx.host.terminal.settings.update(state.overrides, { ifRevision: latest.revision });
       }
       delete states[key];
     }, stateKey);

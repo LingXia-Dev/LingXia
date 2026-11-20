@@ -590,7 +590,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(ctx)?;
     let app = invocation.lxapp();
     if !crate::capability::exposes(ctx, "terminal") {
-        return Ok(());
+        return crate::app::unsupported_terminal(ctx);
     }
 
     let active = Rc::new(Cell::new(true));

@@ -197,6 +197,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_app_controls(ctx)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    unsupported_autostart(ctx, &app)?;
     banner::init(ctx, &app)?;
     notification::init(ctx, &app)?;
     cache::init(ctx, &app)?;
@@ -244,4 +246,39 @@ rong::js_api! {
             ts_return = "Promise<boolean>"
         ) = set_app_badge;
     }
+}
+
+fn unsupported_autostart(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+    crate::capability::unsupported_namespace(
+        ctx,
+        app,
+        "autostart",
+        "app.autostart",
+        &["isEnabled", "setEnabled"],
+    )?;
+    Ok(())
+}
+
+/// `lx.host.terminal` where the host has no terminal: present, every call
+/// fails `E_NOT_SUPPORTED`.
+pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
+    let terminal = JSObject::new(ctx);
+    const FEATURE: &str = "terminal";
+    crate::capability::unsupported_namespace(
+        ctx,
+        &terminal,
+        "settings",
+        FEATURE,
+        &["get", "update", "reset", "onChange"],
+    )?;
+    crate::capability::unsupported_namespace(
+        ctx,
+        &terminal,
+        "colorSchemes",
+        FEATURE,
+        &["list", "import", "createPreview"],
+    )?;
+    crate::capability::unsupported_namespace(ctx, &terminal, "fonts", FEATURE, &["list"])?;
+    app_namespace(ctx)?.set("terminal", terminal)?;
+    Ok(())
 }

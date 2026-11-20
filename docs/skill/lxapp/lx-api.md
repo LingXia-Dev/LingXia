@@ -106,8 +106,10 @@ if (lx.supports('surface.window.fullChrome')) {
 - The set is frozen per Logic context. Unknown strings return false;
   non-strings throw `TypeError`.
 - `true` is not permission: grants and failures surface at the call.
-- Optional namespaces share it: `terminal`, `app.autostart`,
-  `app.notification`, `app.banner`.
+- Capability members are always present: `lx.host.terminal`, `autostart`,
+  `notification`, `banner`. Without the feature their calls fail
+  `E_NOT_SUPPORTED`; without the right (`lx.host.cache` outside the Control
+  app), `E_PERMISSION_DENIED`.
 - Required features need a matching `minRuntime`; optional ones need a
   fallback.
 - Ask `lx.app.info.role === 'control'` for Control-app members, not a feature key
@@ -135,7 +137,7 @@ the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner
 
-`lx.host.banner` (macOS/Windows; present exactly when
+`lx.host.banner` (macOS/Windows; elsewhere calls fail `E_NOT_SUPPORTED`, so ask
 `lx.supports('app.banner')`) draws a product card in the top-right corner. No
 yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 

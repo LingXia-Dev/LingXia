@@ -288,7 +288,7 @@ async fn replace(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSR
     if is_tabbar_page_url(&lxapp, &target_url) {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            &format!("a tab cannot replace a page; go to it with {{ tab: '{name}' }}"),
+            format!("a tab cannot replace a page; go to it with {{ tab: '{name}' }}"),
         ));
     }
     let current = lxapp.current_page_svc_in_ctx(ctx).await?;
