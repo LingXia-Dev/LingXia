@@ -183,6 +183,9 @@ test('the core reads an unbound field\'s own value in the committed page\'s cloc
   render(view, { hourCycle: 'h23', displayLanguage: 'zh-Hans-CN' });
   assert.equal(text('time', '13:05', {}), '13:05');
   assert.equal(text('date', '2026-11-14', {}), '2026年11月14日');
+  // The core's own environment wins: it asks before the frame that carries a new one commits.
+  assert.equal(text('time', '13:05', { language: 'en-US', hourCycle: 'h12' }), '1:05 PM');
+  assert.equal(text('date', '2026-11-14', { language: 'en-US' }), 'Nov 14, 2026');
   // Text that does not parse, an unknown kind or a missing env comes back as given; nothing throws.
   assert.equal(text('date', 'soon', {}), 'soon');
   assert.equal(text('week', '2026-W46', {}), '2026-W46');

@@ -6325,7 +6325,11 @@
     try {
       if (kind !== "date" && kind !== "time") return iso3;
       const env = envOf(page.committed?.view);
-      return fieldText(kind, iso3, { seconds: opts?.seconds === true, language: env?.contentLanguage ?? env?.displayLanguage, hourCycle: env?.hourCycle }).displayValue;
+      return fieldText(kind, iso3, {
+        seconds: opts?.seconds === true,
+        language: opts?.language || (env?.contentLanguage ?? env?.displayLanguage),
+        hourCycle: opts?.hourCycle || env?.hourCycle
+      }).displayValue;
     } catch {
       return iso3;
     }

@@ -15,13 +15,15 @@ import { takeSpans } from './runtime/profile.js';
 import { fieldText } from './runtime/calendar.js';
 
 // An unbound date or time field's own value in the user's clock and language, as a bound one
-// shows it; the core asks outside a render, so the env is the committed page's. Never throws.
+// shows it. The core asks while it prepares a frame, before the commit, so its own language and
+// hour cycle come first; the committed page's env fills in. Never throws.
 function unboundFieldText(kind, iso, opts) {
   if (typeof iso !== 'string') return '';
   try {
     if (kind !== 'date' && kind !== 'time') return iso;
     const env = envOf(page.committed?.view);
-    return fieldText(kind, iso, { seconds: opts?.seconds === true, language: env?.contentLanguage ?? env?.displayLanguage, hourCycle: env?.hourCycle }).displayValue;
+    return fieldText(kind, iso, { seconds: opts?.seconds === true, language: opts?.language || (env?.contentLanguage ?? env?.displayLanguage),
+      hourCycle: opts?.hourCycle || env?.hourCycle }).displayValue;
   } catch { return iso; }
 }
 
