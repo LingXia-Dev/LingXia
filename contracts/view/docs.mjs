@@ -95,10 +95,6 @@ const shown = (schema, name) => schema.elements[name]?.component?.name ?? name;
 
 // What a prop does where its type does not say it.
 const propNotes = {
-  checkbox: '`defaultChecked`: where a checkbox without `value` or `bind` starts; it applies once, and a later change does nothing.',
-  switch: '`defaultChecked`: where a switch without `value` or `bind` starts; it applies once, and a later change does nothing.',
-  slider: '`defaultValue`: where a slider without `value` or `bind` starts, snapped to `step`; it applies once, and a later change does nothing.',
-  select: '`defaultValue`: the option a select without `value` or `bind` starts on; it applies once, and a later change does nothing.',
   webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default. When the screen takes a drag the page had started, the page gets `pointercancel` and `touchcancel`; on HarmonyOS they are synthetic (`isTrusted` false), and the page\'s own overflow scrolling, fixed when the finger lands, keeps scrolling.',
 };
 
@@ -271,7 +267,7 @@ function variants(schema, system, rules) {
   const on = field => Object.entries(schema.elements).filter(([, element]) => wireTags(field).includes(element.wire)).map(([name]) => code(`<${shown(schema, name)}>`)).join(' ');
   const disableable = Object.entries(schema.elements).filter(([, element]) => element.props.disabled).map(([name]) => code(`<${name}>`)).join(' ');
   const line = part => `\`<slider>\`; its ${part}: \`bg-*\`, \`h-*\`, \`rounded-*\`; after \`active:\` \`hover:\` \`focus-visible:\` or \`disabled:\`, eased over 150 ms`;
-  const parts = { track: '`<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch (while it reads checked, bound or not; another state may not keep part of its paint on the same part), eased over 150 ms',
+  const parts = { track: '`<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch, eased over 150 ms',
     range: line('range, min to value'), secondary: line('secondary range, min to `secondaryValue`'),
     thumb: '`<slider>` and `<switch>`; its thumb: `bg-*`, `size-*`, `rounded-*`, `border-*`, `shadow-*`, `ring-*` (with `ring-offset-*`, `inset-ring-*`), `scale-*`; after a state like the track' };
   const admission = {
@@ -282,7 +278,7 @@ function variants(schema, system, rules) {
     backdrop: '`<dialog>` only; styles its scrim, which fades in and out with a dialog that has `starting:`/`exit:` styles, on its timing; `backdrop:starting:`/`backdrop:exit:` (paint only) and `backdrop:duration-*`/`ease-*`/`delay-*` change that',
     'group-active': 'any element inside a pressable control; while that control is pressed; paint only',
     starting: 'any element; paint only, the values it enters from',
-    has: 'any element, alone; `has-checked:` (a descendant checkbox, switch or radio option that reads checked, bound or not), `has-disabled:` (a disabled descendant) and `has-focus:`; paint only',
+    has: 'any element, alone; `has-checked:`, `has-disabled:` (a descendant checkbox, switch, answered radio or disabled element) and `has-focus:`; paint only',
     'focus-within': 'any element; while it or a descendant has focus; paint only',
     ...parts,
     data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included', exit: 'any element; paint only, the values a removed element leaves toward',
@@ -299,7 +295,6 @@ function variants(schema, system, rules) {
     'Every Tailwind variant, tested against the native lowering. Supported variants may be stacked',
     '(`md:active:bg-surface-sunken`). Conditions on DOM state the View does not have are refused at build time.', '',
     '## Supported', '', table(['Variant', 'Applies to'], supported), '',
-    'There is no `group-checked:` or `peer-checked:`: a container reads the controls inside it with `has-checked:`.', '',
     '`space-x-*`, `space-y-*` and `divide-*` are utilities, not variants: they style every child but the last.', '',
     '## Refused', '', table(['Variant', 'Probed as', 'Reason'], refused), ''].join('\n');
 }

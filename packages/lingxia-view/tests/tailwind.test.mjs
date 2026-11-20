@@ -863,27 +863,16 @@ test('slider parts lower to part records, and a state before the part carries it
   assert.throws(() => describe(() => h('view', { className: 'thumb:size-4' }), {}), /UI_/);
 });
 
-test('checked: lowers to a checked style the core lays over a switch part, and a track takes a width there', async () => {
-  await use(['track:w-11', 'track:h-6', 'track:bg-line', 'checked:track:bg-success', 'thumb:size-5', 'active:thumb:w-6', 'checked:thumb:bg-on-accent', 'active:track:bg-line-strong']);
+test('switch parts follow the switch value through checked:, and a track takes a width there', async () => {
+  await use(['track:w-11', 'track:h-6', 'track:bg-line', 'checked:track:bg-success', 'thumb:size-5', 'active:thumb:w-6', 'checked:thumb:bg-on-accent']);
   const pairs = text => Object.values(Object.fromEntries(JSON.parse(text).reduce((out, v, i, all) => (i % 2 ? out : [...out, [v, all[i + 1]]]), [])));
-  const classes = 'track:w-11 track:h-6 track:bg-line checked:track:bg-success thumb:size-5 checked:thumb:bg-on-accent';
-  const toggle = (value, className = classes) => rendered(() => h('switch', { 'aria-label': 'Wi-Fi', value, onChange() {}, className })).props;
+  const toggle = value => rendered(() => h('switch', { 'aria-label': 'Wi-Fi', value, onChange() {}, className: 'track:w-11 track:h-6 track:bg-line checked:track:bg-success thumb:size-5 active:thumb:w-6 checked:thumb:bg-on-accent' })).props;
   const off = toggle(false), on = toggle(true);
-  // The base is the unchecked look whatever the value; the core reads `checked` and lays the style over it.
-  assert.deepEqual(pairs(on.trackStyle).sort(), [24, 44, 'line'].sort());
-  assert.deepEqual(off.trackStyle, on.trackStyle);
-  assert.deepEqual(off.checkedStyle, on.checkedStyle);
-  // Each part it changes arrives whole, since the core replaces a field, never a piece of one.
-  assert.deepEqual(pairs(on.checkedStyle.trackStyle).sort(), [24, 44, 'success'].sort());
-  assert.ok(pairs(on.checkedStyle.thumbStyle).includes('on-accent') && pairs(on.checkedStyle.thumbStyle).includes(20));
-  // A press may style a part checked: leaves alone, and is then the same checked or not.
-  const pressed = toggle(true, 'track:w-11 track:h-6 track:bg-line checked:track:bg-success thumb:size-5 active:thumb:w-6');
-  assert.ok(pairs(pressed.pressedStyle.thumbStyle).includes(24));
-  // So may a press that overrides all checked: sets on that part: its whole track is the same either way.
-  assert.ok(pairs(toggle(true, `${classes} active:track:bg-line-strong`).pressedStyle.trackStyle).includes('line-strong'));
-  // A press that keeps some of the checked paint would replace it, so it is refused.
-  assert.throws(() => describe(() => h('switch', { 'aria-label': 'x', value: true, onChange() {}, className: `${classes} active:thumb:w-6` }), {}),
-    /checked: and active: style the same part/);
+  assert.deepEqual(pairs(off.trackStyle).sort(), [24, 44, 'line'].sort());
+  assert.deepEqual(pairs(on.trackStyle).sort(), [24, 44, 'success'].sort());
+  assert.ok(!pairs(off.thumbStyle).includes('on-accent'));
+  assert.ok(pairs(on.thumbStyle).includes('on-accent'));
+  assert.ok(pairs(on.pressedStyle.thumbStyle).includes(24));
 });
 
 test('a slider takes a secondary value and reads its aria-valuetext', () => {
