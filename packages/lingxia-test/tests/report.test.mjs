@@ -714,7 +714,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
 test("returned-object tags are not claimed against lx.* call records", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  world.setCalls("probe", ["lx.getStorage", "lx.downloadFile", "lx.fs.file"]);
+  world.setCalls("probe", ["lx.getStorage", "lx.network.download", "lx.fs.file"]);
 
   // The recorder never emits `Storage.set` / `DownloadTask.wait` / `LxFile.text`.
   // Matching those strings against `calls` would paint every eval-driven

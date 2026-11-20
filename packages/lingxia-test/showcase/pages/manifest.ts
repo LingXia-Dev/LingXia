@@ -11,7 +11,7 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'wifi', text: 'WiFi Management' },
   { page: 'system', text: 'Fetch App Base Info' },
   { page: 'location', text: 'Current Location' },
-  { page: 'file', text: 'PDF via lx.downloadFile()' },
+  { page: 'file', text: 'PDF via lx.network.download()' },
   { page: 'share', text: 'lx.share opens the native system share sheet.' },
   { page: 'clipboard', text: 'lx.clipboard reads and writes the system clipboard.' },
   { page: 'components', text: 'Native-backed UI components' },

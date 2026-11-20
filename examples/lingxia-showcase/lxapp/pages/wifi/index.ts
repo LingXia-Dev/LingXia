@@ -21,7 +21,7 @@ export default definePage({
       }
 
       try {
-        _offWifiConnected = lx.onWifiConnected((payload) => {
+        _offWifiConnected = lx.network.wifi.onConnected((payload) => {
           const event = {
             id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
             time: new Date().toLocaleTimeString(),
@@ -55,7 +55,7 @@ export default definePage({
       // WiFi APIs
       async startWifi() {
         try {
-          await lx.startWifi();
+          await lx.network.wifi.start();
           console.log("WiFi module started");
           // Persist state to app globalData
           if (app.globalData) {
@@ -69,7 +69,7 @@ export default definePage({
       },
       async stopWifi() {
         try {
-          await lx.stopWifi();
+          await lx.network.wifi.stop();
           console.log("WiFi module stopped");
           stopWifiConnectedListener();
           // Persist state to app globalData
@@ -87,7 +87,7 @@ export default definePage({
       },
       async getWifiList() {
         try {
-          const wifiList = await lx.getWifiList();
+          const wifiList = await lx.network.wifi.list();
           console.log("WiFi list:", wifiList);
           page.update(d => { d.wifiList = wifiList; });
         } catch (error) {
@@ -97,7 +97,7 @@ export default definePage({
       },
       async getConnectedWifi() {
         try {
-          const connectedWifi = await lx.getConnectedWifi();
+          const connectedWifi = await lx.network.wifi.current();
           console.log("Connected WiFi:", connectedWifi);
           page.update(d => { d.connectedWifi = connectedWifi; });
         } catch (error) {
@@ -106,7 +106,7 @@ export default definePage({
       },
       async connectWifi(options: ConnectWifiOptions) {
         try {
-          await lx.connectWifi(options);
+          await lx.network.wifi.connect(options);
           console.log("WiFi connection requested:", options?.ssid);
         } catch (error) {
           console.error("Failed to connect to WiFi:", error);

@@ -4,22 +4,14 @@ import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
-test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
-    'lx.getAppInfo',
-    'lx.getDeviceInfo',
-    'lx.getScreenInfo',
-    'lx.getNetworkInfo',
-    'lx.getSystemSetting',
-    'lx.host.getBaseInfo',
-    'lx.host.env',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.getAppInfo', 'lx.getDeviceInfo', 'lx.getScreenInfo', 'lx.network.status', 'lx.getSystemSetting', 'lx.host.getBaseInfo', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
     const app = lx.getAppInfo();
     const device = lx.getDeviceInfo();
     const screen = lx.getScreenInfo();
-    const network = await lx.getNetworkInfo();
+    const network = await lx.network.status();
     const system = lx.getSystemSetting();
     const host = lx.host.getBaseInfo();
     return {
@@ -42,23 +34,17 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
   expect(['dev', 'prod']).toContain(result.env);
 });
 
-test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
-    'lx.onNetworkChange',
-    'lx.onDeviceOrientationChange',
-    'lx.onKeyDown',
-    'lx.onKeyUp',
-    'lx.onWifiConnected',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: ['lx.network.watch', 'lx.onDeviceOrientationChange', 'lx.onKeyDown', 'lx.onKeyUp', 'lx.network.wifi.onConnected'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-002");
 
   const result = await app.logic.eval(async ({ lx }) => {
     const callback = () => {};
     const unsubscribes = [
-      lx.onNetworkChange(callback),
+      lx.network.watch(callback),
       lx.onDeviceOrientationChange(callback),
       lx.onKeyDown(callback),
       lx.onKeyUp(callback),
-      lx.onWifiConnected(callback),
+      lx.network.wifi.onConnected(callback),
     ];
     if (unsubscribes.some((off) => typeof off !== 'function')) return false;
     unsubscribes.forEach((off) => off());

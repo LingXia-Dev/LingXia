@@ -112,7 +112,7 @@ test('present a local image and report it through the handle', {
   });
 
   const started = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, base) => {
-    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
+    const png = await lx.network.download({ url: base + '/media/sample.png' }).result;
     const controller = new AbortController();
     const handle = lx.media.preview({ path: png.uri, type: 'image', signal: controller.signal });
     const state: PreviewSession = {

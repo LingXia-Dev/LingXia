@@ -16,14 +16,14 @@ const pending = {
 
 test('download a body and read the bytes back out of the sandbox', {
   id: 'TRANSFER-DOWNLOAD-001',
-  covers: ['lx.downloadFile', 'DownloadTask.result'],
+  covers: ['lx.network.download', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-DOWNLOAD-001');
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl) => {
-    const task = lx.downloadFile({ url: sourceUrl });
+    const task = lx.network.download({ url: sourceUrl });
     const awaited = await task.result;
     // task.result settles once, so a second await observes that same
     // transfer rather than starting or re-reporting another one.
@@ -56,7 +56,7 @@ test('abort an in-flight download and reject with E_ABORT', {
 
   const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
     try {
-      const task = lx.downloadFile({
+      const task = lx.network.download({
         url: slowUrl,
       });
       setTimeout(() => task.cancel(), 300);
@@ -82,7 +82,7 @@ test('stream monotonic download progress across pause and resume', {
 
   const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
     try {
-      const task = lx.downloadFile({
+      const task = lx.network.download({
         url: slowUrl,
       });
       const events = [];
@@ -172,7 +172,7 @@ test('stop download iteration without canceling the transfer promise', {
   const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
     try {
       const value = await (async () => {
-        const task = lx.downloadFile({
+        const task = lx.network.download({
           url: slowUrl,
         });
         const progress = task.progress[Symbol.asyncIterator]();
@@ -222,7 +222,7 @@ test('cancel a download through its promise helpers', {
   const { app, namespace } = bindFixture(t, 'TRANSFER-CANCEL-001');
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, slowUrl) => {
-    const task = lx.downloadFile({
+    const task = lx.network.download({
       url: slowUrl,
     });
     let finallyCount = 0;
@@ -246,7 +246,7 @@ test('cancel a download through its promise helpers', {
 
 test('report the server status a failed download saw', {
   id: 'TRANSFER-STATUS-001',
-  covers: ['lx.downloadFile'],
+  covers: ['lx.network.download'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -256,7 +256,7 @@ test('report the server status a failed download saw', {
     await t.step(`http ${status}`, async () => {
       const outcome = await app.logic.eval(async ({ lx }, statusUrl, status): Promise<Caught> => {
         try {
-          const value = await lx.downloadFile({
+          const value = await lx.network.download({
             url: `${statusUrl}${status}`,
           }).result;
           return { ok: true, value };
@@ -276,15 +276,15 @@ test('report the server status a failed download saw', {
 
 test('upload a managed file as multipart and read the server echo', {
   id: 'TRANSFER-UPLOAD-001',
-  covers: ['lx.uploadFile', 'UploadTask.result', 'UploadTask.result'],
+  covers: ['lx.network.upload', 'UploadTask.result', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-001');
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
-    const source = await lx.downloadFile({ url: sourceUrl }).result;
-    const response = await lx.uploadFile({
+    const source = await lx.network.download({ url: sourceUrl }).result;
+    const response = await lx.network.upload({
       url: uploadUrl,
       filePath: source.uri,
       name: 'asset',
@@ -307,18 +307,18 @@ test('upload a managed file as multipart and read the server echo', {
 
 test('keep the multipart envelope intact whatever the caller heads', {
   id: 'TRANSFER-UPLOAD-002',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-002');
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
-    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    const source = await lx.network.download({ url: sourceUrl }).result;
     // Content-Type carries the boundary the server parses by, so a caller
     // header must not reach it -- unlike bodyMode 'raw', where it must.
     // user-agent is the runtime's to state, and content-length is derived.
-    const response = await lx.uploadFile({
+    const response = await lx.network.upload({
       url: uploadUrl,
       filePath: source.uri,
       method: 'PUT',
@@ -343,23 +343,23 @@ test('keep the multipart envelope intact whatever the caller heads', {
 
 test('stream upload progress that ends on a completed event', {
   id: 'TRANSFER-UPLOAD-PROGRESS-001',
-  covers: ['lx.uploadFile', 'UploadTask.progress'],
+  covers: ['lx.network.upload', 'UploadTask.progress'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-PROGRESS-001');
 
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadRawUrl, uploadUrl) => {
-    const collect = async (options: Parameters<typeof lx.uploadFile>[0]) => {
+    const collect = async (options: Parameters<typeof lx.network.upload>[0]) => {
       const events: { kind: string; uploaded?: number; total?: number }[] = [];
-      const task = lx.uploadFile(options);
+      const task = lx.network.upload(options);
       for await (const event of task.progress) {
         events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
       }
       await task.result;
       return events;
     };
-    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    const source = await lx.network.download({ url: sourceUrl }).result;
     const raw = await collect({
       url: uploadRawUrl,
       filePath: source.uri,
@@ -401,11 +401,11 @@ test('stop upload iteration and observe rejected promise helpers', {
   const { app, namespace } = bindFixture(t, 'TRANSFER-UPLOAD-HELPERS-001');
 
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadUrl, uploadRawUrl) => {
-    const source = await lx.downloadFile({
+    const source = await lx.network.download({
       url: sourceUrl,
     }).result;
 
-    const completing = lx.uploadFile({
+    const completing = lx.network.upload({
       url: uploadUrl,
       filePath: source.uri,
     });
@@ -416,7 +416,7 @@ test('stop upload iteration and observe rejected promise helpers', {
     let successFinallyCount = 0;
     const completed = await completing.result.finally(() => { successFinallyCount += 1; });
 
-    const rejecting = lx.uploadFile({
+    const rejecting = lx.network.upload({
       url: uploadRawUrl,
       filePath: source.uri,
       method: 'PUT',
@@ -458,15 +458,15 @@ test('stop upload iteration and observe rejected promise helpers', {
 
 test('upload a raw body with PUT for presigned endpoints', {
   id: 'TRANSFER-UPLOAD-RAW-001',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-001');
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
-    const source = await lx.downloadFile({ url: sourceUrl }).result;
-    const response = await lx.uploadFile({
+    const source = await lx.network.download({ url: sourceUrl }).result;
+    const response = await lx.network.upload({
       url: uploadRawUrl,
       filePath: source.uri,
       method: 'PUT',
@@ -476,7 +476,7 @@ test('upload a raw body with PUT for presigned endpoints', {
     }).result;
     // A presigned signature covers Content-Type, so an explicit header has
     // to win over mimeType rather than be rewritten by the runtime.
-    const overridden = await lx.uploadFile({
+    const overridden = await lx.network.upload({
       url: uploadRawUrl,
       filePath: source.uri,
       method: 'PUT',
@@ -506,7 +506,7 @@ test('upload a raw body with PUT for presigned endpoints', {
 
 test('reject multipart-only options when the body is raw', {
   id: 'TRANSFER-UPLOAD-RAW-002',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -515,9 +515,9 @@ test('reject multipart-only options when the body is raw', {
   // Dropping these silently would leave the lxapp believing they were sent.
   const rejectedFormData = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
     try {
-      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      const source = await lx.network.download({ url: sourceUrl }).result;
       // Multipart-only options under a raw body: the typings refuse them on purpose.
-      const value = await (lx.uploadFile as (options: object) => ReturnType<typeof lx.uploadFile>)({
+      const value = await (lx.network.upload as (options: object) => ReturnType<typeof lx.network.upload>)({
         url: uploadRawUrl,
         filePath: source.uri,
         method: 'PUT',
@@ -532,9 +532,9 @@ test('reject multipart-only options when the body is raw', {
   }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
   const rejectedName = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
     try {
-      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      const source = await lx.network.download({ url: sourceUrl }).result;
       // Multipart-only options under a raw body: the typings refuse them on purpose.
-      const value = await (lx.uploadFile as (options: object) => ReturnType<typeof lx.uploadFile>)({
+      const value = await (lx.network.upload as (options: object) => ReturnType<typeof lx.network.upload>)({
         url: uploadRawUrl,
         filePath: source.uri,
         method: 'PUT',
@@ -556,7 +556,7 @@ test('reject multipart-only options when the body is raw', {
 
 test('report the refusing status when a raw upload is rejected mid-body', {
   id: 'TRANSFER-UPLOAD-RAW-003',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -567,8 +567,8 @@ test('report the refusing status when a raw upload is rejected mid-body', {
   // rejected signature from a flaky network.
   const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
     try {
-      const source = await lx.downloadFile({ url: sourceUrl }).result;
-      const value = await lx.uploadFile({
+      const source = await lx.network.download({ url: sourceUrl }).result;
+      const value = await lx.network.upload({
         url: uploadRawUrl,
         filePath: source.uri,
         method: 'PUT',
@@ -587,7 +587,7 @@ test('report the refusing status when a raw upload is rejected mid-body', {
 
 test('accept PATCH and an empty file as a raw body', {
   id: 'TRANSFER-UPLOAD-RAW-004',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -596,8 +596,8 @@ test('accept PATCH and an empty file as a raw body', {
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
     // Zero bytes is only reachable with a raw body -- multipart always has an
     // envelope -- and it must still be a well-formed request, not a hang.
-    const empty = await lx.downloadFile({ url: sourceUrl }).result;
-    const response = await lx.uploadFile({
+    const empty = await lx.network.download({ url: sourceUrl }).result;
+    const response = await lx.network.upload({
       url: uploadRawUrl,
       filePath: empty.uri,
       method: 'PATCH',
@@ -616,7 +616,7 @@ test('accept PATCH and an empty file as a raw body', {
 
 test('deny an upload to a host the lxapp never trusted', {
   id: 'TRANSFER-UPLOAD-AUTH-001',
-  covers: ['lx.uploadFile'],
+  covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -626,8 +626,8 @@ test('deny an upload to a host the lxapp never trusted', {
   // and the file resolving first must not be mistaken for permission to send it.
   const outcome = await app.logic.eval(async ({ lx }, sourceUrl): Promise<Caught> => {
     try {
-      const source = await lx.downloadFile({ url: sourceUrl }).result;
-      const value = await lx.uploadFile({
+      const source = await lx.network.download({ url: sourceUrl }).result;
+      const value = await lx.network.upload({
         url: 'https://not-trusted.example/upload',
         filePath: source.uri,
         method: 'PUT',
@@ -654,9 +654,9 @@ test('cancel an upload and reject rather than resolve', {
 
   const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadUrl): Promise<Caught> => {
     try {
-      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      const source = await lx.network.download({ url: sourceUrl }).result;
       // holdMs keeps the request open long enough for a cancel to be meaningful.
-      const task = lx.uploadFile({
+      const task = lx.network.upload({
         url: uploadUrl,
         filePath: source.uri,
       });

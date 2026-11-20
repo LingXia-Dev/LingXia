@@ -264,7 +264,7 @@ export default definePage({
             if (task && typeof task.cancel === "function") {
               task.cancel().catch(() => {});
             }
-            task = lx.downloadFile({ url });
+            task = lx.network.download({ url });
             pdfDownloadTask = task;
             pdfDownloadUrl = url;
           }
@@ -282,7 +282,7 @@ export default definePage({
               : "Downloading with promise-style result only...";
           });
           if (!task) {
-            throw new Error("downloadFile did not return a task");
+            throw new Error("network.download did not return a task");
           }
           if (canObserveProgress && !pdfDownloadObserver) {
             pdfDownloadObserver = observePdfTask(task);
@@ -296,7 +296,7 @@ export default definePage({
           }
           const resultPath = downloadResultPath(result);
           if (!resultPath) {
-            throw new Error("downloadFile did not return a file path");
+            throw new Error("network.download did not return a file path");
           }
           page.update(d => {
             d.pdfDownloadState = "opening";

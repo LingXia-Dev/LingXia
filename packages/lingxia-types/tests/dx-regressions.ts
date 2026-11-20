@@ -46,7 +46,7 @@ void LxFile;
 void DirEntry;
 
 async function taskBoundary() {
-  const task = lx.downloadFile({ url: 'https://example.com/file' });
+  const task = lx.network.download({ url: 'https://example.com/file' });
   // @ts-expect-error tasks are not promises
   task.then(() => {});
   // @ts-expect-error iterator methods belong to the progress iterator

@@ -2,8 +2,8 @@ import type { Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
-const unsubscribeNetwork: () => void = lx.onNetworkChange(() => {});
-const unsubscribeWifi: () => void = lx.onWifiConnected(() => {});
+const unsubscribeNetwork: () => void = lx.network.watch(() => {});
+const unsubscribeWifi: () => void = lx.network.wifi.onConnected(() => {});
 const unsubscribeOrientation: () => void = lx.onDeviceOrientationChange(() => {});
 const unsubscribeKeyDown: () => void = lx.onKeyDown(() => {});
 const unsubscribeKeyUp: () => void = lx.onKeyUp(() => {});

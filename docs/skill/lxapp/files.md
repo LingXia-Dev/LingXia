@@ -1,6 +1,6 @@
 # Files
 
-LingXia-managed files: storage classes, `downloadFile`, `lx.fs`, uploads,
+LingXia-managed files: storage classes, `lx.network.download`, `lx.fs`, uploads,
 media outputs, and cleanup. A returned `lx://` path tells you its lifetime.
 
 ## Storage classes
@@ -15,17 +15,17 @@ Use only `lx://` URIs, never native paths. Never keep a business reference to a
 temp URI; copy it into userdata first. User-visible downloads belong to the
 host downloads center, not to these classes.
 
-## `downloadFile`
+## `lx.network.download`
 
 The result's `storage` (`temp` | `userdata` | `downloads`) says where it went.
 
 ```ts
-const result = await lx.downloadFile({ url, headers, timeoutMs, signal }).result;
+const result = await lx.network.download({ url, headers, timeoutMs, signal }).result;
 result.uri; // lx://temp/<opaque_id>
 ```
 
 ```ts
-const result = await lx.downloadFile({
+const result = await lx.network.download({
   url,
   filePath: "videos/video.mp4",
 }).result;
@@ -33,7 +33,7 @@ result.uri; // lx://userdata/videos/video.mp4
 ```
 
 ```ts
-const task = lx.downloadFile({
+const task = lx.network.download({
   url,
   destination: "downloads",
   suggestedName: "video.mp4",
@@ -95,7 +95,7 @@ await lx.fs.rename(
 - `rename` moves: a temp download renamed into usercache becomes cache without
   a second copy.
 
-## `uploadFile`
+## `lx.network.upload`
 
 Call from Logic; the file streams without entering JavaScript memory.
 
@@ -105,7 +105,7 @@ Call from Logic; the file streams without entering JavaScript memory.
   MIME type, and no form fields.
 
 ```ts
-const task = lx.uploadFile({
+const task = lx.network.upload({
   url: presignedUrl,
   filePath,
   method: 'PUT',

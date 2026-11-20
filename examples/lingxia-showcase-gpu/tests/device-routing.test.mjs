@@ -4,7 +4,7 @@ import { bundlePage, mountPage } from './page-harness.mjs';
 const source = bundlePage('../lxapp/pages/device/index.ts');
 function fixture() {
   let page, listener, stops = 0;
-  const lx = { onNetworkChange(callback) { listener = callback; return () => { stops++; listener = null; }; } };
+  const lx = { network: { watch(callback) { listener = callback; return () => { stops++; listener = null; }; } } };
   page = mountPage(source, { console: { log() {} }, lx });
   return { page, get stops() { return stops; }, emit(value) { listener?.(value); } };
 }

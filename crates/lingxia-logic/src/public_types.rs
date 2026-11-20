@@ -619,7 +619,7 @@ rong::js_api! {
     /**
      * Package-relative path, or an `lx://temp` / `lx://usercache` /
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
-     * download first (`lx.downloadFile`) and pass the returned path.
+     * download first (`lx.network.download`) and pass the returned path.
      *
      * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
      * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
@@ -1352,7 +1352,7 @@ rong::js_api! {
      * Media source path.
      *
      * Accepts an `https://` (or `http://`) URL for a remote image or video —
-     * the host loads it directly, so no prior `lx.downloadFile` is required,
+     * the host loads it directly, so no prior `lx.network.download` is required,
      * and its domain must be permitted by the app's network policy — an
      * `lx://` path (for example `lx://usercache/...`), or a sandbox-local path
      * that can be resolved by runtime access rules.
@@ -2082,7 +2082,7 @@ true
         /// ```ts
         /// // A presigned URL is signed for one method and one Content-Type,
         /// // so both have to match whatever the signer used.
-        /// const task = lx.uploadFile({
+        /// const task = lx.network.upload({
         ///   url: presignedUrl,
         ///   filePath: 'lx://media/clip.mp4',
         ///   method: 'PUT',
@@ -2286,6 +2286,8 @@ true
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavApi = "globalThis.NavApi";
+        type NetworkApi = "globalThis.NetworkApi";
+        type WifiApi = "globalThis.WifiApi";
         type MediaApi = "globalThis.MediaApi";
         type PickApi = "globalThis.PickApi";
         type NavigationBarApi = "globalThis.NavigationBarApi";

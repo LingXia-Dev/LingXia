@@ -65,7 +65,7 @@ test("render device and screen API results after real UI actions", { id: "DEVICE
   expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
-test("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.network.status'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-002");
 
   for (const type of ['networkType', 'localIP'] as const) {

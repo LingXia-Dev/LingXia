@@ -74,7 +74,7 @@ const GROUPS = [
     title: 'Files and storage',
     summary: 'Managed files, the system pickers (files, media, codes), transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pick', 'uploadFile', 'downloadFile', 'getStorage',
+      'fs', 'openFile', 'pick', 'getStorage',
     ],
   },
   {
@@ -99,12 +99,8 @@ const GROUPS = [
   {
     slug: 'network',
     title: 'Network and WiFi',
-    summary: 'Connectivity facts and events, and the WiFi module.',
-    members: [
-      'getNetworkInfo', 'onNetworkChange',
-      'startWifi', 'stopWifi', 'connectWifi', 'getWifiList', 'getConnectedWifi',
-      'onWifiConnected',
-    ],
+    summary: 'Connectivity, transfers, and the WiFi module.',
+    members: ['network'],
   },
   {
     slug: 'host',

@@ -293,7 +293,7 @@ export default definePage({
     let offNetwork: (() => void) | undefined;
     return {
       onLoad() {
-        offNetwork = lx.onNetworkChange((info) => {
+        offNetwork = lx.network.watch((info) => {
           page.update(d => { d.online = info.isConnected; });
         });
       },
@@ -303,7 +303,7 @@ export default definePage({
 });
 ```
 
-The same applies to `onWifiConnected`, `onDeviceOrientationChange`,
+The same applies to `lx.network.wifi.onConnected`, `onDeviceOrientationChange`,
 `onKeyDown`, `onKeyUp`, `lx.surface.watchContext`, `onUpdateReady`,
 `onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
 `onClose`. A route can be open more than once, so a leak multiplies per
@@ -442,7 +442,7 @@ URLs, `file:` URLs, `..`, and absolute paths are rejected. Download remote art
 first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
-const { uri } = await lx.downloadFile({ url: brand.logoUrl }).result;
+const { uri } = await lx.network.download({ url: brand.logoUrl }).result;
 await lx.tabBar.update({
   items: [{ index: 0, text: brand.shortName, iconPath: uri }],
 });

@@ -238,15 +238,15 @@ fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
     };
     if !value.is_number() {
         return Err(js_invalid_parameter_error(
-            "uploadFile timeoutMs must be a positive number",
+            "network.upload timeoutMs must be a positive number",
         ));
     }
     let timeout = value.to_rust::<f64>().map_err(|_| {
-        js_invalid_parameter_error("uploadFile timeoutMs must be a positive number")
+        js_invalid_parameter_error("network.upload timeoutMs must be a positive number")
     })?;
     if !timeout.is_finite() || timeout <= 0.0 {
         return Err(js_invalid_parameter_error(
-            "uploadFile timeoutMs must be a positive number",
+            "network.upload timeoutMs must be a positive number",
         ));
     }
     Ok(Some(timeout.round() as u64))
@@ -259,7 +259,7 @@ fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
     value
         .into_object()
         .map(Some)
-        .ok_or_else(|| js_invalid_parameter_error("uploadFile signal must be an AbortSignal"))
+        .ok_or_else(|| js_invalid_parameter_error("network.upload signal must be an AbortSignal"))
 }
 
 fn read_string_map(obj: &JSObject, field: &str, api_name: &str) -> JSResult<Vec<(String, String)>> {
@@ -294,36 +294,36 @@ fn read_string_map(obj: &JSObject, field: &str, api_name: &str) -> JSResult<Vec<
 fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
     let Some(obj) = options.into_object() else {
         return Err(js_invalid_parameter_error(
-            "uploadFile expects an options object",
+            "network.upload expects an options object",
         ));
     };
     let body_mode = read_upload_body_mode_field(&obj)?;
-    let field_name = read_optional_string_field(&obj, "name", "uploadFile")?;
-    let form_data = read_string_map(&obj, "formData", "uploadFile")?;
-    let file_name = read_optional_string_field(&obj, "fileName", "uploadFile")?;
+    let field_name = read_optional_string_field(&obj, "name", "network.upload")?;
+    let form_data = read_string_map(&obj, "formData", "network.upload")?;
+    let file_name = read_optional_string_field(&obj, "fileName", "network.upload")?;
     // A raw body has nowhere to carry multipart framing, so reject it rather
     // than dropping fields the lxapp believes it sent. An empty formData
     // object is still an explicit multipart field and is rejected too.
     if body_mode == UploadBodyMode::Raw {
         if get_present_property(&obj, "formData").is_some() {
             return Err(js_invalid_parameter_error(
-                "uploadFile formData requires bodyMode \"multipart\"",
+                "network.upload formData requires bodyMode \"multipart\"",
             ));
         }
         if field_name.is_some() {
             return Err(js_invalid_parameter_error(
-                "uploadFile name requires bodyMode \"multipart\"",
+                "network.upload name requires bodyMode \"multipart\"",
             ));
         }
         if file_name.is_some() {
             return Err(js_invalid_parameter_error(
-                "uploadFile fileName requires bodyMode \"multipart\"",
+                "network.upload fileName requires bodyMode \"multipart\"",
             ));
         }
     } else {
         if get_present_property(&obj, "formData").is_some() && form_data.is_empty() {
             return Err(js_invalid_parameter_error(
-                "uploadFile formData must include at least one field",
+                "network.upload formData must include at least one field",
             ));
         }
         if file_name
@@ -331,27 +331,27 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
             .is_some_and(|name| name.trim().is_empty())
         {
             return Err(js_invalid_parameter_error(
-                "uploadFile fileName must be a non-empty string",
+                "network.upload fileName must be a non-empty string",
             ));
         }
     }
     Ok(ParsedUploadOptions {
-        url: read_required_string_field(&obj, "url", "uploadFile")?,
-        file_path: read_required_string_field(&obj, "filePath", "uploadFile")?,
+        url: read_required_string_field(&obj, "url", "network.upload")?,
+        file_path: read_required_string_field(&obj, "filePath", "network.upload")?,
         method: read_upload_method_field(&obj)?,
         body_mode,
         field_name,
-        headers: read_string_map(&obj, "headers", "uploadFile")?,
+        headers: read_string_map(&obj, "headers", "network.upload")?,
         form_data,
         timeout_ms: read_optional_timeout_field(&obj)?,
         file_name,
-        mime_type: read_optional_string_field(&obj, "mimeType", "uploadFile")?,
+        mime_type: read_optional_string_field(&obj, "mimeType", "network.upload")?,
         signal: read_optional_signal(&obj)?,
     })
 }
 
 fn read_upload_method_field(obj: &JSObject) -> JSResult<UploadMethod> {
-    let Some(method) = read_optional_string_field(obj, "method", "uploadFile")? else {
+    let Some(method) = read_optional_string_field(obj, "method", "network.upload")? else {
         return Ok(UploadMethod::Post);
     };
     match method.trim().to_ascii_uppercase().as_str() {
@@ -359,20 +359,20 @@ fn read_upload_method_field(obj: &JSObject) -> JSResult<UploadMethod> {
         "PUT" => Ok(UploadMethod::Put),
         "PATCH" => Ok(UploadMethod::Patch),
         _ => Err(js_invalid_parameter_error(
-            "uploadFile method must be \"POST\", \"PUT\", or \"PATCH\"",
+            "network.upload method must be \"POST\", \"PUT\", or \"PATCH\"",
         )),
     }
 }
 
 fn read_upload_body_mode_field(obj: &JSObject) -> JSResult<UploadBodyMode> {
-    let Some(body_mode) = read_optional_string_field(obj, "bodyMode", "uploadFile")? else {
+    let Some(body_mode) = read_optional_string_field(obj, "bodyMode", "network.upload")? else {
         return Ok(UploadBodyMode::Multipart);
     };
     match body_mode.trim().to_ascii_lowercase().as_str() {
         "multipart" => Ok(UploadBodyMode::Multipart),
         "raw" => Ok(UploadBodyMode::Raw),
         _ => Err(js_invalid_parameter_error(
-            "uploadFile bodyMode must be \"multipart\" or \"raw\"",
+            "network.upload bodyMode must be \"multipart\" or \"raw\"",
         )),
     }
 }
@@ -386,7 +386,7 @@ fn resolve_upload_path(
     if trimmed.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "uploadFile requires filePath",
+            "network.upload requires filePath",
         ));
     }
 
@@ -394,13 +394,13 @@ fn resolve_upload_path(
     let resolved = if trimmed.starts_with("lx://") || path.is_absolute() || trimmed.contains(':') {
         resolve_accessible_path(trimmed)?
     } else {
-        let relative = normalize_relative_path(trimmed, "uploadFile", "filePath")?;
+        let relative = normalize_relative_path(trimmed, "network.upload", "filePath")?;
         user_data_dir.join(relative)
     };
 
     if !resolved.exists() {
         return Err(js_invalid_parameter_error(
-            "uploadFile filePath does not exist",
+            "network.upload filePath does not exist",
         ));
     }
     Ok(resolved)
@@ -528,7 +528,7 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     if url.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "uploadFile requires url",
+            "network.upload requires url",
         ));
     }
 
@@ -553,8 +553,8 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 data: result.data,
             }),
             Ok(UploadCompletionOutcome::Failed(error)) => Err(upload_failure_to_js_error(error)),
-            Ok(UploadCompletionOutcome::Canceled) => Err(js_abort_error("uploadFile canceled")),
-            Err(_) => Err(js_abort_error("uploadFile canceled")),
+            Ok(UploadCompletionOutcome::Canceled) => Err(js_abort_error("network.upload canceled")),
+            Err(_) => Err(js_abort_error("network.upload canceled")),
         }
     })?;
 
@@ -1035,8 +1035,8 @@ mod tests {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn uploadFile(
+        namespace NetworkApi = crate::namespace::network(ctx)?;
+        fn upload(
             ts_params = "options: UploadOptions",
             ts_return = "UploadTask"
         ) = upload_file;

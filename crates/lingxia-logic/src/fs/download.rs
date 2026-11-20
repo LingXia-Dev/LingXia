@@ -341,7 +341,7 @@ fn reserve_output_path(
     if !guard.insert(key.clone()) {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "downloadFile filePath is already in use",
+            "network.download filePath is already in use",
         ));
     }
     Ok(Some(key))
@@ -468,15 +468,15 @@ fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
     };
     if !value.is_number() {
         return Err(js_invalid_parameter_error(
-            "downloadFile timeoutMs must be a positive number",
+            "network.download timeoutMs must be a positive number",
         ));
     }
     let timeout = value.to_rust::<f64>().map_err(|_| {
-        js_invalid_parameter_error("downloadFile timeoutMs must be a positive number")
+        js_invalid_parameter_error("network.download timeoutMs must be a positive number")
     })?;
     if !timeout.is_finite() || timeout <= 0.0 {
         return Err(js_invalid_parameter_error(
-            "downloadFile timeoutMs must be a positive number",
+            "network.download timeoutMs must be a positive number",
         ));
     }
     Ok(Some(timeout.round() as u64))
@@ -489,7 +489,7 @@ fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
     value
         .into_object()
         .map(Some)
-        .ok_or_else(|| js_invalid_parameter_error("downloadFile signal must be an AbortSignal"))
+        .ok_or_else(|| js_invalid_parameter_error("network.download signal must be an AbortSignal"))
 }
 
 fn read_optional_destination(obj: &JSObject) -> JSResult<DownloadDestination> {
@@ -498,11 +498,11 @@ fn read_optional_destination(obj: &JSObject) -> JSResult<DownloadDestination> {
     };
     if !value.is_string() {
         return Err(js_invalid_parameter_error(
-            "downloadFile destination must be 'app' or 'downloads'",
+            "network.download destination must be 'app' or 'downloads'",
         ));
     }
     let destination = value.to_rust::<String>().map_err(|_| {
-        js_invalid_parameter_error("downloadFile destination must be 'app' or 'downloads'")
+        js_invalid_parameter_error("network.download destination must be 'app' or 'downloads'")
     })?;
     parse_download_destination(&destination)
 }
@@ -512,7 +512,7 @@ fn parse_download_destination(destination: &str) -> JSResult<DownloadDestination
         "app" => Ok(DownloadDestination::App),
         "downloads" => Ok(DownloadDestination::Downloads),
         _ => Err(js_invalid_parameter_error(
-            "downloadFile destination must be 'app' or 'downloads'",
+            "network.download destination must be 'app' or 'downloads'",
         )),
     }
 }
@@ -523,7 +523,7 @@ fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, Str
     };
     let Some(header_obj) = value.into_object() else {
         return Err(js_invalid_parameter_error(format!(
-            "downloadFile {field} must be an object"
+            "network.download {field} must be an object"
         )));
     };
     let mut headers = Vec::new();
@@ -534,11 +534,11 @@ fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, Str
         }
         if !value.is_string() {
             return Err(js_invalid_parameter_error(format!(
-                "downloadFile {field}.{key} must be a string"
+                "network.download {field}.{key} must be a string"
             )));
         }
         let parsed = value.to_rust::<String>().map_err(|_| {
-            js_invalid_parameter_error(format!("downloadFile {field}.{key} must be a string"))
+            js_invalid_parameter_error(format!("network.download {field}.{key} must be a string"))
         })?;
         headers.push((key, parsed));
     }
@@ -548,7 +548,7 @@ fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, Str
 fn parse_download_options(options: JSValue) -> JSResult<ParsedDownloadOptions> {
     let Some(obj) = options.into_object() else {
         return Err(js_invalid_parameter_error(
-            "downloadFile expects an options object",
+            "network.download expects an options object",
         ));
     };
     let destination = read_optional_destination(&obj)?;
@@ -564,14 +564,14 @@ fn parse_download_options(options: JSValue) -> JSResult<ParsedDownloadOptions> {
     };
     if get_present_property(&obj, forbidden).is_some() {
         return Err(js_invalid_parameter_error(format!(
-            "downloadFile use {field} for this destination"
+            "network.download use {field} for this destination"
         )));
     }
     Ok(ParsedDownloadOptions {
-        url: read_required_string_field(&obj, "url", "downloadFile")?,
+        url: read_required_string_field(&obj, "url", "network.download")?,
         headers: read_header_entries(&obj, "headers")?,
         timeout_ms: read_optional_timeout_field(&obj)?,
-        file_path: read_optional_string_field(&obj, field, "downloadFile")?,
+        file_path: read_optional_string_field(&obj, field, "network.download")?,
         destination,
         signal: read_optional_signal(&obj)?,
     })
@@ -598,23 +598,23 @@ fn resolve_output_path(
             .map_err(|err| js_error_from_lxapp_error(&err))?;
         if resolved.starts_with(&lxapp.user_cache_dir) {
             return Err(js_invalid_parameter_error(
-                "downloadFile filePath must use lx://userdata or be omitted",
+                "network.download filePath must use lx://userdata or be omitted",
             ));
         }
         if !resolved.starts_with(&lxapp.user_data_dir) {
             return Err(js_invalid_parameter_error(
-                "downloadFile filePath must use lx://userdata or be omitted",
+                "network.download filePath must use lx://userdata or be omitted",
             ));
         }
         if resolved == lxapp.user_data_dir {
             return Err(js_invalid_parameter_error(
-                "downloadFile filePath must reference a file under lx://userdata",
+                "network.download filePath must reference a file under lx://userdata",
             ));
         }
         return Ok(Some((resolved, DownloadPathKind::UserData)));
     }
 
-    let relative = normalize_relative_path(file_path, "downloadFile", "filePath")?;
+    let relative = normalize_relative_path(file_path, "network.download", "filePath")?;
 
     Ok(Some((
         lxapp.user_data_dir.join(relative),
@@ -633,7 +633,7 @@ fn ensure_downloads_privilege(lxapp: &LxApp) -> JSResult<()> {
     } else {
         Err(js_error_from_business_code_with_detail(
             3005,
-            "downloadFile destination 'downloads' requires a host privilege grant and a native Downloads grant",
+            "network.download destination 'downloads' requires a host privilege grant and a native Downloads grant",
         ))
     }
 }
@@ -659,7 +659,7 @@ fn ensure_download_task_grant(config: &DownloadTaskConfig) -> JSResult<()> {
         if !owner_is_current {
             return Err(js_error_from_business_code_with_detail(
                 3005,
-                "downloadFile destination 'downloads' belongs to a stale lxapp session",
+                "network.download destination 'downloads' belongs to a stale lxapp session",
             ));
         }
         ensure_downloads_privilege(&config.lxapp)
@@ -1218,7 +1218,7 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     if url.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "downloadFile requires url",
+            "network.download requires url",
         ));
     }
 
@@ -1270,8 +1270,10 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 to_js_download_result(&promise_ctx, &result)
             }
             Ok(DownloadCompletionOutcome::Failed(error)) => Err(error.to_js_error()),
-            Ok(DownloadCompletionOutcome::Canceled) => Err(js_abort_error("downloadFile canceled")),
-            Err(_) => Err(js_abort_error("downloadFile canceled")),
+            Ok(DownloadCompletionOutcome::Canceled) => {
+                Err(js_abort_error("network.download canceled"))
+            }
+            Err(_) => Err(js_abort_error("network.download canceled")),
         }
     }) {
         Ok(promise) => promise,
@@ -1607,9 +1609,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        // Precise correlated overloads remain in the curated Lx augmentation.
-        fn downloadFile(ts_params = "options: never", ts_return = "never") = download_file;
+        namespace NetworkApi = crate::namespace::network(ctx)?;
+        // Precise correlated overloads remain in the curated NetworkApi augmentation.
+        fn download(ts_params = "options: never", ts_return = "never") = download_file;
     }
 }
 

@@ -85,7 +85,7 @@ export function render({ data, actions: raw }: View) {
       ) : (
         <view className="gap-4">
           <Section
-            title="PDF via lx.downloadFile()"
+            title="PDF via lx.network.download()"
             description="Download to a temporary file with progress and pause/continue, then open the native PDF viewer."
           >
             <UrlField

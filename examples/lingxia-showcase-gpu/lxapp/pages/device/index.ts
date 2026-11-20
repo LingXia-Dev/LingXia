@@ -114,7 +114,7 @@ export default definePage({
       },
       async getNetworkInfo() {
         try {
-          const result = await lx.getNetworkInfo();
+          const result = await lx.network.status();
           page.update(d => { d.networkInfo = result || null; });
         } catch (error) {
           console.error("Failed to get network info:", error);
@@ -124,7 +124,7 @@ export default definePage({
         if (offNetworkChange) {
           return;
         }
-        offNetworkChange = lx.onNetworkChange((info) => {
+        offNetworkChange = lx.network.watch((info) => {
           page.update(d => { d.networkChange = info || null; });
         });
         page.update(d => { d.networkListening = true; });

@@ -403,6 +403,25 @@ declare global {
   /** Runtime environment constants backed by abstract `lx://` paths. */
   interface LxEnv {}
 
+  interface NetworkApi {
+    /** Download to the downloads directory. */
+    download(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable app-owned path. */
+    download(
+      options: AppDownloadOptions & { filePath: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary app-owned path. */
+    download(
+      options: AppDownloadOptions & { filePath?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
+    /** Download to the lxapp-managed app directory. */
+    download(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    /** Download with a destination-correlated result type. */
+    download<TDestination extends DownloadDestination = "app">(
+      options: DownloadOptions<TDestination>,
+    ): DownloadTask<DownloadResultForDestination<TDestination>>;
+  }
+
   interface Lx {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
@@ -410,23 +429,6 @@ declare global {
      * presence and `lx.supports('terminal')` always agree.
      */
     readonly terminal?: TerminalApi;
-
-    /** Download to the downloads directory. */
-    downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath: string },
-    ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath?: undefined },
-    ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    downloadFile<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.

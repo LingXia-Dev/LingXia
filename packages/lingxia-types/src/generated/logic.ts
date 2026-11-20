@@ -413,6 +413,25 @@ declare global {
   /** Runtime environment constants backed by abstract `lx://` paths. */
   interface LxEnv {}
 
+  interface NetworkApi {
+    /** Download to the downloads directory. */
+    download(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable app-owned path. */
+    download(
+      options: AppDownloadOptions & { filePath: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary app-owned path. */
+    download(
+      options: AppDownloadOptions & { filePath?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
+    /** Download to the lxapp-managed app directory. */
+    download(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    /** Download with a destination-correlated result type. */
+    download<TDestination extends DownloadDestination = "app">(
+      options: DownloadOptions<TDestination>,
+    ): DownloadTask<DownloadResultForDestination<TDestination>>;
+  }
+
   interface Lx {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
@@ -420,23 +439,6 @@ declare global {
      * presence and `lx.supports('terminal')` always agree.
      */
     readonly terminal?: TerminalApi;
-
-    /** Download to the downloads directory. */
-    downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath: string },
-    ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath?: undefined },
-    ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    downloadFile<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -1317,6 +1319,8 @@ export type NavigationTarget =
     | { kind: 'route'; name: string; params?: Record<string, JsonValue> }
     | { kind: 'appLink'; url: string };
 
+export type NetworkApi = globalThis.NetworkApi;
+
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
 
 export type NetworkInfo = {
@@ -1735,7 +1739,7 @@ export type PreviewMediaSource = {
      * Media source path.
      *
      * Accepts an `https://` (or `http://`) URL for a remote image or video —
-     * the host loads it directly, so no prior `lx.downloadFile` is required,
+     * the host loads it directly, so no prior `lx.network.download` is required,
      * and its domain must be permitted by the app's network policy — an
      * `lx://` path (for example `lx://usercache/...`), or a sandbox-local path
      * that can be resolved by runtime access rules.
@@ -2337,7 +2341,7 @@ export type TabBarItemPatch = {
     /**
      * Package-relative path, or an `lx://temp` / `lx://usercache` /
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
-     * download first (`lx.downloadFile`) and pass the returned path.
+     * download first (`lx.network.download`) and pass the returned path.
      *
      * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
      * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
@@ -2600,7 +2604,7 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
  * // so both have to match whatever the signer used.
- * const task = lx.uploadFile({
+ * const task = lx.network.upload({
  * url: presignedUrl,
  * filePath: 'lx://media/clip.mp4',
  * method: 'PUT',
@@ -2833,6 +2837,8 @@ export type VideoThumbnailResult = {
 };
 
 export type VisibilityPreference = 'auto' | 'hidden';
+
+export type WifiApi = globalThis.WifiApi;
 
 export type WifiConnectedCallback = (info: WifiConnectedInfo) => void;
 
@@ -3185,26 +3191,7 @@ declare global {
     getDeviceInfo(): DeviceInfo;
     /** Read the screen geometry and pixel ratio this host reports. */
     getScreenInfo(): ScreenInfo;
-    /** Read connectivity right now: whether it is connected, its type, and addresses. */
-    getNetworkInfo(): Promise<NetworkInfo>;
-    /** Subscribes to network changes and returns the unsubscribe fn. */
-    onNetworkChange(callback: NetworkChangeCallback): () => void;
-    /** Initialize WiFi module */
-    startWifi(): Promise<void>;
-    /** Stop WiFi module */
-    stopWifi(): Promise<void>;
-    /**
-     * Connect to WiFi (async - waits for request submission, not actual connection)
-     * This function returns when the connection request is successfully submitted to the system.
-     * The actual connection status will be reported via onWifiConnected event.
-     */
-    connectWifi(options: ConnectWifiOptions): Promise<void>;
-    /** Get WiFi list (scan results) */
-    getWifiList(): Promise<WifiInfo[]>;
-    /** Get connected WiFi info */
-    getConnectedWifi(): Promise<WifiInfo>;
-    /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
-    onWifiConnected(callback: WifiConnectedCallback): () => void;
+    readonly network: NetworkApi;
     /**
      * Lock this lxapp to `portrait` or `landscape`.
      * Any other value rejects. Where the host does not report the change back,
@@ -3214,17 +3201,6 @@ declare global {
     /** Subscribes to orientation changes and returns the unsubscribe fn. */
     onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
     readonly env: LxEnv;
-    downloadFile(options: never): never;
-    /**
-     * Upload a file over HTTP, streamed from disk.
-     * Defaults to a `POST` with a `multipart/form-data` body. Set
-     * `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
-     * body instead, which is what presigned object-storage URLs expect.
-     * Returns the task handle synchronously, before the transfer starts, so
-     * progress and cancellation can be wired up without racing it: `result` settles
-     * once, `progress` streams to one consumer, and `cancel()` aborts.
-     */
-    uploadFile(options: UploadOptions): UploadTask;
     /**
      * Open a local file with the requested strategy.
      * Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
@@ -3357,6 +3333,27 @@ declare global {
   interface NavigationBarApi {
     /** Patch the navigation bar of the active page; unset fields stay as they are. */
     update(patch: NavigationBarPatch): Promise<void>;
+  }
+}
+
+declare global {
+  interface NetworkApi {
+    readonly wifi: WifiApi;
+    /** Read connectivity right now: whether it is connected, its type, and addresses. */
+    status(): Promise<NetworkInfo>;
+    /** Subscribes to network changes and returns the unsubscribe fn. */
+    watch(callback: NetworkChangeCallback): () => void;
+    download(options: never): never;
+    /**
+     * Upload a file over HTTP, streamed from disk.
+     * Defaults to a `POST` with a `multipart/form-data` body. Set
+     * `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
+     * body instead, which is what presigned object-storage URLs expect.
+     * Returns the task handle synchronously, before the transfer starts, so
+     * progress and cancellation can be wired up without racing it: `result` settles
+     * once, `progress` streams to one consumer, and `cancel()` aborts.
+     */
+    upload(options: UploadOptions): UploadTask;
   }
 }
 
@@ -3558,6 +3555,29 @@ declare global {
      * by another lxapp onto a host's shared overlay.
      */
     toast(options: string | ToastOptions): Promise<ToastHandle>;
+  }
+}
+
+declare global {
+  interface WifiApi {
+    /**
+     * Starts the Wi-Fi module; call it before any other `lx.network.wifi` call,
+     * which otherwise rejects "not initialized". Rejects when Wi-Fi is off.
+     */
+    start(): Promise<void>;
+    /** Stops the Wi-Fi module and its event delivery. */
+    stop(): Promise<void>;
+    /**
+     * Asks the system to join a network. Resolves once the request is submitted,
+     * not when the device has joined: `onConnected` reports that.
+     */
+    connect(options: ConnectWifiOptions): Promise<void>;
+    /** Scans and resolves the networks in range. */
+    list(): Promise<WifiInfo[]>;
+    /** The network the device is on now. */
+    current(): Promise<WifiInfo>;
+    /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
+    onConnected(callback: WifiConnectedCallback): () => void;
   }
 }
 

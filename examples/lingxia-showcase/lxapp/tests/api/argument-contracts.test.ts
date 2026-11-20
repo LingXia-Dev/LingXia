@@ -78,35 +78,35 @@ test('reject malformed navigation arguments with stable codes', {
 
 test('reject malformed transfer arguments before touching the network', {
   id: 'ARGS-TRANSFER-001',
-  covers: ['lx.downloadFile', 'lx.uploadFile'],
+  covers: ['lx.network.download', 'lx.network.upload'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ARGS-TRANSFER-001');
 
   await assertRejections(t, app, [
-    { label: 'no url', api: 'downloadFile', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'empty url', api: 'downloadFile', args: [{ url: '' }], code: 'E_INVALID_ARG' },
+    { label: 'no url', api: 'network.download', args: [{}], code: 'E_INVALID_ARG' },
+    { label: 'empty url', api: 'network.download', args: [{ url: '' }], code: 'E_INVALID_ARG' },
     // Home has no provider, so public hosts are allowed. ftp is not a grant
     // question; the transfer client rejects the scheme as a network error.
     // Transfer-time failures surface on `result`, not from the factory call.
-    { label: 'non-http scheme', api: 'downloadFile', args: [{ url: 'ftp://example.com/a' }], then: 'result', code: 'E_NETWORK' },
+    { label: 'non-http scheme', api: 'network.download', args: [{ url: 'ftp://example.com/a' }], then: 'result', code: 'E_NETWORK' },
     // A dev session unlocks loopback so the suite can reach a fixture. Port 1
     // answers nothing, so this fails at connect. A release build has no dev
     // session and denies loopback outright.
-    { label: 'trusted loopback', api: 'downloadFile', args: [{ url: 'http://127.0.0.1:1/a' }], then: 'result', code: 'E_NETWORK' },
+    { label: 'trusted loopback', api: 'network.download', args: [{ url: 'http://127.0.0.1:1/a' }], then: 'result', code: 'E_NETWORK' },
 
     // uploadFile rejects on shape before it opens the file, so these rows need
     // no fixture and no source file -- they hold on every platform.
-    { label: 'upload no url', api: 'uploadFile', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'upload no filePath', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload' }], code: 'E_INVALID_ARG' },
-    { label: 'upload empty url', api: 'uploadFile', args: [{ url: '', filePath: 'a.bin' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown method', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown bodyMode', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
+    { label: 'upload no url', api: 'network.upload', args: [{}], code: 'E_INVALID_ARG' },
+    { label: 'upload no filePath', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload' }], code: 'E_INVALID_ARG' },
+    { label: 'upload empty url', api: 'network.upload', args: [{ url: '', filePath: 'a.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown method', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown bodyMode', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
     // Multipart-only options under a raw body are rejected, never dropped.
-    { label: 'upload raw with formData', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } }], code: 'E_INVALID_ARG' },
-    { label: 'upload raw with name', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', name: 'asset' }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with formData', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with name', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', name: 'asset' }], code: 'E_INVALID_ARG' },
     // Shape is fine here; the file simply is not there.
-    { label: 'upload missing file', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload missing file', api: 'network.upload', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
   ]);
 });
 

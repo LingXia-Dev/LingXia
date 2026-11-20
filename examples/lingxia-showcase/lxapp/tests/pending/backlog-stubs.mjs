@@ -116,7 +116,7 @@ export default [
     id: "PEND-NET-FIRE-001",
     title: "onNetworkChange fires, then unsubscribe is inert",
     mode: "external-fixture",
-    covers: ["lx.onNetworkChange"],
+    covers: ["lx.network.watch"],
     reason: "no injected network-change fixture; DEVICE-002 only toggles the listen flag",
   },
   {
@@ -131,7 +131,7 @@ export default [
     id: "PEND-WIFI-001",
     title: "connectWifi joins a network",
     mode: "external-fixture",
-    covers: ["lx.connectWifi"],
+    covers: ["lx.network.wifi.connect"],
     reason: "ANDROID-WIFI-001 covers the rest on a real radio; joining opens the system NetworkRequestDialog and would change the device's network, so it needs a lab access point",
   },
   {
@@ -240,14 +240,14 @@ export default [
     id: "PEND-ANDROID-DEV-001",
     title: "Android DeviceDriver, wifi landscape, and PTR gesture",
     mode: "planned",
-    covers: ["lx.startWifi"],
+    covers: ["lx.network.wifi.start"],
     reason: "out of the Windows Showcase run",
   },
   {
     id: "PEND-TRUSTED-001",
     title: "trustedDomains allow listed hosts and deny the rest",
     mode: "planned",
-    covers: ["lx.getNetworkInfo"],
+    covers: ["lx.network.status"],
     reason: "no fetch allow/deny contract is registered",
   },
   {

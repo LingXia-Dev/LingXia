@@ -17,6 +17,7 @@ mod location;
 mod lxapp;
 mod media;
 mod message_port;
+mod namespace;
 mod navigator;
 mod pick;
 mod public_types;

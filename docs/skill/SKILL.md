@@ -138,7 +138,7 @@ never add them to a project.
 | Native components: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs. In WebView pages, use HTML `<video>` / `<audio>` | [lxapp/components.md](./lxapp/components.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
-| Files: `lx://` storage, `downloadFile`, `lx.fs`, `uploadFile`, quotas | [lxapp/files.md](./lxapp/files.md) |
+| Files: `lx://` storage, `lx.network.download`, `lx.fs`, `lx.network.upload`, quotas | [lxapp/files.md](./lxapp/files.md) |
 | **Host app** | |
 | `lingxia.yaml`: sections, surfaces, tray, theme, update, env | [app/project.md](./app/project.md) |
 | Session classes: Control app vs control surface vs guest | [app/control-app.md](./app/control-app.md) |

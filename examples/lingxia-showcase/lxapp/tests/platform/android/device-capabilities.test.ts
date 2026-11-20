@@ -30,7 +30,7 @@ interface WifiRoundTrip {
 test('scan, read, and observe Wi-Fi on a real radio', {
   skip: androidSkip,
   id: 'ANDROID-WIFI-001',
-  covers: ['lx.startWifi', 'lx.getWifiList', 'lx.getConnectedWifi', 'lx.onWifiConnected', 'lx.stopWifi'],
+  covers: ['lx.network.wifi.start', 'lx.network.wifi.list', 'lx.network.wifi.current', 'lx.network.wifi.onConnected', 'lx.network.wifi.stop'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs a device with Wi-Fi on, location services on, and the location permission granted',
@@ -38,12 +38,12 @@ test('scan, read, and observe Wi-Fi on a real radio', {
   const { app, defer } = bindFixture(t, 'ANDROID-WIFI-001');
   expect(await runtimePlatform(app)).toBe('android');
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.stopWifi(); }).catch(() => undefined);
+    await app.logic.eval(async ({ lx }) => { await lx.network.wifi.stop(); }).catch(() => undefined);
   });
 
   const result: WifiRoundTrip = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     try {
-      await lx.startWifi();
+      await lx.network.wifi.start();
     } catch (error) {
       // 12009: Wi-Fi is off, a device precondition rather than a failure.
       if ((error as { data?: { bizCode?: number } }).data?.bizCode === 12009) {
@@ -51,14 +51,14 @@ test('scan, read, and observe Wi-Fi on a real radio', {
       }
       throw error;
     }
-    const list = await lx.getWifiList();
-    const connected = await lx.getConnectedWifi();
+    const list = await lx.network.wifi.list();
+    const connected = await lx.network.wifi.current();
     // A listener handle must be a function and stay inert after unsubscribe.
-    const off = lx.onWifiConnected(() => {});
+    const off = lx.network.wifi.onConnected(() => {});
     const listener = typeof off;
     off();
     off();
-    await lx.stopWifi();
+    await lx.network.wifi.stop();
     return {
       started: true,
       list: {
@@ -91,7 +91,7 @@ test('scan, read, and observe Wi-Fi on a real radio', {
 test('save an image and a video into the photo library', {
   skip: androidMediaSkip,
   id: 'ANDROID-PHOTOS-001',
-  covers: ['lx.media.saveToLibrary', 'lx.media.saveToLibrary', 'lx.downloadFile'],
+  covers: ['lx.media.saveToLibrary', 'lx.media.saveToLibrary', 'lx.network.download'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs the HTTP fixture reachable from the device (adb reverse) and an Android host',
@@ -102,8 +102,8 @@ test('save an image and a video into the photo library', {
   // Android 10+ writes an app's own media through MediaStore with no permission
   // prompt, so this is a complete contract with no external UI.
   const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
-    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
-    const mp4 = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
+    const png = await lx.network.download({ url: base + '/media/sample.png' }).result;
+    const mp4 = await lx.network.download({ url: base + '/media/sample.mp4' }).result;
     await lx.media.saveToLibrary(png.uri);
     await lx.media.saveToLibrary(mp4.uri);
     return { image: png.sizeBytes, video: mp4.sizeBytes };

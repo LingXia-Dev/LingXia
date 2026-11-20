@@ -99,6 +99,8 @@
     "MakePhoneCallOptions",
     "MediaApi",
     "MediaObjectFit",
+    "NetworkApi",
+    "WifiApi",
     "MediaRotation",
     "MisspelledLifecycle",
     "MoreAction",
@@ -207,6 +209,8 @@
     "Lx",
     "PickApi",
     "MediaApi",
+    "NetworkApi",
+    "WifiApi",
     "PickedFile"
   ]
 }

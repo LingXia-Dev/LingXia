@@ -78,7 +78,7 @@ void mixed;
 
 async function downloadCorrelation(): Promise<void> {
   const persisted = await lx
-    .downloadFile({
+    .network.download({
       url: "https://example.com/a.bin",
       filePath: "lx://userdata/a.bin",
     })
@@ -89,7 +89,7 @@ async function downloadCorrelation(): Promise<void> {
   void persistedResult;
   type PersistedIsDurable = Assert<typeof persisted extends { storage: 'userdata' } ? true : false>;
 
-  const temporary = await lx.downloadFile({ url: "https://example.com/a.bin" }).result;
+  const temporary = await lx.network.download({ url: "https://example.com/a.bin" }).result;
   const uri: string = temporary.uri;
   void uri;
   const tempResult: AppTempDownloadResult = temporary;
