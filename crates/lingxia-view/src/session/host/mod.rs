@@ -2155,6 +2155,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.images.clear();
             (page, main.source.clone(), effects, cancelled)
         };
+        log::info!(target: "lingxia_view", "recovery cleared: the page reloads");
         self.adapter.recovery(None);
         self.adapter.reset();
         self.adapter.clear_webviews();
@@ -2239,6 +2240,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.images.clear();
             (page, effects, cancelled)
         };
+        log::info!(target: "lingxia_view", "recovery cleared: the page is parked");
         self.adapter.recovery(None);
         self.adapter.clear_webviews();
         self.deliver(effects);
@@ -2400,6 +2402,7 @@ impl<A: PlatformAdapter> Inner<A> {
             Retry::Reload => self.load(None),
             Retry::Wait => {
                 self.main().failure = None;
+                log::info!(target: "lingxia_view", "recovery cleared: keep waiting");
                 self.adapter.recovery(None);
                 self.watch_bootstrap(self.lifecycle.connection());
             }

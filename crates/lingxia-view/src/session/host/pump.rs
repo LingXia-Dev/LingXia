@@ -1125,6 +1125,7 @@ impl<A: PlatformAdapter> Inner<A> {
         };
         self.deliver(revealed);
         if recovered {
+            log::info!(target: "lingxia_view", "recovery cleared: a rebuilt frame presented");
             self.adapter.recovery(None);
         }
         self.acknowledge_animation(surface, snapshot.generation, flight);

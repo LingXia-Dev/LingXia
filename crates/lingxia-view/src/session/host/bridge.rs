@@ -196,6 +196,7 @@ impl<A: PlatformAdapter> Inner<A> {
             return;
         }
         self.main().failure = None;
+        log::info!(target: "lingxia_view", "recovery cleared: the logic connected");
         self.adapter.recovery(None);
         self.watch_bootstrap(connection);
         self.work(

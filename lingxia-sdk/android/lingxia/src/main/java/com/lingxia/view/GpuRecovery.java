@@ -54,6 +54,8 @@ final class GpuRecovery {
         }
         clear();
         shown = key;
+        // Device runs pair these with the chrome reader's lines.
+        android.util.Log.i("LingXia.Chrome", "recovery panel added " + key);
         android.content.Context context = host.getContext();
         float density = host.getResources().getDisplayMetrics().density;
         LinearLayout current = new LinearLayout(context);
@@ -201,7 +203,10 @@ final class GpuRecovery {
     }
 
     void clear() {
-        if (panel != null) { host.removeView(panel); panel = null; message = null; action = null; back = null; }
+        if (panel != null) {
+            android.util.Log.i("LingXia.Chrome", "recovery panel removed " + shown);
+            host.removeView(panel); panel = null; message = null; action = null; back = null;
+        }
         shown = null;
     }
 }

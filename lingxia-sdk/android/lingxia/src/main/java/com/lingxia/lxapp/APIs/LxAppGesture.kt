@@ -102,12 +102,23 @@ internal object LxAppGesture {
                     }
                     return
                 }
-                if (!view.isShown || view is com.lingxia.lxapp.WebView || view is com.lingxia.lxapp.GpuPage) return
-                // Bars under a GPU page's open dialog are out of reach, as for assistive tech.
-                if (view.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) return
-                // An overlay added this frame has no position yet: a tap at its unlaid bounds
-                // lands on the backdrop and dismisses it.
-                if (!view.isLaidOut || view.width == 0 || view.height == 0) return
+                val skipped = when {
+                    !view.isShown -> "not shown"
+                    view is com.lingxia.lxapp.WebView -> "a web page"
+                    // Bars under a GPU page's open dialog are out of reach, as for assistive tech.
+                    view.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS -> "hidden from a11y"
+                    // An overlay added this frame has no position yet: a tap at its unlaid bounds
+                    // lands on the backdrop and dismisses it.
+                    !view.isLaidOut || view.width == 0 || view.height == 0 -> "not laid out"
+                    else -> null
+                }
+                if (skipped != null) {
+                    if (view is ViewGroup && tagged(view, com.lingxia.view.GpuView.RECOVERY_TAG).isNotEmpty()) {
+                        val state = "recovery panel skipped: ${view.javaClass.simpleName} $skipped"
+                        if (unread.put(view, state) != state) android.util.Log.i("LingXia.Chrome", state)
+                    }
+                    return
+                }
                 val here = when (view.javaClass.simpleName) {
                     "TabBar" -> "tabBar"
                     "NavigationBar" -> "navigationBar"
