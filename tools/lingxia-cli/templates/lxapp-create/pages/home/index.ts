@@ -1,16 +1,17 @@
+import { definePage } from '@lingxia/types/page';
 import type { HomePage } from './contract';
 
-Page<HomePage['data'], HomePage['actions']>({
-  data: {
-    greeting: '',
-    greetCount: 0
-  },
-
-  async greet(payload: { name: string }) {
-    const count = this.data.greetCount + 1;
-    this.setData({
-      greetCount: count,
-      greeting: `Hello, ${payload.name}! (#${count})`
-    });
-  }
+export default definePage({
+  data: { greeting: '', greetCount: 0 } satisfies HomePage['data'],
+  setup: page => ({
+    actions: {
+      async greet({ name }: { name: string }) {
+        const count = page.data.greetCount + 1;
+        page.update(d => {
+          d.greetCount = count;
+          d.greeting = `Hello, ${name}! (#${count})`;
+        });
+      },
+    },
+  }),
 });

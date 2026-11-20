@@ -1,4 +1,5 @@
 import type { ChartData, ChatChunk, Message } from '../../shared/chat';
+import { definePage } from '@lingxia/types/page';
 
 export type { ChartData, ChatChunk, Message };
 
@@ -124,98 +125,99 @@ async function* mockChatStream(): AsyncGenerator<ChatChunk, void> {
   }
 }
 
-Page({
+export default definePage({
   data: {
     messages: [] as Message[],
     isStreaming: false,
   },
+  setup(page) {
+    const actions = {
+      async *onSend(params: { text: string }): AsyncGenerator<ChatChunk, void> {
+        const text = (params?.text ?? '').trim();
+        if (!text || page.data.isStreaming) return;
 
-  onLoad() {
-    try {
-      void lx.navigationBar.update({ title: 'AI Chat' });
-    } catch (_) {}
-  },
+        const userMsg: Message = {
+          id: `u${Date.now()}`,
+          role: 'user',
+          content: text,
+        };
+        page.update(d => {
+          d.messages.push(userMsg);
+          d.isStreaming = true;
+        });
 
-  async *onSend(params: { text: string }): AsyncGenerator<ChatChunk, void> {
-    const text = (params?.text ?? '').trim();
-    if (!text || this.data.isStreaming) return;
+        let accumulated = '';
+        let chartData: ChartData | undefined;
 
-    const userMsg: Message = {
-      id: `u${Date.now()}`,
-      role: 'user',
-      content: text,
+        try {
+          const nativeChatStream = (globalThis as any)?.lx?.ai?.chatStream as
+            | ((params: { messages: { role: string; content: string }[] }) => AsyncIterable<{ token: string }>)
+            | undefined;
+
+          // Read `data` before the generator: a generator function expression has
+          // its own `this`, and the IIFE below is called without a receiver.
+          const history = page.data.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
+
+          const stream = nativeChatStream
+            ? (async function* () {
+                for await (const chunk of nativeChatStream({ messages: history })) {
+                  yield { type: 'token' as const, token: chunk.token };
+                }
+              })()
+            : mockChatStream();
+
+          for await (const chunk of stream) {
+            if (chunk.type === 'token') accumulated += chunk.token;
+            if (chunk.type === 'artifact') chartData = chunk.chart;
+            yield chunk;
+          }
+        } finally {
+          const assistantMsg: Message = {
+            id: `a${Date.now()}`,
+            role: 'assistant',
+            content: accumulated || '(no response)',
+            chart: chartData,
+          };
+          page.update(d => {
+            d.messages.push(assistantMsg);
+            d.isStreaming = false;
+          });
+        }
+      },
+      async onOpenAbout() {
+        await lx.navigateTo({ page: 'about' });
+      },
+      onClear() {
+        if (page.data.isStreaming) return;
+        page.update(d => { d.messages = []; });
+      },
+      // Desktop-only (the View gates the affordance): open the host-declared
+      // terminal using the placement owned by lingxia.yaml.
+      async onOpenTerminal() {
+        await lx.surface.openDeclared('terminal');
+      },
+      // Open a new in-app browser tab (self browser with an editable address bar).
+      // The start host must be in the host-granted domain list, else openUrl
+      // rejects with `denied` — catch it so a policy denial can never take down
+      // the host/Runner.
+      async onOpenBrowser() {
+        try {
+          await lx.surface.openUrl('https://www.deepseek.com');
+        } catch (err) {
+          console.error('openBrowser failed', err);
+        }
+      },
     };
-    this.setData({
-      messages: [...this.data.messages, userMsg],
-      isStreaming: true,
-    });
-
-    let accumulated = '';
-    let chartData: ChartData | undefined;
-
-    try {
-      const nativeChatStream = (globalThis as any)?.lx?.ai?.chatStream as
-        | ((params: { messages: { role: string; content: string }[] }) => AsyncIterable<{ token: string }>)
-        | undefined;
-
-      // Read `data` before the generator: a generator function expression has
-      // its own `this`, and the IIFE below is called without a receiver.
-      const history = this.data.messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const stream = nativeChatStream
-        ? (async function* () {
-            for await (const chunk of nativeChatStream({ messages: history })) {
-              yield { type: 'token' as const, token: chunk.token };
-            }
-          })()
-        : mockChatStream();
-
-      for await (const chunk of stream) {
-        if (chunk.type === 'token') accumulated += chunk.token;
-        if (chunk.type === 'artifact') chartData = chunk.chart;
-        yield chunk;
-      }
-    } finally {
-      const assistantMsg: Message = {
-        id: `a${Date.now()}`,
-        role: 'assistant',
-        content: accumulated || '(no response)',
-        chart: chartData,
-      };
-      this.setData({
-        messages: [...this.data.messages, assistantMsg],
-        isStreaming: false,
-      });
-    }
-  },
-
-  async onOpenAbout() {
-    await lx.navigateTo({ page: 'about' });
-  },
-
-  onClear() {
-    if (this.data.isStreaming) return;
-    this.setData({ messages: [] });
-  },
-
-  // Desktop-only (the View gates the affordance): open the host-declared
-  // terminal using the placement owned by lingxia.yaml.
-  async onOpenTerminal() {
-    await lx.surface.openDeclared('terminal');
-  },
-
-  // Open a new in-app browser tab (self browser with an editable address bar).
-  // The start host must be in the host-granted domain list, else openUrl
-  // rejects with `denied` — catch it so a policy denial can never take down
-  // the host/Runner.
-  async onOpenBrowser() {
-    try {
-      await lx.surface.openUrl('https://www.deepseek.com');
-    } catch (err) {
-      console.error('openBrowser failed', err);
-    }
+    return {
+      onLoad() {
+        try {
+          void lx.navigationBar.update({ title: 'AI Chat' });
+        } catch (_) {}
+      },
+      actions,
+    };
   },
 });

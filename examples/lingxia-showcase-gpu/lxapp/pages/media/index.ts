@@ -1,6 +1,6 @@
 import { errorMessage } from "../../shared/lib/errors";
 import type {
-  PickMediaOptions,
+  ChooseMediaOptions,
   CompressVideoTask,
   CompressImageOptions,
   CompressVideoOptions,
@@ -13,6 +13,7 @@ import type {
   VideoInfo,
 } from "@lingxia/types";
 import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
+import { definePage } from '@lingxia/types/page';
 
 /** A labelled choice the page offers through an action sheet. */
 interface MediaOption {
@@ -174,7 +175,7 @@ const MODE_SETTINGS = {
 function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "lx.pickMedia / lx.previewMedia",
+      headerSubtitle: "lx.chooseMedia / lx.previewMedia",
       emptyHint: "Tap + to pick videos.",
       previewHint: "Tap Preview to open the full selection.",
       galleryHint: "Tap Preview to open the full selection.",
@@ -218,7 +219,7 @@ function getModeCopy(mediaType: string) {
     };
   }
   return {
-    headerSubtitle: "lx.pickMedia / lx.previewMedia",
+    headerSubtitle: "lx.chooseMedia / lx.previewMedia",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap Preview to open the full selection.",
     galleryHint: "Tap Preview to open the full selection.",
@@ -417,813 +418,803 @@ function createState(modeKey: unknown) {
   };
 }
 
-Page({
-  async goBack() { await lx.navigateBack(); },
+export default definePage({
   data: createState(DEFAULT_MODE),
-  _previewAbortController: null as AbortController | null,
+  setup(page) {
+    let previewAbortController = null as AbortController | null;
+    // The live compression task, kept off `data`: it is a handle, not state.
+    let compressVideoTask = null as CompressVideoTask | null;
+    let compressionEpoch = 0;
+    let disposed = false;
+    const helpers = {
+      stopCompression() {
+        compressionEpoch++;
+        const task = compressVideoTask;
+        compressVideoTask = null;
+        task?.cancel();
+      },
+      switchMode(params: unknown) {
+        const modeKey = resolveModeKey(params);
+        const state = createState(modeKey);
+        page.update(d => { Object.assign(d, state); });
+      },
+      async runPreviewSession({
+        sources,
+        startIndex,
+        advance,
+      }: {
+        sources: (string | { path: string; type?: string })[];
+        startIndex?: number;
+        advance?: string;
+      }) {
+        if (disposed) return;
+        actions.cancelPreviewSession();
+        const controller = new AbortController();
+        previewAbortController = controller;
+        // Callers may pass sources as plain path strings (thumbnail / compressed
+        // image previews) or as `{ path, type, ... }` objects (multi-select).
+        // Normalize to objects so spreading a single source can't scatter a bare
+        // string into character-indexed props (which drops `path`).
+        const normalizedSources = sources.map((source) =>
+          typeof source === "string" ? { path: source } : source
+        );
+        const request = (normalizedSources.length === 1
+          ? { ...normalizedSources[0], advance, signal: controller.signal }
+          : { sources: normalizedSources, startIndex, advance, signal: controller.signal }) as PreviewMediaOptions & Record<string, unknown>;
+        if (page.data.previewHideIndexIndicator) {
+          request.showIndexIndicator = false;
+        }
 
-  // The live compression task, kept off `data`: it is a handle, not state.
-  _compressVideoTask: null as CompressVideoTask | null,
-  _compressionEpoch: 0,
-  _disposed: false,
-  _stopCompression() {
-    this._compressionEpoch++;
-    const task = this._compressVideoTask;
-    this._compressVideoTask = null;
-    task?.cancel();
-  },
-  onUnload() {
-    this._disposed = true;
-    this._stopCompression();
-    this.cancelPreviewSession();
-  },
+        page.update(d => {
+          d.previewSessionBusy = true;
+          d.previewSessionResult = null;
+          d.previewSessionError = "";
+        });
 
-  onLoad: function (options) {
-    this._switchMode(options?.type);
-  },
-
-  // A tab page loads in the background; `navigationBar.update` patches whichever page is current.
-  onShow: function () {
-    void lx.navigationBar.update({ title: getModeTitle(this.data.mediaType) });
-  },
-
-  onHide: function () {
-    this._stopCompression();
-    this.cancelPreviewSession();
-    this.setData({
-      selectedMedia: [],
-      videoCompressBusy: false,
-      videoCompressProgress: null,
-      compressing: false,
-      previewSessionBusy: false,
-    });
-  },
-
-  _switchMode: function (params: unknown) {
-    const modeKey = resolveModeKey(params);
-    const state = createState(modeKey);
-    this.setData(state);
-  },
-
-  openSourcePicker: async function () {
-    const choice = await pickOption(SOURCE_OPTIONS, this.data.sourceKey);
-    if (!choice) {
-      return;
-    }
-    const sourceChanged = choice.key !== this.data.sourceKey;
-    const cameraOnly = isCameraOnlySource(choice);
-    const updates: {
-      sourceKey: string;
-      selectedMedia?: ChosenMedia[];
-      countKey?: string;
-      countLimit?: number;
-    } = {
-      sourceKey: choice.key,
+        let unsubscribe: (() => void) | undefined;
+        try {
+          const handle = lx.previewMedia(request);
+          // Telemetry: log first-paint latency. The showcase doesn't have an
+          // underlying overlay to hide, so we just observe and log.
+          const startedAt = Date.now();
+          handle.presented.then((outcome) => {
+            if (outcome.status !== "presented") return;
+            const ms = Date.now() - startedAt;
+            console.log("[media-demo] presented:", { latencyMs: ms });
+          }).catch(() => {});
+          // Live change stream: know which item the user is looking at, as
+          // they swipe / the session auto-advances.
+          unsubscribe = handle.onChange(({ index, source }) => {
+            console.log("[media-demo] viewing:", index, source.path);
+          });
+          const result = await handle.completed;
+          if (disposed || previewAbortController !== controller) return;
+          page.update(d => {
+            d.previewSessionBusy = false;
+            d.previewSessionResult = result;
+            d.previewSessionError = "";
+          });
+          return result;
+        } catch (error) {
+          if (disposed || previewAbortController !== controller) return;
+          const abortLike = error as { name?: string; code?: string } | null;
+          const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
+          page.update(d => {
+            d.previewSessionBusy = false;
+            d.previewSessionError = isAbort ? "" : (errorMessage(error, "Preview failed"));
+          });
+          if (!isAbort) {
+            console.error("[media-demo] previewMedia failed:", error);
+            lx.showToast({ title: errorMessage(error, "Preview failed"), icon: "none" });
+          }
+          return null;
+        } finally {
+          unsubscribe?.();
+          if (previewAbortController === controller) {
+            previewAbortController = null;
+          }
+        }
+      },
+      async getFileSize(path: string) {
+        try {
+          const stat = await lx.fs.file(path).stat();
+          return stat.size || 0;
+        } catch (error) {
+          console.warn("Failed to get file size:", error);
+          return 0;
+        }
+      },
+      async pickSingleMedia(type: string) {
+        try {
+          const result = await lx.chooseMedia({
+            count: 1,
+            mediaType: [type === "video" ? "video" : "image"],
+            sourceType: ["album", "camera"],
+            camera: "back",
+          });
+          return (result.status === 'canceled') ? null : result.entries[0].uri;
+        } catch (error) {
+          console.error("[media-demo] pickSingleMedia failed:", error);
+          lx.showToast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
+          return null;
+        }
+      },
     };
-
-    if (sourceChanged) {
-      updates.selectedMedia = [];
-    }
-
-    if (
-      (this.data.mediaType === "image" || this.data.mediaType === "video") &&
-      cameraOnly
-    ) {
-      updates.countKey = "1";
-      updates.countLimit = 1;
-    }
-
-    this.setData(updates);
-  },
-
-  openCountPicker: async function () {
-    if (!COUNT_OPTIONS.length) {
-      return;
-    }
-    const currentCountKey =
-      COUNT_OPTIONS.find((option) => option.value === this.data.countLimit)?.key ||
-      this.data.countKey;
-    const choice = await pickOption(COUNT_OPTIONS, currentCountKey);
-    if (!choice) {
-      return;
-    }
-    this.setData({
-      countKey: choice.key,
-      countLimit: choice.value,
-    });
-  },
-
-  openCameraPicker: async function () {
-    if (!CAMERA_OPTIONS.length) {
-      return;
-    }
-    const choice = await pickOption(CAMERA_OPTIONS, this.data.cameraKey);
-    if (!choice) {
-      return;
-    }
-    this.setData({
-      cameraKey: choice.key,
-    });
-  },
-
-  openDurationPicker: async function () {
-    if (!DURATION_OPTIONS.length) {
-      return;
-    }
-    const choice = await pickOption(DURATION_OPTIONS, this.data.durationKey);
-    if (!choice) {
-      return;
-    }
-    this.setData({
-      durationKey: choice.key,
-      durationValue: choice.value,
-    });
-  },
-
-  openPreviewRotatePicker: async function () {
-    const choice = await pickOption(ROTATE_OPTIONS, this.data.previewRotateKey || "meta");
-    if (!choice) return;
-    this.setData({ previewRotateKey: choice.key });
-  },
-
-  openPreviewObjectFitPicker: async function () {
-    const choice = await pickOption(OBJECT_FIT_OPTIONS, this.data.previewObjectFitKey || "default");
-    if (!choice) return;
-    this.setData({ previewObjectFitKey: choice.key });
-  },
-
-  openPreviewBehaviorPicker: async function () {
-    const choice = await pickOption(
-      PREVIEW_BEHAVIOR_OPTIONS,
-      this.data.previewBehaviorKey || "manual",
-    );
-    if (!choice) return;
-    this.setData({ previewBehaviorKey: choice.key });
-  },
-
-  togglePreviewIndexIndicator: function () {
-    this.setData({
-      previewHideIndexIndicator: !this.data.previewHideIndexIndicator,
-    });
-  },
-
-  onPreviewImageDurationInput: function (event: NativeEvent<{ value: string }>) {
-    this.setData({
-      previewImageDurationMs: extractInputValue(event),
-    });
-  },
-
-  openComponentObjectFitPicker: async function () {
-    const choice = await pickOption(OBJECT_FIT_OPTIONS, this.data.componentObjectFitKey || "cover");
-    if (!choice) return;
-    this.setData({ componentObjectFitKey: choice.key });
-  },
-
-  cancelPreviewSession: function () {
-    if (this._previewAbortController) {
-      const controller = this._previewAbortController;
-      this._previewAbortController = null;
-      try {
-        controller.abort();
-      } catch (error) {
-        console.warn("[media-demo] preview abort failed:", error);
-      }
-    }
-  },
-
-  launchMediaDemo: async function () {
-    if (this.data.mediaType === "scanCode") {
-      this.startScan();
-      return;
-    }
-    if (this.data.isRunning) return;
-
-    const sourceOption = findOption(
-      SOURCE_OPTIONS,
-      this.data.sourceKey,
-      SOURCE_OPTIONS[0],
-    );
-    const cameraOnly = isCameraOnlySource(sourceOption);
-    const countLimit = parsePositiveInt(this.data.countLimit || this.data.countKey);
-
-    const request: PickMediaOptions = {
-      mediaType: resolveMediaTypeTokens(this.data.mediaType),
-      sourceType: (sourceOption?.request as PickMediaOptions["sourceType"]) || ["album"],
-    };
-    if (cameraOnly) {
-      request.count = 1;
-    } else if (typeof countLimit === "number" && countLimit > 0) {
-      request.count = countLimit;
-    }
-    if (this.data.mediaType === "video") {
-      const maxDurationSeconds = parsePositiveInt(this.data.durationValue);
-      if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
-      if (this.data.cameraKey) request.camera = this.data.cameraKey as PickMediaOptions["camera"];
-    }
-
-    this.setData({ isRunning: true, selectedMedia: [] });
-
-    try {
-      const picked = await lx.pickMedia(request);
-      if (picked.status === 'canceled') {
-        return;
-      }
-      const mapped = mapChosenMedia(picked.entries);
-      const enrichedList =
-        this.data.mediaType === "video"
-          ? await enrichVideoItemsWithMetadata(mapped)
-          : mapped;
-      this.setData({ selectedMedia: enrichedList });
-    } catch (error) {
-      console.error("[media-demo] pickMedia failed:", error);
-      lx.showToast({
-        title: errorMessage(error, "Operation failed"),
-        icon: "none",
-      });
-    } finally {
-      this.setData({ isRunning: false });
-    }
-  },
-
-  startScan: async function () {
-    if (this.data.scanBusy) {
-      return;
-    }
-    this.setData({ scanBusy: true, scanResult: "", scanType: "" });
-    try {
-      const onlyFromCamera = !!this.data.scanOnlyCamera;
-      const scanTypeKey = this.data.scanTypeKey || "all";
-      const payload: ScanCodeOptions = { onlyFromCamera };
-      if (scanTypeKey && scanTypeKey !== "all") {
-        payload.scanType = [scanTypeKey as NonNullable<ScanCodeOptions["scanType"]>[number]];
-      }
-      const result = await lx.scanCode(payload);
-      if (result.status === 'canceled') {
-        this.setData({ scanBusy: false });
-        return;
-      }
-      this.setData({ scanBusy: false, scanResult: result.scanResult, scanType: result.scanType });
-    } catch (error) {
-      console.error("scanCode failed:", error);
-      this.setData({ scanBusy: false });
-      lx.showToast({
-        title: errorMessage(error, "scanCode failed"),
-        icon: "none",
-      });
-    }
-  },
-
-  openScanSourcePicker: async function () {
-    const OPTIONS = [
-      { key: "camera", label: "Camera Only", value: true },
-      { key: "cameraOrPhoto", label: "Camera & Photo", value: false },
-    ];
-    const currentKey = this.data.scanOnlyCamera ? "camera" : "cameraOrPhoto";
-    const choice = await pickOption(OPTIONS, currentKey);
-    if (!choice) return;
-    this.setData({ scanOnlyCamera: choice.key === "camera" });
-  },
-
-  openScanTypePicker: async function () {
-    const OPTIONS = [
-      { key: "all", label: "All" },
-      { key: "barCode", label: "barCode (1D)" },
-      { key: "qrCode", label: "qrCode" },
-      { key: "datamatrix", label: "datamatrix" },
-      { key: "pdf417", label: "pdf417" },
-    ];
-    const choice = await pickOption(OPTIONS, String(this.data.scanTypeKey || "all"));
-    if (!choice) return;
-    this.setData({ scanTypeKey: choice.key });
-  },
-
-  previewSelectedMedia: async function () {
-    const selected = this.data.selectedMedia || [];
-    if (!selected.length) {
-      lx.showToast({
-        title: "Nothing to preview",
-        icon: "none",
-      });
-      return;
-    }
-
-    const previewRotate = resolveRotateValue(this.data.previewRotateKey || "meta");
-    const previewObjectFit = resolveObjectFitValue(this.data.previewObjectFitKey || "default", "contain");
-    const advance = this.data.previewBehaviorKey || "manual";
-    const imageDurationMs = parsePositiveInt(this.data.previewImageDurationMs);
-    const sources = selected.map((item) => {
-      const source: {
-        path: string;
-        type: string;
-        rotate?: number;
-        objectFit?: string;
-        durationMs?: number;
-      } = { path: item.path, type: item.type };
-      if (typeof previewRotate === "number") source.rotate = previewRotate;
-      if (previewObjectFit) source.objectFit = previewObjectFit;
-      if (item.type !== "video" && (imageDurationMs ?? 0) > 0) source.durationMs = imageDurationMs;
-      return source;
-    });
-    await this._runPreviewSession({
-      sources,
-      startIndex: 0,
-      advance,
-    });
-  },
-
-  _runPreviewSession: async function ({
-    sources,
-    startIndex,
-    advance,
-  }: {
-    sources: (string | { path: string; type?: string })[];
-    startIndex?: number;
-    advance?: string;
-  }) {
-    if (this._disposed) return;
-    this.cancelPreviewSession();
-    const controller = new AbortController();
-    this._previewAbortController = controller;
-    // Callers may pass sources as plain path strings (thumbnail / compressed
-    // image previews) or as `{ path, type, ... }` objects (multi-select).
-    // Normalize to objects so spreading a single source can't scatter a bare
-    // string into character-indexed props (which drops `path`).
-    const normalizedSources = sources.map((source) =>
-      typeof source === "string" ? { path: source } : source
-    );
-    const request = (normalizedSources.length === 1
-      ? { ...normalizedSources[0], advance, signal: controller.signal }
-      : { sources: normalizedSources, startIndex, advance, signal: controller.signal }) as PreviewMediaOptions & Record<string, unknown>;
-    if (this.data.previewHideIndexIndicator) {
-      request.showIndexIndicator = false;
-    }
-
-    this.setData({ previewSessionBusy: true, previewSessionResult: null, previewSessionError: "" });
-
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const handle = lx.previewMedia(request);
-      // Telemetry: log first-paint latency. The showcase doesn't have an
-      // underlying overlay to hide, so we just observe and log.
-      const startedAt = Date.now();
-      handle.presented.then((outcome) => {
-        if (outcome.status !== "presented") return;
-        const ms = Date.now() - startedAt;
-        console.log("[media-demo] presented:", { latencyMs: ms });
-      }).catch(() => {});
-      // Live change stream: know which item the user is looking at, as
-      // they swipe / the session auto-advances.
-      unsubscribe = handle.onChange(({ index, source }) => {
-        console.log("[media-demo] viewing:", index, source.path);
-      });
-      const result = await handle.completed;
-      if (this._disposed || this._previewAbortController !== controller) return;
-      this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
-      return result;
-    } catch (error) {
-      if (this._disposed || this._previewAbortController !== controller) return;
-      const abortLike = error as { name?: string; code?: string } | null;
-      const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
-      this.setData({
-        previewSessionBusy: false,
-        previewSessionError: isAbort ? "" : (errorMessage(error, "Preview failed")),
-      });
-      if (!isAbort) {
-        console.error("[media-demo] previewMedia failed:", error);
-        lx.showToast({ title: errorMessage(error, "Preview failed"), icon: "none" });
-      }
-      return null;
-    } finally {
-      unsubscribe?.();
-      if (this._previewAbortController === controller) {
-        this._previewAbortController = null;
-      }
-    }
-  },
-
-  pickImageForInfo: async function () {
-    if (this.data.imageInfoBusy) {
-      return;
-    }
-    const picked = await this._pickSingleMedia("image");
-    if (!picked) {
-      return;
-    }
-    this.setData({
-      imageInfoBusy: true,
-      imageInfoError: "",
-      imageInfoResult: null,
-    });
-    try {
-      const info = await lx.getImageInfo({ path: picked });
-      const size = await this._getFileSize(picked);
-      this.setData({ imageInfoResult: { ...info, size }, imageInfoBusy: false });
-    } catch (error) {
-      const message = errorMessage(error, "getImageInfo failed");
-      this.setData({
-        imageInfoError: message,
-        imageInfoResult: null,
-        imageInfoBusy: false,
-      });
-      lx.showToast({
-        title: message,
-        icon: "none",
-      });
-    }
-  },
-
-  pickVideoForTools: async function () {
-    if (this.data.thumbnailBusy || this.data.videoInfoBusy) {
-      return;
-    }
-    const picked = await this._pickSingleMedia("video");
-    if (!picked) {
-      return;
-    }
-    this.setData({
-      thumbnailVideoPath: picked,
-      thumbnailSourceInfo: null,
-      thumbnailError: "",
-      thumbnailResult: null,
-      videoCompressError: "",
-      videoCompressResult: null,
-      videoInfoBusy: true,
-      videoInfoError: "",
-      videoInfoResult: null,
-    });
-    try {
-      const info = await lx.getVideoInfo({ path: picked });
-      this.setData({ videoInfoResult: info, videoInfoBusy: false, thumbnailSourceInfo: info });
-    } catch (error) {
-      const message = errorMessage(error, "getVideoInfo failed");
-      this.setData({
-        videoInfoBusy: false,
-        videoInfoError: message,
-      });
-      lx.showToast({
-        title: message,
-        icon: "none",
-      });
-    }
-  },
-
-  onThumbnailQualityInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ thumbnailQuality: value });
-  },
-
-  onThumbnailMaxWidthInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ thumbnailMaxWidth: value });
-  },
-
-  onThumbnailMaxHeightInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ thumbnailMaxHeight: value });
-  },
-
-  onThumbnailTimeInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ thumbnailTimeMs: value });
-  },
-
-  createVideoThumbnail: async function () {
-    if (this.data.thumbnailBusy) {
-      return;
-    }
-    const sourcePath = this.data.thumbnailVideoPath;
-    if (!sourcePath) {
-      lx.showToast({
-        title: "Please pick a video first",
-        icon: "none",
-      });
-      return;
-    }
-
-    const quality = parseQualityInput(this.data.thumbnailQuality);
-    const maxWidth = parsePositiveInt(this.data.thumbnailMaxWidth);
-    const maxHeight = parsePositiveInt(this.data.thumbnailMaxHeight);
-    const timeMs = parseNonNegativeInt(this.data.thumbnailTimeMs);
-
-    const payload: ExtractVideoThumbnailOptions = {
-      path: sourcePath,
-      quality,
-    };
-    if (typeof maxWidth === "number") {
-      payload.maxWidth = maxWidth;
-    }
-    if (typeof maxHeight === "number") {
-      payload.maxHeight = maxHeight;
-    }
-    if (typeof timeMs === "number") {
-      payload.timeMs = timeMs;
-    }
-
-    this.setData({
-      thumbnailBusy: true,
-      thumbnailError: "",
-      thumbnailResult: null,
-    });
-    try {
-      const thumbnail = await lx.extractVideoThumbnail(payload);
-      this.setData({ thumbnailResult: thumbnail, thumbnailBusy: false });
-    } catch (error) {
-      const message = errorMessage(error, "extractVideoThumbnail failed");
-      this.setData({
-        thumbnailError: message,
-        thumbnailResult: null,
-        thumbnailBusy: false,
-      });
-      lx.showToast({
-        title: message,
-        icon: "none",
-      });
-    }
-  },
-
-  previewVideoThumbnail: async function () {
-    const path = this.data.thumbnailResult?.uri;
-    if (!path) {
-      lx.showToast({
-        title: "No thumbnail to preview",
-        icon: "none",
-      });
-      return;
-    }
-
-    await this._runPreviewSession({
-      sources: [path],
-      startIndex: 0,
-      advance: "manual",
-    });
-  },
-
-  onVideoCompressQualityInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event).trim().toLowerCase();
-    this.setData({ videoCompressQuality: value });
-  },
-
-  onVideoCompressBitrateInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ videoCompressBitrate: value });
-  },
-
-  onVideoCompressFpsInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ videoCompressFps: value });
-  },
-
-  onVideoCompressResolutionInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ videoCompressResolution: value });
-  },
-
-  compressSelectedVideo: async function () {
-    if (this._disposed || this.data.videoCompressBusy) {
-      return;
-    }
-    const sourcePath = this.data.thumbnailVideoPath;
-    if (!sourcePath) {
-      lx.showToast({
-        title: "Please pick a video first",
-        icon: "none",
-      });
-      return;
-    }
-
-    const quality = (this.data.videoCompressQuality || "").trim().toLowerCase();
-    const payload: CompressVideoOptions = quality
-      ? { path: sourcePath, quality: quality as VideoCompressQuality }
-      : {
-          path: sourcePath,
-          bitrate: parsePositiveInt(this.data.videoCompressBitrate),
-          fps: parsePositiveInt(this.data.videoCompressFps),
-          resolution: parseResolutionRatio(this.data.videoCompressResolution),
+    const actions = {
+      async goBack() { await lx.navigateBack(); },
+      async openSourcePicker() {
+        const choice = await pickOption(SOURCE_OPTIONS, page.data.sourceKey);
+        if (!choice) {
+          return;
+        }
+        const sourceChanged = choice.key !== page.data.sourceKey;
+        const cameraOnly = isCameraOnlySource(choice);
+        const updates: {
+          sourceKey: string;
+          selectedMedia?: ChosenMedia[];
+          countKey?: string;
+          countLimit?: number;
+        } = {
+          sourceKey: choice.key,
         };
 
-    this.setData({
-      videoCompressBusy: true,
-      videoCompressError: "",
-      videoCompressResult: null,
-      videoCompressProgress: 0,
-    });
+        if (sourceChanged) {
+          updates.selectedMedia = [];
+        }
 
-    const epoch = ++this._compressionEpoch;
-    let task: CompressVideoTask | null = null;
-    try {
-      task = lx.compressVideo(payload);
-      this._compressVideoTask = task;
-      // Observe rejection immediately even if the progress iterator fails first.
-      const outcome = task.result.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
-      for await (const { progress } of task.progress) {
-        if (this._disposed || epoch !== this._compressionEpoch) return;
-        this.setData({ videoCompressProgress: progress });
-      }
-      const settled = await outcome;
-      if (this._disposed || epoch !== this._compressionEpoch) return;
-      if (!settled.ok) throw settled.error;
-      const result = settled.value;
-      this.setData({
-        videoCompressResult: result,
-        videoCompressBusy: false,
-        videoCompressProgress: null,
-      });
-    } catch (error) {
-      if (this._disposed || epoch !== this._compressionEpoch) return;
-      const abortLike = error as { name?: string; code?: string } | null;
-      const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
-      const message = errorMessage(error, "compressVideo failed");
-      this.setData({
-        videoCompressError: isAbort ? "" : message,
-        videoCompressResult: null,
-        videoCompressBusy: false,
-        videoCompressProgress: null,
-      });
-      lx.showToast({
-        title: isAbort ? "Compression cancelled" : message,
-        icon: "none",
-      });
-    } finally {
-      if (this._compressVideoTask === task) this._compressVideoTask = null;
-    }
-  },
+        if (
+          (page.data.mediaType === "image" || page.data.mediaType === "video") &&
+          cameraOnly
+        ) {
+          updates.countKey = "1";
+          updates.countLimit = 1;
+        }
 
-  cancelVideoCompress: function () {
-    this._stopCompression();
-    if (!this._disposed) {
-      this.setData({ videoCompressBusy: false, videoCompressProgress: null, videoCompressError: "" });
-      lx.showToast({ title: "Compression cancelled", icon: "none" });
-    }
-  },
+        page.update(d => { Object.assign(d, updates); });
+      },
+      async openCountPicker() {
+        if (!COUNT_OPTIONS.length) {
+          return;
+        }
+        const currentCountKey =
+          COUNT_OPTIONS.find((option) => option.value === page.data.countLimit)?.key ||
+          page.data.countKey;
+        const choice = await pickOption(COUNT_OPTIONS, currentCountKey);
+        if (!choice) {
+          return;
+        }
+        page.update(d => {
+          d.countKey = choice.key;
+          d.countLimit = choice.value;
+        });
+      },
+      async openCameraPicker() {
+        if (!CAMERA_OPTIONS.length) {
+          return;
+        }
+        const choice = await pickOption(CAMERA_OPTIONS, page.data.cameraKey);
+        if (!choice) {
+          return;
+        }
+        page.update(d => { d.cameraKey = choice.key; });
+      },
+      async openDurationPicker() {
+        if (!DURATION_OPTIONS.length) {
+          return;
+        }
+        const choice = await pickOption(DURATION_OPTIONS, page.data.durationKey);
+        if (!choice) {
+          return;
+        }
+        page.update(d => {
+          d.durationKey = choice.key;
+          d.durationValue = choice.value;
+        });
+      },
+      async openPreviewRotatePicker() {
+        const choice = await pickOption(ROTATE_OPTIONS, page.data.previewRotateKey || "meta");
+        if (!choice) return;
+        page.update(d => { d.previewRotateKey = choice.key; });
+      },
+      async openPreviewObjectFitPicker() {
+        const choice = await pickOption(OBJECT_FIT_OPTIONS, page.data.previewObjectFitKey || "default");
+        if (!choice) return;
+        page.update(d => { d.previewObjectFitKey = choice.key; });
+      },
+      async openPreviewBehaviorPicker() {
+        const choice = await pickOption(
+          PREVIEW_BEHAVIOR_OPTIONS,
+          page.data.previewBehaviorKey || "manual",
+        );
+        if (!choice) return;
+        page.update(d => { d.previewBehaviorKey = choice.key; });
+      },
+      togglePreviewIndexIndicator() {
+        page.update(d => { d.previewHideIndexIndicator = !page.data.previewHideIndexIndicator; });
+      },
+      onPreviewImageDurationInput(event: NativeEvent<{ value: string }>) {
+        page.update(d => { d.previewImageDurationMs = extractInputValue(event); });
+      },
+      async openComponentObjectFitPicker() {
+        const choice = await pickOption(OBJECT_FIT_OPTIONS, page.data.componentObjectFitKey || "cover");
+        if (!choice) return;
+        page.update(d => { d.componentObjectFitKey = choice.key; });
+      },
+      cancelPreviewSession() {
+        if (previewAbortController) {
+          const controller = previewAbortController;
+          previewAbortController = null;
+          try {
+            controller.abort();
+          } catch (error) {
+            console.warn("[media-demo] preview abort failed:", error);
+          }
+        }
+      },
+      async launchMediaDemo() {
+        if (page.data.mediaType === "scanCode") {
+          actions.startScan();
+          return;
+        }
+        if (page.data.isRunning) return;
 
-  previewCompressedVideo: async function () {
-    const path = this.data.videoCompressResult?.uri;
-    if (!path) {
-      lx.showToast({ title: "No compressed video to preview", icon: "none" });
-      return;
-    }
-    const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
-      path,
-      type: "video",
+        const sourceOption = findOption(
+          SOURCE_OPTIONS,
+          page.data.sourceKey,
+          SOURCE_OPTIONS[0],
+        );
+        const cameraOnly = isCameraOnlySource(sourceOption);
+        const countLimit = parsePositiveInt(page.data.countLimit || page.data.countKey);
+
+        const request: ChooseMediaOptions = {
+          mediaType: resolveMediaTypeTokens(page.data.mediaType),
+          sourceType: (sourceOption?.request as ChooseMediaOptions["sourceType"]) || ["album"],
+        };
+        if (cameraOnly) {
+          request.count = 1;
+        } else if (typeof countLimit === "number" && countLimit > 0) {
+          request.count = countLimit;
+        }
+        if (page.data.mediaType === "video") {
+          const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
+          if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
+          if (page.data.cameraKey) request.camera = page.data.cameraKey as ChooseMediaOptions["camera"];
+        }
+
+        page.update(d => {
+          d.isRunning = true;
+          d.selectedMedia = [];
+        });
+
+        try {
+          const picked = await lx.chooseMedia(request);
+          if (picked.status === 'canceled') {
+            return;
+          }
+          const mapped = mapChosenMedia(picked.entries);
+          const enrichedList =
+            page.data.mediaType === "video"
+              ? await enrichVideoItemsWithMetadata(mapped)
+              : mapped;
+          page.update(d => { d.selectedMedia = enrichedList; });
+        } catch (error) {
+          console.error("[media-demo] chooseMedia failed:", error);
+          lx.showToast({
+            title: errorMessage(error, "Operation failed"),
+            icon: "none",
+          });
+        } finally {
+          page.update(d => { d.isRunning = false; });
+        }
+      },
+      async startScan() {
+        if (page.data.scanBusy) {
+          return;
+        }
+        page.update(d => {
+          d.scanBusy = true;
+          d.scanResult = "";
+          d.scanType = "";
+        });
+        try {
+          const onlyFromCamera = !!page.data.scanOnlyCamera;
+          const scanTypeKey = page.data.scanTypeKey || "all";
+          const payload: ScanCodeOptions = { onlyFromCamera };
+          if (scanTypeKey && scanTypeKey !== "all") {
+            payload.scanType = [scanTypeKey as NonNullable<ScanCodeOptions["scanType"]>[number]];
+          }
+          const result = await lx.scanCode(payload);
+          if (result.status === 'canceled') {
+            page.update(d => { d.scanBusy = false; });
+            return;
+          }
+          page.update(d => {
+            d.scanBusy = false;
+            d.scanResult = result.scanResult;
+            d.scanType = result.scanType;
+          });
+        } catch (error) {
+          console.error("scanCode failed:", error);
+          page.update(d => { d.scanBusy = false; });
+          lx.showToast({
+            title: errorMessage(error, "scanCode failed"),
+            icon: "none",
+          });
+        }
+      },
+      async openScanSourcePicker() {
+        const OPTIONS = [
+          { key: "camera", label: "Camera Only", value: true },
+          { key: "cameraOrPhoto", label: "Camera & Photo", value: false },
+        ];
+        const currentKey = page.data.scanOnlyCamera ? "camera" : "cameraOrPhoto";
+        const choice = await pickOption(OPTIONS, currentKey);
+        if (!choice) return;
+        page.update(d => { d.scanOnlyCamera = choice.key === "camera"; });
+      },
+      async openScanTypePicker() {
+        const OPTIONS = [
+          { key: "all", label: "All" },
+          { key: "barCode", label: "barCode (1D)" },
+          { key: "qrCode", label: "qrCode" },
+          { key: "datamatrix", label: "datamatrix" },
+          { key: "pdf417", label: "pdf417" },
+        ];
+        const choice = await pickOption(OPTIONS, String(page.data.scanTypeKey || "all"));
+        if (!choice) return;
+        page.update(d => { d.scanTypeKey = choice.key; });
+      },
+      async previewSelectedMedia() {
+        const selected = page.data.selectedMedia || [];
+        if (!selected.length) {
+          lx.showToast({
+            title: "Nothing to preview",
+            icon: "none",
+          });
+          return;
+        }
+
+        const previewRotate = resolveRotateValue(page.data.previewRotateKey || "meta");
+        const previewObjectFit = resolveObjectFitValue(page.data.previewObjectFitKey || "default", "contain");
+        const advance = page.data.previewBehaviorKey || "manual";
+        const imageDurationMs = parsePositiveInt(page.data.previewImageDurationMs);
+        const sources = selected.map((item) => {
+          const source: {
+            path: string;
+            type: string;
+            rotate?: number;
+            objectFit?: string;
+            durationMs?: number;
+          } = { path: item.path, type: item.type };
+          if (typeof previewRotate === "number") source.rotate = previewRotate;
+          if (previewObjectFit) source.objectFit = previewObjectFit;
+          if (item.type !== "video" && (imageDurationMs ?? 0) > 0) source.durationMs = imageDurationMs;
+          return source;
+        });
+        await helpers.runPreviewSession({
+          sources,
+          startIndex: 0,
+          advance,
+        });
+      },
+      async pickImageForInfo() {
+        if (page.data.imageInfoBusy) {
+          return;
+        }
+        const picked = await helpers.pickSingleMedia("image");
+        if (!picked) {
+          return;
+        }
+        page.update(d => {
+          d.imageInfoBusy = true;
+          d.imageInfoError = "";
+          d.imageInfoResult = null;
+        });
+        try {
+          const info = await lx.getImageInfo({ path: picked });
+          const size = await helpers.getFileSize(picked);
+          page.update(d => {
+            d.imageInfoResult = { ...info, size };
+            d.imageInfoBusy = false;
+          });
+        } catch (error) {
+          const message = errorMessage(error, "getImageInfo failed");
+          page.update(d => {
+            d.imageInfoError = message;
+            d.imageInfoResult = null;
+            d.imageInfoBusy = false;
+          });
+          lx.showToast({
+            title: message,
+            icon: "none",
+          });
+        }
+      },
+      async pickVideoForTools() {
+        if (page.data.thumbnailBusy || page.data.videoInfoBusy) {
+          return;
+        }
+        const picked = await helpers.pickSingleMedia("video");
+        if (!picked) {
+          return;
+        }
+        page.update(d => {
+          d.thumbnailVideoPath = picked;
+          d.thumbnailSourceInfo = null;
+          d.thumbnailError = "";
+          d.thumbnailResult = null;
+          d.videoCompressError = "";
+          d.videoCompressResult = null;
+          d.videoInfoBusy = true;
+          d.videoInfoError = "";
+          d.videoInfoResult = null;
+        });
+        try {
+          const info = await lx.getVideoInfo({ path: picked });
+          page.update(d => {
+            d.videoInfoResult = info;
+            d.videoInfoBusy = false;
+            d.thumbnailSourceInfo = info;
+          });
+        } catch (error) {
+          const message = errorMessage(error, "getVideoInfo failed");
+          page.update(d => {
+            d.videoInfoBusy = false;
+            d.videoInfoError = message;
+          });
+          lx.showToast({
+            title: message,
+            icon: "none",
+          });
+        }
+      },
+      onThumbnailQualityInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.thumbnailQuality = value; });
+      },
+      onThumbnailMaxWidthInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.thumbnailMaxWidth = value; });
+      },
+      onThumbnailMaxHeightInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.thumbnailMaxHeight = value; });
+      },
+      onThumbnailTimeInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.thumbnailTimeMs = value; });
+      },
+      async createVideoThumbnail() {
+        if (page.data.thumbnailBusy) {
+          return;
+        }
+        const sourcePath = page.data.thumbnailVideoPath;
+        if (!sourcePath) {
+          lx.showToast({
+            title: "Please pick a video first",
+            icon: "none",
+          });
+          return;
+        }
+
+        const quality = parseQualityInput(page.data.thumbnailQuality);
+        const maxWidth = parsePositiveInt(page.data.thumbnailMaxWidth);
+        const maxHeight = parsePositiveInt(page.data.thumbnailMaxHeight);
+        const timeMs = parseNonNegativeInt(page.data.thumbnailTimeMs);
+
+        const payload: ExtractVideoThumbnailOptions = {
+          path: sourcePath,
+          quality,
+        };
+        if (typeof maxWidth === "number") {
+          payload.maxWidth = maxWidth;
+        }
+        if (typeof maxHeight === "number") {
+          payload.maxHeight = maxHeight;
+        }
+        if (typeof timeMs === "number") {
+          payload.timeMs = timeMs;
+        }
+
+        page.update(d => {
+          d.thumbnailBusy = true;
+          d.thumbnailError = "";
+          d.thumbnailResult = null;
+        });
+        try {
+          const thumbnail = await lx.extractVideoThumbnail(payload);
+          page.update(d => {
+            d.thumbnailResult = thumbnail;
+            d.thumbnailBusy = false;
+          });
+        } catch (error) {
+          const message = errorMessage(error, "extractVideoThumbnail failed");
+          page.update(d => {
+            d.thumbnailError = message;
+            d.thumbnailResult = null;
+            d.thumbnailBusy = false;
+          });
+          lx.showToast({
+            title: message,
+            icon: "none",
+          });
+        }
+      },
+      async previewVideoThumbnail() {
+        const path = page.data.thumbnailResult?.uri;
+        if (!path) {
+          lx.showToast({
+            title: "No thumbnail to preview",
+            icon: "none",
+          });
+          return;
+        }
+
+        await helpers.runPreviewSession({
+          sources: [path],
+          startIndex: 0,
+          advance: "manual",
+        });
+      },
+      onVideoCompressQualityInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event).trim().toLowerCase();
+        page.update(d => { d.videoCompressQuality = value; });
+      },
+      onVideoCompressBitrateInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.videoCompressBitrate = value; });
+      },
+      onVideoCompressFpsInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.videoCompressFps = value; });
+      },
+      onVideoCompressResolutionInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.videoCompressResolution = value; });
+      },
+      async compressSelectedVideo() {
+        if (disposed || page.data.videoCompressBusy) {
+          return;
+        }
+        const sourcePath = page.data.thumbnailVideoPath;
+        if (!sourcePath) {
+          lx.showToast({
+            title: "Please pick a video first",
+            icon: "none",
+          });
+          return;
+        }
+
+        const quality = (page.data.videoCompressQuality || "").trim().toLowerCase();
+        const payload: CompressVideoOptions = quality
+          ? { path: sourcePath, quality: quality as VideoCompressQuality }
+          : {
+              path: sourcePath,
+              bitrate: parsePositiveInt(page.data.videoCompressBitrate),
+              fps: parsePositiveInt(page.data.videoCompressFps),
+              resolution: parseResolutionRatio(page.data.videoCompressResolution),
+            };
+
+        page.update(d => {
+          d.videoCompressBusy = true;
+          d.videoCompressError = "";
+          d.videoCompressResult = null;
+          d.videoCompressProgress = 0;
+        });
+
+        const epoch = ++compressionEpoch;
+        let task: CompressVideoTask | null = null;
+        try {
+          task = lx.compressVideo(payload);
+          compressVideoTask = task;
+          // Observe rejection immediately even if the progress iterator fails first.
+          const outcome = task.result.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
+          for await (const { progress } of task.progress) {
+            if (disposed || epoch !== compressionEpoch) return;
+            page.update(d => { d.videoCompressProgress = progress; });
+          }
+          const settled = await outcome;
+          if (disposed || epoch !== compressionEpoch) return;
+          if (!settled.ok) throw settled.error;
+          const result = settled.value;
+          page.update(d => {
+            d.videoCompressResult = result;
+            d.videoCompressBusy = false;
+            d.videoCompressProgress = null;
+          });
+        } catch (error) {
+          if (disposed || epoch !== compressionEpoch) return;
+          const abortLike = error as { name?: string; code?: string } | null;
+          const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
+          const message = errorMessage(error, "compressVideo failed");
+          page.update(d => {
+            d.videoCompressError = isAbort ? "" : message;
+            d.videoCompressResult = null;
+            d.videoCompressBusy = false;
+            d.videoCompressProgress = null;
+          });
+          lx.showToast({
+            title: isAbort ? "Compression cancelled" : message,
+            icon: "none",
+          });
+        } finally {
+          if (compressVideoTask === task) compressVideoTask = null;
+        }
+      },
+      cancelVideoCompress() {
+        helpers.stopCompression();
+        if (!disposed) {
+          page.update(d => {
+            d.videoCompressBusy = false;
+            d.videoCompressProgress = null;
+            d.videoCompressError = "";
+          });
+          lx.showToast({ title: "Compression cancelled", icon: "none" });
+        }
+      },
+      async previewCompressedVideo() {
+        const path = page.data.videoCompressResult?.uri;
+        if (!path) {
+          lx.showToast({ title: "No compressed video to preview", icon: "none" });
+          return;
+        }
+        const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
+          path,
+          type: "video",
+        };
+        const rotate = resolveRotateValue(page.data.previewRotateKey || "meta");
+        const objectFit = resolveObjectFitValue(page.data.previewObjectFitKey || "default", "contain");
+        if (typeof rotate === "number") source.rotate = rotate;
+        if (objectFit) source.objectFit = objectFit;
+        await helpers.runPreviewSession({
+          sources: [source],
+          startIndex: 0,
+          advance: "manual",
+        });
+      },
+      onCompressQualityInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.compressQuality = value; });
+      },
+      onCompressedWidthInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.compressedWidth = value; });
+      },
+      onCompressedHeightInput(event: NativeEvent<{ value: string }>) {
+        const value = extractInputValue(event);
+        page.update(d => { d.compressedHeight = value; });
+      },
+      async compressSelectedImage() {
+        if (disposed || page.data.compressing) {
+          return;
+        }
+        const path = page.data.imageInfoResult?.path;
+        if (!path) {
+          lx.showToast({
+            title: "Please select an image first",
+            icon: "none",
+          });
+          return;
+        }
+
+        const quality = parseQualityInput(page.data.compressQuality);
+        const compressedWidth = parsePositiveInt(page.data.compressedWidth);
+        const compressedHeight = parsePositiveInt(page.data.compressedHeight);
+
+        const payload: CompressImageOptions = { path, quality };
+        if (typeof compressedWidth === "number") {
+          payload.compressedWidth = compressedWidth;
+        }
+        if (typeof compressedHeight === "number") {
+          payload.compressedHeight = compressedHeight;
+        }
+
+        page.update(d => {
+          d.compressing = true;
+          d.compressError = "";
+          d.compressResult = null;
+        });
+
+        const epoch = ++compressionEpoch;
+        try {
+          const result = await lx.compressImage(payload);
+          if (disposed || epoch !== compressionEpoch) return;
+          const resultPath = result.uri;
+          const info = await lx.getImageInfo({ path: resultPath });
+          const size = await helpers.getFileSize(resultPath);
+          if (disposed || epoch !== compressionEpoch) return;
+          page.update(d => {
+            d.compressResult = { path: resultPath, width: info.width, height: info.height, type: info.type, size };
+          });
+        } catch (error) {
+          if (disposed || epoch !== compressionEpoch) return;
+          const message = errorMessage(error, "compressImage failed");
+          page.update(d => {
+            d.compressError = message;
+            d.compressResult = null;
+          });
+          lx.showToast({
+            title: message,
+            icon: "none",
+          });
+        } finally {
+          if (!disposed && epoch === compressionEpoch) page.update(d => { d.compressing = false; });
+        }
+      },
+      async previewCompressedImage() {
+        const path = page.data.compressResult?.path;
+        if (!path) {
+          lx.showToast({
+            title: "No compressed image to preview",
+            icon: "none",
+          });
+          return;
+        }
+
+        await helpers.runPreviewSession({
+          sources: [path],
+          startIndex: 0,
+          advance: "manual",
+        });
+      },
+      async captureImageForAlbum() {
+        if (page.data.saveToAlbumBusy) return;
+        page.update(d => { d.saveToAlbumBusy = true; });
+        try {
+          const result = await lx.chooseMedia({
+            count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
+          });
+          if (result.status === 'canceled') return;
+          await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].uri });
+          lx.showToast({ title: "Image saved to album", icon: "success" });
+        } catch (error) {
+          lx.showToast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
+        } finally {
+          page.update(d => { d.saveToAlbumBusy = false; });
+        }
+      },
+      async captureVideoForAlbum() {
+        if (page.data.saveToAlbumBusy) return;
+        page.update(d => { d.saveToAlbumBusy = true; });
+        try {
+          const result = await lx.chooseMedia({
+            count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
+          });
+          if (result.status === 'canceled') return;
+          await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].uri });
+          lx.showToast({ title: "Video saved to album", icon: "success" });
+        } catch (error) {
+          lx.showToast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
+        } finally {
+          page.update(d => { d.saveToAlbumBusy = false; });
+        }
+      },
     };
-    const rotate = resolveRotateValue(this.data.previewRotateKey || "meta");
-    const objectFit = resolveObjectFitValue(this.data.previewObjectFitKey || "default", "contain");
-    if (typeof rotate === "number") source.rotate = rotate;
-    if (objectFit) source.objectFit = objectFit;
-    await this._runPreviewSession({
-      sources: [source],
-      startIndex: 0,
-      advance: "manual",
-    });
-  },
-
-  onCompressQualityInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ compressQuality: value });
-  },
-
-  onCompressedWidthInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ compressedWidth: value });
-  },
-
-  onCompressedHeightInput: function (event: NativeEvent<{ value: string }>) {
-    const value = extractInputValue(event);
-    this.setData({ compressedHeight: value });
-  },
-
-  compressSelectedImage: async function () {
-    if (this._disposed || this.data.compressing) {
-      return;
-    }
-    const path = this.data.imageInfoResult?.path;
-    if (!path) {
-      lx.showToast({
-        title: "Please select an image first",
-        icon: "none",
-      });
-      return;
-    }
-
-    const quality = parseQualityInput(this.data.compressQuality);
-    const compressedWidth = parsePositiveInt(this.data.compressedWidth);
-    const compressedHeight = parsePositiveInt(this.data.compressedHeight);
-
-    const payload: CompressImageOptions = { path, quality };
-    if (typeof compressedWidth === "number") {
-      payload.compressedWidth = compressedWidth;
-    }
-    if (typeof compressedHeight === "number") {
-      payload.compressedHeight = compressedHeight;
-    }
-
-    this.setData({
-      compressing: true,
-      compressError: "",
-      compressResult: null,
-    });
-
-    const epoch = ++this._compressionEpoch;
-    try {
-      const result = await lx.compressImage(payload);
-      if (this._disposed || epoch !== this._compressionEpoch) return;
-      const resultPath = result.uri;
-      const info = await lx.getImageInfo({ path: resultPath });
-      const size = await this._getFileSize(resultPath);
-      if (this._disposed || epoch !== this._compressionEpoch) return;
-      this.setData({
-        compressResult: { path: resultPath, width: info.width, height: info.height, type: info.type, size },
-      });
-    } catch (error) {
-      if (this._disposed || epoch !== this._compressionEpoch) return;
-      const message = errorMessage(error, "compressImage failed");
-      this.setData({
-        compressError: message,
-        compressResult: null,
-      });
-      lx.showToast({
-        title: message,
-        icon: "none",
-      });
-    } finally {
-      if (!this._disposed && epoch === this._compressionEpoch) this.setData({ compressing: false });
-    }
-  },
-
-  previewCompressedImage: async function () {
-    const path = this.data.compressResult?.path;
-    if (!path) {
-      lx.showToast({
-        title: "No compressed image to preview",
-        icon: "none",
-      });
-      return;
-    }
-
-    await this._runPreviewSession({
-      sources: [path],
-      startIndex: 0,
-      advance: "manual",
-    });
-  },
-
-  _getFileSize: async function (path: string) {
-    try {
-      const stat = await lx.fs.file(path).stat();
-      return stat.size || 0;
-    } catch (error) {
-      console.warn("Failed to get file size:", error);
-      return 0;
-    }
-  },
-
-  _pickSingleMedia: async function (type: string) {
-    try {
-      const result = await lx.pickMedia({
-        count: 1,
-        mediaType: [type === "video" ? "video" : "image"],
-        sourceType: ["album", "camera"],
-        camera: "back",
-      });
-      return (result.status === 'canceled') ? null : result.entries[0].uri;
-    } catch (error) {
-      console.error("[media-demo] pickSingleMedia failed:", error);
-      lx.showToast({ title: errorMessage(error, "pickMedia failed"), icon: "none" });
-      return null;
-    }
-  },
-
-  captureImageForAlbum: async function () {
-    if (this.data.saveToAlbumBusy) return;
-    this.setData({ saveToAlbumBusy: true });
-    try {
-      const result = await lx.pickMedia({
-        count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
-      });
-      if (result.status === 'canceled') return;
-      await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].uri });
-      lx.showToast({ title: "Image saved to album", icon: "success" });
-    } catch (error) {
-      lx.showToast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
-    } finally {
-      this.setData({ saveToAlbumBusy: false });
-    }
-  },
-
-  captureVideoForAlbum: async function () {
-    if (this.data.saveToAlbumBusy) return;
-    this.setData({ saveToAlbumBusy: true });
-    try {
-      const result = await lx.pickMedia({
-        count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
-      });
-      if (result.status === 'canceled') return;
-      await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].uri });
-      lx.showToast({ title: "Video saved to album", icon: "success" });
-    } catch (error) {
-      lx.showToast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
-    } finally {
-      this.setData({ saveToAlbumBusy: false });
-    }
+    return {
+      onUnload() {
+        disposed = true;
+        helpers.stopCompression();
+        actions.cancelPreviewSession();
+      },
+      onLoad(options) {
+        helpers.switchMode(options?.type);
+      },
+      // A tab page loads in the background; `navigationBar.update` patches whichever page is current.
+      onShow() {
+        void lx.navigationBar.update({ title: getModeTitle(page.data.mediaType) });
+      },
+      onHide() {
+        helpers.stopCompression();
+        actions.cancelPreviewSession();
+        page.update(d => {
+          d.selectedMedia = [];
+          d.videoCompressBusy = false;
+          d.videoCompressProgress = null;
+          d.compressing = false;
+          d.previewSessionBusy = false;
+        });
+      },
+      actions,
+    };
   },
 });

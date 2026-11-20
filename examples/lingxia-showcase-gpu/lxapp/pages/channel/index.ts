@@ -1,4 +1,5 @@
 import type { ServerMessage, ClientCommand } from "../../shared/channel-types";
+import { definePage } from '@lingxia/types/page';
 // ChannelHandle is injected by the runtime — no import needed.
 // The type is declared here locally for readability.
 interface ChannelHandle<TSend = unknown, TReceive = unknown> {
@@ -28,63 +29,69 @@ function randomPrice(base: number, volatility: number): number {
   return Math.round((base + delta) * 100) / 100;
 }
 
-Page({
-  async goBack() { await lx.navigateBack(); },
+export default definePage({
   data: {
     connected: false,
   },
+  setup(page) {
+    const actions = {
+      async goBack() { await lx.navigateBack(); },
+      tickerSession(
+        _params: Record<string, unknown>,
+        ch: ChannelHandle<ServerMessage, ClientCommand>,
+      ) {
+        let activeSymbol = 'AAPL';
+        let timer: ReturnType<typeof setInterval> | null = null;
+        let lastPrice = SYMBOLS[activeSymbol].base;
 
-  tickerSession(
-    _params: Record<string, unknown>,
-    ch: ChannelHandle<ServerMessage, ClientCommand>,
-  ) {
-    let activeSymbol = 'AAPL';
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let lastPrice = SYMBOLS[activeSymbol].base;
+        const startTicking = () => {
+          if (timer) clearInterval(timer);
+          lastPrice = SYMBOLS[activeSymbol].base;
 
-    const startTicking = () => {
-      if (timer) clearInterval(timer);
-      lastPrice = SYMBOLS[activeSymbol].base;
+          timer = setInterval(() => {
+            const cfg = SYMBOLS[activeSymbol];
+            if (!cfg) return;
+            const price = randomPrice(cfg.base, cfg.volatility);
+            const change = Math.round((price - lastPrice) * 100) / 100;
+            lastPrice = price;
+            ch.send({
+              type: 'tick',
+              symbol: activeSymbol,
+              price,
+              change,
+              timestamp: Date.now(),
+            });
+          }, 800);
+        };
 
-      timer = setInterval(() => {
-        const cfg = SYMBOLS[activeSymbol];
-        if (!cfg) return;
-        const price = randomPrice(cfg.base, cfg.volatility);
-        const change = Math.round((price - lastPrice) * 100) / 100;
-        lastPrice = price;
+        // Send initial state
         ch.send({
-          type: 'tick',
-          symbol: activeSymbol,
-          price,
-          change,
-          timestamp: Date.now(),
+          type: 'init',
+          symbols: Object.keys(SYMBOLS),
+          active: activeSymbol,
         });
-      }, 800);
-    };
 
-    // Send initial state
-    ch.send({
-      type: 'init',
-      symbols: Object.keys(SYMBOLS),
-      active: activeSymbol,
-    });
-
-    startTicking();
-
-    this.setData({ connected: true });
-
-    // Register listeners for incoming data and close events.
-    ch.on('data', (msg: ClientCommand) => {
-      if (msg.type === 'subscribe' && SYMBOLS[msg.symbol]) {
-        activeSymbol = msg.symbol;
         startTicking();
-      }
-    });
 
-    ch.on('close', () => {
-      if (timer) clearInterval(timer);
-      timer = null;
-      this.setData({ connected: false });
-    });
+        page.update(d => { d.connected = true; });
+
+        // Register listeners for incoming data and close events.
+        ch.on('data', (msg: ClientCommand) => {
+          if (msg.type === 'subscribe' && SYMBOLS[msg.symbol]) {
+            activeSymbol = msg.symbol;
+            startTicking();
+          }
+        });
+
+        ch.on('close', () => {
+          if (timer) clearInterval(timer);
+          timer = null;
+          page.update(d => { d.connected = false; });
+        });
+      },
+    };
+    return {
+      actions,
+    };
   },
 });

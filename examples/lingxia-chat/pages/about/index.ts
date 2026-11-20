@@ -1,3 +1,8 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: {},
+  setup() {
+    return {
+    };
+  },
 });

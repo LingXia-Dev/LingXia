@@ -1,6 +1,7 @@
 // Bridge delivery repro: the logic layer emits a gap-free tick sequence; the
 // view audits what actually arrives. Any missing seq means the transport
 // dropped a frame (Apple downstream queue loss around connect/replace).
+import { definePage } from '@lingxia/types/page';
 
 export interface Tick {
   seq: number;
@@ -23,33 +24,37 @@ const TICK_INTERVAL_MS = 50;
 const TICK_LIMIT = 200000;
 const LOGIC_LOADED_AT = Date.now();
 
-Page({
-  async goBack() { await lx.navigateBack(); },
+export default definePage({
   data: {
     bootstrapMarker: 'initial logic snapshot received',
     logicLoadedAt: LOGIC_LOADED_AT,
   } satisfies BootstrapData,
-
-  // Called immediately when the View mounts. On Apple this request is queued
-  // until helloAck + ready have arrived, so it exposes a stalled bootstrap.
-  onBootstrapProbe(params: { nonce: number; viewSentAt: number }): BootstrapProbe {
-    return {
-      nonce: params?.nonce ?? 0,
-      viewSentAt: params?.viewSentAt ?? 0,
-      logicReceivedAt: Date.now(),
-      bootstrapMarker: this.data.bootstrapMarker,
+  setup(page) {
+    const actions = {
+      async goBack() { await lx.navigateBack(); },
+      // Called immediately when the View mounts. On Apple this request is queued
+      // until helloAck + ready have arrived, so it exposes a stalled bootstrap.
+      onBootstrapProbe(params: { nonce: number; viewSentAt: number }): BootstrapProbe {
+        return {
+          nonce: params?.nonce ?? 0,
+          viewSentAt: params?.viewSentAt ?? 0,
+          logicReceivedAt: Date.now(),
+          bootstrapMarker: page.data.bootstrapMarker,
+        };
+      },
+      async *onTicks(): AsyncGenerator<Tick, void> {
+        for (let seq = 1; seq <= TICK_LIMIT; seq++) {
+          await new Promise<void>((r) => setTimeout(r, TICK_INTERVAL_MS));
+          yield { seq, ts: Date.now() };
+        }
+      },
+      // Unary echo used by the view to measure bridge round-trip health.
+      onEcho(params: { n: number }): { n: number; ts: number } {
+        return { n: params?.n ?? 0, ts: Date.now() };
+      },
     };
-  },
-
-  async *onTicks(): AsyncGenerator<Tick, void> {
-    for (let seq = 1; seq <= TICK_LIMIT; seq++) {
-      await new Promise<void>((r) => setTimeout(r, TICK_INTERVAL_MS));
-      yield { seq, ts: Date.now() };
-    }
-  },
-
-  // Unary echo used by the view to measure bridge round-trip health.
-  onEcho(params: { n: number }): { n: number; ts: number } {
-    return { n: params?.n ?? 0, ts: Date.now() };
+    return {
+      actions,
+    };
   },
 });

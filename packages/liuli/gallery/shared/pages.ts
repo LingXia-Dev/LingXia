@@ -1,8 +1,8 @@
 // Logic every gallery page shares. A wide window shows the gallery as one workspace on the home page
 // and a narrow one as pushed pages, so the open entry follows the layout: the workspace pushes its
 // entry's page when the window is narrow, and a pushed page returns to the workspace, selected there,
-// when it is wide. The build reads a page's actions from its own
-// `Page({...})`, so pages call these from methods written there.
+// when it is wide. The build reads a page's actions from what its own `setup` returns, so pages
+// call these from actions written there.
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 

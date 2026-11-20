@@ -3,6 +3,7 @@ import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
 // What the native swiper reports back.
 type SwiperEventDetail = { index: number; code: string };
 import { errorMessage } from "../../shared/lib/errors";
+import { definePage } from '@lingxia/types/page';
 let nextItemId = 1;
 function makeId() {
   const id = `picked-${nextItemId}`;
@@ -18,7 +19,7 @@ function clampIndex(value: unknown, count: number) {
 
 
 
-Page({
+export default definePage({
   data: {
     items: [] as { id: string; type: "image" | "video"; src: string }[],
     index: 0,
@@ -32,173 +33,163 @@ Page({
     eventLog: "Pick media to start",
     busy: false,
   },
-
-  onLoad: function () {},
-
-  pickImages: async function () {
-    await this._addMedia(["image"], 9);
-  },
-
-  pickVideos: async function () {
-    await this._addMedia(["video"], 3);
-  },
-
-  _addMedia: async function (mediaType: ("image" | "video")[], count: number) {
-    if (this.data.busy) return;
-    this.setData({ busy: true });
-    try {
-      const result = await lx.pickMedia({
-        mediaType,
-        sourceType: ["album", "camera"],
-        count,
-        camera: "back",
-        maxDurationSeconds: 60,
-      });
-      if (result.status === 'canceled') {
-        this.setData({ busy: false });
-        return;
-      }
-      const picked = result.entries.map((entry) => ({
-        id: makeId(),
-        type: entry.fileType,
-        src: entry.uri,
-      }));
-      const merged = [...(this.data.items || []), ...picked];
-      this.setData({
-        items: merged,
-        eventLog: `added ${picked.length} ${picked.length === 1 ? "item" : "items"}`,
-        busy: false,
-      });
-    } catch (error) {
-      this.setData({ busy: false });
-      lx.showToast({
-        title: errorMessage(error, "pickMedia failed"),
-        icon: "none",
-      });
-    }
-  },
-
-  removeCurrent: function () {
-    const items = this.data.items || [];
-    if (items.length === 0) return;
-    const current = this.data.index || 0;
-    const next = items.filter((_, i) => i !== current);
-    const adjusted = clampIndex(current, next.length);
-    this.setData({
-      items: next,
-      index: adjusted,
-      eventLog: next.length > 0 ? "removed" : "cleared",
-    });
-  },
-
-  clearAll: function () {
-    this.setData({
-      items: [],
-      index: 0,
-      eventLog: "cleared",
-    });
-  },
-
-  toggleAutoplay: function () {
-    this.setData({
-      autoplay: !this.data.autoplay,
-      eventLog: !this.data.autoplay ? "autoplay on" : "autoplay off",
-    });
-  },
-
-  toggleLoop: function () {
-    this.setData({
-      loop: !this.data.loop,
-      eventLog: !this.data.loop ? "loop on" : "loop off",
-    });
-  },
-
-  toggleDots: function () {
-    this.setData({ dots: !this.data.dots });
-  },
-
-  setObjectFit: function (params: { fit?: string } = {}) {
-    const fit = params?.fit;
-    if (fit !== "cover" && fit !== "contain" && fit !== "fill") return;
-    this.setData({ objectFit: fit });
-  },
-
-  setAnimation: function (params: { animation?: string } = {}) {
-    const animation = params?.animation;
-    if (animation !== "slide" && animation !== "none") return;
-    this.setData({ animation });
-  },
-
-  setDirection: function (params: { direction?: string } = {}) {
-    const direction = params?.direction;
-    if (direction !== "horizontal" && direction !== "vertical") return;
-    this.setData({ direction });
-  },
-
-  setPeek: function (params: { value?: unknown } = {}) {
-    const value = Number(params?.value);
-    if (!Number.isFinite(value) || value < 0) return;
-    this.setData({ peek: Math.round(value) });
-  },
-
-  onSwiperChange: function (event: NativeEvent<SwiperEventDetail> = {}) {
-    const detail = eventDetail(event);
-    if (typeof detail.index !== "number") return;
-    // Friendly log: only emit a line when the index *actually* changes (some
-    // race paths in native may still echo same-index transitions on rebuild).
-    if (detail.index === this.data.index) return;
-    this.setData({
-      index: detail.index,
-      eventLog: `Showing item ${detail.index + 1}`,
-    });
-  },
-
-  onSwiperTransitionEnd: function (event: NativeEvent<SwiperEventDetail> = {}) {
-    const detail = eventDetail(event);
-    if (typeof detail.index === "number") {
-      this.setData({ eventLog: `Settled on item ${detail.index + 1}` });
-    }
-  },
-
-  onSwiperEndReached: function () {
-    this.setData({ eventLog: "Reached the end" });
-  },
-
-  onSwiperTap: function (event: NativeEvent<SwiperEventDetail> = {}) {
-    const detail = eventDetail(event);
-    if (typeof detail.index === "number") {
-      this.setData({ eventLog: `Tapped item ${detail.index + 1}` });
-    }
-  },
-
-  onSwiperVideoEnded: function (event: NativeEvent<SwiperEventDetail> = {}) {
-    const detail = eventDetail(event);
-    const items = this.data.items || [];
-    // Native does not auto-advance — JS owns the next-index decision so loop /
-    // step semantics are policy-driven, not baked into the native swiper.
-    if (typeof detail.index !== "number" || items.length === 0) {
-      this.setData({ eventLog: "Video finished" });
-      return;
-    }
-    if (items.length === 1) {
-      this.setData({ eventLog: `Video finished (item ${detail.index + 1})` });
-      return;
-    }
-    const last = items.length - 1;
-    const atEnd = detail.index >= last;
-    if (atEnd && !this.data.loop) {
-      this.setData({ eventLog: `Video finished (last item)` });
-      return;
-    }
-    const next = atEnd ? 0 : detail.index + 1;
-    this.setData({
-      index: next,
-      eventLog: `Video finished — auto-advancing to item ${next + 1}`,
-    });
-  },
-
-  onSwiperError: function (event: NativeEvent<SwiperEventDetail> = {}) {
-    const detail = eventDetail(event);
-    this.setData({ eventLog: `Playback error: ${detail.code || "unknown"}` });
+  setup(page) {
+    const helpers = {
+      async addMedia(mediaType: ("image" | "video")[], count: number) {
+        if (page.data.busy) return;
+        page.update(d => { d.busy = true; });
+        try {
+          const result = await lx.chooseMedia({
+            mediaType,
+            sourceType: ["album", "camera"],
+            count,
+            camera: "back",
+            maxDurationSeconds: 60,
+          });
+          if (result.status === 'canceled') {
+            page.update(d => { d.busy = false; });
+            return;
+          }
+          const picked = result.entries.map((entry) => ({
+            id: makeId(),
+            type: entry.fileType,
+            src: entry.uri,
+          }));
+          const merged = [...(page.data.items || []), ...picked];
+          page.update(d => {
+            d.items = merged;
+            d.eventLog = `added ${picked.length} ${picked.length === 1 ? "item" : "items"}`;
+            d.busy = false;
+          });
+        } catch (error) {
+          page.update(d => { d.busy = false; });
+          lx.showToast({
+            title: errorMessage(error, "chooseMedia failed"),
+            icon: "none",
+          });
+        }
+      },
+    };
+    const actions = {
+      async pickImages() {
+        await helpers.addMedia(["image"], 9);
+      },
+      async pickVideos() {
+        await helpers.addMedia(["video"], 3);
+      },
+      removeCurrent() {
+        const items = page.data.items || [];
+        if (items.length === 0) return;
+        const current = page.data.index || 0;
+        const next = items.filter((_, i) => i !== current);
+        const adjusted = clampIndex(current, next.length);
+        page.update(d => {
+          d.items = next;
+          d.index = adjusted;
+          d.eventLog = next.length > 0 ? "removed" : "cleared";
+        });
+      },
+      clearAll() {
+        page.update(d => {
+          d.items = [];
+          d.index = 0;
+          d.eventLog = "cleared";
+        });
+      },
+      toggleAutoplay() {
+        page.update(d => {
+          d.autoplay = !page.data.autoplay;
+          d.eventLog = !page.data.autoplay ? "autoplay on" : "autoplay off";
+        });
+      },
+      toggleLoop() {
+        page.update(d => {
+          d.loop = !page.data.loop;
+          d.eventLog = !page.data.loop ? "loop on" : "loop off";
+        });
+      },
+      toggleDots() {
+        page.update(d => { d.dots = !page.data.dots; });
+      },
+      setObjectFit(params: { fit?: string } = {}) {
+        const fit = params?.fit;
+        if (fit !== "cover" && fit !== "contain" && fit !== "fill") return;
+        page.update(d => { d.objectFit = fit; });
+      },
+      setAnimation(params: { animation?: string } = {}) {
+        const animation = params?.animation;
+        if (animation !== "slide" && animation !== "none") return;
+        page.update(d => { d.animation = animation; });
+      },
+      setDirection(params: { direction?: string } = {}) {
+        const direction = params?.direction;
+        if (direction !== "horizontal" && direction !== "vertical") return;
+        page.update(d => { d.direction = direction; });
+      },
+      setPeek(params: { value?: unknown } = {}) {
+        const value = Number(params?.value);
+        if (!Number.isFinite(value) || value < 0) return;
+        page.update(d => { d.peek = Math.round(value); });
+      },
+      onSwiperChange(event: NativeEvent<SwiperEventDetail> = {}) {
+        const { index } = eventDetail(event);
+        if (typeof index !== "number") return;
+        // Friendly log: only emit a line when the index *actually* changes (some
+        // race paths in native may still echo same-index transitions on rebuild).
+        if (index === page.data.index) return;
+        page.update(d => {
+          d.index = index;
+          d.eventLog = `Showing item ${index + 1}`;
+        });
+      },
+      onSwiperTransitionEnd(event: NativeEvent<SwiperEventDetail> = {}) {
+        const { index } = eventDetail(event);
+        if (typeof index === "number") {
+          page.update(d => { d.eventLog = `Settled on item ${index + 1}`; });
+        }
+      },
+      onSwiperEndReached() {
+        page.update(d => { d.eventLog = "Reached the end"; });
+      },
+      onSwiperTap(event: NativeEvent<SwiperEventDetail> = {}) {
+        const { index } = eventDetail(event);
+        if (typeof index === "number") {
+          page.update(d => { d.eventLog = `Tapped item ${index + 1}`; });
+        }
+      },
+      onSwiperVideoEnded(event: NativeEvent<SwiperEventDetail> = {}) {
+        const { index } = eventDetail(event);
+        const items = page.data.items || [];
+        // Native does not auto-advance — JS owns the next-index decision so loop /
+        // step semantics are policy-driven, not baked into the native swiper.
+        if (typeof index !== "number" || items.length === 0) {
+          page.update(d => { d.eventLog = "Video finished"; });
+          return;
+        }
+        if (items.length === 1) {
+          page.update(d => { d.eventLog = `Video finished (item ${index + 1})`; });
+          return;
+        }
+        const last = items.length - 1;
+        const atEnd = index >= last;
+        if (atEnd && !page.data.loop) {
+          page.update(d => { d.eventLog = `Video finished (last item)`; });
+          return;
+        }
+        const next = atEnd ? 0 : index + 1;
+        page.update(d => {
+          d.index = next;
+          d.eventLog = `Video finished — auto-advancing to item ${next + 1}`;
+        });
+      },
+      onSwiperError(event: NativeEvent<SwiperEventDetail> = {}) {
+        const { code } = eventDetail(event);
+        page.update(d => { d.eventLog = `Playback error: ${code || "unknown"}`; });
+      },
+    };
+    return {
+      onLoad() {},
+      actions,
+    };
   },
 });

@@ -1,4 +1,5 @@
 import { authApi, cloudApi } from "../../shared/lib/provider";
+import { definePage } from '@lingxia/types/page';
 const CLOUD_PAGE_TYPES = {
   AUTH: "auth",
   MQTT: "mqtt",
@@ -138,15 +139,7 @@ function normalizeTenants(tenants: any[]): TenantLike[] {
     .filter((tenant): tenant is TenantLike => tenant !== null);
 }
 
-Page({
-  async goBack() { await lx.navigateBack(); },
-  mqttSubscription: null as any,
-  mqttStatusUnsubscribe: null as any,
-  mqttLoopId: 0,
-  mqttStarting: false,
-  functionRequestId: 0,
-  pageActive: false,
-
+export default definePage({
   data: {
     type: CLOUD_PAGE_TYPES.AUTH as CloudPageType,
     status: "Idle",
@@ -167,385 +160,376 @@ Page({
     functionsLastCall: "",
     functionsLastResult: "",
   },
+  setup(page) {
+    let mqttSubscription = null as any;
+    let mqttStatusUnsubscribe = null as any;
+    let mqttLoopId = 0;
+    let mqttStarting = false;
+    let functionRequestId = 0;
+    let pageActive = false;
+    const helpers = {
+      async applyPageType(pageType: CloudPageType) {
+        void lx.navigationBar.update({
+          title: getNavigationTitle(pageType),
+        });
 
-  onLoad: async function (options = {}) {
-    this.pageActive = true;
-    const { type } = (options || {}) as { type?: string };
-    const pageType = normalizePageType(type);
-    if (pageType !== this.data.type) {
-      this.setData({ type: pageType });
-    }
-    if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this._ensureMqttStatusListener();
-      this._refreshMqttStatusSnapshot();
-    } else {
-      this._stopMqttStatusListener();
-    }
-    await this._applyPageType(pageType);
-  },
-
-  onShow: async function () {
-    this.pageActive = true;
-    const pageType = this.data.type;
-    if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this._ensureMqttStatusListener();
-      this._refreshMqttStatusSnapshot();
-    } else {
-      this._stopMqttStatusListener();
-    }
-    await this._applyPageType(pageType);
-  },
-
-  onHide: function () {
-    this.pageActive = false;
-  },
-
-  onUnload: async function () {
-    this.pageActive = false;
-    this.functionRequestId += 1;
-    this._stopMqttStatusListener();
-    const subscription = this.mqttSubscription;
-    this.mqttSubscription = null;
-    this.mqttLoopId += 1;
-    this.mqttStarting = false;
-    if (subscription) {
-      try {
-        await subscription.close();
-      } catch (_error) {
-        // The page is already gone; cleanup must not write back into its View.
-      }
-    }
-  },
-
-  _applyPageType: async function (pageType: CloudPageType) {
-    void lx.navigationBar.update({
-      title: getNavigationTitle(pageType),
-    });
-
-    if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this._ensureMqttStatusListener();
-      this._refreshMqttStatusSnapshot();
-      if (!this.data.mqttSubscribed && !this.mqttStarting) {
-        void this.startMqttDemo();
-      }
-      return;
-    }
-
-    this._stopMqttStatusListener();
-
-    if (pageType === CLOUD_PAGE_TYPES.FUNCTIONS) {
-      await this._refreshFunctionsDemo();
-      return;
-    }
-
-    await this._refreshSnapshot();
-  },
-
-  _ensureMqttStatusListener: function () {
-    if (typeof this.mqttStatusUnsubscribe === "function") {
-      return;
-    }
-    try {
-      this.mqttStatusUnsubscribe = cloudApi().mqtt.onStatusChange((nextStatus) => {
-        console.log("[cloud][mqtt] onStatusChange", nextStatus);
-        this._applyMqttStatus(nextStatus);
-      });
-    } catch (_error) {
-      // Ignore status API failures so the demo remains usable.
-    }
-  },
-
-  _refreshMqttStatusSnapshot: function () {
-    try {
-      const status = cloudApi().mqtt.getStatus();
-      console.log("[cloud][mqtt] getStatus", status);
-      this._applyMqttStatus(status);
-    } catch (_error) {
-      // Ignore status API failures so the demo remains usable.
-    }
-  },
-
-  _applyMqttStatus: function (status: any) {
-    this.setData({
-      mqttRuntimeState: status?.state || "idle",
-      mqttLastError: typeof status?.lastError === "string" ? status.lastError : "",
-    });
-  },
-
-  _stopMqttStatusListener: function () {
-    const unsubscribe = this.mqttStatusUnsubscribe;
-    this.mqttStatusUnsubscribe = null;
-    if (typeof unsubscribe === "function") {
-      try {
-        unsubscribe();
-      } catch (_error) {
-        // Ignore cleanup errors.
-      }
-    }
-  },
-
-  _canUpdatePage: function () {
-    if (!this.pageActive) return false;
-    try {
-      return getCurrentPages().includes(this);
-    } catch (_error) {
-      return false;
-    }
-  },
-
-  _refreshSnapshot: async function () {
-    try {
-      const identities = await authApi().list();
-      if (!this._canUpdatePage()) return;
-      const identity = identities.find((item: LxIdentityLike) => item.active) || null;
-      this.setData({
-        status: identity
-          ? "Ready"
-          : "Authentication required. Call lx.auth.login() first.",
-        tenant: normalizeTenant(identity),
-        user: normalizeUser(identity),
-        tenants: normalizeTenants(identities),
-      });
-    } catch (error) {
-      if (!this._canUpdatePage()) return;
-      const message = getErrorMessage(error, "Load cloud state failed");
-      this.setData({ status: message });
-    }
-  },
-
-  _refreshFunctionsDemo: async function () {
-    let identity: LxIdentityLike | null | undefined = null;
-    try {
-      const identities = await authApi().list();
-      identity = identities.find((item: LxIdentityLike) => item.active);
-    } catch (_error) {
-      identity = null;
-    }
-    if (!this._canUpdatePage()) return;
-    this.setData({
-      functionsAvailable: [...DEMO_FUNCTIONS],
-      functionsStatus: identity
-        ? "Ready to invoke current lxapp cloud functions."
-        : "Authentication required. Call lx.auth.login() first.",
-    });
-    await this._refreshSnapshot();
-  },
-
-  loginInteractive: async function () {
-    this.setData({ status: "Starting login..." });
-    try {
-      await authApi().login();
-      this.setData({ status: "Login succeeded" });
-      await this._refreshSnapshot();
-      await this._refreshFunctionsDemo();
-    } catch (error) {
-      this.setData({ status: getErrorMessage(error, "Interactive login failed") });
-    }
-  },
-
-  addTenant: async function () {
-    this.setData({ status: "Adding identity..." });
-    try {
-      await authApi().add();
-      this.setData({ status: "Identity added" });
-      await this._refreshSnapshot();
-      await this._refreshFunctionsDemo();
-    } catch (error) {
-      this.setData({ status: getErrorMessage(error, "Add identity failed") });
-    }
-  },
-
-  logoutCurrentTenant: async function () {
-    this.setData({ status: "Logging out..." });
-    try {
-      await this.stopMqttDemo();
-      const identities = await authApi().list();
-      const activeIdentity = identities.find((identity: LxIdentityLike) => identity.active);
-      if (!activeIdentity || typeof activeIdentity.logout !== "function") {
-        throw new Error("No active identity to logout");
-      }
-      await activeIdentity.logout();
-      this.setData({ status: "Logged out" });
-      this._refreshMqttStatusSnapshot();
-      await this._refreshSnapshot();
-      await this._refreshFunctionsDemo();
-    } catch (error) {
-      this.setData({ status: getErrorMessage(error, "Logout failed") });
-    }
-  },
-
-  activateTenant: async function (params = {}) {
-    const { tenantId } = params as { tenantId?: string };
-    if (!tenantId) return;
-    this.setData({ status: `Activating ${tenantId}...` });
-    try {
-      const identities = await authApi().list();
-      const identity = identities.find((item: LxIdentityLike) => item.tenant?.id === tenantId);
-      if (!identity || typeof identity.activate !== "function") {
-        throw new Error(`Identity ${tenantId} not found`);
-      }
-      await identity.activate();
-      this.setData({ status: `Activated ${tenantId}` });
-      await this._refreshSnapshot();
-      await this._refreshFunctionsDemo();
-    } catch (error) {
-      this.setData({ status: getErrorMessage(error, "Activate tenant failed") });
-    }
-  },
-
-  _callCloudFunction: async function (params = {}) {
-    const { name, payload } = params as FunctionCallParams;
-    const functionName = typeof name === "string" ? name.trim() : "";
-    if (!functionName) {
-      return;
-    }
-
-    const requestId = ++this.functionRequestId;
-    this.setData({
-      functionsStatus: `Calling ${functionName}...`,
-      functionsLastCall: functionName,
-      functionsLastResult: "",
-    });
-    try {
-      const result = await cloudApi().invoke(functionName, payload);
-      if (requestId !== this.functionRequestId) return;
-      this.setData({
-        functionsStatus: `${functionName} succeeded`,
-        functionsLastCall: functionName,
-        functionsLastResult: formatJson(result),
-      });
-    } catch (error) {
-      if (requestId !== this.functionRequestId) return;
-      this.setData({
-        functionsStatus: getErrorMessage(error, `${functionName} failed`),
-        functionsLastCall: functionName,
-        functionsLastResult: "",
-      });
-    }
-  },
-
-  callNamedFunction: async function (params = {}) {
-    const { name } = params as { name?: string };
-    const functionName = typeof name === "string" ? name.trim() : "";
-    if (!functionName) {
-      return;
-    }
-
-    const payload =
-      functionName === "echo" ? FUNCTION_ECHO_PAYLOAD : null;
-    await this._callCloudFunction({ name: functionName, payload });
-  },
-
-  startMqttDemo: async function () {
-    if (this.mqttSubscription || this.mqttStarting) {
-      return;
-    }
-    this.mqttStarting = true;
-    const loopId = ++this.mqttLoopId;
-    this._ensureMqttStatusListener();
-    this.setData({
-      mqttStatus: `Subscribing to ${MQTT_SHORT_TOPIC}...`,
-    });
-    try {
-      const subscription = await cloudApi().mqtt.subscribe(MQTT_SHORT_TOPIC, {
-        parse: "auto",
-      });
-      // Stop or unload can invalidate a request before its handle arrives.
-      if (loopId !== this.mqttLoopId) {
-        await subscription.close();
-        return;
-      }
-      this.mqttSubscription = subscription;
-      this.setData({
-        mqttStatus: `Subscribed to ${MQTT_SHORT_TOPIC}`,
-        mqttSubscribed: true,
-      });
-      this._refreshMqttStatusSnapshot();
-      void this._consumeMqtt({ subscription, loopId });
-    } catch (error) {
-      if (loopId !== this.mqttLoopId) return;
-      const message = getErrorMessage(error, "MQTT subscribe failed");
-      this.setData({
-        mqttStatus: message,
-        mqttSubscribed: false,
-      });
-    } finally {
-      if (loopId === this.mqttLoopId) this.mqttStarting = false;
-    }
-  },
-
-  stopMqttDemo: async function () {
-    const subscription = this.mqttSubscription;
-    this.mqttSubscription = null;
-    const loopId = ++this.mqttLoopId;
-    this.mqttStarting = false;
-    if (!subscription) {
-      this.setData({
-        mqttStatus: "Demo subscription is inactive",
-        mqttSubscribed: false,
-      });
-      this._refreshMqttStatusSnapshot();
-      return;
-    }
-    try {
-      await subscription.close();
-      if (loopId !== this.mqttLoopId) return;
-      this.setData({
-        mqttStatus: "Demo subscription stopped",
-        mqttSubscribed: false,
-      });
-      this._refreshMqttStatusSnapshot();
-    } catch (_error) {
-      // Ignore duplicate cleanup while leaving the page.
-    }
-  },
-
-  _consumeMqtt: async function ({
-    subscription,
-    loopId,
-  }: {
-    subscription: any;
-    loopId: number;
-  }) {
-    try {
-      for await (const message of subscription) {
-        if (loopId !== this.mqttLoopId) {
-          break;
+        if (pageType === CLOUD_PAGE_TYPES.MQTT) {
+          helpers.ensureMqttStatusListener();
+          helpers.refreshMqttStatusSnapshot();
+          if (!page.data.mqttSubscribed && !mqttStarting) {
+            void actions.startMqttDemo();
+          }
+          return;
         }
-        console.log("[cloud][mqtt] received", {
-          topic: message.topic,
-          payload: message.payload,
-          qos: message.qos,
-          receivedAt: message.receivedAt,
+
+        helpers.stopMqttStatusListener();
+
+        if (pageType === CLOUD_PAGE_TYPES.FUNCTIONS) {
+          await helpers.refreshFunctionsDemo();
+          return;
+        }
+
+        await helpers.refreshSnapshot();
+      },
+      ensureMqttStatusListener() {
+        if (typeof mqttStatusUnsubscribe === "function") {
+          return;
+        }
+        try {
+          mqttStatusUnsubscribe = cloudApi().mqtt.onStatusChange((nextStatus) => {
+            console.log("[cloud][mqtt] onStatusChange", nextStatus);
+            helpers.applyMqttStatus(nextStatus);
+          });
+        } catch (_error) {
+          // Ignore status API failures so the demo remains usable.
+        }
+      },
+      refreshMqttStatusSnapshot() {
+        try {
+          const status = cloudApi().mqtt.getStatus();
+          console.log("[cloud][mqtt] getStatus", status);
+          helpers.applyMqttStatus(status);
+        } catch (_error) {
+          // Ignore status API failures so the demo remains usable.
+        }
+      },
+      applyMqttStatus(status: any) {
+        page.update(d => {
+          d.mqttRuntimeState = status?.state || "idle";
+          d.mqttLastError = typeof status?.lastError === "string" ? status.lastError : "";
         });
-        const nextCount = this.data.mqttMessageCount + 1;
-        this.setData({
-          mqttStatus: `Received message #${nextCount}`,
-          mqttMessageCount: nextCount,
-          mqttLastTopic: message.topic,
-          mqttLastPayload: formatMqttPayload(message.payload),
-          mqttLastReceivedAt: new Date(message.receivedAt).toLocaleString(),
+      },
+      stopMqttStatusListener() {
+        const unsubscribe = mqttStatusUnsubscribe;
+        mqttStatusUnsubscribe = null;
+        if (typeof unsubscribe === "function") {
+          try {
+            unsubscribe();
+          } catch (_error) {
+            // Ignore cleanup errors.
+          }
+        }
+      },
+      canUpdatePage() {
+        if (!pageActive) return false;
+        try {
+          return !page.signal.aborted;
+        } catch (_error) {
+          return false;
+        }
+      },
+      async refreshSnapshot() {
+        try {
+          const identities = await authApi().list();
+          if (!helpers.canUpdatePage()) return;
+          const identity = identities.find((item: LxIdentityLike) => item.active) || null;
+          page.update(d => {
+            d.status = identity
+              ? "Ready"
+              : "Authentication required. Call lx.auth.login() first.";
+            d.tenant = normalizeTenant(identity);
+            d.user = normalizeUser(identity);
+            d.tenants = normalizeTenants(identities);
+          });
+        } catch (error) {
+          if (!helpers.canUpdatePage()) return;
+          const message = getErrorMessage(error, "Load cloud state failed");
+          page.update(d => { d.status = message; });
+        }
+      },
+      async refreshFunctionsDemo() {
+        let identity: LxIdentityLike | null | undefined = null;
+        try {
+          const identities = await authApi().list();
+          identity = identities.find((item: LxIdentityLike) => item.active);
+        } catch (_error) {
+          identity = null;
+        }
+        if (!helpers.canUpdatePage()) return;
+        page.update(d => {
+          d.functionsAvailable = [...DEMO_FUNCTIONS];
+          d.functionsStatus = identity
+            ? "Ready to invoke current lxapp cloud functions."
+            : "Authentication required. Call lx.auth.login() first.";
         });
-      }
-    } catch (error) {
-      if (loopId !== this.mqttLoopId) {
-        return;
-      }
-      const message = getErrorMessage(error, "MQTT stream failed");
-      this.setData({
-        mqttStatus: message,
-        mqttSubscribed: false,
-      });
-      this._refreshMqttStatusSnapshot();
-    } finally {
-      if (loopId === this.mqttLoopId) {
-        this.mqttSubscription = null;
-        if (this.data.mqttSubscribed) {
-          this.setData({
-            mqttSubscribed: false,
+        await helpers.refreshSnapshot();
+      },
+      async callCloudFunction(params = {}) {
+        const { name, payload } = params as FunctionCallParams;
+        const functionName = typeof name === "string" ? name.trim() : "";
+        if (!functionName) {
+          return;
+        }
+
+        const requestId = ++functionRequestId;
+        page.update(d => {
+          d.functionsStatus = `Calling ${functionName}...`;
+          d.functionsLastCall = functionName;
+          d.functionsLastResult = "";
+        });
+        try {
+          const result = await cloudApi().invoke(functionName, payload);
+          if (requestId !== functionRequestId) return;
+          page.update(d => {
+            d.functionsStatus = `${functionName} succeeded`;
+            d.functionsLastCall = functionName;
+            d.functionsLastResult = formatJson(result);
+          });
+        } catch (error) {
+          if (requestId !== functionRequestId) return;
+          page.update(d => {
+            d.functionsStatus = getErrorMessage(error, `${functionName} failed`);
+            d.functionsLastCall = functionName;
+            d.functionsLastResult = "";
           });
         }
-      }
-    }
+      },
+      async consumeMqtt({
+        subscription,
+        loopId,
+      }: {
+        subscription: any;
+        loopId: number;
+      }) {
+        try {
+          for await (const message of subscription) {
+            if (loopId !== mqttLoopId) {
+              break;
+            }
+            console.log("[cloud][mqtt] received", {
+              topic: message.topic,
+              payload: message.payload,
+              qos: message.qos,
+              receivedAt: message.receivedAt,
+            });
+            const nextCount = page.data.mqttMessageCount + 1;
+            page.update(d => {
+              d.mqttStatus = `Received message #${nextCount}`;
+              d.mqttMessageCount = nextCount;
+              d.mqttLastTopic = message.topic;
+              d.mqttLastPayload = formatMqttPayload(message.payload);
+              d.mqttLastReceivedAt = new Date(message.receivedAt).toLocaleString();
+            });
+          }
+        } catch (error) {
+          if (loopId !== mqttLoopId) {
+            return;
+          }
+          const message = getErrorMessage(error, "MQTT stream failed");
+          page.update(d => {
+            d.mqttStatus = message;
+            d.mqttSubscribed = false;
+          });
+          helpers.refreshMqttStatusSnapshot();
+        } finally {
+          if (loopId === mqttLoopId) {
+            mqttSubscription = null;
+            if (page.data.mqttSubscribed) {
+              page.update(d => { d.mqttSubscribed = false; });
+            }
+          }
+        }
+      },
+    };
+    const actions = {
+      async goBack() { await lx.navigateBack(); },
+      async loginInteractive() {
+        page.update(d => { d.status = "Starting login..."; });
+        try {
+          await authApi().login();
+          page.update(d => { d.status = "Login succeeded"; });
+          await helpers.refreshSnapshot();
+          await helpers.refreshFunctionsDemo();
+        } catch (error) {
+          page.update(d => { d.status = getErrorMessage(error, "Interactive login failed"); });
+        }
+      },
+      async addTenant() {
+        page.update(d => { d.status = "Adding identity..."; });
+        try {
+          await authApi().add();
+          page.update(d => { d.status = "Identity added"; });
+          await helpers.refreshSnapshot();
+          await helpers.refreshFunctionsDemo();
+        } catch (error) {
+          page.update(d => { d.status = getErrorMessage(error, "Add identity failed"); });
+        }
+      },
+      async logoutCurrentTenant() {
+        page.update(d => { d.status = "Logging out..."; });
+        try {
+          await actions.stopMqttDemo();
+          const identities = await authApi().list();
+          const activeIdentity = identities.find((identity: LxIdentityLike) => identity.active);
+          if (!activeIdentity || typeof activeIdentity.logout !== "function") {
+            throw new Error("No active identity to logout");
+          }
+          await activeIdentity.logout();
+          page.update(d => { d.status = "Logged out"; });
+          helpers.refreshMqttStatusSnapshot();
+          await helpers.refreshSnapshot();
+          await helpers.refreshFunctionsDemo();
+        } catch (error) {
+          page.update(d => { d.status = getErrorMessage(error, "Logout failed"); });
+        }
+      },
+      async activateTenant(params = {}) {
+        const { tenantId } = params as { tenantId?: string };
+        if (!tenantId) return;
+        page.update(d => { d.status = `Activating ${tenantId}...`; });
+        try {
+          const identities = await authApi().list();
+          const identity = identities.find((item: LxIdentityLike) => item.tenant?.id === tenantId);
+          if (!identity || typeof identity.activate !== "function") {
+            throw new Error(`Identity ${tenantId} not found`);
+          }
+          await identity.activate();
+          page.update(d => { d.status = `Activated ${tenantId}`; });
+          await helpers.refreshSnapshot();
+          await helpers.refreshFunctionsDemo();
+        } catch (error) {
+          page.update(d => { d.status = getErrorMessage(error, "Activate tenant failed"); });
+        }
+      },
+      async callNamedFunction(params = {}) {
+        const { name } = params as { name?: string };
+        const functionName = typeof name === "string" ? name.trim() : "";
+        if (!functionName) {
+          return;
+        }
+
+        const payload =
+          functionName === "echo" ? FUNCTION_ECHO_PAYLOAD : null;
+        await helpers.callCloudFunction({ name: functionName, payload });
+      },
+      async startMqttDemo() {
+        if (mqttSubscription || mqttStarting) {
+          return;
+        }
+        mqttStarting = true;
+        const loopId = ++mqttLoopId;
+        helpers.ensureMqttStatusListener();
+        page.update(d => { d.mqttStatus = `Subscribing to ${MQTT_SHORT_TOPIC}...`; });
+        try {
+          const subscription = await cloudApi().mqtt.subscribe(MQTT_SHORT_TOPIC, {
+            parse: "auto",
+          });
+          // Stop or unload can invalidate a request before its handle arrives.
+          if (loopId !== mqttLoopId) {
+            await subscription.close();
+            return;
+          }
+          mqttSubscription = subscription;
+          page.update(d => {
+            d.mqttStatus = `Subscribed to ${MQTT_SHORT_TOPIC}`;
+            d.mqttSubscribed = true;
+          });
+          helpers.refreshMqttStatusSnapshot();
+          void helpers.consumeMqtt({ subscription, loopId });
+        } catch (error) {
+          if (loopId !== mqttLoopId) return;
+          const message = getErrorMessage(error, "MQTT subscribe failed");
+          page.update(d => {
+            d.mqttStatus = message;
+            d.mqttSubscribed = false;
+          });
+        } finally {
+          if (loopId === mqttLoopId) mqttStarting = false;
+        }
+      },
+      async stopMqttDemo() {
+        const subscription = mqttSubscription;
+        mqttSubscription = null;
+        const loopId = ++mqttLoopId;
+        mqttStarting = false;
+        if (!subscription) {
+          page.update(d => {
+            d.mqttStatus = "Demo subscription is inactive";
+            d.mqttSubscribed = false;
+          });
+          helpers.refreshMqttStatusSnapshot();
+          return;
+        }
+        try {
+          await subscription.close();
+          if (loopId !== mqttLoopId) return;
+          page.update(d => {
+            d.mqttStatus = "Demo subscription stopped";
+            d.mqttSubscribed = false;
+          });
+          helpers.refreshMqttStatusSnapshot();
+        } catch (_error) {
+          // Ignore duplicate cleanup while leaving the page.
+        }
+      },
+    };
+    return {
+      async onLoad(options = {}) {
+        pageActive = true;
+        const { type } = (options || {}) as { type?: string };
+        const pageType = normalizePageType(type);
+        if (pageType !== page.data.type) {
+          page.update(d => { d.type = pageType; });
+        }
+        if (pageType === CLOUD_PAGE_TYPES.MQTT) {
+          helpers.ensureMqttStatusListener();
+          helpers.refreshMqttStatusSnapshot();
+        } else {
+          helpers.stopMqttStatusListener();
+        }
+        await helpers.applyPageType(pageType);
+      },
+      async onShow() {
+        pageActive = true;
+        const pageType = page.data.type;
+        if (pageType === CLOUD_PAGE_TYPES.MQTT) {
+          helpers.ensureMqttStatusListener();
+          helpers.refreshMqttStatusSnapshot();
+        } else {
+          helpers.stopMqttStatusListener();
+        }
+        await helpers.applyPageType(pageType);
+      },
+      onHide() {
+        pageActive = false;
+      },
+      async onUnload() {
+        pageActive = false;
+        functionRequestId += 1;
+        helpers.stopMqttStatusListener();
+        const subscription = mqttSubscription;
+        mqttSubscription = null;
+        mqttLoopId += 1;
+        mqttStarting = false;
+        if (subscription) {
+          try {
+            await subscription.close();
+          } catch (_error) {
+            // The page is already gone; cleanup must not write back into its View.
+          }
+        }
+      },
+      actions,
+    };
   },
 });

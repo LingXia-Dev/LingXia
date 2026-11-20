@@ -1,7 +1,13 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: { lang: '' },
-  // Specs pin the page's language with `lang`, whatever the device is set to.
-  onLoad(options: { lang?: string } = {}) {
-    if (options.lang) this.setData({ lang: options.lang });
+  setup(page) {
+    return {
+      // Specs pin the page's language with `lang`, whatever the device is set to.
+      onLoad(options: { lang?: string } = {}) {
+        const lang = options.lang;
+        if (lang) page.update(d => { d.lang = lang; });
+      },
+    };
   },
 });

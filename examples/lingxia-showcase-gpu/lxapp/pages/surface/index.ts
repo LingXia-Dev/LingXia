@@ -1,6 +1,7 @@
 import type { PageMessagePort, PageSurface } from "@lingxia/types";
+import { definePage } from '@lingxia/types/page';
 
-Page({
+export default definePage({
   data: {
     queryString: "",
     // Counts how many times the page-level onShow / onHide lifecycle hooks
@@ -14,106 +15,104 @@ Page({
     inboundCount: 0,
     lastInbound: "",
   },
-  _offInbound: [] as (() => void)[],
-
-  onLoad: async function (options) {
-    const entries = Object.entries(options || {}).map(([key, value]) => ({
-      key,
-      value: Array.isArray(value) ? value.join(",") : String(value ?? ""),
-    }));
-
-    const queryString = entries.length
-      ? entries.map(({ key, value }) => `${key}=${value}`).join("&")
-      : "";
-
-    this.setData({
-      queryString,
-    });
-    this._listenInbound();
-  },
-
-  onUnload: function () {
-    this._stopInbound();
-  },
-
-  _listenInbound: function () {
-    this._stopInbound();
-    const receive = (message: unknown) => {
-      const next = (this.data.inboundCount || 0) + 1;
-      this.setData({
-        inboundCount: next,
-        lastInbound: JSON.stringify(message ?? null),
-      });
+  setup(page) {
+    let offInbound = [] as (() => void)[];
+    const helpers = {
+      listenInbound() {
+        helpers.stopInbound();
+        const receive = (message: unknown) => {
+          const next = (page.data.inboundCount || 0) + 1;
+          page.update(d => {
+            d.inboundCount = next;
+            d.lastInbound = JSON.stringify(message ?? null);
+          });
+        };
+        // A page opened as a surface hears its opener on `surface`; one pushed by
+        // navigateTo hears it on `opener`. Both are absent for a plain tab/stack page.
+        const ports = [page.surface, page.opener].filter(
+          (port): port is PageSurface | PageMessagePort => Boolean(port),
+        );
+        offInbound = ports.map((port) => port.onMessage(receive));
+      },
+      stopInbound() {
+        for (const off of offInbound || []) off();
+        offInbound = [];
+      },
     };
-    // A page opened as a surface hears its opener on `surface`; one pushed by
-    // navigateTo hears it on `opener`. Both are absent for a plain tab/stack page.
-    const ports = [this.surface, this.opener].filter(
-      (port): port is PageSurface | PageMessagePort => Boolean(port),
-    );
-    this._offInbound = ports.map((port) => port.onMessage(receive));
-  },
+    const actions = {
+      async logSurfaceMessage(params?: { message?: unknown }) {
+        const raw =
+          params && typeof params.message === "string" ? params.message : "";
+        const message = raw.trim();
 
-  _stopInbound: function () {
-    for (const off of this._offInbound || []) off();
-    this._offInbound = [];
-  },
+        if (!message) {
+          return;
+        }
 
-  onShow: function () {
-    console.log("surface page onShow");
-    const next = (this.data.showCount || 0) + 1;
-    this.setData({
-      showCount: next,
-      lastLifecycle: `onShow (#${next})`,
-    });
-  },
+        const payload = { message, timestamp: Date.now() };
+        console.log("surface page message:", payload);
+        if (page.surface) {
+          page.surface.postMessage(payload);
+          await actions.closeSelf();
+          return;
+        }
+        if (page.opener) {
+          page.opener.postMessage(payload);
+          await lx.navigateBack();
+        }
+      },
+      async hideSelf() {
+        // Absent unless this page was opened as a surface.
+        if (!page.surface) return;
+        try {
+          await page.surface.hide();
+        } catch (error) {
+          console.warn("surface.hide failed:", error);
+        }
+      },
+      async closeSelf() {
+        if (!page.surface) return;
+        try {
+          await page.surface.close();
+        } catch (error) {
+          console.warn("surface.close failed:", error);
+        }
+      },
+    };
+    return {
+      async onLoad(options) {
+        const entries = Object.entries(options || {}).map(([key, value]) => ({
+          key,
+          value: Array.isArray(value) ? value.join(",") : String(value ?? ""),
+        }));
 
-  onHide: function () {
-    console.log("surface page onHide");
-    const next = (this.data.hideCount || 0) + 1;
-    this.setData({
-      hideCount: next,
-      lastLifecycle: `onHide (#${next})`,
-    });
-  },
+        const queryString = entries.length
+          ? entries.map(({ key, value }) => `${key}=${value}`).join("&")
+          : "";
 
-  logSurfaceMessage: async function (params?: { message?: unknown }) {
-    const raw =
-      params && typeof params.message === "string" ? params.message : "";
-    const message = raw.trim();
-
-    if (!message) {
-      return;
-    }
-
-    const payload = { message, timestamp: Date.now() };
-    console.log("surface page message:", payload);
-    if (this.surface) {
-      this.surface.postMessage(payload);
-      await this.closeSelf();
-      return;
-    }
-    if (this.opener) {
-      this.opener.postMessage(payload);
-      await lx.navigateBack();
-    }
-  },
-
-  hideSelf: async function () {
-    // Absent unless this page was opened as a surface.
-    if (!this.surface) return;
-    try {
-      await this.surface.hide();
-    } catch (error) {
-      console.warn("surface.hide failed:", error);
-    }
-  },
-
-  closeSelf: async function () {
-    if (!this.surface) return;
-    try {
-      await this.surface.close();
-    } catch (error) {
-      console.warn("surface.close failed:", error);
-    }
+        page.update(d => { d.queryString = queryString; });
+        helpers.listenInbound();
+      },
+      onUnload() {
+        helpers.stopInbound();
+      },
+      onShow() {
+        console.log("surface page onShow");
+        const next = (page.data.showCount || 0) + 1;
+        page.update(d => {
+          d.showCount = next;
+          d.lastLifecycle = `onShow (#${next})`;
+        });
+      },
+      onHide() {
+        console.log("surface page onHide");
+        const next = (page.data.hideCount || 0) + 1;
+        page.update(d => {
+          d.hideCount = next;
+          d.lastLifecycle = `onHide (#${next})`;
+        });
+      },
+      actions,
+    };
   },
 });

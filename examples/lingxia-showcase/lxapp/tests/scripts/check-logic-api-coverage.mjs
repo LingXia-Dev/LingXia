@@ -131,6 +131,15 @@ function receiverKey(node, ast) {
   return null;
 }
 
+// A page's helpers are called as `helpers.load()` or `load()`: the method name
+// alone says which handle comes back.
+function methodName(node) {
+  const current = unwrapExpression(node);
+  if (ts.isPropertyAccessExpression(current)) return current.name.text;
+  if (ts.isIdentifier(current)) return current.text;
+  return null;
+}
+
 function scanReturnedObjects() {
   const usages = new Map();
   for (const file of logicFiles()) {
@@ -153,7 +162,7 @@ function scanReturnedObjects() {
       const key = receiverKey(current, ast);
       if (key && aliases.has(key)) return aliases.get(key);
       if (ts.isCallExpression(current)) {
-        const method = receiverKey(current.expression, ast);
+        const method = methodName(current.expression);
         if (method && methodReturns.has(method)) return methodReturns.get(method);
       }
       return null;
@@ -171,7 +180,7 @@ function scanReturnedObjects() {
           assign(node.left, node.right);
         }
         if ((ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) && node.name) {
-          const methodName = node.name.getText(ast).replaceAll(/["']/g, '');
+          const name = node.name.getText(ast).replaceAll(/["']/g, '');
           const body = ts.isMethodDeclaration(node)
             ? node.body
             : (ts.isFunctionExpression(node.initializer) || ts.isArrowFunction(node.initializer))
@@ -181,7 +190,7 @@ function scanReturnedObjects() {
             const inspectReturn = (candidate) => {
               if (ts.isReturnStatement(candidate) && candidate.expression) {
                 const surfaces = inferred(candidate.expression);
-                if (surfaces) methodReturns.set(`this.${methodName}`, surfaces);
+                if (surfaces) methodReturns.set(name, surfaces);
               }
               candidate.forEachChild(inspectReturn);
             };
