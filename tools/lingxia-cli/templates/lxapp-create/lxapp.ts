@@ -2,9 +2,7 @@ App({
   onLaunch() {
     console.log('LingXia app launched');
 
-    // Setup update manager
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
+    lx.app.onUpdateReady(async () => {
       const applyNow = await lx.ui.confirm({
         title: "Update Available",
         message: "A new version is ready. Apply now?",
@@ -12,10 +10,10 @@ App({
         confirmText: "Apply",
       });
       if (applyNow) {
-        um.applyUpdate();
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn("Update failed:", info?.error);
     });
   },

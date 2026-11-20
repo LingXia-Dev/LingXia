@@ -1121,7 +1121,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
             if tabBarChanged {
                 reconcileSidebarAutoHide()
-                // Applied: resolve awaited `lx.tabBar.update()` callers.
+                // Applied: resolve awaited `lx.app.tabBar.update()` callers.
                 TabBarUpdateWaiters.complete(appId)
             }
         }

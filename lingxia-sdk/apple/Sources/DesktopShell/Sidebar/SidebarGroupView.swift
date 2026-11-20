@@ -579,7 +579,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         let items = tabBar.getItems(appId: providerAppId)
         rebuildItems(items: items)
 
-        // Only an explicit lx.tabBar.update() visibility patch collapses/expands this
+        // Only an explicit lx.app.tabBar.update() visibility patch collapses/expands this
         // group. `is_visible` also flips on every navigation to a non-tab page
         // (mobile auto-hide) — on desktop the sidebar stays put for that; the
         // item selection clearing already covers it. Not persisted — the app
@@ -916,7 +916,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     }
 
     /// Switcher rows use the host SurfaceMenu snapshot (includes
-    /// `lx.setMoreActions`). Fall back to the hand-built menu only when the
+    /// `lx.app.setMoreActions`). Fall back to the hand-built menu only when the
     /// graph has no snapshot for this id.
     private func requestContextMenu(with event: NSEvent) {
         if onManagedContextMenuRequested?(appId, event, headerView) == true {

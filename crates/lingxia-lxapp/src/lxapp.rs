@@ -3051,7 +3051,7 @@ impl LxApp {
         if let Some(scheme) = uri::network_scheme(path) {
             return Err(LxAppError::InvalidParameter(format!(
                 "{scheme} URLs are not supported here: download the file first \
-                 (for example with lx.downloadFile) and pass the returned lx:// path"
+                 (for example with lx.network.download) and pass the returned lx:// path"
             )));
         }
 

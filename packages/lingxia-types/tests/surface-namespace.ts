@@ -179,7 +179,7 @@ lx.surface.openPage("settings", { as: "float", chrome: "full" });
 // An ordered preference cannot know which it will be, so both stay open.
 lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", position: "center" });
 
-// Params keep their JSON type through the page URL, as on `lx.navigateTo`;
+// Params keep their JSON type through the page URL, as on `lx.nav.go`;
 // only a non-JSON value is a compile error.
 async function queryTakesJson(): Promise<void> {
   await lx.surface.openPage("editor", { as: "float", query: { filter: { open: true } } });
