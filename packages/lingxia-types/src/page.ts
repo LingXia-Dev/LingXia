@@ -31,7 +31,8 @@ import type {
   NavigationBarPatch,
   PageLoadOptions,
   PageEnvContext,
-  PageMessagePort,
+  MessageIn,
+  MessageOut,
   PageSurface,
   VideoContext,
 } from './generated/logic.js';
@@ -82,7 +83,7 @@ type SyncSetup<R> = R extends PromiseLike<unknown>
 export type UpdateRecipe<Data> = (draft: Data) => undefined;
 
 /** One page instance, as `setup` and everything it returns see it. */
-export interface PageApi<Data, Params, Result> {
+export interface PageApi<Data, Params, Result, Messages = never> {
   /** The current data. Readonly: change it with `update`. */
   readonly data: DeepReadonly<Data>;
   /**
@@ -114,7 +115,12 @@ export interface PageApi<Data, Params, Result> {
    * The page that opened this one by navigation; absent for a root, a tab,
    * after a restart, and while `setup` runs (read it in a hook or an action).
    */
-  readonly opener?: PageMessagePort;
+  readonly opener?: {
+    /** Delivers to the opener's `onMessage` handlers; until it first subscribes, messages wait. */
+    send(message: MessageOut<Messages>): void;
+    /** Receives what the opener sends. Returns a function that removes the handler. */
+    onMessage(handler: (message: MessageIn<Messages>) => void): () => void;
+  };
   /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
   readonly surface?: PageSurface;
   /** This page's navigation bar, reached even while another page is on top. */
@@ -191,7 +197,7 @@ export function definePage<
   result?: Declared<Result>;
   messages?: Declared<Messages>;
   data?: Data & JsonData<Data>;
-  setup?: (page: PageApi<Data, Params, Result>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
+  setup?: (page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
 }): PageDefinition<Data, Actions, Params, Result, Messages> {
   if (definition === null || typeof definition !== 'object') {
     throw new TypeError('definePage takes { params?, result?, messages?, data?, setup? }');

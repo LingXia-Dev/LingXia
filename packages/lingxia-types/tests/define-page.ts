@@ -92,3 +92,27 @@ definePage({
     return { onUnload: () => stop(), onLoad: () => void compact };
   },
 });
+
+const chat = definePage({
+  messages: type<{ in: { text: string }; out: { read: number } }>(),
+  setup(page) {
+    return {
+      onLoad() {
+        page.opener?.onMessage((message) => {
+          const text: string = message.text;
+          page.opener?.send({ read: text.length });
+        });
+        // @ts-expect-error the page sends `out`, not `in`
+        page.opener?.send({ text: 'x' });
+      },
+    };
+  },
+});
+void chat;
+
+const freeform = definePage({
+  setup(page) {
+    return { onLoad() { page.opener?.send({ anything: true }); } };
+  },
+});
+void freeform;

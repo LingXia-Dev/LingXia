@@ -92,7 +92,10 @@ export default definePage({
 });
 ```
 
-- `params`, `result`, `data`, `setup` are all optional; `definePage({ data })` is a static page.
+- `params`, `result`, `messages`, `data`, `setup` are all optional; `definePage({ data })` is a static page.
+- `messages: type<{ in: A; out: B }>()` types the line to the opener: the
+  opener's handle sends `A` and receives `B`, `page.opener` the reverse.
+  Messages sent before the other side's first `onMessage` wait for it.
 - `setup(page)` runs once per instance, before `onLoad`, and is synchronous. Per-instance state lives in its closure, never in module scope.
 - It returns lifecycle hooks under their names and `actions`, nothing else: a function beside `actions` or a hook a case away (`onUnLoad`) is a type error and throws.
 - Actions take zero or one JSON argument and are Promises to the View. An `async *` action is a stream ([bridge](./bridge.md)).

@@ -9,6 +9,7 @@ declare const lx: Lx;
 const detail = definePage({
   params: type<{ id: number }>(),
   result: type<{ saved: boolean }>(),
+  messages: type<{ in: { draft: string }; out: { typing: boolean } }>(),
 });
 const settings = definePage({});
 
@@ -20,6 +21,11 @@ declare global {
 
 async function navigation(): Promise<boolean> {
   const handle = lx.nav.go({ page: 'detail', params: { id: 1 } });
+  handle.send({ draft: 'hi' });
+  handle.onMessage((message) => { const typing: boolean = message.typing; void typing; });
+  // @ts-expect-error the opener sends the page's declared `in`
+  handle.send({ typing: true });
+  lx.nav.go({ page: 'settings' }).send({ anything: 1 });
   await handle.opened;
   const result = await handle.result;
   lx.nav.go({ page: 'settings' });

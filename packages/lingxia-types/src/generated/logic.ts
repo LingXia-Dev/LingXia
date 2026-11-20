@@ -272,12 +272,22 @@ export type NavResult<N> = N extends keyof LxAppPageTypes
     ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly result: infer T } } ? T : JsonValue
     : JsonValue;
 
+/** The messages page `N` declares as `{ in, out }`; undeclared when it has none. */
+export type NavMessages<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly messages: infer M } } ? M : never
+    : never;
+
+/** What the opener sends to a page declaring `messages: type<{ in; out }>()`; anything when undeclared. */
+export type MessageIn<M> = [M] extends [never] ? unknown : M extends { in: infer I } ? I : never;
+/** What such a page sends back to its opener; anything when undeclared. */
+export type MessageOut<M> = [M] extends [never] ? unknown : M extends { out: infer O } ? O : never;
+
 /** A page to push or replace. `params` is required when the page's declared params have a required key. */
 export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
     & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
 
 /** What `lx.nav.go` returns for a pushed page. */
-export type PageHandle<R = JsonValue> = {
+export type PageHandle<R = JsonValue, M = never> = {
     /** Settles when the page is on screen; rejects when it could not open. */
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
@@ -286,9 +296,9 @@ export type PageHandle<R = JsonValue> = {
      * Delivers \`message\` to the page's \`page.opener.onMessage\` handlers, at
      * once and uncopied. Until the page first subscribes, messages wait for it.
      */
-    send(message: unknown): void;
+    send(message: MessageIn<M>): void;
     /** Receives what the page sends with \`page.opener.send\`. Returns a function that removes the handler. */
-    onMessage(handler: (message: unknown) => void): () => void;
+    onMessage(handler: (message: MessageOut<M>) => void): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
 };
@@ -320,7 +330,7 @@ declare global {
      * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
      * not declare. `opened` rejects only when the platform fails to show it.
      */
-    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>>;
+    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
     /** Replace the current page; the new page inherits its opener and pending result. */
     go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
     /**
