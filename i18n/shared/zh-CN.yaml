@@ -157,3 +157,13 @@ gpu:
   a11y_busy: "忙碌"
   # Read after a GPU page field whose suggestions list follows (aria-controls + aria-autocomplete).
   a11y_suggestions: "有可选建议"
+
+# The floating menu over a GPU page's text selection and editors, in `MenuAction` order
+# (Harmony shell and the Windows SDK; Android and Apple label theirs from system strings).
+text_menu:
+  cut: "剪切"
+  copy: "复制"
+  paste: "粘贴"
+  select_all: "全选"
+  undo: "撤销"
+  redo: "重做"

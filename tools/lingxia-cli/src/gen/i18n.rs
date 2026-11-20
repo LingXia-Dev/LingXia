@@ -1575,6 +1575,25 @@ mod tests {
         assert!(error.to_string().contains("must not define [err_code]"));
     }
 
+    /// The repository's own `i18n/` generates for every target and matches the committed Rust
+    /// and TypeScript output: a merge that puts one key in two scopes fails here, not on a
+    /// fresh checkout's first host build.
+    #[test]
+    fn the_repository_strings_generate_for_every_target() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        run(I18nConfig {
+            input: root.join("i18n"),
+            check: true,
+            rust_out: Some(root.join(RUST_DEFAULT_OUT)),
+            ts_out: Some(root.join(TS_DEFAULT_OUT)),
+            android_out: Some(root.join(ANDROID_DEFAULT_OUT)),
+            ios_out: Some(root.join(APPLE_DEFAULT_OUT)),
+            harmony_out: Some(root.join(HARMONY_DEFAULT_OUT)),
+            ..I18nConfig::default()
+        })
+        .expect("i18n/ must generate cleanly; run `lingxia gen i18n` and read its error");
+    }
+
     #[test]
     fn fails_when_error_locale_contains_ui_sections() {
         let temp = TempDir::new().expect("temp dir");

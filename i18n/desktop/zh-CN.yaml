@@ -40,15 +40,6 @@ terminal:
   reset: "重置终端"
   read_only: "终端只读"
 
-# Text menu of a native GPU page's text and editors
-text_menu:
-  cut: "剪切"
-  copy: "复制"
-  paste: "粘贴"
-  select_all: "全选"
-  undo: "撤销"
-  redo: "重做"
-
 sidebar:
   expand: "展开侧栏"
   collapse: "收起侧栏"
