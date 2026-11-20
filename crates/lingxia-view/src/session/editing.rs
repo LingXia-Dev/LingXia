@@ -14,6 +14,13 @@ impl ViewSession {
             || self.input_dirty
             || self.pending_inputs.is_some()
         {
+            log::info!(
+                target: "lingxia_view",
+                "editor hit test {identity} refused: frame current {}, input unsettled {}, pending {}",
+                self.presented_layout_commit(generation),
+                self.input_dirty,
+                self.pending_inputs.is_some()
+            );
             return Ok(None);
         }
         Ok(self

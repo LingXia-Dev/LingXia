@@ -96,6 +96,8 @@ pub struct FrameSnapshot {
     pub metrics: crate::session::metrics::FrameMetrics,
     /// The Logic state revision the frame was built from.
     pub data_revision: u64,
+    /// How many platform focus, blur and edit requests the frame was built after.
+    pub input_serial: u64,
     pub feedback: crate::interaction::chrome::FeedbackStyle,
     /// The metrics as reported, with the presenter's own counters.
     pub reported: serde_json::Value,
@@ -418,6 +420,8 @@ struct Main<F> {
     acked_flight: u64,
     /// Input-method requests on the worker; their View changes land when they return.
     inputs_in_flight: u32,
+    /// The newest input request serial the platform has a reply for.
+    replied_input: u64,
     /// Bumped per queued input: a frame started before the latest one misses it.
     input_seq: u64,
     /// A frame prepared ahead that finished before the frame under it presented.
@@ -669,6 +673,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     presented_flight: 0,
                     acked_flight: 0,
                     inputs_in_flight: 0,
+                    replied_input: 0,
                     input_seq: 0,
                     next_prepared: None,
                     last_vsync: None,
@@ -2129,6 +2134,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.styled_press = None;
             main.styled_hover = None;
             main.styled_focus = (None, false);
+            main.replied_input = 0;
             main.interest.reset();
             main.autoclose.reset();
             main.webviews.reset();

@@ -517,7 +517,10 @@ pub(crate) struct Switch {
 
 /// A filled mark's colour while pressed: a solid role's own pressed shade, else the colour mixed
 /// 14 % toward black, as the theme derives those shades.
-fn pressed_fill(value: &str, palette: &crate::theme::Palette) -> Result<[u8; 4], String> {
+pub(crate) fn pressed_fill(
+    value: &str,
+    palette: &crate::theme::Palette,
+) -> Result<[u8; 4], String> {
     use lingxia_theme::Role;
     if let crate::theme::WireColor::Role(role, 100) = crate::theme::parse(value)? {
         match role {

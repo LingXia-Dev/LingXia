@@ -497,7 +497,7 @@ impl ViewSession {
                 .is_some_and(|viewport| viewport != (width, height, scale));
         let rebuild = rebuild || self.input_rebuild || self.reveal_input;
         let native_input = !rebuild
-            && self.input_dirty
+            && (self.input_dirty || self.pointer_dirty)
             && self.input_records.is_some()
             && self.viewport == Some((width, height, scale));
         let mut offsets = offsets.unwrap_or(&self.scroll_offsets).clone();
@@ -540,6 +540,7 @@ impl ViewSession {
         let mut window_only = None;
         if !rebuild
             && !self.input_dirty
+            && !self.pointer_dirty
             && self.viewport == Some((width, height, scale))
             && let Some(retained) = &self.retained
         {
@@ -589,6 +590,7 @@ impl ViewSession {
                     self.input_hits = Some(input_hits);
                     self.inputs = inputs;
                     self.input_dirty = input_dirty;
+                    self.pointer_dirty = false;
                     self.commit_images(wanted);
                     self.scroll_offsets = applied;
                     self.advance();
@@ -639,7 +641,9 @@ impl ViewSession {
                 self.renderer.focused.clone_from(&self.focused_control);
                 self.renderer.editing = inputs.focused().map(str::to_owned);
                 let started = std::time::Instant::now();
-                let reusable = if !self.input_dirty && self.viewport == Some((width, height, scale))
+                let reusable = if !self.input_dirty
+                    && !self.pointer_dirty
+                    && self.viewport == Some((width, height, scale))
                 {
                     self.retained
                         .as_ref()
@@ -792,6 +796,10 @@ impl ViewSession {
                 input_dirty,
                 input_hits,
             )) => {
+                let same_geometry = self
+                    .input_hits
+                    .as_ref()
+                    .is_some_and(|old| old.same_geometry(&input_hits));
                 self.input_hits = Some(input_hits);
                 self.paint_records = Some(render_records);
                 self.inputs = inputs;
@@ -801,6 +809,7 @@ impl ViewSession {
                     .is_some_and(|old| same_structure(old, &records));
                 self.input_records = Some(records);
                 self.input_dirty = input_dirty;
+                self.pointer_dirty = false;
                 self.input_rebuild = false;
                 self.reveal_input = false;
                 self.pending_inputs = None;
@@ -828,7 +837,11 @@ impl ViewSession {
                     self.layout_commit = self.generation;
                 }
                 if retained_changed {
-                    self.retained_commit = self.generation;
+                    // A repaint that left every editor where it was (a pressed field's own
+                    // fill) keeps the tap's frame good for its caret hit test.
+                    if !(same_view && same_geometry) {
+                        self.retained_commit = self.generation;
+                    }
                     self.note_boxes();
                 }
                 if prepared_js {

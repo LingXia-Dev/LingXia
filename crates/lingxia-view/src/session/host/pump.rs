@@ -700,6 +700,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let snapshot = Arc::new(FrameSnapshot {
             metrics: session.frame_metrics().clone(),
             data_revision: session.state.revision(),
+            input_serial: session.input_serial(),
             generation,
             width,
             height,
@@ -1137,7 +1138,14 @@ impl<A: PlatformAdapter> Inner<A> {
         if queue {
             self.schedule();
         }
-        self.adapter.reconcile(&snapshot);
+        // A frame built before a focus, blur or edit the platform already has the reply to would
+        // undo it (a keyboard dropped as it rose, typed text reverted): one built after follows.
+        if snapshot.input_serial >= self.main().replied_input {
+            self.adapter.reconcile(&snapshot);
+        } else {
+            self.main().dirty = true;
+            self.schedule();
+        }
         self.deliver(presented.effects);
         self.glide_later();
         if let Some(reach) = presented.reach {

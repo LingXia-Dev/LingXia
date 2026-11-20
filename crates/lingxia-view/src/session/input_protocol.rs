@@ -119,6 +119,12 @@ impl ViewSession {
         }
         let request: Request =
             serde_json::from_str(request).map_err(|_| "UI_INPUT: invalid host request")?;
+        if matches!(
+            request,
+            Request::Focus { .. } | Request::Blur { .. } | Request::Edit { .. }
+        ) {
+            self.input_serial += 1;
+        }
         let reply = match request {
             Request::DragHitTest {
                 identity,
@@ -191,7 +197,10 @@ mod tests {
         let focused = page.focus_input(generation, id).unwrap().unwrap();
         assert_eq!(page.input_request(&request).unwrap(), "null");
         page.prepare_native(300, 100, 1.0, false, None, Ok).unwrap();
-        assert_eq!(page.input_request(&request).unwrap(), "null");
+        // The focus redecorated the field but moved none of its text: the older frame still answers.
+        let reply: serde_json::Value =
+            serde_json::from_str(&page.input_request(&request).unwrap()).unwrap();
+        assert_eq!(reply["selection"], serde_json::json!([0, 5]));
         let current = page.generation();
         assert!(
             page.hit_test_input(current, id, [12.0, 20.0], false)

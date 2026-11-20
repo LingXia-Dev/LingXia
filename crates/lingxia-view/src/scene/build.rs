@@ -448,6 +448,9 @@ impl Renderer {
                 record.tag == tag::TEXT && record.string(field::BACKGROUND_CLIP) == Some("text");
             let mut text_fill: Option<[u8; 4]> = None;
             let mut text_gradient: Option<Arc<crate::scene::gradient::GradientBrush>> = None;
+            // A pressed opaque fill with no `active:` style deepens, as a switch's track does;
+            // the translucent press layer is only for clear or soft fills, which it cannot lighten.
+            let mut default_press = false;
             if let Some(background) = record.string(field::BACKGROUND).or(
                 if matches!(
                     record.tag,
@@ -460,11 +463,28 @@ impl Renderer {
                     None
                 },
             ) {
-                let [r, g, b, a] = color(if background == "currentColor" {
+                let source = if background == "currentColor" {
                     colors[index]
                 } else {
                     background
-                })?;
+                };
+                let [mut r, mut g, mut b, a] = color(source)?;
+                // A field is not a button: pressing it places a caret, so it deepens nothing.
+                default_press = a == 255
+                    && index > 0
+                    && !matches!(
+                        record.tag,
+                        tag::INPUT | tag::TEXTAREA | tag::SEARCH | tag::SELECT | tag::WEBVIEW
+                    )
+                    && !clip_text
+                    && record.string(field::BACKGROUND).is_some()
+                    && !record.fields.iter().any(|(id, _)| *id == field::PRESSED_STYLE);
+                if default_press
+                    && record.number(field::ENABLED) != Some(0.0)
+                    && pressed_identity.as_deref() == identities.get(index).map(String::as_str)
+                {
+                    [r, g, b, _] = crate::scene::slider::pressed_fill(source, &palette)?;
+                }
                 if clip_text {
                     text_fill = Some([r, g, b, a]);
                 } else {
@@ -1586,6 +1606,7 @@ impl Renderer {
                 // Indicator controls paint their own press state instead of a box overlay.
                 pressed_style: group_pressed[index]
                     || indicator_control
+                    || default_press
                     || record
                         .fields
                         .iter()

@@ -878,18 +878,29 @@ impl<A: PlatformAdapter> Inner<A> {
                 } else {
                     None
                 };
-                Ok((result, update, session.wants_reveal()))
+                Ok((result, update, session.wants_reveal(), session.input_serial()))
             },
             move |inner, result| {
                 inner.main().inputs_in_flight -= 1;
                 let Some(result) = result else {
                     return;
                 };
-                let (value, update, error, reveal) = match result {
-                    Ok((Ok(value), update, reveal)) => (Some(value), update, None, reveal),
-                    Ok((Err(error), update, reveal)) => (None, update, Some(error), reveal),
-                    Err(error) => (None, None, Some(error), false),
+                let (value, update, error, reveal, serial) = match result {
+                    Ok((Ok(value), update, reveal, serial)) => {
+                        (Some(value), update, None, reveal, Some(serial))
+                    }
+                    Ok((Err(error), update, reveal, serial)) => {
+                        (None, update, Some(error), reveal, Some(serial))
+                    }
+                    Err(error) => (None, None, Some(error), false, None),
                 };
+                if let Some(serial) = serial
+                    && inner.lifecycle.is_current_page(page)
+                {
+                    // Frames built before this request no longer reconcile the input method.
+                    let mut main = inner.main();
+                    main.replied_input = main.replied_input.max(serial);
+                }
                 // A focus under a keyboard already up moves nothing else: its reveal needs a frame.
                 if reveal && inner.lifecycle.is_current_page(page) {
                     inner.main().dirty = true;

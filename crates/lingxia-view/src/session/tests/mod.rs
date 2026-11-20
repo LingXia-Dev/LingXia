@@ -2640,3 +2640,73 @@ fn an_unbound_date_field_shows_the_users_date_not_an_empty_display() {
     assert_eq!(input.display, None);
     assert_eq!(after.nodes[1].text, "2026-11-19");
 }
+
+/// A button with no `active:` style: an opaque fill pressed deepens (an accent solid to its
+/// pressed role, any other toward black), never lightens; a clear one takes the press layer.
+#[test]
+fn a_pressed_opaque_fill_deepens_in_light_and_dark_and_a_clear_one_takes_the_layer() {
+    use lingxia_theme::Role;
+    for dark in [false, true] {
+        let source = crate::session::tests::source(
+            "function render(){return h('view',{},h('button',{'data-testid':'solid',onClick(){},style:{backgroundColor:'accent-solid'}},'Send'),h('button',{'data-testid':'opaque',onClick(){},style:{backgroundColor:'#336699'}},'Go'),h('button',{'data-testid':'clear',onClick(){}},'Skip'),h('input',{'data-testid':'field','aria-label':'Name',style:{backgroundColor:'surface'}}))}",
+        );
+        let mut page = crate::ViewSession::new(&source).unwrap();
+        let mut environment = page.environment.clone();
+        environment["theme"] = serde_json::json!(if dark { "dark" } else { "light" });
+        page.set_environment(environment).unwrap();
+        let display = page.layout(300, 300, 1.0).unwrap();
+        let node = |id: &str| {
+            display
+                .nodes
+                .iter()
+                .find(|n| n.test_id == id)
+                .unwrap()
+                .clone()
+        };
+        let palette = page.renderer.palette.clone();
+        let rects = |page: &mut crate::ViewSession, pressed: &str| -> Vec<[u8; 4]> {
+            page.set_pointer_state(Some(pressed), None);
+            page.layout(300, 300, 1.0)
+                .unwrap()
+                .commands
+                .iter()
+                .filter_map(|paint| match paint {
+                    crate::scene::paint::Paint::Rect { color, .. } => Some(*color),
+                    _ => None,
+                })
+                .collect()
+        };
+        let solid = node("solid");
+        assert!(
+            solid.pressed_style,
+            "dark={dark}: the core draws an opaque fill's press"
+        );
+        let painted = rects(&mut page, &solid.identity);
+        assert!(
+            painted.contains(&palette.role(Role::AccentSolidPressed)),
+            "dark={dark}: an accent solid deepens to its pressed role"
+        );
+        let opaque = node("opaque");
+        assert!(opaque.pressed_style);
+        let painted = rects(&mut page, &opaque.identity);
+        let deep = [0x33, 0x66, 0x99].map(|c: u8| (f32::from(c) * 0.86).round() as u8);
+        assert!(
+            painted.contains(&[deep[0], deep[1], deep[2], 255]),
+            "dark={dark}: another opaque fill mixes toward black"
+        );
+        assert!(
+            !node("clear").pressed_style,
+            "dark={dark}: a clear button keeps the platform's press layer"
+        );
+        // A field is not a button: pressing it places a caret and repaints nothing.
+        let field = node("field");
+        assert!(!field.pressed_style, "dark={dark}: a field draws no press");
+        page.set_pointer_state(None, None);
+        let resting = rects(&mut page, "");
+        assert_eq!(
+            rects(&mut page, &field.identity),
+            resting,
+            "dark={dark}: a pressed bg-surface field keeps its fill"
+        );
+    }
+}

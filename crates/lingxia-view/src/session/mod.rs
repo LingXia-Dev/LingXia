@@ -106,6 +106,9 @@ pub struct ViewSession {
     /// The theme scales the page's steps resolve against; the wire carries the same.
     scales: std::sync::Arc<crate::protocol::scales::Scales>,
     input_dirty: bool,
+    /// A press or hover changed paint only: the next frame repaints, while editor geometry
+    /// and hit tests stay those of the presented frame.
+    pointer_dirty: bool,
     /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
     reads_host_context: bool,
     /// The View depends on the appearance: its code read `env.theme` or `env.highContrast`, or a
@@ -114,6 +117,7 @@ pub struct ViewSession {
     input_rebuild: bool,
     reveal_input: bool,
     pending_inputs: Option<crate::interaction::input_state::Inputs>,
+    input_serial: u64,
     metrics: crate::FrameMetrics,
     animations: crate::animation::Timeline,
     animation_surface: Option<lifecycle::SurfaceTicket>,
@@ -362,11 +366,13 @@ impl ViewSession {
             animation_inventory: Default::default(),
             animation_visible: Default::default(),
             input_dirty: false,
+            pointer_dirty: false,
             reads_host_context: true,
             reads_appearance: true,
             input_rebuild: false,
             reveal_input: false,
             pending_inputs: None,
+            input_serial: 0,
             metrics: Default::default(),
             animations: Default::default(),
             animation_surface: None,
@@ -390,6 +396,12 @@ impl ViewSession {
     /// The committed View description that input must target.
     pub fn generation(&self) -> lifecycle::CommitTicket {
         self.generation
+    }
+
+    /// Counts the platform's focus, blur and edit requests; frames record the count they were
+    /// built after.
+    pub fn input_serial(&self) -> u64 {
+        self.input_serial
     }
 
     fn advance(&mut self) {
@@ -422,6 +434,7 @@ impl ViewSession {
         self.animation_inventory = Default::default();
         self.animation_visible.clear();
         self.input_dirty = false;
+        self.pointer_dirty = false;
         self.input_rebuild = false;
         self.reveal_input = false;
         self.pending_inputs = None;

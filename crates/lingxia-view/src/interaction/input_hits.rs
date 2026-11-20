@@ -27,6 +27,43 @@ impl InputHitMap {
         }
     }
 
+    /// Every editor and plot sits and shapes as in `other`: a repaint (a press, a hover) left
+    /// their geometry alone, so hit tests made against `other`'s frame still hold.
+    pub(crate) fn same_geometry(&self, other: &Self) -> bool {
+        let shaped = |map: &Self, index: usize| {
+            map.retained
+                .inputs
+                .get(index)
+                .and_then(Option::as_ref)
+                .map(|shaped| {
+                    (
+                        shaped.padding,
+                        shaped.text_offset_y,
+                        shaped.content_size,
+                        shaped.layout.width(),
+                        shaped.layout.height(),
+                    )
+                })
+        };
+        self.nodes.len() == other.nodes.len()
+            && self.nodes.iter().zip(&other.nodes).all(|((i, a), (j, b))| {
+                i == j
+                    && a.identity == b.identity
+                    && a.bounds == b.bounds
+                    && a.visible_bounds == b.visible_bounds
+                    && a.radii == b.radii
+                    && a.radius == b.radius
+                    && a.clips == b.clips
+                    && a.input
+                        .as_ref()
+                        .map(|input| (&input.value, input.scroll_offset))
+                        == b.input
+                            .as_ref()
+                            .map(|input| (&input.value, input.scroll_offset))
+                    && shaped(self, *i) == shaped(other, *j)
+            })
+    }
+
     pub(crate) fn plot_node(&self, identity: &str) -> Option<&NodeSnapshot> {
         self.nodes
             .iter()

@@ -157,7 +157,7 @@ impl ViewSession {
         if changed {
             self.pressed = pressed.map(str::to_owned);
             self.hovered = hovered.map(str::to_owned);
-            self.input_dirty = true;
+            self.pointer_dirty = true;
         }
         changed
     }

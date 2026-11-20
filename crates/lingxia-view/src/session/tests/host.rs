@@ -24,6 +24,8 @@ mod test_environment;
 #[derive(Default)]
 struct Log {
     prepared: Vec<ThreadId>,
+    /// The focused editor's identity in each frame the input method reconciled with.
+    reconciled: Vec<Option<String>>,
     /// Display sizes of frames the fake target accepted.
     accepted: Vec<(u16, u16)>,
     presented: Vec<Vec<String>>,
@@ -316,8 +318,18 @@ impl AccessibilitySink for Fake {
     }
 }
 impl InputMethod for Fake {
-    fn reconcile(&self, _: &FrameSnapshot) {
-        drop(self.main());
+    fn reconcile(&self, frame: &FrameSnapshot) {
+        let focused = frame
+            .frame
+            .nodes
+            .iter()
+            .find(|node| {
+                node.input
+                    .as_ref()
+                    .is_some_and(|input| input.enabled && input.edit_token.is_some_and(|t| t > 0))
+            })
+            .map(|node| node.identity.to_string());
+        self.main().reconciled.push(focused);
     }
     fn focus(&self, editor: &Dispatch, _: &FrameSnapshot) {
         self.main().editors.push(editor.clone());
@@ -6541,6 +6553,234 @@ fn a_field_stays_clear_of_a_keyboard_that_grows_in_two_steps() {
 }
 
 /// The device order: a tap focuses the field, then the keyboard's final frame arrives.
+/// Worker jobs and posted tasks only: no vsync, as when a platform request lands between frames.
+fn drain_without_frames(platform: &Platform) {
+    loop {
+        for worker in &platform.workers {
+            let (done, wait) = channel();
+            worker.run_background(move |_| {
+                let _ = done.send(());
+            });
+            wait.recv_timeout(Duration::from_secs(30)).unwrap();
+        }
+        let mut ran = false;
+        while let Ok(task) = platform.tasks.try_recv() {
+            task();
+            ran = true;
+        }
+        if !ran {
+            break;
+        }
+    }
+}
+
+#[test]
+fn a_touch_on_a_filled_field_focuses_it() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // Opaque field fills, as `bg-surface` draws them: a field's press must not cost its tap.
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','');const a=useLocal('a','');const field={height:48,backgroundColor:'#ffffff'};return h('page',null,h('scroll',{style:{flexGrow:1}},h('view',{style:{padding:16,gap:16}},h('input',{'data-testid':'f',bind:v,'aria-label':'Code',inputMode:'numeric',style:field}),h('input',{'data-testid':'a',bind:a,type:'number','aria-label':'Amount',style:field}),h('input',{'data-testid':'n','aria-label':'Name',style:field}),h('view',{style:{height:40}}))))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let request = |op: serde_json::Value| {
+        let (tx, rx) = channel();
+        host.input(op.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        drain_without_frames(&platform);
+        rx.recv_timeout(Duration::from_secs(5)).unwrap()
+    };
+    for id in ["f", "a", "n"] {
+        let css = format!("[data-testid=\"{id}\"]");
+        let rect = host
+            .automation_request(&serde_json::json!({"op": "query", "css": css}))
+            .unwrap()["rect"]
+            .clone();
+        let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+        // Rects are in points; touches arrive in device pixels.
+        let scale = host.snapshot().unwrap().scale;
+        let [x, y] = [
+            (at("left") + at("width") / 2.0) * scale,
+            (at("top") + at("height") / 2.0) * scale,
+        ];
+        let pointer = |phase| Pointer {
+            phase,
+            x,
+            y,
+            slop: 8.0,
+            velocity: [0.0; 2],
+            min_fling: 50.0,
+        };
+        // The platform asks for the caret and the focus before any further frame.
+        host.pointer(pointer(PointerPhase::Down));
+        platform.settle(&[&host]);
+        let editors = host.adapter().log.lock().unwrap().editors.len();
+        host.pointer(pointer(PointerPhase::Up));
+        drain_without_frames(&platform);
+        let editor = host.adapter().log.lock().unwrap().editors[editors..]
+            .last()
+            .cloned();
+        let Some(Dispatch::Editor {
+            node,
+            commit,
+            point: Some(point),
+            word,
+            ..
+        }) = editor
+        else {
+            panic!("the tap on {id} asks the input method to focus it: {editor:?}");
+        };
+        let snapshot: serde_json::Value =
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+        let identity = snapshot["nodes"][node]["identity"].clone();
+        let hit = request(
+            serde_json::json!({"op": "hit_test", "identity": identity, "generation": commit, "point": point, "word": word}),
+        );
+        let hit: serde_json::Value =
+            serde_json::from_str(&hit.unwrap_or_default()).unwrap_or_default();
+        assert!(
+            hit["selection"].is_array(),
+            "the hit test on {id} answers: {hit}"
+        );
+        let focus =
+            request(serde_json::json!({"op": "focus", "identity": identity, "generation": commit}));
+        assert!(
+            focus.is_some_and(|reply| reply != "null"),
+            "the focus of {id} is granted"
+        );
+        let reconciled = host.adapter().log.lock().unwrap().reconciled.len();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+        let log = host.adapter().log.lock().unwrap();
+        assert!(
+            log.reconciled[reconciled..]
+                .iter()
+                .all(|focused| focused.as_deref() == identity.as_str()),
+            "every frame after the focus of {id} keeps it: {:?}",
+            &log.reconciled[reconciled..]
+        );
+        drop(log);
+        let element = host
+            .automation_request(&serde_json::json!({"op": "query", "css": css}))
+            .unwrap();
+        assert!(element["focused"] == true, "the touch focused {id}");
+    }
+}
+
+#[test]
+fn a_frame_built_before_a_tap_focus_lands_without_dropping_it() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render({env}){const v=useLocal('v','');return h('page',{'data-keyboard':String(env.keyboard.height)},h('view',{style:{padding:16}},h('input',{'data-testid':'f',bind:v,'aria-label':'Code',style:{height:48}})))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let rect = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+        .unwrap()["rect"]
+        .clone();
+    let at = |key: &str| rect[key].as_f64().unwrap() as f32;
+    // Rects are in points; touches arrive in device pixels.
+    let scale = host.snapshot().unwrap().scale;
+    let [x, y] = [
+        (at("left") + at("width") / 2.0) * scale,
+        (at("top") + at("height") / 2.0) * scale,
+    ];
+    let pointer = |phase| Pointer {
+        phase,
+        x,
+        y,
+        slop: 8.0,
+        velocity: [0.0; 2],
+        min_fling: 50.0,
+    };
+    host.pointer(pointer(PointerPhase::Down));
+    platform.settle(&[&host]);
+    host.pointer(pointer(PointerPhase::Up));
+    drain_without_frames(&platform);
+    let Some(Dispatch::Editor {
+        node,
+        commit,
+        point: Some(point),
+        ..
+    }) = host.adapter().log.lock().unwrap().editors.last().cloned()
+    else {
+        panic!("the tap asks the input method to focus the field");
+    };
+    let snapshot: serde_json::Value =
+        serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = snapshot["nodes"][node]["identity"].clone();
+    let request = |op: serde_json::Value| {
+        let (tx, rx) = channel();
+        host.input(op.to_string(), move |reply| {
+            let _ = tx.send(reply);
+        });
+        drain_without_frames(&platform);
+        rx.recv_timeout(Duration::from_secs(5)).unwrap()
+    };
+    let hit = request(
+        serde_json::json!({"op": "hit_test", "identity": identity, "generation": commit, "point": point, "word": false}),
+    );
+    assert!(
+        hit.is_some_and(|hit| hit.contains("selection")),
+        "the hit test answers"
+    );
+    // The keyboard starts to rise before the focus reply: that frame is built and handed to
+    // the screen, which shows it only later.
+    host.adapter()
+        .defer
+        .store(true, std::sync::atomic::Ordering::Release);
+    if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
+        environment.value["keyboard"]["height"] = 120.into();
+    }
+    host.environment_changed();
+    drain_without_frames(&platform);
+    host.vsync();
+    drain_without_frames(&platform);
+    let handed = *host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .handed
+        .last()
+        .expect("the keyboard's frame is handed");
+    let focus =
+        request(serde_json::json!({"op": "focus", "identity": identity, "generation": commit}));
+    assert!(
+        focus.is_some_and(|reply| reply != "null"),
+        "the focus is granted"
+    );
+    // Only now does the frame built before the focus reach the screen.
+    let reconciled = host.adapter().log.lock().unwrap().reconciled.len();
+    host.deferred_presented(handed, true);
+    host.adapter()
+        .defer
+        .store(false, std::sync::atomic::Ordering::Release);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    let log = host.adapter().log.lock().unwrap();
+    let after = &log.reconciled[reconciled..];
+    assert!(
+        !after.is_empty()
+            && after
+                .iter()
+                .all(|focused| focused.as_deref() == identity.as_str()),
+        "the input method never sees a frame without the field it just focused: {after:?}"
+    );
+}
+
 #[test]
 fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {
     let worker = ViewWorker::spawn("test-view").unwrap();
@@ -6609,6 +6849,7 @@ fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
         environment.value["keyboard"]["height"] = 318.into();
     }
+    let reconciled = host.adapter().log.lock().unwrap().reconciled.len();
     host.environment_changed();
     platform.settle(&[&host]);
     run_frames(&platform, &host, 4);
@@ -6618,6 +6859,20 @@ fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {
         "the field clears the keyboard: {y}..{}",
         y + h
     );
+    // The input method drops its editor, and the keyboard, on any frame without one.
+    let log = host.adapter().log.lock().unwrap();
+    assert!(
+        log.reconciled[reconciled..]
+            .iter()
+            .all(|focused| focused.as_deref() == identity.as_str()),
+        "every frame of the reveal keeps the field focused: {:?}",
+        &log.reconciled[reconciled..]
+    );
+    drop(log);
+    let element = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+        .unwrap();
+    assert!(element["focused"] == true, "the reveal keeps the focus");
 }
 
 /// The showcase's own select, as a device draws it: a pinned text scale grows its chevron.

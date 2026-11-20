@@ -92,7 +92,13 @@ impl ViewInteraction {
                     effects.push(Effect::Claim { exclusive: true });
                 }
                 if let Some(index) = pressed {
-                    effects.push(press(&frame, index));
+                    // A field shows no press unless its page styles one (`active:`).
+                    if frame.node(index).is_some_and(|node| {
+                        node.pressed_style
+                            || !matches!(node.tag, "input" | "textarea" | "search" | "select")
+                    }) {
+                        effects.push(press(&frame, index));
+                    }
                     if frame.node(index).is_some_and(frame::editable) {
                         effects.push(Effect::ArmLongPress);
                     } else if frame.node(index).is_some_and(|node| node.tag == "link")

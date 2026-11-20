@@ -109,3 +109,36 @@ fn a_truncated_input_ellipsizes_its_placeholder_and_its_value_only_while_unfocus
     let blurred = field.prepare_native(300, 200, 1.0, true, None, Ok).unwrap();
     assert_eq!(glyphs(&blurred), short);
 }
+
+#[test]
+fn a_paint_only_repaint_keeps_a_field_hit_test_on_the_frame_before_it() {
+    let mut page = ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('view',{style:{padding:16,gap:16}},h('button',{'data-testid':'b',onClick(){},style:{backgroundColor:'#336699',height:40}},'Go'),h('input',{'data-testid':'f','aria-label':'Name',value:'Ada',style:{height:48}}))}",
+    ))
+    .unwrap();
+    let display = page.prepare_native(300, 300, 1.0, true, None, Ok).unwrap();
+    let tapped = page.generation();
+    let node = |display: &crate::DisplayList, id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .clone()
+    };
+    let field = node(&display, "f");
+    let point = [
+        field.bounds[0] + 4.0,
+        field.bounds[1] + field.bounds[3] / 2.0,
+    ];
+    // A press elsewhere repaints the page: new paint, same editor geometry.
+    page.set_pointer_state(Some(&node(&display, "b").identity), None);
+    page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
+    assert_ne!(page.generation(), tapped);
+    assert!(
+        page.hit_test_input(tapped, &field.identity, point, false)
+            .unwrap()
+            .is_some(),
+        "a tap on the frame before the repaint still places the caret"
+    );
+}
