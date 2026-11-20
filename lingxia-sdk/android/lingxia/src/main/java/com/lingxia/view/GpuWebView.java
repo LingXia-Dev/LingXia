@@ -384,9 +384,10 @@ final class GpuWebView extends FrameLayout {
                 layout(left, top, left + width, top + height);
             }
             if (sizeChanged && ready && capturedWidth > 0 && webview instanceof WebView && customView == null
-                && (capturedWidth != width || capturedHeight != height)) {
-                // A capture before the page redraws at the new size is blank and would replace a
-                // good picture; the box keeps the old one, unscaled, until the page has drawn.
+                && (width > capturedWidth || height > capturedHeight)) {
+                // Grown: a capture before the page redraws at the new size is blank and would
+                // replace a good picture; the box keeps the old one until the page has drawn. A
+                // shrunk box captures at once, the old picture shrunk into it meanwhile.
                 awaitingDraw = true;
                 removeCallbacks(drawTimeout);
                 postDelayed(drawTimeout, 300);

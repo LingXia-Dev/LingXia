@@ -177,8 +177,8 @@ pub enum Fit {
     Cover,
     Contain,
     Fill,
-    /// At its own size, one texel per device pixel, never scaled: a web view's capture taken
-    /// at another box size shows cropped or with room to spare until a new one lands.
+    /// At its own size, one texel per device pixel: a web view's capture taken at a smaller box
+    /// shows with room to spare until a new one lands; one that covers the box shrinks into it.
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     Natural,
 }
@@ -213,7 +213,16 @@ pub fn placement_at(
     let [iw, ih] = size.map(f64::from);
     let (w, h) = match fit {
         Fit::Fill => (width, height),
-        Fit::Natural if texels > 0.0 => (iw / f64::from(texels), ih / f64::from(texels)),
+        Fit::Natural if texels > 0.0 => {
+            let natural = (iw / f64::from(texels), ih / f64::from(texels));
+            // A capture that covers the box (a closing sheet's) shrinks to it until a capture
+            // at the new size lands; a smaller one (an opening sheet's) stays at its own size.
+            if natural.0 >= width - 0.5 && natural.1 >= height - 0.5 {
+                (width, height)
+            } else {
+                natural
+            }
+        }
         Fit::Natural => return Err("UI_IMAGE: invalid image geometry".into()),
         _ => {
             let scale = if fit == Fit::Cover {
@@ -255,12 +264,24 @@ mod tests {
     #[test]
     fn a_natural_fit_keeps_an_old_capture_at_its_own_size_in_a_resized_box() {
         // A 300x600 px capture at scale 3 is 100x200 pt, whatever the box became.
-        for bounds in [[10.0, 20.0, 100.0, 120.0], [10.0, 20.0, 100.0, 400.0]] {
+        for bounds in [[10.0, 20.0, 100.0, 400.0], [10.0, 20.0, 120.0, 120.0]] {
             assert_eq!(
                 placement_at([300, 600], bounds, Fit::Natural, [0.0, 0.0], 3.0).unwrap(),
                 [10.0, 20.0, 100.0, 200.0]
             );
         }
+        // One that covers the box shrinks into it.
+        assert_eq!(
+            placement_at(
+                [300, 600],
+                [10.0, 20.0, 100.0, 120.0],
+                Fit::Natural,
+                [0.0, 0.0],
+                3.0
+            )
+            .unwrap(),
+            [10.0, 20.0, 100.0, 120.0]
+        );
         assert!(placement_at([300, 600], [0.0; 4], Fit::Natural, [0.0, 0.0], 0.0).is_err());
     }
 
