@@ -5,13 +5,15 @@ import type { PreviewMediaHandle } from '@lingxia/types';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-spec.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+const httpBase = testArgs.httpBase;
+spec.configure({
+  skip: selectedGate ? 'a --arg gate run selects only its gate'
+    : httpBase ? undefined : 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
+});
 
-/** Public samples the Showcase already loads; scheme is `https://` (not the HTTP fixture). */
-const HTTPS_IMAGE =
-  'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg';
-const HTTPS_VIDEO =
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+/** The fixture's samples: a spec never depends on a public site. */
+const REMOTE_IMAGE = `${httpBase}/media/sample.png`;
+const REMOTE_VIDEO = `${httpBase}/media/sample.mp4`;
 
 /** What the probe keeps on Logic's `globalThis` under its spec's key. */
 interface HttpsPreviewSession {
@@ -32,7 +34,7 @@ interface HttpsHandleState {
 }
 
 /**
- * `previewMedia` accepts a remote http(s) source without `downloadFile`.
+ * `previewMedia` accepts a remote http(s) source without `downloadFile`; the fixture serves it.
  * The host overlay is native, so this asserts the JS handle: presented while
  * the session is still open, `current.source.path` verbatim, teardown via
  * AbortSignal. Dismissal gestures and desktop window identity are out of
@@ -84,13 +86,13 @@ async function presentHttpsPreview(
   expect(started.sourcePath).toBe(url);
 
   const state = await eventually(readState, (value) => value.presented, {
-    describe: `the host to present the https ${type}`,
+    describe: `the host to present the remote ${type}`,
     timeoutMs: 30_000,
   });
   expect(state.currentIndex).toBe(0);
   expect(state.currentPath).toBe(url);
   // `presented` also settles when `completed` does (JS fallback / error close).
-  // An open session is the proof the https source actually showed.
+  // An open session is the proof the remote source actually showed.
   expect(state.completed).toBe(null);
   expect(state.completedError).toBe(null);
 
@@ -102,13 +104,13 @@ async function presentHttpsPreview(
     readState,
     (value) => value.completedError != null || value.completed != null,
     {
-      describe: 'the AbortSignal to close the https preview session',
+      describe: 'the AbortSignal to close the remote preview session',
       timeoutMs: 10_000,
     },
   );
 }
 
-spec('present an https image without downloading first', {
+spec('present a remote image without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-IMAGE-001',
   covers: [
     'lx.previewMedia',
@@ -118,10 +120,10 @@ spec('present an https image without downloading first', {
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
-  await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-IMAGE-001', HTTPS_IMAGE, 'image');
+  await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-IMAGE-001', REMOTE_IMAGE, 'image');
 });
 
-spec('present an https video without downloading first', {
+spec('present a remote video without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-VIDEO-001',
   covers: [
     'lx.previewMedia',
@@ -131,5 +133,5 @@ spec('present an https video without downloading first', {
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
-  await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-VIDEO-001', HTTPS_VIDEO, 'video');
+  await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-VIDEO-001', REMOTE_VIDEO, 'video');
 });
