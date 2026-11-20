@@ -482,7 +482,7 @@ impl Player for Video {
 
     // A second player of the same HLS stream never delivers a frame, and SelectBitRate is
     // acknowledged without a switch: a pin reopens this player on the variant playlist.
-    fn pins_in_place(&self) -> bool {
+    fn quality_in_place(&self, _label: Option<&str>) -> bool {
         true
     }
 
