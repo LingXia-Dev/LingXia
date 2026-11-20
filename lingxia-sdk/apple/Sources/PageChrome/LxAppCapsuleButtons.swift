@@ -234,6 +234,7 @@ struct LxAppUnifiedCapsuleView: View {
             .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
             .buttonStyle(CapsuleInteractionButtonStyle(interactionColor: interactionColor))
+            .hostChrome("More", press: onMoreTapped)
 
             // Separator
             Rectangle()
@@ -247,6 +248,7 @@ struct LxAppUnifiedCapsuleView: View {
             .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
             .buttonStyle(CapsuleInteractionButtonStyle(interactionColor: interactionColor))
+            .hostChrome("Close", press: onCloseTapped)
         }
         .padding(.horizontal, CapsuleMetrics.edgePadding)
         .frame(width: CapsuleMetrics.totalWidth, height: CapsuleMetrics.height)

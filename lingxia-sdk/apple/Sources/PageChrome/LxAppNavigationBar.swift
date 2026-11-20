@@ -97,6 +97,8 @@ struct NavigationButton: View {
             buttonContent
         }
         .frame(width: 44, height: 44)
+        .hostChrome(isBackButton ? "Back" : (title?.isEmpty == false ? title! : "Home"),
+                    press: isEnabled ? action : nil)
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1.0 : 0.4)
         .scaleEffect(isPressed && isEnabled ? 0.95 : 1.0)

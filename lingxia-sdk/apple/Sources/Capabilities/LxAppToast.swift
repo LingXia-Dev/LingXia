@@ -305,6 +305,7 @@ struct ToastContentView: View {
                     .fill(Color.black.opacity(0.8))
             )
             .frame(minWidth: 120, maxWidth: 280, minHeight: config.icon == .None ? 60 : 100)
+            .hostChrome(title.value, role: "text")
             .scaleEffect(isVisible ? 1.0 : 0.8)
             .opacity(isVisible ? 1.0 : 0.0)
             .animation(.easeOut(duration: 0.2), value: isVisible)

@@ -756,8 +756,8 @@ extension LxApp {
             title: title,
             message: message.isEmpty ? nil : message,
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: L10n.string("lx_update_card_later"), style: .cancel))
-        alert.addAction(UIAlertAction(title: L10n.string("lx_update_card_open_store"), style: .default) { _ in
+        alert.addAction(HostChrome.alertAction(title: L10n.string("lx_update_card_later"), style: .cancel))
+        alert.addAction(HostChrome.alertAction(title: L10n.string("lx_update_card_open_store"), style: .default) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         })
         top.present(alert, animated: true)

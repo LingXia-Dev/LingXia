@@ -350,6 +350,9 @@ struct MacOSLxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(item.cachedText)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .hostChrome(item.cachedText, role: "tab", selected: isSelected) {
+            onTabSelected(item.cachedIndex, item.cachedPagePath)
+        }
     }
 
     /// First folded item index, or -1 when every item has its own slot.
@@ -426,6 +429,7 @@ struct MacOSLxAppTabBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .buttonStyle(PlainButtonStyle())
+        .hostChrome(tabBarMoreLabel(), role: "tab", selected: isSelected, press: onMoreRequested)
     }
 
     private func overflowHasNotification(from start: Int, itemCount: Int) -> Bool {

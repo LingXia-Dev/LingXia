@@ -33,7 +33,7 @@ impl AppGesture for Platform {
     }
 
     // Injected touches reach only the GPU page view; a chrome tap presses the host control
-    // under it, or activates a dialog's action or a SwiftUI button as assistive technology does.
+    // under it; a system alert's action or SwiftUI chrome runs what its tap runs.
     #[cfg(target_os = "ios")]
     fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
         vec![
@@ -1258,6 +1258,30 @@ mod ios {
         on_main(move || unsafe {
             let window = key_window().ok_or("no key window")?;
             let point = CGPoint { x, y };
+            // A system alert's action and SwiftUI chrome take no touches from code: the host
+            // runs what their tap runs.
+            match front_pressable(window, point) {
+                Some(Pressable::Probe(probe)) => {
+                    let pressed: bool = msg_send![probe, press];
+                    return if pressed {
+                        Ok(())
+                    } else {
+                        Err("the control under the tap presses nothing".to_string())
+                    };
+                }
+                Some(Pressable::AlertAction(title)) => {
+                    let host = objc2::runtime::AnyClass::get(c"LxHostChrome")
+                        .ok_or("the host registers no alert presses")?;
+                    let title = objc2_foundation::NSString::from_str(&title);
+                    let pressed: bool = msg_send![host, pressAlertAction: &*title];
+                    return if pressed {
+                        Ok(())
+                    } else {
+                        Err(format!("no alert action {title} on screen"))
+                    };
+                }
+                None => {}
+            }
             let mut view: *mut AnyObject =
                 msg_send![window, hitTest: point, withEvent: std::ptr::null_mut::<AnyObject>()];
             let control = objc2::class!(UIControl);
@@ -1275,33 +1299,6 @@ mod ios {
                 if is_gpu_page(view) {
                     return Err("the tap lands on a GPU page; tap it as a page".to_string());
                 }
-                // A system alert's action and a SwiftUI button take no touches from code; they
-                // activate as assistive technology activates them.
-                if class_name(view).contains("AlertControllerActionView") {
-                    let done: bool = msg_send![view, accessibilityActivate];
-                    if done {
-                        return Ok(());
-                    }
-                }
-                if class_name(view).contains("HostingView") {
-                    let display: *mut AnyObject = msg_send![window, screen];
-                    let space: *mut AnyObject = msg_send![display, coordinateSpace];
-                    let screen: CGPoint =
-                        msg_send![window, convertPoint: point, toCoordinateSpace: space];
-                    for element in ax_elements(view) {
-                        let frame: CGRect = msg_send![element, accessibilityFrame];
-                        let inside = screen.x >= frame.origin.x
-                            && screen.y >= frame.origin.y
-                            && screen.x < frame.origin.x + frame.size.width
-                            && screen.y < frame.origin.y + frame.size.height;
-                        if inside {
-                            let done: bool = msg_send![element, accessibilityActivate];
-                            if done {
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
                 view = msg_send![view, superview];
             }
             Err(format!("no host control at {x:.0},{y:.0}"))
@@ -1314,6 +1311,95 @@ mod ios {
             duration_ms: started.elapsed().as_secs_f64() * 1000.0,
             finger: None,
         })
+    }
+
+    enum Pressable {
+        Probe(*mut AnyObject),
+        AlertAction(String),
+    }
+
+    /// The front-most SwiftUI chrome probe with a press, or system alert action, under window
+    /// point `point`, across the app's windows.
+    unsafe fn front_pressable(key: *mut AnyObject, point: CGPoint) -> Option<Pressable> {
+        unsafe fn walk(
+            view: *mut AnyObject,
+            at: CGPoint,
+            space: *mut AnyObject,
+            found: &mut Option<Pressable>,
+        ) {
+            unsafe {
+                let hidden: bool = msg_send![view, isHidden];
+                let alpha: f64 = msg_send![view, alpha];
+                if hidden || alpha <= 0.01 || is_gpu_page(view) {
+                    return;
+                }
+                let name = class_name(view);
+                if name.contains("WKWebView") {
+                    return;
+                }
+                let probe = name == "LxChromeProbe";
+                let action = name.contains("AlertControllerActionView");
+                if probe || action {
+                    let bounds: CGRect = msg_send![view, bounds];
+                    let r: CGRect = msg_send![view, convertRect: bounds, toCoordinateSpace: space];
+                    let inside = at.x >= r.origin.x
+                        && at.y >= r.origin.y
+                        && at.x < r.origin.x + r.size.width
+                        && at.y < r.origin.y + r.size.height;
+                    if inside && probe && text(msg_send![view, chromeRole]) != "text" {
+                        *found = Some(Pressable::Probe(view));
+                    }
+                    if inside && action {
+                        let mut title = text(msg_send![view, accessibilityLabel]);
+                        if title.trim().is_empty() {
+                            title = label_texts(view);
+                        }
+                        *found = Some(Pressable::AlertAction(title.trim().to_owned()));
+                    }
+                    return;
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                for index in 0..count {
+                    walk(msg_send![subviews, objectAtIndex: index], at, space, found);
+                }
+            }
+        }
+        unsafe {
+            let screen: *mut AnyObject = msg_send![key, screen];
+            let space: *mut AnyObject = msg_send![screen, coordinateSpace];
+            let at: CGPoint = msg_send![key, convertPoint: point, toCoordinateSpace: space];
+            let app: *mut AnyObject = msg_send![objc2::class!(UIApplication), sharedApplication];
+            let windows: *mut AnyObject = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            let mut found = None;
+            for index in 0..count {
+                walk(
+                    msg_send![windows, objectAtIndex: index],
+                    at,
+                    space,
+                    &mut found,
+                );
+            }
+            found
+        }
+    }
+
+    /// The text of a view's labels, in order.
+    unsafe fn label_texts(view: *mut AnyObject) -> String {
+        unsafe {
+            let label: bool = msg_send![view, isKindOfClass: objc2::class!(UILabel)];
+            if label {
+                return text(msg_send![view, text]);
+            }
+            let subviews: *mut AnyObject = msg_send![view, subviews];
+            let count: usize = msg_send![subviews, count];
+            (0..count)
+                .map(|i| label_texts(msg_send![subviews, objectAtIndex: i]))
+                .filter(|t| !t.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
     }
 
     fn key_window() -> Option<*mut AnyObject> {
@@ -1347,23 +1433,6 @@ mod ios {
             .to_string_lossy()
             .into_owned()
     }
-
-    /// An accessibility container's elements (SwiftUI draws its controls without views).
-    unsafe fn ax_elements(view: *mut AnyObject) -> Vec<*mut AnyObject> {
-        unsafe {
-            let count: isize = msg_send![view, accessibilityElementCount];
-            if count <= 0 || count == isize::MAX {
-                return Vec::new();
-            }
-            (0..count)
-                .map(|i| -> *mut AnyObject { msg_send![view, accessibilityElementAtIndex: i] })
-                .filter(|e| !e.is_null())
-                .collect()
-        }
-    }
-
-    const BUTTON_TRAIT: u64 = 1; // UIAccessibilityTraitButton
-    const STATIC_TEXT_TRAIT: u64 = 1 << 6; // UIAccessibilityTraitStaticText
 
     /// Host chrome in the app's windows, in key-window points: bar and tab buttons, the
     /// capsule, dialogs and action sheets, a toast, and the recovery panel over a GPU page.
@@ -1472,6 +1541,20 @@ mod ios {
                     } else {
                         area
                     };
+                    // SwiftUI draws the bars, the capsule and a toast without UIKit views; each
+                    // of their elements has a probe view behind it.
+                    if name == "LxChromeProbe" {
+                        let rect = self.frame(view);
+                        let selected: bool = msg_send![view, chromeSelected];
+                        self.push(
+                            text(msg_send![view, chromeLabel]),
+                            &text(msg_send![view, chromeRole]),
+                            here,
+                            selected,
+                            rect,
+                        );
+                        return;
+                    }
                     let control: bool = msg_send![view, isKindOfClass: objc2::class!(UIControl)];
                     // A system alert's actions are views, not controls.
                     let action = name.contains("AlertControllerActionView");
@@ -1497,28 +1580,6 @@ mod ios {
                     let count: usize = msg_send![subviews, count];
                     for index in 0..count {
                         self.visit(msg_send![subviews, objectAtIndex: index], here);
-                    }
-                    // SwiftUI draws the bars, the capsule and a toast without views: read their
-                    // buttons and text as accessibility elements.
-                    if name.contains("HostingView") {
-                        for element in ax_elements(view) {
-                            let traits: u64 = msg_send![element, accessibilityTraits];
-                            let role = if traits & BUTTON_TRAIT != 0 {
-                                if here == "tabBar" { "tab" } else { "button" }
-                            } else if traits & STATIC_TEXT_TRAIT != 0 {
-                                "text"
-                            } else {
-                                continue;
-                            };
-                            let rect: CGRect = msg_send![element, accessibilityFrame];
-                            self.push(
-                                text(msg_send![element, accessibilityLabel]),
-                                role,
-                                here,
-                                false,
-                                rect,
-                            );
-                        }
                     }
                 }
             }

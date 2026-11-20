@@ -163,7 +163,7 @@ class LxAppModal {
     alert.overrideUserInterfaceStyle = LxAppAppearanceRegistry.overlayIsDark() ? .dark : .light
 
     // Add confirm action
-    let confirmAction = UIAlertAction(title: confirmText, style: .default) { _ in
+    let confirmAction = HostChrome.alertAction(title: confirmText, style: .default) {
         // Call callback with confirm result
         let result: [String: Any] = [
             "confirm": true,
@@ -181,7 +181,7 @@ class LxAppModal {
 
     // Add cancel action if needed
     if showCancel {
-        let cancelAction = UIAlertAction(title: cancelText, style: .cancel) { _ in
+        let cancelAction = HostChrome.alertAction(title: cancelText, style: .cancel) {
             // User cancelled = error 2000
             callback.send(success: false, payload: LxAppDismissal.userDismissedCode)
         }
