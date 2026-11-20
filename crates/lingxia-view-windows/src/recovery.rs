@@ -16,14 +16,15 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_PUSHBUTTON, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetParent, HMENU,
-    HWND_TOP, IDC_ARROW, LoadCursorW, RegisterClassW, SWP_NOACTIVATE, SendMessageW, SetWindowPos,
-    SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_PAINT, WM_SETFONT,
-    WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW, RegisterClassW, SWP_NOACTIVATE, SendMessageW,
+    SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_COMMAND, WM_ERASEBKGND,
+    WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{HSTRING, w};
 
 const BUTTON_ID: usize = 1;
 const BACK_ID: usize = 2;
+const BACK_REFUSED: u32 = WM_APP + 1;
 /// Logical pixels.
 const PADDING: f32 = 16.0;
 const TEXT_WIDTH: f32 = 360.0;
@@ -33,7 +34,7 @@ const BUTTON: [f32; 2] = [140.0, 32.0];
 /// Localized chrome text, the key the platform localizer knows and its English fallback.
 pub(crate) type Text<'a> = &'a dyn Fn(&str, &str) -> String;
 /// Leave the failed page; false when it could not, which re-enables the button.
-pub(crate) type Back = Box<dyn Fn() -> bool>;
+pub(crate) type Back = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
 
 struct Panel {
     window: isize,
@@ -345,6 +346,10 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPA
             back(hwnd);
             LRESULT(0)
         }
+        BACK_REFUSED => {
+            back_refused(hwnd);
+            LRESULT(0)
+        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
@@ -378,28 +383,44 @@ fn back(window: HWND) {
     let Some(page) = page_of_panel(window) else {
         return;
     };
-    // Taken out for the call: leaving may clear this panel re-entrantly.
     let Some((button, leave)) = PANELS.with(|panels| {
         panels
-            .borrow_mut()
-            .get_mut(&page)
-            .and_then(|panel| Some((panel.back, panel.leave.take()?)))
+            .borrow()
+            .get(&page)
+            .and_then(|panel| Some((panel.back, panel.leave.clone()?)))
     }) else {
         return;
     };
-    let button = HWND(button as *mut _);
     // SAFETY: this thread's button.
-    let _ = unsafe { EnableWindow(button, false) };
-    if !leave() {
-        // SAFETY: as above; the panel is still showing.
-        let _ = unsafe { EnableWindow(button, true) };
-        PANELS.with(|panels| {
-            if let Some(panel) = panels.borrow_mut().get_mut(&page)
-                && panel.back == button.0 as isize
-            {
-                panel.leave = Some(leave);
+    let _ = unsafe { EnableWindow(HWND(button as *mut _), false) };
+    // Off this thread: leaving lays out and captures this page's window, which waits on
+    // this thread, so a call from its click handler would block until those time out.
+    let panel = window.0 as isize;
+    let _ = std::thread::Builder::new()
+        .name("lingxia-gpu-recovery-back".into())
+        .spawn(move || {
+            if !leave() {
+                // SAFETY: posting to a window that may be gone fails harmlessly.
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(panel as *mut _)),
+                        BACK_REFUSED,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                };
             }
         });
+}
+
+/// Leaving failed: the panel still shows, so its Back works again.
+fn back_refused(window: HWND) {
+    let Some(page) = page_of_panel(window) else {
+        return;
+    };
+    if let Some(button) = PANELS.with(|panels| panels.borrow().get(&page).map(|p| p.back)) {
+        // SAFETY: this thread's button.
+        let _ = unsafe { EnableWindow(HWND(button as *mut _), true) };
     }
 }
 

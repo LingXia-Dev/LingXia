@@ -677,8 +677,9 @@ impl HostEvents for WindowsAdapter {
         self.dispatcher.post(Box::new(move || {
             let back = failure.is_some() && shell.can_go_back(token);
             let leave = shell.clone();
-            let back =
-                back.then(|| -> crate::recovery::Back { Box::new(move || leave.go_back(token)) });
+            let back = back.then(|| -> crate::recovery::Back {
+                std::sync::Arc::new(move || leave.go_back(token))
+            });
             crate::recovery::show(page, failure.as_ref(), dark, back, &|key, fallback| {
                 shell.text(key, fallback)
             });
