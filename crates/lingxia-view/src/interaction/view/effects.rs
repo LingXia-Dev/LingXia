@@ -201,7 +201,8 @@ pub enum Dispatch {
         commit: CommitTicket,
         identity: String,
     },
-    /// Automation's `blur()` on an editor: the session blurs it when it holds focus.
+    /// Automation's `blur()`, or keyboard focus moving off the editor: the session blurs it
+    /// when it holds focus.
     BlurEditor {
         identity: String,
     },

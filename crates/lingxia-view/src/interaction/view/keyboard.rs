@@ -284,6 +284,25 @@ impl ViewInteraction {
             node: index,
             visible: pending.visible,
         }];
+        // Focus has one owner: an editor it leaves stops editing, unless the target starts
+        // editing itself (the input method then moves straight to it, keyboard up).
+        let target = &frame.nodes[index];
+        let edits =
+            (pending.activate && frame::editable(target)) || (pending.edit && text_editor(target));
+        if !edits
+            && let Some(editor) = frame.nodes.iter().find(|node| {
+                node.identity != target.identity
+                    && node
+                        .input
+                        .as_ref()
+                        .is_some_and(|input| input.edit_token.is_some())
+            })
+        {
+            self.dispatches.push(super::Dispatch::BlurEditor {
+                identity: editor.identity.to_string(),
+            });
+            effects.push(Effect::Dispatch);
+        }
         if changed && let Some(id) = self.ids.id(index) {
             effects.push(Effect::Accessibility(AccessibilityEffect::InputFocused {
                 id,

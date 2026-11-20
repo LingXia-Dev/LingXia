@@ -298,7 +298,13 @@ impl ViewInteraction {
                 (true, self.activate(index, None, false, Some(item as i64)))
             }
             AccessibilityAction::Click if frame::hit_target(node) && node.range.is_none() => {
-                (true, self.activate(index, None, false, None))
+                // As a tap: the keyboard focus and its ring leave whatever had them.
+                let mut effects = Vec::new();
+                if self.keyboard_focus.take().is_some() {
+                    effects.push(Effect::ClearFocusRing);
+                }
+                effects.extend(self.activate(index, None, false, None));
+                (true, effects)
             }
             _ => (false, Vec::new()),
         }

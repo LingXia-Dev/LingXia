@@ -5696,8 +5696,6 @@ mod box_reading;
 mod clipped_focus;
 #[path = "close_request.rs"]
 mod close_request;
-#[path = "page_left.rs"]
-mod page_left;
 #[path = "combobox_semantics.rs"]
 mod combobox_semantics;
 #[path = "context_menu.rs"]
@@ -5716,6 +5714,8 @@ mod hover_pin;
 mod list_name;
 #[path = "orphan_overlays.rs"]
 mod orphan_overlays;
+#[path = "page_left.rs"]
+mod page_left;
 #[path = "pointer_events.rs"]
 mod pointer_events;
 #[path = "popover_anchor.rs"]
@@ -7421,6 +7421,87 @@ fn tab_onto_a_field_starts_editing_it_as_a_click_does() {
         serde_json::json!([0, 5]),
         "Shift+Tab returns to the field and selects it"
     );
+}
+
+#[test]
+fn tab_off_a_field_ends_its_editing_and_a_click_takes_focus_back() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-tab-one-owner").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let module = source(
+        "function render(){const a=useLocal('a','secret'),log=useLocal('log','');const say=s=>()=>log.set(log.value+s+' ');return h('view',{style:{gap:8}},h('input',{'data-testid':'a',bind:a,'aria-label':'A',onFocus:say('a+'),onBlur:say('a-')}),h('button',{'data-testid':'go',onClick(){}},'Go'),h('text',{'data-testid':'log'},log.value||'-'))}",
+    );
+    let host = platform.host(&worker, &module, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let settle = || {
+        platform.settle(&[&host]);
+        host.request_frame();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+    };
+    let query = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()
+    };
+    // The platform answers the editor dispatch by focusing it, as an input method does.
+    let grant = || {
+        let Some(Dispatch::Editor { node, .. }) = host.adapter().log.lock().unwrap().editors.pop()
+        else {
+            panic!("the editor dispatch reaches the input method");
+        };
+        let snapshot = host.snapshot().unwrap();
+        let identity = snapshot.frame.nodes[node].identity.to_string();
+        let (tx, rx) = channel();
+        host.input(
+            serde_json::json!({"op": "focus", "identity": identity, "generation": snapshot.generation.get()})
+                .to_string(),
+            move |reply| {
+                let _ = tx.send(reply);
+            },
+        );
+        platform.settle(&[&host]);
+        rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        settle();
+    };
+
+    assert!(host.key(Key::Tab, false, false));
+    settle();
+    grant();
+    assert_eq!(
+        (
+            query("a")["focused"].clone(),
+            query("go")["focused"].clone()
+        ),
+        (true.into(), false.into())
+    );
+
+    // Tab on to the button: the field stops editing, so focus has one owner.
+    assert!(host.key(Key::Tab, false, false));
+    settle();
+    assert_eq!(query("go")["focused"], true);
+    assert_eq!(
+        query("a")["focused"],
+        false,
+        "the field left behind no longer edits"
+    );
+    assert_eq!(query("log")["text"], "a+ a- ");
+
+    // A click on the field takes focus back from the button.
+    host.automation_request(&serde_json::json!({"op": "act", "css": "[data-testid=\"a\"]", "action": {"kind": "click"}}))
+        .unwrap();
+    settle();
+    grant();
+    assert_eq!(query("a")["focused"], true, "the click focused the field");
+    assert_eq!(
+        query("go")["focused"],
+        false,
+        "the button gave up focus to the click"
+    );
+    assert_eq!(query("log")["text"], "a+ a- a+ ");
 }
 
 #[path = "uncontrolled.rs"]
