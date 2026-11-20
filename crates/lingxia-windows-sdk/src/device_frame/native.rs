@@ -629,6 +629,23 @@ fn hide_device_frame_chrome(content: HWND) {
     clear_last_sync_rect(handle);
 }
 
+/// The framed screen `window` belongs to, as its content window or its bezel, with the
+/// screen's corner radius in that window's pixels.
+pub(super) fn framed_screen(window: isize) -> Option<(isize, i32)> {
+    let frames = DEVICE_FRAMES.get()?.lock().ok()?;
+    let (content, state) = frames
+        .iter()
+        .find(|(content, state)| **content == window || state.frame == window)?;
+    let mut client = RECT::default();
+    // SAFETY: reads a window's client size.
+    unsafe { WindowsAndMessaging::GetClientRect(hwnd_from_handle(*content), &mut client) }.ok()?;
+    let scale = client.right as f32 / state.spec.screen_width.max(1) as f32;
+    Some((
+        *content,
+        (screen_corner_radius(&state.spec) as f32 * scale).round() as i32,
+    ))
+}
+
 fn frame_state_by_frame<T>(
     frame: HWND,
     read: impl FnOnce(isize, &DeviceFrameState) -> T,

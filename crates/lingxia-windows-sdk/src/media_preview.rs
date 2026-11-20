@@ -27,8 +27,9 @@ use lingxia_platform::traits::media_interaction::{
 use serde_json::json;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BLACK_BRUSH, GetMonitorInfoW, GetStockObject, HBRUSH, MONITOR_DEFAULTTOPRIMARY, MONITORINFO,
-    MonitorFromWindow, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
+    BLACK_BRUSH, CreateRoundRectRgn, GetMonitorInfoW, GetStockObject, HBRUSH,
+    MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromWindow, SetBkMode, SetTextColor,
+    SetWindowRgn, TRANSPARENT, TextOutW,
 };
 use windows::Win32::Graphics::GdiPlus::{
     GdipCreateBitmapFromFile, GdipCreateBitmapFromStream, GdipCreateFromHDC, GdipDeleteGraphics,
@@ -170,29 +171,59 @@ pub(crate) fn ensure_gdiplus() {
     });
 }
 
+#[cfg(feature = "device-frame")]
+fn simulated_screen(window: HWND) -> Option<(isize, i32)> {
+    crate::device_frame::device_frame_screen(window.0 as isize)
+}
+
+#[cfg(not(feature = "device-frame"))]
+fn simulated_screen(_window: HWND) -> Option<(isize, i32)> {
+    None
+}
+
 fn run_session(request: PreviewMediaRequest) {
     ensure_gdiplus();
     let callback_id = request.callback_id;
 
-    // Cover the monitor the app currently sits on.
-    let monitor = unsafe {
-        MonitorFromWindow(
-            WindowsAndMessaging::GetForegroundWindow(),
-            MONITOR_DEFAULTTOPRIMARY,
-        )
+    let foreground = unsafe { WindowsAndMessaging::GetForegroundWindow() };
+    // A simulated phone previews on its own screen, as the device would; otherwise the
+    // preview covers the monitor the app sits on.
+    let screen = simulated_screen(foreground);
+    let area = match screen {
+        Some((content, _)) => {
+            let mut rect = RECT::default();
+            unsafe {
+                let _ = WindowsAndMessaging::GetWindowRect(HWND(content as *mut _), &mut rect);
+            }
+            rect
+        }
+        None => {
+            let monitor = unsafe { MonitorFromWindow(foreground, MONITOR_DEFAULTTOPRIMARY) };
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = GetMonitorInfoW(monitor, &mut info);
+            }
+            info.rcMonitor
+        }
     };
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        ..Default::default()
+    // Owned by the screen, it stays above it without floating over other apps.
+    let (ex_style, owner) = match screen {
+        Some((content, _)) => (
+            WindowsAndMessaging::WS_EX_NOACTIVATE,
+            Some(HWND(content as *mut _)),
+        ),
+        None => (
+            WindowsAndMessaging::WS_EX_TOPMOST | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            None,
+        ),
     };
-    unsafe {
-        let _ = GetMonitorInfoW(monitor, &mut info);
-    }
-    let area = info.rcMonitor;
 
     let Ok(window) = (unsafe {
         WindowsAndMessaging::CreateWindowExW(
-            WindowsAndMessaging::WS_EX_TOPMOST | WindowsAndMessaging::WS_EX_NOACTIVATE,
+            ex_style,
             preview_class(),
             PCWSTR::null(),
             WINDOW_STYLE(
@@ -204,7 +235,7 @@ fn run_session(request: PreviewMediaRequest) {
             area.top,
             area.right - area.left,
             area.bottom - area.top,
-            None,
+            owner,
             None,
             GetModuleHandleW(None)
                 .ok()
@@ -215,6 +246,14 @@ fn run_session(request: PreviewMediaRequest) {
         complete_request(&request, "error");
         return;
     };
+    if let Some((_, radius)) = screen.filter(|(_, radius)| *radius > 0) {
+        let (width, height) = (area.right - area.left, area.bottom - area.top);
+        unsafe {
+            let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+            // The window owns the region once set.
+            let _ = SetWindowRgn(window, Some(region), false);
+        }
+    }
 
     let Ok(surface) = (unsafe {
         WindowsAndMessaging::CreateWindowExW(

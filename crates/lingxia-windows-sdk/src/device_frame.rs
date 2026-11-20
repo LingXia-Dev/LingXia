@@ -306,6 +306,12 @@ pub(crate) fn device_frame_status_bar_height(window: isize) -> i32 {
     native::status_bar_height(window)
 }
 
+/// The simulated screen `window` (a framed content window or its bezel) shows, and its
+/// corner radius: what a full-screen surface of that app should cover.
+pub(crate) fn device_frame_screen(window: isize) -> Option<(isize, i32)> {
+    native::framed_screen(window)
+}
+
 pub(crate) fn device_frame_tab_bar(window: isize) -> Option<WindowsDeviceFrameTabBar> {
     native::tab_bar(window)
 }
