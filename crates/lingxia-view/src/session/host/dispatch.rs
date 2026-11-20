@@ -768,8 +768,8 @@ impl<A: PlatformAdapter> Inner<A> {
                     // Edges a superseded frame reached are reached again by the current one.
                     changed |= session.event(commit, handle)?;
                 }
-                for (handle, payload) in edges {
-                    changed |= session.text_event(commit, handle, &payload)?;
+                for edge in edges {
+                    changed |= session.scroll_edge(commit, &edge)?;
                 }
                 let update = if changed {
                     inner.drained(session)?

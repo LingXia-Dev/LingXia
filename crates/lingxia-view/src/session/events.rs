@@ -72,6 +72,30 @@ impl ViewSession {
         }
     }
 
+    /// An `onScrollEdge` from a presented frame. A newer View that superseded the frame
+    /// takes it through the same scroll's current callback: the tracker reports each change
+    /// once, so a dropped edge would leave the page's state wrong until the next change.
+    pub(crate) fn scroll_edge(
+        &mut self,
+        generation: lifecycle::CommitTicket,
+        edge: &crate::interaction::reach::Edge,
+    ) -> Result<bool, String> {
+        if self.presented_commit(generation) {
+            return self.text_event(generation, edge.handle, &edge.payload);
+        }
+        let current = self.retained.as_ref().and_then(|retained| {
+            retained
+                .nodes
+                .iter()
+                .find(|node| node.identity == edge.identity.as_str())
+                .and_then(|node| node.scroll.as_ref()?.on_scroll_edge)
+        });
+        match current {
+            Some(handle) if handle != 0 => self.text_event(self.generation, handle, &edge.payload),
+            _ => Ok(false),
+        }
+    }
+
     /// `outcome`: whether a callback ran, or why the click was refused.
     fn record_click(
         &mut self,

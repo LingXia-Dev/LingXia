@@ -2569,6 +2569,38 @@ fn a_list_at_its_end_that_shrinks_to_fit_is_at_both_edges() {
     );
 }
 
+/// The tracker tells each edge change once, so one from a frame a newer View superseded still
+/// reaches the scroll's current callback (scrolling.test.ts "many": `end=true` stuck after the
+/// rows grew back).
+#[test]
+fn a_scroll_edge_from_a_superseded_frame_reaches_the_current_callback() {
+    let source = source(
+        "function render(){const n=useLocal('n',2),end=useLocal('end','');return h('view',{},h('button',{onClick:()=>n.set(12)},end.value||'none'),h('scroll',{style:{height:100},onScrollEdge:(e)=>end.set(e.edge+'='+e.at)},...Array.from({length:n.value},(_,i)=>h('view',{key:String(i),style:{height:40}}))))}",
+    );
+    let mut page = ViewSession::new(&source).unwrap();
+    let first = page.layout(100, 300, 1.0).unwrap();
+    let seen = page.generation();
+    let scroll = first.nodes.iter().find(|n| n.scroll.is_some()).unwrap();
+    let edge = crate::interaction::reach::Edge {
+        handle: scroll.scroll.as_ref().unwrap().on_scroll_edge.unwrap(),
+        identity: scroll.identity.to_string(),
+        payload: r#"{"edge":"end","at":false}"#.into(),
+    };
+    let button = first.nodes.iter().find(|n| n.on_click.is_some()).unwrap();
+    assert!(page.click(seen, button.on_click.unwrap()).unwrap());
+    page.layout(100, 300, 1.0).unwrap();
+    assert!(
+        !page.text_event(seen, edge.handle, &edge.payload).unwrap(),
+        "a plain event from the superseded frame is dropped"
+    );
+    assert!(page.scroll_edge(seen, &edge).unwrap());
+    let label = |frame: &crate::DisplayList| frame.nodes.iter().any(|n| n.text == "end=false");
+    assert!(
+        label(&page.layout(100, 300, 1.0).unwrap()),
+        "the page heard the edge"
+    );
+}
+
 /// An unbound field's text lives in the core: another field taking focus keeps it, committed
 /// or still composing.
 #[test]

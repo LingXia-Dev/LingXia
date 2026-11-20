@@ -334,9 +334,9 @@ fn scroll_edge_reports_each_change_of_being_at_an_edge() {
             .presented(&frame(vec![feed(offset, max)]))
             .edges
             .into_iter()
-            .map(|(handle, payload)| {
-                assert_eq!(handle, 7);
-                payload
+            .map(|edge| {
+                assert_eq!((edge.handle, edge.identity.as_str()), (7, "feed"));
+                edge.payload
             })
             .collect::<Vec<_>>()
     };
@@ -365,6 +365,16 @@ fn scroll_edge_reports_each_change_of_being_at_an_edge() {
     assert!(
         told(&mut reach, 199.995, 200.0).is_empty(),
         "within the tolerance"
+    );
+    assert_eq!(
+        told(&mut reach, 200.0, 0.0),
+        [r#"{"edge":"start","at":true}"#],
+        "content that shrank to fit, before any scroll clamps the offset, is at both edges"
+    );
+    assert_eq!(
+        told(&mut reach, 0.0, 300.0),
+        [r#"{"edge":"end","at":false}"#],
+        "content that grew with no scroll leaves the end"
     );
     let mut reach = ReachTracker::default();
     assert_eq!(

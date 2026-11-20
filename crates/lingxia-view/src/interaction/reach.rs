@@ -13,10 +13,17 @@ pub struct ReachTracker {
     told: HashMap<String, [bool; 2]>,
 }
 
+/// An `onScrollEdge` call, with the scroll it came from so a newer View can rebind it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Edge {
+    pub handle: u64,
+    pub identity: String,
+    pub payload: String,
+}
+
 pub struct Reached {
     pub handles: Vec<u64>,
-    /// `onScrollEdge` callbacks and their payloads.
-    pub edges: Vec<(u64, String)>,
+    pub edges: Vec<Edge>,
     /// More edges are waiting for the next presentation.
     pub more: bool,
 }
@@ -35,10 +42,11 @@ impl ReachTracker {
         for node in &frame.nodes {
             let Some(scroll) = &node.scroll else { continue };
             alive.push(scroll.id.clone());
-            let at = [
-                scroll.offset <= 0.01,
-                scroll.offset >= scroll.max_offset - 0.01,
-            ];
+            // Content that shrank under a scrolled region is at its start before the frame
+            // that clamps the offset: no further frame may come to say so.
+            let max = scroll.max_offset.max(0.0);
+            let offset = scroll.offset.clamp(0.0, max);
+            let at = [offset <= 0.01, offset >= max - 0.01];
             if let Some(handle) = scroll.on_scroll_edge.filter(|handle| *handle != 0)
                 && visible(node)
             {
@@ -51,7 +59,11 @@ impl ReachTracker {
                         more = true;
                         continue;
                     }
-                    edges.push((handle, format!(r#"{{"edge":"{name}","at":{}}}"#, at[edge])));
+                    edges.push(Edge {
+                        handle,
+                        identity: node.identity.to_string(),
+                        payload: format!(r#"{{"edge":"{name}","at":{}}}"#, at[edge]),
+                    });
                     told[edge] = at[edge];
                 }
             }

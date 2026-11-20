@@ -209,7 +209,7 @@ pub enum Dispatch {
         commit: CommitTicket,
         handles: Vec<u64>,
         /// `onScrollEdge` callbacks with their JSON payloads.
-        edges: Vec<(u64, String)>,
+        edges: Vec<crate::interaction::reach::Edge>,
         more: bool,
     },
 }
