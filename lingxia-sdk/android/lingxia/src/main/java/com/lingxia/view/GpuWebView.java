@@ -312,9 +312,13 @@ final class GpuWebView extends FrameLayout {
         private int capturedWidth, capturedHeight;
         /** Resized over a good picture: capture again only once the page has drawn at the new size. */
         private boolean awaitingDraw;
+        private long awaitingSince;
+        /** The first visual-state request made after the resize; earlier ones may predate it. */
+        private long awaitedRequest;
         private final Runnable drawTimeout = () -> {
             if (awaitingDraw) {
                 awaitingDraw = false;
+                android.util.Log.i("LingXia.GpuWebView", "resize " + key + " timed out waiting for the page to draw");
                 invalidateCapture();
             }
         };
@@ -384,11 +388,13 @@ final class GpuWebView extends FrameLayout {
                 layout(left, top, left + width, top + height);
             }
             if (sizeChanged && ready && capturedWidth > 0 && webview instanceof WebView && customView == null
-                && (width > capturedWidth || height > capturedHeight)) {
-                // Grown: a capture before the page redraws at the new size is blank and would
-                // replace a good picture; the box keeps the old one until the page has drawn. A
-                // shrunk box captures at once, the old picture shrunk into it meanwhile.
+                && (width != capturedWidth || height != capturedHeight)) {
+                // Until the page redraws at the new size a capture is its old frame cropped, or
+                // black: the box keeps the old picture (shrunk into it, or at its own size) until
+                // the page has drawn.
                 awaitingDraw = true;
+                awaitingSince = android.os.SystemClock.uptimeMillis();
+                awaitedRequest = NEXT_VISUAL_REQ.get();
                 removeCallbacks(drawTimeout);
                 postDelayed(drawTimeout, 300);
             }
@@ -491,7 +497,11 @@ final class GpuWebView extends FrameLayout {
                 wv.postVisualStateCallback(NEXT_VISUAL_REQ.getAndIncrement(), new WebView.VisualStateCallback() {
                     @Override
                     public void onComplete(long requestId) {
-                        if (!detached) {
+                        if (!detached && (!awaitingDraw || requestId >= awaitedRequest)) {
+                            if (awaitingDraw) {
+                                android.util.Log.i("LingXia.GpuWebView", "resize " + key + " drawn after "
+                                    + (android.os.SystemClock.uptimeMillis() - awaitingSince) + " ms");
+                            }
                             awaitingDraw = false;
                             invalidateCapture();
                         }
