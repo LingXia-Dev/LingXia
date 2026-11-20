@@ -1680,6 +1680,35 @@ fn boolean_binding_updates_only_on_accepted_current_generation_activation() {
 }
 
 #[test]
+fn an_unbound_checkbox_owns_its_state_and_reports_each_change_once() {
+    let source = source(
+        "function render(){const seen=useLocal('seen','');const n=useLocal('n',0);return h('view',{},h('checkbox',{onChange:v=>seen.set(seen.value+(v?'1':'0'))},'Own'),h('switch',{'aria-label':'Free'}),h('checkbox',{value:false,onChange:()=>n.set(n.value+1)},'Fixed'),h('text',{},seen.value+'|'+n.value))}",
+    );
+    let mut session = ViewSession::new(&source).unwrap();
+    let frame = session.layout(240, 300, 1.0).unwrap();
+    let own = frame.nodes[1].on_click.unwrap();
+    assert_eq!(frame.nodes[1].checked, Some(false));
+    assert!(session.click(session.generation(), own).unwrap());
+    let frame = session.layout(240, 300, 1.0).unwrap();
+    assert_eq!(frame.nodes[1].checked, Some(true));
+    assert_eq!(frame.nodes[4].text, "1|0");
+    // The re-render the callback caused kept the value; the next press clears it.
+    assert!(session.click(session.generation(), frame.nodes[1].on_click.unwrap()).unwrap());
+    let frame = session.layout(240, 300, 1.0).unwrap();
+    assert_eq!(frame.nodes[1].checked, Some(false));
+    assert_eq!(frame.nodes[4].text, "10|0");
+    // No binding and no onChange: still operable, and repaints without a re-render.
+    assert!(session.click(session.generation(), frame.nodes[2].on_click.unwrap()).unwrap());
+    let frame = session.layout(240, 300, 1.0).unwrap();
+    assert_eq!(frame.nodes[2].checked, Some(true));
+    // A controlled box stays as the page says.
+    assert!(session.click(session.generation(), frame.nodes[3].on_click.unwrap()).unwrap());
+    let frame = session.layout(240, 300, 1.0).unwrap();
+    assert_eq!(frame.nodes[3].checked, Some(false));
+    assert_eq!(frame.nodes[4].text, "10|1");
+}
+
+#[test]
 fn action_response_runs_async_continuation_on_view_worker() {
     if !bounded_jobs() {
         return;
