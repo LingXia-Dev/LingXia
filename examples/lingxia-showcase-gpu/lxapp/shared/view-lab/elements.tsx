@@ -199,8 +199,7 @@ export function WebDragsDemo() {
   const plain = useLocal<Pin | null>('lab-web-plain-pin', null);
   const own = useLocal<Pin | null>('lab-web-own-pin', null);
   const loaded = useLocal('lab-web-drags-loaded', 0);
-  // The pages take the theme from the hash, which changes without reloading them.
-  const src = `public/embed/pin.html#${useView().env.theme}`;
+  const src = 'public/embed/pin.html';
   const t = useSay();
   const take = (into: Local<Pin | null>) => (ev: { data: unknown }) => {
     const msg = ev.data as Partial<Pin> & { kind?: string } | null;

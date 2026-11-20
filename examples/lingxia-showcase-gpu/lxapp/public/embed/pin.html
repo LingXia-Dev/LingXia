@@ -14,7 +14,7 @@
       color: #3730a3;
       font: 500 12px system-ui, -apple-system, sans-serif;
     }
-    /* The View page names its theme in the hash; a web view does not always follow the system's. */
+    /* The web view reports the View page's appearance as the system scheme. */
     html.dark body { background: #1e1b4b; color: #c7d2fe; }
     html.dark #pin { background: #818cf8; box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.3); }
     #where { position: absolute; left: 10px; bottom: 8px; }
@@ -36,13 +36,11 @@
   <div id="where"></div>
   <script>
     (function () {
-      function theme() {
-        var named = location.hash.slice(1);
-        var dark = named ? named === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.classList.toggle('dark', dark);
-      }
+      var scheme = window.matchMedia('(prefers-color-scheme: dark)');
+      function theme() { document.documentElement.classList.toggle('dark', scheme.matches); }
       theme();
-      window.addEventListener('hashchange', theme);
+      if (scheme.addEventListener) scheme.addEventListener('change', theme);
+      else scheme.addListener(theme);
 
       // The page cannot scroll; a drag anywhere moves the pin, kept whole inside the page, and
       // reports where it is. It starts centred by CSS: the page may have no size yet.
