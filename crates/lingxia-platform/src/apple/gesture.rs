@@ -33,7 +33,7 @@ impl AppGesture for Platform {
     }
 
     // Injected touches reach only the GPU page view; a chrome tap presses the host control
-    // under it. Of the chrome only the recovery panel over a GPU page is read.
+    // under it, or activates a dialog's action or a SwiftUI button as assistive technology does.
     #[cfg(target_os = "ios")]
     fn host_capabilities(&self) -> Vec<crate::traits::gesture::HostCapability> {
         vec![
@@ -1275,6 +1275,33 @@ mod ios {
                 if is_gpu_page(view) {
                     return Err("the tap lands on a GPU page; tap it as a page".to_string());
                 }
+                // A system alert's action and a SwiftUI button take no touches from code; they
+                // activate as assistive technology activates them.
+                if class_name(view).contains("AlertControllerActionView") {
+                    let done: bool = msg_send![view, accessibilityActivate];
+                    if done {
+                        return Ok(());
+                    }
+                }
+                if class_name(view).contains("HostingView") {
+                    let display: *mut AnyObject = msg_send![window, screen];
+                    let space: *mut AnyObject = msg_send![display, coordinateSpace];
+                    let screen: CGPoint =
+                        msg_send![window, convertPoint: point, toCoordinateSpace: space];
+                    for element in ax_elements(view) {
+                        let frame: CGRect = msg_send![element, accessibilityFrame];
+                        let inside = screen.x >= frame.origin.x
+                            && screen.y >= frame.origin.y
+                            && screen.x < frame.origin.x + frame.size.width
+                            && screen.y < frame.origin.y + frame.size.height;
+                        if inside {
+                            let done: bool = msg_send![element, accessibilityActivate];
+                            if done {
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
                 view = msg_send![view, superview];
             }
             Err(format!("no host control at {x:.0},{y:.0}"))
@@ -1314,17 +1341,37 @@ mod ios {
         unsafe { (*(value as *const objc2_foundation::NSString)).to_string() }
     }
 
-    /// The recovery panel over the GPU page on screen, in key-window points: its message and
-    /// buttons. Bars and tabs are not read on iOS.
+    fn class_name(view: *mut AnyObject) -> String {
+        unsafe { (*view).class() }
+            .name()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// An accessibility container's elements (SwiftUI draws its controls without views).
+    unsafe fn ax_elements(view: *mut AnyObject) -> Vec<*mut AnyObject> {
+        unsafe {
+            let count: isize = msg_send![view, accessibilityElementCount];
+            if count <= 0 || count == isize::MAX {
+                return Vec::new();
+            }
+            (0..count)
+                .map(|i| -> *mut AnyObject { msg_send![view, accessibilityElementAtIndex: i] })
+                .filter(|e| !e.is_null())
+                .collect()
+        }
+    }
+
+    const BUTTON_TRAIT: u64 = 1; // UIAccessibilityTraitButton
+    const STATIC_TEXT_TRAIT: u64 = 1 << 6; // UIAccessibilityTraitStaticText
+
+    /// Host chrome in the app's windows, in key-window points: bar and tab buttons, the
+    /// capsule, dialogs and action sheets, a toast, and the recovery panel over a GPU page.
+    /// Page content (WebKit, a GPU page's own nodes) is not read.
     pub(super) async fn chrome_elements(
         scope: Option<String>,
     ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
         use crate::traits::gesture::ChromeElement;
-        if let Some(other) = scope.as_deref().filter(|s| *s != "window") {
-            return Err(PlatformError::NotSupported(format!(
-                "iOS reads only the recovery panel over a GPU page, not {other}"
-            )));
-        }
         unsafe fn visible(view: *mut AnyObject) -> bool {
             unsafe {
                 let hidden: bool = msg_send![view, isHidden];
@@ -1332,84 +1379,176 @@ mod ios {
                 !hidden && alpha > 0.01
             }
         }
-        unsafe fn collect(
-            view: *mut AnyObject,
-            window: *mut AnyObject,
-            out: &mut Vec<ChromeElement>,
-        ) {
+        /// The visible text of a view's subtree, in order.
+        unsafe fn texts(view: *mut AnyObject) -> String {
             unsafe {
                 if !visible(view) {
-                    return;
+                    return String::new();
                 }
-                let button: bool = msg_send![view, isKindOfClass: objc2::class!(UIButton)];
                 let label: bool = msg_send![view, isKindOfClass: objc2::class!(UILabel)];
-                if button || label {
-                    let mut name = text(msg_send![view, accessibilityLabel]);
-                    if name.trim().is_empty() {
-                        name = if button {
-                            let title: *mut AnyObject = msg_send![view, titleLabel];
-                            if title.is_null() {
-                                String::new()
-                            } else {
-                                text(msg_send![title, text])
-                            }
-                        } else {
-                            text(msg_send![view, text])
-                        };
-                    }
+                if label {
+                    return text(msg_send![view, text]);
+                }
+                let subviews: *mut AnyObject = msg_send![view, subviews];
+                let count: usize = msg_send![subviews, count];
+                (0..count)
+                    .map(|i| texts(msg_send![subviews, objectAtIndex: i]))
+                    .filter(|t| !t.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        }
+        struct Reader {
+            screen: *mut AnyObject,
+            scope: Option<String>,
+            out: Vec<ChromeElement>,
+        }
+        impl Reader {
+            /// `rect` in the screen's space, as key-window points (the key window fills it).
+            unsafe fn push(
+                &mut self,
+                label: String,
+                role: &str,
+                area: &str,
+                selected: bool,
+                rect: CGRect,
+            ) {
+                let label = label.trim().to_owned();
+                // A control with no size yet would send a tap to the window's corner.
+                if label.is_empty() || rect.size.width <= 0.0 || rect.size.height <= 0.0 {
+                    return;
+                }
+                if self.scope.as_deref().is_some_and(|s| s != area) {
+                    return;
+                }
+                self.out.push(ChromeElement {
+                    label,
+                    role: role.into(),
+                    scope: area.into(),
+                    selected,
+                    bounds: [
+                        rect.origin.x,
+                        rect.origin.y,
+                        rect.size.width,
+                        rect.size.height,
+                    ],
+                });
+            }
+            unsafe fn frame(&self, view: *mut AnyObject) -> CGRect {
+                unsafe {
                     let bounds: CGRect = msg_send![view, bounds];
-                    let frame: CGRect = msg_send![view, convertRect: bounds, toView: window];
-                    // A control with no size yet would send a tap to the window's corner.
-                    let sized = frame.size.width > 0.0 && frame.size.height > 0.0;
-                    if sized && !name.trim().is_empty() {
-                        out.push(ChromeElement {
-                            label: name,
-                            role: if button { "button" } else { "text" }.into(),
-                            scope: "window".into(),
-                            selected: false,
-                            bounds: [
-                                frame.origin.x,
-                                frame.origin.y,
-                                frame.size.width,
-                                frame.size.height,
-                            ],
-                        });
-                    }
-                    return;
-                }
-                let subviews: *mut AnyObject = msg_send![view, subviews];
-                let count: usize = msg_send![subviews, count];
-                for index in 0..count {
-                    collect(msg_send![subviews, objectAtIndex: index], window, out);
+                    msg_send![view, convertRect: bounds, toCoordinateSpace: self.screen]
                 }
             }
-        }
-        unsafe fn walk(view: *mut AnyObject, window: *mut AnyObject, out: &mut Vec<ChromeElement>) {
-            unsafe {
-                if !visible(view) {
-                    return;
-                }
-                let subviews: *mut AnyObject = msg_send![view, subviews];
-                let count: usize = msg_send![subviews, count];
-                for index in 0..count {
-                    let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+            unsafe fn visit(&mut self, view: *mut AnyObject, area: &str) {
+                unsafe {
+                    if !visible(view) {
+                        return;
+                    }
+                    let name = class_name(view);
+                    if name.contains("WKWebView") {
+                        return;
+                    }
+                    // A GPU page's own content is not chrome; the host's recovery panel over it is.
                     if is_gpu_page(view) {
-                        if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
-                            // A panel added this run loop has no frames until laid out.
-                            let _: () = msg_send![child, layoutIfNeeded];
-                            collect(child, window, out);
+                        let subviews: *mut AnyObject = msg_send![view, subviews];
+                        let count: usize = msg_send![subviews, count];
+                        for index in 0..count {
+                            let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
+                            if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
+                                // A panel added this run loop has no frames until laid out.
+                                let _: () = msg_send![child, layoutIfNeeded];
+                                self.visit(child, "window");
+                            }
                         }
+                        return;
+                    }
+                    let here = if name.contains("TabBar") {
+                        "tabBar"
+                    } else if name.contains("NavigationBar") {
+                        "navigationBar"
+                    } else if name.contains("Capsule") {
+                        "capsule"
                     } else {
-                        walk(child, window, out);
+                        area
+                    };
+                    let control: bool = msg_send![view, isKindOfClass: objc2::class!(UIControl)];
+                    // A system alert's actions are views, not controls.
+                    let action = name.contains("AlertControllerActionView");
+                    if control || action {
+                        let mut label = text(msg_send![view, accessibilityLabel]);
+                        if label.trim().is_empty() {
+                            label = texts(view);
+                        }
+                        let role = if here == "tabBar" { "tab" } else { "button" };
+                        let selected: bool = control && msg_send![view, isSelected];
+                        let rect = self.frame(view);
+                        self.push(label, role, here, selected, rect);
+                        return;
+                    }
+                    // Text the host draws outside pages and bars (a dialog's title and message).
+                    let label: bool = msg_send![view, isKindOfClass: objc2::class!(UILabel)];
+                    if here == "window" && label {
+                        let rect = self.frame(view);
+                        self.push(text(msg_send![view, text]), "text", here, false, rect);
+                        return;
+                    }
+                    let subviews: *mut AnyObject = msg_send![view, subviews];
+                    let count: usize = msg_send![subviews, count];
+                    for index in 0..count {
+                        self.visit(msg_send![subviews, objectAtIndex: index], here);
+                    }
+                    // SwiftUI draws the bars, the capsule and a toast without views: read their
+                    // buttons and text as accessibility elements.
+                    if name.contains("HostingView") {
+                        for element in ax_elements(view) {
+                            let traits: u64 = msg_send![element, accessibilityTraits];
+                            let role = if traits & BUTTON_TRAIT != 0 {
+                                if here == "tabBar" { "tab" } else { "button" }
+                            } else if traits & STATIC_TEXT_TRAIT != 0 {
+                                "text"
+                            } else {
+                                continue;
+                            };
+                            let rect: CGRect = msg_send![element, accessibilityFrame];
+                            self.push(
+                                text(msg_send![element, accessibilityLabel]),
+                                role,
+                                here,
+                                false,
+                                rect,
+                            );
+                        }
                     }
                 }
             }
         }
-        on_main(|| {
-            let window = key_window().ok_or("no key window")?;
-            let mut out = Vec::new();
-            unsafe { walk(window, window, &mut out) };
-            Ok(out)
+        on_main(move || {
+            let key = key_window().ok_or("no key window")?;
+            unsafe {
+                let screen: *mut AnyObject = msg_send![key, screen];
+                let space: *mut AnyObject = msg_send![screen, coordinateSpace];
+                let mut reader = Reader {
+                    screen: space,
+                    scope,
+                    out: Vec::new(),
+                };
+                // Every window of the app, back to front: a toast has a window of its own.
+                let app: *mut AnyObject =
+                    msg_send![objc2::class!(UIApplication), sharedApplication];
+                let windows: *mut AnyObject = msg_send![app, windows];
+                let count: usize = msg_send![windows, count];
+                for index in 0..count {
+                    let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+                    // The keyboard is the system's, not the host's.
+                    let name = class_name(window);
+                    if name.contains("Keyboard") || name.contains("TextEffects") {
+                        continue;
+                    }
+                    reader.visit(window, "window");
+                }
+                Ok(reader.out)
+            }
         })
         .await
     }
