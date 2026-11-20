@@ -26,6 +26,7 @@ mod hot_swap;
 mod images;
 mod prepare;
 mod selection;
+mod uncontrolled;
 #[cfg(test)]
 pub(crate) mod tests;
 mod video;
@@ -109,6 +110,8 @@ pub struct ViewSession {
     /// Each player's state as its views last heard it.
     video_reported: HashMap<String, crate::scene::video::Status>,
     inputs: crate::interaction::input_state::Inputs,
+    /// Unbound controls' own values.
+    uncontrolled: uncontrolled::Uncontrolled,
     input_records: Option<std::sync::Arc<[crate::protocol::Record]>>,
     /// The records `retained` was laid out from: `input_records` as painted, with input values
     /// and state styles applied.
@@ -374,6 +377,7 @@ impl ViewSession {
             image_notified: Default::default(),
             video_reported: Default::default(),
             inputs: Default::default(),
+            uncontrolled: Default::default(),
             input_records: None,
             paint_records: None,
             wire: Default::default(),

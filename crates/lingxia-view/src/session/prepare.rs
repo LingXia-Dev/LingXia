@@ -627,13 +627,16 @@ impl ViewSession {
             };
             let mut orphan_closed = false;
             let mut inputs = self.inputs.clone();
+            let mut uncontrolled = self.uncontrolled.clone();
             let mut lists = self.lists.clone();
             for _ in 0..8 {
                 animation.validate(&records)?;
                 inputs.reconcile(&records, &mut self.renderer)?;
+                uncontrolled.reconcile(&records);
                 let mut render_records = records.to_vec();
                 strip_record_animations(&mut render_records);
                 inputs.apply_values(&mut render_records);
+                uncontrolled.apply(&mut render_records);
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
                 self.renderer.pressed.clone_from(&self.pressed);
@@ -809,7 +812,7 @@ impl ViewSession {
                             applied,
                             lists,
                             wanted,
-                            inputs,
+                            (inputs, uncontrolled),
                             records,
                             render_records,
                             input_dirty,
@@ -836,7 +839,7 @@ impl ViewSession {
                 applied,
                 lists,
                 wanted,
-                inputs,
+                (inputs, uncontrolled),
                 records,
                 render_records,
                 input_dirty,
@@ -849,6 +852,7 @@ impl ViewSession {
                 self.input_hits = Some(input_hits);
                 self.paint_records = Some(render_records);
                 self.inputs = inputs;
+                self.uncontrolled = uncontrolled;
                 let same_view = self
                     .input_records
                     .as_deref()

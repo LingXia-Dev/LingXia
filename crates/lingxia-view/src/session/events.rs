@@ -114,13 +114,22 @@ impl ViewSession {
     }
 
     pub(super) fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
-        self.execute(|| {
+        // An unbound control's press changes its own value; its callback hears the new one.
+        let pressed = self.uncontrolled.press(handle);
+        let call = match &pressed {
+            Some(value) => format!("__lingxiaDispatch({handle},{value})"),
+            None => format!("__lingxiaDispatch({handle})"),
+        };
+        let ran: bool = self.execute(|| {
             self.context
-                .eval(Source::from_bytes(
-                    format!("__lingxiaDispatch({handle})").as_bytes(),
-                ))
+                .eval(Source::from_bytes(call.as_bytes()))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
-        })
+        })?;
+        if pressed.is_some() {
+            // The control repaints with its own value whether or not the page re-renders.
+            self.input_dirty = true;
+        }
+        Ok(ran || pressed.is_some())
     }
 
     /// Only text callbacks accept this payload; stale displayed-frame events are ignored.
