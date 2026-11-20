@@ -486,6 +486,17 @@ impl ViewInteraction {
         if commit != frame.commit {
             return Vec::new();
         }
+        // A field focuses on a completed tap only: held on an unfocused one, the press stays
+        // and its release focuses it (sliding off or a cancel does not). A focused one selects.
+        if frame.node(index).is_some_and(|node| {
+            frame::editable(node)
+                && node
+                    .input
+                    .as_ref()
+                    .is_none_or(|input| input.edit_token.is_none())
+        }) {
+            return Vec::new();
+        }
         self.gesture.long_pressed = true;
         let mut effects = self.cancel_press();
         effects.push(Effect::Haptic);

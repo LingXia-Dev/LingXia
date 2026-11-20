@@ -2327,6 +2327,11 @@ impl<A: PlatformAdapter> Inner<A> {
             self.pump_images();
             self.schedule();
         } else {
+            // A page pushed over this one, or a tab switched away, takes the keyboard with it;
+            // a stopped window keeps the field focused for its return.
+            if !self.window_stopped() {
+                self.adapter.activation();
+            }
             // Nothing presents while hidden: held writes are acknowledged now.
             self.release_acks(u64::MAX);
             self.park_animations();

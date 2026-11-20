@@ -37,6 +37,8 @@ struct Log {
     events: Vec<AccessibilityEffect>,
     effects: Vec<Effect>,
     editors: Vec<Dispatch>,
+    /// Text input ended by a non-editor activation or a hidden page.
+    ended_input: usize,
     messages: Vec<(u64, String)>,
     signals: Vec<(u64, StateSignal)>,
     recovery: Vec<Option<Failure>>,
@@ -334,7 +336,9 @@ impl InputMethod for Fake {
     fn focus(&self, editor: &Dispatch, _: &FrameSnapshot) {
         self.main().editors.push(editor.clone());
     }
-    fn activation(&self) {}
+    fn activation(&self) {
+        self.main().ended_input += 1;
+    }
     fn reset(&self) {}
     fn edit_text(&self, node: usize, text: Option<&str>, start: i32, end: i32) -> EditOutcome {
         let outcome = self
@@ -1340,6 +1344,89 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
         .cloned()
         .collect();
     assert_eq!(lines.len(), 2, "one line per tap: {lines:?}");
+}
+
+/// One rule on every platform: a field focuses on a completed tap only.
+#[test]
+fn a_held_field_focuses_on_release_and_never_when_cancelled_or_slid_off() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','');return h('page',null,h('scroll',{style:{flexGrow:1}},h('view',{style:{padding:16,gap:16}},h('input',{'data-testid':'f',bind:v,'aria-label':'Name',style:{height:48,backgroundColor:'#ffffff'}}),h('view',{style:{height:200}}))))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let rect = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"f\"]"}))
+        .unwrap()["rect"]
+        .clone();
+    let edge = |key: &str| rect[key].as_f64().unwrap() as f32;
+    // Rects are in points; touches arrive in device pixels.
+    let scale = host.snapshot().unwrap().scale;
+    let at = [
+        (edge("left") + edge("width") / 2.0) * scale,
+        (edge("top") + edge("height") / 2.0) * scale,
+    ];
+    let pointer = |phase, [x, y]: [f32; 2]| {
+        host.pointer(Pointer {
+            phase,
+            x,
+            y,
+            slop: 8.0,
+            velocity: [0.0; 2],
+            min_fling: 50.0,
+        });
+    };
+    let editors = || host.adapter().log.lock().unwrap().editors.len();
+    // Held, then cancelled (the screen took the touch): no focus.
+    pointer(PointerPhase::Down, at);
+    host.long_press();
+    platform.settle(&[&host]);
+    assert_eq!(editors(), 0, "a held field does not focus mid-press");
+    host.cancel();
+    platform.settle(&[&host]);
+    assert_eq!(editors(), 0, "a cancelled touch never focuses");
+    // Held, then slid off and lifted: no focus.
+    pointer(PointerPhase::Down, at);
+    host.long_press();
+    pointer(PointerPhase::Move, [at[0], at[1] + 150.0 * scale]);
+    pointer(PointerPhase::Up, [at[0], at[1] + 150.0 * scale]);
+    platform.settle(&[&host]);
+    assert_eq!(editors(), 0, "lifted off the field");
+    // Held, then lifted on the field: focuses, as a tap.
+    pointer(PointerPhase::Down, at);
+    host.long_press();
+    pointer(PointerPhase::Up, at);
+    platform.settle(&[&host]);
+    let editors = host.adapter().log.lock().unwrap().editors.clone();
+    assert!(
+        matches!(&editors[..], [Dispatch::Editor { word: false, .. }]),
+        "released on the field: {editors:?}"
+    );
+}
+
+#[test]
+fn hiding_a_page_ends_its_text_input() {
+    let worker = ViewWorker::shared("test:hide-input").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('page',{})}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.adapter().log.lock().unwrap().ended_input,
+        1,
+        "a page pushed over it"
+    );
 }
 
 #[test]
