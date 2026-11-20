@@ -510,6 +510,7 @@ class LxAppActivity : AppCompatActivity() {
     private val heldTouches = ArrayList<android.view.MotionEvent>()
     private var holdingGesture = false
     private var replayingTouches = false
+    private var replayQueued = false
     private var gpuTransitionCover: android.widget.ImageView? = null
     private var gpuOutgoingCover: android.widget.ImageView? = null
     /** The outgoing page's copy in flight and the transitions waiting on it, in arrival order. */
@@ -1801,7 +1802,7 @@ class LxAppActivity : AppCompatActivity() {
      */
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         val down = event.actionMasked == android.view.MotionEvent.ACTION_DOWN
-        if (!replayingTouches && backHold != 0L && (holdingGesture || down)) {
+        if (!replayingTouches && (backHold != 0L || replayQueued) && (holdingGesture || down)) {
             if (!holdingGesture) LxLog.i(NAV_TAG, "touch held at ${event.x.toInt()},${event.y.toInt()} until the page a back returns to shows")
             holdingGesture = true
             if (heldTouches.size < 512) heldTouches.add(android.view.MotionEvent.obtain(event))
@@ -1825,13 +1826,20 @@ class LxAppActivity : AppCompatActivity() {
     private fun releaseBackHold(version: Long? = null) {
         if (backHold == 0L || (version != null && version != backHold)) return
         backHold = 0L
-        holdingGesture = false
-        if (heldTouches.isEmpty()) return
-        val held = ArrayList(heldTouches)
-        heldTouches.clear()
-        LxLog.i(NAV_TAG, "replaying ${held.size} held touch events")
+        if (heldTouches.isEmpty()) {
+            holdingGesture = false
+            return
+        }
+        // The rest of a held gesture keeps queueing until the replay: sent live, its up would
+        // reach the page before the replayed down.
+        replayQueued = true
         // Posted: the page shown in this turn takes the gesture after it is laid out.
         window.decorView.post {
+            val held = ArrayList(heldTouches)
+            heldTouches.clear()
+            replayQueued = false
+            holdingGesture = false
+            LxLog.i(NAV_TAG, "replaying ${held.size} held touch events")
             replayingTouches = true
             try {
                 held.forEach { dispatchTouchEvent(it) }
