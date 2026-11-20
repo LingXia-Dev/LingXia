@@ -1483,8 +1483,18 @@ mod ios {
                 rect: CGRect,
             ) {
                 let label = label.trim().to_owned();
-                // A control with no size yet would send a tap to the window's corner.
-                if label.is_empty() || rect.size.width <= 0.0 || rect.size.height <= 0.0 {
+                // A control with no size yet would send a tap to the window's corner, and one off
+                // the screen (a bar button laid out outside it) is not on view.
+                let screen: CGRect = unsafe { msg_send![self.screen, bounds] };
+                let on_screen = rect.origin.x < screen.origin.x + screen.size.width
+                    && rect.origin.y < screen.origin.y + screen.size.height
+                    && rect.origin.x + rect.size.width > screen.origin.x
+                    && rect.origin.y + rect.size.height > screen.origin.y;
+                if label.is_empty()
+                    || rect.size.width <= 0.0
+                    || rect.size.height <= 0.0
+                    || !on_screen
+                {
                     return;
                 }
                 if self.scope.as_deref().is_some_and(|s| s != area) {
@@ -1520,13 +1530,14 @@ mod ios {
                     }
                     // A GPU page's own content is not chrome; the host's recovery panel over it is.
                     if is_gpu_page(view) {
+                        // A panel added this run loop has no frame of its own until the page
+                        // lays it out, and its buttons none inside it.
+                        let _: () = msg_send![view, layoutIfNeeded];
                         let subviews: *mut AnyObject = msg_send![view, subviews];
                         let count: usize = msg_send![subviews, count];
                         for index in 0..count {
                             let child: *mut AnyObject = msg_send![subviews, objectAtIndex: index];
                             if text(msg_send![child, accessibilityIdentifier]) == "lx-recovery" {
-                                // A panel added this run loop has no frames until laid out.
-                                let _: () = msg_send![child, layoutIfNeeded];
                                 self.visit(child, "window");
                             }
                         }
