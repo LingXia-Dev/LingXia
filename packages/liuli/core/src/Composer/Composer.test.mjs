@@ -100,5 +100,6 @@ test('the send button is concentric with the box: its corner is the box\'s less 
   const screen = await renderExample('Composer/Composer', 'Reply');
   const send = screen.getByTestId('reply-send');
   const box = screen.queryAll(node => node.children.includes(send))[0];
-  assert.deepEqual([box.props.radius, box.props.paddingTop, send.props.radius], [14, 6, 8]);
+  assert.deepEqual([box.props.radius, box.props.paddingTop], [14, 6]);
+  assert.equal(send.props.radius, box.props.radius - box.props.paddingTop, 'derived from the box, so a pack with other corners stays concentric');
 });

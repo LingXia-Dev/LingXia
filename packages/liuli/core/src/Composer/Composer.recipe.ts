@@ -45,8 +45,8 @@ export const composerRecipe = {
     base: 'self-stretch p-0 bg-transparent text-body text-text placeholder:text-muted disabled:text-faint',
   },
   send: {
-    // Concentric with the box: its 14 px container corner less the 6 px padding.
-    base: 'col-start-3 rounded-[8px]',
+    // Concentric with the box: the pack's container corner less the 6 px padding.
+    base: 'col-start-3 rounded-[calc(var(--radius-container)-6px)]',
     stacked: 'order-3',
   },
   measure: {
