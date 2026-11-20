@@ -40,6 +40,7 @@ pub fn present_turn() -> Option<u64> {
     PRESENT_TURN.with(std::cell::Cell::get)
 }
 
+#[cfg(feature = "gpu")]
 pub(crate) fn mark_present_turn() -> u64 {
     static TURNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     if let Some(turn) = present_turn() {
