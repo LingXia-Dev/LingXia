@@ -165,7 +165,7 @@ export function Gaps() {
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `isSmooth` | `boolean` | `false` | Rounds the line between points without passing above or below them. |
 | `hasArea` | `boolean` | `false` | Fills under the line and measures it from zero. One series only. |
-| `hasEndDot` | `boolean` | `true` | Marks each line's latest value with a dot. |
+| `hasEndDot` | `boolean` | `hasEndLabel` | Marks each line's latest value with a dot. By default only with the end label, which the dot ties to its line; a lone dot at rest reads as a chosen point. |
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
 | `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |

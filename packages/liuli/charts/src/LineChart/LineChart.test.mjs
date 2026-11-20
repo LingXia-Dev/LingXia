@@ -27,6 +27,16 @@ test('Weight: the line fits its data edge to edge, the latest value is dotted, a
   assert.ok(end.strokeWidth > line.strokeWidth);
 });
 
+test('Smooth: without the end label no dot sits on the latest value at rest; asked for, it does', async () => {
+  const screen = await renderExample('LineChart/LineChart', 'Smooth');
+  assert.equal(drawing(screen).paths.length, 1, 'the line alone');
+  const asked = await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ t: 'a', v: 1 }, { t: 'b', v: 3 }, { t: 'c', v: 2 }];
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="V" hasEndDot /></page>; }`);
+  assert.equal(drawing(asked).paths.at(-1).d, 'M100 50h0.01');
+});
+
 test('Weight: the summary, then every row as a list item with its formatted value; the end labels are not read', async () => {
   const screen = await renderExample('LineChart/LineChart', 'Weight');
   screen.getByText('8 values from 6 Oct to 24 Nov. Lowest 70.5 kg at 24 Nov, highest 72.4 kg at 6 Oct. Falling: 72.4 kg first, 70.5 kg last.');

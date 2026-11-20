@@ -30,7 +30,10 @@ export interface LineChartProps {
   isSmooth?: boolean;
   /** Fills under the line and measures it from zero. One series only. @default false */
   hasArea?: boolean;
-  /** Marks each line's latest value with a dot. @default true */
+  /**
+   * Marks each line's latest value with a dot. By default only with the end label, which the dot
+   * ties to its line; a lone dot at rest reads as a chosen point. @default hasEndLabel
+   */
   hasEndDot?: boolean;
   /**
    * Shows the scale: round numbers at the start edge, each with a hairline across the plot. The
@@ -95,8 +98,8 @@ const maxRead = 60;
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart({
-  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false, hasEndDot = true,
-  hasScale, hasEndLabel = false, xLabels, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange,
+  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
+  hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange,
   domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps) {
   const formatValue = format ?? plain;

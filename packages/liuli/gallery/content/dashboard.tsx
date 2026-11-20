@@ -118,7 +118,6 @@ export function Content() {
             description={period.value === 'year' ? 'By month' : 'By day'}
             formatValue={euros}
             summarize={summarize}
-            hasArea
             isSmooth={period.value !== 'week'}
             value={day.value}
             onChange={day.set}

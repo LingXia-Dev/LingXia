@@ -1095,8 +1095,8 @@
           "name": "hasEndDot",
           "type": "boolean",
           "required": false,
-          "description": "Marks each line's latest value with a dot.",
-          "default": "true"
+          "description": "Marks each line's latest value with a dot. By default only with the end label, which the dot ties to its line; a lone dot at rest reads as a chosen point.",
+          "default": "hasEndLabel"
         },
         {
           "name": "hasScale",
