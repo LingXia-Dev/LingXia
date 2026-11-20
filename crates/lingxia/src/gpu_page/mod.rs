@@ -186,7 +186,8 @@ impl Lease {
             target_os = "android",
             target_os = "ios",
             target_os = "macos",
-            target_env = "ohos"
+            target_env = "ohos",
+            windows
         ))]
         webviews::clear_webviews(self.token, None);
         {

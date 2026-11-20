@@ -35,6 +35,9 @@ fn strip_fragment(s: &str) -> &str {
 struct PageWebViews {
     entries: BTreeMap<String, Entry>,
     order: Vec<String>,
+    /// The page documents were opened on. Kept to close them: by teardown the page may have
+    /// left its app, and the documents keep it alive until they close.
+    page: Option<lxapp::PageInstance>,
 }
 
 impl PageWebViews {
@@ -172,12 +175,16 @@ async fn reconcile_one(
     let Some(page) = page_of(token) else {
         return;
     };
-    let still_current = web_registry()
-        .get(&token)
-        .and_then(|p| p.entries.get(&web_id))
-        .is_some_and(|e| e.doc_id == doc_id && e.revision == revision);
-    if !still_current {
-        return;
+    {
+        let mut reg = web_registry();
+        let Some(views) = reg.get_mut(&token).filter(|p| {
+            p.entries
+                .get(&web_id)
+                .is_some_and(|e| e.doc_id == doc_id && e.revision == revision)
+        }) else {
+            return;
+        };
+        views.page.get_or_insert_with(|| page.clone());
     }
 
     if was_opened && let Some(doc) = page.embedded_document(&doc_id) {
@@ -378,11 +385,11 @@ pub(crate) fn exit_webview_fullscreen(token: Token, web_id: &str) {
 }
 
 pub(crate) fn clear_webviews(token: Token, ui_clear: Option<fn(Token)>) {
-    let had = web_registry().remove(&token).is_some();
+    let removed = web_registry().remove(&token);
     if let Some(clear) = ui_clear {
         clear(token);
     }
-    if had && let Some(page) = page_of(token) {
+    if let Some(page) = removed.and_then(|views| views.page.or_else(|| page_of(token))) {
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
             page.close_all_embedded_documents();
         }));
