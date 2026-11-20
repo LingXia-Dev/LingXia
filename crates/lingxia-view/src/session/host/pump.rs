@@ -767,8 +767,10 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
             };
             if (1..STALL_AFTER).contains(&run) {
-                self.adapter
-                    .warn(&format!("{}; the frame is dropped", error.unwrap_or_default()));
+                self.adapter.warn(&format!(
+                    "{}; the frame is dropped",
+                    error.unwrap_or_default()
+                ));
                 return self.schedule();
             }
         }
