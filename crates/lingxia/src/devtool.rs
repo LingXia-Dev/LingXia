@@ -94,8 +94,7 @@ pub(crate) fn lxapp_dev_config() -> Option<&'static LxAppDevConfig> {
 // surface (and the runner's call site) unchanged.
 pub use lxapp::device::{
     Appearance, Contrast, DeviceChange, DeviceController, DeviceEntry, DeviceState, device_get,
-    device_list, device_set,
-    register_device_controller,
+    device_list, device_set, register_device_controller,
 };
 
 fn resolve_runnable_lxapp_path(path: &std::path::Path) -> PathBuf {
