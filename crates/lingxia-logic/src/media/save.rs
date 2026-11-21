@@ -16,9 +16,10 @@ rong::js_api! {
     }
 }
 
-/// Saves a picture or a video into the system photo library. Which one it is
-/// comes from the file's type (its extension, else its leading bytes); any
-/// other file rejects `E_INVALID_ARG`.
+/// Save a picture or a video to the system photo library; which one comes from
+/// the file's extension, else its leading bytes.
+///
+/// @throws {E_INVALID_ARG} The file is neither.
 async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let resolved = lxapp

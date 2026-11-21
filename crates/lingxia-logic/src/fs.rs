@@ -193,10 +193,13 @@ struct JSFsRemoveOptions {
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct FileStats {
+    /// A regular file.
     #[js_name = "isFile"]
     is_file: bool,
+    /// A directory.
     #[js_name = "isDirectory"]
     is_directory: bool,
+    /// A symbolic link; the other fields describe the link itself.
     #[js_name = "isSymlink"]
     is_symlink: bool,
     /// Size in bytes.
@@ -282,11 +285,15 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct DirEntry {
+    /// The entry's name, one path component.
     name: String,
+    /// A regular file.
     #[js_name = "isFile"]
     is_file: bool,
+    /// A directory.
     #[js_name = "isDirectory"]
     is_directory: bool,
+    /// A symbolic link; it is not followed.
     #[js_name = "isSymlink"]
     is_symlink: bool,
 }
@@ -489,15 +496,13 @@ async fn run_file_picker(
         .map(Some)
 }
 
-/// Picks a folder. Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-/// completed selection resolves `{ status: 'ok', directory: { path, name } }`. Rejects when the
-/// picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
-/// the host has no readable system folder picker (Android, HarmonyOS phones and
-/// tablets) and `defaultPath` is not in lxapp storage.
+/// Ask the person for a folder; resolves `canceled` only when they dismiss the picker.
+/// The picked `path` is a read-only root that `lx.fs` reads and `lx.fs.copy`
+/// take as `<path>/<relative>`, each segment percent-encoded; nothing outside
+/// it resolves, including through a symlink.
 ///
-/// The `path` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
-/// source, also take `<path>/<relative>` with each segment percent-encoded. A
-/// child outside the directory, including through a symlink, does not resolve.
+/// @platform Android, HarmonyOS phones and tablets: no system folder picker, so only a `defaultPath` in lxapp storage works.
+/// @throws {E_NOT_SUPPORTED} No system folder picker and `defaultPath` is not in lxapp storage.
 async fn pick_directory(
     ctx: JSContext,
     options: Optional<JSPickDirectoryOptions>,

@@ -221,17 +221,12 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
     Ok(ParsedSidebarAction { item, handler })
 }
 
-/// Atomically replaces the complete desktop sidebar action declaration. Only the
-/// Control app may call this API. Ids must be non-empty and unique across both
-/// placements; header accepts at most two entries. `value` is footer-only and at
-/// most two footer entries may carry one. Icons must be bundled relative
-/// paths or runtime-managed `lx://` paths accessible to the Control app.
+/// Replace every desktop sidebar action at once; `[]` clears them. A refused
+/// list leaves the previous one showing. The shell runs each action's callback
+/// and infers nothing else. Control app only; call it on every Logic launch,
+/// since the list does not outlive the process.
 ///
-/// Every entry is bound to its generation-scoped callback. The shell invokes that
-/// callback but never infers navigation or selected state. Validation or host
-/// projection failure leaves the previous generation active. `replace([])` clears
-/// the chrome explicitly. Declarations are process-local, so call `replace` again
-/// on every Logic launch.
+/// @throws {E_INVALID_ARG} A duplicate or empty id, more than two header actions, or more than two footer values.
 fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<Promise> {
     let result = replace_now(&ctx, items);
     settled(&ctx, result)
@@ -254,11 +249,12 @@ fn replace_now(ctx: &JSContext, items: JSValue) -> JSResult<()> {
     commit_generation(ctx, |next| next.replace(next_items), next_handlers)
 }
 
-/// Atomically updates the icon, label, value, and/or disabled state of one stable
-/// id. Only the Control app may call this API. The patch must be non-empty;
-/// unknown fields are rejected. A `value` key that is present sets the value, and
-/// `undefined`, `null`, or `''` clears it. The callback and placement stay unchanged. Rejects
-/// with `E_NOT_FOUND` when `id` is not in the current declaration.
+/// Change one action's icon, label, value or disabled state at once; its
+/// callback and placement stay. A present `value` of `undefined`, `null` or `''`
+/// clears it. Control app only.
+///
+/// @throws {E_INVALID_ARG} An empty patch or an unknown field.
+/// @throws {E_NOT_FOUND} No action with this `id`.
 fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<Promise> {
     let result = update_now(&ctx, id, patch);
     settled(&ctx, result)
@@ -287,9 +283,9 @@ fn update_now(ctx: &JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
     commit_generation(ctx, |next| next.update(&id, patch), handlers)
 }
 
-/// Atomically removes one stable id and its generation-scoped callback. Only the
-/// Control app may call this API. Rejects with `E_NOT_FOUND` when `id` is not in
-/// the current declaration.
+/// Remove one action and its callback. Control app only.
+///
+/// @throws {E_NOT_FOUND} No action with this `id`.
 fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<Promise> {
     let result = remove_now(&ctx, id);
     settled(&ctx, result)

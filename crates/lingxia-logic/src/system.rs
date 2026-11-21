@@ -9,8 +9,10 @@ use rong::{IntoJSObject, JSContext, JSResult};
 /// System setting status
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct SystemSettingInfo {
+    /// Location services are on for the device.
     #[js_name = "locationEnabled"]
     location_enabled: bool,
+    /// Wi-Fi is on.
     #[js_name = "wifiEnabled"]
     wifi_enabled: bool,
 }

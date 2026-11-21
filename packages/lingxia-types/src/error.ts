@@ -3,11 +3,15 @@ import { ERR_CODE_INFO_BY_CODE, type LxErrorCode, type LxErrorCodeInfo } from ".
 
 const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
 
+/** A caught `lx` rejection, normalized. */
 export interface LxApiError {
   /** Closed union, so a mistyped literal in `error.code === …` is a type error. */
   readonly code: LxErrorCode;
+  /** The i18n key of the code's message. */
   readonly key: LxErrorCodeInfo["key"];
+  /** The host's detail when it gave one, else the error's message. */
   readonly message: string;
+  /** The value that was caught. */
   readonly raw: unknown;
 }
 
@@ -55,6 +59,7 @@ function parseIntegerCode(value: unknown): number | null {
   return null;
 }
 
+/** The numeric code on a caught rejection: its `code`, else `data.bizCode` or `data.code`. */
 export function extractLxErrorCode(error: unknown): number | null {
   const root = toRecord(error);
   if (!root) return null;
@@ -160,15 +165,18 @@ export const SURFACE_ERROR_CODES = [
   'failed',
 ] as const satisfies readonly SurfaceErrorCode[];
 
+/** Whether `code` is one the runtime defines. */
 export function isKnownLxErrorCode(code: number): code is LxErrorCode {
   return Number.isInteger(code) && Object.prototype.hasOwnProperty.call(ERR_CODE_INDEX, code);
 }
 
+/** The name and description of a known code; `null` for any other. */
 export function infoForLxErrorCode(code: number): LxErrorCodeInfo | null {
   if (!isKnownLxErrorCode(code)) return null;
   return ERR_CODE_INDEX[code];
 }
 
+/** Normalize a caught value; `null` when it carries no known code. */
 export function parseLxApiError(error: unknown): LxApiError | null {
   const code = extractLxErrorCode(error);
   if (code === null) return null;
@@ -181,12 +189,14 @@ export function parseLxApiError(error: unknown): LxApiError | null {
   };
 }
 
+/** Normalize a caught value; throws when it carries no known code. */
 export function requireLxApiError(error: unknown): LxApiError {
   const parsed = parseLxApiError(error);
   if (parsed) return parsed;
   throw new Error(`Unknown LingXia API error: ${readMessage(error)}`);
 }
 
+/** `[code] message`, for a log line. */
 export function formatLxApiError(error: LxApiError): string {
   return `[${error.code}] ${error.message}`;
 }

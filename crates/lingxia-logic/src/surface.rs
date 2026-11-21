@@ -414,9 +414,8 @@ struct WebSurfaceOptions {
     role: String,
 }
 
-/// `lx.surface.openPage(page, options?)` — one of this lxapp's own pages as a
-/// float or a window. A page can never be an aside: asides carry external
-/// content only, which is why that member does not exist on this signature.
+/// Open one of this lxapp's pages as a float or a window. A page is never an
+/// aside: asides carry external content only.
 async fn open_page(
     ctx: JSContext,
     page: String,
@@ -493,8 +492,7 @@ async fn open_page(
     finish_handle(&ctx, &handle, "page", Some(&realized), key, None)
 }
 
-/// `lx.surface.openUrl(url, options?)` — external content in the in-app
-/// browser, as a main tab or docked as an aside.
+/// Open a URL in the in-app browser, as a main tab or docked as an aside.
 pub(crate) async fn open_url(
     ctx: JSContext,
     url: String,
@@ -525,8 +523,7 @@ pub(crate) async fn open_url(
     browser_tab_handle(&ctx, opened, &realized, key)
 }
 
-/// `lx.surface.openDeclared(id, options?)` — a surface the host declared in
-/// `lingxia.yaml`. Without options it opens with the declaration's own
+/// Open a surface `lingxia.yaml` declares. Without options it opens with the declaration's own
 /// placement; `key`, `as` and `edge` change shared shell composition and are
 /// the Control app's.
 async fn open_declared(
@@ -574,8 +571,7 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
     Ok(JSValue::undefined(&ctx))
 }
 
-/// `lx.surface.openApp(appId, options)` — compose another lxapp into a shell
-/// slot. Control app only.
+/// Show another lxapp in a shell slot. Control app only.
 async fn open_app(
     ctx: JSContext,
     app_id: JSValue,
@@ -710,8 +706,7 @@ async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject>
     builtin_surface_handle(&ctx)
 }
 
-/// `lx.surface.openDeclared(id, { key, as, edge })` — the keyed
-/// multi-instance form and placement overrides. Control app only.
+/// Open a declared surface as a keyed instance or at another placement. Control app only.
 async fn open_declared_with_placement(
     ctx: JSContext,
     id: JSValue,
@@ -1695,8 +1690,11 @@ fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
     ))
 }
 
-/// Hand a URL to the OS: `https` opens the default browser, `tel:` and
-/// `mailto:` their apps. Synchronous; any other scheme throws.
+/// Hand a URL to the OS: `https` opens the system browser, `tel:` and
+/// `mailto:` their apps.
+///
+/// @throws {E_INVALID_ARG} Not an absolute URL.
+/// @throws {E_PERMISSION_DENIED} Any other scheme.
 fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let url = validate_external_url(&lxapp, &url)?;

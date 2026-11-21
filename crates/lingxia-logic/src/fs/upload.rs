@@ -512,15 +512,12 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
     }));
 }
 
-/// Upload a file over HTTP, streamed from disk.
+/// Upload a file over HTTP, streamed from disk. `method: 'PUT'` with
+/// `bodyMode: 'raw'` sends the file as the whole body, as presigned
+/// object-storage URLs expect. The task comes back before the transfer starts:
+/// `result` settles once, `progress` streams to one consumer, `cancel()` aborts.
 ///
-/// Defaults to a `POST` with a `multipart/form-data` body. Set
-/// `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
-/// body instead, which is what presigned object-storage URLs expect.
-///
-/// Returns the task handle synchronously, before the transfer starts, so
-/// progress and cancellation can be wired up without racing it: `result` settles
-/// once, `progress` streams to one consumer, and `cancel()` aborts.
+/// @default A `POST` with a `multipart/form-data` body.
 fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_upload_options(url, options)?;

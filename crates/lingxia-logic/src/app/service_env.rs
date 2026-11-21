@@ -6,6 +6,7 @@ use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvState {
+    /// The environment the app was built for.
     #[js_name = "buildEnv"]
     #[ts_type = "HostAppEnv"]
     build_env: String,
@@ -17,15 +18,19 @@ struct HostServiceEnvState {
     #[js_name = "nextLaunchEnv"]
     #[ts_type = "HostAppEnv"]
     next_launch_env: String,
+    /// Environments it may switch to.
     #[ts_type = "HostAppEnv[]"]
     available: Vec<String>,
+    /// Switching is allowed in this build.
     #[js_name = "canToggle"]
     can_toggle: bool,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvSwitchResult {
+    /// The environments after the switch.
     state: HostServiceEnvState,
+    /// The app asked the OS to close it so the next launch uses the new environment.
     #[js_name = "exitRequested"]
     exit_requested: bool,
     /// If present, the environment was saved; close and reopen the app manually.

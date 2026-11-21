@@ -23,7 +23,7 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     crate::namespace::child(ctx, &crate::app::app_namespace(ctx)?, "tray")
 }
 
-/// lx.host.tray.setIcon(icon) — replace the tray icon (a resource path).
+/// Replace the tray icon with a bundled resource.
 fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TraySetIcon)?;
     let lxapp = invocation.lxapp();
@@ -33,7 +33,7 @@ fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.host.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it.
+/// Set the text beside the icon (macOS). Empty clears it.
 fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TraySetTitle)?;
     let lxapp = invocation.lxapp();
@@ -43,7 +43,7 @@ fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.host.tray.show() — show the tray status item.
+/// Show the tray item.
 fn show(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TrayShow)?;
     let lxapp = invocation.lxapp();
@@ -53,7 +53,7 @@ fn show(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.host.tray.hide() — hide the tray status item.
+/// Hide the tray item.
 fn hide(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TrayHide)?;
     let lxapp = invocation.lxapp();
@@ -63,9 +63,8 @@ fn hide(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.host.tray.onClick(handler) — left-click on the tray icon. While at least one
-/// handler is registered, the left-click runs only the handler(s); the tray's
-/// configured surface action is suppressed. Returns an unsubscribe function.
+/// Run `handler` on a left-click of the tray icon. While any handler is
+/// registered, the tray's declared action does not run. Returns an unsubscribe function.
 fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
     let scope = ctx.clone();
     lxapp::lx::subscribe(&scope, options.0, move || {
@@ -92,10 +91,7 @@ fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSRe
     })
 }
 
-/// lx.host.tray.setMenu(items) — replace the tray dropdown menu. Each item is
-/// `{ label, onClick?, enabled?, checked? }` or `{ separator: true }`. The native
-/// menu is built from labels; clicks are routed back to each item's `onClick` by
-/// index over the app event bus.
+/// Replace the tray's dropdown menu. A picked item runs its `onClick`.
 fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TraySetMenu)?;
     let lxapp = invocation.lxapp();

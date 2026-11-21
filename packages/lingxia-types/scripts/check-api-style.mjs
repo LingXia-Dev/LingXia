@@ -19,17 +19,30 @@ const rules = {
   "readonly-array-param": "an array parameter is `readonly`",
   "required-member": "an API member is never optional; a missing capability rejects `E_NOT_SUPPORTED`",
   "summary": "every member and every option or result field has a one-sentence summary",
+  "tags": "an error code, a `lx.supports` key or a default named in prose is written as `@throws {E_…}`, `@supports key` or `@default value`",
+  "doc-length": "a member's doc is at most 12 lines; details go on its option and result fields",
+  "jargon": "a summary says what the member does, without its own path or internal terms",
 };
 
 const { members, types } = catalogue();
 const findings = [];
 const find = (rule, path) => findings.push(`${rule} ${path}`);
+const proseDefault = /(^|[.;:(]\s*)Default\b|\(default\b|\bdefaults? (to|is)\b|\bby default\b/;
+const jargon = /^`?lx\.[\w.]+\(|\b(Rong|js_api|LogicRoute|native-assigned|appservice|bizCode|generation-scoped|event bus)\b/;
+function checkDoc(path, item) {
+  if (/\bE_[A-Z_]+/.test(item.doc) && !item.tags.includes("throws")) find("tags", path);
+  if (/lx\.supports\(/.test(item.doc) && !item.tags.includes("supports")) find("tags", path);
+  if (proseDefault.test(item.doc) && !item.tags.includes("default")) find("tags", path);
+  if (jargon.test(item.summary)) find("jargon", path);
+}
 // Brands and exclusivity guards (`page?: never`) are not fields a person reads.
 const isGuard = field => field.name.startsWith("__@") || field.type === "undefined" || field.type === "never";
 
 for (const member of members) {
   const name = member.path.split(".").pop();
   if (!member.summary) find("summary", member.path);
+  checkDoc(member.path, member);
+  if (member.doc.split("\n").length + member.tags.length > 12) find("doc-length", member.path);
   if (member.optional) find("required-member", member.path);
   if (member.kind !== "method") continue;
   if (/^get[A-Z]/.test(name)) find("no-get-read", member.path);
@@ -50,6 +63,7 @@ for (const [type, fields] of types) {
     if (isGuard(field)) continue;
     const path = `${type}.${field.name}`;
     if (!field.summary) find("summary", path);
+    checkDoc(path, field);
     if (/^(filePath|uri|sizeBytes|mimeType)$|Seconds$/.test(field.name)) find("field-name", path);
     if (field.name === "status") {
       const values = [...field.type.matchAll(/"([^"]+)"/g)].map(([, value]) => value);

@@ -14,8 +14,10 @@ rong::js_api! {
     }
 }
 
-/// A vibration pulse, where the device has a vibrator: `short` (default) or
-/// `long`. Rejects `E_NOT_SUPPORTED` where it has none.
+/// A vibration pulse, `short` or `long`.
+///
+/// @default 'short'
+/// @throws {E_NOT_SUPPORTED} The device has no vibrator.
 fn haptics(ctx: JSContext, kind: Optional<String>) -> JSResult<()> {
     let long = match kind.0.as_deref() {
         None | Some("short") => false,

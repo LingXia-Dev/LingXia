@@ -6,21 +6,29 @@ use rong::{IntoJSObject, JSContext, JSResult};
 /// Device info APIs.
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct DeviceInfo {
+    /// Manufacturer, e.g. `Apple`, `Xiaomi`.
     brand: String,
+    /// Model identifier, e.g. `iPhone12,1`.
     model: String,
+    /// Name the device is sold under, e.g. `iPhone 11`.
     #[js_name = "marketName"]
     market_name: String,
+    /// Operating system family.
     #[js_name = "osName"]
     #[ts_type = "HostOs"]
     os_name: String,
+    /// Operating system version, e.g. `18.2`.
     #[js_name = "osVersion"]
     os_version: String,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct ScreenInfo {
+    /// Width in logical pixels.
     width: f64,
+    /// Height in logical pixels.
     height: f64,
+    /// Physical pixels per logical pixel.
     scale: f64,
 }
 

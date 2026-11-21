@@ -49,7 +49,7 @@ export function catalogue() {
     // An API object (methods only) is walked as members, not as data.
     if (fields.length && fields.every(field => checker.getTypeOfSymbolAtLocation(field, at).getCallSignatures().length > 0)) return;
     types.set(name, fields.map(field => ({
-      name: field.name, summary: summary(field), optional: !!(field.flags & ts.SymbolFlags.Optional),
+      name: field.name, summary: summary(field), doc: docText(field), tags: tags(field), optional: !!(field.flags & ts.SymbolFlags.Optional),
       type: text(checker.getTypeOfSymbolAtLocation(field, at)),
     })));
     for (const field of fields) collectType(checker.getTypeOfSymbolAtLocation(field, at), `${name}.${field.name}`, seen);

@@ -32,27 +32,19 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-/// Replace the clipboard with Unicode text.
+/// Replace the clipboard with Unicode text; `''` is text, not `clear()`. No
+/// toast is shown.
 ///
-/// Empty string is a valid payload (it is not `clear()`). The runtime does not
-/// present a toast — call `lx.ui.toast` if the product wants one. Rejects
-/// `E_INVALID_ARG` above 1 MiB.
+/// @throws {E_INVALID_ARG} Text above 1 MiB.
 async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
     write_item(&ctx, ClipboardWrite::Text(validate_text(&text)?)).await
 }
 
-/// Read Unicode text.
+/// Read the clipboard's text: `empty` when it holds none, `canceled` when the
+/// person dismisses the OS paste prompt (iOS 16+, macOS 15.4+).
 ///
-/// Resolves `{ status: 'canceled' }` only when the user dismisses the OS paste
-/// prompt (iOS 16+, macOS 15.4+). No text representation (empty clipboard, or
-/// image-only) resolves `{ status: 'empty' }`. A copied empty
-/// string resolves `{ status: 'ok', text: '' }`.
-///
-/// Rejects `E_PERMISSION_DENIED` when the host denies clipboard access
-/// outright: a macOS "never allow" setting, or HarmonyOS without
-/// `ohos.permission.READ_PASTEBOARD`. Android denies a read while the app has
-/// no window focus and reports it as an empty clipboard, so read in response
-/// to a user action.
+/// @platform Android: an unfocused app reads `empty`, so read in response to a person's action.
+/// @throws {E_PERMISSION_DENIED} macOS set to never allow, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
 async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
     let contents = read_contents(&ctx, Some(ClipboardKind::Text)).await?;
     if contents.canceled {
@@ -72,8 +64,7 @@ async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
 
 /// Replace the clipboard with a typed item.
 ///
-/// Rejects `E_INVALID_ARG` for text above 1 MiB or an image file that does not
-/// decode.
+/// @throws {E_INVALID_ARG} Text above 1 MiB, or an image file that does not decode.
 async fn write(ctx: JSContext, item: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let item = parse_write_item(&lxapp, item)?;

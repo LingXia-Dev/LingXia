@@ -24,10 +24,13 @@ struct HostInfo {
     /// `"Harmony"`. Matches the View-side `useLxHost().os` value.
     #[ts_type = "HostOs"]
     os: String,
+    /// The product's name.
     #[js_name = "productName"]
     product_name: String,
+    /// The product's version.
     #[js_name = "version"]
     version: String,
+    /// The LingXia runtime version.
     #[js_name = "sdkVersion"]
     sdk_version: String,
 }
@@ -64,22 +67,17 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// Mark the product in system chrome, for example with an unread count.
+/// Mark the product in system chrome, such as with an unread count; `null` or
+/// `''` clears it. Control app only. Resolves whether anything was painted, and
+/// `false` where there is no such chrome, so portable code calls it unconditionally.
 ///
-/// One call, because "where the count goes" is the platform's answer, not the
-/// caller's: `auto` paints every product-owned surface this platform has — the
-/// dock and the menu-bar item on macOS, the taskbar and the notification-area
-/// item on Windows, the home-screen icon on iOS and HarmonyOS. Name a
-/// `surface` only when one of them is the point.
-///
-/// It is the product's chrome, not the calling lxapp's, so it is Control app
-/// only. Null or an empty string clears it.
-///
-/// Returns whether anything was actually painted. A platform with no such
-/// chrome is a no-op that returns `false` rather than an error — portable code
-/// can call this unconditionally. A hidden tray item, a macOS app denied
-/// notifications, and Android resolve `false`; iOS paints numbers only and
-/// needs notification permission.
+/// @platform macOS: the dock and the menu-bar item; `false` while the tray item is hidden or notifications are denied.
+/// @platform Windows: the taskbar and the notification-area item.
+/// @platform iOS: the home-screen icon, numbers only; needs notification permission.
+/// @platform HarmonyOS: the home-screen icon.
+/// @platform Android: resolves `false`.
+/// @throws {E_INVALID_ARG} Text where the platform paints numbers only.
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
 async fn set_app_badge(
     ctx: JSContext,
     value: JSValue,

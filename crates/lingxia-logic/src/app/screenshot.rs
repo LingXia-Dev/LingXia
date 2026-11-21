@@ -44,7 +44,7 @@ rong::js_api! {
     }
 }
 
-/// `lx.host.screenshot(options?)` — capture the host app's window as a PNG.
+/// Capture the host app's window as a PNG.
 ///
 /// App-level semantics, one level above any page/WebView capture: the image
 /// is what the user sees of the whole app — host-drawn navigation chrome,

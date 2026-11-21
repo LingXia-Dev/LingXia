@@ -121,19 +121,8 @@ rong::js_api! {
     }
 }
 
-/// Synchronously returns a JS handle so listeners can be attached before the
-/// first event fires:
-/// - `presented`: resolves `{ status: 'presented' }` only after the first
-///   frame; otherwise `{ status: 'notPresented', reason }`. Never rejects.
-/// - `current`: `{ index, source }` snapshot of the item on screen, updated
-///   live as the user swipes / the session auto-advances.
-/// - `onChange(listener)`: fires `{ index, source }` for every item change
-///   (the initial item is seeded into `current`, and re-fired by native so
-///   late platforms still converge); returns an unsubscribe function.
-/// - `completed`: Promise resolving `{ reason, index, source }` when the
-///   session ends, or rejecting on abort / error. `source` is the item that
-///   was on screen when the preview closed — handed back verbatim so the
-///   caller never re-indexes their own array.
+/// Show images and videos full screen. The handle comes back at once, so
+/// listeners attach before the first event.
 fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let parsed = parse_preview_request(&lxapp, options)?;

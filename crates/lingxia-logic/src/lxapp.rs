@@ -3,16 +3,20 @@ use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppInfo {
+    /// This lxapp's id.
     #[js_name = "appId"]
     app_id: String,
+    /// Its display name.
     name: String,
+    /// Its version, from `lxapp.json`.
     version: String,
+    /// The channel it was installed from.
     #[js_name = "channel"]
     #[ts_type = "LxAppReleaseType"]
     release_type: String,
-    /// `'control'` is the product's Control app, the only lxapp Control-only
-    /// members admit. `'control-surface'` is a host-bundled settings UI the
-    /// Control app opens (Terminal Settings), admitted only to its own members.
+    /// What this lxapp may call. `control`: the product's own lxapp, admitted to
+    /// Control-only members. `control-surface`: a host-bundled settings lxapp the
+    /// Control app opens, admitted only to its own members. `guest`: any other.
     #[ts_type = "'control' | 'control-surface' | 'guest'"]
     role: &'static str,
 }

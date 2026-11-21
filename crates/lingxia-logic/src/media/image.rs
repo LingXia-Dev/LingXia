@@ -18,10 +18,14 @@ struct JSGetImageInfoOptions {
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct ImageInfo {
+    /// Width in pixels.
     width: u32,
+    /// Height in pixels.
     height: u32,
+    /// MIME type, e.g. `image/jpeg`.
     #[js_name = "type"]
     image_type: String,
+    /// A path the image can be read from.
     path: String,
 }
 

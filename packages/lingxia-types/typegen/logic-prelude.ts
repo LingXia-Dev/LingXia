@@ -100,8 +100,11 @@ export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
 export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
   | {
+      /** Bytes arrived, or the transfer paused or resumed. */
       kind: 'progress' | 'paused' | 'resumed';
+      /** Bytes written so far. */
       downloadedBytes?: number;
+      /** The full size, when the server named it. */
       totalBytes?: number;
       /** Present only when the total size is known. */
       progress?: number;
@@ -125,7 +128,9 @@ export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: '
 
 /** A running operation. Progress has one consumer; stopping observation does not cancel it. */
 export interface Task<TResult, TProgress> {
+  /** Settles once with the outcome. */
   readonly result: Promise<TResult>;
+  /** Progress events while it runs; ends when it finishes. */
   readonly progress: AsyncIterable<TProgress>;
 }
 
@@ -163,7 +168,13 @@ export type MessageIn<M> = [M] extends [never] ? unknown : M extends { in: infer
 export type MessageOut<M> = [M] extends [never] ? unknown : M extends { out: infer O } ? O : never;
 
 /** A page to push or replace. `params` is required when the page's declared params have a required key. */
-export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
+export type PageTarget<N = ConfiguredPageName> = {
+    /** A page this lxapp declares. */
+    page: N;
+    tab?: never;
+    app?: never;
+    url?: never;
+}
     & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
 
 /** What `lx.nav.go` returns for a pushed page. */
@@ -171,7 +182,12 @@ export type PageHandle<R = JsonValue, M = never> = {
     /** Settles when the page is on screen; rejects when it could not open. */
     readonly opened: Promise<void>;
     /** Settles once, after the page's `onUnload`. */
-    readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    readonly result: Promise<{
+        /** The page gave a result. */
+        status: 'ok';
+        /** What it set by `setResult` or `close(value)`. */
+        value: R;
+    } | Extract<PageResult, { status: 'canceled' }>>;
     /**
      * Delivers `message` to the page's `page.opener.onMessage` handlers, at
      * once and uncopied. Until the page first subscribes, messages wait for it.
@@ -203,22 +219,27 @@ declare global {
   interface NavApi {
     /**
      * Push a page. The handle is returned at once: `opened` settles when the
-     * page is on screen, `result` when it leaves.
-     *
-     * Throws `E_INVALID_ARG` for a malformed target (an unknown key, params
-     * over 8 KB as JSON) or when ten pages are already stacked
-     * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
-     * not declare. `opened` rejects only when the platform fails to show it.
+     * page is on screen, and rejects only when the platform cannot show it;
+     * `result` settles when it leaves.
+     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, or ten pages already stacked (`data.reason: 'stack_full'`).
+     * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
     /** Replace the current page; the new page inherits its opener and pending result. */
-    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: {
+      /** Replace instead of push. */
+      replace: true;
+    }): Promise<void>;
     /**
      * Switch tabs, open another lxapp, or open a URL in the in-app browser.
-     * A `{ tab }` takes no params. Rejects `E_NOT_FOUND` for an undeclared tab.
+     * A `{ tab }` takes no params.
+     * @throws {E_NOT_FOUND} An undeclared tab.
      */
     go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
-    /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
+    /**
+     * Pop `n` pages, stopping at the root. Resolves once the revealed page is ready.
+     * @param [n=1] How many pages to pop.
+     */
     back(n?: number): Promise<void>;
     /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
     reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
@@ -233,28 +254,30 @@ declare global {
   // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
-     * The host deployment environment from `app.json::env` (`dev` | `prod`).
-     * It is fixed at boot and defaults to `prod` for older artifacts.
-     * Not the lxapp publish channel (`release` | `draft`).
+     * The host's deployment environment from `app.json`, fixed at launch. Not
+     * the lxapp's publish channel (`release` | `draft`).
+     * @default 'prod'
      */
     readonly env: HostAppEnv;
 
     /**
-     * Launch-at-startup control. Where the host cannot register a startup
-     * item every call fails `E_NOT_SUPPORTED`; ask `lx.supports('app.autostart')`
-     * first.
+     * Launch the host app when the user signs in.
+     * @supports app.autostart
+     * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
     readonly autostart: AutostartApi;
 
     /**
-     * Local notifications. Where the host cannot post them every call fails
-     * `E_NOT_SUPPORTED`; ask `lx.supports('app.notification')` first.
+     * Local notifications, posted now or scheduled.
+     * @supports app.notification
+     * @throws {E_NOT_SUPPORTED} The host cannot post them.
      */
     readonly notification: NotificationApi;
 
     /**
-     * Product-drawn desktop banner (top-right). Off desktop every call fails
-     * `E_NOT_SUPPORTED`; ask `lx.supports('app.banner')` first.
+     * A banner the product draws at the top right of the desktop.
+     * @supports app.banner
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     readonly banner: BannerApi;
 
@@ -271,15 +294,15 @@ declare global {
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide cache reporting and clearing for a settings screen. Control
-     * app only: another lxapp's calls fail `E_PERMISSION_DENIED`.
+     * The product-wide cache, reported and cleared for a settings screen.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
     readonly cache: AppCacheApi;
 
     /**
-     * Terminal product settings, for the host-bundled Terminal Settings lxapp.
-     * Without `capabilities.terminal` every call fails `E_NOT_SUPPORTED`; ask
-     * `lx.supports('terminal')` first.
+     * Terminal settings, for the host-bundled Terminal Settings lxapp.
+     * @supports terminal
+     * @throws {E_NOT_SUPPORTED} Without `capabilities.terminal`.
      */
     readonly terminal: TerminalApi;
 
@@ -290,6 +313,33 @@ declare global {
      * `update.apply()` claims as well. `checkUpdate()` does not.
      */
     claimCustomUpdate(): void;
+
+    /** The host app's identity: OS, product name and version, runtime version. */
+    readonly info: Readonly<HostInfo>;
+
+    /** The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. */
+    readonly tray: TrayApi;
+  }
+
+  interface LxAppApi {
+    /** This lxapp's identity: id, name, version and channel. */
+    readonly info: Readonly<AppInfo>;
+
+    /** This lxapp's tab bar: items, badges and visibility. */
+    readonly tabBar: TabBarApi;
+  }
+
+  interface DeviceApi {
+    /** The device's maker, model and OS. */
+    readonly info: Readonly<DeviceInfo>;
+
+    /** Screen orientation: read it, lock it, follow it. */
+    readonly orientation: OrientationApi;
+  }
+
+  interface ShellApi {
+    /** The action rows the desktop sidebar shows for this lxapp. */
+    readonly sidebarActions: ShellSidebarActionsApi;
   }
 
   interface FileSystemApi {
@@ -300,6 +350,9 @@ declare global {
   }
 
   interface NetworkApi {
+    /** Wi-Fi: scan, connect and follow the connected network. */
+    readonly wifi: WifiApi;
+
     /**
      * Download over HTTP(S), streamed to disk. Returns the task before the
      * transfer starts: `result` settles once, `progress` streams, `cancel()`
@@ -321,6 +374,31 @@ declare global {
   }
 
   interface Lx {
+    /** The host app: identity, notifications, badges, appearance, language, cache and updates. */
+    readonly host: HostAppApi;
+    /** Read and write the system clipboard. */
+    readonly clipboard: ClipboardApi;
+    /** The device: identity, screen, orientation, location, keys and haptics. */
+    readonly device: DeviceApi;
+    /** Network status, downloads, uploads and Wi-Fi. */
+    readonly network: NetworkApi;
+    /** This lxapp's files under `lx://` paths. */
+    readonly fs: FileSystemApi;
+    /** This lxapp: identity, tab bar, More actions and its own updates. */
+    readonly app: LxAppApi;
+    /** Image and video information, compression, preview and saving to the library. */
+    readonly media: MediaApi;
+    /** Ask the person for files, a directory, photos or videos, or a scanned code. */
+    readonly pick: PickApi;
+    /** Open pages, apps and URLs as floats, windows, asides and tabs. */
+    readonly surface: SurfaceApi;
+    /** Move between pages, tabs and lxapps. */
+    readonly nav: NavApi;
+    /** The desktop shell: running apps, declared surfaces, builtins and sidebar actions. */
+    readonly shell: ShellApi;
+    /** Dialogs, action sheets and toasts. */
+    readonly ui: UiApi;
+
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of

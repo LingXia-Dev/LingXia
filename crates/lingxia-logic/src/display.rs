@@ -34,8 +34,9 @@ fn should_emit_orientation_event_after_set() -> bool {
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
 }
 
-/// Lock this lxapp to `portrait` or `landscape`. Any other value throws
-/// `E_INVALID_ARG`.
+/// Lock this lxapp to `portrait` or `landscape`.
+///
+/// @throws {E_INVALID_ARG} Any other value.
 fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
     if orientation != "portrait" && orientation != "landscape" {
         return Err(js_invalid_parameter_error(format!(
