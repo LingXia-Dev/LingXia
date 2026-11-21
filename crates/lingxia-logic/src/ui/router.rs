@@ -216,6 +216,7 @@ fn tab_url(lxapp: &LxApp, name: &str) -> JSResult<String> {
 /// root pushes its one instance, refused while that instance is on the stack.
 fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(ctx)?;
+    let appid = lxapp.appid.clone();
     let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
     // Refuse before resolving the target: a refused push must not touch the
     // query or opener of a page already on the stack.
@@ -277,7 +278,41 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
     handle.set("opened", opened)?;
     handle.set("result", result)?;
     handle.set("close", close)?;
+    report_failed_open(ctx, &handle, move |reason| {
+        lxapp::error!("lx.nav.go({{ page: '{name}' }}) did not open: {reason}")
+            .with_appid(appid.clone());
+    })?;
     Ok(handle)
+}
+
+/// A failed open is reported once, and neither promise of the handle goes
+/// unhandled when the caller awaits one of them or neither.
+fn report_failed_open(
+    ctx: &JSContext,
+    handle: &JSObject,
+    report: impl Fn(String) + 'static,
+) -> JSResult<()> {
+    let opened = handle.get::<_, JSObject>("opened")?;
+    let on_failure = JSFunc::new(ctx, move |error: JSValue| report(describe_error(&error)))?;
+    opened
+        .get::<_, JSFunc>("catch")?
+        .call::<_, JSValue>(Some(opened.clone()), (on_failure,))?;
+    let result = handle.get::<_, JSObject>("result")?;
+    let ignore = JSFunc::new(ctx, |_: JSValue| {})?;
+    result
+        .get::<_, JSFunc>("catch")?
+        .call::<_, JSValue>(Some(result.clone()), (ignore,))?;
+    Ok(())
+}
+
+fn describe_error(error: &JSValue) -> String {
+    error
+        .clone()
+        .to_rust::<JSObject>()
+        .ok()
+        .and_then(|object| object.get::<_, String>("message").ok())
+        .or_else(|| error.clone().to_rust::<String>().ok())
+        .unwrap_or_else(|| "unknown error".to_string())
 }
 
 /// Replace the current page. The new page takes over the opener and the
@@ -420,5 +455,37 @@ rong::js_api! {
     fn register_nav_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         const nav: "NavApi" = nav_namespace(ctx)?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rong::{JSEngine, RongJS, Source};
+
+    /// A push that fails reports once, and awaiting only `opened` leaves no
+    /// unhandled `result` behind.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_open_is_reported_once() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                let handle: JSObject = ctx
+                    .eval(Source::from_bytes(
+                        "const failure = Promise.reject(new Error('no such page'));\
+                         ({ opened: failure, result: failure.then(() => {}) })",
+                    ))
+                    .unwrap();
+                let reports = Rc::new(RefCell::new(Vec::<String>::new()));
+                let sink = reports.clone();
+                report_failed_open(&ctx, &handle, move |reason| sink.borrow_mut().push(reason))
+                    .unwrap();
+                for _ in 0..3 {
+                    tokio::task::yield_now().await;
+                }
+                assert_eq!(*reports.borrow(), vec!["no such page".to_string()]);
+            })
+            .await;
     }
 }

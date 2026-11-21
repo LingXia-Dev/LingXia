@@ -2309,6 +2309,15 @@
   function admit(what) {
     if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);
   }
+  var ActionPromise = class extends Promise {
+    static get [Symbol.species]() {
+      return Promise;
+    }
+    then(onFulfilled, onRejected) {
+      this.handled = true;
+      return super.then(onFulfilled, onRejected);
+    }
+  };
   var bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
   function configureActions(metadata) {
     outsideRender("configure actions");
@@ -2339,8 +2348,22 @@
         requests.push(encoded);
         return stream.handle;
       }
-      const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
-      promise.catch(() => {
+      let settle2;
+      const promise = new ActionPromise((resolve, reject) => {
+        settle2 = { resolve, reject };
+      });
+      pendingActions.set(id, {
+        resolve: settle2.resolve,
+        reject(cause) {
+          settle2.reject(cause);
+          Promise.resolve().then(() => {
+            if (!promise.handled && cause?.code !== "BRIDGE_CANCELED") {
+              reportLive(`Unhandled rejection of action '${name}': ${cause?.message ?? String(cause)}`);
+            }
+          });
+        }
+      });
+      Promise.prototype.then.call(promise, void 0, () => {
       });
       requests.push(encoded);
       return promise;

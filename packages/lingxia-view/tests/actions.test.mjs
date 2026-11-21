@@ -56,3 +56,18 @@ test('pending action limits and malformed replies cannot lose a live request',as
   assert.deepEqual(await Promise.all(promises),Array(256).fill(42));
   reset();
 });
+test('an action rejection nobody observes reaches the page log once',async()=>{
+  configureActions(catalog);const {actions}=createView({},{});
+  const flush=async()=>{for(let i=0;i<4;i++) await Promise.resolve();};
+  actions.increment();
+  const caught=actions.increment();caught.catch(()=>{});
+  const [ignored,observed]=takeActionRequests().map(JSON.parse);
+  receiveActionResponse({v:2,kind:'res',id:ignored.id,ok:false,error:{code:'E_IO',message:'disk full'}});
+  receiveActionResponse({v:2,kind:'res',id:observed.id,ok:false,error:{code:'E_IO',message:'seen'}});
+  await flush();
+  assert.deepEqual(takeActionErrors(),["Unhandled rejection of action 'increment': disk full"]);
+  const pending=actions.increment();takeActionRequests();
+  reset();await flush();
+  assert.deepEqual(takeActionErrors(),[],'a reset cancels quietly');
+  void pending;
+});

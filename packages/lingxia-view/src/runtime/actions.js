@@ -52,6 +52,15 @@ function admit(what) {
   if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);
 }
 
+// An action's promise knows whether its caller observed it (await, then, catch, finally).
+class ActionPromise extends Promise {
+  static get [Symbol.species]() { return Promise; }
+  then(onFulfilled, onRejected) {
+    this.handled = true;
+    return super.then(onFulfilled, onRejected);
+  }
+}
+
 const bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
 
 // Native supplies the same compiled action catalog used by WebView pages, after ready.
@@ -85,9 +94,21 @@ export function configureActions(metadata) {
       requests.push(encoded);
       return stream.handle;
     }
-    const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
-    // A fire-and-forget click must not create an unhandled rejection; callers still receive it.
-    promise.catch(() => {});
+    let settle;
+    const promise = new ActionPromise((resolve, reject) => { settle = { resolve, reject }; });
+    pendingActions.set(id, {
+      resolve: settle.resolve,
+      reject(cause) {
+        settle.reject(cause);
+        // Nobody awaited or caught it: the page log shows it instead of the failure vanishing.
+        Promise.resolve().then(() => {
+          if (!promise.handled && cause?.code !== 'BRIDGE_CANCELED') {
+            reportLive(`Unhandled rejection of action '${name}': ${cause?.message ?? String(cause)}`);
+          }
+        });
+      },
+    });
+    Promise.prototype.then.call(promise, undefined, () => {});
     requests.push(encoded);
     return promise;
   };
