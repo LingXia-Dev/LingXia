@@ -47,7 +47,9 @@ export const comboboxRecipe = {
     base: 'grow basis-0 min-w-0 truncate self-stretch px-0 bg-transparent text-text placeholder:text-muted disabled:text-faint',
   },
   chevron: {
-    base: 'size-4 shrink-0 text-muted',
+    // Select's chevron as the engine draws it: 10 by 5 pt with a 1.75 pt stroke, in the same lane.
+    base: 'size-5 shrink-0 text-muted',
+    disabled: 'text-faint',
   },
   popover: {
     // As wide as the field once that is measured. It holds the suggestions' scroll, which the View never

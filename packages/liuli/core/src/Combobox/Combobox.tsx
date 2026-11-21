@@ -62,6 +62,8 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
 
 // A list a person scans is short; past this the search narrows it.
 const maxShown = 50;
+// On its 20-point box: a 1.75 pt line, as the engine strokes a select's chevron.
+const chevronWeight = 2.1;
 
 const inWord = /[\p{L}\p{N}]/u;
 
@@ -259,7 +261,7 @@ function ComboboxTypeahead({
           data-testid={testId}
           className={cx(r.editor.base, r.value.size[size])}
         />
-        <Glyph name="chevron-down" className={r.chevron.base} />
+        <Glyph name="chevron-down" weight={chevronWeight} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
       </view>
       {/* A manual popover takes no focus and has no backdrop, so the text keeps the keys while the list is open. */}
       <view
@@ -353,7 +355,7 @@ export function Combobox(props: ComboboxProps) {
             <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled)}>
               {chosen?.label ?? placeholder ?? ''}
             </text>
-            <Glyph name="chevron-down" className={r.chevron.base} />
+            <Glyph name="chevron-down" weight={chevronWeight} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
           </button>
           <dialog
             open={open.value}

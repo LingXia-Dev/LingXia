@@ -1,5 +1,5 @@
 {
-  "accepted": "2026-11-20",
+  "accepted": "2026-11-21",
   "presets": [
     "iphone-15-pro",
     "desktop-1280"
@@ -200,12 +200,12 @@
     "iphone-15-pro/category-selection-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "30e789d74af6fa67e7cda2149b0c32b4f0fa90a59919671057b3cdaf308c19c3"
+      "sha256": "1b63310880d00b17a577178d49302877b85c82d98c13065cab2a840f1c77f861"
     },
     "iphone-15-pro/category-selection-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "0a3b9ff3f02964c8ff1d115c804f09e6719a085c8000325d74a8be86fd6258c7"
+      "sha256": "f17fdfaef5a6643b5a67dcff44a3e7ccc7a11a479b8662527dc32ba2fc291b94"
     },
     "iphone-15-pro/chart-dark.png": {
       "width": 1179,
@@ -270,12 +270,12 @@
     "iphone-15-pro/combobox-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "7270a0a6e2fc399ab3203743024c222e6a5bbc1416af470f0814cb62a9c7b8d0"
+      "sha256": "99beffb5bfa145b6e0e35ec1bdc2834ecd66fcacc8bf50cf8aeb067cf8ec3436"
     },
     "iphone-15-pro/combobox-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "4ce20b332cdae8efae6e639960638b089638dda3df12641240dbe7764b08c1c4"
+      "sha256": "9b0608efee94b5cb5367a3d8dd324d7031bdedc04687a613678c8e6335b14a31"
     },
     "iphone-15-pro/command-palette-dark.png": {
       "width": 1179,
@@ -1210,12 +1210,12 @@
     "desktop-1280/category-selection-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "c778831089f20ab6b7eef8b3cad158b47abe6cd24b67a0c67c52cbb45417ad15"
+      "sha256": "b0513c1dd4a197b146e7962bc82a9cfe245a8e2890e097a1f1aa76a3dce39463"
     },
     "desktop-1280/category-selection-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "b6d8c3070a6d2e53d0d112e867699b3292b002f6b0afe58c2b568a6d102da5a1"
+      "sha256": "2815b4fc9b3f2fd99619d080acd8676a7d7ec127554edcb79e283080d257829b"
     },
     "desktop-1280/chart-dark.png": {
       "width": 2536,
@@ -1280,12 +1280,12 @@
     "desktop-1280/combobox-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "06b40c26faa467c125eebe2cbf1d61077462344c8d291b3344539a373c0dcdcb"
+      "sha256": "42af72e1c38cdfb94ac24bee938bb75d6ff542d91b845fc6416cd30b395e9ce3"
     },
     "desktop-1280/combobox-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "d6a343ea154bc44b6d7cbf07cced503e39a668db2187492d697615ab33301a10"
+      "sha256": "ee8fe172402c994ac8d17db4accf428ffc59cb7c2529300c015a2ca860511f17"
     },
     "desktop-1280/command-palette-dark.png": {
       "width": 2536,
