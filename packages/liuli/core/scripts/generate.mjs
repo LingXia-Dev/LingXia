@@ -355,7 +355,7 @@ function galleryContent(doc) {
 /** A pushed page's Logic: the gallery's shared page Logic, named so it can hand off to the workspace. */
 const pageLogic = page => [
   `// ${generated}`,
-  "import { definePage } from '@lingxia/types/page';",
+  "import { definePage, lx } from '@lingxia/logic';",
   "import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';",
   '',
   'export default definePage({',
