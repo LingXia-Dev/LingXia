@@ -1,3 +1,4 @@
+import type { DownloadTask } from '@lingxia/types';
 import { definePage } from '@lingxia/types/page';
 type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
@@ -66,7 +67,7 @@ function windowsTerminal(): WindowsTerminalApi {
 
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
 let stopSettingsChanges: (() => void) | null = null;
-let conptyDownload: ReturnType<typeof lx.downloadFile> | null = null;
+let conptyDownload: DownloadTask | null = null;
 
 function previewController(): ReturnType<TerminalApi['colorSchemes']['createPreview']> {
   preview ??= terminal().colorSchemes.createPreview();
@@ -109,7 +110,7 @@ export default definePage({
           const current = await api.status();
           if (current.installed) return api.setEnabled({ enabled: true });
 
-          const task = lx.downloadFile({ url: current.package.url });
+          const task = lx.network.download(current.package.url);
           conptyDownload = task;
           try {
             for await (const event of task.progress) {

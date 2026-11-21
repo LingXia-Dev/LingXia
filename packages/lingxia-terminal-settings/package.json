@@ -19,7 +19,8 @@
     "test": "node --test tests/i18n.test.mjs",
     "check:themes": "node scripts/check-themes.mjs",
     "build:lxapp": "npm run check:themes && cargo run -p lingxia-cli -- build --release",
-    "prepublishOnly": "npm run build:lxapp"
+    "prepublishOnly": "npm run build:lxapp",
+    "check:types": "tsc -p tsconfig.json"
   },
   "publishConfig": {
     "access": "public"
