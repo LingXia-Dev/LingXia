@@ -200,6 +200,11 @@ lingxia doctor --platform harmony
 lingxia doctor --project   # build window vs this project's pins
 ```
 
+## `lingxia api`
+
+Look up the Logic API instead of reading `logic.d.ts`: `lingxia api lx.network.download`
+(signature, options, errors), `lingxia api lx.network` (its members), a type name, or words.
+
 ## `lingxia skill install`
 
 Writes the skill to `~/.agents/skills/lingxia/`; with Claude Code installed,

@@ -525,6 +525,29 @@ session per project and target: starting another takes over the old one.
         action: commands::store::StoreAction,
     },
 
+    /// Look up the Logic API: a member, a namespace, a type, or words
+    #[command(after_long_help = "\
+Examples:
+  lingxia api                        the namespaces, one line each
+  lingxia api lx.network             a namespace: its members with a summary
+  lingxia api lx.network.download    a member: signature, docs, option and result
+                                     types, platforms, permission, errors
+  lingxia api definePage             a bare name or a type name (DownloadOptions)
+  lingxia api pick a file            words: the five best matches
+  lingxia api lx.nav.go --json       the catalogue entries as JSON
+
+Reads @lingxia/types from the project's node_modules, else the copy this CLI
+carries, and names the version it answered from. A miss exits 1 and names
+the nearest members.")]
+    Api {
+        /// `lx.network.download`, `lx.network`, `download`, `DownloadOptions`, or words
+        query: Vec<String>,
+
+        /// Print the matching catalogue entries as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// The agent skill this CLI carries
     Skill {
         #[command(subcommand)]
@@ -953,6 +976,7 @@ fn run() -> Result<()> {
     }
 
     match cli.command {
+        Commands::Api { query, json } => commands::api::execute(&query, json)?,
         Commands::Version { verbose } => {
             commands::version::execute(verbose);
         }
