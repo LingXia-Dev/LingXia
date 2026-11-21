@@ -100,8 +100,10 @@ test('saving releases the guard', {
   await view.testId('leave-save').click();
   await waitForElementText(t, view, '[data-testid="leave-status"]', (text) => text === 'Saved');
 
-  const landed = await app.nav.press('back');
-  expect(landed.name).toBe('api');
+  // The release reaches the host after the render that shows "Saved"; a back
+  // that beats it is asked of a View with no holder, which leaves without asking.
+  await app.nav.press('back');
+  expect((await waitForCurrentPage(app, 'api', 10_000)).name).toBe('api');
 });
 
 test('a programmatic back is never held', {

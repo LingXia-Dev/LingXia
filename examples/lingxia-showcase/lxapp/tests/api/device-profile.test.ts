@@ -71,9 +71,9 @@ test('accept both device orientations and reject an unknown one', {
 
   const result = await app.logic.eval(({ lx }) => {
     // 'sideways' is not an orientation: the probe passes it on purpose.
-    const setOrientation = lx.device.orientation.set as (value: string) => unknown;
-    const attempt = (value: string): { ok: boolean; value?: unknown; code?: string } => {
-      try { return { ok: true, value: setOrientation(value) }; }
+    const setOrientation = lx.device.orientation.set as (value: string) => void;
+    const attempt = (value: string): { ok: boolean; code?: string } => {
+      try { setOrientation(value); return { ok: true }; }
       catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
     };
     return {
@@ -91,8 +91,8 @@ test('accept both device orientations and reject an unknown one', {
     expect(result.portrait.code).toBe('E_NOT_SUPPORTED');
     return;
   }
-  expect(result.landscape.value).toBe(true);
-  expect(result.portrait.value).toBe(true);
+  expect(result.landscape.ok).toBe(true);
+  expect(result.portrait.ok).toBe(true);
   expect(result.invalid.ok).toBe(false);
   expect(result.invalid.code).toBe('E_INVALID_ARG');
 });

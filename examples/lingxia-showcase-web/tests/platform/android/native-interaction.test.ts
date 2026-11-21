@@ -21,10 +21,18 @@ test('pull down from the screen to refresh, then refresh again', {
   const { width, height } = await device.size();
   await expect(page.view.testId('pull-refresh-page')).toBeVisible();
   for (let gesture = 0; gesture < 2; gesture++) {
+    // A stopped indicator lingers and springs back; a pull before it is idle is ignored.
+    await expect.poll(async () => (await page.view.refreshIndicator()).phase, { timeout: 3_000 }).toBe('idle');
     const before = (await page.data()).refreshCount;
     await device.swipe({ x1: Math.round(width / 2), x2: Math.round(width / 2),
       y1: Math.round(height * .22), y2: Math.round(height * .75), duration: 650 });
-    await expect.poll(async () => (await page.data()).refreshCount).toBe(before + 1);
+    try {
+      await expect.poll(async () => (await page.data()).refreshCount).toBe(before + 1);
+    } catch (error) {
+      // An idle indicator that ignored the pull is the host's; say so in the report.
+      await t.attach(`indicator-${gesture + 1}.json`, JSON.stringify(await page.view.refreshIndicator()));
+      throw error;
+    }
     await expect(page.view.testId('pull-refresh-count')).toHaveText(String(before + 1));
     // The refresh indicator translates the native WebView container; use its
     // screen bounds instead of a DOM click while that container is moving.

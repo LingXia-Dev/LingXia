@@ -135,13 +135,12 @@ test('fire both haptics without a dialog', {
   const { app } = bindFixture(t, 'ANDROID-HAPTICS-001');
   expect(await runtimePlatform(app)).toBe('android');
 
-  // Whether the motor moved is not observable from here; that the call is
-  // supported and resolves — where a desktop rejects it — is.
-  const result = await app.logic.eval(async ({ lx }) => {
-    const short: unknown = await lx.device.haptics();
-    const long: unknown = await lx.device.haptics('long');
-    return { short, long };
+  // Whether the motor moved is not observable from here; that the call
+  // returns without throwing — where a desktop throws E_NOT_SUPPORTED — is.
+  const fired = await app.logic.eval(({ lx }) => {
+    lx.device.haptics();
+    lx.device.haptics('long');
+    return true;
   });
-  expect(result.short).toBe(true);
-  expect(result.long).toBe(true);
+  expect(fired).toBe(true);
 });

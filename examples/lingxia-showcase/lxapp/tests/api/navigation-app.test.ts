@@ -79,6 +79,10 @@ test('hop to the bundled chat lxapp and back', {
   await app.nav.reset({ page: 'home' });
   expect(appLevel(await lifecycle())).toEqual(appLevel(baseline));
   await app.nav.go({ page: 'ui' });
+  // The reset showed a new home and the push hid it. Home stays hidden under
+  // ui for the hop, so the hop moves only the App counts.
+  const atUi = { ...baseline, pageShows: baseline.pageShows + 1, pageHides: baseline.pageHides + 1 };
+  await expect.poll(lifecycle).toEqual(atUi);
 
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
@@ -120,7 +124,7 @@ test('hop to the bundled chat lxapp and back', {
     expect(isOpen(list, CHAT_APP_ID)).toBe(true);
     // The caller is parked, not torn down.
     expect(isOpen(list, SHOWCASE_APP_ID)).toBe(true);
-    await expect.poll(lifecycle).toEqual({ ...baseline, hides: baseline.hides + 1, last: 'hide' });
+    await expect.poll(lifecycle).toEqual({ ...atUi, hides: atUi.hides + 1, last: 'hide' });
   });
 
   await t.step('guest cache APIs are refused', async () => {
@@ -156,7 +160,7 @@ test('hop to the bundled chat lxapp and back', {
     await waitForCurrentPageVisible(app, 'ui', '[data-testid="ui-page"]');
   });
 
-  const returned = { ...baseline, hides: baseline.hides + 1, shows: baseline.shows + 1, last: 'show' };
+  const returned = { ...atUi, hides: atUi.hides + 1, shows: atUi.shows + 1, last: 'show' };
   await expect.poll(lifecycle).toEqual(returned);
 
   await t.step('navigateToApp rejects an unknown page name without leaving the caller', async () => {
