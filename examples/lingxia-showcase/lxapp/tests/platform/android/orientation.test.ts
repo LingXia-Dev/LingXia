@@ -30,13 +30,13 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   const initial = await dimensions();
   const original: Orientation = initial.width > initial.height ? 'landscape' : 'portrait';
   defer(async () => {
-    await app.logic.eval(({ lx }, key, original) => {
+    await app.logic.eval(({ lx }, key) => {
       const states = globalThis as unknown as Record<string, OrientationProbe>;
       states[key]?.offRemoved();
       states[key]?.offLive();
       delete states[key];
-      lx.device.orientation.set(original);
-    }, namespace, original);
+      lx.device.orientation.set('auto');
+    }, namespace);
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {

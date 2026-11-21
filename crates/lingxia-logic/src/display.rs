@@ -35,22 +35,44 @@ fn should_emit_orientation_event_after_set() -> bool {
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
 }
 
-/// Lock this lxapp to `portrait` or `landscape`.
+/// The orientation the current page resolves to: the lock in effect, or the
+/// screen's shape when nothing locks it.
+fn current_orientation(lxapp: &LxApp) -> &'static str {
+    let current_path = lxapp.peek_current_page_path().unwrap_or_default();
+    let current = if current_path.is_empty() {
+        lxapp.get_app_orientation()
+    } else {
+        lxapp.get_page_orientation(&current_path)
+    };
+    normalize_orientation_value(current.to_label()).unwrap_or_else(|| {
+        let screen = lxapp.runtime.screen_info();
+        if screen.width > screen.height {
+            ORIENTATION_LANDSCAPE
+        } else {
+            ORIENTATION_PORTRAIT
+        }
+    })
+}
+
+/// Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.
+///
+/// The lock beats every page's `pageOrientation`; only a full-screen video
+/// beats the lock. With it removed, each page's own setting applies again.
 ///
 /// @throws {E_INVALID_ARG} Any other value.
 fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
-    if orientation != "portrait" && orientation != "landscape" {
-        return Err(js_invalid_parameter_error(format!(
-            "Invalid orientation value: {} (expected portrait or landscape)",
-            orientation
-        )));
-    }
+    let lock = match orientation.as_str() {
+        "auto" => None,
+        "portrait" | "landscape" => OrientationConfig::from_label(&orientation),
+        _ => {
+            return Err(js_invalid_parameter_error(format!(
+                "Invalid orientation value: {orientation} (expected portrait, landscape or auto)"
+            )));
+        }
+    };
 
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let config = OrientationConfig::from_label(&orientation).ok_or_else(|| {
-        js_invalid_parameter_error(format!("Invalid orientation value: {}", orientation))
-    })?;
-    lxapp.set_app_orientation(config);
+    lxapp.set_app_orientation(lock);
 
     lxapp
         .runtime
@@ -58,14 +80,14 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))?;
 
     if should_emit_orientation_event_after_set() {
-        emit_orientation_change_event(&lxapp.appid, &orientation);
+        emit_orientation_change_event(&lxapp.appid, current_orientation(&lxapp));
     }
 
     Ok(())
 }
 
-/// Delivers the lock in effect (the configured orientation, not how the device
-/// is held), or the screen's shape when unlocked, before returning, then each change.
+/// Delivers the orientation in effect before returning, then each change: the
+/// lock (not how the device is held), or the screen's shape when unlocked.
 fn on_device_orientation_change(
     ctx: JSContext,
     callback: JSFunc,
@@ -74,22 +96,7 @@ fn on_device_orientation_change(
     let scope = ctx.clone();
     lxapp::lx::subscribe(&scope, options.0, move || {
         let lxapp = LxApp::from_ctx(&ctx)?;
-        let current_path = lxapp.peek_current_page_path().unwrap_or_default();
-        let current = if current_path.is_empty() {
-            lxapp.get_app_orientation()
-        } else {
-            lxapp.get_page_orientation(&current_path)
-        };
-
-        // `auto` locks nothing, so the screen's current shape is the answer.
-        let value = normalize_orientation_value(current.to_label()).unwrap_or_else(|| {
-            let screen = lxapp.runtime.screen_info();
-            if screen.width > screen.height {
-                ORIENTATION_LANDSCAPE
-            } else {
-                ORIENTATION_PORTRAIT
-            }
-        });
+        let value = current_orientation(&lxapp);
 
         let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
 
@@ -115,7 +122,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace OrientationApi = crate::namespace::orientation(ctx)?;
-        fn set(ts_params = "orientation: DeviceOrientation", ts_return = "void") = set_device_orientation;
+        fn set(ts_params = "orientation: DeviceOrientation | 'auto'", ts_return = "void") = set_device_orientation;
         fn watch(
             ts_params = "callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions",
             ts_return = "() => void"

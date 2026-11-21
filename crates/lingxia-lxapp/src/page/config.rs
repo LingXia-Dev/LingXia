@@ -103,6 +103,21 @@ impl OrientationOverride {
     }
 }
 
+/// An explicit call beats declared configuration: a full-screen video lock,
+/// then the runtime lock from `lx.device.orientation.set`, then the page's
+/// `pageOrientation`, then the app's.
+pub(crate) fn resolve_orientation(
+    video: Option<PageOrientation>,
+    lock: Option<OrientationConfig>,
+    page: OrientationOverride,
+    app: OrientationConfig,
+) -> OrientationConfig {
+    if let Some(mode) = video {
+        return OrientationConfig::normalize(mode, 0);
+    }
+    lock.unwrap_or_else(|| page.apply(app))
+}
+
 // Shared deserialization helper for orientation types
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -344,6 +359,62 @@ fn path_to_json_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    mod orientation_order {
+        use super::super::{
+            OrientationConfig, OrientationOverride, PageOrientation, resolve_orientation,
+        };
+
+        fn page(mode: PageOrientation) -> OrientationOverride {
+            OrientationOverride {
+                mode: Some(mode),
+                rotation: Some(0),
+            }
+        }
+        fn lock(label: &str) -> Option<OrientationConfig> {
+            OrientationConfig::from_label(label)
+        }
+
+        #[test]
+        fn a_full_screen_video_beats_the_runtime_lock() {
+            let resolved = resolve_orientation(
+                Some(PageOrientation::Landscape),
+                lock("portrait"),
+                page(PageOrientation::Portrait),
+                OrientationConfig::default(),
+            );
+            assert_eq!(resolved.mode, PageOrientation::Landscape);
+        }
+
+        #[test]
+        fn the_runtime_lock_beats_a_page_that_says_auto() {
+            let resolved = resolve_orientation(
+                None,
+                lock("landscape"),
+                page(PageOrientation::Auto),
+                OrientationConfig::default(),
+            );
+            assert_eq!(resolved.mode, PageOrientation::Landscape);
+        }
+
+        #[test]
+        fn with_no_lock_the_page_beats_the_app() {
+            let resolved = resolve_orientation(
+                None,
+                None,
+                page(PageOrientation::Auto),
+                OrientationConfig::default(),
+            );
+            assert_eq!(resolved.mode, PageOrientation::Auto);
+        }
+
+        #[test]
+        fn a_page_without_pageorientation_takes_the_app() {
+            let app = lock("landscape").unwrap();
+            let resolved = resolve_orientation(None, None, OrientationOverride::default(), app);
+            assert_eq!(resolved, app);
+        }
+    }
+
     use super::*;
 
     #[test]

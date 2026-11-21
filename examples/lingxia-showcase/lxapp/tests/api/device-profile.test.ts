@@ -66,7 +66,8 @@ test('accept both device orientations and reject an unknown one', {
     : platform ?? '';
   const supported = ORIENTATION_SUPPORT[os] ?? true;
   defer(async () => {
-    await app.logic.eval(({ lx }) => { lx.device.orientation.set('portrait'); return true; }).catch(() => undefined);
+    // Removing the lock hands each page its own `pageOrientation` back.
+    await app.logic.eval(({ lx }) => { lx.device.orientation.set('auto'); return true; }).catch(() => undefined);
   });
 
   const result = await app.logic.eval(({ lx }) => {
@@ -79,6 +80,7 @@ test('accept both device orientations and reject an unknown one', {
     return {
       landscape: attempt('landscape'),
       portrait: attempt('portrait'),
+      unlock: attempt('auto'),
       invalid: attempt('sideways'),
     };
   });
@@ -93,6 +95,7 @@ test('accept both device orientations and reject an unknown one', {
   }
   expect(result.landscape.ok).toBe(true);
   expect(result.portrait.ok).toBe(true);
+  expect(result.unlock.ok).toBe(true);
   expect(result.invalid.ok).toBe(false);
   expect(result.invalid.code).toBe('E_INVALID_ARG');
 });

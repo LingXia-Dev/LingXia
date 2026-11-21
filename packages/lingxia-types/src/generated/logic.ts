@@ -3636,13 +3636,15 @@ declare global {
 declare global {
   interface OrientationApi {
     /**
-     * Lock this lxapp to `portrait` or `landscape`.
+     * Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.
+     * The lock beats every page's `pageOrientation`; only a full-screen video
+     * beats the lock. With it removed, each page's own setting applies again.
      * @throws {E_INVALID_ARG} Any other value.
      */
-    set(orientation: DeviceOrientation): void;
+    set(orientation: DeviceOrientation | 'auto'): void;
     /**
-     * Delivers the lock in effect (the configured orientation, not how the device
-     * is held), or the screen's shape when unlocked, before returning, then each change.
+     * Delivers the orientation in effect before returning, then each change: the
+     * lock (not how the device is held), or the screen's shape when unlocked.
      */
     watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void;
   }

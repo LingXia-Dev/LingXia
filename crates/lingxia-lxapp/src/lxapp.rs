@@ -27,7 +27,7 @@ use self::page_chrome::{
 };
 use crate::appservice::{LxAppWorkers, WorkerTermination};
 use crate::error::LxAppError;
-use crate::page::config::{OrientationConfig, PageConfig};
+use crate::page::config::{OrientationConfig, PageConfig, resolve_orientation};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
 use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
@@ -2870,31 +2870,32 @@ impl LxApp {
         }
     }
 
+    /// The orientation with no page in view: the runtime lock, else the app's.
     pub fn get_app_orientation(&self) -> OrientationConfig {
         let state = self.state.lock().unwrap();
         state.orientation_override.unwrap_or_default()
     }
 
-    pub fn set_app_orientation(&self, orientation: OrientationConfig) {
-        let orientation = OrientationConfig::normalize(orientation.mode, orientation.rotation);
+    /// Set the runtime lock `lx.device.orientation.set` applies, or remove it (`None`).
+    pub fn set_app_orientation(&self, orientation: Option<OrientationConfig>) {
+        let orientation =
+            orientation.map(|value| OrientationConfig::normalize(value.mode, value.rotation));
         let mut state = self.state.lock().unwrap();
-        state.orientation_override = Some(orientation);
+        state.orientation_override = orientation;
     }
 
-    /// Resolved orientation for a page: a full-screen video lock, else the page config, else the app.
+    /// Resolved orientation for a page, in the order [`resolve_orientation`] states.
     pub fn get_page_orientation(&self, path: &str) -> OrientationConfig {
         let page = self.get_page(path);
-        if let Some(mode) = page
-            .as_ref()
-            .and_then(|page| page.presentation_orientation())
-        {
-            return OrientationConfig::normalize(mode, 0);
-        }
-        let app_orientation = self.get_app_orientation();
-        let page_override = page
-            .and_then(|page| page.get_orientation_override())
-            .unwrap_or_default();
-        page_override.apply(app_orientation)
+        let lock = self.state.lock().unwrap().orientation_override;
+        resolve_orientation(
+            page.as_ref()
+                .and_then(|page| page.presentation_orientation()),
+            lock,
+            page.and_then(|page| page.get_orientation_override())
+                .unwrap_or_default(),
+            OrientationConfig::default(),
+        )
     }
 
     pub(crate) fn read_gpu_module(&self, path: &str) -> Result<String, LxAppError> {

@@ -1707,15 +1707,15 @@
       "path": "lx.device.orientation.set",
       "kind": "function",
       "entry": "global",
-      "summary": "Lock this lxapp to `portrait` or `landscape`.",
-      "description": "Lock this lxapp to `portrait` or `landscape`.",
+      "summary": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.",
+      "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. With it removed, each page's own setting applies again.",
       "signatures": [
         {
-          "text": "set(orientation: DeviceOrientation): void",
+          "text": "set(orientation: DeviceOrientation | 'auto'): void",
           "parameters": [
             {
               "name": "orientation",
-              "type": "DeviceOrientation",
+              "type": "DeviceOrientation | 'auto'",
               "required": true
             }
           ],
@@ -1740,8 +1740,8 @@
       "path": "lx.device.orientation.watch",
       "kind": "watcher",
       "entry": "global",
-      "summary": "Delivers the lock in effect (the configured orientation, not how the device is held), or the screen's shape when unlocked, before returning, then each change.",
-      "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held), or the screen's shape when unlocked, before returning, then each change.",
+      "summary": "Delivers the orientation in effect before returning, then each change: the lock (not how the device is held), or the screen's shape when unlocked.",
+      "description": "Delivers the orientation in effect before returning, then each change: the\nlock (not how the device is held), or the screen's shape when unlocked.",
       "signatures": [
         {
           "text": "watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void",
@@ -9674,10 +9674,10 @@
       "fields": [
         {
           "name": "set",
-          "type": "(orientation: DeviceOrientation) => void",
+          "type": "(orientation: DeviceOrientation | \"auto\") => void",
           "required": true,
-          "summary": "Lock this lxapp to `portrait` or `landscape`.",
-          "description": "Lock this lxapp to `portrait` or `landscape`.",
+          "summary": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.",
+          "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. With it removed, each page's own setting applies again.",
           "tags": {
             "throws": [
               {
@@ -9691,8 +9691,8 @@
           "name": "watch",
           "type": "(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions) => () => void",
           "required": true,
-          "summary": "Delivers the lock in effect (the configured orientation, not how the device is held), or the screen's shape when unlocked, before returning, then each change.",
-          "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held), or the screen's shape when unlocked, before returning, then each change."
+          "summary": "Delivers the orientation in effect before returning, then each change: the lock (not how the device is held), or the screen's shape when unlocked.",
+          "description": "Delivers the orientation in effect before returning, then each change: the\nlock (not how the device is held), or the screen's shape when unlocked."
         }
       ],
       "source": "src/generated/logic.ts:1648"
