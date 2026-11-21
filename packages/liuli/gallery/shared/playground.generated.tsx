@@ -944,6 +944,31 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "none",
           "over"
         ]
+      },
+      {
+        "name": "itemWidth",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "hasButtons",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "hasLoop",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "previousLabel",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "nextLabel",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [

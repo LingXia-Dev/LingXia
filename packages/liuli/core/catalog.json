@@ -2904,7 +2904,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "A few pages to swipe through, one at a time",
-      "description": "Carousel lays its children side by side in a scroll that stops on each one, and puts a PageControl with it: under the pages, or over their bottom edge for pictures. A swipe, a dot or the app's own button moves the page; `bind` shares it with the app.",
+      "description": "Carousel lays its children side by side in a scroll that stops on each one, and puts a PageControl with it: under the pages, or over their bottom edge for pictures. A swipe, a dot or the app's own button moves the page; `bind` shares it with the app. With `hasButtons` round buttons over the side edges move it too, and with `hasLoop` they go round from the last page to the first. With `itemWidth` it is a rail of cards, several in view, that stops on each.",
       "keywords": [
         "carousel",
         "slider",
@@ -2925,7 +2925,7 @@
           "name": "children",
           "type": "Child",
           "required": true,
-          "description": "The pages, one child each; every page is as wide as the carousel."
+          "description": "The pages, one child each; every page is as wide as the carousel, or `itemWidth`."
         },
         {
           "name": "bind",
@@ -2943,8 +2943,40 @@
           "name": "dots",
           "type": "CarouselDots",
           "required": false,
-          "description": "`over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe.",
+          "description": "`over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe and the buttons.",
           "default": "'below'"
+        },
+        {
+          "name": "itemWidth",
+          "type": "number",
+          "required": false,
+          "description": "Each item's width in points: a rail of cards, several in view, that stops on each. Without it a page fills the carousel."
+        },
+        {
+          "name": "hasButtons",
+          "type": "boolean",
+          "required": false,
+          "description": "Round buttons over the side edges that move a page; with a pointer, where a swipe is not to hand.",
+          "default": "false"
+        },
+        {
+          "name": "hasLoop",
+          "type": "boolean",
+          "required": false,
+          "description": "With the buttons: past the last page comes the first, and before the first the last.",
+          "default": "false"
+        },
+        {
+          "name": "previousLabel",
+          "type": "string",
+          "required": false,
+          "description": "The previous button's accessible name: \"Previous photo\". Needed with `hasButtons`."
+        },
+        {
+          "name": "nextLabel",
+          "type": "string",
+          "required": false,
+          "description": "The next button's accessible name: \"Next photo\". Needed with `hasButtons`."
         },
         {
           "name": "className",
@@ -2956,15 +2988,17 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the root; the dots get `<testid>-dots`."
+          "description": "On the root; the dots get `<testid>-dots`, the buttons `<testid>-previous` and `<testid>-next`."
         }
       ],
       "otherProps": {},
       "parts": {
         "root": "view",
+        "frame": "view",
         "scroll": "scroll",
         "track": "view",
         "page": "view",
+        "button": "view",
         "dots": "view"
       },
       "accessibility": {
@@ -2975,7 +3009,11 @@
         "keyboard": [
           {
             "keys": "Tab",
-            "effect": "Through the dots, and through anything focusable on the page in view"
+            "effect": "Through the buttons and the dots, and through anything focusable on the page in view"
+          },
+          {
+            "keys": "Enter or Space on a button",
+            "effect": "Moves one page or one card"
           },
           {
             "keys": "Enter or Space on a dot",
@@ -2987,6 +3025,7 @@
         "notes": [
           "The pages are a list, so a screen reader says \"2 of 4\" on the page it lands on; assistive scrolling steps one page.",
           "The dots are tabs named by `pageLabel`. They are the way to page without a swipe.",
+          "The buttons are named by `previousLabel` and `nextLabel`; a button with nowhere to go is removed, not dimmed.",
           "It never moves by itself."
         ]
       },
@@ -3000,12 +3039,22 @@
           "name": "Welcome",
           "title": "Pages moved by a button too",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Carousel } from '@liulidesign/core/Carousel';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Pages of content, with the page held outside so a button can move it. */\nexport function Welcome() {\n  const page = useLocal('step', 0);\n  const isLast = Math.round(page.value) === steps.length - 1;\n  return (\n    <view className=\"gap-3\">\n      <Carousel label=\"Welcome\" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid=\"welcome\">\n        {steps.map(([title, body]) => (\n          <view key={title} className=\"gap-1 bg-surface-sunken p-5 min-h-28\">\n            <text className=\"text-callout font-semibold text-text\">{title}</text>\n            <text className=\"text-footnote text-muted\">{body}</text>\n          </view>\n        ))}\n      </Carousel>\n      <Button label={isLast ? 'Get started' : 'Next'} variant=\"primary\" width=\"fill\" onClick={() => { if (!isLast) page.set(Math.round(page.value) + 1); }} data-testid=\"next\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Looping",
+          "title": "Buttons over the edges, going round",
+          "source": "import { Carousel } from '@liulidesign/core/Carousel';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n] as const;\n\n/** With a pointer: round buttons over the edges, and past the last photo comes the first. */\nexport function Looping() {\n  return (\n    <Carousel\n      label=\"Photos of the house\"\n      dots=\"over\"\n      hasButtons\n      hasLoop\n      previousLabel=\"Previous photo\"\n      nextLabel=\"Next photo\"\n      pageLabel={(page, count) => `Photo ${page + 1} of ${count}`}\n      data-testid=\"looping\"\n    >\n      {photos.map(([n, alt]) => (\n        <view key={alt} className=\"relative w-full aspect-4/3\">\n          <image src={photo(n)} alt={alt} className=\"absolute inset-0 size-full object-cover\" />\n        </view>\n      ))}\n    </Carousel>\n  );\n}"
+        },
+        {
+          "name": "Rail",
+          "title": "A rail of cards",
+          "source": "import { Carousel } from '@liulidesign/core/Carousel';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst albums = [\n  [1, 'Coast, November', '48 photos'],\n  [4, 'The valley', '112 photos'],\n  [2, 'Fields', '23 photos'],\n  [3, 'The ridge at dusk', '61 photos'],\n  [1, 'Harbour walk', '17 photos'],\n] as const;\n\n/** A rail of cards, several in view, that stops on each; the buttons move one card. */\nexport function Rail() {\n  return (\n    <Carousel\n      label=\"Albums\"\n      itemWidth={160}\n      dots=\"none\"\n      hasButtons\n      previousLabel=\"Previous albums\"\n      nextLabel=\"More albums\"\n      pageLabel={(page, count) => `Album ${page + 1} of ${count}`}\n      data-testid=\"rail\"\n    >\n      {albums.map(([n, title, count]) => (\n        <view key={title} className=\"gap-2\">\n          <image src={photo(n)} alt=\"\" className=\"w-full aspect-square rounded-control object-cover\" />\n          <view className=\"gap-0.5\">\n            <text className=\"text-footnote font-medium text-text truncate\">{title}</text>\n            <text className=\"text-caption text-muted\">{count}</text>\n          </view>\n        </view>\n      ))}\n    </Carousel>\n  );\n}"
         }
       ],
       "gaps": [],
       "limits": [
-        "Every page is the full width; a carousel does not show part of the next page.",
-        "There are no previous and next arrows; on a desktop the dots page it."
+        "A swipe does not go round; only the buttons do.",
+        "A rail's dots step one card, so most rails leave them out."
       ],
       "playground": {
         "props": {
@@ -3023,9 +3072,12 @@
           }
         ],
         "tokens": [
+          "--shadow-raised",
           "--radius-container"
         ],
-        "roles": []
+        "roles": [
+          "surface-overlay"
+        ]
       },
       "related": [
         "PageControl",
@@ -3043,6 +3095,14 @@
             {
               "name": "Welcome",
               "title": "Content pages, with the page shared with a button"
+            },
+            {
+              "name": "Looping",
+              "title": "Buttons over the edges; past the last photo comes the first"
+            },
+            {
+              "name": "Rail",
+              "title": "A rail of 160-point cards that stops on each"
             }
           ]
         }

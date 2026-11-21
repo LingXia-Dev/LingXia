@@ -48,6 +48,62 @@ export function Welcome() {
   );
 }
 
+/** With a pointer: round buttons over the edges, and past the last photo comes the first. */
+export function Looping() {
+  return (
+    <Carousel
+      label="Photos of the house"
+      dots="over"
+      hasButtons
+      hasLoop
+      previousLabel="Previous photo"
+      nextLabel="Next photo"
+      pageLabel={(page, count) => `Photo ${page + 1} of ${count}`}
+      data-testid="looping"
+    >
+      {photos.map(([n, alt]) => (
+        <view key={alt} className="relative w-full aspect-4/3">
+          <image src={photo(n)} alt={alt} className="absolute inset-0 size-full object-cover" />
+        </view>
+      ))}
+    </Carousel>
+  );
+}
+
+const albums = [
+  [1, 'Coast, November', '48 photos'],
+  [4, 'The valley', '112 photos'],
+  [2, 'Fields', '23 photos'],
+  [3, 'The ridge at dusk', '61 photos'],
+  [1, 'Harbour walk', '17 photos'],
+] as const;
+
+/** A rail of cards, several in view, that stops on each; the buttons move one card. */
+export function Rail() {
+  return (
+    <Carousel
+      label="Albums"
+      itemWidth={160}
+      dots="none"
+      hasButtons
+      previousLabel="Previous albums"
+      nextLabel="More albums"
+      pageLabel={(page, count) => `Album ${page + 1} of ${count}`}
+      data-testid="rail"
+    >
+      {albums.map(([n, title, count]) => (
+        <view key={title} className="gap-2">
+          <image src={photo(n)} alt="" className="w-full aspect-square rounded-control object-cover" />
+          <view className="gap-0.5">
+            <text className="text-footnote font-medium text-text truncate">{title}</text>
+            <text className="text-caption text-muted">{count}</text>
+          </view>
+        </view>
+      ))}
+    </Carousel>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return (
