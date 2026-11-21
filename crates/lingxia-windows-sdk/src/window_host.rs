@@ -10115,6 +10115,9 @@ fn mount_nav_snapshot_overlay(
                 | WindowsAndMessaging::SWP_NOACTIVATE
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
+        // The caller swaps pages next; a GPU page hides on its own thread at once, so the
+        // overlay must be composed first or a blank frame shows between them.
+        let _ = windows::Win32::Graphics::Dwm::DwmFlush();
     }
 
     let previous = lock_nav_snapshot_slides().insert(
