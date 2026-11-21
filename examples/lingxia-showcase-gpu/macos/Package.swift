@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "LingXiaGpuDemo",
+    name: "LingXiaDemo",
     platforms: [
         .macOS(.v12)
     ],
     products: [
         .executable(
-            name: "LingXiaGpuDemo",
-            targets: ["LingXiaGpuDemo"]
+            name: "LingXiaDemo",
+            targets: ["LingXiaDemo"]
         ),
     ],
     dependencies: [
@@ -17,7 +17,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "LingXiaGpuDemo",
+            name: "LingXiaDemo",
             dependencies: [
                 "lingxia",
             ],

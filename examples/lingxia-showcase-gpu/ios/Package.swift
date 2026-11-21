@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "gpu",
+    name: "lxapp",
     platforms: [
         .iOS(.v17),
         .macOS(.v12)
@@ -12,8 +12,8 @@ let package = Package(
         // Exactly one library product,
         // representing the main app.
         .library(
-            name: "gpu",
-            targets: ["gpu"]
+            name: "lxapp",
+            targets: ["lxapp"]
         ),
     ],
     dependencies: [
@@ -21,7 +21,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "gpu",
+            name: "lxapp",
             dependencies: [
                 .product(name: "lingxia", package: "lingxia"),
             ],

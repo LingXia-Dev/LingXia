@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.lingxia.example.gpu</string>
+    <string>app.lingxia.example.lxapp</string>
 
     <!-- Supported localizations -->
     <key>CFBundleLocalizations</key>

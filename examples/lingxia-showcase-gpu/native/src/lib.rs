@@ -120,7 +120,7 @@ mod android {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_lingxia_example_gpu_MainActivity_nativeRegisterHostAddon<
+    pub extern "system" fn Java_com_lingxia_example_lxapp_MainActivity_nativeRegisterHostAddon<
         'local,
     >(
         _env: EnvUnowned<'local>,

@@ -1,7 +1,7 @@
-package com.lingxia.example.gpu
+package com.lingxia.example.lxapp
 
 import android.app.Application
-// import com.lingxia.example.gpu.mpv.MpvNative
+// import com.lingxia.example.lxapp.mpv.MpvNative
 
 class ShowcaseApp : Application() {
     override fun onCreate() {

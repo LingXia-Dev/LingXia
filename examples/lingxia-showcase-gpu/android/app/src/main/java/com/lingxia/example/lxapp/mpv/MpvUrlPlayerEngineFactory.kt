@@ -1,4 +1,4 @@
-package com.lingxia.example.gpu.mpv
+package com.lingxia.example.lxapp.mpv
 
 import com.lingxia.app.media.UrlPlayerEngine
 import com.lingxia.app.media.UrlPlayerEngineFactory

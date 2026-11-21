@@ -22,7 +22,7 @@ val lingxiaApplicationIdSuffix = providers
     .get()
 val lingxiaApplicationId = providers
     .gradleProperty("lingxia.applicationId")
-    .orElse("com.lingxia.example.gpu")
+    .orElse("com.lingxia.example.lxapp")
     .get()
 val lingxiaAppName = providers
     .gradleProperty("lingxia.appName")
@@ -115,7 +115,7 @@ if (!releaseSigningEnabled) {
 }
 
 android {
-    namespace = "com.lingxia.example.gpu"
+    namespace = "com.lingxia.example.lxapp"
     compileSdk = 35
 
     defaultConfig {

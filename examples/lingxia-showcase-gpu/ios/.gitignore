@@ -7,7 +7,7 @@ DerivedData/
 .netrc
 
 Sources/Resources/
-Sources/gpu/Resources/*
-!Sources/gpu/Resources/Assets.xcassets/
-!Sources/gpu/Resources/Assets.xcassets/AppIcon.appiconset/
-!Sources/gpu/Resources/Assets.xcassets/AppIcon.appiconset/**
+Sources/lxapp/Resources/*
+!Sources/lxapp/Resources/Assets.xcassets/
+!Sources/lxapp/Resources/Assets.xcassets/AppIcon.appiconset/
+!Sources/lxapp/Resources/Assets.xcassets/AppIcon.appiconset/**

@@ -1,12 +1,12 @@
 app:
   projectName: lingxia
   rustLibDir: native
-  lingxiaId: lingxia-showcase-gpu
-  packageId: com.lingxia.example.gpu
-  productName: LingXia GPU Showcase
+  lingxiaId: lingxia-showcase
+  packageId: app.lingxia.example.lxapp
+  productName: LingXia
   productVersion: 0.2.7
-  platforms: [android, macos, ios, windows]
-  homeAppId: lingxia-showcase-gpu
+  platforms: [android, macos, ios, harmony, windows]
+  homeAppId: lingxia-showcase
   lingxiaServer:
     dev: http://192.168.37.211:8080
     prod: http://192.168.37.211:8080
@@ -16,20 +16,23 @@ update:
     - 6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw
 
 android:
-  packageId: com.lingxia.example.gpu
+  packageId: com.lingxia.example.lxapp
   minSdk: 29
   targetSdk: 35
   compileSdk: 35
 
 ios:
   deploymentTarget: "17.0"
-  targetName: gpu
+  targetName: lxapp
 
 windows:
 
 macos:
   deploymentTarget: "12.0"
-  targetName: LingXiaGpuDemo
+  targetName: LingXiaDemo
+
+harmony:
+  bundleName: app.lingxia.lxapp.example
 
 features:
   appService: true
@@ -57,7 +60,7 @@ settingsDestination:
 resources:
   bundles:
     - type: lxapp
-      appId: lingxia-showcase-gpu
+      appId: lingxia-showcase
       path: lxapp
     - type: lxapp
       appId: lingxia-showcase-web
@@ -67,7 +70,7 @@ resources:
       path: ../../packages/lingxia-terminal-settings
 
 surfaces:
-  - lxapp: lingxia-showcase-gpu
+  - lxapp: lingxia-showcase
     role: main
     launch: true
     tray: # dock + tray: dock icon stays, tray brings the window to front

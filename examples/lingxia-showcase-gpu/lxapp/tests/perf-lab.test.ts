@@ -168,7 +168,7 @@ test('the list at its largest row count stays windowed and the page responsive',
   await expect(t.app.view.testId('perf-scene-fill')).toBeVisible();
   await t.app.view.testId('perf-tab-list').click();
   await expect(t.app.view.testId('perf-list')).toBeVisible();
-  expect((await t.app.info()).appId).toBe('lingxia-showcase-gpu');
+  expect((await t.app.info()).appId).toBe('lingxia-showcase');
 });
 
 const RELOAD = /^(Reload page|重新载入页面)$/;

@@ -1,10 +1,10 @@
-package com.lingxia.example.gpu
+package com.lingxia.example.lxapp
 
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.app.Lingxia
-// import com.lingxia.example.gpu.mpv.MpvUrlPlayerEngineFactory
+// import com.lingxia.example.lxapp.mpv.MpvUrlPlayerEngineFactory
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
