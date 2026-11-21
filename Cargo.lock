@@ -4031,6 +4031,7 @@ dependencies = [
  "image",
  "language-tags",
  "lingxia-app-context",
+ "lingxia-i18n",
  "lingxia-log",
  "lingxia-media",
  "lingxia-messaging",

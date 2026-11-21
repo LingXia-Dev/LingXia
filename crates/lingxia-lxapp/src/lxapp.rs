@@ -43,6 +43,7 @@ mod content;
 mod display_language;
 pub mod host_appearance;
 pub mod localized_text;
+mod messages;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;

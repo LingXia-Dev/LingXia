@@ -46,9 +46,38 @@ rong::js_api! {
     }
 }
 
+/// The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`;
+/// tags keep their text. Read it when the text is shown: a later language switch does not change it.
+fn message(
+    ctx: JSContext,
+    key: String,
+    args: rong::function::Optional<rong::JSObject>,
+) -> JSResult<String> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let args = match args.0 {
+        None => serde_json::Value::Null,
+        Some(object) => {
+            let json = object.to_json_string().map_err(|error| {
+                crate::i18n::js_invalid_parameter_error(format!(
+                    "lx.app.t args must be a plain object: {error}"
+                ))
+            })?;
+            serde_json::from_str(&json).map_err(|error| {
+                crate::i18n::js_invalid_parameter_error(format!("lx.app.t args: {error}"))
+            })?
+        }
+    };
+    lxapp
+        .message(&key, &args)
+        .map_err(|error| crate::i18n::host_error_from_lxapp_error(&error).into())
+}
+
 rong::js_api! {
     fn register_app_api(ctx) {
         namespace LxAppApi = crate::namespace::app(ctx)?;
         const info: "Readonly<AppInfo>" = get_app_info(ctx.clone())?;
+        fn t(
+            ts_params = "key: string, args?: Readonly<Record<string, unknown>>"
+        ) = message;
     }
 }

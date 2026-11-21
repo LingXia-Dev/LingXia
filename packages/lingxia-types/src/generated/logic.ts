@@ -3237,6 +3237,11 @@ declare global {
   interface LxAppApi {
     readonly info: Readonly<AppInfo>;
     /**
+     * The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`;
+     * tags keep their text. Read it when the text is shown: a later language switch does not change it.
+     */
+    t(key: string, args?: Readonly<Record<string, unknown>>): string;
+    /**
      * Replace the current lxapp's complete app-declared More action list (seven
      * entries maximum). Pass an empty array to clear it. Native hosts append these
      * entries after their own lifecycle actions.
