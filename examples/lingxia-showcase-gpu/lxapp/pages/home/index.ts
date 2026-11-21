@@ -169,9 +169,11 @@ export default definePage({
         }
       },
       onHide() {
+        appState.lifecycle.pageHides++;
         console.log("[Home] Page hidden");
       },
       onShow() {
+        appState.lifecycle.pageShows++;
         console.log("[Home] Page shown");
         console.log("[Home] App data:", appState);
         helpers.syncAppearance();
