@@ -1,0 +1,96 @@
+import { APP_ID } from '../support/app.js';
+import { expect, test } from '@lingxia/test';
+import type { PageContract } from '@lingxia/types/page';
+import { bindFixture } from '../support/poll.js';
+import {
+  waitForElementAttribute,
+  waitForElementEnabled,
+} from '../support/page.js';
+
+// The chat page is the stream demo: an async generator action the View cancels.
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+test('streams a complete response from real page input', { app: APP_ID }, async (t) => {
+  const app = t.app;
+  await app.nav.reset({ page: 'chat' });
+  const page = await app.page<PageContract<{ messages: Message[] }>>({ name: 'chat' }, { timeout: 30_000 });
+  const stream = page.view;
+  await stream.testId('stream-page').waitFor({ timeout: 30_000 });
+  const message = async (role: Message['role'], until: (message: Message) => boolean) => {
+    await t.waitFor(async () => (await page.data()).messages.find((m) => m.role === role && until(m)),
+      { timeout: 15_000 });
+    return stream.css(`[data-testid="stream-message"][data-role="${role}"]`).first();
+  };
+
+  const prompt = `gate stream ${Date.now()}`;
+  await stream.testId("stream-input").fill(prompt);
+  await waitForElementAttribute(
+    stream,
+    '[data-testid="stream-input"]',
+    'data-controlled-value',
+    prompt,
+  );
+  await waitForElementEnabled(stream, '[data-testid="stream-send"]');
+  await stream.testId("stream-send").click();
+
+  await expect(await message('user', (m) => m.content.includes(prompt))).toContainText(prompt, { timeout: 15_000 });
+  await stream.testId('stream-live').waitFor({ timeout: 30_000 });
+  await stream.testId('stream-live').waitFor({ state: 'detached', timeout: 20_000 });
+
+  const reply = await message('assistant', (m) => m.content.trim().length > 10);
+  const response = await t.waitFor(() => reply.textContent(), { until: (text) => text.trim().length > 10, timeout: 15_000 });
+  expect(response.trim().length).toBeGreaterThan(10);
+});
+
+test('cancel an active response, finish Logic cleanup, and send again', {
+  id: 'STREAM-CANCEL-001',
+  app: APP_ID,
+  covers: ['lx.nav.go'],
+  start: { page: 'chat' },
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'STREAM-CANCEL-001');
+  const page = await app.page<PageContract<{ messages: Message[]; isStreaming: boolean }>>({ name: 'chat' });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
+  await app.clock.install();
+
+  for (let turn = 0; turn < 2; turn++) {
+    const prompt = `${namespace} turn ${turn}`;
+    await page.view.testId('stream-input').fill(prompt);
+    await expect(page.view.testId('stream-input')).toHaveAttribute('data-controlled-value', prompt);
+    await page.view.testId('stream-send').click();
+    await expect.poll(async () => (await page.data()).isStreaming).toBe(true);
+    // Freeze after the first real chunk. Natural completion must not be able
+    // to satisfy the cancellation assertions while we wait for bridge traffic.
+    // The live bubble follows the View's stream state, a frame after Logic's flag.
+    await page.view.testId('stream-live').waitFor({ state: 'attached', timeout: 5_000 });
+    // A chunk reaches the bubble a bridge hop and a frame after its tick (on GPU
+    // pages via the View's own stream), so each tick waits for it briefly; the
+    // installed clock keeps the response from advancing meanwhile.
+    const live = () => page.view.testId('stream-live').textContent();
+    let partial = '';
+    for (let tick = 0; tick < 20 && !/[a-z]/i.test(partial); tick++) {
+      await app.clock.tick(50);
+      partial = await t.waitFor(live, { until: (text) => /[a-z]/i.test(text), timeout: 200 })
+        .catch(live);
+    }
+    expect(/[a-z]/i.test(partial)).toBe(true);
+    await page.view.testId('stream-stop').click();
+    await expect(page.view.testId('stream-live')).not.toBeAttached();
+    // Generator return waits for its pending next(): release that one word,
+    // without letting an uncancelled response reach normal completion.
+    await app.clock.tick(90);
+    await expect.poll(async () => (await page.data()).isStreaming).toBe(false);
+    const { messages } = await page.data();
+    // Only the generator's finally block commits this partial response.
+    expect(messages.length).toBe((turn + 1) * 2);
+    expect(messages[turn * 2].content).toBe(prompt);
+    expect(messages[turn * 2 + 1].role).toBe('assistant');
+    expect(messages[turn * 2 + 1].content.trim().length).toBeGreaterThan(0);
+    expect(messages[turn * 2 + 1].content).toContain(partial.trim());
+    await expect(page.view.testId('stream-input')).toBeEnabled();
+  }
+});

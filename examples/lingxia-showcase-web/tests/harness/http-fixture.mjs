@@ -1,0 +1,367 @@
+// A dependency-free HTTP server the transfer specs run against.
+//
+// `lx.network.download` and `lx.network.upload` cannot be tested against the public
+// internet without importing its flakiness and its outages, and neither can
+// their failure contracts — a 500, a truncated body, a slow stream — be
+// produced on demand. This serves all of it deterministically.
+//
+// Start it before `lxdev test` and pass the base URL through:
+//   node tests/harness/http-fixture.mjs --port 0 --print-base
+//   lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+
+/** Deterministic bytes, so a spec can assert an exact size and digest. */
+function body(size) {
+  const buffer = Buffer.allocUnsafe(size);
+  for (let i = 0; i < size; i += 1) buffer[i] = i % 251;
+  return buffer;
+}
+
+export function digest(size) {
+  return createHash('sha256').update(body(size)).digest('hex');
+}
+
+/** A route param a spec can get wrong; `NaN` bytes crashes the allocator. */
+function size(url, key, fallback) {
+  const raw = Number(url.searchParams.get(key) ?? fallback);
+  if (!Number.isFinite(raw) || raw < 0) return fallback;
+  return Math.min(Math.floor(raw), 64 * 1024 * 1024);
+}
+
+function readAll(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => resolve(Buffer.concat(chunks)));
+    request.on('error', reject);
+  });
+}
+
+/** Field names and the file part, without pulling in a multipart parser. */
+function parseMultipart(buffer, contentType) {
+  const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType ?? '');
+  if (!match) return null;
+  const boundary = `--${match[1] ?? match[2]}`;
+  const parts = [];
+  for (const raw of buffer.toString('latin1').split(boundary)) {
+    const split = raw.indexOf('\r\n\r\n');
+    if (split === -1) continue;
+    const headers = raw.slice(0, split);
+    const name = /name="([^"]*)"/i.exec(headers)?.[1];
+    if (!name) continue;
+    const content = raw.slice(split + 4).replace(/\r\n$/, '');
+    parts.push({
+      name,
+      filename: /filename="([^"]*)"/i.exec(headers)?.[1],
+      type: /content-type:\s*([^\r\n]+)/i.exec(headers)?.[1],
+      bytes: Buffer.from(content, 'latin1').length,
+      text: content,
+    });
+  }
+  return parts;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function createFixtureServer() {
+  // Host files for `t.automation.browser.setInputFiles`, which takes
+  // absolute paths the spec runtime cannot create itself.
+  let uploadDir;
+  const uploadFiles = () => {
+    uploadDir ??= mkdtempSync(join(tmpdir(), 'lx-browser-files-'));
+    const text = join(uploadDir, 'a.txt');
+    const png = join(uploadDir, 'b.png');
+    writeFileSync(text, 'hello');
+    writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'));
+    return [text, png];
+  };
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1');
+    const route = url.pathname;
+    const json = (status, value) => {
+      const text = JSON.stringify(value);
+      response.writeHead(status, {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(text),
+      });
+      response.end(text);
+    };
+
+    try {
+      // Same bytes, but with the extension in the path. A download client that
+      // names its output from the URL needs one, and `/bytes` deliberately has
+      // none so a spec can cover both.
+      if (route.startsWith('/file/')) {
+        const bytes = size(url, 'size', 1024);
+        const payload = body(bytes);
+        response.writeHead(200, {
+          'content-type': url.searchParams.get('type') ?? 'application/octet-stream',
+          'content-length': payload.length,
+          etag: `"${digest(bytes)}"`,
+        });
+        response.end(payload);
+        return;
+      }
+
+      // Fixed-size body with a known digest.
+      if (route === '/bytes') {
+        const bytes = size(url, 'size', 1024);
+        const payload = body(bytes);
+        response.writeHead(200, {
+          'content-type': url.searchParams.get('type') ?? 'application/octet-stream',
+          'content-length': payload.length,
+          etag: `"${digest(bytes)}"`,
+        });
+        response.end(payload);
+        return;
+      }
+
+      // Trickled in chunks so a spec can observe progress, pause, and cancel.
+      if (route === '/slow' || route === '/slow.bin') {
+        const bytes = size(url, 'size', 65536);
+        const chunks = Math.max(1, size(url, 'chunks', 8));
+        const delay = size(url, 'delayMs', 120);
+        const complete = body(bytes);
+        const etag = `"${digest(bytes)}"`;
+        const range = /^bytes=(\d+)-$/.exec(request.headers.range ?? '');
+        const requestedOffset = range ? Number(range[1]) : 0;
+        const canResume = requestedOffset > 0
+          && requestedOffset < bytes
+          && (!request.headers['if-range'] || request.headers['if-range'] === etag);
+        const offset = canResume ? requestedOffset : 0;
+        const payload = complete.subarray(offset);
+        const step = Math.ceil(bytes / chunks);
+        response.writeHead(canResume ? 206 : 200, {
+          'content-type': 'application/octet-stream',
+          'content-length': payload.length,
+          'accept-ranges': 'bytes',
+          'etag': etag,
+          ...(canResume ? { 'content-range': `bytes ${offset}-${bytes - 1}/${bytes}` } : {}),
+        });
+        for (let position = 0; position < payload.length; position += step) {
+          // `writableEnded` only flips after end(); a client that aborts
+          // mid-stream sets `destroyed`, and without this the handler keeps
+          // sleeping through every remaining chunk — which is precisely the
+          // cancel case this route exists to serve.
+          if (response.destroyed) return;
+          response.write(payload.subarray(position, Math.min(position + step, payload.length)));
+          await sleep(delay);
+        }
+        response.end();
+        return;
+      }
+
+      // Promises more than it sends, so the client sees a truncated transfer.
+      if (route === '/truncated') {
+        const bytes = size(url, 'size', 4096);
+        response.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-length': bytes,
+        });
+        response.write(body(Math.floor(bytes / 2)));
+        response.destroy();
+        return;
+      }
+
+      if (route === '/status') {
+        const raw = Number(url.searchParams.get('code') ?? 500);
+        const code = Number.isInteger(raw) && raw >= 100 && raw <= 599 ? raw : 500;
+        response.writeHead(code, { 'content-type': 'text/plain' });
+        response.end(`status ${code}`);
+        return;
+      }
+
+      if (route === '/upload' && (request.method === 'POST' || request.method === 'PUT')) {
+        // Loopback delivers a few MB faster than any client can cancel, so a
+        // cancel spec needs the server to hold the request open.
+        const holdMs = size(url, 'holdMs', 0);
+        if (holdMs > 0) {
+          request.pause();
+          await sleep(holdMs);
+          if (request.destroyed) return;
+          request.resume();
+        }
+        const buffer = await readAll(request);
+        const parts = parseMultipart(buffer, request.headers['content-type']);
+        if (!parts) {
+          json(415, { error: 'expected multipart/form-data' });
+          return;
+        }
+        const file = parts.find((part) => part.filename !== undefined);
+        json(200, {
+          ok: true,
+          method: request.method,
+          received: buffer.length,
+          // The request's own Content-Type, not the file part's: a caller must
+          // never be able to replace the boundary the envelope depends on.
+          contentType: request.headers['content-type'] ?? null,
+          userAgent: request.headers['user-agent'] ?? null,
+          file: file
+            ? { field: file.name, filename: file.filename, type: file.type, bytes: file.bytes }
+            : null,
+          fields: Object.fromEntries(
+            parts.filter((part) => part.filename === undefined).map((part) => [part.name, part.text]),
+          ),
+          headerEcho: request.headers['x-lx-test'] ?? null,
+        });
+        return;
+      }
+
+      if (route === '/upload-raw' && (request.method === 'PUT' || request.method === 'PATCH')) {
+        // Answer before consuming the body, the way object storage refuses a
+        // signature it disagrees with. Keep draining rather than resetting the
+        // socket: Windows reports a reset as SendRequest and loses the status.
+        const reject = Number(url.searchParams.get('reject') ?? 0);
+        if (Number.isInteger(reject) && reject >= 400 && reject <= 599) {
+          response.writeHead(reject, { 'content-type': 'text/plain' });
+          response.end(`refused ${reject}`);
+          request.resume();
+          return;
+        }
+        // A presigned-style endpoint: the body is the file, nothing else.
+        const buffer = await readAll(request);
+        json(200, {
+          ok: true,
+          method: request.method,
+          received: buffer.length,
+          contentType: request.headers['content-type'] ?? null,
+          contentLength: Number(request.headers['content-length'] ?? -1),
+          userAgent: request.headers['user-agent'] ?? null,
+          firstBytes: buffer.subarray(0, 8).toString('hex'),
+          headerEcho: request.headers['x-lx-test'] ?? null,
+        });
+        return;
+      }
+
+      // A checked-in clip for native video playback contracts. Native players
+      // probe with byte ranges before they play, so 206 is not optional.
+      if (route === '/media/sample.mp4') {
+        const media = readFileSync(new URL('../fixtures/media/sample.mp4', import.meta.url));
+        const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+        const start = range && range[1] !== '' ? Number(range[1]) : 0;
+        const end = range && range[2] !== '' ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
+        if (range && (start > end || start >= media.length)) {
+          response.writeHead(416, { 'content-range': `bytes */${media.length}` });
+          response.end();
+          return;
+        }
+        const payload = media.subarray(start, end + 1);
+        response.writeHead(range ? 206 : 200, {
+          'content-type': 'video/mp4',
+          'content-length': payload.length,
+          'accept-ranges': 'bytes',
+          ...(range ? { 'content-range': `bytes ${start}-${end}/${media.length}` } : {}),
+        });
+        response.end(request.method === 'HEAD' ? undefined : payload);
+        return;
+      }
+
+      // A real decodable image for the compress / info contracts. Unlike
+      // `/file/*.png`, these bytes are a valid PNG, so a native image decoder
+      // accepts them.
+      if (route === '/media/sample.png') {
+        const image = readFileSync(new URL('../fixtures/media/sample.png', import.meta.url));
+        response.writeHead(200, {
+          'content-type': 'image/png',
+          'content-length': image.length,
+        });
+        response.end(request.method === 'HEAD' ? undefined : image);
+        return;
+      }
+
+      // A titled HTML page, so a browser-tab contract has something to open
+      // and a title to find it by.
+      if (route.startsWith('/page/')) {
+        const name = decodeURIComponent(route.slice('/page/'.length));
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>fixture ${name}</title></head>`
+          + `<body><h1 data-fixture-page="${name}">${name}</h1></body></html>`;
+        response.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': Buffer.byteLength(html),
+        });
+        response.end(html);
+        return;
+      }
+
+      // A response a WebView would download rather than show.
+      if (route.startsWith('/attachment/')) {
+        const name = decodeURIComponent(route.slice('/attachment/'.length));
+        const payload = body(64);
+        response.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-disposition': `attachment; filename="${name}"`,
+          'content-length': payload.length,
+        });
+        response.end(payload);
+        return;
+      }
+
+      if (route === '/browser/files') {
+        json(200, { files: uploadFiles() });
+        return;
+      }
+
+      // Pages for the browser page-driver specs. `localhost` and `127.0.0.1`
+      // are different origins, which gives form.html a cross-origin iframe.
+      const browserPage = /^\/browser\/([a-z0-9-]+\.html)$/i.exec(route)?.[1];
+      if (browserPage) {
+        // `?delayMs=` holds the response, so the new document commits late.
+        await sleep(size(url, 'delayMs', 0));
+        let html;
+        try {
+          html = readFileSync(new URL(`../fixtures/browser/${browserPage}`, import.meta.url));
+        } catch {
+          json(404, { error: `no browser fixture ${browserPage}` });
+          return;
+        }
+        response.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': html.length,
+        });
+        response.end(html);
+        return;
+      }
+
+      if (route === '/health') {
+        json(200, { ok: true });
+        return;
+      }
+
+      json(404, { error: `no fixture route ${route}` });
+    } catch (error) {
+      // Once headers are out, writeHead throws inside this catch and the
+      // rejection is unhandled — which kills the process and takes every
+      // remaining spec with it, since one fixture serves the whole suite.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      json(500, { error: String(error) });
+    }
+  });
+  server.on('close', () => {
+    if (uploadDir) rmSync(uploadDir, { recursive: true, force: true });
+  });
+  return server;
+}
+
+// argv[1] is a raw path; import.meta.url is percent-encoded.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  const portFlag = process.argv.indexOf('--port');
+  const port = portFlag === -1 ? 0 : Number(process.argv[portFlag + 1]);
+  const server = createFixtureServer();
+  server.listen(port, '127.0.0.1', () => {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    process.stdout.write(`${base}\n`);
+  });
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => server.close(() => process.exit(0)));
+  }
+}

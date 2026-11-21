@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/@lingxia/test/schemas/lxdev.schema.json",
+  "test": {
+    "entry": "tests"
+  }
+}

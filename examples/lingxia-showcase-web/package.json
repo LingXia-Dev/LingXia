@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "lingxia build",
-    "typecheck": "tsc -b tsconfig.logic.json"
+    "typecheck": "tsc -b tsconfig.logic.json",
+    "typecheck:all": "tsc -b tsconfig.json",
+    "test": "lxdev test"
   },
   "keywords": [
     "lingxia",
@@ -26,6 +28,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@lingxia/test": "file:../../packages/lingxia-test",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
