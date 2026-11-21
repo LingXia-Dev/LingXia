@@ -1,0 +1,10 @@
+[package]
+name = "lingxia-i18n"
+version.workspace = true
+edition.workspace = true
+description = "LingXia message catalogues: ICU MessageFormat messages in FormatJS JSON, and their checks"
+license = "MIT"
+repository.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }

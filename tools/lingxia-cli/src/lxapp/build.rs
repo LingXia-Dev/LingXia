@@ -129,6 +129,7 @@ fn replace_dir(staging: &Path, output_dir: &Path) -> Result<()> {
 }
 
 fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) -> Result<()> {
+    super::i18n::check(&project.root)?;
     reporter.start_parallel_tasks();
     let install_duration_hint = view::prepare_tooling(project, options, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();
