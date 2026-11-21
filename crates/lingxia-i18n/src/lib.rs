@@ -2,6 +2,8 @@
 //! `defaultMessage` is an ICU MessageFormat 1 message, and the checks a translation must pass.
 
 pub mod catalogue;
+pub mod format;
+pub mod js;
 pub mod message;
 
 pub use catalogue::{Catalogue, Entry, Problem, check, valid_key};

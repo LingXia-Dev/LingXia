@@ -1,15 +1,59 @@
-//! Checks an lxapp's `i18n/<tag>.json` catalogues against the languages its lxapp.json declares;
-//! a build stops on any problem.
+//! An lxapp's `i18n/<tag>.json` catalogues: checked against the languages its lxapp.json declares,
+//! where any problem stops the build, then compiled to `i18n/<tag>.js` in its output.
 
 use anyhow::{Context, Result, anyhow, bail};
 use lingxia_i18n::{Catalogue, Problem};
 use std::path::Path;
 
-pub fn check(dir: &Path) -> Result<()> {
+pub fn compile(dir: &Path, output: &Path) -> Result<()> {
+    let catalogues = check(dir)?;
+    // GPU pages bundle the messages from here; a stale copy would outlive a deleted i18n/.
+    let generated = dir.join(".lingxia").join("i18n");
+    if generated.exists() {
+        std::fs::remove_dir_all(&generated)?;
+    }
+    let Some((source, _)) = catalogues.first() else {
+        return Ok(());
+    };
+    let source = source.clone();
+    let out = output.join("i18n");
+    std::fs::create_dir_all(&out)?;
+    std::fs::create_dir_all(&generated)?;
+    let mut index = String::new();
+    let mut entries = Vec::new();
+    for (n, (tag, catalogue)) in catalogues.iter().enumerate() {
+        let module = lingxia_i18n::js::module(catalogue);
+        std::fs::write(out.join(format!("{tag}.js")), &module)?;
+        std::fs::write(generated.join(format!("{tag}.js")), &module)?;
+        // Native text (Logic's `lx.app.t`, toasts) formats from the catalogue itself.
+        std::fs::copy(
+            dir.join("i18n").join(format!("{tag}.json")),
+            out.join(format!("{tag}.json")),
+        )?;
+        index.push_str(&format!(
+            "import m{n} from './{tag}.js';
+"
+        ));
+        entries.push(format!("{}: m{n}", serde_json::to_string(tag)?));
+    }
+    index.push_str(&format!(
+        "export const source = {};
+export const languages = {{ {} }};
+",
+        serde_json::to_string(&source)?,
+        entries.join(", ")
+    ));
+    index.push_str(lingxia_i18n::js::FORMATTER);
+    std::fs::write(generated.join("index.js"), index)?;
+    Ok(())
+}
+
+/// The declared languages' catalogues, the source first, each complete and true to the source.
+pub fn check(dir: &Path) -> Result<Vec<(String, Catalogue)>> {
     let i18n = dir.join("i18n");
     let manifest = dir.join("lxapp.json");
     if !i18n.is_dir() || !manifest.is_file() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest)?)
         .with_context(|| format!("{} is not JSON", manifest.display()))?;
@@ -72,7 +116,13 @@ pub fn check(dir: &Path) -> Result<()> {
         }
     }
     if problems.is_empty() {
-        return Ok(());
+        let source_tag = source_tag.clone();
+        let mut catalogues: Vec<(String, Catalogue)> = catalogues
+            .into_iter()
+            .map(|(_, tag, catalogue)| (tag, catalogue))
+            .collect();
+        catalogues.sort_by_key(|(tag, _)| *tag != source_tag);
+        return Ok(catalogues);
     }
     report(problems)
 }
@@ -84,7 +134,7 @@ fn note(reason: impl Into<String>) -> Problem {
     }
 }
 
-fn report(problems: Vec<(String, Problem)>) -> Result<()> {
+fn report<T>(problems: Vec<(String, Problem)>) -> Result<T> {
     for (file, problem) in &problems {
         eprintln!("{file}: {problem}");
     }
