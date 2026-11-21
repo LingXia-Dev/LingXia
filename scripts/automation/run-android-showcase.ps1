@@ -131,7 +131,7 @@ function Stop-AndroidFixture {
 
 function Invoke-SameRouteRelaunchStress {
   for ($iteration = 1; $iteration -le 10; $iteration += 1) {
-    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'home', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'home',
       '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
@@ -142,7 +142,7 @@ function Invoke-SameRouteRelaunchStress {
 function Invoke-ProcessRestoreProbe {
   param([string]$ResultDirectory)
 
-  Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+  Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'home', '--json')
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'home',
     '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
@@ -201,12 +201,12 @@ function Invoke-ProcessRestoreProbe {
     )
     # Exercise navigation through Logic and back, beyond merely seeing a cover
     # disappear or finding an Activity with the expected name.
-    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'components', '--json')
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'components', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'components',
       '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '10000'
     )
-    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'home', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'home',
       '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
