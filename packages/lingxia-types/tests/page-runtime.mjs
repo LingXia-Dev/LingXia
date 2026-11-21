@@ -115,6 +115,20 @@ assert.throws(() => run('orderPage.update(d => { orderPage.update(e => {}); })')
 assert.throws(() => run('orderPage.update(async d => { d.list = []; })'), /synchronous/);
 assert.throws(() => run('orderPage.update(d => ({ ...d }))'), /in place/);
 assert.equal(run('orderPage.data.list.length'), 2, 'a rejected recipe changes nothing');
+// The draft copies only what a recipe writes; these are the writes a naive copy-on-write loses.
+run(`orderPage.update(d => { d.extra = { a: 1 }; d.extra.c = 2; });
+orderPage.update(d => { d.list.push({ n: 4 }); d.list[0].n = 9; });
+orderPage.update(d => { d.kept = d.list.filter(item => item.n > 3); });`);
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.extra'))), { a: 1, c: 2 }, 'a replaced object keeps edits made through the draft');
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.list'))), [{ n: 9 }, { n: 3 }, { n: 4 }], 'a grown array keeps edited items');
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.kept'))), [{ n: 9 }, { n: 4 }], 'drafts read out of a derived array');
+run('orderPage.update(d => { d.kept[0].n = 1; })');
+assert.equal(run('orderPage.data.list[0].n'), 9, 'a derived array shares nothing with its source');
+assert.throws(() => run('orderPage.update(d => { d.self = d; })'), /acyclic/);
+assert.throws(() => run('orderPage.update(d => { d.when = new Date(); })'), /class instances/);
+assert.equal(run('orderPage.data.when'), undefined, 'a rejected write changes nothing');
+run('globalThis.leaked = null; orderPage.update(d => { leaked = d.extra; })');
+assert.throws(() => run('leaked.a = 5'), /only usable inside the recipe/);
 assert.throws(
   () => run(`__registerPage('loose', define({ setup: () => ({ save() {} }) })); __LX_CREATE_PAGE__('loose', null, 'l1');`),
   /under actions/,

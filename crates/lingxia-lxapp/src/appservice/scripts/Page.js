@@ -253,11 +253,9 @@
       settle(result ? { status: "ok", value: result.value } : { status: "canceled", reason });
     };
 
-    // `page.update`: the recipe ran on a clone; what differs joins the batch.
-    pageSvc._applyDraft = function (draft) {
+    // `page.update`: the writes its recipe made join the batch.
+    pageSvc._applyChanges = function (changes) {
       if (disposed) return;
-      const changes = [];
-      diffData(pageSvc.data, draft, [], changes);
       for (const [segments, value] of changes) {
         applyUpdateSegments(pageSvc.data, pendingBaseState, pendingOps, segments, value);
       }
@@ -362,24 +360,25 @@
           }
           return;
         }
-        const draft = cloneJsonValue(svc ? svc.data : initial);
+        const draft = createDraft(svc ? svc.data : initial);
         updating = true;
         let returned;
         try {
-          returned = recipe(draft);
+          returned = recipe(draft.root);
         } finally {
           updating = false;
+          draft.close();
         }
         if (returned !== undefined) {
           throw new TypeError(returned && typeof returned.then === "function"
             ? "page.update: the recipe must be synchronous; await first, then update"
             : "page.update: change the draft in place; the recipe returns nothing");
         }
-        assertPageData(draft);
+        const changes = draft.changes();
         if (svc) {
-          svc._applyDraft(draft);
+          svc._applyChanges(changes);
         } else {
-          initial = draft;
+          for (const [segments, value] of changes) setValueBySegments(initial, segments, value);
         }
       },
       flush() {
@@ -570,27 +569,117 @@ function applyUpdateSegments(root, pendingBaseState, pendingOps, segments, nextV
   enqueuePendingPatch(root, pendingOps, segments, existedBefore);
 }
 
-// The smallest set of writes that turns `prev` into `next`: objects by key,
-// equal-length arrays by index, anything else replaced whole.
-function diffData(prev, next, segments, out) {
-  if (isPlainObject(prev) && isPlainObject(next)) {
-    for (const key of Object.keys(prev)) {
-      if (!Object.prototype.hasOwnProperty.call(next, key)) out.push([[...segments, key], undefined]);
+// `page.update`'s draft reads through to `base`; a write copies only the object it lands in, so
+// an update costs what it touches, not the size of the page's data.
+function createDraft(base) {
+  const states = new WeakMap();
+  let closed = false;
+
+  function make(value, parent) {
+    const state = { base: value, copy: null, children: new Map(), modified: false, parent, proxy: null };
+    const current = () => state.copy || state.base;
+    const write = () => {
+      if (closed) throw new TypeError("page.update: the draft is only usable inside the recipe");
+      if (!state.copy) state.copy = Array.isArray(value) ? value.slice() : Object.assign({}, value);
+      for (let s = state; s && !s.modified; s = s.parent) s.modified = true;
+      return state.copy;
+    };
+    const proxy = new Proxy(Array.isArray(value) ? [] : {}, {
+      get(_, key) {
+        const child = current()[key];
+        if (typeof key === "symbol" || child === null || typeof child !== "object" || states.has(child)) return child;
+        if (!Object.prototype.hasOwnProperty.call(current(), key)) return child;
+        const cached = state.children.get(key);
+        if (cached && cached.state.base === child) return cached.proxy;
+        const made = make(child, state);
+        state.children.set(key, made);
+        return made.proxy;
+      },
+      set(_, key, next) {
+        write()[key] = next;
+        state.children.delete(key);
+        return true;
+      },
+      deleteProperty(_, key) {
+        delete write()[key];
+        state.children.delete(key);
+        return true;
+      },
+      defineProperty(_, key, descriptor) {
+        if (!("value" in descriptor)) throw new TypeError("Page data cannot contain accessors");
+        write()[key] = descriptor.value;
+        state.children.delete(key);
+        return true;
+      },
+      has: (_, key) => key in current(),
+      ownKeys: () => Reflect.ownKeys(current()),
+      getOwnPropertyDescriptor(_, key) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(current(), key);
+        // An array's `length` is the one property the stand-in target also has.
+        if (descriptor && key !== "length") descriptor.configurable = true;
+        return descriptor;
+      },
+    });
+    state.proxy = proxy;
+    states.set(proxy, state);
+    return { state, proxy };
+  }
+
+  // A value written into the draft, as page data: drafts inside it read out, nothing shared.
+  function plain(value) {
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) return Array.prototype.map.call(value, plain);
+    const out = {};
+    for (const key of Object.keys(value)) out[key] = plain(value[key]);
+    return out;
+  }
+
+  function collect(state, segments, out) {
+    if (!state.modified) return;
+    const { base, copy } = state;
+    if (!copy) {
+      for (const [key, child] of state.children) {
+        if (child.state.modified) collect(child.state, [...segments, key], out);
+      }
+      return;
     }
-    for (const key of Object.keys(next)) {
-      if (Object.prototype.hasOwnProperty.call(prev, key)) {
-        diffData(prev[key], next[key], [...segments, key], out);
-      } else if (next[key] !== undefined) {
-        out.push([[...segments, key], next[key]]);
+    // A resized array goes whole, read through the draft so its edited items come along.
+    if (Array.isArray(base) && copy.length !== base.length) {
+      out.push([segments, state.proxy]);
+      return;
+    }
+    const has = (key) => Object.prototype.hasOwnProperty.call(base, key);
+    for (const key of Object.keys(base)) {
+      if (!Object.prototype.hasOwnProperty.call(copy, key)) out.push([[...segments, key], undefined]);
+    }
+    for (const key of Object.keys(copy)) {
+      const next = copy[key];
+      const cached = state.children.get(key);
+      const child = cached && cached.state.base === next ? cached : null;
+      if (child && has(key) && next === base[key]) {
+        collect(child.state, [...segments, key], out);
+      } else if (!has(key) || next !== base[key] || (child && child.state.modified)) {
+        out.push([[...segments, key], child ? child.proxy : next]);
       }
     }
-    return;
   }
-  if (Array.isArray(prev) && Array.isArray(next) && prev.length === next.length) {
-    for (let i = 0; i < next.length; i++) diffData(prev[i], next[i], [...segments, String(i)], out);
-    return;
-  }
-  if (!isDeepEqual(prev, next)) out.push([segments, next]);
+
+  const root = make(base, null);
+  return {
+    root: root.proxy,
+    close() {
+      closed = true;
+    },
+    changes() {
+      const out = [];
+      collect(root.state, [], out);
+      for (const change of out) {
+        assertPageData(change[1]);
+        change[1] = plain(change[1]);
+      }
+      return out;
+    },
+  };
 }
 
 function pathSegmentsToKey(path) {
