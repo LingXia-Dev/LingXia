@@ -421,7 +421,15 @@ impl ViewInteraction {
             self.dispatches.push(super::Dispatch::Escape);
             return (open, vec![Effect::Dispatch]);
         }
-        let origin = self.keyboard_origin();
+        // A tap focuses an editor without moving keyboard focus; keys start from it, or Tab
+        // would land on the first field again when the tapped one is first.
+        let origin = self.keyboard_origin().or_else(|| {
+            frame.nodes.iter().position(|node| {
+                node.input
+                    .as_ref()
+                    .is_some_and(|input| input.edit_token.is_some())
+            })
+        });
         if let Some(index) = origin
             && let Some(node) = frame.node(index).filter(|node| frame::slider_enabled(node))
         {

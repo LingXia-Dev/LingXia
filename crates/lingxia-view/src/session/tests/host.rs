@@ -7504,5 +7504,63 @@ fn tab_off_a_field_ends_its_editing_and_a_click_takes_focus_back() {
     assert_eq!(query("log")["text"], "a+ a- a+ ");
 }
 
+#[test]
+fn one_tab_leaves_a_first_field_a_tap_focused() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-tab-after-tap").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let module = source(
+        "function render(){const a=useLocal('a','');return h('view',{style:{gap:8}},h('input',{'data-testid':'a',bind:a,'aria-label':'Email'}),h('button',{'data-testid':'go',onClick(){}},'Go'))}",
+    );
+    let host = platform.host(&worker, &module, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let settle = || {
+        platform.settle(&[&host]);
+        host.request_frame();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 4);
+    };
+    let query = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()
+    };
+    let rect = query("a")["rect"].clone();
+    let edge = |key: &str| rect[key].as_f64().unwrap() as f32;
+    let scale = host.snapshot().unwrap().scale;
+    tap(
+        &host,
+        (edge("left") + edge("width") / 2.0) * scale,
+        (edge("top") + edge("height") / 2.0) * scale,
+    );
+    settle();
+    let Some(Dispatch::Editor { node, .. }) = host.adapter().log.lock().unwrap().editors.pop()
+    else {
+        panic!("the tap asks the input method to focus the field");
+    };
+    let snapshot = host.snapshot().unwrap();
+    let identity = snapshot.frame.nodes[node].identity.to_string();
+    let (tx, rx) = channel();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": snapshot.generation.get()})
+            .to_string(),
+        move |reply| {
+            let _ = tx.send(reply);
+        },
+    );
+    platform.settle(&[&host]);
+    rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    settle();
+    assert_eq!(query("a")["focused"], true);
+
+    assert!(host.key(Key::Tab, false, false));
+    settle();
+    assert_eq!(query("go")["focused"], true, "one Tab moves on");
+    assert_eq!(query("a")["focused"], false);
+}
+
 #[path = "uncontrolled.rs"]
 mod uncontrolled;
