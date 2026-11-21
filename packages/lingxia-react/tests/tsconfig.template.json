@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../../..",
+    "types": [],
+    "paths": {
+      "@lingxia/react": ["../dist/index.d.ts"],
+      "@lingxia/types/page": ["../../lingxia-types/src/page.ts"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"]
+    }
+  },
+  "include": ["template-shims.d.ts", "../../../tools/lingxia-cli/templates/lxapp-create/pages/**/*.tsx"]
+}
