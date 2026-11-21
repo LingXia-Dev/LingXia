@@ -347,9 +347,11 @@ impl Renderer {
                         .position(|other| crate::protocol::anchors(other, target))
                         .map(|other| identities[other].clone())
                 });
+                let m = layout.margin;
                 (
                     named.flatten().unwrap_or_else(|| target.to_owned()),
                     crate::scene::anchor::Area::parse(area, directions[index]),
+                    [m.top, m.right, m.bottom, m.left],
                 )
             }));
             stickies.push((record.string(field::POSITION) == Some("sticky")).then(|| {

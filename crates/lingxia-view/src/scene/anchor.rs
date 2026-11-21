@@ -64,25 +64,38 @@ impl Area {
 /// How far to move a popover laid out at `natural` so it sits on `area`'s side of `anchor`,
 /// flipping to the other side when only that fits, and kept inside `viewport`. Beside an anchor
 /// with room on neither side it goes below or above instead of covering the anchor.
+///
+/// `margin` (top, right, bottom, left) is the popover's own: the one facing the anchor on the
+/// authored side replaces the default gap, kept when the popover flips, and the ones along the
+/// anchor's edge move it off the edge it aligns to, as a margin box would.
 pub(crate) fn place(
     natural: [f32; 4],
     anchor: [f32; 4],
     viewport: [f32; 4],
     area: Area,
+    margin: [f32; 4],
 ) -> [f32; 2] {
     let [_, _, width, height] = natural;
+    let [m_top, m_right, m_bottom, m_left] = margin.map(|m| if m.is_finite() { m } else { 0.0 });
+    let facing = match area.side {
+        Side::Below => m_top,
+        Side::Above => m_bottom,
+        Side::Right => m_left,
+        Side::Left => m_right,
+    };
+    let gap = if facing > 0.0 { facing } else { GAP };
     let left = viewport[0] + EDGE;
     let top = viewport[1] + EDGE;
     let right = viewport[0] + viewport[2] - EDGE;
     let bottom = viewport[1] + viewport[3] - EDGE;
-    let along = |start: f32, extent: f32, size: f32| match area.align {
-        Align::Start => start,
-        Align::End => start + extent - size,
-        Align::Center => start + (extent - size) / 2.0,
+    let along = |start: f32, extent: f32, size: f32, before: f32, after: f32| match area.align {
+        Align::Start => start + before,
+        Align::End => start + extent - size - after,
+        Align::Center => start + (extent - size + before - after) / 2.0,
     };
     if matches!(area.side, Side::Left | Side::Right) {
-        let after = anchor[0] + anchor[2] + GAP;
-        let before = anchor[0] - GAP - width;
+        let after = anchor[0] + anchor[2] + gap;
+        let before = anchor[0] - gap - width;
         let fits_after = after + width <= right;
         let fits_before = before >= left;
         let x = match (area.side, fits_before, fits_after) {
@@ -91,7 +104,7 @@ pub(crate) fn place(
             _ => None,
         };
         if let Some(x) = x {
-            let y = along(anchor[1], anchor[3], height)
+            let y = along(anchor[1], anchor[3], height, m_top, m_bottom)
                 .min(bottom - height)
                 .max(top);
             return [x - natural[0], y - natural[1]];
@@ -101,11 +114,11 @@ pub(crate) fn place(
     // Beside an anchor with no room: centred under or over it.
     let x = match area.side {
         Side::Left | Side::Right => anchor[0] + (anchor[2] - width) / 2.0,
-        _ => along(anchor[0], anchor[2], width),
+        _ => along(anchor[0], anchor[2], width, m_left, m_right),
     };
     let x = x.min(right - width).max(left);
-    let below = anchor[1] + anchor[3] + GAP;
-    let above = anchor[1] - GAP - height;
+    let below = anchor[1] + anchor[3] + gap;
+    let above = anchor[1] - gap - height;
     let fits_below = below + height <= bottom;
     let fits_above = above >= top;
     let low = || below.min(bottom - height).max(top);
@@ -121,6 +134,8 @@ pub(crate) fn place(
 mod tests {
     use super::{Align, Area, Side, place};
 
+    const NONE: [f32; 4] = [0.0; 4];
+
     #[test]
     fn a_popover_sits_below_its_anchor_flips_above_and_stays_on_screen() {
         let viewport = [0.0, 0.0, 400.0, 800.0];
@@ -130,7 +145,8 @@ mod tests {
                 [0.0, 0.0, 280.0, 300.0],
                 [16.0, 100.0, 360.0, 44.0],
                 viewport,
-                Area::default()
+                Area::default(),
+                NONE
             ),
             [16.0, 148.0]
         );
@@ -140,7 +156,8 @@ mod tests {
                 [0.0, 0.0, 280.0, 300.0],
                 [16.0, 600.0, 360.0, 44.0],
                 viewport,
-                Area::default()
+                Area::default(),
+                NONE
             ),
             [16.0, 296.0]
         );
@@ -150,7 +167,8 @@ mod tests {
                 [0.0, 0.0, 280.0, 100.0],
                 [300.0, 10.0, 80.0, 30.0],
                 viewport,
-                Area::default()
+                Area::default(),
+                NONE
             ),
             [112.0, 44.0]
         );
@@ -160,7 +178,8 @@ mod tests {
                 [0.0, 0.0, 280.0, 700.0],
                 [16.0, 300.0, 360.0, 44.0],
                 viewport,
-                Area::default()
+                Area::default(),
+                NONE
             ),
             [16.0, 92.0]
         );
@@ -173,14 +192,14 @@ mod tests {
         let natural = [0.0, 0.0, 160.0, 100.0];
         let end = Area::parse(Some("bottom span-inline-start"), false);
         assert_eq!(end.align, Align::End);
-        assert_eq!(place(natural, anchor, viewport, end), [140.0, 444.0]);
+        assert_eq!(place(natural, anchor, viewport, end, NONE), [140.0, 444.0]);
         // In RTL the inline start is the right edge.
         assert_eq!(Area::parse(None, true).align, Align::End);
         let top = Area::parse(Some("top"), false);
-        assert_eq!(place(natural, anchor, viewport, top), [170.0, 296.0]);
+        assert_eq!(place(natural, anchor, viewport, top, NONE), [170.0, 296.0]);
         // No room above: it flips below.
         let high = [200.0, 20.0, 100.0, 40.0];
-        assert_eq!(place(natural, high, viewport, top), [170.0, 64.0]);
+        assert_eq!(place(natural, high, viewport, top, NONE), [170.0, 64.0]);
     }
 
     #[test]
@@ -191,32 +210,84 @@ mod tests {
         // At the inline end, centred on the anchor's height, 4 px off its edge.
         let end = Area::parse(Some("inline-end"), false);
         assert_eq!((end.side, end.align), (Side::Right, Align::Center));
-        assert_eq!(place(natural, anchor, viewport, end), [104.0, 370.0]);
+        assert_eq!(place(natural, anchor, viewport, end, NONE), [104.0, 370.0]);
         // Spanning toward the block end: tops level. Toward the block start: bottoms level.
         let down = Area::parse(Some("inline-end span-block-end"), false);
-        assert_eq!(place(natural, anchor, viewport, down), [104.0, 400.0]);
+        assert_eq!(place(natural, anchor, viewport, down, NONE), [104.0, 400.0]);
         let up = Area::parse(Some("inline-end span-block-start"), false);
-        assert_eq!(place(natural, anchor, viewport, up), [104.0, 340.0]);
+        assert_eq!(place(natural, anchor, viewport, up, NONE), [104.0, 340.0]);
         // In RTL the inline end is the left side.
         assert_eq!(Area::parse(Some("inline-end"), true).side, Side::Left);
         assert_eq!(Area::parse(Some("inline-start"), true).side, Side::Right);
         // No room at the end, room at the start: it flips.
         let near_end = [300.0, 400.0, 60.0, 40.0];
-        assert_eq!(place(natural, near_end, viewport, end), [136.0, 370.0]);
+        assert_eq!(
+            place(natural, near_end, viewport, end, NONE),
+            [136.0, 370.0]
+        );
         let start = Area::parse(Some("inline-start"), false);
         assert_eq!(
-            place(natural, anchor, viewport, start),
+            place(natural, anchor, viewport, start, NONE),
             [104.0, 370.0],
             "flips to the end"
         );
         // Kept on screen along the block axis.
         let low = [40.0, 760.0, 60.0, 30.0];
-        assert_eq!(place(natural, low, viewport, end), [104.0, 692.0]);
+        assert_eq!(place(natural, low, viewport, end, NONE), [104.0, 692.0]);
         // Room on neither side (a wide anchor on a phone): under it, centred, never over it.
         let wide = [100.0, 400.0, 200.0, 40.0];
-        assert_eq!(place(natural, wide, viewport, end), [120.0, 444.0]);
+        assert_eq!(place(natural, wide, viewport, end, NONE), [120.0, 444.0]);
         // And over it when there is no room below either.
         let wide_low = [100.0, 720.0, 200.0, 40.0];
-        assert_eq!(place(natural, wide_low, viewport, end), [120.0, 616.0]);
+        assert_eq!(
+            place(natural, wide_low, viewport, end, NONE),
+            [120.0, 616.0]
+        );
+    }
+
+    #[test]
+    fn a_popover_margin_sets_the_gap_on_its_anchor_side_and_keeps_it_through_a_flip() {
+        let viewport = [0.0, 0.0, 400.0, 800.0];
+        let natural = [0.0, 0.0, 160.0, 100.0];
+        let anchor = [200.0, 400.0, 100.0, 40.0];
+        let below = Area::parse(Some("bottom"), false);
+        // The top margin is the gap under the anchor; the others centre the margin box.
+        assert_eq!(
+            place(natural, anchor, viewport, below, [12.0, 0.0, 0.0, 0.0]),
+            [170.0, 452.0]
+        );
+        assert_eq!(
+            place(natural, anchor, viewport, below, [12.0; 4]),
+            [170.0, 452.0]
+        );
+        // Aligned to the anchor's start: the start margin moves it off that edge.
+        let start = Area::parse(None, false);
+        assert_eq!(
+            place(natural, anchor, viewport, start, [0.0, 0.0, 0.0, 10.0]),
+            [210.0, 444.0]
+        );
+        // No room below: over the anchor, the same gap.
+        let low = [200.0, 700.0, 100.0, 40.0];
+        assert_eq!(
+            place(natural, low, viewport, below, [12.0, 0.0, 0.0, 0.0]),
+            [170.0, 588.0]
+        );
+        // Beside it: the facing margin.
+        let end = Area::parse(Some("inline-end"), false);
+        assert_eq!(
+            place(
+                natural,
+                [40.0, 400.0, 60.0, 40.0],
+                viewport,
+                end,
+                [0.0, 0.0, 0.0, 16.0]
+            ),
+            [116.0, 370.0]
+        );
+        // A zero or broken margin keeps the default gap.
+        assert_eq!(
+            place(natural, anchor, viewport, below, [f32::NAN, 0.0, 0.0, 0.0]),
+            [170.0, 444.0]
+        );
     }
 }

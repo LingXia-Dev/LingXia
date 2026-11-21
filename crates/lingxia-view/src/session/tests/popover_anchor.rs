@@ -122,3 +122,42 @@ fn a_hint_anchored_to_a_link_run_keeps_clear_of_its_paragraph() {
         "in the link's column, kept on screen: {hint:?} {word:?}"
     );
 }
+
+#[test]
+fn a_popover_keeps_its_margin_from_the_anchor_and_moves_by_its_translate() {
+    let worker = ViewWorker::spawn("test-popover-anchor-offset").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // Under the field with a 12 pt top margin; over it, nudged up 10 pt; beside it, 8 pt all round.
+    let host = platform.host(
+        &worker,
+        &source("function render(){const open=useLocal('open',false);return h('page',{},h('button',{'data-testid':'show',onClick(){open.set(true)}},'Show'),h('view',{style:{height:60}}),h('view',{id:'field','data-testid':'field',style:{marginLeft:10,width:30,height:24}}),h('view',{id:'a',popover:'manual',anchor:'field',open:open.value,'data-testid':'a',style:{width:40,height:20,marginTop:12}}),h('view',{id:'b',popover:'manual',anchor:'field',open:open.value,'data-testid':'b',style:{width:40,height:20,positionArea:'top',translate:[0,-10]}}),h('view',{id:'c',popover:'manual',anchor:'field',open:open.value,'data-testid':'c',style:{width:40,height:20,positionArea:'inline-end',margin:8}}))}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    click(&platform, &host, "show");
+    let field = rect(&host, "field").unwrap();
+    let (a, b, c) = (
+        rect(&host, "a").unwrap(),
+        rect(&host, "b").unwrap(),
+        rect(&host, "c").unwrap(),
+    );
+    assert_eq!(
+        [a[0], a[1]],
+        [field[0], field[1] + field[3] + 12.0],
+        "the margin is the gap: {a:?} {field:?}"
+    );
+    assert_eq!(
+        b[1] + b[3],
+        field[1] - 4.0 - 10.0,
+        "placed over the field, then translated: {b:?} {field:?}"
+    );
+    assert_eq!(
+        [c[0], c[1]],
+        [
+            field[0] + field[2] + 8.0,
+            field[1] + (field[3] - c[3]) / 2.0
+        ],
+        "the facing margin beside it, the others centred: {c:?} {field:?}"
+    );
+}

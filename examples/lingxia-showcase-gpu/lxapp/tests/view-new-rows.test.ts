@@ -37,6 +37,35 @@ test('a popover opens beside its button, flips sides, and falls back under a wid
   expect(near(box.x + box.width / 2, anchor.x + anchor.width / 2)).toBe(true);
 });
 
+// A callout keeps its own margin from its anchor on either side, and a translate moves it after placement.
+test('a callout sits its margin clear of its anchor above or below, and a translate moves it further', { covers: ['view:popover'], start: openDemo('gap') }, async (t) => {
+  const view = t.app.view;
+  const note = view.testId('lab-gap-note');
+  const state = view.testId('lab-gap-state');
+  const target = view.testId('lab-gap-target');
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1.5;
+  const centred = (anchor: { x: number; width: number }, box: { x: number; width: number }) => near(box.x + box.width / 2, anchor.x + anchor.width / 2);
+
+  await view.testId('lab-gap-below').click();
+  await expect(state).toHaveAttribute('data-state', 'side=below nudged=false');
+  let [anchor, box] = [await target.boundingBox(), await note.boundingBox()];
+  // Under the target by its 12 pt margin, unless the screen's bottom flips it over with the same gap.
+  expect(near(box.y, anchor.y + anchor.height + 12) || near(box.y + box.height, anchor.y - 12)).toBe(true);
+  expect(centred(anchor, box)).toBe(true);
+
+  await view.testId('lab-gap-nudge').click();
+  await expect(state).toHaveAttribute('data-state', 'side=below nudged=true');
+  const nudged = await note.boundingBox();
+  expect(near(nudged.y - box.y, 8)).toBe(true);
+
+  await view.testId('lab-gap-nudge').click();
+  await view.testId('lab-gap-above').click();
+  await expect(state).toHaveAttribute('data-state', 'side=above nudged=false');
+  [anchor, box] = [await target.boundingBox(), await note.boundingBox()];
+  expect(near(box.y + box.height, anchor.y - 12) || near(box.y, anchor.y + anchor.height + 12)).toBe(true);
+  expect(centred(anchor, box)).toBe(true);
+});
+
 test('a parent checkbox reads mixed while some of its boxes are checked, and a tap checks them all', { covers: ['view:checkbox'], start: openDemo('partly') }, async (t) => {
   const view = t.app.view;
   const all = view.testId('lab-partly-all');

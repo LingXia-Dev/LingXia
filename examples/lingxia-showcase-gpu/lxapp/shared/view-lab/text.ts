@@ -94,6 +94,7 @@ export const demos = {
     stay: { testId: 'lab-stay', title: { en: 'A menu that stays open', zh: '保持打开的菜单' }, try: { en: 'Open the menu and tap "Zoom in" twice: the menu stays. "Reset" closes it.', zh: '打开菜单，点两次“放大”：菜单保持打开；“重置”会关闭它。' } },
     refuse: { testId: 'lab-refuse', title: { en: 'A popover that asks before it closes', zh: '关闭前先询问的浮层' }, try: { en: 'Open the draft and press Escape or Back: it stays and counts the request. Switch "Keep my draft" off and it closes. A tap outside always closes it.', zh: '打开草稿后按 Esc 或返回：浮层保持打开并计数；关掉“保留草稿”后才会关闭。点外面总会关闭。' } },
     beside: { testId: 'lab-beside', title: { en: 'A popover beside what opens it', zh: '在触发处旁边打开的浮层' }, try: { en: 'Each button opens the note at its side. With no room there it opens on the other side, and under a wide button.', zh: '每个按钮都在自己旁边打开提示；那一侧放不下就换到另一侧，按钮太宽则在其下方。' } },
+    gap: { testId: 'lab-gap', title: { en: 'A callout clear of what it points at', zh: '与所指对象留出间距的提示框' }, try: { en: 'Open the callout: it sits 12 pt from the button, its arrow in the gap. "Above" opens it over the button with the same gap; "Nudge" moves it a little further, as a transform does.', zh: '打开提示框：它与按钮相距 12 pt，箭头在间隙中。“上方”让它在按钮上方打开，间距不变；“微移”像变换一样再把它挪远一点。' } },
   },
   scrolling: {
     snap: { testId: 'motion-pager', title: { en: 'Snap to a page', zh: '按页吸附' }, try: { en: 'Swipe sideways and let go mid-way: the scroll settles on a page. Next does the same.', zh: '横向滑动并在中途松手：滚动停在整页上。“下一页”效果相同。' } },
@@ -194,6 +195,9 @@ export const readouts = {
   partly: (checked: number, total: number): Words => ({ en: `${checked} of ${total} checked`, zh: `已选 ${checked} / ${total}` }),
   range: (low: number, high: number, done: string): Words => ({ en: `From ${low} to ${high} · released at ${done}`, zh: `从 ${low} 到 ${high} · 松开于 ${done}` }),
   taps: (n: number): Words => ({ en: `Tapped ${n} times`, zh: `已点 ${n} 次` }),
+  gap: (side: 'none' | 'below' | 'above', nudged: boolean): Words => (side === 'none'
+    ? { en: 'Callout closed', zh: '提示框已关闭' }
+    : { en: `Callout ${side === 'below' ? 'below' : 'above'} the button${nudged ? ', nudged' : ''}`, zh: `提示框在按钮${side === 'below' ? '下方' : '上方'}${nudged ? '，已微移' : ''}` }),
   beside: (which: 'none' | 'start' | 'end' | 'wide'): Words => {
     const at = { start: labels.sideStart, end: labels.sideEnd, wide: labels.sideWide };
     return which === 'none' ? { en: 'Note closed', zh: '提示已关闭' } : { en: `Note open at: ${at[which].en}`, zh: `提示打开于：${at[which].zh}` };
@@ -365,6 +369,11 @@ export const labels = {
   sideEnd: { en: 'At the end', zh: '靠末尾侧' },
   sideWide: { en: 'A wide button', zh: '一个很宽的按钮' },
   sideNote: { en: 'A note beside its button.', zh: '按钮旁边的提示。' },
+  gapTarget: { en: 'Point here', zh: '指向这里' },
+  gapBelow: { en: 'Below', zh: '下方' },
+  gapAbove: { en: 'Above', zh: '上方' },
+  gapNudge: { en: 'Nudge', zh: '微移' },
+  gapNote: { en: 'A callout 12 pt from its button, its arrow in the gap.', zh: '与按钮相距 12 pt 的提示框，箭头在间隙中。' },
   close: { en: 'Close', zh: '关闭' },
   menuRow: { en: 'Quarterly report.pdf', zh: '季度报告.pdf' },
   menuCopy: { en: 'Copy', zh: '复制' },

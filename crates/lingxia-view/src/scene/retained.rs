@@ -76,8 +76,9 @@ pub(crate) struct RetainedLayout {
     /// Static rotation and scale; translation is already in the geometry.
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
-    /// The node a popover sits against, by identity; composition places it below or above.
-    pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area)>>,
+    /// The node a popover sits against, by identity, and the popover's margin (top, right,
+    /// bottom, left); composition places it below or above.
+    pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area, [f32; 4])>>,
     /// The surface less the bars and keyboard over it: an anchored popover stays inside.
     pub(crate) unobscured: [f32; 4],
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
@@ -579,18 +580,24 @@ impl RetainedLayout {
                 let [dx, dy] = sticky.shift(natural, viewport, container);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
-            if let Some((anchor, area)) = &self.anchors[index]
+            if let Some((anchor, area, margin)) = &self.anchors[index]
                 && let Some(target) = self.nodes.iter().position(|node| &node.identity == anchor)
             {
                 // The target is composed already: it precedes the popover in paint order.
                 let mut natural = self.nodes[index].bounds;
-                natural[0] -= translation[0];
-                natural[1] -= translation[1];
+                // A translate moves the placed popover, as a transform does after layout.
+                let [tx, ty] = self.paint_styles[index]
+                    .transform
+                    .map(|t| t.translation([natural[2], natural[3]]))
+                    .unwrap_or_default();
+                natural[0] -= translation[0] + tx;
+                natural[1] -= translation[1] + ty;
                 let [dx, dy] = crate::scene::anchor::place(
                     natural,
                     anchor_box(&nodes, &self.parents, target),
                     self.unobscured,
                     *area,
+                    *margin,
                 );
                 translation = [translation[0] - dx, translation[1] - dy];
             }
