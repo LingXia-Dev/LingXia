@@ -3,7 +3,7 @@ use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
 use crate::lx;
 use crate::lxapp::LxApp;
-use crate::{debug, error, info};
+use crate::{debug, error, info, warn};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
 use rong_console as console;
@@ -246,11 +246,20 @@ async fn handle_app_service_event(
             | AppServiceEvent::OnUserCaptureScreen
     ) && let Err(e) = svc.call_event(ctx, event, args.clone()).await
     {
-        error!(
-            "[Worker {}] App service event '{}' failed, Error: {}",
-            worker_id, event, e
-        )
-        .with_appid(appid);
+        let error = eval_error_from_rong(ctx, e);
+        if error.is_refusal() {
+            warn!(
+                "[Worker {}] App '{}' was refused: {}",
+                worker_id, event, error
+            )
+            .with_appid(appid);
+        } else {
+            error!(
+                "[Worker {}] App service event '{}' failed, Error: {}",
+                worker_id, event, error
+            )
+            .with_appid(appid);
+        }
     }
 }
 

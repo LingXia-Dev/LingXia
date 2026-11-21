@@ -2015,6 +2015,10 @@ impl PageSvc {
                         crate::debug!("PageInstance event '{}' cancelled after unload", event)
                             .with_appid(page.appid())
                             .with_path(page.path());
+                    } else if error.is_refusal() {
+                        crate::warn!("PageInstance event '{}' was refused: {}", event, error)
+                            .with_appid(page.appid())
+                            .with_path(page.path());
                     } else {
                         crate::error!("PageInstance event '{}' failed: {}", event, error)
                             .with_appid(page.appid())

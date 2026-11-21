@@ -42,11 +42,9 @@ App({
   onLaunch() {
     console.log('LingXia Showcase (WebView) launched');
 
+    // The label follows the resolved language; the preference is the Control app's.
     lx.host.displayLanguage.watch((tag) => {
       applyMoreActions(tag);
-    });
-    lx.host.displayLanguage.watchPreference(() => {
-      applyMoreActions();
     });
 
     lx.app.onUpdateReady(async () => {

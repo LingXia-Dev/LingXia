@@ -200,6 +200,11 @@ impl LxAppError {
         matches!(self, Self::RongJSHost { code, .. } if code == REQUIRES_RUNTIME_UPGRADE_CODE)
     }
 
+    /// The host refused the call (`E_PERMISSION_DENIED`): the lxapp's policy, not a fault.
+    pub fn is_refusal(&self) -> bool {
+        matches!(self, Self::RongJSHost { code, .. } if code == rong::error::E_PERMISSION_DENIED)
+    }
+
     /// The message without the variant's prefix.
     ///
     /// Every variant's `Display` prepends or appends its own label, which reads
