@@ -775,6 +775,15 @@ extern "C" fn on_info_callback(
             x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "pause", None),
             x if x == AVPlayerState::Completed as i32 => notify_arkts(component_id, "ended", None),
             x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stop", None),
+            // A source the decoders refuse fails prepare here; without this the player and a
+            // preview waiting on its first frame never learn of it.
+            x if x == AVPlayerState::Error as i32 => notify_arkts(
+                component_id,
+                "error",
+                Some(
+                    r#"{"code":"native_error","message":"the player could not play this source"}"#,
+                ),
+            ),
             _ => {}
         }
     }
