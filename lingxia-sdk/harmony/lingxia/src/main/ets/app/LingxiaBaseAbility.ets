@@ -17,47 +17,9 @@ const TAG = 'LingXia.Ability';
 const DEVICE_ORIENTATION_PORTRAIT: string = 'portrait';
 const DEVICE_ORIENTATION_LANDSCAPE: string = 'landscape';
 
-interface LingxiaWindowSizeChangeEvent {
-  readonly width?: number;
-  readonly height?: number;
-}
-
 interface WindowWithGestureBackControl {
   setGestureBackEnabled?: (enabled: boolean) => Promise<void>;
   isGestureBackEnabled?: () => boolean;
-}
-
-interface WindowWithSizeOn {
-  on?: (type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void) => void;
-  off?: (type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void) => void;
-}
-
-class WindowSizeEventTargetWrapper {
-  private readonly window: window.Window;
-  private readonly windowWithOn: WindowWithSizeOn;
-
-  constructor(windowInstance: window.Window) {
-    this.window = windowInstance;
-    this.windowWithOn = windowInstance as WindowWithSizeOn;
-  }
-
-  public register(type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void): boolean {
-    const listener = this.windowWithOn.on;
-    if (typeof listener === 'function') {
-      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowSizeChangeEvent) => void) => void;
-      typedListener(type, callback);
-      return true;
-    }
-    return false;
-  }
-
-  public unregister(type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void): void {
-    const listener = this.windowWithOn.off;
-    if (typeof listener === 'function') {
-      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowSizeChangeEvent) => void) => void;
-      typedListener(type, callback);
-    }
-  }
 }
 
 export class LingxiaBaseAbility extends UIAbility {
@@ -68,7 +30,7 @@ export class LingxiaBaseAbility extends UIAbility {
   private screenshotListenerRegistered: boolean = false;
   private sizeChangeListenerRegistered: boolean = false;
   private screenshotListener: (() => void) | null = null;
-  private sizeChangeListener: ((event: LingxiaWindowSizeChangeEvent) => void) | null = null;
+  private sizeChangeListener: ((size: window.Size) => void) | null = null;
   private lastReportedDeviceOrientation: string = '';
 
   /**
@@ -229,21 +191,13 @@ export class LingxiaBaseAbility extends UIAbility {
         return;
       }
 
-      const wrapper = new WindowSizeEventTargetWrapper(mainWindow);
-      const listener = (event: LingxiaWindowSizeChangeEvent) => {
-        const width = Number(event?.width);
-        const height = Number(event?.height);
-        const orientationValue = this.resolveOrientationFromSize(width, height);
+      const listener = (size: window.Size): void => {
+        const orientationValue = this.resolveOrientationFromSize(size.width, size.height);
         if (orientationValue) {
           this.reportDeviceOrientation(orientationValue);
         }
       };
-      const registered = wrapper.register('windowSizeChange', listener);
-
-      if (!registered) {
-        hilog.warn(DOMAIN, TAG, '%{public}s', 'Window does not expose windowSizeChange listener');
-        return;
-      }
+      mainWindow.on('windowSizeChange', listener);
 
       this.sizeChangeListener = listener;
       this.sizeChangeListenerRegistered = true;
@@ -279,7 +233,7 @@ export class LingxiaBaseAbility extends UIAbility {
       }
       if (this.sizeChangeListener) {
         try {
-          new WindowSizeEventTargetWrapper(mainWindow).unregister('windowSizeChange', this.sizeChangeListener);
+          mainWindow.off('windowSizeChange', this.sizeChangeListener);
         } catch (error) {
           LxLog.e(TAG, `Failed to unregister orientation listener: ${error}`);
         }
