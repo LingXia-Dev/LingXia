@@ -1458,6 +1458,23 @@ impl Renderer {
                 }
                 None => (bounds, visible_bounds),
             };
+            // A run drops its box styles, so a focused link rings its line pieces here, where
+            // pictures of the page see the ring too.
+            if !link_group.is_empty()
+                && self.focus_visible
+                && focused_identity.as_deref() == identities.get(index).map(String::as_str)
+            {
+                for [rx, ry, rw, rh] in &hit_rects {
+                    commands.push(Paint::Border {
+                        corners: None,
+                        color: palette.role(Role::Focus),
+                        bounds: [rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0],
+                        widths: [2.0; 4],
+                        radius: 4.0,
+                        style: crate::scene::border::LineStyle::Solid,
+                    });
+                }
+            }
             ranges.push(paint_start..commands.len());
             // Switches, checkboxes and radios paint press and focus on their indicator; a
             // checkbox inside a button leaves both to the button.

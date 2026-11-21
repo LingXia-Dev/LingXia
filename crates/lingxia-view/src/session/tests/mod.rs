@@ -2084,6 +2084,35 @@ fn a_button_paints_its_focus_visible_classes_only_while_it_has_visible_focus() {
 }
 
 #[test]
+fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible() {
+    let module = source(
+        "function render(){return h('text',{style:{width:120,fontSize:16}},'Read the ',h('link',{onClick(){},'data-testid':'l'},'terms of service today'),' first')}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    let display = page.layout(120, 200, 1.0).unwrap();
+    let link = display.nodes.iter().find(|n| n.test_id == "l").unwrap();
+    let id = link.identity.clone();
+    let focus = crate::theme::Palette::builtin(false).role(lingxia_theme::Role::Focus);
+    let rings = |display: &DisplayList| {
+        display
+            .commands
+            .iter()
+            .filter(|paint| matches!(paint, crate::scene::paint::Paint::Border { color, .. } if *color == focus))
+            .count()
+    };
+    assert_eq!(rings(&display), 0);
+    assert!(page.set_control_focus(Some(&id)));
+    let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
+    assert!(
+        rings(&display) >= 2,
+        "the wrapped link rings each line piece"
+    );
+    assert!(page.set_control_focus_visible(Some(&id), false));
+    let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
+    assert_eq!(rings(&display), 0, "a pointer-moved focus shows no ring");
+}
+
+#[test]
 fn focus_a_pointer_moved_paints_focus_classes_but_not_focus_visible_ones() {
     let module = source(
         "configureClasses([{name:'base',when:{},style:{backgroundColor:'#ffffff'}},{name:'focused',when:{state:'focus'},style:{backgroundColor:'#00ff00'}},{name:'ring',when:{state:'focusVisible'},style:{backgroundColor:'#0000ff'}}]);function render(){return h('select',{className:'base focused ring','aria-label':'Plan',options:[{value:'a',label:'A'}],value:'a',onChange(){},style:{width:100,height:40,borderRadius:0}})}",

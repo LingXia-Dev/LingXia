@@ -171,18 +171,20 @@ impl ViewInteraction {
     pub fn styled_focus(&self, node: usize) -> Option<String> {
         let frame = self.frame.as_ref()?;
         let snapshot = frame.nodes.get(node)?;
-        ((snapshot.focus_style || snapshot.focus_visible_style).then(|| snapshot.identity.clone()))
-            .map(String::from)
+        ((snapshot.focus_style || snapshot.focus_visible_style || snapshot.tag == "link")
+            .then(|| snapshot.identity.clone()))
+        .map(String::from)
     }
 
     /// Whether `node` draws its own keyboard focus ring (around a switch, checkbox or radio
-    /// indicator), so the platform ring stays off.
+    /// indicator, or a link's line pieces), so the platform ring stays off.
     pub fn rings_itself(&self, node: usize) -> bool {
         self.frame
             .as_ref()
             .and_then(|frame| frame.nodes.get(node))
             .is_some_and(|snapshot| {
                 snapshot.focus_visible_style
+                    || snapshot.tag == "link"
                     || snapshot.focus_style
                         && matches!(snapshot.tag, "checkbox" | "switch" | "radio-option")
             })
