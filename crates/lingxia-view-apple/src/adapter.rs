@@ -117,8 +117,8 @@ pub enum Frame {
         /// moves the web views, so the two never show a frame apart.
         on_main: bool,
     },
-    /// Rasterized off the View worker when presented.
-    Cpu(DisplayList, CommitTicket),
+    /// Rasterized off the View worker when presented. Boxed: a display list dwarfs the GPU variant.
+    Cpu(Box<DisplayList>, CommitTicket),
 }
 
 impl AppleAdapter {
@@ -164,7 +164,7 @@ impl Presenter for AppleAdapter {
                 Route::Cpu => {}
             }
         }
-        Ok(Some(Frame::Cpu(display, generation)))
+        Ok(Some(Frame::Cpu(Box::new(display), generation)))
     }
 
     fn metrics(&self, frame: &Frame) -> Option<serde_json::Value> {
@@ -253,7 +253,7 @@ impl Presenter for AppleAdapter {
                             rasterize(&host, display, generation)
                         })
                     })
-                    .submit((display, generation));
+                    .submit((*display, generation));
                 Ok(true)
             }
         }
