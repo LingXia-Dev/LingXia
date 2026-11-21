@@ -11,8 +11,8 @@ use crate::auto_err;
 use crate::resolve::{js_object_to_json, upgrade_authorized};
 use lxapp::{LeaveReason, LxApp, NavigationType, automation as auto};
 use rong::{
-    FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, function::Optional,
-    js_class, js_method,
+    FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, JSValue,
+    function::Optional, js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -30,15 +30,6 @@ impl JSNavDriver {
     pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
         Self { lxapp }
     }
-}
-
-#[derive(FromJSObject)]
-struct JSBackOptions {
-    delta: Option<u32>,
-    #[js_name = "waitUntil"]
-    wait_until: Option<String>,
-    #[js_name = "timeoutMs"]
-    timeout_ms: Option<f64>,
 }
 
 #[derive(FromJSObject)]
@@ -266,15 +257,33 @@ impl JSNavDriver {
     }
 
     #[js_method]
-    async fn back(&self, ctx: JSContext, options: Optional<JSBackOptions>) -> JSResult<JSPageInfo> {
+    async fn back(
+        &self,
+        ctx: JSContext,
+        n: Optional<JSValue>,
+        options: Optional<JSWaitOptions>,
+    ) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let delta = match n.0.filter(|n| !n.is_undefined() && !n.is_null()) {
+            None => 1,
+            Some(n) => n
+                .to_rust::<f64>()
+                .ok()
+                .filter(|n| n.fract() == 0.0 && *n >= 1.0 && *n <= f64::from(u32::MAX))
+                .map(|n| n as u32)
+                .ok_or_else(|| {
+                    HostError::new(
+                        rong::error::E_INVALID_ARG,
+                        "nav.back(n) takes a positive whole number of pages",
+                    )
+                })?,
+        };
         let options = options.0;
         let wait = ready_wait(
             &ctx,
             options.as_ref().and_then(|o| o.wait_until.as_deref()),
             options.as_ref().and_then(|o| o.timeout_ms),
         )?;
-        let delta = options.and_then(|o| o.delta).unwrap_or(1);
         let (app, page, name) = auto::navigate_back(&app, delta, false)
             .await
             .map_err(auto_err)?;

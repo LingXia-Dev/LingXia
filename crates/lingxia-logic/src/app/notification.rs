@@ -44,15 +44,8 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
         crate::capability::unsupported_namespace(
             ctx,
             app,
-            "notification",
+            "lx.host.notification",
             "app.notification",
-            &[
-                "getPermission",
-                "requestPermission",
-                "show",
-                "cancel",
-                "cancelAll",
-            ],
         )?;
         return Ok(());
     }

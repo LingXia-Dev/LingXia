@@ -492,7 +492,7 @@ Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
 
 A terminal main is the default workspace; open or reuse a named one with
 `lx.surface.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
-keys reuse one workspace; `lx.shell.getDeclared('terminal', 'project-a')`
+keys reuse one workspace; `lx.shell.getDeclared('terminal', { key: 'project-a' })`
 returns its live handle. `native: browser`
 opens an empty tab in the managed browser; use a `url:` main for a fixed target.
 

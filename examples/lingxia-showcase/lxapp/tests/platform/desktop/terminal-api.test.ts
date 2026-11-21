@@ -136,11 +136,11 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     state.off = t.settings.onChange((snapshot) => state.events.push(snapshot.revision));
 
     const nextSize = first.value.font.size + 1;
-    const updated = await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
+    const updated = await t.settings.update({ font: { size: nextSize }, ifRevision: first.revision });
 
     let stale = null;
     try {
-      await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
+      await t.settings.update({ font: { size: nextSize }, ifRevision: first.revision });
     } catch (error) {
       stale = { code: (error as { code?: string } | null)?.code ?? '' };
     }
@@ -219,7 +219,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       state?.off?.();
       if (state?.overrides) {
         const latest = await lx.host.terminal.settings.get();
-        await lx.host.terminal.settings.update(state.overrides, { ifRevision: latest.revision });
+        await lx.host.terminal.settings.update({ ...state.overrides, ifRevision: latest.revision });
       }
       delete states[key];
     }, stateKey);

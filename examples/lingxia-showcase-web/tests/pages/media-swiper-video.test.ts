@@ -43,7 +43,7 @@ test('play a video page of a native media swiper to its end', {
 
   await app.logic.eval(async ({ lx, pageStack }, folder, red, clip) => {
     const path = `${lx.fs.userData}/${folder}/red.png`;
-    await lx.fs.write(path, red, { encoding: 'base64', overwrite: true });
+    await lx.fs.write(path, { data: red, encoding: 'base64', overwrite: true });
     const page = pageStack().find((candidate) => candidate.route.includes('/swiper/'));
     page?.setData({
       items: [

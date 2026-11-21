@@ -88,7 +88,7 @@ async function builtinReportsIdentityOnly(): Promise<string> {
 // Shell-owned surfaces are looked up by identity, not by a handle id.
 function shellLookups(): boolean {
   const app = lx.shell.getApp("com.example.agent");
-  const terminal = lx.shell.getDeclared("terminal", "project-a");
+  const terminal = lx.shell.getDeclared("terminal", { key: "project-a" });
   // @ts-expect-error handles carry no runtime id
   app?.id;
   // A declaration that shows an lxapp answers with that app's handle.

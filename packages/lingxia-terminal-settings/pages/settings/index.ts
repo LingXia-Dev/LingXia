@@ -133,7 +133,7 @@ export default definePage({
       },
       updateTerminalSettings(input: UpdateInput) {
         return action(() =>
-          terminal().settings.update(input.patch, { ifRevision: input.ifRevision }),
+          terminal().settings.update({ ...input.patch, ifRevision: input.ifRevision }),
         );
       },
       resetTerminalSettings(input: ResetInput) {

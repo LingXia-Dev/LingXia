@@ -372,7 +372,7 @@ export default definePage({
         }
         const next = !page.data.autostartEnabled;
         try {
-          await autostart.setEnabled(next);
+          await (next ? autostart.enable() : autostart.disable());
           const enabled = await autostart.isEnabled();
           console.log('Autostart set to', next, '- OS reports', enabled);
           page.update(d => {

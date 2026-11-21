@@ -1255,7 +1255,7 @@ export class LiveFixture implements Fixture {
             throw new TypeError("t.app.nav.back(n) takes a positive whole number of pages");
           }
           const wait = this.navOptions(options ?? {}, "t.app.nav.back");
-          return nav().back(n === undefined ? wait : { ...wait, delta: n });
+          return nav().back(n, wait);
         }),
       press: (button: NavButton, options?: NavWaitOptions) =>
         this.act("nav.press", summarise({ button, ...options }), () =>

@@ -4,12 +4,12 @@ import type { LxAppDriver, PageDriver, PageQueryOptions, DesktopWindowSel, Deskt
 // What `import { lx } from '@lingxia/logic'` gives.
 declare const lx: import('../src/index.js').Lx;
 
-const binaryOptions: FsWriteOptions = { encoding: 'base64' };
+const binaryOptions: Pick<FsWriteOptions, 'encoding'> = { encoding: 'base64' };
 // @ts-expect-error named options cannot give binary input a string encoding
-lx.fs.write('test.bin', new Uint8Array([1]), binaryOptions);
+lx.fs.write('test.bin', { data: new Uint8Array([1]), ...binaryOptions });
 declare const downloadsPath: SystemDownloadsPath;
 // @ts-expect-error system Downloads is outside the managed filesystem
-lx.fs.write(downloadsPath, 'x');
+lx.fs.write(downloadsPath, { data: 'x' });
 
 declare const driver: PageDriver;
 declare const options: PageQueryOptions;

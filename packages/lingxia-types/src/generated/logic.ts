@@ -750,7 +750,7 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
  * ```
  * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it
  * `lx.supports` says no on all platforms. Declaring the capability never enables
- * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * autostart by itself — the SDK registers the app only when `enable()`
  * is called, so the decision stays with the user (typically a settings-page
  * toggle, default off).
  * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
@@ -766,11 +766,13 @@ export type AutostartApi = {
      */
     isEnabled(): Promise<boolean>;
     /**
-     * Register or unregister the app as a startup item for the current user.
+     * Register the app as a startup item for the current user.
      * Idempotent. Call it only from the person's own action.
      * @platform macOS: the system may tell the user a login item was added.
      */
-    setEnabled(on: boolean): Promise<void>;
+    enable(): Promise<void>;
+    /** Unregister the app as a startup item for the current user. Idempotent. */
+    disable(): Promise<void>;
 };
 
 /**
@@ -1164,8 +1166,14 @@ export type FileDialogFilter = {
 
 export type FileSystemApi = globalThis.FileSystemApi;
 
+/** Where `lx.fs.copy` puts the copy. */
 export type FsCopyOptions = {
-    /** Defaults to false. */
+    /** The destination file path. */
+    to: ManagedPath;
+    /**
+     * Replace a file already at `to`.
+     * @default false
+     */
     overwrite?: boolean;
 };
 
@@ -1185,14 +1193,23 @@ export type FsRemoveOptions = {
     recursive?: boolean;
 };
 
+/** Where `lx.fs.rename` moves the file or directory. */
 export type FsRenameOptions = {
-    /** Defaults to false. */
+    /** The new path. */
+    to: ManagedPath;
+    /**
+     * Replace a file already at `to`; a directory is never replaced.
+     * @default false
+     */
     overwrite?: boolean;
 };
 
+/** What `lx.fs.write` writes. Text takes an `encoding`; bytes take none. */
 export type FsWriteOptions = {
+    /** The text to write. */
+    data: string;
     /**
-     * How string input is read; `base64` decodes it to bytes before writing.
+     * How `data` is read; `base64` decodes it to bytes before writing.
      * @default 'utf8'
      */
     encoding?: 'utf8' | 'base64';
@@ -1201,6 +1218,22 @@ export type FsWriteOptions = {
      * @default true
      */
     overwrite?: boolean;
+} | {
+    /** The bytes to write. */
+    data: BinaryFileData;
+    /** Bytes are written as they are. */
+    encoding?: never;
+    /**
+     * Replace a file already at the path; `false` rejects instead.
+     * @default true
+     */
+    overwrite?: boolean;
+};
+
+/** Which instance `lx.shell.getDeclared` looks up. */
+export type GetDeclaredOptions = {
+    /** The instance key it was opened with; the unkeyed instance when absent. */
+    key?: string;
 };
 
 export type GetLocationOptions = {
@@ -1522,7 +1555,7 @@ export type OpenDeclaredOptions = {
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
-     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * `lx.shell.getDeclared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
      * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
@@ -2648,13 +2681,10 @@ export type TerminalSettingsApi = {
     /** The settings now: defaults, the user's overrides, and what is in effect. */
     get(): Promise<TerminalSettingsSnapshot>;
     /** Save the patched fields; rejects when the saved settings moved past `ifRevision`. */
-    update(
-        patch: TerminalSettingsPatch,
-        options: {
-            /** The `revision` the patch was made against. */
-            ifRevision: number;
-        },
-    ): Promise<TerminalSettingsSnapshot>;
+    update(patch: TerminalSettingsPatch & {
+        /** The `revision` the patch was made against. */
+        ifRevision: number;
+    }): Promise<TerminalSettingsSnapshot>;
     /** Drop the user's overrides; rejects when the saved settings moved past `ifRevision`. */
     reset(options: {
         /** The `revision` the reset was decided against. */
@@ -3349,12 +3379,30 @@ declare global {
     readDir(path: ManagedPath): Promise<DirEntry[]>;
     /** Create a managed directory. */
     mkdir(path: ManagedPath, options?: FsMkdirOptions): Promise<void>;
-    /** Write UTF-8 text or bytes to a managed file, replacing one already there. */
-    write(path: ManagedPath, data: string, options?: FsWriteOptions): Promise<void>;
-    /** Copy a managed file. */
-    copy(source: ManagedPath, destination: ManagedPath, options?: FsCopyOptions): Promise<void>;
-    /** Rename or move a managed file or directory. */
-    rename(source: ManagedPath, destination: ManagedPath, options?: FsRenameOptions): Promise<void>;
+    /**
+     * Write UTF-8 text or bytes to a managed file, replacing one already there.
+     * @example
+     * ```ts
+     * await lx.fs.write('notes/today.md', { data: '# Today' });
+     * ```
+     */
+    write(path: ManagedPath, options: FsWriteOptions): Promise<void>;
+    /**
+     * Copy a managed file.
+     * @example
+     * ```ts
+     * await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });
+     * ```
+     */
+    copy(source: ManagedPath, options: FsCopyOptions): Promise<void>;
+    /**
+     * Rename or move a managed file or directory.
+     * @example
+     * ```ts
+     * await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });
+     * ```
+     */
+    rename(source: ManagedPath, options: FsRenameOptions): Promise<void>;
     /** Remove a managed file or directory. */
     remove(path: ManagedPath, options?: FsRemoveOptions): Promise<void>;
   }
@@ -3654,7 +3702,7 @@ declare global {
      * object on every call; `undefined` when it is not live. A declaration that
      * shows an lxapp answers with that app's `AppSurface`.
      */
-    getDeclared(id: string, key?: string): DeclaredSurface | AppSurface | undefined;
+    getDeclared(id: string, options?: GetDeclaredOptions): DeclaredSurface | AppSurface | undefined;
     /** Open a host builtin page such as downloads. Control app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**

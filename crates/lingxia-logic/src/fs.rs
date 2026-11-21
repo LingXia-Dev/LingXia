@@ -177,16 +177,19 @@ struct JSFsMkdirOptions {
     recursive: Option<bool>,
 }
 
-#[derive(Default, FromJSObject)]
+#[derive(FromJSObject)]
 #[ts_skip]
 struct JSFsWriteOptions {
+    data: JSValue,
     encoding: Option<String>,
     overwrite: Option<bool>,
 }
 
-#[derive(Default, FromJSObject)]
+/// `fs.copy` / `fs.rename` options: the destination and whether to replace it.
+#[derive(FromJSObject)]
 #[ts_skip]
-struct JSFsOverwriteOptions {
+struct JSFsMoveOptions {
+    to: String,
     overwrite: Option<bool>,
 }
 
@@ -1286,21 +1289,20 @@ async fn fs_mkdir(
 }
 
 /// Write UTF-8 text or bytes to a managed file, replacing one already there.
-async fn fs_write(
-    ctx: JSContext,
-    path: String,
-    data: JSValue,
-    options: Optional<JSFsWriteOptions>,
-) -> JSResult<()> {
+///
+/// @example
+/// ```ts
+/// await lx.fs.write('notes/today.md', { data: '# Today' });
+/// ```
+async fn fs_write(ctx: JSContext, path: String, options: JSFsWriteOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = resolve_writable_path(&lxapp, &path, "fs.write", "path")?;
     ensure_no_symlink_ancestors(&lxapp, &path, "fs.write", "path")?;
-    let options = options.0.unwrap_or_default();
     let overwrite = options.overwrite.unwrap_or(true);
     if !overwrite {
         ensure_not_exists(&path.path, "fs.write")?;
     }
-    let bytes = js_value_to_bytes(data, options.encoding.as_deref(), "fs.write")?;
+    let bytes = js_value_to_bytes(options.data, options.encoding.as_deref(), "fs.write")?;
     ensure_write_quota(&lxapp, &path, bytes.len() as u64, None, false)?;
     storage::with_disk_pressure_recovery(
         &lxapp.user_cache_dir,
@@ -1315,12 +1317,16 @@ async fn fs_write(
 }
 
 /// Copy a managed file.
-async fn fs_copy(
-    ctx: JSContext,
-    source: String,
-    destination: String,
-    options: Optional<JSFsOverwriteOptions>,
-) -> JSResult<()> {
+///
+/// @example
+/// ```ts
+/// await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });
+/// ```
+async fn fs_copy(ctx: JSContext, source: String, options: JSFsMoveOptions) -> JSResult<()> {
+    let JSFsMoveOptions {
+        to: destination,
+        overwrite,
+    } = options;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let source = resolve_readable_path(&lxapp, &source, "fs.copy", "source")?;
     ensure_no_symlink_ancestors(&lxapp, &source, "fs.copy", "source")?;
@@ -1330,9 +1336,9 @@ async fn fs_copy(
         ));
     }
     mark_usercache_access(&source);
-    let destination = resolve_writable_path(&lxapp, &destination, "fs.copy", "destination")?;
-    ensure_no_symlink_ancestors(&lxapp, &destination, "fs.copy", "destination")?;
-    let overwrite = options.0.unwrap_or_default().overwrite.unwrap_or(false);
+    let destination = resolve_writable_path(&lxapp, &destination, "fs.copy", "to")?;
+    ensure_no_symlink_ancestors(&lxapp, &destination, "fs.copy", "to")?;
+    let overwrite = overwrite.unwrap_or(false);
     if !overwrite {
         ensure_not_exists(&destination.path, "fs.copy")?;
     }
@@ -1353,18 +1359,22 @@ async fn fs_copy(
 }
 
 /// Rename or move a managed file or directory.
-async fn fs_rename(
-    ctx: JSContext,
-    source: String,
-    destination: String,
-    options: Optional<JSFsOverwriteOptions>,
-) -> JSResult<()> {
+///
+/// @example
+/// ```ts
+/// await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });
+/// ```
+async fn fs_rename(ctx: JSContext, source: String, options: JSFsMoveOptions) -> JSResult<()> {
+    let JSFsMoveOptions {
+        to: destination,
+        overwrite,
+    } = options;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let source = resolve_managed_path(&lxapp, &source, "fs.rename", "source", true, true, true)?;
-    let destination = resolve_writable_path(&lxapp, &destination, "fs.rename", "destination")?;
+    let destination = resolve_writable_path(&lxapp, &destination, "fs.rename", "to")?;
     ensure_no_symlink_ancestors(&lxapp, &source, "fs.rename", "source")?;
-    ensure_no_symlink_ancestors(&lxapp, &destination, "fs.rename", "destination")?;
-    let overwrite = options.0.unwrap_or_default().overwrite.unwrap_or(false);
+    ensure_no_symlink_ancestors(&lxapp, &destination, "fs.rename", "to")?;
+    let overwrite = overwrite.unwrap_or(false);
     if source.path == destination.path {
         return Ok(());
     }
@@ -1507,17 +1517,9 @@ rong::js_api! {
             ts_return = "Promise<DirEntry[]>"
         ) = fs_read_dir;
         fn mkdir(ts_params = "path: ManagedPath, options?: FsMkdirOptions") = fs_mkdir;
-        // Text only here; the byte overload is merged in `lingxia-types`, where
-        // a second signature can express that bytes take no `encoding`.
-        fn write(
-            ts_params = "path: ManagedPath, data: string, options?: FsWriteOptions"
-        ) = fs_write;
-        fn copy(
-            ts_params = "source: ManagedPath, destination: ManagedPath, options?: FsCopyOptions"
-        ) = fs_copy;
-        fn rename(
-            ts_params = "source: ManagedPath, destination: ManagedPath, options?: FsRenameOptions"
-        ) = fs_rename;
+        fn write(ts_params = "path: ManagedPath, options: FsWriteOptions") = fs_write;
+        fn copy(ts_params = "source: ManagedPath, options: FsCopyOptions") = fs_copy;
+        fn rename(ts_params = "source: ManagedPath, options: FsRenameOptions") = fs_rename;
         fn remove(ts_params = "path: ManagedPath, options?: FsRemoveOptions") = fs_remove;
     }
 }

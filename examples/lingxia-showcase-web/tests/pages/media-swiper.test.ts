@@ -50,7 +50,7 @@ async function openSwiper(t: Fixture, id: string) {
     const items = [];
     for (const [name, base64] of pages) {
       const path = `${lx.fs.userData}/${folder}/${name}.png`;
-      await lx.fs.write(path, base64, { encoding: 'base64', overwrite: true });
+      await lx.fs.write(path, { data: base64, encoding: 'base64', overwrite: true });
       items.push({ id: name, type: 'image' as const, src: path });
     }
     const page = pageStack().find((candidate) => candidate.route.includes('/swiper/'));

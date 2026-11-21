@@ -437,9 +437,7 @@ export default definePage({
             fileType || detectFileType(response.url || url),
           );
           const filePath = userDataFilePath(fileName);
-          await lx.fs.write(filePath, buffer, {
-            overwrite: true,
-          });
+          await lx.fs.write(filePath, { data: buffer, overwrite: true });
           page.update(d => { d.officeStatusText = `Fetched ${formatBytes(buffer.byteLength)}, opening...`; });
           await lx.openFile(filePath, { mode: "auto" });
           page.update(d => { d.officeStatusText = `Opened ${filePath}`; });

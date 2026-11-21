@@ -101,9 +101,8 @@ test('open a browser tab from Logic and control it through TabSurface', {
   await app.logic.eval(async ({ lx }, namespace, relative, title, key) => {
     await lx.fs.mkdir('lx://userdata/' + namespace, { recursive: true });
     await lx.fs.write('lx://userdata/' + relative,
-      '<!doctype html><html><head><meta charset="utf-8"><title>' + title + '</title></head>'
-      + '<body><h1 data-fixture-page="' + key + '">' + key + '</h1></body></html>',
-      { overwrite: true });
+      { data: '<!doctype html><html><head><meta charset="utf-8"><title>' + title + '</title></head>'
+      + '<body><h1 data-fixture-page="' + key + '">' + key + '</h1></body></html>', overwrite: true });
   }, namespace, relative, title, key);
 
   const opened: OpenedTab = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, url, key, stateKey) => {

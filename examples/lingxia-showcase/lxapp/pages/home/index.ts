@@ -159,9 +159,7 @@ export default definePage({
         try {
           const testFile = "debug/testFile.txt";
           await lx.fs.mkdir("debug", { recursive: true });
-          await lx.fs.write(testFile, "Hello, World!", {
-            overwrite: true,
-          });
+          await lx.fs.write(testFile, { data: "Hello, World!", overwrite: true });
           const data = await lx.fs.file(testFile).text();
           console.log("[Home] managed file test content:", data);
         } catch (error) {

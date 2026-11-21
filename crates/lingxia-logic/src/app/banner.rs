@@ -36,13 +36,7 @@ struct JSShowOptions {
 /// scoped to it and carry its name and icon.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.banner") {
-        crate::capability::unsupported_namespace(
-            ctx,
-            app,
-            "banner",
-            "app.banner",
-            &["show", "dismiss"],
-        )?;
+        crate::capability::unsupported_namespace(ctx, app, "lx.host.banner", "app.banner")?;
         return Ok(());
     }
     let banner = JSObject::new(ctx);

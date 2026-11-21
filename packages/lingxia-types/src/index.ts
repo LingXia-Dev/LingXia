@@ -12,30 +12,11 @@ export * from './generated/i18n.js';
 
 import './generated/logic.js';
 
-import type {
-  BinaryFileData,
-  FsWriteOptions,
-  ManagedPath,
-} from './generated/logic.js';
 import type { Automation } from './automation/index.js';
 
 export type Lx = globalThis.Lx;
 
 declare global {
-  interface FileSystemApi {
-    /**
-     * Write bytes to a managed file. `encoding` describes how to read a
-     * *string*, so it has no meaning here and the runtime rejects it — this
-     * overload is what makes that a compile error instead. The generated
-     * signature above covers the string case.
-     */
-    write(
-      path: ManagedPath,
-      data: BinaryFileData,
-      options?: Omit<FsWriteOptions, 'encoding'> & { encoding?: never }
-    ): Promise<void>;
-  }
-
   interface Lx {
     /**
      * In-process UI/runtime automation, as app Logic may use it.

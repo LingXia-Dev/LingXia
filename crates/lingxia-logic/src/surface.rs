@@ -272,7 +272,7 @@ rong::js_api! {
             ts_return = "AppSurface | undefined"
         ) = shell_get_app;
         fn getDeclared(
-            ts_params = "id: string, key?: string",
+            ts_params = "id: string, options?: GetDeclaredOptions",
             ts_return = "DeclaredSurface | AppSurface | undefined"
         ) = shell_get_declared;
         fn openBuiltin(
@@ -773,12 +773,17 @@ fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
 /// The handle of a live declared surface, or of its keyed instance, the same
 /// object on every call; `undefined` when it is not live. A declaration that
 /// shows an lxapp answers with that app's `AppSurface`.
-fn shell_get_declared(ctx: JSContext, id: JSValue, key: Optional<JSValue>) -> JSResult<JSValue> {
+fn shell_get_declared(
+    ctx: JSContext,
+    id: JSValue,
+    options: Optional<JSObject>,
+) -> JSResult<JSValue> {
     let (invocation, (id, key)) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellGetDeclared, || {
             let id = shell_string_argument(id, "lx.shell.getDeclared id")?;
-            let key = key
+            let key = options
                 .0
+                .and_then(|options| options.get::<_, JSValue>("key").ok())
                 .filter(|value| !value.is_undefined() && !value.is_null())
                 .map(|value| shell_string_argument(value, "lx.shell.getDeclared key"))
                 .transpose()?

@@ -167,23 +167,42 @@ pub(crate) fn exposes(ctx: &JSContext, key: &str) -> bool {
         .is_some_and(|snapshot| snapshot.supported.contains(key))
 }
 
-/// A capability member stays present without the capability (rule 2): each
-/// of `members` fails with `E_NOT_SUPPORTED` naming `feature`. Subscriptions
-/// (`on*`) throw; every other call rejects.
+/// Members that return a value rather than a promise, so their stubs throw.
+const SYNCHRONOUS: &[&str] = &[
+    "lx.host.terminal.settings.onChange",
+    "lx.host.terminal.colorSchemes.createPreview",
+];
+
+/// The members of `path` a stub stands in for: the gated routes one level
+/// below it, so a stub lists exactly what the real namespace authorizes.
+fn stub_members(path: &str) -> impl Iterator<Item = &'static str> + '_ {
+    crate::authorization::LogicRoute::ALL
+        .iter()
+        .map(|route| route.name())
+        .filter(move |name| {
+            name.strip_prefix(path)
+                .and_then(|rest| rest.strip_prefix('.'))
+                .is_some_and(|member| !member.contains('.'))
+        })
+}
+
+/// A capability namespace stays present without the capability: each member
+/// at `path` fails with `E_NOT_SUPPORTED` naming `feature`, by throwing when
+/// it is synchronous and by rejecting otherwise.
 pub(crate) fn unsupported_namespace(
     ctx: &JSContext,
     parent: &JSObject,
-    name: &str,
+    path: &'static str,
     feature: &'static str,
-    members: &[&'static str],
 ) -> JSResult<JSObject> {
     let namespace = JSObject::new(ctx);
-    for member in members {
+    for full in stub_members(path) {
+        let member = &full[path.len() + 1..];
         let message = format!(
             "{feature} is not supported by this host; check lx.supports('{feature}') first"
         );
         let error = move || HostError::new(rong::error::E_NOT_SUPPORTED, message.clone());
-        let func = if member.starts_with("on") {
+        let func = if SYNCHRONOUS.contains(&full) {
             JSFunc::new(ctx, move || -> JSResult<()> { Err(error().into()) })?
         } else {
             JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
@@ -191,8 +210,9 @@ pub(crate) fn unsupported_namespace(
                 Promise::from_future(&ctx, None, async move { Err::<(), _>(error.into()) })
             })?
         };
-        namespace.set(*member, func.name(member)?)?;
+        namespace.set(member, func.name(member)?)?;
     }
+    let name = path.rsplit('.').next().unwrap_or(path);
     parent.set(name, namespace.clone())?;
     Ok(namespace)
 }
@@ -228,6 +248,58 @@ mod tests {
     fn entries(json: &str) -> Vec<FeatureEntry> {
         serde_json::from_str(json).unwrap()
     }
+
+    /// Every stubbed namespace, with what the published declarations say each
+    /// member returns: a stub lists the same members and fails the same way.
+    #[test]
+    fn stubs_match_the_published_members() {
+        let api: serde_json::Value =
+            serde_json::from_str(include_str!("../../../packages/lingxia-types/api.json")).unwrap();
+        let published: BTreeMap<&str, &str> = api["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|member| {
+                matches!(
+                    member["kind"].as_str(),
+                    Some("function" | "event" | "watcher")
+                )
+            })
+            .map(|member| {
+                let returns = member["signatures"][0]["returns"].as_str().unwrap();
+                (member["path"].as_str().unwrap(), returns)
+            })
+            .collect();
+        for path in STUBBED {
+            let stubbed: BTreeSet<&str> = stub_members(path).collect();
+            let expected: BTreeSet<&str> = published
+                .keys()
+                .copied()
+                .filter(|name| {
+                    name.strip_prefix(path)
+                        .and_then(|rest| rest.strip_prefix('.'))
+                        .is_some_and(|member| !member.contains('.'))
+                })
+                .collect();
+            assert_eq!(stubbed, expected, "stub members of {path}");
+            for name in stubbed {
+                assert_eq!(
+                    SYNCHRONOUS.contains(&name),
+                    !published[name].starts_with("Promise<"),
+                    "stub call kind of {name}"
+                );
+            }
+        }
+    }
+
+    const STUBBED: &[&str] = &[
+        "lx.host.autostart",
+        "lx.host.notification",
+        "lx.host.banner",
+        "lx.host.terminal.settings",
+        "lx.host.terminal.colorSchemes",
+        "lx.host.terminal.fonts",
+    ];
 
     #[test]
     fn registry_is_valid_and_dependencies_are_derived() {

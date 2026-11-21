@@ -788,20 +788,13 @@ export type NavDriverTarget =
   | { page: string; params?: Record<string, unknown> }
   | { tab: string };
 
-interface NavBackFields {
-  /** Number of pages to pop (default 1). */
-  delta?: number;
-}
-
 /** `replace: true` replaces the current page; a tab cannot replace one. */
 export interface LogicNavGoOptions extends LogicNavWaitOptions {
   replace?: boolean;
 }
-export interface LogicNavBackOptions extends NavBackFields, LogicNavWaitOptions {}
 export interface NavGoOptions extends NavWaitOptions {
   replace?: boolean;
 }
-export interface NavBackOptions extends NavBackFields, NavWaitOptions {}
 
 /** A page's runtime position. */
 export interface PageInfo {
@@ -833,8 +826,8 @@ export interface LogicNavDriver {
   go(target: NavDriverTarget, options?: LogicNavGoOptions): Promise<PageInfo>;
   /** Unload every page (cached tab pages included) and open a fresh instance of the target. */
   reset(target: NavDriverTarget, options?: LogicNavWaitOptions): Promise<PageInfo>;
-  /** Pop pages programmatically; a leave guard is not asked. */
-  back(options?: LogicNavBackOptions): Promise<PageInfo>;
+  /** Pop `n` pages (default 1) programmatically, as `lx.nav.back(n)`; a leave guard is not asked. */
+  back(n?: number, options?: LogicNavWaitOptions): Promise<PageInfo>;
   /**
    * Press a navigation bar button as the user does. A page holding the leave
    * guard stays and is asked, so this resolves to the same page.
@@ -854,7 +847,7 @@ export interface LogicNavDriver {
 export interface NavDriver extends LogicNavDriver {
   go(target: NavDriverTarget, options?: NavGoOptions): Promise<PageInfo>;
   reset(target: NavDriverTarget, options?: NavWaitOptions): Promise<PageInfo>;
-  back(options?: NavBackOptions): Promise<PageInfo>;
+  back(n?: number, options?: NavWaitOptions): Promise<PageInfo>;
   press(button: NavButton, options?: NavWaitOptions): Promise<PageInfo>;
 }
 

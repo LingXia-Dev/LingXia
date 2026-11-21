@@ -348,7 +348,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
     ["go", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
     ["go", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
     ["back", { waitUntil: "ready", timeoutMs: "room" }],
-    ["back", { waitUntil: "commit", delta: 2 }],
+    ["back", { waitUntil: "commit", n: 2 }],
   ]);
   assert.match(refused.message, /takes \{ timeout \} in ms/);
 });

@@ -3519,7 +3519,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
         key, as: 'aside', edge: 'bottom',
       });
       const dockedLayout = await snapshot();
-      const lookedUp = lx.shell.getDeclared('terminal', key);
+      const lookedUp = lx.shell.getDeclared('terminal', { key });
       await docked.hide();
       await docked.hide();
       const hiddenLayout = await snapshot();
@@ -3957,9 +3957,8 @@ async function writeBrowserAsideFixture(app: TestApp, namespace: string, key: st
   await app.logic.eval(async ({ lx }, namespace, relative, key) => {
     await lx.fs.mkdir('lx://userdata/' + namespace, { recursive: true });
     await lx.fs.write('lx://userdata/' + relative,
-      '<!doctype html><html><head><meta charset="utf-8"><title>' + key + '</title></head>'
-      + '<body style="margin:0"><h1 data-fixture-page="' + key + '" style="font-size:16px">' + key + '</h1></body></html>',
-      { overwrite: true });
+      { data: '<!doctype html><html><head><meta charset="utf-8"><title>' + key + '</title></head>'
+      + '<body style="margin:0"><h1 data-fixture-page="' + key + '" style="font-size:16px">' + key + '</h1></body></html>', overwrite: true });
   }, namespace, relative, key);
   return surfaceFileUrl((await app.info()).dataDir, relative);
 }

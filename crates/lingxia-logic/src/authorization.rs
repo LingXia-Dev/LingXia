@@ -25,7 +25,8 @@ pub(crate) enum LogicRoute {
     AppApplyUpdate,
     AppScreenshot,
     AppAutostartIsEnabled,
-    AppAutostartSetEnabled,
+    AppAutostartEnable,
+    AppAutostartDisable,
     AppNotificationGetPermission,
     AppNotificationRequestPermission,
     AppNotificationShow,
@@ -50,27 +51,16 @@ pub(crate) enum LogicRoute {
     ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
     ShellActivate,
-    #[cfg(feature = "terminal")]
     TerminalSettingsGet,
-    #[cfg(feature = "terminal")]
     TerminalSettingsUpdate,
-    #[cfg(feature = "terminal")]
     TerminalSettingsReset,
-    #[cfg(feature = "terminal")]
     TerminalSettingsOnChange,
-    #[cfg(feature = "terminal")]
     TerminalSchemesList,
-    #[cfg(feature = "terminal")]
     TerminalSchemesImport,
-    #[cfg(feature = "terminal")]
     TerminalPreviewCreate,
-    #[cfg(feature = "terminal")]
     TerminalPreviewShow,
-    #[cfg(feature = "terminal")]
     TerminalPreviewClear,
-    #[cfg(feature = "terminal")]
     TerminalPreviewClose,
-    #[cfg(feature = "terminal")]
     TerminalFontsList,
     #[cfg(all(feature = "terminal", target_os = "windows"))]
     TerminalWindowsStatus,
@@ -98,7 +88,8 @@ impl LogicRoute {
         Self::AppApplyUpdate,
         Self::AppScreenshot,
         Self::AppAutostartIsEnabled,
-        Self::AppAutostartSetEnabled,
+        Self::AppAutostartEnable,
+        Self::AppAutostartDisable,
         Self::AppNotificationGetPermission,
         Self::AppNotificationRequestPermission,
         Self::AppNotificationShow,
@@ -123,27 +114,16 @@ impl LogicRoute {
         Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
         Self::ShellActivate,
-        #[cfg(feature = "terminal")]
         Self::TerminalSettingsGet,
-        #[cfg(feature = "terminal")]
         Self::TerminalSettingsUpdate,
-        #[cfg(feature = "terminal")]
         Self::TerminalSettingsReset,
-        #[cfg(feature = "terminal")]
         Self::TerminalSettingsOnChange,
-        #[cfg(feature = "terminal")]
         Self::TerminalSchemesList,
-        #[cfg(feature = "terminal")]
         Self::TerminalSchemesImport,
-        #[cfg(feature = "terminal")]
         Self::TerminalPreviewCreate,
-        #[cfg(feature = "terminal")]
         Self::TerminalPreviewShow,
-        #[cfg(feature = "terminal")]
         Self::TerminalPreviewClear,
-        #[cfg(feature = "terminal")]
         Self::TerminalPreviewClose,
-        #[cfg(feature = "terminal")]
         Self::TerminalFontsList,
         #[cfg(all(feature = "terminal", target_os = "windows"))]
         Self::TerminalWindowsStatus,
@@ -180,7 +160,8 @@ impl LogicRoute {
             | Self::AppApplyUpdate
             | Self::AppScreenshot
             | Self::AppAutostartIsEnabled
-            | Self::AppAutostartSetEnabled
+            | Self::AppAutostartEnable
+            | Self::AppAutostartDisable
             | Self::TraySetIcon
             | Self::TraySetTitle
             | Self::TraySetMenu
@@ -205,7 +186,6 @@ impl LogicRoute {
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
             | Self::AppBannerDismiss => RouteAudience::AppSessionOnly,
-            #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet
             | Self::TerminalSettingsUpdate
             | Self::TerminalSettingsReset
@@ -242,7 +222,8 @@ impl LogicRoute {
             Self::AppApplyUpdate => "lx.host.checkUpdate.apply",
             Self::AppScreenshot => "lx.host.screenshot",
             Self::AppAutostartIsEnabled => "lx.host.autostart.isEnabled",
-            Self::AppAutostartSetEnabled => "lx.host.autostart.setEnabled",
+            Self::AppAutostartEnable => "lx.host.autostart.enable",
+            Self::AppAutostartDisable => "lx.host.autostart.disable",
             Self::AppNotificationGetPermission => "lx.host.notification.getPermission",
             Self::AppNotificationRequestPermission => "lx.host.notification.requestPermission",
             Self::AppNotificationShow => "lx.host.notification.show",
@@ -267,27 +248,16 @@ impl LogicRoute {
             Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
             Self::ShellActivate => "lx.shell.activate",
-            #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
-            #[cfg(feature = "terminal")]
             Self::TerminalSettingsUpdate => "lx.host.terminal.settings.update",
-            #[cfg(feature = "terminal")]
             Self::TerminalSettingsReset => "lx.host.terminal.settings.reset",
-            #[cfg(feature = "terminal")]
             Self::TerminalSettingsOnChange => "lx.host.terminal.settings.onChange",
-            #[cfg(feature = "terminal")]
             Self::TerminalSchemesList => "lx.host.terminal.colorSchemes.list",
-            #[cfg(feature = "terminal")]
             Self::TerminalSchemesImport => "lx.host.terminal.colorSchemes.import",
-            #[cfg(feature = "terminal")]
             Self::TerminalPreviewCreate => "lx.host.terminal.colorSchemes.createPreview",
-            #[cfg(feature = "terminal")]
             Self::TerminalPreviewShow => "lx.host.terminal.colorSchemes.preview.show",
-            #[cfg(feature = "terminal")]
             Self::TerminalPreviewClear => "lx.host.terminal.colorSchemes.preview.clear",
-            #[cfg(feature = "terminal")]
             Self::TerminalPreviewClose => "lx.host.terminal.colorSchemes.preview.close",
-            #[cfg(feature = "terminal")]
             Self::TerminalFontsList => "lx.host.terminal.fonts.list",
             #[cfg(all(feature = "terminal", target_os = "windows"))]
             Self::TerminalWindowsStatus => "lx.host.terminal.windows.status",

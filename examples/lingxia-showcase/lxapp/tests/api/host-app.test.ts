@@ -465,7 +465,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
 test('report autostart state and accept an idempotent write', {
   skip: autostartSkip,
   id: 'HOSTAPP-AUTOSTART-001',
-  covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.setEnabled'],
+  covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.enable', 'lx.host.autostart.disable'],
   app: SHOWCASE_APP_ID,
   reason: 'Autostart is intentionally absent on mobile hosts.',
   // `SMAppService.mainApp.status` costs ~6s per call on macOS; the spec pays
@@ -492,7 +492,7 @@ test('report autostart state and accept an idempotent write', {
   // The macOS login-item service answers well past an eval's default budget.
   const result = await app.logic.eval({ timeout: 45_000 }, async ({ lx }) => {
     const before = await lx.host.autostart.isEnabled();
-    await lx.host.autostart.setEnabled(before);
+    await (before ? lx.host.autostart.enable() : lx.host.autostart.disable());
     const after = await lx.host.autostart.isEnabled();
     return { before, after };
   });
@@ -515,8 +515,8 @@ test('clear product caches while preserving live app storage', {
     const payload = 'x'.repeat(256 * 1024);
     const cached = lx.fs.userCache + '/automation/cache-probe.txt';
     const durable = 'automation/cache-probe.txt';
-    await lx.fs.write(cached, payload, { overwrite: true });
-    await lx.fs.write(durable, payload, { overwrite: true });
+    await lx.fs.write(cached, { data: payload, overwrite: true });
+    await lx.fs.write(durable, { data: payload, overwrite: true });
 
     await lx.storage().set('automation-cache-probe', 'keep');
     const before = await lx.host.cache.size();

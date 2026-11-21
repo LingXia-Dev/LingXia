@@ -168,7 +168,7 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs'
     await files.mkdir(root, { recursive: true });
     try {
       const payload = JSON.stringify({ hello: 'automation' });
-      await files.write(source, payload);
+      await files.write(source, { data: payload });
       const file = files.file(source);
       const text = await file.text();
       const json = await file.json();
@@ -176,8 +176,8 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs'
       const buffer = await file.arrayBuffer();
       const base64 = await file.base64();
       const stat = await file.stat();
-      await files.rename(source, renamed);
-      await files.copy(renamed, copied);
+      await files.rename(source, { to: renamed });
+      await files.copy(renamed, { to: copied });
       return {
         text,
         json,
@@ -283,11 +283,11 @@ test("replace on write, read directories, LxFile.exists/path, and deny escaped p
     const child = root + '/child.txt';
     await files.mkdir(root, { recursive: true });
     try {
-      await files.write(child, 'hi');
-      await files.write(child, 'overwritten');
+      await files.write(child, { data: 'hi' });
+      await files.write(child, { data: 'overwritten' });
       let overwriteRejected = false;
       try {
-        await files.write(child, 'nope', { overwrite: false });
+        await files.write(child, { data: 'nope', overwrite: false });
       } catch {
         overwriteRejected = true;
       }

@@ -8,7 +8,10 @@ async function logicRoot() {
   const logic: Automation = lx.automation();
   const self: LogicLxAppDriver = logic.lxapp();
   await self.nav.go({ page: 'home' });
-  await self.nav.back({ waitUntil: 'commit' });
+  await self.nav.back();
+  await self.nav.back(2, { waitUntil: 'commit' });
+  // @ts-expect-error the page count is the first argument, not an option
+  await self.nav.back({ delta: 2 });
   await logic.lxapp('other').eval<number>({ script: '1' });
   // @ts-expect-error test network routing exists only in a host automation run
   void self.network;

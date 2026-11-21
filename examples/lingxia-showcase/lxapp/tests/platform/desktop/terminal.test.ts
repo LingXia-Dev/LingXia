@@ -298,7 +298,7 @@ test('applies a selected color scheme to native chrome before Apply', {
       await settingsApp.logic.eval({ timeout: 20_000 }, async ({ lx }, config) => {
         const settings = lx.host.terminal.settings;
         const current = await settings.get();
-        await settings.update(config as Parameters<typeof settings.update>[0], { ifRevision: current.revision });
+        await settings.update({ ...(config as object), ifRevision: current.revision });
       }, initial.config as unknown as JsonValue);
     }
     await closeHandles(app, '__terminalThemeAutomationHandles');

@@ -368,7 +368,7 @@ rong::js_api! {
         ///
         /// Requires `capabilities.autostart: true` in `lingxia.yaml`; without it
         /// `lx.supports` says no on all platforms. Declaring the capability never enables
-        /// autostart by itself — the SDK registers the app only when `setEnabled(true)`
+        /// autostart by itself — the SDK registers the app only when `enable()`
         /// is called, so the decision stays with the user (typically a settings-page
         /// toggle, default off).
         ///
@@ -384,11 +384,13 @@ rong::js_api! {
      */
     isEnabled(): Promise<boolean>;
     /**
-     * Register or unregister the app as a startup item for the current user.
+     * Register the app as a startup item for the current user.
      * Idempotent. Call it only from the person's own action.
      * @platform macOS: the system may tell the user a login item was added.
      */
-    setEnabled(on: boolean): Promise<void>;
+    enable(): Promise<void>;
+    /** Unregister the app as a startup item for the current user. Idempotent. */
+    disable(): Promise<void>;
 }"###;
 
         /// The product-wide cache a settings screen reports and clears.
@@ -571,13 +573,10 @@ rong::js_api! {
     /** The settings now: defaults, the user's overrides, and what is in effect. */
     get(): Promise<TerminalSettingsSnapshot>;
     /** Save the patched fields; rejects when the saved settings moved past `ifRevision`. */
-    update(
-        patch: TerminalSettingsPatch,
-        options: {
-            /** The `revision` the patch was made against. */
-            ifRevision: number;
-        },
-    ): Promise<TerminalSettingsSnapshot>;
+    update(patch: TerminalSettingsPatch & {
+        /** The `revision` the patch was made against. */
+        ifRevision: number;
+    }): Promise<TerminalSettingsSnapshot>;
     /** Drop the user's overrides; rejects when the saved settings moved past `ifRevision`. */
     reset(options: {
         /** The `revision` the reset was decided against. */
@@ -1048,8 +1047,14 @@ rong::js_api! {
     password?: string;
 }"###;
 
+        /// Where `lx.fs.copy` puts the copy.
         type FsCopyOptions = r###"{
-    /** Defaults to false. */
+    /** The destination file path. */
+    to: ManagedPath;
+    /**
+     * Replace a file already at `to`.
+     * @default false
+     */
     overwrite?: boolean;
 }"###;
 
@@ -1566,8 +1571,14 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
+        /// Where `lx.fs.rename` moves the file or directory.
         type FsRenameOptions = r###"{
-    /** Defaults to false. */
+    /** The new path. */
+    to: ManagedPath;
+    /**
+     * Replace a file already at `to`; a directory is never replaced.
+     * @default false
+     */
     overwrite?: boolean;
 }"###;
 
@@ -2026,6 +2037,12 @@ true
     key?: string;
 }"###;
 
+        /// Which instance `lx.shell.getDeclared` looks up.
+        type GetDeclaredOptions = r###"{
+    /** The instance key it was opened with; the unkeyed instance when absent. */
+    key?: string;
+}"###;
+
         /// Options of `lx.surface.openDeclared`. Each one changes shared shell
         /// composition, so only the Control app may pass any; other lxapps call
         /// it without options and get the declaration as the host authored it.
@@ -2034,7 +2051,7 @@ true
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
-     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * `lx.shell.getDeclared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
      * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
@@ -2412,12 +2429,25 @@ true
     state: string;
 }"###;
 
+        /// What `lx.fs.write` writes. Text takes an `encoding`; bytes take none.
         type FsWriteOptions = r###"{
+    /** The text to write. */
+    data: string;
     /**
-     * How string input is read; `base64` decodes it to bytes before writing.
+     * How `data` is read; `base64` decodes it to bytes before writing.
      * @default 'utf8'
      */
     encoding?: 'utf8' | 'base64';
+    /**
+     * Replace a file already at the path; `false` rejects instead.
+     * @default true
+     */
+    overwrite?: boolean;
+} | {
+    /** The bytes to write. */
+    data: BinaryFileData;
+    /** Bytes are written as they are. */
+    encoding?: never;
     /**
      * Replace a file already at the path; `false` rejects instead.
      * @default true

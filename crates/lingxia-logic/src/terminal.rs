@@ -253,16 +253,20 @@ async fn settings_get(ctx: JSContext) -> JSResult<JSValue> {
     snapshot_to_js(&ctx, LogicRoute::TerminalSettingsGet)
 }
 
-async fn settings_update(ctx: JSContext, patch: JSValue, options: JSValue) -> JSResult<JSValue> {
+async fn settings_update(ctx: JSContext, patch: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, system_is_dark) = context(&ctx, LogicRoute::TerminalSettingsUpdate)?;
+    let options = patch.clone().to_rust::<RevisionOptions>()?;
     let patch = patch.into_object().ok_or_else(|| {
         RongJSError::from(HostError::new(
             rong::error::E_INVALID_ARG,
             "terminal settings patch must be an object",
         ))
     })?;
-    let options = options.to_rust::<RevisionOptions>()?;
-    let patch = object_json(&patch, "terminal settings patch")?;
+    let mut patch = object_json(&patch, "terminal settings patch")?;
+    // The revision rides in the patch; the stored settings never see it.
+    if let Some(fields) = patch.as_object_mut() {
+        fields.remove("ifRevision");
+    }
     lingxia_terminal_config::runtime::apply_config_if_revision(
         &data_dir,
         &patch,

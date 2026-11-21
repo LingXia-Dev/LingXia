@@ -249,13 +249,7 @@ rong::js_api! {
 }
 
 fn unsupported_autostart(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    crate::capability::unsupported_namespace(
-        ctx,
-        app,
-        "autostart",
-        "app.autostart",
-        &["isEnabled", "setEnabled"],
-    )?;
+    crate::capability::unsupported_namespace(ctx, app, "lx.host.autostart", "app.autostart")?;
     Ok(())
 }
 
@@ -263,22 +257,13 @@ fn unsupported_autostart(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 /// fails `E_NOT_SUPPORTED`.
 pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
     let terminal = JSObject::new(ctx);
-    const FEATURE: &str = "terminal";
-    crate::capability::unsupported_namespace(
-        ctx,
-        &terminal,
-        "settings",
-        FEATURE,
-        &["get", "update", "reset", "onChange"],
-    )?;
-    crate::capability::unsupported_namespace(
-        ctx,
-        &terminal,
-        "colorSchemes",
-        FEATURE,
-        &["list", "import", "createPreview"],
-    )?;
-    crate::capability::unsupported_namespace(ctx, &terminal, "fonts", FEATURE, &["list"])?;
+    for path in [
+        "lx.host.terminal.settings",
+        "lx.host.terminal.colorSchemes",
+        "lx.host.terminal.fonts",
+    ] {
+        crate::capability::unsupported_namespace(ctx, &terminal, path, "terminal")?;
+    }
     app_namespace(ctx)?.set("terminal", terminal)?;
     Ok(())
 }

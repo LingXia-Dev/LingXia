@@ -1,4 +1,4 @@
-import type { Lx, LxFeature, PageEnvContext } from "../src/index.js";
+import type { AutostartApi, BannerApi, Lx, LxFeature, NotificationApi, PageEnvContext, TerminalSettingsApi, WindowsTerminalApi } from "../src/index.js";
 
 declare const lx: Lx;
 declare const feature: LxFeature;
@@ -26,4 +26,25 @@ lx.supports('surface.float');
 lx.supports('surface.window.chrome.full');
 // @ts-expect-error no implicit coercion
 lx.supports(42);
-export type FeatureQueryGate = [typeof known, typeof window, typeof fullChrome, typeof notifications, typeof control, typeof docked];
+
+// A capability namespace is present on every host, guarded or not; without the
+// capability its calls reject `E_NOT_SUPPORTED`, so no `?.` is needed.
+if (lx.supports('app.autostart')) {
+  const guarded: AutostartApi = lx.host.autostart;
+  void guarded.enable();
+}
+const autostart: AutostartApi = lx.host.autostart;
+const notification: NotificationApi = lx.host.notification;
+const banner: BannerApi = lx.host.banner;
+const terminalSettings: TerminalSettingsApi = lx.host.terminal.settings;
+void lx.host.autostart.disable();
+// The Windows terminal controls exist only on Windows, so they stay possibly absent.
+// @ts-expect-error absent off Windows, guarded by the terminal feature or not
+const windowsAlways: WindowsTerminalApi = lx.host.terminal.windows;
+if (lx.supports('terminal')) {
+  // @ts-expect-error the terminal feature does not imply Windows
+  const windowsGuarded: WindowsTerminalApi = lx.host.terminal.windows;
+  void windowsGuarded;
+}
+const windowsChecked: WindowsTerminalApi | undefined = lx.host.terminal.windows;
+export type FeatureQueryGate = [typeof known, typeof window, typeof fullChrome, typeof notifications, typeof control, typeof docked, typeof autostart, typeof notification, typeof banner, typeof terminalSettings, typeof windowsAlways, typeof windowsChecked];

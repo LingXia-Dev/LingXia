@@ -122,7 +122,7 @@ const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
     name !== 'notification' &&
     name !== 'terminal',
 );
-const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const AUTOSTART_API = ['disable', 'enable', 'isEnabled'] as const;
 const BANNER_API = ['dismiss', 'show'] as const;
 const NOTIFICATION_API = [
   'cancel',

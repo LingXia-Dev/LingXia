@@ -38,7 +38,7 @@ test('round-trip text, empty clipboard, and typed image items', {
       await lx.clipboard.write({ type: 'text', text: '' });
       const emptyString = await lx.clipboard.readText();
 
-      await files.write(fixture, png, { encoding: 'base64' });
+      await files.write(fixture, { data: png, encoding: 'base64' });
       await lx.clipboard.write({ type: 'image', filePath: fixture });
       const imageTypes = await lx.clipboard.types();
       const imageRead = await lx.clipboard.read({ type: 'image' });
@@ -125,7 +125,7 @@ async function expectHarmonyReadsDenied(
       const readText = await rejection(() => lx.clipboard.readText());
       const read = await rejection(() => lx.clipboard.read({ type: 'text' }));
 
-      await files.write(fixture, png, { encoding: 'base64' });
+      await files.write(fixture, { data: png, encoding: 'base64' });
       await lx.clipboard.write({ type: 'image', filePath: fixture });
       const imageTypes = await lx.clipboard.types();
       const readImage = await rejection(() => lx.clipboard.read({ type: 'image' }));

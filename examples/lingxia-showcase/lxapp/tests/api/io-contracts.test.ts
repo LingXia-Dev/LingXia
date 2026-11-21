@@ -49,7 +49,7 @@ test("read image info from managed storage and reject a missing image", { id: "M
     };
     await files.mkdir(root, { recursive: true });
     try {
-      await files.write(fixture, base64, { encoding: 'base64' });
+      await files.write(fixture, { data: base64, encoding: 'base64' });
       const info = await lx.media.imageInfo(fixture);
       const missingRejected = await rejects(() => lx.media.imageInfo(root + '/missing.png'));
       return { width: info.width, height: info.height, type: String(info.type), missingRejected };

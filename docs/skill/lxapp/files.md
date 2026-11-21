@@ -68,7 +68,7 @@ const encoded = await file.base64();        // string
   `lx://temp/...`.
 - Each read is limited to 16 MiB. Pass larger files by path to upload,
   preview, or native APIs.
-- `write(path, data, options?)` takes a string, `ArrayBuffer`, or typed array;
+- `write(path, { data })` takes a string, `ArrayBuffer`, or typed array;
   `encoding: "base64"` decodes a Base64 input string.
 - `readDir(path)` resolves to entries with `name`, `isFile`, `isDirectory`,
   `isSymlink`.
@@ -76,15 +76,13 @@ const encoded = await file.base64();        // string
 ### Copy and move
 
 ```ts
-await lx.fs.copy(
-  result.uri,
-  "media/video.mp4",                    // relative → lx://userdata/media/video.mp4
-);
+await lx.fs.copy(result.uri, {
+  to: "media/video.mp4",                // relative → lx://userdata/media/video.mp4
+});
 
-await lx.fs.rename(
-  result.uri,
-  `${lx.fs.userCache}/previews/video.mp4`,
-);
+await lx.fs.rename(result.uri, {
+  to: `${lx.fs.userCache}/previews/video.mp4`,
+});
 ```
 
 - Sources: temp, userdata, usercache. Destinations: userdata or usercache.

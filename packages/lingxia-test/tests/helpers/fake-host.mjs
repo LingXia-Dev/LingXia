@@ -434,9 +434,9 @@ export function createWorld(options = {}) {
       else stack.push(currentPage);
       return currentPage;
     },
-    async back(options) {
-      navCalls.push(["back", options]);
-      for (let popped = 0; popped < (options?.delta ?? 1) && stack.length > 1; popped++) stack.pop();
+    async back(n, options) {
+      navCalls.push(["back", { ...options, ...(n === undefined ? {} : { n }) }]);
+      for (let popped = 0; popped < (n ?? 1) && stack.length > 1; popped++) stack.pop();
       currentPage = stack[stack.length - 1];
       return currentPage;
     },
