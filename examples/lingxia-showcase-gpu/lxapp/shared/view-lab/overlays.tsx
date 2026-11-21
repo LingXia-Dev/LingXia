@@ -26,7 +26,7 @@ export function BesideDemo() {
   );
 }
 
-// A callout clear of its anchor by its own margin, its arrow in the gap; a translate moves it after placement.
+// A callout clear of its anchor by its own margin, on either side; a translate moves it after placement.
 export function GapDemo() {
   const side = useLocal<'none' | 'below' | 'above'>('lab-gap-side', 'none');
   const nudged = useLocal('lab-gap-nudged', false);
@@ -40,15 +40,14 @@ export function GapDemo() {
         <Button testId="lab-gap-above" size="sm" variant="secondary" onClick={toggle('above')}>{t(labels.gapAbove)}</Button>
         <Button testId="lab-gap-nudge" size="sm" variant="secondary" onClick={() => nudged.set(!nudged.value)}>{t(labels.gapNudge)}</Button>
       </view>
-      <view className="h-24 items-center justify-center">
+      <view className="h-40 items-center justify-center">
         <view id="lab-gap-target" data-testid="lab-gap-target" className="px-4 py-2 rounded-lg border border-line-strong">
           <text className="text-sm">{t(labels.gapTarget)}</text>
         </view>
       </view>
       <view id="lab-gap-note" popover="manual" anchor="lab-gap-target" open={side.value !== 'none'} role="tooltip" data-testid="lab-gap-note"
         onToggle={next => { if (!next) side.set('none'); }} style={{ positionArea: below ? 'bottom' : 'top' }}
-        className={`w-48 overflow-visible rounded-lg bg-text p-3 ${below ? 'mt-3' : 'mb-3'} ${nudged.value ? (below ? 'translate-y-2' : '-translate-y-2') : ''}`}>
-        <view className={`absolute start-1/2 size-3 -ms-1.5 rotate-45 rounded-[2px] bg-text ${below ? '-top-1.5' : '-bottom-1.5'}`} />
+        className={`w-48 rounded-lg bg-text p-3 ${below ? 'mt-3' : 'mb-3'} ${nudged.value ? (below ? 'translate-y-2' : '-translate-y-2') : ''}`}>
         <text className="text-xs text-surface">{t(labels.gapNote)}</text>
       </view>
       <Readout testId="lab-gap-state" state={`side=${side.value} nudged=${nudged.value}`}>{t(readouts.gap(side.value, nudged.value))}</Readout>
