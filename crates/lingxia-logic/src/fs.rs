@@ -199,11 +199,15 @@ struct FileStats {
     is_directory: bool,
     #[js_name = "isSymlink"]
     is_symlink: bool,
+    /// Size in bytes.
     size: u64,
+    /// Epoch milliseconds; absent where the file system does not record it.
     #[js_name = "lastModifiedTime"]
     last_modified_time: Option<u64>,
+    /// Epoch milliseconds; absent where the file system does not record it.
     #[js_name = "lastAccessedTime"]
     last_accessed_time: Option<u64>,
+    /// Epoch milliseconds; absent where the file system does not record it.
     #[js_name = "createTime"]
     create_time: Option<u64>,
 }
@@ -1271,7 +1275,7 @@ async fn fs_mkdir(
     Ok(())
 }
 
-/// Write UTF-8 text or bytes to a managed file.
+/// Write UTF-8 text or bytes to a managed file, replacing one already there.
 async fn fs_write(
     ctx: JSContext,
     path: String,
@@ -1282,7 +1286,7 @@ async fn fs_write(
     let path = resolve_writable_path(&lxapp, &path, "fs.write", "path")?;
     ensure_no_symlink_ancestors(&lxapp, &path, "fs.write", "path")?;
     let options = options.0.unwrap_or_default();
-    let overwrite = options.overwrite.unwrap_or(false);
+    let overwrite = options.overwrite.unwrap_or(true);
     if !overwrite {
         ensure_not_exists(&path.path, "fs.write")?;
     }

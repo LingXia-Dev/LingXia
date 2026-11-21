@@ -54,6 +54,11 @@ if (generatedSource.includes("/** *")) {
   console.error("Generated declarations contain malformed single-line JSDoc starting with '/** *'.");
   process.exit(1);
 }
+// A backslash before a backtick in a Rust raw string reaches hovers verbatim.
+if (generatedSource.includes("\\`")) {
+  console.error("Generated declarations contain an escaped backtick (\\`); write a plain backtick in the Rust source.");
+  process.exit(1);
+}
 const generated = declarations(generatedPath);
 const missing = contract.types.filter((name) => !generated.names.has(name)).sort();
 

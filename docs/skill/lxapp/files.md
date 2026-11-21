@@ -88,8 +88,9 @@ await lx.fs.rename(
 ```
 
 - Sources: temp, userdata, usercache. Destinations: userdata or usercache.
-- Parent directories are created. `write`, `copy`, and `rename` never
-  overwrite unless `overwrite: true`, and never replace a directory.
+- Parent directories are created. `write` replaces a file (`overwrite: false`
+  refuses); `copy` and `rename` overwrite only with `overwrite: true`. None
+  replaces a directory.
 - `rename` moves: a temp download renamed into usercache becomes cache without
   a second copy.
 

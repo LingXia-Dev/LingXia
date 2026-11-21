@@ -76,7 +76,6 @@ export function render({ data, actions, env }: View) {
             <InfoList>
               <InfoRow label="WiFi Enabled" value={yesNo(setting.wifiEnabled)} testId="system-settings-wifiEnabled" />
               <InfoRow label="Location Enabled" value={yesNo(setting.locationEnabled)} testId="system-settings-locationEnabled" />
-              <InfoRow label="Bluetooth Enabled" value={yesNo(setting.bluetoothEnabled)} testId="system-settings-bluetoothEnabled" />
             </InfoList>
           )}
         </Section>

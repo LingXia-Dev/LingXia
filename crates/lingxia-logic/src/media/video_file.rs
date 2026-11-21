@@ -125,7 +125,7 @@ struct JSCompressVideoResult {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSCompressProgressEvent {
-    progress: u8,
+    progress: f64,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -300,7 +300,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
         (None, None, None)
     } else {
         (
-            sanitize_optional_u32(options.bitrate),
+            sanitize_optional_u32(options.bitrate).map(bitrate_kbps),
             sanitize_optional_u32(options.fps),
             sanitize_resolution(options.resolution)?,
         )
@@ -508,7 +508,9 @@ async fn compress_progress_next_step(
         guard.last_progress = Some(progress);
         return Ok(JSCompressIteratorStep {
             done: false,
-            value: Some(JSCompressProgressEvent { progress }),
+            value: Some(JSCompressProgressEvent {
+                progress: progress_fraction(progress),
+            }),
         });
     }
 }
@@ -626,6 +628,16 @@ fn normalize_video_codec_mime(codec: Option<String>) -> Option<String> {
         _ => return None,
     };
     Some(normalized.to_string())
+}
+
+/// Natives report whole percent; JS sees a fraction like every other progress.
+fn progress_fraction(percent: u8) -> f64 {
+    f64::from(percent.min(100)) / 100.0
+}
+
+/// JS speaks bits per second (as `VideoInfo.bitrate`); natives take kbps.
+fn bitrate_kbps(bps: u32) -> u32 {
+    (bps / 1000).max(1)
 }
 
 fn reject_mixed_compress_settings(
@@ -883,9 +895,10 @@ fn ensure_output_quota(lxapp: &LxApp, expected_path: &Path, actual_path: &Path) 
 #[cfg(test)]
 mod tests {
     use super::{
-        PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, ensure_distinct_video_paths,
-        explicit_lx_output_uri, normalize_video_codec_mime, platform_video_info_to_js,
-        reject_mixed_compress_settings, validate_video_output,
+        PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, bitrate_kbps,
+        ensure_distinct_video_paths, explicit_lx_output_uri, normalize_video_codec_mime,
+        platform_video_info_to_js, progress_fraction, reject_mixed_compress_settings,
+        validate_video_output,
     };
     use std::fs;
 
@@ -1131,5 +1144,15 @@ mod tests {
         assert!(reject_mixed_compress_settings(Some("low"), None, None, None).is_ok());
         assert!(reject_mixed_compress_settings(None, Some(800), Some(24), Some(0.5)).is_ok());
         assert!(reject_mixed_compress_settings(None, None, None, None).is_ok());
+    }
+
+    #[test]
+    fn progress_is_a_fraction_and_bitrate_is_bits_per_second() {
+        assert_eq!(progress_fraction(0), 0.0);
+        assert_eq!(progress_fraction(50), 0.5);
+        assert_eq!(progress_fraction(100), 1.0);
+        assert_eq!(progress_fraction(120), 1.0);
+        assert_eq!(bitrate_kbps(1_200_000), 1200);
+        assert_eq!(bitrate_kbps(500), 1);
     }
 }

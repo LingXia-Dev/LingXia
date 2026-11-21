@@ -30,13 +30,6 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
       : TCustom[K];
 };
 
-/**
- * A `setData` key that addresses inside `data` — `'a.b'` or `'rows[0].name'`.
- * Kept for documentation; nested writes go through `setPath` (checked) or
- * `setDataPath` (unchecked). `setData` no longer accepts these keys.
- */
-export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
-
 type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
 
 type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -56,113 +49,6 @@ export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
         : T extends object
           ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
           : T;
-
-/**
- * Tuple path into `data`, depth-capped so large page states stay completable.
- */
-export type DataPath<T, D extends number = 5> = [D] extends [never]
-  ? never
-  : T extends readonly (infer U)[]
-    ? [number] | [number, ...DataPath<U, PageReadonlyDepth[D]>]
-    : T extends object
-      ? {
-          [K in keyof T & (string | number)]:
-            | [K]
-            | (DataPath<T[K], PageReadonlyDepth[D]> extends infer Rest
-                ? Rest extends readonly PropertyKey[]
-                  ? [K, ...Rest]
-                  : never
-                : never);
-        }[keyof T & (string | number)]
-      : never;
-
-export type DataPathValue<T, P extends readonly PropertyKey[]> = T extends null | undefined
-  ? never
-  : T extends unknown
-  ? P extends readonly [
-  infer K,
-  ...infer Rest,
-]
-  ? Rest extends readonly PropertyKey[]
-    ? Rest['length'] extends 0
-      ? K extends keyof T
-        ? T[K]
-        : K extends number
-          ? T extends readonly (infer U)[]
-            ? U
-            : never
-          : never
-      : K extends keyof T
-        ? DataPathValue<T[K], Rest>
-        : K extends number
-          ? T extends readonly (infer U)[]
-            ? DataPathValue<U, Rest>
-            : never
-          : never
-    : never
-  : never
-  : never;
-
-/**
- * Top-level keys are checked against `data`. Nested writes use `setPath` or
- * the unchecked `setDataPath`.
- */
-export type SetDataPatch<TData> = { [K in keyof TData]?: TData[K] };
-
-type SetDataValue<TData, K> = K extends PageDataPath
-  ? { "LingXia type error": "use setPath or setDataPath for nested writes" }
-  : K extends keyof TData
-    ? TData[K] | DeepReadonly<TData[K]>
-    : { "LingXia type error": "unknown data key" };
-
-export interface PageInstance<TData extends object = Record<string, unknown>> {
-  readonly data: { readonly [K in keyof TData]: DeepReadonly<TData[K]> };
-  route: string;
-  /**
-   * Available when this page was opened as a surface via
-   * `lx.surface.openPage(...)`.
-   */
-  surface?: PageSurface;
-  /**
-   * Available when this page was pushed by `lx.nav.go(...)`.
-   */
-  opener?: PageMessagePort;
-  /**
-   * Set what the opener's `result` resolves with when this page leaves, by
-   * Back or any other way. JSON only.
-   */
-  setResult(value: JsonValue): void;
-  /**
-   * Leave this page, with `value` as its result when given. A pushed page
-   * goes back; a surface page closes its surface. Throws for a root or tab
-   * page, and for a pushed page that is not on top.
-   */
-  close(value?: JsonValue): Promise<void>;
-  setData<TPatch extends Record<string, unknown>>(
-    data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
-  ): void;
-  setPath<const P extends DataPath<TData>>(
-    path: P,
-    value: DataPathValue<TData, P>,
-  ): void;
-  /** Nested write by a runtime-resolved string path. JSON shape is checked; the path/value relationship is not. */
-  setDataPath(path: string, value: JsonValue | undefined): void;
-  /**
-   * Drain pending state writes. A WebView acknowledges application, not paint. A GPU page resolves
-   * once the frame carrying the writes is committed for display (one refresh before it shows),
-   * never before they are in a frame and in write order; a hidden page resolves at once, and a
-   * write no frame can show resolves after 250 ms. Rejects on unload.
-   */
-  flush(): Promise<void>;
-  /**
-   * Aborted as the page unloads, before `onUnload` runs, however the page
-   * leaves. Pass it to work the page starts — `fetch(url, { signal:
-   * this.signal })` — so that work stops with the page, rejecting with an
-   * `AbortError`, instead of resolving into a page that is gone. When the
-   * whole lxapp shuts down, its Logic ends with it and the signal does not fire.
-   */
-  readonly signal: AbortSignal;
-}
 
 /**
  * Injected by the runtime into methods listed in `stream_handlers` page metadata.
@@ -233,9 +119,6 @@ export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResul
       progress?: number;
       result: TResult;
     };
-
-export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> =
-  IteratorResult<DownloadProgressEvent<TResult>, void>;
 
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;

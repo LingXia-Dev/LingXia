@@ -137,7 +137,9 @@ fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
     })
 }
 
-/// Get location function
+/// The device's position, in WGS-84 unless `coordinateSystem` says otherwise.
+/// Asks for location permission the first time; rejects when it is denied,
+/// location is off, or no fix arrives within `timeoutMs`.
 async fn get_location(
     ctx: JSContext,
     options: Optional<JSLocationOptions>,

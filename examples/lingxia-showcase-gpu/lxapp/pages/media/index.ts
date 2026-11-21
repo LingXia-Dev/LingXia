@@ -102,6 +102,10 @@ function parsePositiveInt(value: unknown) {
   return parsed;
 }
 
+function kbpsToBps(kbps: number | undefined) {
+  return kbps === undefined ? undefined : kbps * 1000;
+}
+
 function parseNonNegativeInt(value: unknown) {
   const parsed = parseInt(String(value ?? ""), 10);
   if (Number.isNaN(parsed) || parsed < 0) {
@@ -991,7 +995,7 @@ export default definePage({
           ? { path: sourcePath, quality: quality as VideoCompressQuality }
           : {
               path: sourcePath,
-              bitrate: parsePositiveInt(page.data.videoCompressBitrate),
+              bitrate: kbpsToBps(parsePositiveInt(page.data.videoCompressBitrate)),
               fps: parsePositiveInt(page.data.videoCompressFps),
               resolution: parseResolutionRatio(page.data.videoCompressResolution),
             };
@@ -1012,7 +1016,7 @@ export default definePage({
           const outcome = task.result.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
           for await (const { progress } of task.progress) {
             if (disposed || epoch !== compressionEpoch) return;
-            page.update(d => { d.videoCompressProgress = progress; });
+            page.update(d => { d.videoCompressProgress = Math.round(progress * 100); });
           }
           const settled = await outcome;
           if (disposed || epoch !== compressionEpoch) return;

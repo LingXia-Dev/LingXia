@@ -146,7 +146,6 @@ export default definePage({
     async onPullDownRefresh() {
       const items = await load();
       page.update(d => { d.items = items; });
-      lx.stopPullDownRefresh();
     },
   }),
 });

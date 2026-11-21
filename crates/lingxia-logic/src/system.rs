@@ -9,8 +9,6 @@ use rong::{IntoJSObject, JSContext, JSResult};
 /// System setting status
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct SystemSettingInfo {
-    #[js_name = "bluetoothEnabled"]
-    bluetooth_enabled: bool,
     #[js_name = "locationEnabled"]
     location_enabled: bool,
     #[js_name = "wifiEnabled"]
@@ -30,7 +28,6 @@ fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
         .map_err(|e| host_error_from_platform_error(&e))?;
 
     Ok(SystemSettingInfo {
-        bluetooth_enabled: false,
         location_enabled,
         wifi_enabled,
     })

@@ -270,9 +270,9 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(leftover == null).toBeTruthy();
 });
 
-test("read directories, LxFile.exists/path, and deny escaped paths", {
+test("replace on write, read directories, LxFile.exists/path, and deny escaped paths", {
   id: "LOGIC-008",
-  covers: ['lx.fs.readDir', 'lx.fs.stat', 'LxFile.exists', 'LxFile.path'],
+  covers: ['lx.fs.write', 'lx.fs.readDir', 'lx.fs.stat', 'LxFile.exists', 'LxFile.path'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-008");
@@ -284,13 +284,13 @@ test("read directories, LxFile.exists/path, and deny escaped paths", {
     await files.mkdir(root, { recursive: true });
     try {
       await files.write(child, 'hi');
+      await files.write(child, 'overwritten');
       let overwriteRejected = false;
       try {
-        await files.write(child, 'nope');
+        await files.write(child, 'nope', { overwrite: false });
       } catch {
         overwriteRejected = true;
       }
-      await files.write(child, 'overwritten', { overwrite: true });
       const entries = await files.readDir(root);
       const file = files.file(child);
       const exists = await file.exists();

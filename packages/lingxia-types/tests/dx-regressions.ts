@@ -1,12 +1,6 @@
-import type { FsWriteOptions, PageInstance, SystemDownloadsPath, LxFile, DirEntry } from '../src/index.js';
+import type { FsWriteOptions, SystemDownloadsPath, LxFile, DirEntry } from '../src/index.js';
 import type { LxAppDriver, PageDriver, PageQueryOptions, DesktopWindowSel, DesktopAppQuitOptions } from '../src/automation/index.js';
 
-declare const page: PageInstance<{ profile: { name: string } | null; nested?: { count: number }; tuple: [string, number] }>;
-page.setPath(['profile', 'name'], 'Alice');
-page.setPath(['nested', 'count'], 1);
-const first: string = page.data.tuple[0];
-// @ts-expect-error tuple positions keep their value types
-page.setPath(['tuple', 0], 123);
 const binaryOptions: FsWriteOptions = { encoding: 'base64' };
 // @ts-expect-error named options cannot give binary input a string encoding
 lx.fs.write('test.bin', new Uint8Array([1]), binaryOptions);
@@ -57,7 +51,6 @@ async function taskBoundary() {
   const presented = await preview.presented;
   if (presented.status === 'notPresented') presented.reason;
 }
-void first;
 void tracedEval;
 void reader;
 void taskBoundary;

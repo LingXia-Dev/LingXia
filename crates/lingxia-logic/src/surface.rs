@@ -611,8 +611,9 @@ async fn open_app(
     finish_handle(&ctx, &handle, "app", None, None, None)
 }
 
-/// `lx.shell.getApp(appId)` — the handle of an app live as a surface of its
-/// own, declared or not. One live lxapp has one handle, its `AppSurface`.
+/// The handle of an lxapp live as a surface of its own, declared or not;
+/// `undefined` when it is not. A live lxapp has one handle: `lx.surface.openApp`,
+/// `getApp` and `getDeclared` of the declaration that shows it return the same one.
 fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
     let (invocation, app_id) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellGetApp, || {
@@ -626,8 +627,9 @@ fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
     Ok(finish_handle(&ctx, &handle, "app", None, None, None)?.into_js_value())
 }
 
-/// `lx.shell.getDeclared(id, key?)` — the handle of a live declared surface,
-/// or of its keyed instance; a declared lxapp answers with its `AppSurface`.
+/// The handle of a live declared surface, or of its keyed instance, the same
+/// object on every call; `undefined` when it is not live. A declaration that
+/// shows an lxapp answers with that app's `AppSurface`.
 fn shell_get_declared(ctx: JSContext, id: JSValue, key: Optional<JSValue>) -> JSResult<JSValue> {
     let (invocation, (id, key)) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellGetDeclared, || {
@@ -687,7 +689,7 @@ fn declared_lxapp(id: &str) -> Option<String> {
         .map(|item| item.content.app_id.clone())
 }
 
-/// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
+/// Open a host builtin page such as downloads. Control app only.
 async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
     let (invocation, page) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellOpenBuiltin, || {
@@ -1693,7 +1695,8 @@ fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
     ))
 }
 
-/// `lx.openExternal(url)` — hand the url off to the OS default browser.
+/// Hand a URL to the OS: `https` opens the default browser, `tel:` and
+/// `mailto:` their apps. Synchronous; any other scheme throws.
 fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let url = validate_external_url(&lxapp, &url)?;

@@ -33,7 +33,7 @@ library, and the root `tsconfig.json` references both.
 
 - Type `lx.` in the editor and hover for JSDoc; the full declaration is
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
-- Import shapes from the root: `import type { ScanCodeResult } from '@lingxia/types'`.
+- Import shapes from the root: `import type { PickCodeResult } from '@lingxia/types'`.
   Automation types come from `@lingxia/types/automation`; Logic
   `lx.automation()` needs the `automation` (and, for other apps, `host`)
   [grant](../native/permissions.md).
@@ -41,7 +41,8 @@ library, and the root `tsconfig.json` references both.
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
   (`lx.nav.go({ app })`, `lx.surface.openApp`) is a plain string.
 - Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
-  `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.surface`, `lx.shell`.
+  `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.clipboard`,
+  `lx.storage()`, `lx.surface`, `lx.shell`.
 
 ## Subscriptions
 
@@ -87,9 +88,8 @@ lx.host.appearance.setPreference('dark');
 - `get`/`watch` report what is in effect; `getPreference` / `setPreference` /
   `watchPreference` report the user's choice (a system change under `'auto'`
   moves only the first pair).
-- Logic `watch(cb)` calls `cb` with the current value synchronously, before it
-  returns its unsubscribe. Use it to re-set strings you hand to native chrome
-  (titles, tab labels, modals).
+- Use `watch` to re-set strings you hand to native chrome (titles, tab
+  labels, modals).
 - View: `useLxHost().displayLanguage`. The View's `subscribe(cb)` fires only
   on change; read `get()` first.
 - List the languages you ship in lxapp.json `languages` (`["en", "zh"]`, first
@@ -222,7 +222,7 @@ localized message:
 import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
 
 try {
-  await lx.media.saveToLibrary({ filePath })
+  await lx.media.saveToLibrary(path)
 } catch (error) {
   const failure = parseLxApiError(error)
   if (!failure) throw error                 // not a runtime error; let it surface

@@ -34,11 +34,9 @@ fn should_emit_orientation_event_after_set() -> bool {
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
 }
 
-/// Lock this lxapp to `portrait` or `landscape`.
-///
-/// Any other value rejects. Where the host does not report the change back,
-/// the runtime emits the orientation event itself so JS state stays in sync.
-fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool> {
+/// Lock this lxapp to `portrait` or `landscape`. Any other value throws
+/// `E_INVALID_ARG`.
+fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
     if orientation != "portrait" && orientation != "landscape" {
         return Err(js_invalid_parameter_error(format!(
             "Invalid orientation value: {} (expected portrait or landscape)",
@@ -61,10 +59,11 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool>
         emit_orientation_change_event(&lxapp.appid, &orientation);
     }
 
-    Ok(true)
+    Ok(())
 }
 
-/// Subscribes to orientation changes and returns the unsubscribe fn.
+/// Delivers the lock in effect (the configured orientation, not how the device
+/// is held) before returning, then each change.
 fn on_device_orientation_change(
     ctx: JSContext,
     callback: JSFunc,
@@ -107,7 +106,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace OrientationApi = crate::namespace::orientation(ctx)?;
-        fn set(ts_params = "orientation: DeviceOrientation") = set_device_orientation;
+        fn set(ts_params = "orientation: DeviceOrientation", ts_return = "void") = set_device_orientation;
         fn watch(
             ts_params = "callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions",
             ts_return = "() => void"

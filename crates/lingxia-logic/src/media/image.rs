@@ -61,7 +61,7 @@ rong::js_api! {
     }
 }
 
-/// Read an image's dimensions, type, and orientation without decoding it into a view.
+/// Read an image's dimensions and type without decoding it into a view.
 async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;

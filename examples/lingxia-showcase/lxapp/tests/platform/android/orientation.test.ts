@@ -37,7 +37,7 @@ test('rotate the Android viewport and deliver events only to live listeners', {
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {
-    expect(await app.logic.eval(({ lx }, value) => lx.device.orientation.set(value), orientation)).toBe(true);
+    await app.logic.eval(({ lx }, value) => { lx.device.orientation.set(value); }, orientation);
     const size = await t.waitFor(dimensions, {
       until: size => size.width > 0 && size.height > 0 && (size.width > size.height) === (orientation === 'landscape'),
       timeout: 15000,

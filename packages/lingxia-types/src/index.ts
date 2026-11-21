@@ -15,7 +15,6 @@ import './generated/logic.js';
 
 import type {
   AppConfig,
-  AppInstance,
   AppLifecycleName,
   BinaryFileData,
   FsWriteOptions,
@@ -68,8 +67,8 @@ declare global {
     config: AppConfig &
       TCustom &
       NoLifecycleTypos<TCustom, AppLifecycleName> &
-      ThisType<AppInstance & TCustom>
-  ): AppInstance & TCustom;
+      ThisType<AppConfig & TCustom>
+  ): AppConfig & TCustom;
 }
 
 export {};

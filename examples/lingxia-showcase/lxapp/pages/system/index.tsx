@@ -127,7 +127,6 @@ export default function SystemPage() {
                     </div>
                     <InfoRow label="WiFi Enabled" value={formatBool(systemSetting.wifiEnabled)} />
                     <InfoRow label="Location Enabled" value={formatBool(systemSetting.locationEnabled)} />
-                    <InfoRow label="Bluetooth Enabled" value={formatBool(systemSetting.bluetoothEnabled)} />
                   </div>
                 </div>
               )}

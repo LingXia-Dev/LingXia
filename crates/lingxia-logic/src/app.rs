@@ -77,7 +77,9 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 ///
 /// Returns whether anything was actually painted. A platform with no such
 /// chrome is a no-op that returns `false` rather than an error — portable code
-/// can call this unconditionally.
+/// can call this unconditionally. A hidden tray item, a macOS app denied
+/// notifications, and Android resolve `false`; iOS paints numbers only and
+/// needs notification permission.
 async fn set_app_badge(
     ctx: JSContext,
     value: JSValue,

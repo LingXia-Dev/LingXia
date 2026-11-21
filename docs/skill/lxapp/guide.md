@@ -274,7 +274,7 @@ nothing. It never changes while a window is dragged.
 
 `formFactor`, `os`, and `runner` are fixed for a page's life. A Runner phone
 frame reports `mobile` while `os` names the desktop; switching form factor
-re-serves the page. Logic reads the OS with `lx.device.getDeviceInfo()`.
+re-serves the page. Logic reads the OS with `lx.device.info.osName`.
 
 ## Events
 
