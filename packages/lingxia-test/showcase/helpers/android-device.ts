@@ -48,6 +48,8 @@ export function androidDevice(t: Fixture) {
     nodes, tap,
     key: (key: 'back' | 'enter' | 'tab' | 'escape') => request('key', { key }),
     size: () => request<{ width: number; height: number }>('size'),
+    /** Whether the phone uses gesture navigation, where a swipe from the screen edge is back. */
+    gestureNavigation: async () => (await request<{ gestures: boolean }>('navigation')).gestures,
     /** Whether the OS accepts injected taps, swipes and keys from adb. */
     canInject: async () => (await request<{ ok: boolean }>('inject')).ok,
     /** Turn the phone as a user does with auto-rotate off; `restore` puts back the rotation settings found before the first turn. */

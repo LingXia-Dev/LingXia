@@ -77,6 +77,11 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
         }
         return reply(200, { ok: injects });
       }
+      // Only gesture navigation (mode 2) makes a swipe from the screen edge back.
+      if (request.method === 'GET' && operation === 'navigation') {
+        const mode = (await runAdb(['shell', 'settings', 'get', 'secure', 'navigation_mode'])).trim();
+        return reply(200, { gestures: mode === '2' });
+      }
       if (request.method === 'GET' && operation === 'size') {
         const sizes = [...(await runAdb(['shell', 'wm', 'size'])).matchAll(/(?:Physical|Override) size: (\d+)x(\d+)/g)];
         const size = sizes.at(-1);

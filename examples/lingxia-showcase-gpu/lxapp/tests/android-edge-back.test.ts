@@ -14,9 +14,10 @@ test('an edge swipe goes back across a pager; a drag starting on the pager pages
   const view = app.view;
   const device = androidDevice(t);
   if (!(await device.canInject())) t.skip('the device rejects injected input (MIUI: turn on "USB debugging (Security settings)")');
+  if (!(await device.gestureNavigation())) t.skip('the phone uses button navigation, which has no edge-swipe back');
   // Page logical pixels to screen pixels, through the GPU page's view.
   const screenOf = async (testId: string) => {
-    const surface = (await device.nodes()).filter(node => node.className?.endsWith('GpuView'))
+    const surface = (await device.nodes()).filter(node => node.className === 'android.view.View' || node.className?.endsWith('GpuView'))
       .reduce((a, b) => ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1]) > (a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]) ? b : a));
     const [left, top, right] = surface.bounds;
     const scale = (right - left) / (await view.viewport()).width;
