@@ -34,6 +34,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - **View and Logic.** A page has a View (`index.tsx`, this language) and optionally Logic (`index.ts`,
   `definePage({ … })`). Logic owns data, network, storage and `lx.*`. The View renders `view.data` and calls
   Logic through `view.actions`. The View has no `lx`, `fetch`, timers or DOM.
+- **Where state lives.** What Logic reads or keeps goes in `data`; what only this piece of UI shows
+  (a draft, an open menu) goes in `useLocal`.
 - **Who carries out what.** The View may declare an intent that changes only its own picture, and the
   host carries it out (`<video src>`, `<webview src>`). Anything that changes the page stack or app
   state, or uses a capability, is carried out by Logic, including a `<link to>`: the press reaches the

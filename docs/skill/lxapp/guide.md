@@ -3,6 +3,9 @@
 How to write lxapp pages: layout, the Logic/View split, events, `App({})`, and
 page chrome.
 
+**Where state lives:** what Logic reads or keeps goes in `data`; what only one
+piece of UI shows (a draft, an open menu) stays in the View (`useLocal`, `useState`).
+
 ## Scaffold
 
 ```bash
