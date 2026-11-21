@@ -269,7 +269,7 @@ test('a drag inside a scrollable web page scrolls it to its edge, then the scree
 
 // A web view in a fading box draws its picture, which fades with the box; solid again, it is the
 // live page. The page is solid orange, so one pixel of it tells solid, faint and empty apart.
-test('a web page in a fading box keeps showing while it fades and returns', { covers: ['view:webview'], start: openDemo('webMotion') }, async (t) => {
+test('a web page in a fading box keeps showing while it fades and returns', { covers: ['view:webview'], start: openDemo('webMotion'), timeout: 60_000 }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-web-motion-state');
   await expect(state).toHaveAttribute('data-state', /loads=1 faded=false/, { timeout: 8_000 });
@@ -287,12 +287,16 @@ test('a web page in a fading box keeps showing while it fades and returns', { co
     const shot = await decodePng(raw.base64, () => at[1] + 2);
     return look(shot.at(at[0], at[1]));
   };
-  await expect.poll(probe, { timeout: 5_000 }).toBe('solid');
+  // A screenshot takes seconds on a slow phone: each probe waits out the 700 ms transition first.
+  const settled = { timeout: 20_000 };
+  await expect.poll(probe, settled).toBe('solid');
   await view.testId('lab-web-motion-toggle').click();
   await expect(state).toHaveAttribute('data-state', /faded=true/);
-  await expect.poll(probe, { timeout: 3_000 }).toBe('faint');
+  await new Promise(resolve => setTimeout(resolve, 1_000));
+  await expect.poll(probe, settled).toBe('faint');
   await view.testId('lab-web-motion-toggle').click();
   await expect(state).toHaveAttribute('data-state', /faded=false/);
-  await expect.poll(probe, { timeout: 3_000 }).toBe('solid');
+  await new Promise(resolve => setTimeout(resolve, 1_000));
+  await expect.poll(probe, settled).toBe('solid');
   expect(await state.getAttribute('data-state'), 'the web page did not reload').toMatch(/loads=1 /);
 });
