@@ -6,8 +6,8 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-/// Rendering backend of every page of an lxapp (`lxapp.json` `renderer`); presentation
-/// metadata, never caller authority.
+/// Rendering backend of every page of an lxapp: the build derives it from the pages' View
+/// exports into the built `lxapp.json`. Presentation metadata, never caller authority.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PageRenderer {
@@ -214,7 +214,7 @@ impl PageConfig {
         }
         if object.contains_key("renderer") {
             return Err(serde_json::Error::custom(format!(
-                "{path}.renderer: removed; an lxapp declares one renderer in lxapp.json"
+                "{path}.renderer: removed; the renderer follows from the pages' View exports"
             )));
         }
         if object.contains_key("backgroundColor") {
@@ -359,7 +359,7 @@ mod tests {
         let error = PageConfig::from_value("page.json", serde_json::json!({"renderer":"gpu"}))
             .unwrap_err()
             .to_string();
-        assert!(error.contains("lxapp.json"), "{error}");
+        assert!(error.contains("View exports"), "{error}");
     }
 
     #[test]
