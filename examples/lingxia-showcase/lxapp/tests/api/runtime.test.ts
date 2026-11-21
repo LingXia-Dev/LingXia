@@ -61,17 +61,14 @@ test("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   expect(result).toBeTruthy();
 });
 
-test("answer capability questions and keep every capability member present", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+test("answer capability questions and refuse what the host lacks", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    // Rule 2: present whatever the host supports; a call without support fails E_NOT_SUPPORTED.
-    const present = (api: object) => Object.values(api).every((member) => typeof member === 'function' || typeof member === 'object');
-    const terminalAgrees = present(lx.host.terminal.settings) && present(lx.host.terminal.fonts);
-    const autostartAgrees = present(lx.host.autostart);
-    const notificationAgrees = present(lx.host.notification);
-    const bannerAgrees = present(lx.host.banner)
-      && (lx.supports('app.banner') || await lx.host.banner.dismiss('x').then(() => false, (error: { code?: string }) => error.code === 'E_NOT_SUPPORTED'));
+    // Rule 2: a member is always present; without the feature its call rejects
+    // E_NOT_SUPPORTED, without the right E_PERMISSION_DENIED.
+    const outcome = (call: () => Promise<unknown>) =>
+      call().then(() => 'ok', (error: { code?: string }) => error?.code ?? String(error));
     // Keys and values outside `LxFeature` on purpose: the contract is how it answers them.
     const supports = (value: unknown) => (lx.supports as (value: unknown) => boolean)(value);
     const rejects = (value: unknown) => {
@@ -79,28 +76,41 @@ test("answer capability questions and keep every capability member present", { i
       catch (error) { return error instanceof TypeError; }
     };
     return {
-      terminalAgrees, autostartAgrees, notificationAgrees, bannerAgrees,
+      os: lx.host.info.os,
+      role: lx.app.info.role,
+      supported: {
+        terminal: lx.supports('terminal'),
+        autostart: lx.supports('app.autostart'),
+        notification: lx.supports('app.notification'),
+        banner: lx.supports('app.banner'),
+      },
+      calls: {
+        terminal: await outcome(() => lx.host.terminal.settings.get()),
+        autostart: await outcome(() => lx.host.autostart.isEnabled()),
+        notification: await outcome(() => lx.host.notification.getPermission()),
+        banner: await outcome(() => lx.host.banner.dismiss('lx-capability-probe')),
+      },
+      cache: await outcome(() => lx.host.cache.size()),
       unknownFalse: ['', 'future.feature', 'not a key', 'surface.aside', 'control',
         'app.cache', 'surface.main', 'surface.float']
         .every(key => supports(key) === false),
       typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-      cacheIsControl: typeof lx.host.cache.size === 'function',
-      surfaceAvailable: typeof lx.surface.openPage === 'function',
       dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
     };
   });
 
-  expect(result).toEqual({
-    terminalAgrees: true,
-    autostartAgrees: true,
-    notificationAgrees: true,
-    bannerAgrees: true,
-    unknownFalse: true,
-    typeErrors: true,
-    cacheIsControl: true,
-    surfaceAvailable: true,
-    dependency: true,
-  });
+  const desktop = result.os === 'macOS' || result.os === 'Windows';
+  // The showcase host declares notifications and autostart; autostart and
+  // banners are desktop-only; the terminal belongs to the terminal app's context.
+  expect(result.supported).toEqual({ terminal: false, autostart: desktop, notification: true, banner: desktop });
+  for (const [feature, supported] of Object.entries(result.supported)) {
+    expect({ feature, outcome: result.calls[feature as keyof typeof result.calls] })
+      .toEqual({ feature, outcome: supported ? 'ok' : 'E_NOT_SUPPORTED' });
+  }
+  expect(result.cache).toBe(result.role === 'control' ? 'ok' : 'E_PERMISSION_DENIED');
+  expect(result.unknownFalse).toBe(true);
+  expect(result.typeErrors).toBe(true);
+  expect(result.dependency).toBe(true);
 });
 
 test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.storage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {

@@ -1,6 +1,6 @@
 import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
-import { bindFixture, expectReject, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 
 // Autostart refuses on mobile hosts. Keep the
@@ -287,12 +287,8 @@ test('request permission and replace local notifications by id', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
-  // The member is always present; a host without notifications refuses the call.
-  const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.notification'));
-  if (!supported) {
-    await expectReject(() => app.logic.eval(({ lx }) => lx.host.notification.getPermission()), { message: 'E_NOT_SUPPORTED' });
-    return;
-  }
+  // The showcase host declares notifications, so every platform must report them.
+  expect(await app.logic.eval(({ lx }) => lx.supports('app.notification'))).toBe(true);
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     const n = lx.host.notification;
@@ -479,9 +475,15 @@ test('report autostart state and accept an idempotent write', {
   const { app } = bindFixture(t, 'HOSTAPP-AUTOSTART-001');
 
   // The member is always present; a host without login items refuses the call.
-  const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.autostart'));
-  if (!supported) {
-    await expectReject(() => app.logic.eval(({ lx }) => lx.host.autostart.isEnabled()), { message: 'E_NOT_SUPPORTED' });
+  const probe = await app.logic.eval(async ({ lx }) => ({
+    desktop: lx.host.info.os === 'macOS' || lx.host.info.os === 'Windows',
+    supported: lx.supports('app.autostart'),
+    refusal: lx.supports('app.autostart') ? null
+      : await lx.host.autostart.isEnabled().then(() => 'resolved', (error: { code?: string }) => error?.code ?? String(error)),
+  }));
+  expect(probe.supported).toBe(probe.desktop);
+  if (!probe.supported) {
+    expect(probe.refusal).toBe('E_NOT_SUPPORTED');
     return;
   }
 
