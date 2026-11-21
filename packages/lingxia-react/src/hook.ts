@@ -97,6 +97,14 @@ export function useLxLeaveGuard(dirty: boolean, onRequest: LxLeaveHandler): void
 type StreamMethod = (...args: any[]) => LxStream<any, any>;
 type ChannelMethod = (...args: any[]) => Promise<LxChannel<any, any>>;
 
+/** The Logic end of a page channel, shaped as `PageChannel<Send, Receive>`. */
+interface PageChannelEnd<Send, Receive> {
+  send(payload: Send): void;
+  close(code?: string, reason?: string): void;
+  on(event: "data", handler: (payload: Receive) => void): () => void;
+  on(event: "close", handler: (info: { code: string; reason: string }) => void): () => void;
+}
+
 export type LxStreamOptions<TMethod> = ParamsOption<TMethod, ParamsSource<MethodParams<TMethod>>> & {
   manual?: boolean;
 };
@@ -270,13 +278,35 @@ export interface LxChannelState<TData, TOut = TData> {
   reopen: () => void;
 }
 
+// A page action crosses as JSON, so one passed here is the Logic end of a channel, opened by name.
+function openChannel(method: (...args: any[]) => unknown, params: unknown): Promise<LxChannel<unknown, unknown>> {
+  const name = (method as { __logicFunc?: unknown }).__logicFunc === true ? getMethodKey(method) : undefined;
+  if (name === undefined) return invokeMethod(method, params) as Promise<LxChannel<unknown, unknown>>;
+  const channel = window.LingXiaBridge?.raw?.channel;
+  if (!channel?.open) return Promise.reject(new Error("LingXiaBridge channel API is not ready"));
+  return channel.open(name, params);
+}
+
 export function useLxChannel<TMethod extends ChannelMethod>(
   method: TMethod,
   ...args: OptionsArg<TMethod, LxChannelOptions<TMethod>>
-): LxChannelState<ChannelIn<TMethod>, ChannelOut<TMethod>> {
-  type TIn = ChannelIn<TMethod>;
-  type TOut = ChannelOut<TMethod>;
-  const options = args[0] as { params?: ParamsSource<unknown>; manual?: boolean } | undefined;
+): LxChannelState<ChannelIn<TMethod>, ChannelOut<TMethod>>;
+/**
+ * A page action written `(params, channel: PageChannel<Send, Receive>)` in
+ * Logic opens as a channel: `last` is what Logic sends, `send` takes what it receives.
+ */
+export function useLxChannel<P, TIn, TOut>(
+  action: (params: P, channel: PageChannelEnd<TIn, TOut>) => unknown,
+  ...args: undefined extends P
+    ? [options?: { params?: ParamsSource<P>; manual?: boolean }]
+    : [options: { params: ParamsSource<P>; manual?: boolean }]
+): LxChannelState<TIn, TOut>;
+export function useLxChannel(
+  method: (...args: any[]) => unknown,
+  options?: { params?: ParamsSource<unknown>; manual?: boolean },
+): LxChannelState<unknown, unknown> {
+  type TIn = unknown;
+  type TOut = unknown;
 
   const [state, setState] = React.useState<{
     last: TIn | undefined;
@@ -329,7 +359,7 @@ export function useLxChannel<TMethod extends ChannelMethod>(
 
     // In the executor: a method that throws synchronously lands in `.catch`.
     new Promise<LxChannel<TIn, TOut>>((resolve) => {
-      resolve(invokeMethod(methodRef.current, paramsRef.current) as Promise<LxChannel<TIn, TOut>>);
+      resolve(openChannel(methodRef.current, paramsRef.current));
     })
       .then((ch) => {
         if (runIdRef.current !== runId) {

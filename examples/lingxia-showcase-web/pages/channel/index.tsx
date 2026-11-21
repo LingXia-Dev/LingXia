@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useLxChannel } from '@lingxia/react';
-import type { ClientCommand, ServerMessage } from './contract';
+import { useEffect, useState } from 'react';
+import { useLxChannel, useLxPage } from '@lingxia/react';
+import type { TickerPage as Ticker } from './contract';
 import '../../tailwind.css';
 
 interface TickerSnapshot {
@@ -11,15 +11,8 @@ interface TickerSnapshot {
 }
 
 export default function ChannelPage() {
-  // A page action is a call or a stream; a channel opens by its handler's name.
-  const openTickerSession = useCallback(() => {
-    const bridge = window.LingXiaBridge;
-    if (!bridge?.raw?.channel?.open) {
-      return Promise.reject(new Error('LingXiaBridge channel API is not ready'));
-    }
-    return bridge.raw.channel.open<ServerMessage, ClientCommand>('tickerSession');
-  }, []);
-  const session = useLxChannel(openTickerSession);
+  const { actions } = useLxPage<Ticker['data'], Ticker['actions']>();
+  const session = useLxChannel(actions.tickerSession);
 
   const [symbols, setSymbols] = useState<string[]>([]);
   const [active, setActive] = useState('');

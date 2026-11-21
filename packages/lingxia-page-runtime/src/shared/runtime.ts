@@ -11,9 +11,13 @@ export type PageActions<A extends ActionMap> = {
       ? (payload?: unknown) => ViewActionResult<R>
       : P extends [] | [unknown] | [unknown?]
         ? (...args: P) => ViewActionResult<R>
-        : (error: "a page action takes at most one JSON payload") => never
+        : P extends [unknown, PageChannelLike]
+          ? (...args: P) => Promise<void>
+          : (error: "a page action takes at most one JSON payload") => never
     : never;
 };
+/** The Logic end of a channel (`PageChannel`): such an action opens with `useLxChannel`. */
+type PageChannelLike = { send(payload: never): void; close(code?: string, reason?: string): void };
 type ViewActionResult<R> =
   R extends LxStream<any, any>
     ? R

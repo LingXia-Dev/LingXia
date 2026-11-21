@@ -1,4 +1,5 @@
 import type { LxChannel, LxStream } from "@lingxia/bridge";
+import type { PageChannel } from "@lingxia/types/page";
 import type { PageActions } from "@lingxia/page-runtime";
 import * as React from "react";
 import type { DeepReadonly } from "@lingxia/page-runtime";
@@ -16,6 +17,9 @@ declare const none: () => LxStream<Chunk, "done">;
 declare const optional: (params?: { query: string }) => LxStream<Chunk, "done">;
 declare const required: (params: { query: string }) => LxStream<Chunk, "done">;
 declare const channel: (params: { room: string }) => Promise<LxChannel<{ text: string }, { text: string }>>;
+type LogicEnd<Send, Receive> = PageChannel<Send, Receive>;
+declare const tickerAction: (params: undefined, ch: LogicEnd<{ price: number }, { symbol: string }>) => Promise<void>;
+declare const roomAction: (params: { room: string }, ch: LogicEnd<{ text: string }, never>) => Promise<void>;
 
 export function Hooks() {
   // No payload: options may be left out.
@@ -47,7 +51,19 @@ export function Hooks() {
   const sent: boolean = session.send({ text: "hi" });
   // @ts-expect-error the channel needs its payload
   useLxChannel(channel);
-  void latest; void result; void count; void sent;
+
+  // A page action that takes a channel opens as one, typed from its Logic signature.
+  const ticker = useLxChannel(tickerAction);
+  const tick: { price: number } | undefined = ticker.last;
+  ticker.send({ symbol: "AAPL" });
+  // @ts-expect-error the View sends what Logic receives
+  ticker.send({ price: 1 });
+  useLxChannel(roomAction, { params: { room: "a" } });
+  // @ts-expect-error the channel action needs its params
+  useLxChannel(roomAction);
+  const fromPage = {} as PageActions<{ ticker(params: undefined, ch: LogicEnd<{ price: number }, { symbol: string }>): void }>;
+  const pageTick: { price: number } | undefined = useLxChannel(fromPage.ticker).last;
+  void latest; void result; void count; void sent; void tick; void pageTick;
   return null;
 }
 
