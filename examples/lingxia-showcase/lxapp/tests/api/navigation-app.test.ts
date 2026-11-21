@@ -5,14 +5,14 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 
-const CHAT_APP_ID = 'lingxia-chat';
+const CHAT_APP_ID = 'lingxia-showcase-web';
 
 const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
   list.some((row) => row.appId === appid && row.status === 'opened')
 );
 
 /**
- * The host bundles lingxia-chat beside the Showcase, so a cross-lxapp hop needs
+ * The host bundles lingxia-showcase-web beside the Showcase, so a cross-lxapp hop needs
  * no fixture — but only where the hop is reversible. On Windows
  * `navigateBackApp` leaves the target current instead of returning to the
  * caller, and the desktop suite composes that same chat lxapp into its

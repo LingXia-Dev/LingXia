@@ -4,7 +4,7 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 
-const CHAT_APP_ID = 'lingxia-chat';
+const CHAT_APP_ID = 'lingxia-showcase-web';
 
 interface BannerProbe {
   result: unknown;
@@ -41,7 +41,7 @@ test('a guest lxapp gets attention for itself only', {
   });
 
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+    await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
   });
   const chat = t.automation.lxapp(CHAT_APP_ID);
 
@@ -115,7 +115,7 @@ test('a guest lxapp gets attention for itself only', {
         id: 'guest-own',
         title: 'Run finished',
         body: 'DESKTOP-GUEST-ATTENTION-001',
-        target: { kind: 'app', appId: 'lingxia-chat', query: { run: 'probe' } },
+        target: { kind: 'app', appId: 'lingxia-showcase-web', query: { run: 'probe' } },
         silent: true,
       });
       await n.cancel('guest-own');
@@ -143,7 +143,7 @@ test('a guest lxapp gets attention for itself only', {
       id,
       title: 'Run finished',
       body: 'DESKTOP-GUEST-ATTENTION-001',
-      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', appId: 'lingxia-chat', query: { run: 'probe' } } }],
+      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', appId: 'lingxia-showcase-web', query: { run: 'probe' } } }],
       timeoutMs: 0,
     }).then(
       (result) => { probe.result = result; },

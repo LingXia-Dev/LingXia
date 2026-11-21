@@ -80,7 +80,7 @@ export default definePage({
       async navigateToTestMiniApp() {
         try {
           await lx.nav.go({
-            app: "lingxia-chat",
+            app: "lingxia-showcase-web",
             page: "chat",
           });
         } catch (err) {

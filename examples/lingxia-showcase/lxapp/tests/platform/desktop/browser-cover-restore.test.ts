@@ -158,7 +158,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
       },
       {
         id: 'chat', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'chat',
-        onActivate() { void lx.surface.openDeclared('lingxia-chat'); },
+        onActivate() { void lx.surface.openDeclared('lingxia-showcase-web'); },
       },
       {
         id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal-settings.svg', label: 'Terminal Settings',

@@ -58,7 +58,7 @@ async function applyHostChrome(os: string, tag: string) {
       label: t("sidebarChat"),
       onActivate: () => {
         void lx.surface
-          .openDeclared("lingxia-chat")
+          .openDeclared("lingxia-showcase-web")
           .catch((error) => console.warn("chat action failed", error));
       },
     },

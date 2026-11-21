@@ -138,7 +138,7 @@ jobs:
               - 'examples/lingxia-showcase/native/**'
               - 'examples/lingxia-showcase/lingxia-lib/**'
               - 'examples/lingxia-showcase/lingxia-showcase/**'
-              - 'examples/lingxia-chat/**'
+              - 'examples/lingxia-showcase-web/**'
             ex_ios:
               - 'examples/lingxia-showcase/ios/**'
             ex_macos:
@@ -164,7 +164,7 @@ jobs:
               - 'packages/lingxia-types/**'
               - 'packages/lingxia-test/**'
               - 'examples/lingxia-showcase/lxapp/**'
-              - 'examples/lingxia-chat/**'
+              - 'examples/lingxia-showcase-web/**'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are
             # filtered separately so they do not fan out to the other OS.
@@ -1125,8 +1125,8 @@ jobs:
       - name: Type-check example lxapp Logic
         run: |
           npm --prefix examples/lingxia-showcase/lxapp run typecheck
-          npm --prefix examples/lingxia-chat ci
-          npm --prefix examples/lingxia-chat run typecheck
+          npm --prefix examples/lingxia-showcase-web ci
+          npm --prefix examples/lingxia-showcase-web run typecheck
 
       # No spec can reach the HTTP fixture yet, so its own specs are the only
       # thing standing between it and a silent regression.

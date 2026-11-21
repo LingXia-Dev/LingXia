@@ -26,7 +26,7 @@ impl lingxia::provider::LxAppRegistryProvider for ShowcaseGuestRegistry {
     > {
         Box::pin(async move {
             let domains = match app.appid {
-                "lingxia-chat" => "www.deepseek.com",
+                "lingxia-showcase-web" => "www.deepseek.com",
                 "app.lingxia.terminal-settings" => "api.nuget.org",
                 _ => return Ok(None),
             };

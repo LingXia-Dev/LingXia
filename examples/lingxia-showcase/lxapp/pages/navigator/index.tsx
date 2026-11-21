@@ -150,7 +150,7 @@ export default function NavigatorPage() {
           <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
             <div className="p-4 space-y-3">
               <LxNavigator
-                to={{ app: 'lingxia-chat', page: 'chat' }}
+                to={{ app: 'lingxia-showcase-web', page: 'chat' }}
                 onSuccess={() => addLog('✓ Opening other LxApp')}
                 onFail={onFailWithMessage('Failed to open LxApp')}
               >

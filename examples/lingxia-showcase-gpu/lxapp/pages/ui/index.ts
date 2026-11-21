@@ -173,7 +173,7 @@ export default definePage({
         if (verb === "lxapp") {
           // Compose another lxapp into the aside slot — home-lxapp privilege, so
           // it lives on lx.shell rather than lx.surface. A live app is reused.
-          return lx.surface.openApp("lingxia-chat", {
+          return lx.surface.openApp("lingxia-showcase-web", {
             as: "aside",
             edge: cfg.edge ?? "right",
           });

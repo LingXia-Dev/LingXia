@@ -8,7 +8,7 @@ export default definePage({
   setup(page) {
     const actions = {
       async openOtherApp() {
-        try { await lx.nav.go({ app: 'lingxia-chat', page: 'chat' }); }
+        try { await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' }); }
         catch (error) { await lx.ui.toast({ title: errorMessage(error, 'Unable to open the app. Please try again.'), icon: 'none' }); }
       },
       async openDeepSeek() {

@@ -40,7 +40,7 @@ const probe = { lastShow: undefined as AppLaunchOptions | undefined };
 
 App({
   onLaunch() {
-    console.log('LingXia Chat launched');
+    console.log('LingXia Showcase (WebView) launched');
 
     lx.host.displayLanguage.watch((tag) => {
       applyMoreActions(tag);

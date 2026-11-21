@@ -1,6 +1,6 @@
 {
-  "appId": "lingxia-chat",
-  "appName": "LingXia Chat",
+  "appId": "lingxia-showcase-web",
+  "appName": "LingXia Showcase (WebView)",
   "version": "1.0.13",
   "minRuntime": "0.30.0",
   "pages": [

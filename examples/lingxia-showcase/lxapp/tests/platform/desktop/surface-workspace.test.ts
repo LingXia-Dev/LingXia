@@ -1081,7 +1081,7 @@ async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> 
   // "managed surface request rejected".
   await closeChatSurface(t, app);
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.surface.openApp('lingxia-chat', { as: 'main' });
+    await lx.surface.openApp('lingxia-showcase-web', { as: 'main' });
   });
 }
 
@@ -1108,10 +1108,10 @@ async function closeDeclaredTerminal(app: TestApp): Promise<void> {
 async function closeChatSurface(t: Fixture, app: TestApp): Promise<void> {
   const manager = t.automation.lxapps;
   let surfaceCloseError: unknown;
-  if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) {
+  if (containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web')) {
     try {
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        const handle = await lx.surface.openDeclared('lingxia-chat');
+        const handle = await lx.surface.openDeclared('lingxia-showcase-web');
         await handle.close();
       });
     } catch (error) {
@@ -1120,19 +1120,19 @@ async function closeChatSurface(t: Fixture, app: TestApp): Promise<void> {
   }
 
   try {
-    const chat = (await manager.list()).find((candidate) => candidate.appId === 'lingxia-chat');
+    const chat = (await manager.list()).find((candidate) => candidate.appId === 'lingxia-showcase-web');
     if (chat && chat.status !== 'closed') {
-      await manager.close({ app: 'lingxia-chat' });
+      await manager.close({ app: 'lingxia-showcase-web' });
     }
   } catch (error) {
     // Cleanup is intentionally idempotent across test boundaries. A provider
     // may finish closing between the layout snapshot and handle lookup; accept
     // that race only when the authoritative graph has already converged.
-    if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) throw error;
+    if (containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web')) throw error;
   }
   try {
     await waitForValue(async () => (
-      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+      containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web') ? undefined : true
     ), 'Chat surface cleanup convergence');
   } catch (error) {
     if (surfaceCloseError) {
@@ -1164,7 +1164,7 @@ async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurface
   return app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     const probe = globalThis as unknown as DynamicHandleGlobals;
     for (const unsubscribe of probe.__surfaceSwitcherDynamicHandleGate?.unsubscribe ?? []) unsubscribe();
-    const handle = await lx.surface.openApp('lingxia-chat', { as: 'main' });
+    const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'main' });
     const events: RetainedAppSurfaceState['events'] = [];
     const unsubscribe = [
       handle.onHide((event) => events.push({ type: 'hide', ...event })),
@@ -1336,7 +1336,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
       `${platform} Chat input in native accessibility tree`,
     );
     // Chat may have been reopened since the last call: bind the live page.
-    const chat = await automation.lxapp('lingxia-chat').page({ name: 'chat' });
+    const chat = await automation.lxapp('lingxia-showcase-web').page({ name: 'chat' });
     const chatTextarea = chat.view.css('textarea[placeholder="Message..."]');
     await chatTextarea.fill('');
     host = await ensureHostForeground(desktop, host!);
@@ -1361,7 +1361,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.sizeClass === 'expanded' && !containsSurface(layout, 'lingxia-chat')
+      return layout.sizeClass === 'expanded' && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
     }, `${platform} expanded root baseline`);
@@ -1376,7 +1376,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     host = await resizeHostOnScreen(desktop, host, mediumWidth, testHeight);
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.sizeClass === 'medium' && !containsSurface(layout, 'lingxia-chat')
+      return layout.sizeClass === 'medium' && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
     }, `${platform} medium adaptive rail`);
@@ -1409,7 +1409,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
       const layout = await app.surfaceLayout();
       return layout.sizeClass === 'compact'
         && layout.switcherForm === 'none'
-        && !containsSurface(layout, 'lingxia-chat')
+        && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
     }, `${platform} compact API root`);
@@ -1447,7 +1447,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     }
 
     const opened = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      const handle = await lx.surface.openDeclared('lingxia-chat');
+      const handle = await lx.surface.openDeclared('lingxia-showcase-web');
       return { visible: handle.visible, alive: handle.alive };
     }) as { visible: boolean; alive: boolean };
     chatOpened = true;
@@ -1456,7 +1456,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     const compactOverlay = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
-        candidate.activeChild === 'lingxia-chat'
+        candidate.activeChild === 'lingxia-showcase-web'
       ));
       return layout.sizeClass === 'compact'
         && layout.splitForm === 'fullScreen'
@@ -1466,8 +1466,8 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         : undefined;
     }, `${platform} compact Chat overlay`);
     expect(compactOverlay.activeMainId).toBe('lingxia-showcase');
-    expect(compactOverlay.mains.includes('lingxia-chat')).toBeFalsy();
-    expect(switcherIds(compactOverlay).includes('lingxia-chat')).toBeFalsy();
+    expect(compactOverlay.mains.includes('lingxia-showcase-web')).toBeFalsy();
+    expect(switcherIds(compactOverlay).includes('lingxia-showcase-web')).toBeFalsy();
 
     if (platform === 'windows') {
       const visibleWorkspaces = (await desktop.windows()).filter((window) => (
@@ -1492,7 +1492,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
-        candidate.activeChild === 'lingxia-chat'
+        candidate.activeChild === 'lingxia-showcase-web'
       ));
       return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
         ? layout
@@ -1627,7 +1627,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
       const layout = await app.surfaceLayout();
       return layout.activeMainId === layout.mainSwitcher.rootSurfaceId
         && layout.sizeClass === 'compact'
-        && !containsSurface(layout, 'lingxia-chat')
+        && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
     }, `${platform} root graph after closing browser main`);
@@ -1687,7 +1687,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.sizeClass === 'expanded'
-        && !containsSurface(candidate, 'lingxia-chat')
+        && !containsSurface(candidate, 'lingxia-showcase-web')
         ? candidate
         : undefined;
     }, 'expanded root baseline');
@@ -1708,7 +1708,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.sizeClass === 'medium'
-        && !containsSurface(candidate, 'lingxia-chat')
+        && !containsSurface(candidate, 'lingxia-showcase-web')
         ? candidate
         : undefined;
     }, 'medium root baseline');
@@ -1749,7 +1749,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     const chatAside = async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
-        candidate.activeChild === 'lingxia-chat'
+        candidate.activeChild === 'lingxia-showcase-web'
       ));
       return layout.sizeClass === 'medium' && slot?.visible && slot.overlay
         ? layout
@@ -1760,15 +1760,15 @@ test('docks the footer Chat WebView physically beside the main after resize', {
       // A background terminal can steal SetForegroundWindow; open the same
       // declared Chat aside the footer action would have opened.
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.surface.openDeclared('lingxia-chat');
+        await lx.surface.openDeclared('lingxia-showcase-web');
       });
       overlayLayout = await waitForValue(chatAside, 'footer Chat aside after openDeclared');
     }
     expect(overlayLayout.activeMainId).toBe('lingxia-showcase');
-    expect(overlayLayout.mains.includes('lingxia-chat')).toBeFalsy();
-    expect(switcherIds(overlayLayout).includes('lingxia-chat')).toBeFalsy();
+    expect(overlayLayout.mains.includes('lingxia-showcase-web')).toBeFalsy();
+    expect(switcherIds(overlayLayout).includes('lingxia-showcase-web')).toBeFalsy();
     expect(overlayLayout.asideSlots.find((slot) => (
-      slot.children.includes('lingxia-chat')
+      slot.children.includes('lingxia-showcase-web')
     ))?.overlay).toBeTruthy();
 
     const overlayWindow = await waitForDesktopWindow(
@@ -1797,7 +1797,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     // Prove the composed overlay is actually the input target, not merely a
     // visible controller behind the main. Page automation only discovers the
     // textarea; the click and typing travel through the real desktop stack.
-    const chat = await automation.lxapp('lingxia-chat').page({ name: 'chat' }, { timeout: 30_000 });
+    const chat = await automation.lxapp('lingxia-showcase-web').page({ name: 'chat' }, { timeout: 30_000 });
     const chatTextarea = chat.view.css('textarea[placeholder="Message..."]');
     await expect(chatTextarea).toBeInViewport({ timeout: 30_000 });
     await expect(chatTextarea).toBeEditable();
@@ -1828,7 +1828,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     const dockedLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
-        candidate.children.includes('lingxia-chat')
+        candidate.children.includes('lingxia-showcase-web')
       ));
       return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
         ? layout
@@ -1864,7 +1864,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
 
     await closeChatSurface(t, app);
     await waitForValue(async () => (
-      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+      containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web') ? undefined : true
     ), 'closed Chat after adaptive handoff');
     const restoredMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -1966,7 +1966,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       const go = lx.nav.go as (target: unknown) => Promise<unknown>;
       const rejected: Partial<Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', Rejection>> = {};
       try {
-        await openApp('lingxia-chat', {
+        await openApp('lingxia-showcase-web', {
           as: 'main', path: 'pages/chat/index.tsx',
         });
       } catch (error) {
@@ -1974,18 +1974,18 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       }
       try {
         await go({
-          app: 'lingxia-chat', path: 'pages/chat/index.tsx',
+          app: 'lingxia-showcase-web', path: 'pages/chat/index.tsx',
         });
       } catch (error) {
         rejected.navigatePath = rejection(error);
       }
       try {
-        await openApp('lingxia-chat', { as: 'float' });
+        await openApp('lingxia-showcase-web', { as: 'float' });
       } catch (error) {
         rejected.float = rejection(error);
       }
       try {
-        await openApp('lingxia-chat', { as: 'main', edge: 'left' });
+        await openApp('lingxia-showcase-web', { as: 'main', edge: 'left' });
       } catch (error) {
         rejected.mainEdge = rejection(error);
       }
@@ -2001,7 +2001,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       () => app.surfaceLayout(),
     );
     const openedHandle = await automationPhase('open dynamic Chat main', () => app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-      const handle = await lx.surface.openApp('lingxia-chat', {
+      const handle = await lx.surface.openApp('lingxia-showcase-web', {
         as: 'main', page: 'chat',
       });
       const events: RetainedAppSurfaceState['events'] = [];
@@ -2207,7 +2207,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       surfaceFailureDiagnostics(t, app, desktop, host),
       desktop.ax.query({ window: host.id, match: 'Message', all: true })
         .catch((failure) => ({ error: String(failure) })),
-      t.automation.lxapp('lingxia-chat').page({ name: 'chat' }).then((chat) => chat.view.eval(({ document }) => JSON.stringify({
+      t.automation.lxapp('lingxia-showcase-web').page({ name: 'chat' }).then((chat) => chat.view.eval(({ document }) => JSON.stringify({
         readyState: (document as unknown as ProbeDocument).readyState,
         input: (() => {
           const input = document.querySelector('textarea');
@@ -2245,7 +2245,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   }
 
   expect(setup.realized).toBe('main');
-  expect(setup.opened.identities['lingxia-chat']?.appId).toBe('lingxia-chat');
+  expect(setup.opened.identities['lingxia-showcase-web']?.appId).toBe('lingxia-showcase-web');
   expect(Object.values(setup.rejected).every((error) => (
     error.code === 'E_INVALID_ARG'
   ))).toBeTruthy();
@@ -2256,8 +2256,8 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   expect(setup.rejected.pageEdge.detail).toContain("use position with as: 'float'");
   expect(topology(setup.afterRejected)).toEqual(topology(before));
   expect(setup.afterRejected.mainSwitcher.revision).toBe(before.mainSwitcher.revision);
-  expect(setup.opened.activeMainId).toBe('lingxia-chat');
-  expect(switcherIds(setup.opened).filter((id) => id === 'lingxia-chat').length).toBe(1);
+  expect(setup.opened.activeMainId).toBe('lingxia-showcase-web');
+  expect(switcherIds(setup.opened).filter((id) => id === 'lingxia-showcase-web').length).toBe(1);
   expect(hidden.visible).toBeFalsy();
   expect(hidden.alive).toBeTruthy();
   expect(hidden.events).toEqual([
@@ -2279,7 +2279,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
     { type: 'show', source: 'opener' },
     { type: 'close', reason: 'programmatic' },
   ]);
-  expect(containsSurface(closed.afterClose, 'lingxia-chat')).toBeFalsy();
+  expect(containsSurface(closed.afterClose, 'lingxia-showcase-web')).toBeFalsy();
   expect(closed.afterClose.activeMainId).toBe(closed.afterClose.mainSwitcher.rootSurfaceId);
   expect(topology(closed.afterClose)).toEqual(topology(before));
   expect(closed.afterRepeatedClose.mainSwitcher.revision).toBe(closed.revisionAfterClose);
@@ -2315,7 +2315,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
   const automation = t.automation;
   const desktop = automation.desktop;
   const shell = automation.shell;
-  const targetPin = { kind: 'lxapp', key: 'lingxia-chat' } as const;
+  const targetPin = { kind: 'lxapp', key: 'lingxia-showcase-web' } as const;
   const initialPins = await shell.pins();
   const initiallyPinned = initialPins.some((pin) => samePin(pin, targetPin));
   if (!initiallyPinned && initialPins.length >= 8) {
@@ -2335,7 +2335,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await closeChatSurface(t, app);
     await closeDeclaredTerminal(app);
     await waitForValue(async () => (
-      containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+      containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web') ? undefined : true
     ), 'closed Chat baseline');
     await app.nav.go({ tab: 'todo' });
     // The tab stays alive under Chat, so the marker is removed from this instance.
@@ -2379,17 +2379,17 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     // Start from the declared entry so this gate covers the difficult case:
     // a Pin must promote the one live aside instance into a main workspace.
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openDeclared('lingxia-chat');
+      await lx.surface.openDeclared('lingxia-showcase-web');
     });
     const declaredAside = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       const slot = candidate.asideSlots.find((item) => (
-        item.activeChild === 'lingxia-chat' && item.visible && !item.overlay
+        item.activeChild === 'lingxia-showcase-web' && item.visible && !item.overlay
       ));
       return candidate.sizeClass === 'expanded' && slot ? candidate : undefined;
     }, 'declared Chat right aside');
     expect(declaredAside.activeMainId).toBe('lingxia-showcase');
-    expect(switcherIds(declaredAside).includes('lingxia-chat')).toBeFalsy();
+    expect(switcherIds(declaredAside).includes('lingxia-showcase-web')).toBeFalsy();
 
     const declaredAsideWindow = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2409,15 +2409,15 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: pinPoint });
     const chatPromotedMain = async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.activeMainId === 'lingxia-chat'
-        && candidate.mains.includes('lingxia-chat')
-        && switcherIds(candidate).includes('lingxia-chat')
-        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+      return candidate.activeMainId === 'lingxia-showcase-web'
+        && candidate.mains.includes('lingxia-showcase-web')
+        && switcherIds(candidate).includes('lingxia-showcase-web')
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-showcase-web'))
         ? candidate
         : undefined;
     };
     const promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace');
-    expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
+    expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-showcase-web');
 
     const promotedMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2445,7 +2445,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await closeChatSurface(t, app);
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return !containsSurface(candidate, 'lingxia-chat')
+      return !containsSurface(candidate, 'lingxia-showcase-web')
         && candidate.activeMainId === 'lingxia-showcase'
         ? candidate
         : undefined;
@@ -2475,7 +2475,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     ), 'every root edge probe restored after closing promoted Chat');
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
-        candidate.appId === 'lingxia-chat'
+        candidate.appId === 'lingxia-showcase-web'
       ));
       return chat?.status === 'closed'
         && chat.currentPage === null
@@ -2493,10 +2493,10 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: coldPinPoint });
     let coldLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.activeMainId === 'lingxia-chat'
-        && candidate.mains.includes('lingxia-chat')
-        && switcherIds(candidate).includes('lingxia-chat')
-        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+      return candidate.activeMainId === 'lingxia-showcase-web'
+        && candidate.mains.includes('lingxia-showcase-web')
+        && switcherIds(candidate).includes('lingxia-showcase-web')
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-showcase-web'))
         ? candidate
         : undefined;
     }, 'cold pinned Chat main workspace', 6_000).catch(() => undefined);
@@ -2504,21 +2504,21 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
       await openChatAsMainWorkspace(t, app);
       coldLayout = await waitForValue(async () => {
         const candidate = await app.surfaceLayout();
-        return candidate.activeMainId === 'lingxia-chat'
-          && candidate.mains.includes('lingxia-chat')
-          && switcherIds(candidate).includes('lingxia-chat')
-          && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+        return candidate.activeMainId === 'lingxia-showcase-web'
+          && candidate.mains.includes('lingxia-showcase-web')
+          && switcherIds(candidate).includes('lingxia-showcase-web')
+          && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-showcase-web'))
           ? candidate
           : undefined;
       }, 'cold pinned Chat main workspace after openApp');
     }
-    expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
+    expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-showcase-web');
     expect(coldLayout.mainSwitcher.items.find((item) => (
-      item.surfaceId === 'lingxia-chat'
+      item.surfaceId === 'lingxia-showcase-web'
     ))?.closable).toBeTruthy();
     const chatWorkspaceIndex = coldLayout.mainSwitcher.items
       .filter((item) => !item.root)
-      .findIndex((item) => item.surfaceId === 'lingxia-chat');
+      .findIndex((item) => item.surfaceId === 'lingxia-showcase-web');
     if (chatWorkspaceIndex < 0) throw new Error('Chat workspace row was not projected');
 
     const coldMain = await waitForDesktopWindow(
@@ -2548,7 +2548,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     // affordance must open the native lifecycle menu. This checks both
     // discoverability and routing instead of relying on an invisible right-click.
     const chatSwitcherIndex = coldLayout.mainSwitcher.items
-      .findIndex((item) => item.surfaceId === 'lingxia-chat');
+      .findIndex((item) => item.surfaceId === 'lingxia-showcase-web');
     // Chat is the active main here, so its row is the expanded group header.
     const activeChatPoint = activeGuestGroupPoint(host, coldPins.length, chatSwitcherIndex);
     const workspaceMenuRegion = activeGuestGroupMenuRegion(
@@ -2624,9 +2624,9 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: workspacePoint });
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.activeMainId === 'lingxia-chat'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
-        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+      return candidate.activeMainId === 'lingxia-showcase-web'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase-web'
+        && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-showcase-web'))
         ? true
         : undefined;
     }, 'Chat selected from its sidebar workspace row');
@@ -2648,7 +2648,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: workspaceClosePoint });
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return !containsSurface(candidate, 'lingxia-chat')
+      return !containsSurface(candidate, 'lingxia-showcase-web')
         && candidate.activeMainId === 'lingxia-showcase'
         && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
         ? candidate
@@ -2667,7 +2667,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     ]);
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
-        candidate.appId === 'lingxia-chat'
+        candidate.appId === 'lingxia-showcase-web'
       ));
       return chat?.status === 'closed'
         && chat.currentPage === null
@@ -2684,9 +2684,9 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: coldPinPoint });
     const reopenedLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.activeMainId === 'lingxia-chat'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
-        && switcherIds(candidate).filter((id) => id === 'lingxia-chat').length === 1
+      return candidate.activeMainId === 'lingxia-showcase-web'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase-web'
+        && switcherIds(candidate).filter((id) => id === 'lingxia-showcase-web').length === 1
         ? candidate
         : undefined;
     }, 'pinned Chat reopened without a ghost workspace', 6_000).catch(() => undefined);
@@ -2694,9 +2694,9 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
       await openChatAsMainWorkspace(t, app);
       await waitForValue(async () => {
         const candidate = await app.surfaceLayout();
-        return candidate.activeMainId === 'lingxia-chat'
-          && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
-          && switcherIds(candidate).filter((id) => id === 'lingxia-chat').length === 1
+        return candidate.activeMainId === 'lingxia-showcase-web'
+          && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase-web'
+          && switcherIds(candidate).filter((id) => id === 'lingxia-showcase-web').length === 1
           ? candidate
           : undefined;
       }, 'pinned Chat reopened without a ghost workspace after openApp');
@@ -2776,10 +2776,10 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
         : undefined;
     }, 'responsive sidebar after pinned Chat context menu');
     expect(afterSidebarClick.activeMainId).toBe('lingxia-showcase');
-    expect(afterSidebarClick.mains.includes('lingxia-chat')).toBeTruthy();
-    expect(switcherIds(afterSidebarClick).includes('lingxia-chat')).toBeTruthy();
+    expect(afterSidebarClick.mains.includes('lingxia-showcase-web')).toBeTruthy();
+    expect(switcherIds(afterSidebarClick).includes('lingxia-showcase-web')).toBeTruthy();
     expect(afterSidebarClick.asideSlots.some((slot) => (
-      slot.children.includes('lingxia-chat')
+      slot.children.includes('lingxia-showcase-web')
     ))).toBeFalsy();
     const rootAfterSidebarSwitch = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2819,8 +2819,8 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await desktop.pointer.click({ at: remainingWorkspacePoint });
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.activeMainId === 'lingxia-chat'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
+      return candidate.activeMainId === 'lingxia-showcase-web'
+        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase-web'
         ? true
         : undefined;
     }, 'live Chat workspace remains after its Pin is removed');
@@ -2971,7 +2971,7 @@ async function asidePageTop(
       && inRightAside(host, candidate.rect)
     ));
   if (!node) return undefined;
-  const page = await t.automation.lxapp('lingxia-chat').page({ name: pageName }, { timeout: 10_000 })
+  const page = await t.automation.lxapp('lingxia-showcase-web').page({ name: pageName }, { timeout: 10_000 })
     .catch(() => undefined);
   if (!page) return undefined;
   const offset = await page.view.eval(({ document }) => {
@@ -3015,7 +3015,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
   const floatKey = `automation-aside-float-${Date.now()}`;
-  const chat = t.automation.lxapp('lingxia-chat');
+  const chat = t.automation.lxapp('lingxia-showcase-web');
   try {
     await closeChatSurface(t, app);
     // The same expanded geometry DESKTOP-ADAPTIVE-001 docks Chat at. It has to
@@ -3028,12 +3028,12 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       nativeWindowExtent(platform, host, 640),
     );
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
     });
     const asideLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
-        candidate.children.includes('lingxia-chat')
+        candidate.children.includes('lingxia-showcase-web')
       ));
       return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
         ? layout
@@ -3044,7 +3044,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       mains: asideLayout.mains,
       switcher: asideLayout.mainSwitcher.items.map((item) => item.surfaceId),
     };
-    expect(asideLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    expect(asideLayout.mains.includes('lingxia-showcase-web')).toBeFalsy();
     const expectMainUnchanged = async (phase: string) => {
       const layout = await app.surfaceLayout();
       expect({
@@ -3186,19 +3186,19 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       const withOtherMain = await waitForValue(async () => {
         const layout = await app.surfaceLayout();
         const slot = layout.asideSlots.find((candidate) => (
-          candidate.children.includes('lingxia-chat')
+          candidate.children.includes('lingxia-showcase-web')
         ));
         const activeOwner = layout.activeMainId ? layout.identities[layout.activeMainId] : undefined;
         return activeOwner?.appId === ASIDE_NAV_OTHER_APP_ID && slot?.visible ? layout : undefined;
       }, 'second lxapp as the active main beside the Chat aside');
-      expect(withOtherMain.mains.includes('lingxia-chat')).toBeFalsy();
+      expect(withOtherMain.mains.includes('lingxia-showcase-web')).toBeFalsy();
       // The live app answers lookup with the handle its opener holds.
       expect(await app.logic.eval(({ lx }, appId) => {
         const held = (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain;
         return lx.shell.getApp(appId) === held;
       }, ASIDE_NAV_OTHER_APP_ID)).toBeTruthy();
       const lxapps = await t.automation.lxapps.list();
-      for (const appId of ['lingxia-chat', ASIDE_NAV_OTHER_APP_ID]) {
+      for (const appId of ['lingxia-showcase-web', ASIDE_NAV_OTHER_APP_ID]) {
         expect({ appId, status: lxapps.find((row) => row.appId === appId)?.status })
           .toEqual({ appId, status: 'opened' });
       }
@@ -3226,18 +3226,18 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     }, 'main back to the baseline after closing the second main');
     if (platform === 'macos') {
       const close = await waitForValue(async () => {
-        const node = await visibleHostAxNode(desktop, host!, 'Close LingXia Chat');
+        const node = await visibleHostAxNode(desktop, host!, 'Close LingXia Showcase (WebView)');
         return node?.role === 'button' && node.enabled && inRightAside(host!, node.rect)
           ? node
           : undefined;
       }, 'Chat aside tab close button');
       await desktop.ax.invoke({ window: host.id, match: `id:${close.id}` });
       await waitForValue(async () => (
-        containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
+        containsSurface(await app.surfaceLayout(), 'lingxia-showcase-web') ? undefined : true
       ), 'Chat aside removed by its tab close');
       await waitForValue(async () => {
         const row = (await t.automation.lxapps.list()).find((candidate) => (
-          candidate.appId === 'lingxia-chat'
+          candidate.appId === 'lingxia-showcase-web'
         ));
         return !row || row.status !== 'opened' ? true : undefined;
       }, 'Chat session closed by its tab close');
@@ -3247,7 +3247,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       await expectMainUnchanged('after the aside tab close');
 
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+        await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
       });
       const reopened = await waitForChatInput(desktop, host, 'Chat input after reopening the aside');
       expect(inRightAside(host, reopened.rect)).toBeTruthy();
@@ -3274,7 +3274,7 @@ const macosHostSkip = targetPlatform === 'macos' && !selectedGate ? undefined : 
 
 /** The Chat aside slot of `layout`, if Chat is open as an aside. */
 function chatAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | undefined {
-  return layout.asideSlots.find((candidate) => candidate.children.includes('lingxia-chat'));
+  return layout.asideSlots.find((candidate) => candidate.children.includes('lingxia-showcase-web'));
 }
 
 /** The showcase main page's web area: the left-most one that is not Chat's. */
@@ -3329,7 +3329,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     );
     await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
     });
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -3463,7 +3463,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
       await visibleChatInputAxNode(desktop, host!) ? undefined : true
     ), 'Chat page put away with its aside');
     const handle = await waitForValue(
-      () => visibleHostAxNode(desktop, host!, 'name:Show LingXia Chat'),
+      () => visibleHostAxNode(desktop, host!, 'name:Show LingXia Showcase (WebView)'),
       'restore handle of the collapsed aside',
     );
     await desktop.ax.invoke({ window: host.id, match: `id:${handle.id}` });
@@ -4098,7 +4098,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       return current.name === 'home' && current.ready ? true : undefined;
     }, 'main on the Home page');
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
     });
     await waitForValue(async () => {
       const slot = chatAsideSlot(await app.surfaceLayout());
@@ -4106,7 +4106,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
     }, 'docked Chat aside');
 
     // The driver binds to a running lxapp: Chat is only active once opened.
-    const chat = t.automation.lxapp('lingxia-chat');
+    const chat = t.automation.lxapp('lingxia-showcase-web');
     const chatPageHasFocus = async () => (await chat.page({ name: 'chat' }, { timeout: 30_000 }))
       .view.eval(({ document }) => (document as unknown as { hasFocus(): boolean }).hasFocus())
       .catch(() => false);
@@ -4189,7 +4189,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       await openBeside('collapsed', 'bottom');
       await waitForValue(async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
-        return slot && !slot.collapsed && slot.children.includes('lingxia-chat') ? true : undefined;
+        return slot && !slot.collapsed && slot.children.includes('lingxia-showcase-web') ? true : undefined;
       }, 'side panel back, Chat still in it, after the browser tab arrived');
     }
   } finally {
@@ -4332,16 +4332,16 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     );
     await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
     });
     const before = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       return chatAsideSlot(layout)?.visible ? layout : undefined;
     }, 'docked right Chat aside');
-    expect(switcherIds(before).includes('lingxia-chat')).toBeFalsy();
+    expect(switcherIds(before).includes('lingxia-showcase-web')).toBeFalsy();
     // A closed Chat stays alive, so an earlier run's draft may still hide the
     // "Message" placeholder the input is found by.
-    const asideChat = await t.automation.lxapp('lingxia-chat').page({ name: 'chat' });
+    const asideChat = await t.automation.lxapp('lingxia-showcase-web').page({ name: 'chat' });
     await asideChat.view.css('textarea[placeholder="Message..."]').fill('');
     const input = await waitForChatInput(desktop, host, 'Chat input in the aside');
     expect(inRightAside(host, input.rect)).toBeTruthy();
@@ -4350,19 +4350,19 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     await asideChat.view.css('textarea[placeholder="Message..."]').fill(draft);
 
     host = await ensureHostForeground(desktop, host);
-    await dragAsideTabToSidebar(desktop, platform, host, { title: 'LingXia Chat', browser: false });
+    await dragAsideTabToSidebar(desktop, platform, host, { title: 'LingXia Showcase (WebView)', browser: false });
 
     const after = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.activeMainId === 'lingxia-chat' ? layout : undefined;
+      return layout.activeMainId === 'lingxia-showcase-web' ? layout : undefined;
     }, 'Chat promoted to the active main');
     expect({
-      inSwitcher: switcherIds(after).includes('lingxia-chat'),
+      inSwitcher: switcherIds(after).includes('lingxia-showcase-web'),
       inAside: chatAsideSlot(after) !== undefined,
     }).toEqual({ inSwitcher: true, inAside: false });
 
     // The same page, moved: the draft survives and it now fills the main.
-    const mainChat = await t.automation.lxapp('lingxia-chat').page({ name: 'chat' });
+    const mainChat = await t.automation.lxapp('lingxia-showcase-web').page({ name: 'chat' });
     await expect(mainChat.view.css('textarea[placeholder="Message..."]'))
       .toHaveValue(draft, { timeout: 30_000 });
     // The draft replaces the "Message" placeholder AX matches the input by.
@@ -4372,7 +4372,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     }, 'Chat input with its draft in the main area');
 
     // The main chrome now drives Chat: a pushed page pops with the main Back.
-    const chat = t.automation.lxapp('lingxia-chat');
+    const chat = t.automation.lxapp('lingxia-showcase-web');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.nav.go({ page: 'about' }).opened;
     });
@@ -4394,15 +4394,15 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     await closeChatSurface(t, app);
     const closed = await app.surfaceLayout();
     expect({
-      inSwitcher: switcherIds(closed).includes('lingxia-chat'),
-      activeMain: closed.activeMainId === 'lingxia-chat',
+      inSwitcher: switcherIds(closed).includes('lingxia-showcase-web'),
+      activeMain: closed.activeMainId === 'lingxia-showcase-web',
     }).toEqual({ inSwitcher: false, activeMain: false });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
     });
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-chat')
+      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-showcase-web')
         ? layout
         : undefined;
     }, 'Chat docked as an aside again');
@@ -4413,7 +4413,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     throw error;
   } finally {
     // Chat outlives its close; a kept draft would hide other specs' input.
-    await t.automation.lxapp('lingxia-chat').page({ name: 'chat' })
+    await t.automation.lxapp('lingxia-showcase-web').page({ name: 'chat' })
       .then((page) => page.view.css('textarea[placeholder="Message..."]').fill(''))
       .catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
@@ -4452,7 +4452,7 @@ interface MovedHandleState {
 async function chatLastShow(
   t: Fixture,
 ): Promise<{ reason?: string; path?: string; query?: Record<string, string> } | null> {
-  return t.automation.lxapp('lingxia-chat').logic.eval(({ appInstance }) => {
+  return t.automation.lxapp('lingxia-showcase-web').logic.eval(({ appInstance }) => {
     const instance = appInstance() as unknown as {
       state?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
     } | null;
@@ -4476,11 +4476,11 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     async ({ lx }, options): Promise<MovedHandleState> => {
       const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
       if (!probe) throw new Error('openApp move probe is not installed');
-      const handle = await lx.surface.openApp('lingxia-chat', options);
+      const handle = await lx.surface.openApp('lingxia-showcase-web', options);
       return {
         same: handle === probe.handle,
-        lookedUp: lx.shell.getApp('lingxia-chat') === handle
-          && lx.shell.getDeclared('lingxia-chat') === handle,
+        lookedUp: lx.shell.getApp('lingxia-showcase-web') === handle
+          && lx.shell.getDeclared('lingxia-showcase-web') === handle,
         realized: handle.realized,
         visible: handle.visible,
         alive: handle.alive,
@@ -4491,7 +4491,7 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
   );
   try {
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      const handle = await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
       const closes: string[] = [];
       const unsubscribe = handle.onClose((event) => closes.push(event.reason));
       (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe = { handle, closes, unsubscribe };
@@ -4505,10 +4505,10 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     const identity = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
       if (!probe) throw new Error('openApp move probe is not installed');
-      const declared = await lx.surface.openDeclared('lingxia-chat');
+      const declared = await lx.surface.openDeclared('lingxia-showcase-web');
       return {
-        appInstance: lx.shell.getApp('lingxia-chat') === probe.handle,
-        getDeclared: lx.shell.getDeclared('lingxia-chat') === probe.handle,
+        appInstance: lx.shell.getApp('lingxia-showcase-web') === probe.handle,
+        getDeclared: lx.shell.getDeclared('lingxia-showcase-web') === probe.handle,
         openDeclared: declared === probe.handle,
         kind: declared.kind,
       };
@@ -4518,7 +4518,7 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     // A page Chat does not configure is refused before anything moves.
     const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       try {
-        await lx.surface.openApp('lingxia-chat', { as: 'main', page: 'nowhere' as never });
+        await lx.surface.openApp('lingxia-showcase-web', { as: 'main', page: 'nowhere' as never });
         return 'resolved';
       } catch (error) {
         return (error as { code?: string }).code ?? String(error);
@@ -4527,7 +4527,7 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     expect(refused).toBe('E_NOT_FOUND');
     const afterRefused = await app.surfaceLayout();
     expect({
-      inSwitcher: switcherIds(afterRefused).includes('lingxia-chat'),
+      inSwitcher: switcherIds(afterRefused).includes('lingxia-showcase-web'),
       asideVisible: chatAsideSlot(afterRefused)?.visible ?? false,
     }).toEqual({ inSwitcher: false, asideVisible: true });
 
@@ -4537,9 +4537,9 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     });
     const mainLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.activeMainId === 'lingxia-chat' && !chatAsideSlot(layout) ? layout : undefined;
+      return layout.activeMainId === 'lingxia-showcase-web' && !chatAsideSlot(layout) ? layout : undefined;
     }, 'Chat moved into the main');
-    expect(switcherIds(mainLayout).includes('lingxia-chat')).toBeTruthy();
+    expect(switcherIds(mainLayout).includes('lingxia-showcase-web')).toBeTruthy();
     const shownInMain = await waitForValue(async () => {
       const last = await chatLastShow(t);
       return last?.query?.step === 'main' ? last : undefined;
@@ -4553,11 +4553,11 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
     });
     const asideLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-chat')
+      return chatAsideSlot(layout)?.visible && !switcherIds(layout).includes('lingxia-showcase-web')
         ? layout
         : undefined;
     }, 'Chat moved back into the aside');
-    expect(asideLayout.mains.includes('lingxia-chat')).toBeFalsy();
+    expect(asideLayout.mains.includes('lingxia-showcase-web')).toBeFalsy();
     const shownInAside = await waitForValue(async () => {
       const last = await chatLastShow(t);
       return last?.query?.step === 'aside' ? last : undefined;

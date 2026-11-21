@@ -71,8 +71,8 @@ resources:
       appId: lingxia-showcase
       path: lxapp
     - type: lxapp
-      appId: lingxia-chat
-      path: ../lingxia-chat
+      appId: lingxia-showcase-web
+      path: ../lingxia-showcase-web
     - type: lxapp
       appId: app.lingxia.terminal-settings
       path: ../../packages/lingxia-terminal-settings
@@ -85,7 +85,8 @@ surfaces:
       icon: icons/tray.svg
       label: LingXia
       action: activate
-  - lxapp: lingxia-chat
+  - lxapp: lingxia-showcase-web
+    page: chat
     role: aside
     edge: right
   - native: terminal

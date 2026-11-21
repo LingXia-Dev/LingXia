@@ -47,7 +47,7 @@ test('failed external launches surface an actionable error', async () => {
 });
 test('other app opens chat and launch errors are shown', async () => {
   const ok = fixture(); await ok.page.openOtherApp();
-  assert.deepEqual(ok.calls, [['app', { app: 'lingxia-chat', page: 'chat' }]]);
+  assert.deepEqual(ok.calls, [['app', { app: 'lingxia-showcase-web', page: 'chat' }]]);
   const failed = fixture({ openApp: async () => { throw { message: 'App unavailable' }; } });
   await failed.page.openOtherApp();
   assert.equal(failed.calls[0][1].title, 'App unavailable');

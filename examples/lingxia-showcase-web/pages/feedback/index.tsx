@@ -43,7 +43,7 @@ export default function FeedbackPage() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Help us improve</h1>
           <p className="mt-2 text-sm leading-6 text-gray-500">
-            Share a bug, an idea, or anything that felt confusing in LingXia Chat.
+            Share a bug, an idea, or anything that felt confusing in LingXia Showcase (WebView).
           </p>
         </header>
 

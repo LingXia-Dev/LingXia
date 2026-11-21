@@ -1,7 +1,7 @@
 {
-  "name": "lingxia-chat",
+  "name": "lingxia-showcase-web",
   "version": "1.0.0",
-  "description": "LLM chatbox demo using LingXia streaming bridge",
+  "description": "WebView pages on LingXia: native components, the bridge, streams, and a chat",
   "type": "module",
   "scripts": {
     "build": "lingxia build",

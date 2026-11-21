@@ -4,7 +4,7 @@ import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 
-const CHAT_APP_ID = 'lingxia-chat';
+const CHAT_APP_ID = 'lingxia-showcase-web';
 
 const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'windows' || platform === 'macos' ? undefined : 'macOS and Windows only' });

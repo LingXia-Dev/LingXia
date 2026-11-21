@@ -35,7 +35,7 @@ recoverable from the code alone.
 
 Reference projects under `examples/`:
 
-- [examples/lingxia-chat](examples/lingxia-chat) — **standalone lxapp** only: `lxapp.json` + `pages/`, no native host. The minimal reference for lxapp structure.
+- [examples/lingxia-showcase-web](examples/lingxia-showcase-web) — **standalone lxapp** only: `lxapp.json` + `pages/`, no native host. The minimal reference for lxapp structure.
 - [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, native components, media, and the terminal. Its pages are React.
 
 ## Build & verify

@@ -461,7 +461,7 @@ const r = await order.result;                // { status: 'ok', value } | { stat
 await lx.nav.go({ page: 'login' }, { replace: true }); // inherits this page's opener and result
 await lx.nav.go({ tab: 'profile' });
 await lx.nav.reset({ page: 'home' });        // new stack; discarded pages' results settle canceled
-await lx.nav.go({ app: 'lingxia-chat', page: 'chat' });
+await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' });
 await lx.nav.leaveApp();                     // back to the lxapp that opened this one
 ```
 
