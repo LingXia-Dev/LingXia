@@ -213,7 +213,13 @@ fn settling() -> MutexGuard<'static, Vec<isize>> {
 /// Some page has come on screen but not yet shown a frame: it is clipped to one pixel, so
 /// whatever uncovers it shows the window behind.
 pub fn pages_settling() -> bool {
-    !settling().is_empty()
+    let mut queue = settling();
+    // SAFETY: IsWindow only reads; a page whose window is gone never settles.
+    queue.retain(|&page| {
+        unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(HWND(page as *mut _))) }
+            .as_bool()
+    });
+    !queue.is_empty()
 }
 
 fn leaving() -> MutexGuard<'static, Vec<(isize, Dispatcher)>> {
