@@ -1263,6 +1263,7 @@ impl Renderer {
                                 volume: record.number(field::VIDEO_VOLUME).unwrap_or(1.0),
                             },
                         });
+                    crate::renderer::video_layout(&key, control_bounds[3]);
                     crate::renderer::video_configure(&key, source);
                 }
                 let fit = match record.string(field::IMAGE_FIT) {

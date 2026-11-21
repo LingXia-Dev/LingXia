@@ -260,6 +260,9 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
         if !open.contains_key(key) {
             touch(&mut open, key);
         }
+        if let (Some(height), Some(entry)) = (laid_out(key), open.get_mut(key)) {
+            start_by_box(key, entry, height);
+        }
     }
     if reopen {
         let mut players = players();
@@ -281,6 +284,46 @@ pub(crate) fn configure(key: &str, source: Result<Source, VideoError>) {
 
 /// When each key's source was first configured, for the first-frame phases.
 static CONFIGURED: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
+
+/// Each player's laid-out box height in points, so auto can pick its file before it draws.
+static LAYOUT: LazyLock<Mutex<HashMap<String, f32>>> = LazyLock::new(Default::default);
+/// The newest display's device pixels per point, as `f32` bits; 0 before the first display.
+static SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Player `key`'s box is `height` points tall as laid out, drawn or not.
+pub(crate) fn lay_out(key: &str, height: f32) {
+    let mut layout = LAYOUT.lock().unwrap_or_else(|p| p.into_inner());
+    if layout.len() > 256 {
+        layout.clear();
+    }
+    layout.insert(key.to_owned(), height);
+}
+
+/// Player `key`'s laid-out box height in device pixels, once a display gave the scale.
+fn laid_out(key: &str) -> Option<f32> {
+    let scale = f32::from_bits(SCALE.load(Ordering::Relaxed));
+    let height = *LAYOUT.lock().unwrap_or_else(|p| p.into_inner()).get(key)?;
+    (scale > 0.0 && height >= 1.0).then_some(height * scale)
+}
+
+/// Opens the players still waiting for their box: by the box `display` draws them in, else by
+/// their layout, so one below the fold opens as the page loads.
+fn start_waiting(
+    players: &mut HashMap<String, Entry>,
+    display: &crate::DisplayList,
+    views: &HashMap<&str, ([f32; 2], Fit)>,
+) {
+    SCALE.store(display.scale.to_bits(), Ordering::Relaxed);
+    for (key, entry) in players.iter_mut().filter(|(_, entry)| entry.box_wait) {
+        let height = views
+            .get(key.as_str())
+            .map(|&(px, _)| px[1])
+            .or_else(|| laid_out(key));
+        if let Some(height) = height {
+            start_by_box(key, entry, height);
+        }
+    }
+}
 
 fn ms(duration: std::time::Duration) -> f64 {
     (duration.as_secs_f64() * 10_000.0).round() / 10.0
@@ -1484,13 +1527,9 @@ pub(crate) fn has_new(display: &crate::DisplayList) -> bool {
     let mut players = players();
     let mut new = false;
     let views = views(display);
+    start_waiting(&mut players, display, &views);
     for key in keys(display) {
         let touched = touch(&mut players, key).is_some();
-        if let Some(&(px, _)) = views.get(key)
-            && let Some(entry) = players.get_mut(key)
-        {
-            start_by_box(key, entry, px[1]);
-        }
         if !touched {
             continue;
         }
@@ -1632,13 +1671,8 @@ pub(crate) fn import_frames(
     let keys = keys(display);
     let mut players = players();
     // Desktop draws come here without passing `has_new`.
-    let views = views(display);
+    start_waiting(&mut players, display, &views(display));
     for key in &keys {
-        if let Some(&(px, _)) = views.get(key)
-            && let Some(entry) = players.get_mut(*key)
-        {
-            start_by_box(key, entry, px[1]);
-        }
         let Some(entry) = touch(&mut players, key) else {
             continue;
         };

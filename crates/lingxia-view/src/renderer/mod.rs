@@ -23,6 +23,14 @@ pub fn video_stats() -> serde_json::Value {
     serde_json::Value::Null
 }
 
+/// Player `key`'s box is laid out `height` points tall.
+pub(crate) fn video_layout(key: &str, height: f32) {
+    #[cfg(feature = "gpu")]
+    gpu::video::lay_out(key, height);
+    #[cfg(not(feature = "gpu"))]
+    let _ = (key, height);
+}
+
 /// The page's scene asks player `key` to play `source`.
 pub(crate) fn video_configure(
     key: &str,
