@@ -24,3 +24,8 @@ export function viewTsconfig(root) {
   for (const key of carried) if (options[key] !== undefined) compilerOptions[key] = options[key];
   return { compilerOptions };
 }
+
+/** The audit's type checker sees each page's generated `./$types` beside it, as the lxapp's tsconfig `rootDirs` does. */
+export function checkerOptions(root) {
+  return { rootDirs: [root, join(root, '.lingxia', 'types')] };
+}

@@ -175,10 +175,25 @@ export interface PageDefinition<Data = unknown, Actions = unknown, Params = unkn
   readonly __lxPage: { readonly params: Params; readonly result: Result; readonly messages: Messages };
 }
 
+/**
+ * The Logic end of a channel a View opens with `useChannel`: an action
+ * `ticker(params, channel: PageChannel<Tick, Command>)` sends `Tick`s and
+ * receives `Command`s.
+ */
+export interface PageChannel<Send = unknown, Receive = unknown> {
+  send(payload: Send): void;
+  close(code?: string, reason?: string): void;
+  /** Returns a function that removes the handler. */
+  on(event: 'data', handler: (payload: Receive) => void): () => void;
+  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
+}
+
 /** The params a page definition declares. */
 export type ParamsOf<P> = P extends { readonly __lxPage: { readonly params: infer T } } ? T : never;
 /** The result a page definition declares. */
 export type ResultOf<P> = P extends { readonly __lxPage: { readonly result: infer T } } ? T : never;
+/** The messages a page definition declares. */
+export type MessagesOf<P> = P extends { readonly __lxPage: { readonly messages: infer T } } ? T : never;
 
 /** What every `definePage` form declares besides its behaviour. */
 interface PageDeclarations<Data, Params, Result, Messages> {

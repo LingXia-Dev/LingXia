@@ -18,6 +18,7 @@ pub(crate) use bundle::is_built_bundle_dir;
 pub(crate) use framework::ProjectFramework;
 pub(crate) use framework::UI_MODULE_HEADER;
 pub(crate) use logic::{MocksBundle, build_mocks};
+pub(crate) use page_types::generate as generate_page_types;
 pub(crate) use project::Project;
 pub(crate) use view::native_client_output_path;
 pub(crate) use view::stamp_output_html;

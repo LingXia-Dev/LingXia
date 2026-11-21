@@ -211,3 +211,19 @@ export function counter({ data, actions }: View<CounterPage>) {
   data.count = 2;
   return <text>{String(count)}</text>;
 }
+
+// Actions as a page's Logic declares them, as `./$types` hands them over.
+type LogicActions = {
+  pick(): Promise<{ path: string }>;
+  open(input: { path: string }): Promise<void>;
+  progress(input: { url: string }): AsyncGenerator<{ fraction: number }, { path: string }>;
+};
+export function handlers({ actions }: View<LogicActions>) {
+  const handed = <button onClick={actions.pick}/>;
+  // @ts-expect-error a handler gets no payload; wrap an action that takes one
+  const missing = <button onClick={actions.open}/>;
+  const wrapped = <button onClick={() => actions.open({ path: 'a.pdf' })}/>;
+  const stream = useStream('progress', actions.progress, { onData: step => { const fraction: number = step.fraction; } });
+  const path: string | undefined = stream.result?.path;
+  return <view>{handed}{missing}{wrapped}</view>;
+}

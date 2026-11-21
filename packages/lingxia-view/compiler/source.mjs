@@ -29,8 +29,8 @@ export function sourceChecker(file) {
   return program.getTypeChecker();
 }
 
-export function moduleChecker(files) {
-  const options = { ...libOptions, allowJs: true, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
+export function moduleChecker(files, extra = {}) {
+  const options = { ...extra, ...libOptions, allowJs: true, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
   const host = ts.createCompilerHost(options);
   const canonical = name => host.getCanonicalFileName(resolve(name));
   const cache = new Map(files.map(file => [canonical(file.fileName), file]));

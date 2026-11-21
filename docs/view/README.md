@@ -5,11 +5,10 @@ JSX over a fixed set of elements, styled with Tailwind utilities, compiled at bu
 shaped and painted by the host. This guide is the complete reference for that dialect.
 
 ```tsx data={"id":"n1"}
-import { useLocal, useRequest, type View } from '@lingxia/view';
+import { useLocal, useRequest } from '@lingxia/view';
+import type { View } from './$types';
 
-type Actions = { load(query: { id: string }): Promise<{ title: string; body: string }> };
-
-export function render({ data, actions }: View<Actions, { id: string }>) {
+export function render({ data, actions }: View) {
   const note = useRequest('note', actions.load, { id: data.id });
   const draft = useLocal('draft', '');
   return (
@@ -28,6 +27,24 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   );
 }
 ```
+
+`View` is typed from the page's Logic beside it, `index.ts`:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+export default definePage({
+  data: { id: 'n1' },
+  actions: {
+    async load({ id }: { id: string }) {
+      return { title: `Note ${id}`, body: 'Notes load from Logic, which owns the network.' };
+    },
+  },
+});
+```
+
+`lingxia dev` and `lingxia build` write `./$types` from it under `.lingxia/types` (`lingxia gen types`
+on a fresh checkout); the lxapp's `tsconfig.json` lists `.lingxia/types` in `rootDirs`.
 
 ## Mental model
 

@@ -12,7 +12,7 @@ import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
-import { viewTsconfig } from './tsconfig.mjs';
+import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
 import { authored, packageOf, sourceLabel } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
@@ -498,7 +498,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const sans = classes.find(rule => rule.name === 'font-sans');
     if (sans?.error && !candidates.has('font-sans')) problems.push(`${page}: UI_FONT: --font-sans: ${sans.error.message}`);
     const pageFamily = sans?.style?.fontFamily === 'sans-serif' ? undefined : sans?.style?.fontFamily;
-    const checker = moduleChecker(sourceFiles);
+    const checker = moduleChecker(sourceFiles, checkerOptions(root));
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
     const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));

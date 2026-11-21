@@ -1,11 +1,10 @@
 # Inputs and forms
 
 ```tsx
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
+import type { View } from './$types';
 
-type Actions = { signUp(form: { email: string; code: string; plan: string; news: boolean; seats: number }): Promise<void> };
-
-export function render({ actions }: View<Actions>) {
+export function render({ actions }: View) {
   const email = useLocal('email', '');
   const code = useLocal('code', '');
   const plan = useLocal('plan', 'basic');
@@ -35,6 +34,22 @@ export function render({ actions }: View<Actions>) {
     </page>
   );
 }
+```
+
+Its Logic, `index.ts`:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+type SignUp = { email: string; code: string; plan: string; news: boolean; seats: number };
+
+export default definePage({
+  actions: {
+    async signUp(form: SignUp) {
+      if (form.code.length !== 6) throw new Error('The invite code has 6 digits');
+    },
+  },
+});
 ```
 
 ## Binding

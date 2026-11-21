@@ -1,17 +1,10 @@
 # State and data
 
 ```tsx data={"userId":"u1"}
-import { useLocal, useRequest, useStream, type Stream, type View } from '@lingxia/view';
+import { useLocal, useRequest, useStream } from '@lingxia/view';
+import type { View } from './$types';
 
-type Profile = { name: string; plan: string };
-type Chunk = { token: string };
-type Actions = {
-  profile(input: { id: string }): Promise<Profile>;
-  rename(input: { id: string; name: string }): Promise<void>;
-  summarize(input: { id: string }): Stream<Chunk, { tokens: number }>;
-};
-
-export function render({ data, actions }: View<Actions, { userId: string }>) {
+export function render({ data, actions }: View) {
   const profile = useRequest('profile', actions.profile, { id: data.userId });
   const draft = useLocal('');
   const summary = useLocal('');
@@ -39,8 +32,8 @@ The View holds no data of its own beyond `useLocal` cells. Everything else comes
 ## `view.data`
 
 `view.data` is the Logic page's data (`definePage({ data })`, changed with `page.update`). It is deeply
-read-only, and every update re-renders the page. Type it with `View<typeof page>`, or the second
-parameter of `View`.
+read-only, and every update re-renders the page. `import type { View } from './$types'` types it, and
+`view.actions`, from the page's Logic.
 
 ## Actions
 
@@ -49,22 +42,27 @@ JSON payload; it returns a `Promise` of the action's JSON result. An `async *act
 `Stream`. A failed action rejects with an error carrying `code` and `message`. An action promise that
 rejects inside an event handler without a `catch` is reported in the page log.
 
+An action that takes no payload can be the handler itself, `onClick={actions.refresh}`; one that takes a
+payload is wrapped, `onClick={() => actions.open({ id })}`, and passing it bare is a type error.
+
 Logic for the first example:
 
 ```ts
+import { definePage } from '@lingxia/types/page';
+
+const names = new Map<string, string>([['u1', 'Ada']]);
+
 export default definePage({
   data: { userId: 'u1' },
-  setup: () => ({
-    actions: {
-      async profile({ id }: { id: string }) { return loadProfile(id); },
-      async rename({ id, name }: { id: string; name: string }) { await saveName(id, name); },
-      async *summarize({ id }: { id: string }) {
-        let tokens = 0;
-        for await (const token of summarizeProfile(id)) { tokens++; yield { token }; }
-        return { tokens };
-      },
+  actions: {
+    async profile({ id }: { id: string }) { return { name: names.get(id) ?? '', plan: 'free' }; },
+    async rename({ id, name }: { id: string; name: string }) { names.set(id, name); },
+    async *summarize({ id }: { id: string }) {
+      let tokens = 0;
+      for (const token of `${names.get(id)} is on the free plan.`.split(' ')) { tokens++; yield { token: `${token} ` }; }
+      return { tokens };
     },
-  }),
+  },
 });
 ```
 
@@ -123,12 +121,12 @@ A two-way channel to a Logic method `method(params, channel)`. It opens after co
 `connect()` opens it again. Unmounting closes it.
 
 ```tsx
-import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/view';
+import { useChannel, useLocal } from '@lingxia/view';
+import type { View } from './$types';
 
 type Tick = { symbol: string; price: number };
-type Actions = { ticker(params: { symbol: string }, channel: ChannelEndpoint<Tick, { symbol: string }>): void };
 
-export function render({ actions }: View<Actions>) {
+export function render({ actions }: View) {
   const last = useLocal<Tick | null>('last', null);
   const ticker = useChannel('ticker', actions.ticker, { params: { symbol: 'AAPL' }, onData: tick => last.set(tick) });
   return (
@@ -139,6 +137,24 @@ export function render({ actions }: View<Actions>) {
     </page>
   );
 }
+```
+
+Its Logic types the channel with `PageChannel<Send, Receive>`:
+
+```ts
+import { definePage, type PageChannel } from '@lingxia/types/page';
+
+type Tick = { symbol: string; price: number };
+
+export default definePage({
+  actions: {
+    ticker(params: { symbol: string }, channel: PageChannel<Tick, { symbol: string }>) {
+      let symbol = params.symbol;
+      channel.on('data', next => { symbol = next.symbol; });
+      channel.send({ symbol, price: 100 });
+    },
+  },
+});
 ```
 
 ## `useLeaveGuard(name, { enabled })`

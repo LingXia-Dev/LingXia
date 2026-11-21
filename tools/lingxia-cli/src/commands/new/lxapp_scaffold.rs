@@ -65,6 +65,7 @@ pub(super) fn create_lxapp_from_template(
 
         remove_dir_if_exists(&target_dir.join("native"))?;
         remove_dir_if_exists(&target_dir.join("html"))?;
+        remove_dir_if_exists(&target_dir.join("gpu"))?;
         if framework.eq_ignore_ascii_case("html") {
             let html_template_dir = template_dir.join("html");
             if !html_template_dir.exists() {
@@ -74,6 +75,18 @@ pub(super) fn create_lxapp_from_template(
                 ));
             }
             process_template_dir(&html_template_dir, target_dir, &vars)?;
+        }
+        if framework.eq_ignore_ascii_case("gpu") {
+            let gpu_template_dir = template_dir.join("gpu");
+            if !gpu_template_dir.exists() {
+                return Err(anyhow!(
+                    "GPU LxApp template overlay not found at: {}",
+                    gpu_template_dir.display()
+                ));
+            }
+            process_template_dir(&gpu_template_dir, target_dir, &vars)?;
+            // A GPU View reads its types from `./$types`, generated from the Logic.
+            remove_if_exists(&target_dir.join("pages/home/contract.ts"))?;
         }
         if !app_service.enabled() {
             configure_native_logic_shell(target_dir, framework, &vars)?;
@@ -399,6 +412,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_gpu_scaffold_types_its_view_from_dollar_types() {
+        let output = tempdir().unwrap();
+        let app = output.path().join("myapp");
+        create_lxapp_from_template(
+            &app,
+            "myapp",
+            "myapp",
+            "My App",
+            "gpu",
+            AppServiceMode::Enabled,
+            &dummy_versions(),
+            "0.16.0",
+            None,
+        )
+        .unwrap();
+        let view = fs::read_to_string(app.join("pages/home/index.tsx")).unwrap();
+        assert!(
+            view.contains("import type { View } from './$types';"),
+            "{view}"
+        );
+        assert!(!app.join("pages/home/contract.ts").exists());
+        assert!(!app.join("gpu").exists());
+        let config = fs::read_to_string(app.join("tsconfig.view.json")).unwrap();
+        assert!(
+            config.contains(r#""rootDirs": [".", "./.lingxia/types"]"#),
+            "{config}"
+        );
+        let ignore = fs::read_to_string(app.join(".gitignore")).unwrap();
+        assert!(ignore.contains(".lingxia/*"), "{ignore}");
     }
 
     #[test]

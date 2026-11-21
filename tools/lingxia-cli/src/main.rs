@@ -663,6 +663,8 @@ enum GenCommand {
     Icons(r#gen::icons::IconsConfig),
     /// Check a theme pack and write the GPU page scales it defines to tokens.css
     Tokens(r#gen::tokens::TokensConfig),
+    /// Write the lxapp's page types under .lingxia/types, as a build does
+    Types(r#gen::types::TypesConfig),
 }
 
 #[derive(Subcommand)]
@@ -1370,6 +1372,9 @@ fn run() -> Result<()> {
             }
             GenCommand::Tokens(config) => {
                 r#gen::tokens::run(config)?;
+            }
+            GenCommand::Types(config) => {
+                r#gen::types::run(config)?;
             }
         },
         Commands::Publish { args } => {

@@ -27,17 +27,36 @@ async function chapters() {
   for (const file of files) {
     const text = await readFile(file, 'utf8');
     let theme;
-    for (const match of text.matchAll(/^```(\w+)([^\n]*)\n([\s\S]*?)^```$/gm)) {
+    const fenced = [...text.matchAll(/^```(\w+)([^\n]*)\n([\s\S]*?)^```$/gm)];
+    // A View importing `./$types` is typed from the Logic block right after it, else right before it.
+    const logicAt = index => fenced[index]?.[1] === 'ts' && fenced[index][3].includes('definePage(') ? fenced[index][3] : undefined;
+    for (const [index, match] of fenced.entries()) {
       const [, lang, info, source] = match;
       const line = text.slice(0, match.index).split('\n').length;
       if (lang === 'css') theme = source;
       if (lang !== 'tsx') continue;
       const expected = info.match(/\berror\s+(UI_[A-Z0-9_]+)/)?.[1];
       const data = JSON.parse(info.match(/\bdata=(\{.*\})/)?.[1] ?? '{}');
-      blocks.push({ name: `${relative(docs, file)}:${line}`, source, theme, expected, data });
+      const name = `${relative(docs, file)}:${line}`;
+      const logic = source.includes("from './$types'") ? logicAt(index + 1) ?? logicAt(index - 1) : undefined;
+      if (source.includes("from './$types'") && !logic) throw Error(`${name}: imports ./$types without a definePage block beside it`);
+      blocks.push({ name, source, theme, expected, data, logic });
     }
   }
   return blocks;
+}
+
+// What `lingxia build` generates beside each page, with the Logic as `page.ts`.
+const pageTypes = `import type { View as PageView } from '@lingxia/view';
+import type page from './page';
+export type View = PageView<typeof page>;
+`;
+
+async function writePage(dir, block) {
+  await writeFile(join(dir, 'page.tsx'), block.source);
+  if (!block.logic) return;
+  await writeFile(join(dir, 'page.ts'), block.logic);
+  await writeFile(join(dir, '$types.d.ts'), pageTypes);
 }
 
 const blocks = await chapters();
@@ -45,7 +64,7 @@ const blocks = await chapters();
 async function project(block, run) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-doc-'));
   try {
-    await writeFile(join(root, 'page.tsx'), block.source);
+    await writePage(root, block);
     if (block.theme) await writeFile(join(root, 'theme.css'), block.theme);
     return await run(root);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -85,17 +104,19 @@ test('guide examples type-check against the authoring API', async () => {
       if (block.expected) continue;
       const dir = join(root, String(index));
       await mkdir(dir);
-      await writeFile(join(dir, 'page.tsx'), block.source);
+      await writePage(dir, block);
       files.push([join(dir, 'page.tsx'), block.name]);
+      if (block.logic) files.push([join(dir, 'page.ts'), `${block.name} (Logic)`]);
     }
     const options = {
       target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
       jsx: ts.JsxEmit.Preserve, strict: true, noEmit: true, types: [], lib: ['lib.es2020.d.ts'],
-      paths: { '@lingxia/view': [join(packageRoot, 'src/index.d.ts')] },
+      paths: { '@lingxia/view': [join(packageRoot, 'src/index.d.ts')], '@lingxia/types/page': [join(packageRoot, '../lingxia-types/src/page.ts')] },
     };
     const program = ts.createProgram([...files.map(([file]) => file), join(packageRoot, 'src/index.d.ts')], options);
     const names = new Map(files);
-    const problems = ts.getPreEmitDiagnostics(program).map(diagnostic => {
+    // The examples are under test, not the packages they import.
+    const problems = ts.getPreEmitDiagnostics(program).filter(diagnostic => !diagnostic.file || names.has(diagnostic.file.fileName)).map(diagnostic => {
       const where = diagnostic.file ? names.get(diagnostic.file.fileName) ?? diagnostic.file.fileName : '';
       const line = diagnostic.file ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 0;
       return `${where} (+${line}): ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`;

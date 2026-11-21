@@ -1,13 +1,11 @@
 # Coming from React
 
 ```tsx data={"query":"lamp"}
-import { List, useLocal, useRequest, type View } from '@lingxia/view';
-
-type Product = { id: string; name: string; price: string };
-type Actions = { search(input: { query: string }): Promise<Product[]> };
+import { List, useLocal, useRequest } from '@lingxia/view';
+import type { View } from './$types';
 
 // React: const [query, setQuery] = useState(''); useEffect(() => { fetch(…) }, [query]);
-export function render({ data, actions }: View<Actions, { query: string }>) {
+export function render({ data, actions }: View) {
   const query = useLocal('query', data.query);
   const results = useRequest('results', actions.search, { query: query.value });
   return (
@@ -29,6 +27,24 @@ export function render({ data, actions }: View<Actions, { query: string }>) {
     </page>
   );
 }
+```
+
+The network call lives in its Logic, `index.ts`, where `fetch` and `lx` are:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+type Product = { id: string; name: string; price: string };
+const catalog: Product[] = [{ id: 'p1', name: 'Desk lamp', price: '29.00' }];
+
+export default definePage({
+  data: { query: '' },
+  actions: {
+    async search({ query }: { query: string }) {
+      return catalog.filter(product => product.name.toLowerCase().includes(query.toLowerCase()));
+    },
+  },
+});
 ```
 
 The syntax is JSX and the model is the same — render from state, re-render on change — but there is

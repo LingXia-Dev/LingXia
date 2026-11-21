@@ -166,10 +166,10 @@ Never keep per-entry state in module scope.
 
 ### Types for the View
 
-The page's type is its contract: `View<typeof page>`, `useLxPage<typeof page>()`
-and `t.app.page<typeof page>()` read `data` and `actions` from
-`import type page from './index.ts'`. That file must be in the View's
-tsconfig. A shared `PageContract<Data, Actions>` still works.
+A GPU View takes its types from its Logic: `import type { View } from './$types'`
+(see [GPU Views](./gpu.md)). A React View and a test read the page type itself:
+`useLxPage<typeof page>()` and `t.app.page<typeof page>()` with
+`import type page from './index.ts'`.
 
 ## View
 

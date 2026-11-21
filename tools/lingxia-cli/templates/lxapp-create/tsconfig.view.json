@@ -15,6 +15,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
+    "rootDirs": [".", "./.lingxia/types"],
     "paths": {
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }

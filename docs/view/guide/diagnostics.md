@@ -1,9 +1,8 @@
 # Diagnostics
 
 ```tsx
-import { useRequest, type ResourceError, type View } from '@lingxia/view';
-
-type Actions = { orders(): Promise<{ id: string; total: string }[]> };
+import { useRequest, type ResourceError } from '@lingxia/view';
+import type { View } from './$types';
 
 function ErrorBanner({ error, onRetry }: { error: ResourceError | null; onRetry: () => void }) {
   if (!error) return null;
@@ -15,7 +14,7 @@ function ErrorBanner({ error, onRetry }: { error: ResourceError | null; onRetry:
   );
 }
 
-export function render({ actions }: View<Actions>) {
+export function render({ actions }: View) {
   const orders = useRequest('orders', actions.orders);
   return (
     <page className="p-4 gap-3">
@@ -29,6 +28,18 @@ export function render({ actions }: View<Actions>) {
     </page>
   );
 }
+```
+
+Its Logic, `index.ts`:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+export default definePage({
+  actions: {
+    async orders() { return [{ id: 'A-1', total: '12.00' }]; },
+  },
+});
 ```
 
 Problems surface in three places: the build, the View runtime, and the host. Each message starts with

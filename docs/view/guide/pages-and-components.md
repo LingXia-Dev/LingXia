@@ -1,12 +1,10 @@
 # Pages and components
 
 ```tsx data={"items":[{"id":"a","title":"Milk","done":false},{"id":"b","title":"Bread","done":true}]}
-import { useLocal, type Child, type View } from '@lingxia/view';
+import { useLocal, type Child } from '@lingxia/view';
+import type { View } from './$types';
 
-type Item = { id: string; title: string; done: boolean };
-type Actions = { toggle(input: { id: string }): Promise<void> };
-
-export function render({ data, actions }: View<Actions, { items: Item[] }>) {
+export function render({ data, actions }: View) {
   return (
     <page className="p-4 gap-3">
       <Card title="Groceries">
@@ -41,6 +39,23 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
     </view>
   );
 }
+```
+
+Its Logic, `index.ts`:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+type Item = { id: string; title: string; done: boolean };
+
+export default definePage({
+  data: { items: [] as Item[] },
+  actions: page => ({
+    toggle({ id }: { id: string }) {
+      page.update(d => { const item = d.items.find(item => item.id === id); if (item) item.done = !item.done; });
+    },
+  }),
+});
 ```
 
 ## A page

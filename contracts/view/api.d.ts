@@ -86,13 +86,15 @@ export interface ChannelEndpoint<T = unknown, S = unknown> {
   on(event: "close", handler: (info: { code: string; reason: string }) => void): () => void;
 }
 
-export type ViewActions<A> = { readonly [K in keyof A]: A[K] extends (...args: infer P) => Promise<infer R> ? (...args: P) => Promise<ReadonlyData<R>> : A[K] };
+/** A page's actions as the View calls them: a Promise of the result, or a `Stream` for an `async *` action. */
+export type ViewActions<A> = { readonly [K in keyof A]: A[K] extends (...args: infer P) => AsyncGenerator<infer T, infer R, any> ? (...args: P) => Stream<T, R>
+  : A[K] extends (...args: infer P) => Promise<infer R> ? (...args: P) => Promise<ReadonlyData<R>> : A[K] };
 export interface PageView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> {
   readonly data: ReadonlyData<D>; readonly actions: ViewActions<A>; readonly channels: Channels; readonly env: Env;
 }
 /**
- * The View of a page: `View<typeof page>` with the page's `definePage` type
- * imported (`import type page from './index.ts'`), or `View<Actions, Data>`.
+ * The View of a page. A page takes it typed from its Logic, `import type { View } from './$types'`;
+ * `View<typeof page>` and `View<Actions, Data>` are the same type spelled out.
  */
 export type View<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> =
   A extends { readonly __lxPage: unknown; readonly data: infer PD; readonly actions: infer PA } ? PageView<PA, PD> : PageView<A, D>;

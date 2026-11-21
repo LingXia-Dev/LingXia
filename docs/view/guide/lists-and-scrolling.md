@@ -1,12 +1,10 @@
 # Lists and scrolling
 
 ```tsx data={"messages":[{"id":"m1","text":"Hi"},{"id":"m2","text":"Hello there"}],"hasMore":true}
-import { List, useLocal, type View } from '@lingxia/view';
+import { List, useLocal } from '@lingxia/view';
+import type { View } from './$types';
 
-type Message = { id: string; text: string };
-type Actions = { loadOlder(): Promise<void> };
-
-export function render({ data, actions }: View<Actions, { messages: Message[]; hasMore: boolean }>) {
+export function render({ data, actions }: View) {
   const messages = data.messages;
   return (
     <page>
@@ -30,6 +28,24 @@ function Bubble({ text }: { text: string }) {
     </button>
   );
 }
+```
+
+Its Logic, `index.ts`:
+
+```ts
+import { definePage } from '@lingxia/types/page';
+
+type Message = { id: string; text: string };
+
+export default definePage({
+  data: { messages: [] as Message[], hasMore: true },
+  actions: page => ({
+    async loadOlder() {
+      const older: Message[] = [{ id: `m${page.data.messages.length}`, text: 'An older message' }];
+      page.update(d => { d.messages.unshift(...older); d.hasMore = false; });
+    },
+  }),
+});
 ```
 
 ## `<scroll>`

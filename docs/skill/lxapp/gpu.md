@@ -6,11 +6,10 @@ build stops. Add `@lingxia/view` as a dependency.
 There is no DOM. The host owns navbar and tabbar.
 
 ```tsx
-import { useLocal, useRequest, type View } from '@lingxia/view';
+import { useLocal, useRequest } from '@lingxia/view';
+import type { View } from './$types';
 
-type Actions = { load(q: { id: string }): Promise<{ title: string }> };
-
-export function render({ data, actions }: View<Actions, { id: string }>) {
+export function render({ data, actions }: View) {
   const draft = useLocal('');
   const item = useRequest('item', actions.load, { id: data.id });
   return <page className="p-4 gap-3">
@@ -21,6 +20,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 }
 ```
 
+- `./$types` types `data` and `actions` from the page's Logic (`index.ts`); a page without Logic gets empty ones. `lingxia dev`/`build` write it under `.lingxia/types` (`lingxia gen types` on a fresh checkout or in CI); the lxapp tsconfig needs `"rootDirs": [".", "./.lingxia/types"]`.
 - `<page>` is the root: it absorbs safe-area insets and the keyboard. `<view>` is the only layout container: a flex column; `flex-row`/`flex-col` set direction, `flex` alone means row, `grid` makes a grid; `gap`/`items`/`justify` work without `flex`. Overlap children with `grid *:col-start-1 *:row-start-1`.
   A last-child `<scroll>`/`<List>` runs on under the tab bar, its end padded clear; `<dialog>`s cover the bars.
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
