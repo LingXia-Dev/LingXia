@@ -747,6 +747,9 @@ fn rewrite_module_source(
                 }
             }
             Statement::ExportDefaultDeclaration(export_default) => {
+                if let Some(expression) = export_default.declaration.as_expression() {
+                    refuse_removed_registration(expression, role)?;
+                }
                 let (replacement, export_name) =
                     rewrite_export_default(source, &export_default.declaration)?;
                 output.push_str(&replacement);
@@ -783,8 +786,13 @@ fn rewrite_module_source(
     }
     // `export default definePage({ ... })` is the page.
     if let ModuleRole::Page { page_path } = role
-        && exports.iter().any(|(exported, _)| exported == "default")
+        && !exports.iter().any(|(exported, _)| exported == "default")
     {
+        bail!(
+            "{page_path}: a page's Logic must `export default definePage({{ data, setup }})` from '@lingxia/types/page'"
+        );
+    }
+    if let ModuleRole::Page { page_path } = role {
         output.push_str(&format!(
             "globalThis.__registerDefinedPage({}, __lx_module_exports[\"default\"]);\n",
             json_string_literal(&page_registration_path(project, page_path)?)
@@ -995,11 +1003,30 @@ fn rewrite_registration_call(
                 json_string_literal(&handler_json)
             )))
         }
+        _ => {
+            refuse_removed_registration(expression, role)?;
+            Ok(None)
+        }
+    }
+}
+
+/// `Page(`, `PageInstance(` and `defineApp(` name what to write instead.
+fn refuse_removed_registration(expression: &Expression<'_>, role: &ModuleRole) -> Result<()> {
+    let Expression::CallExpression(call_expr) = unwrap_expression(expression) else {
+        return Ok(());
+    };
+    let Expression::Identifier(identifier) = unwrap_expression(&call_expr.callee) else {
+        return Ok(());
+    };
+    match identifier.name.as_str() {
         "Page" | "PageInstance" if matches!(role, ModuleRole::Page { .. }) => bail!(
             "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/types/page'",
             identifier.name.as_str()
         ),
-        _ => Ok(None),
+        "defineApp" if matches!(role, ModuleRole::App) => {
+            bail!("defineApp() does not exist: the app entry calls App({{ onLaunch }})")
+        }
+        _ => Ok(()),
     }
 }
 
@@ -1478,6 +1505,57 @@ mod tests {
             .and_then(|_| bundler.render_bundle(false))
             .unwrap_err();
         assert!(format!("{error:#}").contains("definePage"), "{error:#}");
+    }
+
+    fn page_build_error(root: &Path, source: &str) -> String {
+        write(root, "pages/home/index.ts", source);
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        let error = bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .and_then(|_| bundler.render_bundle(false))
+            .unwrap_err();
+        format!("{error:#}")
+    }
+
+    #[test]
+    fn a_page_without_a_default_export_fails_with_the_fix() {
+        let temp = TempDir::new().unwrap();
+        let error = page_build_error(temp.path(), "export const data = { n: 0 };\n");
+        assert!(
+            error.contains("pages/home/index") && error.contains("export default definePage"),
+            "{error}"
+        );
+        let temp = TempDir::new().unwrap();
+        let error = page_build_error(temp.path(), "export default Page({ data: {} });\n");
+        assert!(error.contains("Page() was removed"), "{error}");
+    }
+
+    #[test]
+    fn an_app_calling_define_app_fails_with_the_replacement() {
+        for source in [
+            "defineApp({ onLaunch() {} });\n",
+            "export default defineApp({});\n",
+        ] {
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+            write(root, "lxapp.ts", source);
+            let project = test_project(root);
+            let mut bundler = LogicBundler::new(&project);
+            let error = bundler
+                .add_entry(root.join("lxapp.ts"), ModuleRole::App)
+                .and_then(|_| bundler.render_bundle(false))
+                .unwrap_err();
+            assert!(
+                format!("{error:#}").contains("App({ onLaunch })"),
+                "{error:#}"
+            );
+        }
     }
 
     #[test]
