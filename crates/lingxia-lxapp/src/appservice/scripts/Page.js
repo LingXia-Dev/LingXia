@@ -275,20 +275,24 @@
 
   const PAGE_BRAND = Symbol.for("lingxia.page");
   const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onPullDownRefresh"];
-  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "opens"]);
+  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "actions", "opens"]);
 
-  // `definePage({ data, setup(page) { return { onLoad, actions } } })`. The
-  // hooks and actions `setup` returns become the config a `PageSvc` runs, so
-  // dispatch is the same as for any page; `page` is what they close over.
+  // `definePage({ data, setup(page) { return { onLoad, actions } } })`, or
+  // `definePage({ data, actions: page => ({ … }) })`. The hooks and actions
+  // become the config a `PageSvc` runs, so dispatch is the same as for any
+  // page; `page` is what they close over.
   function instantiateDefinedPage(definition, pagePath, pageInstanceId, gpu, identityJson) {
     const def = definition.config;
     for (const key of Object.keys(def)) {
       if (!DEFINITION_KEYS.has(key)) {
-        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data and setup`);
+        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data, and setup or actions`);
       }
     }
     if (def.setup !== undefined && typeof def.setup !== "function") {
       throw new TypeError("definePage: setup must be a function");
+    }
+    if (def.setup !== undefined && def.actions !== undefined) {
+      throw new TypeError("definePage: give setup or actions, not both; with setup, return actions from it");
     }
     assertPageData(def.data || {});
     const identity = identityJson ? JSON.parse(identityJson) : {};
@@ -423,7 +427,11 @@
       env,
     });
 
-    const returned = def.setup ? def.setup(page) : {};
+    const returned = def.setup ? def.setup(page)
+      : { actions: typeof def.actions === "function" ? def.actions(page) : def.actions };
+    if (!def.setup && returned.actions && typeof returned.actions.then === "function") {
+      throw new TypeError("definePage: actions(page) returns the actions synchronously; start async work in an action");
+    }
     if (returned && typeof returned.then === "function") {
       throw new TypeError("definePage: setup must be synchronous; start async work in onLoad");
     }

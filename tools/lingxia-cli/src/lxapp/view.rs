@@ -690,8 +690,8 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
     Ok(define_page_actions(&parse_result.program, &function_bindings).unwrap_or_default())
 }
 
-/// The actions of `export default definePage({ setup(page) { return { actions } } })`:
-/// the `actions` object that `setup` returns, read statically.
+/// The actions of `export default definePage(…)`, read statically: the `actions` object, or
+/// what an `actions(page)` function returns, or the `actions` that `setup` returns.
 fn define_page_actions<'a>(
     program: &'a oxc_ast::ast::Program<'a>,
     top_level: &HashMap<String, FunctionBinding>,
@@ -712,41 +712,21 @@ fn define_page_actions<'a>(
         return None;
     };
     let mut actions = Vec::new();
-    let Some(setup) = object_property(definition, "setup") else {
+    let found = match (
+        object_property(definition, "actions"),
+        object_property(definition, "setup"),
+    ) {
+        (Some(property), _) => object_of(&program.body, Some(&property.value))
+            .map(|object| (&[][..], object))
+            .or_else(|| returned_by(&property.value)),
+        (None, Some(setup)) => returned_by(&setup.value).and_then(|(statements, returned)| {
+            let property = object_property(returned, "actions")?;
+            object_of(statements, Some(&property.value)).map(|object| (statements, object))
+        }),
+        (None, None) => None,
+    };
+    let Some((statements, actions_object)) = found else {
         return Some(actions);
-    };
-    let (statements, returned) = match unwrap_expression(&setup.value) {
-        Expression::FunctionExpression(function) => {
-            let body = function.body.as_ref()?;
-            (&body.statements[..], returned_object(&body.statements))
-        }
-        Expression::ArrowFunctionExpression(arrow) => match arrow.get_function_body() {
-            Some(body) => (&body.statements[..], returned_object(&body.statements)),
-            None => {
-                let returned = match arrow.get_expression().map(unwrap_expression) {
-                    Some(Expression::ObjectExpression(object)) => Some(&**object),
-                    _ => None,
-                };
-                (&[][..], returned)
-            }
-        },
-        _ => return Some(actions),
-    };
-    let Some(returned) = returned else {
-        return Some(actions);
-    };
-    let Some(actions_property) = object_property(returned, "actions") else {
-        return Some(actions);
-    };
-    let actions_object = match unwrap_expression(&actions_property.value) {
-        Expression::ObjectExpression(object) => &**object,
-        Expression::Identifier(identifier) => {
-            match variable_init(statements, identifier.name.as_str()).map(unwrap_expression) {
-                Some(Expression::ObjectExpression(object)) => &**object,
-                _ => return Some(actions),
-            }
-        }
-        _ => return Some(actions),
     };
     let mut bindings = top_level.clone();
     bindings.extend(collect_function_bindings(statements));
@@ -765,6 +745,43 @@ fn define_page_actions<'a>(
         }
     }
     Some(actions)
+}
+
+/// An object literal, or a variable in `statements` initialised with one.
+fn object_of<'a>(
+    statements: &'a [Statement<'a>],
+    value: Option<&'a Expression<'a>>,
+) -> Option<&'a oxc_ast::ast::ObjectExpression<'a>> {
+    match value.map(unwrap_expression)? {
+        Expression::ObjectExpression(object) => Some(&**object),
+        Expression::Identifier(identifier) => {
+            match variable_init(statements, identifier.name.as_str()).map(unwrap_expression) {
+                Some(Expression::ObjectExpression(object)) => Some(&**object),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The object a function expression returns, with the statements of its body.
+fn returned_by<'a>(
+    value: &'a Expression<'a>,
+) -> Option<(&'a [Statement<'a>], &'a oxc_ast::ast::ObjectExpression<'a>)> {
+    match unwrap_expression(value) {
+        Expression::FunctionExpression(function) => {
+            let body = function.body.as_ref()?;
+            Some((&body.statements[..], returned_object(&body.statements)?))
+        }
+        Expression::ArrowFunctionExpression(arrow) => match arrow.get_function_body() {
+            Some(body) => Some((&body.statements[..], returned_object(&body.statements)?)),
+            None => match arrow.get_expression().map(unwrap_expression) {
+                Some(Expression::ObjectExpression(object)) => Some((&[][..], &**object)),
+                _ => None,
+            },
+        },
+        _ => None,
+    }
 }
 
 fn object_property<'a>(
@@ -1132,6 +1149,38 @@ mod tests {
             "#,
         );
         assert_eq!(arrow, vec![("save".to_string(), PageActionMode::Call)]);
+    }
+
+    #[test]
+    fn define_page_actions_come_from_the_actions_key() {
+        let function = extract_action_modes(
+            r#"
+            export default definePage({
+              data: { n: 0 },
+              actions: page => ({ inc() { page.update(d => { d.n += 1; }); }, async *watch() { yield 1; } }),
+            });
+            "#,
+        );
+        assert_eq!(
+            function,
+            vec![
+                ("inc".to_string(), PageActionMode::Call),
+                ("watch".to_string(), PageActionMode::Stream),
+            ]
+        );
+        let block = extract_action_modes(
+            r#"
+            export default definePage({ actions(page) { let n = 0; return { next: () => ++n }; } });
+            "#,
+        );
+        assert_eq!(block, vec![("next".to_string(), PageActionMode::Call)]);
+        let object = extract_action_modes(
+            r#"
+            const actions = { open: async () => {} };
+            export default definePage({ actions });
+            "#,
+        );
+        assert_eq!(object, vec![("open".to_string(), PageActionMode::Call)]);
     }
 
     #[test]

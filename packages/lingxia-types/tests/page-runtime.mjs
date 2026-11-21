@@ -217,3 +217,27 @@ run(`globalThis.envLate = []; dialogPage.env.watch(e => envLate.push(e), { signa
 assert.equal(run('envLate.length'), 0, 'an aborted signal subscribes nothing');
 assert.throws(() => run('dialogPage.env.watch(() => {}, { signal: 1 })'), /\{ signal \}/);
 console.log('page.env.watch delivery and signal passed.');
+
+// `actions: page => ({ … })` runs once per instance; a plain object is shared.
+run(`globalThis.made = 0;
+__registerPage('short', define({
+  data: { n: 0 },
+  actions: page => { made += 1; let calls = 0; return { bump() { calls += 1; page.update(d => { d.n = calls; }); return calls; } }; },
+}));
+globalThis.shortA = __LX_CREATE_PAGE__('pages/short/index', 'short', 's1');
+globalThis.shortB = __LX_CREATE_PAGE__('pages/short/index', 'short', 's2');`);
+assert.equal(run('made'), 2, 'the actions function runs per instance');
+assert.equal(run('shortA.config.actions.bump(); shortA.config.actions.bump()'), 2);
+assert.equal(run('shortB.config.actions.bump()'), 1, 'instances keep their own closure state');
+run(`__registerPage('plain', define({ actions: { ping() { return this; } } }));
+globalThis.plainSvc = __LX_CREATE_PAGE__('pages/plain/index', 'plain', 'p1');`);
+assert.equal(run('Object.keys(plainSvc.config.actions).join()'), 'ping');
+assert.throws(
+  () => run(`__registerPage('both', define({ setup: () => ({}), actions: {} })); __LX_CREATE_PAGE__('both', null, 'b1');`),
+  /setup or actions, not both; with setup, return actions from it/,
+);
+assert.throws(
+  () => run(`__registerPage('lazy', define({ actions: async () => ({}) })); __LX_CREATE_PAGE__('lazy', null, 'z1');`),
+  /synchronously/,
+);
+console.log('definePage actions short form passed.');

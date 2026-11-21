@@ -180,10 +180,20 @@ export type ParamsOf<P> = P extends { readonly __lxPage: { readonly params: infe
 /** The result a page definition declares. */
 export type ResultOf<P> = P extends { readonly __lxPage: { readonly result: infer T } } ? T : never;
 
+/** What every `definePage` form declares besides its behaviour. */
+interface PageDeclarations<Data, Params, Result, Messages> {
+  params?: Declared<Params>;
+  result?: Declared<Result>;
+  messages?: Declared<Messages>;
+  data?: Data & JsonData<Data>;
+}
+
 /**
- * Define a page. Declare what it takes and returns at the top; `setup(page)`
- * runs once per instance, before `onLoad`, and returns its hooks and
- * `actions`, which close over `page` and over per-instance state.
+ * Define a page. Declare what it takes and returns at the top, then its
+ * behaviour in one of two forms. `setup(page)` is the form for lifecycle
+ * hooks and per-instance state: it runs once per instance, before `onLoad`,
+ * and returns its hooks and `actions`. `actions: page => ({ … })` is the
+ * short form for a page with only actions; it also runs once per instance.
  *
  * ```ts
  * export default definePage({
@@ -196,6 +206,11 @@ export type ResultOf<P> = P extends { readonly __lxPage: { readonly result: infe
  *     };
  *   },
  * });
+ *
+ * export default definePage({
+ *   data: { count: 0 },
+ *   actions: page => ({ bump() { page.update(d => { d.count += 1; }); } }),
+ * });
  * ```
  */
 export function definePage<
@@ -205,18 +220,52 @@ export function definePage<
   Messages = never,
   Actions extends object = {},
   R = {},
->(definition: {
-  params?: Declared<Params>;
-  result?: Declared<Result>;
-  messages?: Declared<Messages>;
-  data?: Data & JsonData<Data>;
+>(definition: PageDeclarations<Data, Params, Result, Messages> & {
   setup?: (page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
-}): PageDefinition<Data, Actions, Params, Result, Messages> {
+  actions?: undefined;
+}): PageDefinition<Data, Actions, Params, Result, Messages>;
+export function definePage<
+  Data extends object = {},
+  Params = PageLoadOptions,
+  Result = never,
+  Messages = never,
+  Actions extends object = {},
+  S = never,
+>(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  actions: (page: PageApi<Data, Params, Result, Messages>) => Actions & ThisType<void> & SyncActions<Actions>;
+  setup?: S & OnlyOne<S>;
+}): PageDefinition<Data, Actions, Params, Result, Messages>;
+export function definePage<
+  Data extends object = {},
+  Params = PageLoadOptions,
+  Result = never,
+  Messages = never,
+  Actions extends object = {},
+  S = never,
+>(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  actions: Actions & ThisType<void> & ActionMap<Actions>;
+  setup?: S & OnlyOne<S>;
+}): PageDefinition<Data, Actions, Params, Result, Messages>;
+export function definePage(definition: { setup?: unknown; actions?: unknown }): unknown {
   if (definition === null || typeof definition !== 'object') {
-    throw new TypeError('definePage takes { params?, result?, messages?, data?, setup? }');
+    throw new TypeError('definePage takes { params?, result?, messages?, data?, setup? or actions? }');
+  }
+  if (definition.setup !== undefined && definition.actions !== undefined) {
+    throw new TypeError('definePage: give setup or actions, not both; with setup, return actions from it');
   }
   Object.defineProperty(definition, Symbol.for('lingxia.page'), { value: true });
-  return definition as never;
+  return definition;
 }
+
+type SyncActions<A> = A extends PromiseLike<unknown>
+  ? { 'LingXia type error': 'actions(page) is synchronous; start async work in an action' }
+  : unknown;
+
+type ActionMap<A> = A extends (...args: never[]) => unknown
+  ? { 'LingXia type error': 'actions is an object of functions, or page => ({ … }) returning one synchronously' }
+  : unknown;
+
+type OnlyOne<S> = [S] extends [never] ? unknown
+  : { 'LingXia type error': 'give setup or actions, not both; with setup, return actions from it' };
 
 export type { JsonValue };

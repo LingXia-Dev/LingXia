@@ -120,3 +120,46 @@ const freeform = definePage({
   },
 });
 void freeform;
+
+// The short form: `actions: page => ({ … })`, typed from `data` like `setup`.
+const counter = definePage({
+  params: type<{ start: number }>(),
+  data: { count: 0 },
+  actions: page => {
+    let calls = 0;
+    return {
+      bump(by: number) { calls += 1; page.update(d => { d.count += by; }); return calls; },
+      start() { return page.params.start; },
+    };
+  },
+});
+const bumped: (by: number) => Promise<number> = counter.actions.bump;
+const startParams: ParamsOf<typeof counter> = { start: 1 };
+// @ts-expect-error bump takes a number
+counter.actions.bump('x');
+
+// A plain object is the same, without the page.
+const plain = definePage({ data: { n: 0 }, actions: { ping(): 'pong' { return 'pong'; } } });
+const pinged: () => Promise<'pong'> = plain.actions.ping;
+
+definePage({
+  data: { n: 0 },
+  // @ts-expect-error setup and actions together
+  setup: () => ({}),
+  actions: { ping() {} },
+});
+
+definePage({
+  data: { n: 0 },
+  actions: page => ({
+    bad() {
+      // @ts-expect-error data is readonly
+      page.data.n = 1;
+    },
+  }),
+});
+
+// @ts-expect-error actions(page) is synchronous
+definePage({ actions: async () => ({ go() {} }) });
+// A this-less action reads no page: `this` is void.
+definePage({ actions: { who() { return this; } } }).actions.who satisfies () => Promise<void>;
