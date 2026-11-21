@@ -103,7 +103,9 @@ test('an update that fails after the page has shown keeps the page under a banne
   t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.appearance.setPreference(look), preference!));
   const banner = async () => {
     const elements = await t.waitFor(() => t.app.chrome.elements(), {
-      until: (now) => now.some((e) => words.updateFailed.includes(e.label)),
+      // Right after Retry the panel can show its message a moment before it offers anything.
+      until: (now) => [words.updateFailed, words.retry, words.back]
+        .every((choices) => now.some((e) => choices.includes(e.label))),
       timeout: 8_000,
     });
     return { elements, notice: elements.find((e) => words.updateFailed.includes(e.label))! };
