@@ -947,8 +947,8 @@ impl ViewSession {
         let height_dp = height as f32 / scale;
         let data = self.sync_view_data(metrics)?;
         let mut environment = self.environment.clone();
-        // Platform interpolation samples are an internal layout contract.
-        environment.as_object_mut().unwrap().remove("textScale");
+        // The page reads one factor; the platform's samples stay a layout contract.
+        environment["textScale"] = serde_json::json!(self.renderer.text_scale.factor());
         environment["viewport"] = serde_json::json!({"width":width_dp,"height":height_dp});
         // Crossing the size class lays the page out anew, as an appearance change repaints it.
         let compact = match environment

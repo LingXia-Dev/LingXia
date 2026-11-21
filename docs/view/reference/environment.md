@@ -26,3 +26,4 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `direction` | `"ltr" \| "rtl"` | Inline direction derived from `contentLanguage`. |
 | `canDock` | `boolean` | Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. |
 | `renderer?` | `Readonly<{ fallback: "driver" \| null }>` | `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. |
+| `textScale` | `number` | How much the system's text size grows body text: 1 at the default size, 2 when it is twice as large, after the lxapp's `maxTextScale`. Sizes already follow it; read it only for a layout that must change shape, such as fewer columns. |

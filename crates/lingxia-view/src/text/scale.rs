@@ -54,6 +54,11 @@ impl TextScale {
         }
     }
 
+    /// The factor body text (17 pt) grows by, to two places: what a page reads as `env.textScale`.
+    pub(crate) fn factor(&self) -> f64 {
+        (f64::from(self.map(17.0)) / 17.0 * 100.0).round() / 100.0
+    }
+
     pub(crate) fn map(&self, size: f32) -> f32 {
         if self.0.is_empty() || size <= 0.0 {
             return size;

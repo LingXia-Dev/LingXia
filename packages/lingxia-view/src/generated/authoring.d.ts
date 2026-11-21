@@ -349,6 +349,8 @@ export interface Env {
   readonly canDock: boolean;
   /** `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. */
   readonly renderer?: Readonly<{ fallback: "driver" | null }>;
+  /** How much the system's text size grows body text: 1 at the default size, 2 when it is twice as large, after the lxapp's `maxTextScale`. Sizes already follow it; read it only for a layout that must change shape, such as fewer columns. */
+  readonly textScale: number;
 }
 
 /** CSS-named style; each element accepts the subset its `*Style` type lists. */

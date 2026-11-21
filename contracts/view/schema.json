@@ -557,7 +557,7 @@
     "direction": {"type": "\"ltr\" | \"rtl\"", "check": "none", "origin": "session", "doc": "Inline direction derived from `contentLanguage`."},
     "canDock": {"type": "boolean", "check": "bool", "origin": "push", "doc": "Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it."},
     "renderer": {"type": "Readonly<{ fallback: \"driver\" | null }>", "check": "renderer", "origin": "device", "optional": true, "absent": true, "doc": "`fallback: \"driver\"` when this device's GPU driver failed and pages render on the CPU."},
-    "textScale": {"type": "never", "check": "external", "origin": "device", "optional": true, "internal": true},
+    "textScale": {"type": "number", "check": "external", "origin": "device", "optional": true, "doc": "How much the system's text size grows body text: 1 at the default size, 2 when it is twice as large, after the lxapp's `maxTextScale`. Sizes already follow it; read it only for a layout that must change shape, such as fewer columns."},
     "palette": {"type": "never", "check": "external", "origin": "push", "optional": true, "internal": true, "doc": "The resolved theme: `{ revision, colors }`, one #rrggbbaa per role slot; the page never sees it."},
     "scales": {"type": "never", "check": "external", "origin": "push", "optional": true, "internal": true, "doc": "The resolved pack scales: `{ revision, values }`, one value per scale slot (points, ms for durations, a timing function for easings); the page never sees it."}
   },

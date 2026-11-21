@@ -3,7 +3,7 @@ use serde_json::json;
 #[test]
 fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
     let module = crate::session::tests::source(
-        "function render({env}){if(env.textScale)throw Error('internal mapping leaked');return h('view',{style:{fontSize:16,lineHeight:'24px'}},h('input',{value:'Scaling',style:{minHeight:44,padding:8}}),h('view',{},h('input',{value:'Scaling',style:{minHeight:44,padding:8}})),h('text',{},'Wrapping text for larger fonts in a narrow viewport'))}",
+        "function render({env}){if(typeof env.textScale!=='number')throw Error('the page reads one factor');return h('view',{style:{fontSize:16,lineHeight:'24px'}},h('input',{value:'Scaling',style:{minHeight:44,padding:8}}),h('view',{},h('input',{value:'Scaling',style:{minHeight:44,padding:8}})),h('text',{},'Wrapping text for larger fonts in a narrow viewport'))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let baseline = page.layout(220, 600, 1.0).unwrap();
@@ -109,4 +109,33 @@ fn a_select_chevron_and_its_room_grow_with_the_text_to_one_and_a_half() {
     environment.as_object_mut().unwrap().remove("textScale");
     page.set_environment(environment).unwrap();
     assert_eq!(chevron(&mut page).0, 10.0);
+}
+
+#[test]
+fn a_page_reads_the_applied_text_scale_and_rerenders_when_it_changes() {
+    let module = crate::session::tests::source(
+        "function render({env}){return h('view',{},h('text',{'data-testid':'scale'},String(env.textScale)))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let read = |page: &mut crate::ViewSession| {
+        let display = page.layout(220, 300, 1.0).unwrap();
+        display
+            .nodes
+            .iter()
+            .find(|node| node.test_id == "scale")
+            .unwrap()
+            .text
+            .clone()
+    };
+    assert_eq!(read(&mut page), "1");
+    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
+    page.set_environment(environment.clone()).unwrap();
+    assert_eq!(read(&mut page), "2", "twice the size");
+    // A curve that grows small text more than body text: the page reads body text's factor.
+    environment["textScale"] = json!([[0, 0], [12, 18], [17, 22.1], [16384, 16389.1]]);
+    page.set_environment(environment.clone()).unwrap();
+    assert_eq!(read(&mut page), "1.3");
+    environment.as_object_mut().unwrap().remove("textScale");
+    page.set_environment(environment).unwrap();
+    assert_eq!(read(&mut page), "1", "back to the default");
 }
