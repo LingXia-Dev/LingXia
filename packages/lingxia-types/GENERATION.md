@@ -32,6 +32,11 @@ input, not a second public declaration tree.
 documentation, branded paths, overload resolution, and representative complex
 return types.
 
+`npm run gen:api` also writes `api.json`: every member of the Logic API (`lx.*`,
+`App`, `definePage` and `page.*`, the error helpers) and every named type, with
+signatures, docs, tags and a source line. `lingxia api` reads it; the build
+copies it to `dist/api.json`, and `check:quality` fails when it is stale.
+
 The same check also ties the generated Logic Web declarations (`fetch`, URL,
 encoding, abort, streams, timers, console, and related types) to the explicit
 `rong_modules::init` array used by the LingXia Logic runtime.

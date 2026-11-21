@@ -41,7 +41,8 @@
       "types": "./dist/page.d.ts",
       "import": "./dist/esm/page.js",
       "require": "./dist/page.js"
-    }
+    },
+    "./api.json": "./dist/api.json"
   },
   "files": [
     "dist",
@@ -52,12 +53,12 @@
     "gen:logic": "node scripts/gen-logic.mjs",
     "gen": "npm run gen:i18n && npm run gen:logic",
     "check:logic": "npm run gen:logic -- --check",
-    "check:quality": "node scripts/check-generated-quality.mjs && node scripts/check-api-style.mjs && node scripts/check-twins.mjs",
-    "gen:api": "node scripts/check-api-style.mjs --write",
+    "check:quality": "node scripts/check-generated-quality.mjs && node scripts/check-api-style.mjs && node scripts/check-twins.mjs && node scripts/emit-api-json.mjs --check",
+    "gen:api": "node scripts/check-api-style.mjs --write && node scripts/emit-api-json.mjs",
     "check:esm": "node scripts/check-esm-exports.mjs",
     "test:types": "tsc -p tests/tsconfig.json && tsc -p tests/registry/tsconfig.json",
     "test:runtime": "npm run build && node tests/error-runtime.mjs && node tests/page-runtime.mjs && node tests/app-runtime.mjs && npm run check:esm",
-    "build": "tsc && tsc -p tsconfig.esm.json && node scripts/copy-static-types.mjs",
+    "build": "tsc && tsc -p tsconfig.esm.json && node scripts/copy-static-types.mjs && node scripts/emit-api-json.mjs --out dist/api.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run clean && npm run build"
   },
