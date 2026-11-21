@@ -19,6 +19,7 @@ interface MediaResult {
   finallyRan: boolean;
   caught: string | null;
   returnedDone: boolean;
+  earlyCaught: string | null;
   video: { width: number; height: number; durationMs: number; size: number; type: string };
   thumb: { path: string; width: number; height: number };
   compressedImage: { path: string };
@@ -33,7 +34,6 @@ test('read info, thumbnail, and compress local media', {
     'lx.media.compressImage',
     'lx.media.compressVideo',
     'CompressVideoTask.result',
-    'CompressVideoTask.progress',
     'lx.network.download',
   ],
   app: SHOWCASE_APP_ID,
@@ -49,16 +49,16 @@ test('read info, thumbnail, and compress local media', {
     const thumb = await lx.media.videoThumbnail(vid.uri, { positionMs: 500 });
     const compressedImage = await lx.media.compressImage(png.uri, { quality: 60 });
     const compressedVideo = await lx.media.compressVideo(vid.uri, { quality: 'low' }).result;
-    // Drain task.progress to prove progress events flow before the result settles.
+    // Drain the task to prove progress flows before the result settles.
     let lastProgress = -1;
     let progressTicks = 0;
     const progressTask = lx.media.compressVideo(vid.uri, { quality: 'low' });
-    for await (const tick of progressTask.progress) {
-      if (typeof tick.progress === 'number') { lastProgress = tick.progress; progressTicks += 1; }
+    for await (const tick of progressTask) {
+      if (typeof tick.fraction === 'number') { lastProgress = tick.fraction; progressTicks += 1; }
     }
     await progressTask.result;
-    // The result Promise supports: then/finally on success, catch on a bad
-    // path, and an early iterator return leaves nothing dangling.
+    // The result Promise supports then/finally on success and catch on a bad
+    // path; leaving the iteration early cancels the transcode.
     let finallyRan: boolean = false;
     const viaThen = await lx.media.compressVideo(vid.uri, { quality: 'low' }).result
       .then((r) => r.size)
@@ -69,9 +69,9 @@ test('read info, thumbnail, and compress local media', {
     cancelled.cancel();
     const caught = await cancelled.result.then(() => null).catch((error: { code?: string } | null) => error?.code ?? null);
     const earlyTask = lx.media.compressVideo(vid.uri, { quality: 'low' });
-    const iterator = earlyTask.progress[Symbol.asyncIterator]();
+    const iterator = earlyTask[Symbol.asyncIterator]();
     const returned = await iterator.return!();
-    await earlyTask.result;
+    const earlyCaught = await earlyTask.result.then(() => null, (error: { code?: string } | null) => error?.code ?? null);
     return {
       lastProgress,
       progressTicks,
@@ -79,6 +79,7 @@ test('read info, thumbnail, and compress local media', {
       finallyRan: finallyRan as boolean,
       caught,
       returnedDone: returned.done === true,
+      earlyCaught,
       video: { width: video.width, height: video.height, durationMs: video.durationMs, size: video.size, type: video.type ?? "" },
       thumb: { path: thumb.path, width: thumb.width, height: thumb.height },
       compressedImage: { path: compressedImage.path },
@@ -98,12 +99,13 @@ test('read info, thumbnail, and compress local media', {
   // the stream, and completion is what `wait()` above already proved.
   expect(result.progressTicks).toBeGreaterThanOrEqual(1);
   expect(result.lastProgress).toBeGreaterThan(0);
-  expect(result.lastProgress).toBeLessThanOrEqual(100);
+  expect(result.lastProgress).toBeLessThanOrEqual(1);
   // Thenable and iterator protocol.
   expect(result.viaThen).toBeGreaterThan(0);
   expect(result.finallyRan).toBe(true);
   expect(typeof result.caught).toBe('string');
   expect(result.returnedDone).toBe(true);
+  expect(result.earlyCaught).toBe('E_ABORT');
 
   // A thumbnail is a real image the lxapp can read back.
   expect(result.thumb.path.startsWith('lx://')).toBeTruthy();

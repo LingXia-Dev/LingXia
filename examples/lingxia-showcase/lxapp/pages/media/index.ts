@@ -982,11 +982,11 @@ export default definePage({
         try {
           task = lx.media.compressVideo(sourcePath, payload);
           compressVideoTask = task;
-          // Observe rejection immediately even if the progress iterator fails first.
+          // Observe rejection at once; the iteration also throws the failure.
           const outcome = task.result.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
-          for await (const { progress } of task.progress) {
+          for await (const { fraction = 0 } of task) {
             if (disposed || epoch !== compressionEpoch) return;
-            page.update(d => { d.videoCompressProgress = Math.round(progress * 100); });
+            page.update(d => { d.videoCompressProgress = Math.round(fraction * 100); });
           }
           const settled = await outcome;
           if (disposed || epoch !== compressionEpoch) return;

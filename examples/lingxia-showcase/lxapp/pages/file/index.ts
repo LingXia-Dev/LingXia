@@ -1,13 +1,6 @@
-import { definePage, lx, type DownloadTask, type DownloadResult } from '@lingxia/logic';
+import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
 import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
 import { errorMessage } from "../../shared/lib/errors";
-
-/** The slice of the page the module-level download helpers write back to. */
-// The page instance a download reports to; the download outlives a page.
-interface PdfPage {
-  readonly data: { readonly pdfProgressText?: unknown };
-  update(recipe: (draft: Record<string, unknown>) => undefined): void;
-}
 
 type InputEventDetail = { value: string };
 function detectFileType(url: string | undefined) {
@@ -45,57 +38,6 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(digits)} ${units[unitIndex]}`;
 }
 
-function formatProgressText(
-  progress: number | undefined,
-  downloadedBytes: number | undefined,
-  totalBytes: number | undefined,
-) {
-  const downloaded = formatBytes(downloadedBytes || 0);
-  if (typeof progress === "number" && Number.isFinite(progress) && totalBytes && totalBytes > 0) {
-    const percent = `${Math.round(progress * 100)}%`;
-    return `${percent} · ${downloaded} / ${formatBytes(totalBytes)}`;
-  }
-  if (totalBytes && totalBytes > 0) {
-    return `${downloaded} / ${formatBytes(totalBytes)}`;
-  }
-  return `Streaming · ${downloaded} downloaded`;
-}
-
-function isCancelError(error: unknown) {
-  const message = errorMessage(error, String(error ?? ""));
-  return /cancel|abort/i.test(message);
-}
-
-function downloadResultPath(result: DownloadResult | undefined) {
-  return result?.uri || "";
-}
-
-function supportsDownloadProgress(task: unknown): task is DownloadTask {
-  const candidate = task as Partial<DownloadTask> | null;
-  return !!(
-    candidate &&
-    typeof candidate === "object" &&
-    candidate.progress &&
-    typeof candidate.progress[Symbol.asyncIterator] === "function"
-  );
-}
-
-function supportsTransferControl(task: unknown) {
-  const candidate = task as Partial<DownloadTask> | null;
-  return !!(
-    candidate &&
-    typeof candidate === "object" &&
-    typeof candidate.pause === "function" &&
-    typeof candidate.resume === "function"
-  );
-}
-
-let pdfDownloadTask: DownloadTask | null = null;
-let pdfDownloadObserver: Promise<void> | null = null;
-let pdfDownloadUrl = "";
-let pdfDownloadPage: PdfPage | null = null;
-let pdfOpenRunId = 0;
-
 function guessFileNameFromUrl(url: string, fallbackExt = "") {
   const clean = String(url || "").split("#")[0].split("?")[0];
   const fileName = clean.split("/").pop() || "";
@@ -119,87 +61,6 @@ function userDataFilePath(fileName: string) {
   return `${base}/${sanitizeFileName(fileName)}`;
 }
 
-function updatePdfPage(data: Record<string, unknown>) {
-  if (pdfDownloadPage) {
-    pdfDownloadPage.update(d => { Object.assign(d, data); });
-  }
-}
-
-async function observePdfTask(task: DownloadTask) {
-  try {
-    for await (const event of task.progress) {
-      if (event.kind === "progress") {
-        const hasPreciseProgress =
-          typeof event.progress === "number" &&
-          Number.isFinite(event.progress) &&
-          !!event.totalBytes &&
-          event.totalBytes > 0;
-        updatePdfPage({
-          pdfDownloadState: "running",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressKnown: hasPreciseProgress,
-          pdfDownloadProgress: hasPreciseProgress
-            ? Number(((event.progress ?? 0) * 100).toFixed(1))
-            : 0,
-          pdfProgressText: formatProgressText(
-            event.progress,
-            event.downloadedBytes,
-            event.totalBytes,
-          ),
-        });
-        continue;
-      }
-
-      if (event.kind === "paused") {
-        updatePdfPage({
-          pdfDownloadState: "paused",
-          pdfTransferButtonText: "Continue Download",
-        });
-        continue;
-      }
-
-      if (event.kind === "resumed") {
-        updatePdfPage({
-          pdfDownloadState: "running",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressText: pdfDownloadPage?.data.pdfProgressText || "Resuming transfer...",
-        });
-        continue;
-      }
-
-      if (event.kind === "canceled") {
-        updatePdfPage({
-          pdfDownloadState: "idle",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressText: "Download canceled",
-        });
-        continue;
-      }
-
-      if (event.kind === "completed") {
-        const resultPath = downloadResultPath(event.result);
-        updatePdfPage({
-          pdfDownloadState: "opening",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressKnown: true,
-          pdfDownloadProgress: 95,
-          pdfProgressText: resultPath
-            ? `Downloaded to ${resultPath}, opening...`
-            : "Download complete, opening...",
-        });
-      }
-    }
-  } catch (error) {
-    updatePdfPage({
-      pdfDownloadState: "idle",
-      pdfTransferButtonText: "Pause Download",
-      pdfProgressText: errorMessage(error, "Download failed"),
-    });
-  } finally {
-    pdfDownloadObserver = null;
-  }
-}
-
 export default definePage({
   data: {
     activeDemo: "openFile",
@@ -210,17 +71,12 @@ export default definePage({
     chooseFileStatusText: "Choose a file",
     chooseFileSelectedPath: "",
     chooseFileSelectedType: "",
-    isPdfDownloading: false,
-    pdfDownloadState: "idle",
-    pdfProgressKnown: false,
-    pdfDownloadProgress: 0,
-    pdfProgressText: "",
-    pdfSupportsTransferControl: false,
-    pdfTransferButtonText: "Pause Download",
     isOfficeFetching: false,
     officeStatusText: "",
   },
   setup(page) {
+    // The running download, for pause and resume; the stream below owns its outcome.
+    let pdfTask: DownloadTask | null = null;
     const actions = {
       async goBack() { await lx.nav.back(); },
       selectSection({ section }: { section: string }) {
@@ -242,134 +98,23 @@ export default definePage({
       onOfficeFileTypeInput(event: NativeEvent<InputEventDetail>) {
         page.update(d => { d.officeFileType = eventDetail(event).value || ""; });
       },
-      async openPdf() {
-        const url = page.data.pdfUrl?.trim();
-        if (!url) {
-          lx.ui.toast("Please enter PDF URL");
-          return;
-        }
-        if (page.data.isPdfDownloading) return;
-        let task = pdfDownloadTask;
-        const shouldResumeExisting = Boolean(task && pdfDownloadUrl === url);
-        page.update(d => {
-          d.isPdfDownloading = true;
-          d.pdfDownloadState = "running";
-          d.pdfProgressKnown = false;
-          d.pdfDownloadProgress = 0;
-          d.pdfProgressText = shouldResumeExisting ? "Resuming transfer..." : "Starting transfer...";
-          d.pdfSupportsTransferControl = false;
-          d.pdfTransferButtonText = "Pause Download";
-        });
+      /** Download the PDF as one stream of progress, then open it; the stream returns the path. */
+      async *downloadPdf(url: string): AsyncGenerator<TransferProgress, { path: string }> {
+        const task = lx.network.download(url.trim());
+        pdfTask = task;
         try {
-          if (!shouldResumeExisting) {
-            if (task && typeof task.cancel === "function") {
-              task.cancel().catch(() => {});
-            }
-            task = lx.network.download(url);
-            pdfDownloadTask = task;
-            pdfDownloadUrl = url;
-          }
-          const runId = pdfOpenRunId + 1;
-          pdfOpenRunId = runId;
-          const canObserveProgress = supportsDownloadProgress(task);
-          const canControlTransfer = supportsTransferControl(task);
-          page.update(d => {
-            d.pdfSupportsTransferControl = canControlTransfer;
-            d.pdfTransferButtonText = canControlTransfer
-              ? "Pause Download"
-              : "Pause/Continue Unavailable";
-            d.pdfProgressText = canObserveProgress
-              ? "Starting transfer..."
-              : "Downloading with promise-style result only...";
-          });
-          if (!task) {
-            throw new Error("network.download did not return a task");
-          }
-          if (canObserveProgress && !pdfDownloadObserver) {
-            pdfDownloadObserver = observePdfTask(task);
-          }
-          if (canControlTransfer && shouldResumeExisting) {
-            await task.resume();
-          }
-          const result = await task.result;
-          if (runId !== pdfOpenRunId || pdfDownloadPage !== page) {
-            return;
-          }
-          const resultPath = downloadResultPath(result);
-          if (!resultPath) {
-            throw new Error("network.download did not return a file path");
-          }
-          page.update(d => {
-            d.pdfDownloadState = "opening";
-            d.pdfProgressKnown = true;
-            d.pdfDownloadProgress = 95;
-            d.pdfProgressText = `Downloaded to ${resultPath}, opening...`;
-          });
-          await lx.openFile(resultPath, { mode: "auto" });
-          if (runId !== pdfOpenRunId || pdfDownloadPage !== page) {
-            return;
-          }
-          page.update(d => {
-            d.pdfDownloadState = "completed";
-            d.pdfProgressKnown = true;
-            d.pdfDownloadProgress = 100;
-            d.pdfProgressText = `Opened ${resultPath}`;
-          });
-        } catch (error) {
-          if (pdfDownloadPage !== page) {
-            return;
-          }
-          page.update(d => {
-            d.pdfDownloadState = "idle";
-            d.pdfSupportsTransferControl = false;
-            d.pdfTransferButtonText = "Pause Download";
-            d.pdfProgressText = isCancelError(error)
-              ? "Download canceled"
-              : errorMessage(error, "Open PDF failed");
-          });
-          lx.ui.toast(errorMessage(error, "Open PDF failed"));
+          const { uri } = yield* task;
+          await lx.openFile(uri, { mode: "auto" });
+          return { path: uri };
         } finally {
-          if (pdfDownloadPage === page) {
-            if (pdfDownloadTask === task && page.data.pdfDownloadState !== "paused") {
-              pdfDownloadTask = null;
-              pdfDownloadUrl = "";
-            }
-            page.update(d => {
-              d.isPdfDownloading = false;
-              d.pdfSupportsTransferControl = Boolean(pdfDownloadTask);
-            });
-          }
+          if (pdfTask === task) pdfTask = null;
         }
       },
-      async togglePdfTransfer() {
-        const task = pdfDownloadTask;
-        if (!task || !supportsTransferControl(task)) {
-          lx.ui.toast("Current runtime does not support pause/resume yet");
-          return;
-        }
-
-        try {
-          if (page.data.pdfDownloadState === "paused") {
-            // A recreated page must own a completion waiter before resuming.
-            if (!page.data.isPdfDownloading) {
-              await actions.openPdf();
-              return;
-            }
-            page.update(d => {
-              d.pdfTransferButtonText = "Resuming...";
-              d.pdfProgressText = page.data.pdfProgressText || "Resuming transfer...";
-            });
-            await task.resume();
-            return;
-          }
-
-          if (page.data.pdfDownloadState === "running") {
-            page.update(d => { d.pdfTransferButtonText = "Pausing..."; });
-            await task.pause();
-          }
-        } catch (error) {
-          lx.ui.toast(errorMessage(error, "Transfer action failed"));
-        }
+      async pausePdf() {
+        await pdfTask?.pause();
+      },
+      async resumePdf() {
+        await pdfTask?.resume();
       },
       async chooseFileFromUserCache() {
         try {
@@ -451,32 +196,14 @@ export default definePage({
     };
     return {
       async onLoad(options = {}) {
-        pdfDownloadPage = page;
         const requestedSection = options?.section === "chooseFile" ? "chooseFile" : "openFile";
-        const hasPausedPdf = Boolean(pdfDownloadTask);
         page.update(d => {
           d.activeDemo = requestedSection;
-          d.pdfUrl = hasPausedPdf ? pdfDownloadUrl : page.data.pdfUrl;
           d.chooseFileDefaultPath = lx.fs.userData || "";
           d.chooseFileStatusText = "Choose a file";
-          d.isPdfDownloading = false;
-          d.pdfDownloadState = hasPausedPdf ? "paused" : "idle";
-          d.pdfProgressKnown = false;
-          d.pdfDownloadProgress = 0;
-          d.pdfProgressText = hasPausedPdf ? "Download paused, tap to continue" : "";
-          d.pdfSupportsTransferControl = Boolean(hasPausedPdf);
-          d.pdfTransferButtonText = hasPausedPdf ? "Continue Download" : "Pause Download";
           d.isOfficeFetching = false;
           d.officeStatusText = "";
         });
-      },
-      onUnload() {
-        pdfOpenRunId += 1;
-        pdfDownloadPage = null;
-        const task = pdfDownloadTask;
-        if (task && supportsTransferControl(task)) {
-          task.pause().catch(() => {});
-        }
       },
       actions,
     };

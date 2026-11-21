@@ -52,6 +52,8 @@ pub struct UploadBehavior {
     pub request_timeout: Duration,
     pub connect_timeout: Option<Duration>,
     pub chunk_size: usize,
+    /// A non-2xx answer resolves as an [`UploadResult`] instead of a `Server` failure.
+    pub resolve_http_errors: bool,
 }
 
 impl Default for UploadBehavior {
@@ -60,6 +62,7 @@ impl Default for UploadBehavior {
             request_timeout: UPLOAD_DEFAULT_REQUEST_TIMEOUT,
             connect_timeout: None,
             chunk_size: UPLOAD_DEFAULT_CHUNK_SIZE,
+            resolve_http_errors: false,
         }
     }
 }
@@ -81,6 +84,8 @@ pub struct UploadRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadResult {
     pub status_code: u16,
+    /// Response headers, names lowercased.
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
@@ -372,6 +377,15 @@ fn user_agent_for_request(request: &UploadRequest) -> String {
         .unwrap_or_else(rong::get_user_agent)
 }
 
+fn header_pairs(headers: &http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            Some((name.as_str().to_string(), value.to_str().ok()?.to_string()))
+        })
+        .collect()
+}
+
 async fn collect_response_body(body: rong_rt::http::HttpBody) -> Result<Vec<u8>, UploadFailure> {
     host_http::collect_body(body)
         .await
@@ -639,6 +653,28 @@ pub async fn upload_file_with_behavior(
                 err
             } else {
                 match response.take() {
+                    Some(Ok(response_value))
+                        if behavior.resolve_http_errors && !response_value.status.is_success() =>
+                    {
+                        let status_code = response_value.status.as_u16();
+                        let headers = header_pairs(&response_value.headers);
+                        let body = collect_response_body(response_value.body)
+                            .await
+                            .unwrap_or_default();
+                        let _ = event_tx.send(UploadEvent::Completed {
+                            url: request.url.clone(),
+                            status_code,
+                            uploaded_bytes: err.uploaded_bytes,
+                            total_bytes,
+                        });
+                        drop(event_tx);
+                        let _ = forwarder.await;
+                        return Ok(UploadResult {
+                            status_code,
+                            headers,
+                            body,
+                        });
+                    }
                     Some(Ok(response_value)) if !response_value.status.is_success() => {
                         let status_code = response_value.status.as_u16();
                         let body = collect_response_body(response_value.body)
@@ -708,6 +744,7 @@ pub async fn upload_file_with_behavior(
     match response.take().unwrap() {
         Ok(response) => {
             let status_code = response.status.as_u16();
+            let headers = header_pairs(&response.headers);
             let body = collect_response_body(response.body)
                 .await
                 .map_err(|mut err| {
@@ -717,7 +754,7 @@ pub async fn upload_file_with_behavior(
                     err
                 })?;
 
-            if !(200..300).contains(&status_code) {
+            if !(200..300).contains(&status_code) && !behavior.resolve_http_errors {
                 let error = String::from_utf8_lossy(&body).trim().to_string();
                 let failure = UploadFailure::new(
                     UploadFailureKind::Server,
@@ -749,7 +786,11 @@ pub async fn upload_file_with_behavior(
             });
             drop(event_tx);
             let _ = forwarder.await;
-            Ok(UploadResult { status_code, body })
+            Ok(UploadResult {
+                status_code,
+                headers,
+                body,
+            })
         }
         Err(err) => {
             let failure = http_failure(&err, request.url.clone(), uploaded_bytes, total_bytes);
@@ -1190,5 +1231,35 @@ mod wire_tests {
         assert_eq!(failure.kind, UploadFailureKind::Server, "{}", failure.error);
         assert!(failure.error.contains("403"), "{}", failure.error);
         assert!(failure.error.contains("refused!!"), "{}", failure.error);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refusal_resolves_with_its_status_when_asked() {
+        let (addr, server) = refuse_once(403).await;
+        let file = temp_file("refused-resolved", 32 * 1024 * 1024);
+        let behavior = UploadBehavior {
+            resolve_http_errors: true,
+            ..UploadBehavior::default()
+        };
+        let (_abort_tx, abort_rx) = oneshot::channel();
+        let result = upload_file_with_behavior(
+            request_for(addr, &file, UploadBodyMode::Raw),
+            behavior,
+            abort_rx,
+            |_| {},
+        )
+        .await
+        .expect("a 403 resolves when the caller reads statuses itself");
+        server.await.unwrap();
+        let _ = std::fs::remove_file(&file);
+
+        assert_eq!(result.status_code, 403);
+        assert_eq!(result.body, b"refused!!");
+        assert!(
+            result
+                .headers
+                .iter()
+                .any(|(name, value)| name == "content-length" && value == "9")
+        );
     }
 }

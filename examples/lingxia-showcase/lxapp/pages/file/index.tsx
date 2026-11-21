@@ -1,8 +1,39 @@
-import { type View } from '@lingxia/view';
+import { useLocal, useStream, type Stream, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
-type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
+type Progress = { readonly loaded: number; readonly total?: number; readonly fraction?: number };
+type InputEvent = { detail: { value: string } };
+type Actions = {
+  downloadPdf(url: string): Stream<Progress, { path: string }>;
+  pausePdf(): Promise<void>;
+  resumePdf(): Promise<void>;
+  onPdfUrlInput(event: InputEvent): Promise<void>;
+  onOfficeUrlInput(event: InputEvent): Promise<void>;
+  onOfficeFileTypeInput(event: InputEvent): Promise<void>;
+  openOffice(): Promise<void>;
+  chooseFileFromUserCache(): Promise<void>;
+  openChosenFile(): Promise<void>;
+};
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function progressText(progress: Progress | null) {
+  if (!progress) return 'Starting transfer...';
+  const loaded = formatBytes(progress.loaded);
+  if (progress.total === undefined) return `Streaming · ${loaded} downloaded`;
+  return `${Math.round((progress.fraction ?? 0) * 100)}% · ${loaded} / ${formatBytes(progress.total)}`;
+}
 
 function UrlField({
   testId,
@@ -37,19 +68,24 @@ function UrlField({
   );
 }
 
-export function render({ data, actions: raw }: View) {
-  const actions = raw as Actions;
-  const state = String(data.pdfDownloadState || 'idle');
-  const paused = state === 'paused';
-  const transferEnabled = !!data.pdfSupportsTransferControl && (!!data.isPdfDownloading || paused);
-  const progress = Math.max(0, Math.min(100, Number(data.pdfDownloadProgress) || 0));
-  const pdfLabel = paused
-    ? 'Download Paused'
-    : state === 'opening'
-      ? 'Opening File...'
-      : data.isPdfDownloading
-        ? 'Downloading...'
-        : 'Download and Preview PDF';
+export function render({ data, actions }: View<Actions>) {
+  const progress = useLocal<Progress | null>('pdf-progress', null);
+  const paused = useLocal('pdf-paused', false);
+  const download = useStream('pdf', actions.downloadPdf, { onData: value => progress.set(value) });
+  const streaming = download.status === 'streaming';
+  const fraction = progress.value?.fraction;
+  const status =
+    download.status === 'completed' ? `Opened ${download.result?.path ?? ''}`
+      : download.status === 'failed' ? download.error?.message ?? 'Download failed'
+        : download.status === 'canceled' ? 'Download canceled'
+          : paused.value ? 'Download paused'
+            : progressText(progress.value);
+  const pdfLabel = paused.value ? 'Download Paused' : streaming ? 'Downloading...' : 'Download and Preview PDF';
+  const togglePause = async () => {
+    if (paused.value) await actions.resumePdf();
+    else await actions.pausePdf();
+    paused.set(!paused.value);
+  };
   return (
     <Page>
       {data.activeDemo === 'chooseFile' ? (
@@ -78,37 +114,44 @@ export function render({ data, actions: raw }: View) {
               label="PDF URL"
               value={data.pdfUrl}
               placeholder="Enter PDF URL"
-              disabled={!!data.isPdfDownloading}
+              disabled={streaming}
               onInput={value => actions.onPdfUrlInput({ detail: { value } })}
             />
             <Button
               testId="file-pdf-open"
-              disabled={!!data.isPdfDownloading || paused || !String(data.pdfUrl || '').trim()}
-              onClick={() => actions.openPdf()}
+              disabled={streaming || !String(data.pdfUrl || '').trim()}
+              onClick={() => {
+                progress.set(null);
+                paused.set(false);
+                download.start(String(data.pdfUrl || ''));
+              }}
             >
               {pdfLabel}
             </Button>
-            {(state !== 'idle' || !!data.pdfProgressText) && (
+            {download.status !== 'idle' && (
               <view className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
                 <view className="flex-row items-center justify-between">
                   <text className="text-xs text-accent">PDF Transfer</text>
                   <text data-testid="file-pdf-progress" className="text-xs text-accent">
-                    {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
+                    {fraction === undefined ? 'Streaming' : `${Math.round(fraction * 100)}%`}
                   </text>
                 </view>
-                {data.pdfProgressKnown ? (
+                {fraction !== undefined && (
                   <view className="flex-row h-2 rounded-full bg-accent-soft">
-                    <view data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
+                    <view data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${fraction * 100}%` }} />
                   </view>
-                ) : (
-                  <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
                 )}
-                <text data-testid="file-pdf-status" className="text-xs">
-                  {String(data.pdfProgressText || '')}
-                </text>
-                <Button size="sm" testId="file-pdf-transfer" disabled={!transferEnabled} onClick={() => actions.togglePdfTransfer()}>
-                  {String(data.pdfTransferButtonText || 'Pause Download')}
-                </Button>
+                <text data-testid="file-pdf-status" className="text-xs">{status}</text>
+                {streaming && (
+                  <view className="flex-row gap-2">
+                    <Button size="sm" testId="file-pdf-transfer" onClick={() => void togglePause()}>
+                      {paused.value ? 'Continue Download' : 'Pause Download'}
+                    </Button>
+                    <Button size="sm" variant="secondary" testId="file-pdf-cancel" onClick={() => download.cancel()}>
+                      Cancel
+                    </Button>
+                  </view>
+                )}
               </view>
             )}
           </Section>

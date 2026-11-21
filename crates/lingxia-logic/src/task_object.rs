@@ -1,43 +1,175 @@
-//! A task owns its result and controls; progress is a separate, single-consumer stream.
+//! A task is its result plus an async iterable of progress whose return value is that result,
+//! so `return yield* task` hands a page stream both. The platform iterators keep their own
+//! event shapes; each task maps them to `TransferProgress` here.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSSymbol, Promise};
+use rong::{JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise};
+
+/// How far a task has got: `fraction` only when `total` is known.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TransferProgress {
+    pub loaded: f64,
+    pub total: Option<f64>,
+}
+
+impl TransferProgress {
+    pub(crate) fn bytes(loaded: u64, total: Option<u64>) -> Self {
+        Self {
+            loaded: loaded as f64,
+            total: total.filter(|total| *total > 0).map(|total| total as f64),
+        }
+    }
+
+    fn to_js(self, ctx: &JSContext) -> JSResult<JSObject> {
+        let object = JSObject::new(ctx);
+        object.set("loaded", self.loaded)?;
+        if let Some(total) = self.total {
+            object.set("total", total)?;
+            object.set("fraction", (self.loaded / total).clamp(0.0, 1.0))?;
+        }
+        Ok(object)
+    }
+}
+
+/// Maps one platform event to progress; `None` skips it (state changes, terminal events).
+pub(crate) type ProgressMap = Rc<dyn Fn(&JSObject) -> JSResult<Option<TransferProgress>>>;
+
+/// Reads the byte counters of a `{ kind, <loaded>, totalBytes }` platform event.
+pub(crate) fn byte_events(loaded: &'static str) -> ProgressMap {
+    Rc::new(move |event| {
+        let kind = event.get::<_, String>("kind").unwrap_or_default();
+        if kind != "progress" && kind != "completed" {
+            return Ok(None);
+        }
+        let Some(done) = event.get::<_, Option<f64>>(loaded).ok().flatten() else {
+            return Ok(None);
+        };
+        let total = event.get::<_, Option<f64>>("totalBytes").ok().flatten();
+        Ok(Some(TransferProgress::bytes(
+            done as u64,
+            total.map(|total| total as u64),
+        )))
+    })
+}
 
 pub(crate) fn create_task(
     ctx: &JSContext,
     iterator: JSObject,
     result: Promise,
     controls: &[&str],
+    map: ProgressMap,
 ) -> JSResult<JSObject> {
     let task = JSObject::new(ctx);
-    task.set("result", result)?;
+    task.set("result", result.clone())?;
     for name in controls {
         task.set(*name, iterator.get::<_, JSFunc>(*name)?)?;
         iterator.delete(*name)?;
     }
-    let progress = JSObject::new(ctx);
+    let cancel = controls
+        .contains(&"cancel")
+        .then(|| task.get::<_, JSFunc>("cancel"))
+        .transpose()?;
     let symbol = ctx
         .global()
         .get::<_, JSObject>("Symbol")?
         .get::<_, JSSymbol>("asyncIterator")?;
     let claimed = Rc::new(Cell::new(false));
-    progress.set(
+    task.set(
         symbol,
-        JSFunc::new(ctx, move || -> JSResult<JSObject> {
+        JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<JSObject> {
             if claimed.replace(true) {
                 return Err(rong::HostError::new(
                     rong::error::E_INVALID_STATE,
-                    "Task progress has one consumer; create a single observer and share its state",
+                    "A task has one progress consumer; create a single observer and share its state",
                 )
                 .into());
             }
-            Ok(iterator.clone())
+            progress_iterator(&ctx, &iterator, &result, cancel.clone(), map.clone())
         })?,
     )?;
-    task.set("progress", progress)?;
     Ok(task)
+}
+
+fn step(
+    ctx: &JSContext,
+    done: bool,
+    value: impl FnOnce(&JSObject) -> JSResult<()>,
+) -> JSResult<JSObject> {
+    let step = JSObject::new(ctx);
+    step.set("done", done)?;
+    value(&step)?;
+    Ok(step)
+}
+
+/// Iterates mapped progress and returns the task's result; leaving early cancels the task.
+fn progress_iterator(
+    ctx: &JSContext,
+    source: &JSObject,
+    result: &Promise,
+    cancel: Option<JSFunc>,
+    map: ProgressMap,
+) -> JSResult<JSObject> {
+    let iterator = JSObject::new(ctx);
+    let next: JSFunc = source.get("next")?;
+    let (next_source, next_result) = (source.clone(), result.clone());
+    iterator.set(
+        "next",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let (source, next, result, map) = (
+                next_source.clone(),
+                next.clone(),
+                next_result.clone(),
+                map.clone(),
+            );
+            async move {
+                loop {
+                    let raw = match next
+                        .call_async::<_, JSObject>(Some(source.clone()), ())
+                        .await
+                    {
+                        Ok(raw) => raw,
+                        // The result carries the task's own error; the iterator's is a symptom.
+                        Err(error) => {
+                            result.clone().into_future::<JSValue>().await?;
+                            return Err(error);
+                        }
+                    };
+                    if raw.get::<_, bool>("done").unwrap_or(false) {
+                        let value = result.clone().into_future::<JSValue>().await?;
+                        return step(&ctx, true, |step| step.set("value", value).map(|_| ()));
+                    }
+                    let Some(event) = raw.get::<_, Option<JSObject>>("value").ok().flatten() else {
+                        continue;
+                    };
+                    if let Some(progress) = map(&event)? {
+                        let progress = progress.to_js(&ctx)?;
+                        return step(&ctx, false, |step| step.set("value", progress).map(|_| ()));
+                    }
+                }
+            }
+        })?,
+    )?;
+    let close: Option<JSFunc> = source.get("return").ok();
+    let return_source = source.clone();
+    iterator.set(
+        "return",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let (source, close, cancel) = (return_source.clone(), close.clone(), cancel.clone());
+            async move {
+                if let Some(cancel) = cancel {
+                    let pending: Promise = cancel.call(None, ())?;
+                    pending.into_future::<JSValue>().await?;
+                }
+                if let Some(close) = close {
+                    close.call_async::<_, JSValue>(Some(source), ()).await?;
+                }
+                step(&ctx, true, |_| Ok(()))
+            }
+        })?,
+    )?;
+    Ok(iterator)
 }
 
 pub(crate) fn validate_abort_signal(signal: Option<&JSObject>) -> JSResult<()> {
@@ -99,24 +231,63 @@ mod tests {
     use super::*;
     use rong::{JSEngine, Source};
 
+    fn task_from(ctx: &JSContext, source: &str, result: &str, controls: &[&str]) -> JSObject {
+        let iterator: JSObject = ctx.eval(Source::from_bytes(source)).unwrap();
+        let result: Promise = ctx.eval(Source::from_bytes(result)).unwrap();
+        let task = create_task(
+            ctx,
+            iterator,
+            result,
+            controls,
+            byte_events("downloadedBytes"),
+        )
+        .unwrap();
+        ctx.global().set("task", task.clone()).unwrap();
+        task
+    }
+
     #[test]
-    fn separates_result_progress_and_controls_and_rejects_second_observer() {
+    fn the_task_is_its_result_controls_and_one_progress_iterable() {
         let runtime = <rong::RongJS as JSEngine>::runtime();
         let ctx = runtime.context();
-        let iterator: JSObject = ctx.eval(Source::from_bytes(
-            "({ next() { return Promise.resolve({done:true}); }, return() { return Promise.resolve({done:true}); }, cancel() { return Promise.resolve(); } })",
-        )).unwrap();
-        let result: Promise = ctx.eval(Source::from_bytes("Promise.resolve(42)")).unwrap();
-        let task = create_task(&ctx, iterator, result, &["cancel"]).unwrap();
-        ctx.global().set("task", task).unwrap();
+        task_from(
+            &ctx,
+            "({ next() { return Promise.resolve({done:true}); }, cancel() { return Promise.resolve(); } })",
+            "Promise.resolve(42)",
+            &["cancel"],
+        );
         let valid: bool = ctx.eval(Source::from_bytes(
-            "task.result instanceof Promise && !('then' in task) && !('next' in task) && typeof task.cancel === 'function' && !(Symbol.asyncIterator in task)",
+            "task.result instanceof Promise && !('then' in task) && !('progress' in task) && typeof task.cancel === 'function' && typeof task[Symbol.asyncIterator] === 'function'",
         )).unwrap();
         assert!(valid);
         let valid: bool = ctx.eval(Source::from_bytes(
-            "(() => { const iterator = task.progress[Symbol.asyncIterator](); if ('cancel' in iterator || typeof iterator.next !== 'function') return false; try { task.progress[Symbol.asyncIterator](); return false; } catch (e) { return e.code === 'E_INVALID_STATE'; } })()",
+            "(() => { const iterator = task[Symbol.asyncIterator](); if ('cancel' in iterator || typeof iterator.next !== 'function') return false; try { task[Symbol.asyncIterator](); return false; } catch (e) { return e.code === 'E_INVALID_STATE'; } })()",
         )).unwrap();
         assert!(valid);
+    }
+
+    #[test]
+    fn progress_maps_platform_events_and_the_iteration_returns_the_result() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        task_from(
+            &ctx,
+            "(() => { const events = [{ kind: 'progress', downloadedBytes: 5 }, { kind: 'paused' }, { kind: 'progress', downloadedBytes: 5, totalBytes: 10 }, { kind: 'completed', downloadedBytes: 10, totalBytes: 10 }]; return { next() { const value = events.shift(); return Promise.resolve(value ? { done: false, value } : { done: true }); } }; })()",
+            "Promise.resolve({ path: 'lx://temp/a' })",
+            &[],
+        );
+        let script = "(async () => { const seen = []; const iterator = task[Symbol.asyncIterator](); for (;;) { const step = await iterator.next(); if (step.done) return seen.join('|') + '=>' + step.value.path; seen.push(JSON.stringify(step.value)); } })()";
+        let local = tokio::task::LocalSet::new();
+        let answer = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(local.run_until(ctx.eval_async::<String>(Source::from_bytes(script))))
+            .unwrap();
+        assert_eq!(
+            answer,
+            r#"{"loaded":5}|{"loaded":5,"total":10,"fraction":0.5}|{"loaded":10,"total":10,"fraction":1}=>lx://temp/a"#
+        );
     }
 
     #[test]

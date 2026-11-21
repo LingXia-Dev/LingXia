@@ -3,11 +3,14 @@ import type {
   AppPersistedDownloadResult,
   AppTempDownloadResult,
   CompressVideoOptions,
-  DownloadProgressEvent,
   Lx,
   PickedFile,
   UploadOptions,
-  UploadProgressEvent,
+  TransferProgress,
+  UploadResult,
+  CompressVideoResult,
+  HostAppUpdateTask,
+  HostAppUpdateResult,
   DownloadTask,
   DownloadsDownloadResult,
 } from "../src/index.js";
@@ -128,36 +131,60 @@ async function pickFileShapes(): Promise<void> {
   await lx.pick.file({ multiple: true });
 }
 
-function progressEvents(
-  download: DownloadProgressEvent,
-  upload: UploadProgressEvent,
-): void {
-  if (download.kind === "completed") {
-    const size: number = download.result.sizeBytes;
-    void size;
-  } else {
-    // @ts-expect-error result is only on completed
-    const result = download.result;
-    void result;
+// Every task is its result plus one stream of `TransferProgress` that returns the result.
+async function taskShape(task: DownloadTask<AppTempDownloadResult>): Promise<void> {
+  for await (const progress of task) {
+    const loaded: number = progress.loaded;
+    const fraction: number | undefined = progress.fraction;
+    void loaded;
+    void fraction;
+    // @ts-expect-error progress carries no event kind
+    void progress.kind;
   }
-
-  if (upload.kind === "completed") {
-    const status: number = upload.result.statusCode;
-    void status;
-  } else {
-    // @ts-expect-error result is only on completed
-    const result = upload.result;
-    void result;
+  // @ts-expect-error progress is the task itself
+  void task.progress;
+  const step = await task[Symbol.asyncIterator]().next();
+  if (step.done) {
+    const uri: string = step.value.uri;
+    void uri;
   }
 }
 
-type CompletedHasResult = Assert<
-  Extends<Extract<DownloadProgressEvent, { kind: "completed" }>, { result: unknown }>
->;
+async function* streamDownload(url: string): AsyncGenerator<TransferProgress, AppTempDownloadResult> {
+  return yield* lx.network.download(url);
+}
+
+async function uploadAnswers(options: UploadOptions): Promise<void> {
+  const answer: UploadResult = await lx.network.upload("https://example.com/upload", options).result;
+  if (!answer.ok) {
+    const status: number = answer.status;
+    const body: string = answer.text;
+    void status;
+    void body;
+  }
+  const parsed: { id: string } = answer.json<{ id: string }>();
+  void parsed;
+  // @ts-expect-error the status is `status`
+  void answer.statusCode;
+}
+
+async function otherTasks(clip: string, update: HostAppUpdateTask): Promise<void> {
+  const compress = lx.media.compressVideo(clip);
+  for await (const { fraction } of compress) void fraction;
+  const compressed: CompressVideoResult = await compress.result;
+  void compressed;
+  for await (const { loaded } of update) void loaded;
+  const applied: HostAppUpdateResult = await update.result;
+  void applied;
+  // @ts-expect-error an update cannot be paused
+  void update.pause;
+}
 
 export type ExclusiveOptionsGate = [
   typeof downloadCorrelation,
   typeof pickFileShapes,
-  typeof progressEvents,
-  CompletedHasResult,
+  typeof taskShape,
+  typeof streamDownload,
+  typeof uploadAnswers,
+  typeof otherTasks,
 ];

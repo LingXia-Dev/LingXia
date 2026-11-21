@@ -98,49 +98,40 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
  */
 export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
-export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
-  | {
-      /** Bytes arrived, or the transfer paused or resumed. */
-      kind: 'progress' | 'paused' | 'resumed';
-      /** Bytes written so far. */
-      downloadedBytes?: number;
-      /** The full size, when the server named it. */
-      totalBytes?: number;
-      /** Present only when the total size is known. */
-      progress?: number;
-    }
-  | {
-      kind: 'canceled';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-    }
-  | {
-      kind: 'completed';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-      result: TResult;
-    };
-
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-/** A running operation. Progress has one consumer; stopping observation does not cancel it. */
-export interface Task<TResult, TProgress> {
-  /** Settles once with the outcome. */
-  readonly result: Promise<TResult>;
-  /** Progress events while it runs; ends when it finishes. */
-  readonly progress: AsyncIterable<TProgress>;
+/** How far a task has got. */
+export interface TransferProgress {
+  /** Units done: bytes for a transfer. */
+  readonly loaded: number;
+  /** Units in all, when known. */
+  readonly total?: number;
+  /** `loaded / total`, `0` to `1`; present only when `total` is known. */
+  readonly fraction?: number;
 }
 
-export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgress> {
-  /** Requests cancellation. Await result to observe the terminal outcome. */
+/**
+ * A running operation. Iterate it for progress; the iteration returns the
+ * result, so a streaming page action can `return yield* task`. One consumer
+ * iterates; leaving the iteration early cancels a task that can be canceled.
+ */
+export interface Task<R, P = TransferProgress> extends AsyncIterable<P> {
+  /**
+   * Resolves with the result; rejects with the failure.
+   * @throws {E_ABORT} The task was canceled.
+   */
+  readonly result: Promise<R>;
+  [Symbol.asyncIterator](): AsyncIterator<P, R, undefined>;
+}
+
+export interface CancelableTask<R, P = TransferProgress> extends Task<R, P> {
+  /** Requests cancellation; `result` then rejects. */
   cancel(): Promise<void>;
 }
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
-  extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  extends CancelableTask<TResult> {
   /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
   /** Resumes a paused download from where it stopped; does nothing in any other state. */

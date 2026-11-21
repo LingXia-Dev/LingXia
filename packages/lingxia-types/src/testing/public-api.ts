@@ -658,11 +658,11 @@ export const LX_RUNTIME_CAPABILITY_NAMES = LX_RUNTIME_SURFACES.flatMap(({ name, 
 /** Canonical identifiers used by runtime shape automation coverage. */
 export const LX_RUNTIME_SHAPE_NAMES = LX_RUNTIME_CAPABILITY_NAMES.map((name) => `shape:${name}`);
 
-const DOWNLOAD_TASK_API = ["result", "progress", "pause", "resume", "cancel"] as const;
-const UPLOAD_TASK_API = ["result", "progress", "cancel"] as const;
-const COMPRESS_VIDEO_TASK_API = ["result", "progress", "cancel"] as const;
+const DOWNLOAD_TASK_API = ["result", "pause", "resume", "cancel"] as const;
+const UPLOAD_TASK_API = ["result", "cancel"] as const;
+const COMPRESS_VIDEO_TASK_API = ["result", "cancel"] as const;
 const HOST_UPDATE_INFO_API = ['apply', 'channel', 'releaseNotes', 'size', 'version'] as const;
-const HOST_UPDATE_TASK_API = ["result", "progress"] as const;
+const HOST_UPDATE_TASK_API = ["result"] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
 const PAGE_SURFACE_API = [
   'alive',
@@ -714,7 +714,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'DownloadTask',
     members: DOWNLOAD_TASK_API,
-    properties: ['result', 'progress'],
+    properties: ['result'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'lx.network.download',
@@ -722,7 +722,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'UploadTask',
     members: UPLOAD_TASK_API,
-    properties: ['result', 'progress'],
+    properties: ['result'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'lx.network.upload',
@@ -730,7 +730,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'CompressVideoTask',
     members: COMPRESS_VIDEO_TASK_API,
-    properties: ['result', 'progress'],
+    properties: ['result'],
     optionalProperties: [],
     fixture: 'external-media',
     factory: 'lx.media.compressVideo',
@@ -746,7 +746,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'HostAppUpdateTask',
     members: HOST_UPDATE_TASK_API,
-    properties: ['result', 'progress'],
+    properties: ['result'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'HostAppUpdateInfo.apply',

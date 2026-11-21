@@ -279,7 +279,7 @@ async fn extract_video_thumbnail_api(
 /// @example
 /// ```ts
 /// const task = lx.media.compressVideo(clip, { quality: 'medium' });
-/// for await (const event of task.progress) render(event.progress);
+/// for await (const { fraction } of task) render(fraction);
 /// const { path, size } = await task.result;
 /// ```
 fn compress_video_api(
@@ -460,7 +460,18 @@ fn compress_video_api(
         })?,
     )?;
 
-    let task = crate::task_object::create_task(&ctx, task, final_promise, &["cancel"])?;
+    // A transcode has no byte count: progress counts the fraction done out of 1.
+    let fraction: crate::task_object::ProgressMap = std::rc::Rc::new(|event| {
+        Ok(event
+            .get::<_, Option<f64>>("progress")
+            .ok()
+            .flatten()
+            .map(|done| crate::task_object::TransferProgress {
+                loaded: done,
+                total: Some(1.0),
+            }))
+    });
+    let task = crate::task_object::create_task(&ctx, task, final_promise, &["cancel"], fraction)?;
     crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
     Ok(task)
 }

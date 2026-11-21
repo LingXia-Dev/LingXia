@@ -167,6 +167,7 @@ fn create_apply_task(
     package: UpdatePackageInfo,
 ) -> JSResult<JSObject> {
     let service = host_update_service_from(&lxapp);
+    let size = package.size;
     let apply = service.apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
     let (completion_tx, completion_rx) = oneshot::channel::<AppUpdateCompletion>();
@@ -214,7 +215,21 @@ fn create_apply_task(
         })?,
     )?;
 
-    crate::task_object::create_task(ctx, iterator, final_promise, &[])
+    let downloading: crate::task_object::ProgressMap = std::rc::Rc::new(move |event| {
+        if event.get::<_, String>("state").ok().as_deref() != Some("downloading") {
+            return Ok(None);
+        }
+        let loaded = event
+            .get::<_, Option<f64>>("downloadedBytes")
+            .ok()
+            .flatten()
+            .unwrap_or(0.0);
+        Ok(Some(crate::task_object::TransferProgress::bytes(
+            loaded as u64,
+            size,
+        )))
+    });
+    crate::task_object::create_task(ctx, iterator, final_promise, &[], downloading)
 }
 
 async fn app_update_next_step(

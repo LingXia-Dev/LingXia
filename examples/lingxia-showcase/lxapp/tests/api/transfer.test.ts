@@ -72,7 +72,7 @@ test('abort an in-flight download and reject with E_ABORT', {
 
 test('stream monotonic download progress across pause and resume', {
   id: 'TRANSFER-PROGRESS-001',
-  covers: ['DownloadTask.progress', 'DownloadTask.pause', 'DownloadTask.resume'],
+  covers: ['DownloadTask.pause', 'DownloadTask.resume', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -81,38 +81,23 @@ test('stream monotonic download progress across pause and resume', {
   const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
     try {
       const task = lx.network.download(slowUrl);
-      const events = [];
-      let pauseRequested = false;
-      let resumeRequested = false;
-
-      const progress = task.progress[Symbol.asyncIterator]();
-      while (true) {
-        const step = await progress.next();
-        if (step.done) break;
-        const event = step.value;
-        events.push({
-          kind: event.kind,
-          downloaded: event.downloadedBytes ?? null,
-          total: event.totalBytes ?? null,
-          progress: event.progress ?? null,
-          resultSize: event.kind === 'completed' ? event.result.sizeBytes : null,
-        });
-
-        if (event.kind === 'progress' && !pauseRequested) {
-          pauseRequested = true;
+      const events: { loaded: number; total: number | null; fraction: number | null }[] = [];
+      let pausedAt = -1;
+      const iterator = task[Symbol.asyncIterator]();
+      for (;;) {
+        const step = await iterator.next();
+        if (step.done) {
+          const waited = await task.result;
+          return { ok: true, value: { events, pausedAt, returnedSize: step.value.sizeBytes, waitedSize: waited.sizeBytes } };
+        }
+        events.push({ loaded: step.value.loaded, total: step.value.total ?? null, fraction: step.value.fraction ?? null });
+        if (pausedAt < 0) {
+          pausedAt = events.length;
           await task.pause();
-        } else if (event.kind === 'paused' && !resumeRequested) {
-          resumeRequested = true;
           await new Promise<void>((resolve) => setTimeout(resolve, 150));
           await task.resume();
-        } else if (event.kind === 'completed') {
-          break;
         }
       }
-
-      const waited = await task.result;
-      const value = { events, waitedSize: waited.sizeBytes };
-      return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
       return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
@@ -122,89 +107,50 @@ test('stream monotonic download progress across pause and resume', {
     throw new Error(`download progress failed: ${JSON.stringify(outcome)}`);
   }
   const result = outcome.value as {
-    events: Array<{
-      kind: string;
-      downloaded: number | null;
-      total: number | null;
-      progress: number | null;
-      resultSize: number | null;
-    }>;
+    events: Array<{ loaded: number; total: number | null; fraction: number | null }>;
+    pausedAt: number;
+    returnedSize: number;
     waitedSize: number;
   };
 
-  const kinds = result.events.map((event) => event.kind);
-  const pausedAt = kinds.indexOf('paused');
-  const resumedAt = kinds.indexOf('resumed');
-  expect(pausedAt).toBeGreaterThan(0);
-  expect(resumedAt).toBeGreaterThan(pausedAt);
-  expect(kinds[kinds.length - 1]).toBe('completed');
+  // Progress keeps flowing after a pause and resume, and never goes backwards.
+  expect(result.pausedAt).toBe(1);
+  expect(result.events.length).toBeGreaterThan(result.pausedAt + 1);
+  expect(result.events.every((event, index) =>
+    index === 0 || event.loaded >= result.events[index - 1].loaded)).toBeTruthy();
+  expect(result.events.every((event) => event.total === 1_200_000)).toBeTruthy();
+  expect(result.events.every((event) => event.fraction !== null && event.fraction >= 0 && event.fraction <= 1)).toBeTruthy();
+  expect(result.events[result.events.length - 1].fraction).toBe(1);
 
-  const progress = result.events.filter(
-    (event): event is typeof event & { downloaded: number; total: number; progress: number } =>
-      event.kind === 'progress'
-      && event.downloaded !== null
-      && event.total !== null
-      && event.progress !== null,
-  );
-  expect(progress.length).toBeGreaterThan(1);
-  expect(progress.every((event, index) =>
-    index === 0 || event.downloaded >= progress[index - 1].downloaded)).toBeTruthy();
-  expect(progress.every((event) => event.total === 1_200_000)).toBeTruthy();
-  expect(progress.every((event) => event.progress >= 0 && event.progress <= 1)).toBeTruthy();
-
-  const completed = result.events[result.events.length - 1];
-  expect(completed.resultSize).toBe(1_200_000);
+  // The iteration returns the result the task resolves with.
+  expect(result.returnedSize).toBe(1_200_000);
   expect(result.waitedSize).toBe(1_200_000);
 });
 
-test('stop download iteration without canceling the transfer promise', {
+test('leaving download iteration early cancels the transfer', {
   id: 'TRANSFER-RETURN-001',
-  covers: ['DownloadTask.progress', 'DownloadTask.progress', 'DownloadTask.result'],
+  covers: ['DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-RETURN-001');
 
-  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
-    try {
-      const value = await (async () => {
-        const task = lx.network.download(slowUrl);
-        const progress = task.progress[Symbol.asyncIterator]();
-        const first = await progress.next();
-        const returned = await progress.return!();
-        const afterReturn = await progress.next();
-        let finallyCount = 0;
-        const completed = await task.result.finally(() => { finallyCount += 1; });
-        return {
-          firstKind: first.value?.kind ?? null,
-          returnedDone: returned.done ?? false,
-          afterReturnDone: afterReturn.done ?? false,
-          completedSize: completed.sizeBytes,
-          finallyCount,
-        };
-      })();
-      return { ok: true, value };
-    } catch (error) {
-      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
-    }
-  }, `${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`);
-  if (!outcome.ok) {
-    throw new Error(`download iterator return failed: ${JSON.stringify(outcome)}`);
-  }
-  const result = outcome.value as {
-    firstKind: string | null;
-    returnedDone: boolean;
-    afterReturnDone: boolean;
-    completedSize: number;
-    finallyCount: number;
-  };
+  // A page stream that does `return yield* task` closes it the same way when its View cancels.
+  const result = await app.logic.eval(async ({ lx }, slowUrl) => {
+    const task = lx.network.download(slowUrl);
+    const iterator = task[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    const returned = await iterator.return!();
+    const caught = await task.result.then(
+      () => 'resolved',
+      (error: { code?: string } | null) => String(error?.code || error),
+    );
+    return { firstLoaded: first.done ? null : first.value.loaded, returnedDone: returned.done ?? false, caught };
+  }, `${httpBase}/slow.bin?size=1310720&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`);
 
-  expect(result.firstKind).toBe('progress');
+  expect(typeof result.firstLoaded).toBe('number');
   expect(result.returnedDone).toBeTruthy();
-  expect(result.afterReturnDone).toBeTruthy();
-  expect(result.completedSize).toBe(131_072);
-  expect(result.finallyCount).toBe(1);
+  expect(result.caught).toBe('E_ABORT');
 });
 
 test('cancel a download through its promise helpers', {
@@ -281,10 +227,11 @@ test('upload a managed file as multipart and read the server echo', {
       formData: { note: 'spec' },
       headers: { 'x-lx-test': 'echo' },
     }).result;
-    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+    return { status: response.status, ok: response.ok, echo: response.json<Record<string, any>>() };
   }, `${httpBase}/file/up.bin?size=1024`, `${httpBase}/upload`);
 
-  expect(result.statusCode).toBe(200);
+  expect(result.status).toBe(200);
+  expect(result.ok).toBeTruthy();
   expect(result.echo.ok).toBeTruthy();
   // Every option the caller passed has to survive the multipart envelope.
   expect(result.echo.file.field).toBe('asset');
@@ -316,7 +263,7 @@ test('keep the multipart envelope intact whatever the caller heads', {
         'Content-Length': '1',
       },
     }).result;
-    return JSON.parse(response.data);
+    return response.json<Record<string, any>>();
   }, `${httpBase}/file/env.bin?size=512`, `${httpBase}/upload`);
 
   expect(result.ok).toBeTruthy();
@@ -329,9 +276,9 @@ test('keep the multipart envelope intact whatever the caller heads', {
   expect(result.received).toBeGreaterThan(512);
 });
 
-test('stream upload progress that ends on a completed event', {
+test('stream upload progress that ends at the full body', {
   id: 'TRANSFER-UPLOAD-PROGRESS-001',
-  covers: ['lx.network.upload', 'UploadTask.progress'],
+  covers: ['lx.network.upload', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -339,10 +286,10 @@ test('stream upload progress that ends on a completed event', {
 
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadRawUrl, uploadUrl) => {
     const collect = async (url: string, options: Parameters<typeof lx.network.upload>[1]) => {
-      const events: { kind: string; uploaded?: number; total?: number }[] = [];
+      const events: { uploaded: number; total?: number }[] = [];
       const task = lx.network.upload(url, options);
-      for await (const event of task.progress) {
-        events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
+      for await (const event of task) {
+        events.push({ uploaded: event.loaded, total: event.total });
       }
       await task.result;
       return events;
@@ -361,14 +308,13 @@ test('stream upload progress that ends on a completed event', {
 
   // One shape per mode, so a failure names the property that moved rather than
   // just the assertion that tripped. Progress that goes backwards is worse
-  // than no progress at all, and the stream has to end on a terminal event.
-  const shape = (events: { kind: string; uploaded?: number; total?: number }[]) => ({
+  // than no progress at all, and the stream has to end at the full body.
+  const shape = (events: { uploaded: number; total?: number }[]) => ({
     streamed: events.length > 1,
-    terminal: events[events.length - 1].kind,
     monotonic: events.every((event, i) => i === 0 || Number(event.uploaded) >= Number(events[i - 1].uploaded)),
     finished: events[events.length - 1].uploaded === events[events.length - 1].total,
   });
-  const complete = { streamed: true, terminal: 'completed', monotonic: true, finished: true };
+  const complete = { streamed: true, monotonic: true, finished: true };
   expect(shape(result.raw)).toEqual(complete);
   expect(shape(result.multipart)).toEqual(complete);
 
@@ -378,9 +324,9 @@ test('stream upload progress that ends on a completed event', {
   expect(result.multipart[0].total).toBeGreaterThan(result.size);
 });
 
-test('stop upload iteration and observe rejected promise helpers', {
+test('leaving upload iteration cancels it, and a refusal resolves with its status', {
   id: 'TRANSFER-UPLOAD-HELPERS-001',
-  covers: ['UploadTask.progress', 'UploadTask.result', 'UploadTask.result'],
+  covers: ['UploadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -389,53 +335,34 @@ test('stop upload iteration and observe rejected promise helpers', {
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadUrl, uploadRawUrl) => {
     const source = await lx.network.download(sourceUrl).result;
 
-    const completing = lx.network.upload(uploadUrl, {
-      file: source.uri,
-    });
-    const completingProgress = completing.progress[Symbol.asyncIterator]();
-    const first = await completingProgress.next();
-    const returned = await completingProgress.return!();
-    const afterReturn = await completingProgress.next();
-    let successFinallyCount = 0;
-    const completed = await completing.result.finally(() => { successFinallyCount += 1; });
+    const leaving = lx.network.upload(uploadUrl, { file: source.uri });
+    const iterator = leaving[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    const returned = await iterator.return!();
+    const canceled = await leaving.result.then(
+      () => 'resolved',
+      (error: { code?: string } | null) => String(error?.code || error),
+    );
 
-    const rejecting = lx.network.upload(uploadRawUrl, {
+    const refused = await lx.network.upload(uploadRawUrl, {
       file: source.uri,
       method: 'PUT',
       bodyMode: 'raw',
-    });
-    let rejectFinallyCount = 0;
-    const finalized = rejecting.result
-      .finally(() => { rejectFinallyCount += 1; })
-      .catch(() => undefined);
-    const caught = await rejecting.result.then(
-      () => ({ code: '', detail: 'resolved' }),
-      (error: { code?: string; data?: { detail?: string } } | null) => ({
-        code: String(error?.code || ''),
-        detail: String(error?.data?.detail || ''),
-      }),
-    );
-    await finalized;
+    }).result;
 
     return {
-      firstKind: first.value?.kind ?? null,
+      firstLoaded: first.done ? null : first.value.loaded,
       returnedDone: returned.done ?? false,
-      afterReturnDone: afterReturn.done ?? false,
-      completedStatus: completed.statusCode,
-      successFinallyCount,
-      caught,
-      rejectFinallyCount,
+      canceled,
+      refused: { ok: refused.ok, status: refused.status },
     };
   }, `${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`);
 
-  expect(result.firstKind).toBe('progress');
+  expect(typeof result.firstLoaded).toBe('number');
   expect(result.returnedDone).toBeTruthy();
-  expect(result.afterReturnDone).toBeTruthy();
-  expect(result.completedStatus).toBe(200);
-  expect(result.successFinallyCount).toBe(1);
-  expect(result.caught.code).toBe('E_NETWORK');
-  expect(result.caught.detail).toContain('403');
-  expect(result.rejectFinallyCount).toBe(1);
+  expect(result.canceled).toBe('E_ABORT');
+  // An HTTP refusal is the server's answer, not a transport failure.
+  expect(result.refused).toEqual({ ok: false, status: 403 });
 });
 
 test('upload a raw body with PUT for presigned endpoints', {
@@ -465,13 +392,13 @@ test('upload a raw body with PUT for presigned endpoints', {
       headers: { 'Content-Type': 'image/avif' },
     }).result;
     return {
-      statusCode: response.statusCode,
-      echo: JSON.parse(response.data),
-      overriddenContentType: JSON.parse(overridden.data).contentType,
+      status: response.status,
+      echo: response.json<Record<string, any>>(),
+      overriddenContentType: overridden.json<{ contentType: string }>().contentType,
     };
   }, `${httpBase}/file/raw.bin?size=2048`, `${httpBase}/upload-raw`);
 
-  expect(result.statusCode).toBe(200);
+  expect(result.status).toBe(200);
   expect(result.echo.method).toBe('PUT');
   // Raw means the file bytes and nothing else: no multipart framing overhead,
   // and a Content-Length taken from the file, which presigned PUT endpoints
@@ -532,7 +459,7 @@ test('reject multipart-only options when the body is raw', {
   expect(String(rejectedName.code)).toBe('E_INVALID_ARG');
 });
 
-test('report the refusing status when a raw upload is rejected mid-body', {
+test('resolve with the refusing status when a raw upload is rejected mid-body', {
   id: 'TRANSFER-UPLOAD-RAW-003',
   covers: ['lx.network.upload'],
   app: SHOWCASE_APP_ID,
@@ -543,23 +470,17 @@ test('report the refusing status when a raw upload is rejected mid-body', {
   // How a presigned URL refuses a signature: answer, then hang up before the
   // body is done. The status has to survive that, or the lxapp cannot tell a
   // rejected signature from a flaky network.
-  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
-    try {
-      const source = await lx.network.download(sourceUrl).result;
-      const value = await lx.network.upload(uploadRawUrl, {
-        file: source.uri,
-        method: 'PUT',
-        bodyMode: 'raw',
-      }).result;
-      return { ok: true, value };
-    } catch (error) {
-      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
-    }
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl) => {
+    const source = await lx.network.download(sourceUrl).result;
+    const response = await lx.network.upload(uploadRawUrl, {
+      file: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+    }).result;
+    return { ok: response.ok, status: response.status };
   }, `${httpBase}/file/reject.bin?size=8000000`, `${httpBase}/upload-raw?reject=403`);
 
-  expect(outcome.ok).toBeFalsy();
-  expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
+  expect(outcome).toEqual({ ok: false, status: 403 });
 });
 
 test('accept PATCH and an empty file as a raw body', {
@@ -579,10 +500,10 @@ test('accept PATCH and an empty file as a raw body', {
       method: 'PATCH',
       bodyMode: 'raw',
     }).result;
-    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+    return { status: response.status, ok: response.ok, echo: response.json<Record<string, any>>() };
   }, `${httpBase}/file/empty.bin?size=0`, `${httpBase}/upload-raw`);
 
-  expect(result.statusCode).toBe(200);
+  expect(result.status).toBe(200);
   expect(result.echo.method).toBe('PATCH');
   expect(result.echo.received).toBe(0);
   expect(result.echo.contentLength).toBe(0);

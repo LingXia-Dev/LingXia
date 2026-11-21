@@ -1,4 +1,4 @@
-import { definePage, lx, type DownloadTask } from '@lingxia/logic';
+import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
 type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
 type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;
@@ -76,11 +76,7 @@ function previewController(): ReturnType<TerminalApi['colorSchemes']['createPrev
 export default definePage({
   data: {
     terminalSettingsSnapshot: null as TerminalSnapshot | null,
-    windowsInlineImageProgress: null as {
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-    } | null,
+    windowsInlineImageProgress: null as TransferProgress | null,
   },
   setup(page) {
     const actions = {
@@ -112,16 +108,8 @@ export default definePage({
           const task = lx.network.download(current.package.url);
           conptyDownload = task;
           try {
-            for await (const event of task.progress) {
-              if (event.kind === 'progress') {
-                page.update(d => {
-                  d.windowsInlineImageProgress = {
-                    downloadedBytes: event.downloadedBytes,
-                    totalBytes: event.totalBytes,
-                    progress: event.progress,
-                  };
-                });
-              }
+            for await (const progress of task) {
+              page.update(d => { d.windowsInlineImageProgress = progress; });
             }
             const result = await task.result;
             return await api.install({ path: result.uri });

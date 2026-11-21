@@ -48,6 +48,10 @@ const task = lx.network.download(url, {
   opaque to `lx.fs`.
 - A failed or canceled download leaves no partial file; `resume()` continues a
   paused one.
+- Every task (download, upload, `compressVideo`, update `apply()`) iterates
+  `{ loaded, total?, fraction? }` and returns its result, so a page stream is
+  `async *get(url) { return yield* lx.network.download(url); }`. One consumer;
+  leaving the loop early cancels the task.
 
 ## `lx.fs`
 
@@ -109,17 +113,13 @@ const task = lx.network.upload(presignedUrl, {
   bodyMode: 'raw',
   mimeType: contentType,
 });
-for await (const event of task.progress) {
-  if (event.kind === 'progress') updateProgress(event.progress ?? 0);
-}
-const { statusCode, data } = await task.result;
+for await (const { fraction } of task) updateProgress(fraction ?? 0);
+const response = await task.result; // { status, ok, headers, text, json() }
 ```
 
-- `task.result` settles once; `task.progress` has one consumer. Attach a
-  rejection handler to `result` when consuming progress separately.
+- Any HTTP status resolves: check `ok` before reporting success.
 - `cancel()`, `signal`, and `timeoutMs` are available. Keep the source file
   until the transfer ends.
-- Check `statusCode` and `data` against the endpoint before reporting success.
 
 ## Picking files
 

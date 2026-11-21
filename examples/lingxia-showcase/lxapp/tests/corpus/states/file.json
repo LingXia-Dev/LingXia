@@ -7,13 +7,6 @@
   "chooseFileStatusText": "Choose a file",
   "chooseFileSelectedPath": "",
   "chooseFileSelectedType": "",
-  "isPdfDownloading": false,
-  "pdfDownloadState": "idle",
-  "pdfProgressKnown": false,
-  "pdfDownloadProgress": 0,
-  "pdfProgressText": "",
-  "pdfSupportsTransferControl": false,
-  "pdfTransferButtonText": "Pause Download",
   "isOfficeFetching": false,
   "officeStatusText": ""
 }

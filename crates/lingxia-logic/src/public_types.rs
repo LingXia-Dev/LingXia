@@ -1009,11 +1009,6 @@ rong::js_api! {
 }
 )"###;
 
-        type CompressVideoProgressEvent = r###"{
-    /** Fraction done, `0` to `1`. */
-    progress: number;
-}"###;
-
         type CompressVideoResult = r###"{
     /** The compressed video, an `lx://` path. */
     path: string;
@@ -1032,13 +1027,9 @@ rong::js_api! {
     type: string;
 }"###;
 
-        /// Handle returned by `lx.media.compressVideo`.
-        ///
-        /// Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
-        /// Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
-        /// while the transcode runs.
-        ///
-        type CompressVideoTask = r###"CancelableTask<CompressVideoResult, CompressVideoProgressEvent>"###;
+        /// Handle returned by `lx.media.compressVideo`. Its progress counts the
+        /// fraction done out of a `total` of 1.
+        type CompressVideoTask = r###"CancelableTask<CompressVideoResult>"###;
 
         type ConnectWifiOptions = r###"{
     /** Network name. */
@@ -1187,18 +1178,6 @@ rong::js_api! {
     update: HostAppUpdateInfo;
 }"###;
 
-        type HostAppUpdateEvent = r###"{
-    state: 'downloading';
-    downloadedBytes?: number;
-    progress?: number;
-} | {
-    state: 'downloaded' | 'installRequested' | 'storeOpened';
-} | {
-    state: 'failed';
-    stage: HostAppUpdateApplyStage;
-    error: string;
-}"###;
-
         type HostAppUpdateInfo = r###"{
     version: string;
     size?: number;
@@ -1216,8 +1195,8 @@ rong::js_api! {
      * host updates for the rest of this process, same as
      * {@link HostAppApi.claimCustomUpdate}.
      *
-     * Await `task.result` when progress is not needed, or iterate
-     * `task.progress` to render it.
+     * Await `task.result` when progress is not needed, or iterate the task
+     * to render it.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
      * platform store listing (no package is downloaded) and resolves
@@ -1231,7 +1210,9 @@ rong::js_api! {
     state: 'installRequested' | 'storeOpened';
 }"###;
 
-        type HostAppUpdateTask = r###"Task<HostAppUpdateResult, HostAppUpdateEvent>"###;
+        /// Handle returned by `apply()`. Its progress is the package download;
+        /// `total` is present when the update named its size.
+        type HostAppUpdateTask = r###"Task<HostAppUpdateResult>"###;
 
         type KeyEvent = r###"{
     /** Key value following W3C naming (e.g. "Enter", "ArrowLeft", "a") */
@@ -2253,8 +2234,8 @@ true
         ///   bodyMode: 'raw',
         ///   mimeType: 'video/mp4',
         /// });
-        /// for await (const event of task.progress) render(event.progress);
-        /// const { statusCode } = await task.result;
+        /// for await (const { fraction } of task) render(fraction);
+        /// const { ok, status } = await task.result;
         /// ```
         ///
         type UploadOptions = r###"{
@@ -2310,35 +2291,22 @@ true
 }
 )"###;
 
-        type UploadProgressEvent = r###"{
-    /** Bytes were sent, or the upload was canceled. */
-    kind: 'progress' | 'canceled';
-    /** Bytes handed to the socket so far, envelope included under `multipart`. */
-    uploadedBytes?: number;
-    /**
-     * Bytes the whole request body will carry. Equals the file size under
-     * `bodyMode: 'raw'`; under `multipart` it also covers the envelope, so it
-     * runs slightly above the file size.
-     */
-    totalBytes?: number;
-    /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
-    progress?: number;
-} | {
-    kind: 'completed';
-    uploadedBytes?: number;
-    totalBytes?: number;
-    progress?: number;
-    result: UploadResult;
-}"###;
-
+        /// The server's answer to `lx.network.upload`; any HTTP status resolves.
         type UploadResult = r###"{
-    /** HTTP status code returned by the server. */
-    statusCode: number;
-    /** Response body decoded as UTF-8 text. */
-    data: string;
+    /** HTTP status code. */
+    readonly status: number;
+    /** Whether `status` is 2xx. */
+    readonly ok: boolean;
+    /** Response headers, names lowercased. */
+    readonly headers: Readonly<Record<string, string>>;
+    /** Response body decoded as UTF-8. */
+    readonly text: string;
+    /** Parse `text` as JSON. */
+    json<T = unknown>(): T;
 }"###;
 
-        type UploadTask = r###"CancelableTask<UploadResult, UploadProgressEvent>"###;
+        /// Handle returned by `lx.network.upload`; progress counts request body bytes.
+        type UploadTask = r###"CancelableTask<UploadResult>"###;
 
         type VideoCompressQuality = r###"'low' | 'medium' | 'high'"###;
 

@@ -101,49 +101,40 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
  */
 export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
-export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
-  | {
-      /** Bytes arrived, or the transfer paused or resumed. */
-      kind: 'progress' | 'paused' | 'resumed';
-      /** Bytes written so far. */
-      downloadedBytes?: number;
-      /** The full size, when the server named it. */
-      totalBytes?: number;
-      /** Present only when the total size is known. */
-      progress?: number;
-    }
-  | {
-      kind: 'canceled';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-    }
-  | {
-      kind: 'completed';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-      result: TResult;
-    };
-
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
-/** A running operation. Progress has one consumer; stopping observation does not cancel it. */
-export interface Task<TResult, TProgress> {
-  /** Settles once with the outcome. */
-  readonly result: Promise<TResult>;
-  /** Progress events while it runs; ends when it finishes. */
-  readonly progress: AsyncIterable<TProgress>;
+/** How far a task has got. */
+export interface TransferProgress {
+  /** Units done: bytes for a transfer. */
+  readonly loaded: number;
+  /** Units in all, when known. */
+  readonly total?: number;
+  /** `loaded / total`, `0` to `1`; present only when `total` is known. */
+  readonly fraction?: number;
 }
 
-export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgress> {
-  /** Requests cancellation. Await result to observe the terminal outcome. */
+/**
+ * A running operation. Iterate it for progress; the iteration returns the
+ * result, so a streaming page action can `return yield* task`. One consumer
+ * iterates; leaving the iteration early cancels a task that can be canceled.
+ */
+export interface Task<R, P = TransferProgress> extends AsyncIterable<P> {
+  /**
+   * Resolves with the result; rejects with the failure.
+   * @throws {E_ABORT} The task was canceled.
+   */
+  readonly result: Promise<R>;
+  [Symbol.asyncIterator](): AsyncIterator<P, R, undefined>;
+}
+
+export interface CancelableTask<R, P = TransferProgress> extends Task<R, P> {
+  /** Requests cancellation; `result` then rejects. */
   cancel(): Promise<void>;
 }
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
-  extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  extends CancelableTask<TResult> {
   /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
   /** Resumes a paused download from where it stopped; does nothing in any other state. */
@@ -995,11 +986,6 @@ export type CompressVideoOptions = {
 }
 );
 
-export type CompressVideoProgressEvent = {
-    /** Fraction done, `0` to `1`. */
-    progress: number;
-};
-
 export type CompressVideoResult = {
     /** The compressed video, an `lx://` path. */
     path: string;
@@ -1019,12 +1005,10 @@ export type CompressVideoResult = {
 };
 
 /**
- * Handle returned by `lx.media.compressVideo`.
- * Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
- * Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
- * while the transcode runs.
+ * Handle returned by `lx.media.compressVideo`. Its progress counts the
+ * fraction done out of a `total` of 1.
  */
-export type CompressVideoTask = CancelableTask<CompressVideoResult, CompressVideoProgressEvent>;
+export type CompressVideoTask = CancelableTask<CompressVideoResult>;
 
 /**
  * Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript
@@ -1283,18 +1267,6 @@ export type HostAppUpdateCheckResult = {
     update: HostAppUpdateInfo;
 };
 
-export type HostAppUpdateEvent = {
-    state: 'downloading';
-    downloadedBytes?: number;
-    progress?: number;
-} | {
-    state: 'downloaded' | 'installRequested' | 'storeOpened';
-} | {
-    state: 'failed';
-    stage: HostAppUpdateApplyStage;
-    error: string;
-};
-
 export type HostAppUpdateInfo = {
     version: string;
     size?: number;
@@ -1312,8 +1284,8 @@ export type HostAppUpdateInfo = {
      * host updates for the rest of this process, same as
      * {@link HostAppApi.claimCustomUpdate}.
      *
-     * Await `task.result` when progress is not needed, or iterate
-     * `task.progress` to render it.
+     * Await `task.result` when progress is not needed, or iterate the task
+     * to render it.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
      * platform store listing (no package is downloaded) and resolves
@@ -1327,7 +1299,11 @@ export type HostAppUpdateResult = {
     state: 'installRequested' | 'storeOpened';
 };
 
-export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
+/**
+ * Handle returned by `apply()`. Its progress is the package download;
+ * `total` is present when the update named its size.
+ */
+export type HostAppUpdateTask = Task<HostAppUpdateResult>;
 
 /**
  * Canonical platform-family label shared by `lx.host.info.os`
@@ -2848,8 +2824,8 @@ export type UpdateReadyInfo = {
  * bodyMode: 'raw',
  * mimeType: 'video/mp4',
  * });
- * for await (const event of task.progress) render(event.progress);
- * const { statusCode } = await task.result;
+ * for await (const { fraction } of task) render(fraction);
+ * const { ok, status } = await task.result;
  * ```
  */
 export type UploadOptions = {
@@ -2905,35 +2881,22 @@ export type UploadOptions = {
 }
 );
 
-export type UploadProgressEvent = {
-    /** Bytes were sent, or the upload was canceled. */
-    kind: 'progress' | 'canceled';
-    /** Bytes handed to the socket so far, envelope included under `multipart`. */
-    uploadedBytes?: number;
-    /**
-     * Bytes the whole request body will carry. Equals the file size under
-     * `bodyMode: 'raw'`; under `multipart` it also covers the envelope, so it
-     * runs slightly above the file size.
-     */
-    totalBytes?: number;
-    /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
-    progress?: number;
-} | {
-    kind: 'completed';
-    uploadedBytes?: number;
-    totalBytes?: number;
-    progress?: number;
-    result: UploadResult;
-};
-
+/** The server's answer to `lx.network.upload`; any HTTP status resolves. */
 export type UploadResult = {
-    /** HTTP status code returned by the server. */
-    statusCode: number;
-    /** Response body decoded as UTF-8 text. */
-    data: string;
+    /** HTTP status code. */
+    readonly status: number;
+    /** Whether `status` is 2xx. */
+    readonly ok: boolean;
+    /** Response headers, names lowercased. */
+    readonly headers: Readonly<Record<string, string>>;
+    /** Response body decoded as UTF-8. */
+    readonly text: string;
+    /** Parse `text` as JSON. */
+    json<T = unknown>(): T;
 };
 
-export type UploadTask = CancelableTask<UploadResult, UploadProgressEvent>;
+/** Handle returned by `lx.network.upload`; progress counts request body bytes. */
+export type UploadTask = CancelableTask<UploadResult>;
 
 /** A web page, opened in the in-app browser. `lx.openExternal` hands a URL to the system. */
 export type UrlTarget = {
@@ -3603,7 +3566,7 @@ declare global {
      * @example
      * ```ts
      * const task = lx.media.compressVideo(clip, { quality: 'medium' });
-     * for await (const event of task.progress) render(event.progress);
+     * for await (const { fraction } of task) render(fraction);
      * const { path, size } = await task.result;
      * ```
      */
@@ -3625,8 +3588,8 @@ declare global {
     /**
      * Upload a file over HTTP, streamed from disk. `method: 'PUT'` with
      * `bodyMode: 'raw'` sends the file as the whole body, as presigned
-     * object-storage URLs expect. The task comes back before the transfer starts:
-     * `result` settles once, `progress` streams to one consumer, `cancel()` aborts.
+     * object-storage URLs expect. The task comes back before the transfer starts;
+     * iterate it for progress, await `result` for the answer.
      * @default A `POST` with a `multipart/form-data` body.
      */
     upload(url: string, options: UploadOptions): UploadTask;

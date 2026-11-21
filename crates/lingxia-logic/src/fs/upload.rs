@@ -37,14 +37,6 @@ struct ParsedUploadOptions {
 
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
-struct JSUploadResult {
-    #[js_name = "statusCode"]
-    status_code: u16,
-    data: String,
-}
-
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
 struct JSUploadEvent {
     kind: String,
     #[js_name = "uploadedBytes"]
@@ -52,7 +44,6 @@ struct JSUploadEvent {
     #[js_name = "totalBytes"]
     total_bytes: Option<u64>,
     progress: Option<f64>,
-    result: Option<JSUploadResult>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -89,6 +80,7 @@ struct UploadTaskConfig {
 #[derive(Debug, Clone)]
 struct UploadCompletion {
     status_code: u16,
+    headers: Vec<(String, String)>,
     data: String,
 }
 
@@ -466,12 +458,14 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
                     guard.uploaded_bytes = guard.total_bytes.unwrap_or(guard.uploaded_bytes);
                     guard.result = Some(UploadCompletion {
                         status_code: success.status_code,
+                        headers: success.headers.clone(),
                         data: data.clone(),
                     });
                     guard.completion.take()
                 };
                 let upload = UploadCompletion {
                     status_code: success.status_code,
+                    headers: success.headers,
                     data,
                 };
                 if let Some(completion) = completion {
@@ -512,10 +506,34 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
     }));
 }
 
+/// `{ status, ok, headers, text, json() }`: any HTTP answer resolves, so a 500
+/// is `ok: false` with its body readable.
+fn upload_result_to_js(ctx: &JSContext, result: UploadCompletion) -> JSResult<JSObject> {
+    let object = JSObject::new(ctx);
+    object.set("status", result.status_code)?;
+    object.set("ok", (200..300).contains(&result.status_code))?;
+    let headers = JSObject::new(ctx);
+    for (name, value) in result.headers {
+        headers.set(name.to_ascii_lowercase().as_str(), value)?;
+    }
+    object.set("headers", headers)?;
+    object.set("text", result.data.clone())?;
+    let text = result.data;
+    object.set(
+        "json",
+        JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<JSValue> {
+            let parse: JSFunc = ctx.global().get::<_, JSObject>("JSON")?.get("parse")?;
+            parse.call(None, (text.clone(),))
+        })?
+        .name("json")?,
+    )?;
+    Ok(object)
+}
+
 /// Upload a file over HTTP, streamed from disk. `method: 'PUT'` with
 /// `bodyMode: 'raw'` sends the file as the whole body, as presigned
-/// object-storage URLs expect. The task comes back before the transfer starts:
-/// `result` settles once, `progress` streams to one consumer, `cancel()` aborts.
+/// object-storage URLs expect. The task comes back before the transfer starts;
+/// iterate it for progress, await `result` for the answer.
 ///
 /// @default A `POST` with a `multipart/form-data` body.
 fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObject> {
@@ -536,7 +554,10 @@ fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObj
             .map_err(|err| js_error_from_lxapp_error(&err))
     })?;
     let file_name = resolve_upload_file_name(&resolved_path, options.file_name.as_deref());
-    let mut behavior = UploadBehavior::default();
+    let mut behavior = UploadBehavior {
+        resolve_http_errors: true,
+        ..UploadBehavior::default()
+    };
     if let Some(timeout_ms) = options.timeout_ms {
         behavior.request_timeout = Duration::from_millis(timeout_ms);
     }
@@ -544,12 +565,12 @@ fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObj
     let (tx, rx) = mpsc::channel::<UploadIteratorMessage>(64);
     let (completion_tx, completion_rx) = oneshot::channel::<UploadCompletionOutcome>();
 
+    let result_ctx = ctx.clone();
     let final_promise = Promise::from_future(&ctx, None, async move {
         match completion_rx.await {
-            Ok(UploadCompletionOutcome::Success(result)) => Ok(JSUploadResult {
-                status_code: result.status_code,
-                data: result.data,
-            }),
+            Ok(UploadCompletionOutcome::Success(result)) => {
+                upload_result_to_js(&result_ctx, result)
+            }
             Ok(UploadCompletionOutcome::Failed(error)) => Err(upload_failure_to_js_error(error)),
             Ok(UploadCompletionOutcome::Canceled) => Err(js_abort_error("network.upload canceled")),
             Err(_) => Err(js_abort_error("network.upload canceled")),
@@ -616,7 +637,13 @@ fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObj
         })?,
     )?;
 
-    let task = crate::task_object::create_task(&ctx, iterator, final_promise, &["cancel"])?;
+    let task = crate::task_object::create_task(
+        &ctx,
+        iterator,
+        final_promise,
+        &["cancel"],
+        crate::task_object::byte_events("uploadedBytes"),
+    )?;
     crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
 
     spawn_upload_worker(state);
@@ -687,7 +714,6 @@ async fn handle_upload_message(
                     uploaded_bytes: Some(uploaded_bytes),
                     total_bytes: Some(total_bytes),
                     progress,
-                    result: None,
                 }),
             })
         }
@@ -709,7 +735,6 @@ async fn handle_upload_message(
                     uploaded_bytes: Some(uploaded_bytes),
                     total_bytes: Some(total_bytes),
                     progress,
-                    result: None,
                 }),
             })
         }
@@ -729,7 +754,6 @@ async fn handle_upload_message(
                             &mut state_guard.fallback_progress,
                         )
                     }),
-                    result: None,
                 }),
             })
         }
@@ -744,10 +768,6 @@ async fn handle_upload_message(
                     uploaded_bytes: Some(state_guard.uploaded_bytes),
                     total_bytes: state_guard.total_bytes,
                     progress: Some(1.0),
-                    result: Some(JSUploadResult {
-                        status_code: result.status_code,
-                        data: result.data,
-                    }),
                 }),
             })
         }

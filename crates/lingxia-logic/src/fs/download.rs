@@ -1365,6 +1365,7 @@ fn download_file(
         iterator,
         final_promise,
         &["pause", "resume", "cancel"],
+        crate::task_object::byte_events("downloadedBytes"),
     )?;
     crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
 

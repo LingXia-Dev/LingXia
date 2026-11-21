@@ -459,6 +459,7 @@ mod tests {
 
         let upload = upload_response_from_result(lingxia_transfer::UploadResult {
             status_code: 201,
+            headers: Vec::new(),
             body: b"created".to_vec(),
         });
         let json = serde_json::to_value(upload).expect("serialize upload response");
