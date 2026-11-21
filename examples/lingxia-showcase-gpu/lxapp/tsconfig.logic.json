@@ -11,6 +11,7 @@
   },
   "include": [
     "lxapp.ts",
+    "logic/**/*.ts",
     "pages/**/*.ts",
     "shared/display-language.ts",
     "shared/lib/**/*.ts",
