@@ -185,6 +185,7 @@ mod tests {
                 package_id: "com.example.demo".into(),
                 product_name: "Demo".into(),
                 product_names: Default::default(),
+                languages: Vec::new(),
                 product_version: "0.1.0".into(),
                 lingxia_server: None,
                 lingxia_id: None,

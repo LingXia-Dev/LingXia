@@ -1296,6 +1296,11 @@ pub struct HostAppConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub product_names: BTreeMap<String, String>,
+    /// The languages the product speaks, in preference order (first = fallback); the host's
+    /// language is one of them. Omitted: en-US and zh-CN.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
     pub product_version: String,
 
     /// Optional cloud server. Single string applies to all envs; per-env map
@@ -2067,6 +2072,7 @@ impl LingXiaConfig {
                 package_id: package_id.to_string(),
                 product_name: project_name.to_string(),
                 product_names: BTreeMap::new(),
+                languages: Vec::new(),
                 product_version: "0.0.1".to_string(),
                 lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),
                 lingxia_id: None,
@@ -2190,6 +2196,7 @@ impl LingXiaConfig {
             }
             crate::host_identity::validate_product_name(&app.product_name)?;
             crate::host_identity::validate_product_names(&app.product_names)?;
+            crate::host_identity::validate_languages(&app.languages)?;
             if crate::host_identity::non_empty_opt(Some(app.package_id.as_str())).is_none() {
                 return Err(crate::host_identity::missing_app_package_id_error());
             }
@@ -3298,6 +3305,35 @@ resources:
         .to_string();
         assert!(err.contains("app.packageId is required"), "{err}");
         assert!(err.contains("android.packageId"), "{err}");
+    }
+
+    #[test]
+    fn a_product_lists_its_languages_once_each() {
+        let yaml = |languages: &str| {
+            format!(
+                "app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  languages: {languages}
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android: {{}}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"
+            )
+        };
+        let parsed = load_config_yaml(&yaml("[zh-CN, en-US, ja-JP]")).unwrap();
+        assert_eq!(parsed.app.unwrap().languages, ["zh-CN", "en-US", "ja-JP"]);
+        let twice = load_config_yaml(&yaml("[en-US, en-us]"))
+            .unwrap_err()
+            .to_string();
+        assert!(twice.contains("twice"), "{twice}");
     }
 
     #[test]

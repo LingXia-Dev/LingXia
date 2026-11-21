@@ -517,6 +517,7 @@ mod tests {
         AppConfig {
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.0.0".into(),
             lingxia_id: None,
             lingxia_server: server.map(str::to_string),

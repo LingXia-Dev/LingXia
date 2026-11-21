@@ -41,6 +41,9 @@ pub(super) fn build_app_json_from_config(
             serde_json::to_value(&app.product_names)?,
         );
     }
+    if !app.languages.is_empty() {
+        obj.insert("languages".to_string(), serde_json::json!(app.languages));
+    }
     obj.insert(
         "productVersion".to_string(),
         serde_json::json!(app.product_version),
