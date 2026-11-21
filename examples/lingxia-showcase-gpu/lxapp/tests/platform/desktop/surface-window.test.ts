@@ -201,6 +201,7 @@ test('open a page window with system chrome and with full chrome', {
     'lx.supports',
     'PageSurface.kind',
     'PageSurface.realized',
+    'PageSurface.opened',
     'PageSurface.key',
     'PageSurface.alive',
     'PageSurface.visible',
