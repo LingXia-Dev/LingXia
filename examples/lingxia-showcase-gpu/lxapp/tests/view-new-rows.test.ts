@@ -71,12 +71,16 @@ test('a callout sits its margin clear of its anchor above or below, and a transl
   };
   await carets(anchor, box);
 
-  // Pointed at the circle by the screen edge: the callout is pushed in, its caret stays on the circle.
+  // Pointed at the circle in the corner: a callout centred on it that would leave the screen is
+  // pushed in, its caret staying on the circle. A wide window may have room to centre it.
   await view.testId('lab-gap-edge').click();
   await expect(state).toHaveAttribute('data-state', 'side=above nudged=false edge=true');
   const corner = await view.testId('lab-gap-corner').boundingBox();
   box = await note.boundingBox();
-  expect(centred(corner, box)).toBe(false);
+  const screen = await view.viewport();
+  const middle = corner.x + corner.width / 2;
+  const fits = middle - box.width / 2 >= screen.left && middle + box.width / 2 <= screen.left + screen.width;
+  expect(centred(corner, box)).toBe(fits);
   await carets(corner, box);
 });
 
