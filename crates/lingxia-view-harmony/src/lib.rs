@@ -91,6 +91,11 @@ pub trait Shell: Send + Sync + 'static {
     fn sync_webviews(&self, token: i64, mounts: &[lingxia_view::scene::webview::WebViewMount]) {
         let _ = (token, mounts);
     }
+    /// Picture each of `web_ids` for the page to draw while they cannot show live; the PNGs
+    /// come back through [`lingxia_view::session::host::ViewHost::webview_picture`].
+    fn picture_webviews(&self, token: i64, web_ids: &[String], scale: f32) {
+        let _ = (token, web_ids, scale);
+    }
     /// Exit web-initiated fullscreen on `web_id`.
     fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
         let _ = (token, web_id);

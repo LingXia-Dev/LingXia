@@ -225,6 +225,10 @@ impl Shell for Bridge {
             sync_harmony_webviews_ui,
         );
     }
+    fn picture_webviews(&self, token: i64, web_ids: &[String], scale: f32) {
+        let payload = serde_json::json!({ "ids": web_ids, "scale": scale });
+        arkts(token, "pictureWebviews", &payload.to_string());
+    }
     fn exit_webview_fullscreen(&self, token: i64, web_id: &str) {
         gpu_page::webviews::exit_webview_fullscreen(token, web_id);
     }
@@ -597,6 +601,15 @@ pub fn gpu_page_chrome_snapshot(
     .map_or(0, |generation| {
         i64::try_from(generation).unwrap_or(i64::MAX)
     })
+}
+
+/// A PNG of the page's `<webview>` `web_id`, asked for by `pictureWebviews`.
+#[napi]
+pub fn gpu_page_web_view_picture(token: i64, web_id: String, png: ArrayBuffer) {
+    let png = png.to_vec();
+    let _ = with_page(token, move |page| {
+        page.with_host(|host| host.webview_picture(web_id, png))
+    });
 }
 
 /// The bars show again before the top layer closed: the page drops their snapshots.

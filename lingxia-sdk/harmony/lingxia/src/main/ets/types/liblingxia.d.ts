@@ -648,6 +648,8 @@ declare module 'liblingxia.so' {
   /** A host bar's premultiplied RGBA rows under the open top layer, surface pixels; edge 0 top, 1 bottom. Returns its generation, or 0. */
   export function gpuPageChromeSnapshot(token: number, edge: number, rows: ArrayBuffer, width: number, height: number, x: number, y: number, w: number, h: number): number;
   export function gpuPageDeclineChromeSnapshot(token: number): void;
+  /** A PNG of a GPU page's `<webview>`, answering its `pictureWebviews` event. */
+  export function gpuPageWebViewPicture(token: number, webId: string, png: ArrayBuffer): void;
   export function gpuPageWindowVisible(token: number, visible: boolean): void;
   export function gpuPageWindowFocus(token: number, focused: boolean): void;
   /** Answers a `focusGained` event whose focus a key moved: keyboard focus walks into the page. */

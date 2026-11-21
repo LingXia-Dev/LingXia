@@ -5,7 +5,9 @@ import { util } from '@kit.ArkTS';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { LxLog } from '../app/LxLog';
 import { GpuFrameTextMenu } from './generated/GpuFrame';
-import { gpuPageFocusByKey, gpuPageReveal, gpuPageScreenshotReply } from 'liblingxia.so';
+import { gpuPageFocusByKey, gpuPageReveal, gpuPageScreenshotReply, gpuPageWebViewPicture } from 'liblingxia.so';
+import { webview } from '@kit.ArkWeb';
+import { WebViewManager } from '../lxapp/WebViewBridge';
 import { GpuRect } from './GpuEnvironment';
 
 const TAG = 'LingXia.GpuPages';
@@ -62,6 +64,11 @@ export interface GpuClipMount {
   bounds: number[];
   radius: number;
   radii: number[][] | null;
+}
+
+interface GpuPictureRequest {
+  ids: string[];
+  scale: number;
 }
 
 /** Embedded `<webview>` mount geometry and state for a GPU page, in page virtual pixels. */
@@ -292,6 +299,9 @@ export class GpuPages {
       case 'screenshot':
         GpuPages.captureScreenshot(token, payload);
         return true;
+      case 'pictureWebviews':
+        GpuPages.pictureWebViews(page, payload);
+        return true;
       default:
         LxLog.w(TAG, `unknown GPU page event ${kind}`);
         return false;
@@ -303,6 +313,46 @@ export class GpuPages {
   private static dropRecovery(page: GpuPageModel): void {
     if (page.recovery !== null) {
       HostOverlays.drop(`gpu-recovery-${page.token}-${page.recovery.serial}`);
+    }
+  }
+
+  /** Picture each asked web view as its page shows it, for the page to draw while it moves. */
+  private static pictureWebViews(page: GpuPageModel, payload: string): void {
+    let ids: string[] = [];
+    try {
+      ids = (JSON.parse(payload) as GpuPictureRequest).ids;
+    } catch (_) {
+      return;
+    }
+    for (const id of ids) {
+      const mount = page.webViews.find((m: GpuWebViewMount) => m.webId === id);
+      const controller = mount ? WebViewManager.getController(mount.webTag) : undefined;
+      if (!mount || !controller) {
+        continue;
+      }
+      try {
+        controller.webPageSnapshot({ id: id, size: { width: mount.bounds[2], height: mount.bounds[3] } },
+          (err: BusinessError, result: webview.SnapshotResult) => {
+            const pixelMap = result?.imagePixelMap;
+            if ((err && err.code !== 0) || !pixelMap) {
+              return;
+            }
+            const packer = image.createImagePacker();
+            const opts: image.PackingOption = { format: 'image/png', quality: 100 };
+            packer.packing(pixelMap, opts, (packErr: BusinessError | null, buffer: ArrayBuffer) => {
+              try {
+                if (!packErr || packErr.code === 0) {
+                  gpuPageWebViewPicture(page.token, id, buffer);
+                }
+              } finally {
+                try { packer.release(); } catch (_) {}
+                try { pixelMap.release(); } catch (_) {}
+              }
+            });
+          });
+      } catch (e) {
+        LxLog.w(TAG, `web view picture ${id}: ${e}`);
+      }
     }
   }
 
