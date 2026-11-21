@@ -62,7 +62,7 @@ impl Source {
             .iter()
             .map(|(label, _)| Some((height_of(label)?, label.as_str())))
             .collect::<Option<Vec<_>>>()?;
-        if heights.len() < 2 || !(height >= 1.0) {
+        if heights.len() < 2 || height.is_nan() || height < 1.0 {
             return None;
         }
         let height = height.round();

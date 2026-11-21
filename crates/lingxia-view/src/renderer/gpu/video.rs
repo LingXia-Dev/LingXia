@@ -631,7 +631,7 @@ fn wanted(entry: &Entry) -> Option<String> {
 /// A player waiting for its box opens on auto's file for a box `height` device px tall, unless
 /// a pin already opened it.
 fn start_by_box(key: &str, entry: &mut Entry, height: f32) {
-    if !entry.box_wait || !(height >= 1.0) {
+    if !entry.box_wait || height.is_nan() || height < 1.0 {
         return;
     }
     entry.box_wait = false;
@@ -650,7 +650,7 @@ fn start_by_box(key: &str, entry: &mut Entry, height: f32) {
 /// player with no picture yet reopens on it; one already showing play keeps its file rather than
 /// rebuffer.
 fn choose_auto(key: &str, entry: &mut Entry, height: f32) {
-    if entry.auto_decided || entry.quality.is_some() || !(height >= 1.0) {
+    if entry.auto_decided || entry.quality.is_some() || height.is_nan() || height < 1.0 {
         return;
     }
     entry.auto_decided = true;
