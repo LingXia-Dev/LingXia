@@ -2,6 +2,17 @@ import { expect, test } from '@lingxia/test';
 import { decodePng } from './png.js';
 import { skipWhenCovered } from './covered.js';
 
+/** Scrolls the list until a row it renders lazily exists, then brings it on screen: a wide
+ * window fits less of the list, so a row may start below the fold. */
+async function reveal(view: View, id: string) {
+  const { left, top, width, height } = await view.viewport();
+  const x = left + width / 2;
+  for (let step = 0; step < 20 && (await view.testId(id).count()) === 0; step++) {
+    await view.swipe({ from: [x, top + height * 0.7], to: [x, top + height * 0.3] });
+  }
+  await view.testId(id).scrollIntoView();
+}
+
 test('a video plays in a 16:9 box and under its overlay', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
@@ -9,7 +20,6 @@ test('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   await expect(hero).toBeVisible();
   const box = await hero.boundingBox();
   expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.02);
-  await expect(view.testId('video-row-1')).toContainText('overlay above video');
   // Nothing else on the page moves: a changed screenshot is a new video frame.
   const first = (await view.screenshot()).base64;
   await expect.poll(async () => (await view.screenshot()).base64 !== first, { timeout: 10_000 }).toBe(true);
@@ -17,6 +27,8 @@ test('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   const time = async () => Number(/([\d.]+)s \//.exec(await view.testId('video-hero-state').textContent())?.[1] ?? NaN);
   await expect.poll(time, { timeout: 5_000 }).toBeGreaterThan(0.3);
   await expectPicture(t, hero);
+  await reveal(view, 'video-row-1');
+  await expect(view.testId('video-row-1')).toContainText('overlay above video');
 });
 
 type Fixture = Parameters<Parameters<typeof test>[2]>[0];
@@ -79,6 +91,7 @@ test('a quality switch keeps the position and the frames moving', { start: { pag
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-quality-state');
+  await reveal(view, 'video-quality-state');
   // Auto plays the shortest file at least as tall as the box in device pixels, else the tallest.
   const box = await view.testId('video-quality').boundingBox();
   const ratio = (await view.screenshot()).width / (await view.viewport()).width;
@@ -188,6 +201,7 @@ test('an HLS quality pinned before the first frame plays that rendition', { star
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-stream-state');
+  await reveal(view, 'video-stream-state');
   const deadline = Date.now() + 20_000;
   while (!(await state.textContent()).includes('234p') && Date.now() < deadline) {
     if ((await state.textContent()).includes('VIDEO_NETWORK')) t.skip('needs the network: the HLS host is unreachable');

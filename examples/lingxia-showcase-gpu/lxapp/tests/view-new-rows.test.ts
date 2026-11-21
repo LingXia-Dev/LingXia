@@ -13,28 +13,25 @@ test('a popover opens beside its button, flips sides, and falls back under a wid
   const level = (anchor: { y: number }, box: { y: number; height: number }) => near(box.y, anchor.y)
     || (box.y < anchor.y && box.y + box.height > anchor.y && box.y + box.height <= screen.top + screen.height - 8 + 1.5);
 
-  await view.testId('lab-beside-start').click();
-  await expect(state).toHaveAttribute('data-state', 'open=start');
-  let [anchor, box] = [await view.testId('lab-beside-start').boundingBox(), await note.boundingBox()];
-  const fitsAfter = anchor.x + anchor.width + 4 + box.width <= screen.width - 8;
-  if (fitsAfter) {
-    expect(near(box.x, anchor.x + anchor.width + 4)).toBe(true);
-    expect(level(anchor, box)).toBe(true);
-  }
-
-  await view.testId('lab-beside-end').click();
-  await expect(state).toHaveAttribute('data-state', 'open=end');
-  [anchor, box] = [await view.testId('lab-beside-end').boundingBox(), await note.boundingBox()];
-  // No room past the end button: the note sits before it.
-  expect(near(box.x + box.width, anchor.x - 4)).toBe(true);
-  expect(level(anchor, box)).toBe(true);
-
-  await view.testId('lab-beside-wide').click();
-  await expect(state).toHaveAttribute('data-state', 'open=wide');
-  [anchor, box] = [await view.testId('lab-beside-wide').boundingBox(), await note.boundingBox()];
-  // Room on neither side: under the button, or above it at the bottom edge; never covering it.
-  expect(near(box.y, anchor.y + anchor.height + 4) || near(box.y + box.height, anchor.y - 4)).toBe(true);
-  expect(near(box.x + box.width / 2, anchor.x + anchor.width / 2)).toBe(true);
+  // Where the note belongs follows the room around the button: a wide window has room a phone does not.
+  const placed = async (id: string) => {
+    await view.testId(`lab-beside-${id}`).click();
+    await expect(state).toHaveAttribute('data-state', `open=${id}`);
+    const [anchor, box] = [await view.testId(`lab-beside-${id}`).boundingBox(), await note.boundingBox()];
+    if (anchor.x + anchor.width + 4 + box.width <= screen.left + screen.width - 8) {
+      expect(near(box.x, anchor.x + anchor.width + 4), `${id}: after the button`).toBe(true);
+      expect(level(anchor, box), `${id}: level with it`).toBe(true);
+    } else if (anchor.x - 4 - box.width >= screen.left + 8) {
+      expect(near(box.x + box.width, anchor.x - 4), `${id}: before the button`).toBe(true);
+      expect(level(anchor, box), `${id}: level with it`).toBe(true);
+    } else {
+      // Room on neither side: under the button, or above it at the bottom edge; never covering it.
+      expect(near(box.y, anchor.y + anchor.height + 4) || near(box.y + box.height, anchor.y - 4), `${id}: under or over`).toBe(true);
+      expect(near(box.x + box.width / 2, anchor.x + anchor.width / 2), `${id}: centred on it`).toBe(true);
+    }
+  };
+  // On a phone the end and wide buttons leave no room after them: they check the flip and the fallback.
+  for (const id of ['start', 'end', 'wide']) await placed(id);
 });
 
 // A callout keeps its own margin from its anchor on either side, and a translate moves it after placement.
