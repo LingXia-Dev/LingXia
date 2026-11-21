@@ -56,6 +56,7 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
     }
 
     var pullToRefreshCallback: ((MotionEvent) -> Boolean)? = null
+    private var pullClaimedGesture = false
 
     override fun initializeWebView(appId: String, path: String, sessionId: Long) {
         super.initializeWebView(appId, path, sessionId)
@@ -73,13 +74,22 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // Let pull-to-refresh handler intercept first
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) pullClaimedGesture = false
         pullToRefreshCallback?.let { callback ->
             if (callback(event)) {
-                return true // Event consumed by pull-to-refresh
+                // Chromium saw this gesture's DOWN; without a CANCEL it waits for an
+                // end that never comes and ignores the next pull.
+                if (!pullClaimedGesture) {
+                    pullClaimedGesture = true
+                    val cancel = MotionEvent.obtain(event)
+                    cancel.action = MotionEvent.ACTION_CANCEL
+                    super.onTouchEvent(cancel)
+                    cancel.recycle()
+                }
+                return true
             }
         }
-        // Otherwise, let WebView handle it normally
+        if (pullClaimedGesture) return true
         return super.onTouchEvent(event)
     }
 
