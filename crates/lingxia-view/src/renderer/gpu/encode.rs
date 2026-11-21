@@ -233,7 +233,13 @@ impl DisplayList {
         let mut logical = checked_paint_transform(initial_transform)?;
         let mut transform = device * logical;
         context.set_transform(transform);
-        for command in commands {
+        let early = self.early_holes(initial_transform, commands);
+        for (index, command) in commands.iter().enumerate() {
+            for (_, at, shape) in early.iter().filter(|(outer, ..)| *outer == index) {
+                context.set_transform(device * checked_paint_transform(*at)?);
+                cut_hole(context, &shape.path());
+                context.set_transform(transform);
+            }
             // Outside the device box `cull` it would draw nothing: skip encoding it.
             if let Some(area) = cull
                 && let Ok(Some(Some([x, y, w, h]))) = self.paint_box(command, logical)
@@ -526,19 +532,9 @@ impl DisplayList {
                         context.pop_clip();
                         context.pop_clip();
                     } else if !self.web_pictures && crate::scene::webview::is_ready_key(key) {
-                        // Live, or degraded with no picture yet: the native view shows through.
-                        context.push_layer(
-                            None,
-                            Some(vello_cpu::peniko::BlendMode::new(
-                                vello_cpu::peniko::Mix::Normal,
-                                vello_cpu::peniko::Compose::DestOut,
-                            )),
-                            None,
-                            None,
-                            None,
-                        );
-                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
-                        context.fill_path(
+                        // Live, or held live: the native view shows through.
+                        cut_hole(
+                            context,
                             &ClipSnapshot {
                                 bounds: *bounds,
                                 radius: *radius,
@@ -547,7 +543,6 @@ impl DisplayList {
                             }
                             .path(),
                         );
-                        context.pop_layer();
                     }
                 }
                 Paint::Text {
@@ -665,4 +660,21 @@ fn trace_texture(player: &str, bounds: &[f32; 4], fit: crate::scene::image::Fit)
         log::info!(target: "lingxia_view", "webview texture {player}: {state}");
         seen.insert(player.to_owned(), state);
     }
+}
+
+/// Clears `shape` from what is drawn beneath it, so the native view under the surface shows.
+fn cut_hole(context: &mut vello_gpu::Scene, shape: &vello_cpu::kurbo::BezPath) {
+    context.push_layer(
+        None,
+        Some(vello_cpu::peniko::BlendMode::new(
+            vello_cpu::peniko::Mix::Normal,
+            vello_cpu::peniko::Compose::DestOut,
+        )),
+        None,
+        None,
+        None,
+    );
+    context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
+    context.fill_path(shape);
+    context.pop_layer();
 }

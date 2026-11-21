@@ -55,15 +55,62 @@ impl DisplayList {
     }
 
     pub fn has_web_hole(&self) -> bool {
-        self.commands.iter().any(|p| {
-            matches!(
-                p,
-                Paint::WebHole {
-                    degraded: false,
-                    ..
-                }
-            )
+        self.commands.iter().any(|p| match p {
+            Paint::WebHole {
+                degraded: false, ..
+            } => true,
+            Paint::WebHole { key, picture, .. } => self.held_live(key, picture),
+            _ => false,
         })
+    }
+
+    /// A degraded web view with no picture yet: held live and still rather than left empty.
+    pub(crate) fn held_live(&self, key: &str, picture: &str) -> bool {
+        !self.web_pictures
+            && crate::scene::webview::is_ready_key(key)
+            && !self.images.contains_key(picture)
+    }
+
+    /// Where a held-live web view's hole is cut a second time: just before the outermost
+    /// opacity, blur or mask around it opens, which would otherwise fill the hole with the
+    /// page behind. Each entry is that effect's index, the transform at the hole, and its shape.
+    pub(crate) fn early_holes(
+        &self,
+        initial_transform: Affine,
+        commands: &[Paint],
+    ) -> Vec<(usize, Affine, ClipSnapshot)> {
+        let (mut effects, mut logical, mut holes) = (Vec::new(), initial_transform, Vec::new());
+        for (index, command) in commands.iter().enumerate() {
+            match command {
+                Paint::Transform(matrix) => logical = *matrix,
+                Paint::Opacity { .. } | Paint::Blur { .. } | Paint::Mask { .. } => {
+                    effects.push(index)
+                }
+                Paint::PopOpacity | Paint::PopBlur | Paint::PopMask(_) => {
+                    effects.pop();
+                }
+                Paint::WebHole {
+                    key,
+                    picture,
+                    bounds,
+                    radius,
+                    corners,
+                    degraded: true,
+                } if self.held_live(key, picture) => {
+                    if let Some(&outer) = effects.first() {
+                        let shape = ClipSnapshot {
+                            bounds: *bounds,
+                            radius: *radius,
+                            radii: *corners,
+                            transform: None,
+                        };
+                        holes.push((outer, logical, shape));
+                    }
+                }
+                _ => {}
+            }
+        }
+        holes
     }
 
     pub fn rasterize(mut self) -> Result<Frame, String> {
@@ -100,7 +147,16 @@ impl DisplayList {
         let mut transform =
             Affine::scale(self.scale as f64) * checked_paint_transform(initial_transform)?;
         context.set_transform(transform);
-        for command in commands {
+        let commands: Vec<Paint> = commands.into_iter().collect();
+        let early = self.early_holes(initial_transform, &commands);
+        for (index, command) in commands.into_iter().enumerate() {
+            for (_, at, shape) in early.iter().filter(|(outer, ..)| *outer == index) {
+                context.set_transform(
+                    Affine::scale(self.scale as f64) * checked_paint_transform(*at)?,
+                );
+                cut_hole(context, &shape.path());
+                context.set_transform(transform);
+            }
             match command {
                 Paint::Transform(matrix) => {
                     transform = Affine::scale(self.scale as f64) * checked_paint_transform(matrix)?;
@@ -338,28 +394,8 @@ impl DisplayList {
                         context.pop_layer();
                         context.pop_layer();
                     } else if !self.web_pictures && crate::scene::webview::is_ready_key(&key) {
-                        // Live, or degraded with no picture yet: the native view shows through.
-                        context.push_layer(
-                            None,
-                            Some(vello_cpu::peniko::BlendMode::new(
-                                vello_cpu::peniko::Mix::Normal,
-                                vello_cpu::peniko::Compose::DestOut,
-                            )),
-                            None,
-                            None,
-                            None,
-                        );
-                        context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
-                        context.fill_path(
-                            &ClipSnapshot {
-                                bounds,
-                                radius,
-                                radii: corners,
-                                transform: None,
-                            }
-                            .path(),
-                        );
-                        context.pop_layer();
+                        // Live, or held live: the native view shows through.
+                        cut_hole(context, &shape);
                     }
                 }
                 Paint::Text {
@@ -425,6 +461,23 @@ impl DisplayList {
 /// `bounds` with every edge moved to the nearest device pixel under an axis-aligned
 /// `transform`. Fills that share a fractional edge otherwise both draw it at partial
 /// coverage, and whatever lies under them shows through the seam.
+/// Clears `shape` from what is drawn beneath it, so the native view under the surface shows.
+fn cut_hole(context: &mut RenderContext, shape: &vello_cpu::kurbo::BezPath) {
+    context.push_layer(
+        None,
+        Some(vello_cpu::peniko::BlendMode::new(
+            vello_cpu::peniko::Mix::Normal,
+            vello_cpu::peniko::Compose::DestOut,
+        )),
+        None,
+        None,
+        None,
+    );
+    context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
+    context.fill_path(shape);
+    context.pop_layer();
+}
+
 pub(crate) fn pixel_snapped(bounds: [f32; 4], transform: Affine) -> [f32; 4] {
     let [sx, ky, kx, sy, tx, ty] = transform.as_coeffs();
     let [x, y, w, h] = bounds.map(f64::from);

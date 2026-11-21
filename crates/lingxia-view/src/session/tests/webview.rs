@@ -194,11 +194,21 @@ fn webview_paints_surface_placeholder_until_ready_then_punches_dest_out_hole_pre
     assert_eq!(pixel(&shot_ready, 1, 1), [255, 255, 255, 255]);
     assert_eq!(pixel(&shot_ready, 50, 50), [255, 0, 0, 255]);
 
-    // 3. When degraded (`opacity: 0.5`), hole-punch is suppressed so opaque blended surface shows.
+    // 3. Faded (`opacity: 0.5`) with no picture yet, it is held live: the hole still reaches the
+    //    native view through the faded group instead of showing the page behind.
     page.eval("globalThis.faded=true").unwrap();
     let degraded = page.layout(120, 120, 1.0).unwrap();
+    assert!(
+        degraded.has_web_hole(),
+        "the surface stays transparent for it"
+    );
     let shot_degraded = degraded.rasterize().unwrap();
-    assert_eq!(pixel(&shot_degraded, 20, 20)[3], 255);
+    assert_eq!(pixel(&shot_degraded, 20, 20), [0, 0, 0, 0]);
+    assert_eq!(
+        pixel(&shot_degraded, 50, 50),
+        [255, 0, 0, 255],
+        "what draws over it stays"
+    );
 }
 
 #[cfg(not(target_os = "android"))]
