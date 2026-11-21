@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { API as TypeScriptAPI } from 'typescript/unstable/sync';
-import * as ts from 'typescript/unstable/ast';
+import ts from 'typescript';
 import {
   LX_RETURNED_OBJECT_SURFACES,
   LX_RUNTIME_SURFACES,
@@ -10,23 +9,56 @@ import {
 import manifest from '../logic-api-coverage.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const compilerApi = new TypeScriptAPI({ cwd: root });
-const compilerSnapshot = compilerApi.updateSnapshot({
-  openProjects: [
-    // The root config only references the two real projects, so open the
-    // Logic one directly — that is where the page sources live.
-    path.join(root, 'tsconfig.logic.json'),
-    path.join(root, 'tests/tsconfig.json'),
-  ],
-});
-const compilerProjects = compilerSnapshot.getProjects();
+
+function program(configPath) {
+  const parsed = ts.getParsedCommandLineOfConfigFile(configPath, {}, {
+    ...ts.sys,
+    onUnRecoverableConfigFileDiagnostic(diagnostic) {
+      throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+    },
+  });
+  if (!parsed) throw new Error(`Cannot read ${configPath}`);
+  // The scan walks up through `parent`, which only a host asked for it sets.
+  const host = ts.createCompilerHost(parsed.options, true);
+  return ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options, host });
+}
+
+// The Logic project holds the page sources; the tests project holds the specs.
+const programs = [
+  program(path.join(root, 'tsconfig.logic.json')),
+  program(path.join(root, 'tests/tsconfig.json')),
+];
 
 function sourceFile(file) {
-  for (const project of compilerProjects) {
-    const ast = project.program.getSourceFile(file);
+  for (const candidate of programs) {
+    const ast = candidate.getSourceFile(file);
     if (ast) return ast;
   }
   throw new Error(`TypeScript project does not contain ${file}`);
+}
+
+// The local names `lx` is imported under from '@lingxia/logic' in this file.
+let lxNames = new Set();
+
+function importedLxNames(ast) {
+  const names = new Set();
+  for (const statement of ast.statements) {
+    if (!ts.isImportDeclaration(statement)
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== '@lingxia/logic') continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text === 'lx') names.add(element.name.text);
+    }
+  }
+  return names;
+}
+
+function logicSource(file) {
+  const ast = sourceFile(file);
+  lxNames = importedLxNames(ast);
+  return ast;
 }
 
 function logicFiles() {
@@ -47,7 +79,7 @@ function directLxPath(node) {
     members.unshift(current.name.text);
     current = current.expression;
   }
-  return ts.isIdentifier(current) && current.text === 'lx'
+  return ts.isIdentifier(current) && lxNames.has(current.text)
     ? `lx.${members.join('.')}`
     : null;
 }
@@ -66,7 +98,7 @@ function factoryPath(node) {
 function scan() {
   const usages = new Map();
   for (const file of logicFiles()) {
-    const ast = sourceFile(file);
+    const ast = logicSource(file);
     const visit = (node) => {
       if (ts.isPropertyAccessExpression(node)) {
         const isNestedExpression = ts.isPropertyAccessExpression(node.parent)
@@ -92,10 +124,11 @@ function scan() {
 function unsupportedLxSyntax() {
   const issues = [];
   for (const file of logicFiles()) {
-    const ast = sourceFile(file);
+    const ast = logicSource(file);
     const visit = (node) => {
       if (ts.isIdentifier(node)
-        && node.text === 'lx'
+        && lxNames.has(node.text)
+        && !ts.isImportSpecifier(node.parent)
         && !(ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node)
         && !(ts.isQualifiedName(node.parent) && node.parent.left === node)) {
         const location = ast.getLineAndCharacterOfPosition(node.getStart(ast));
@@ -136,7 +169,7 @@ function receiverKey(node, ast) {
   const current = unwrapExpression(node);
   if (ts.isIdentifier(current)) return current.text;
   if (ts.isPropertyAccessExpression(current)
-    && (ts.isThisExpression(current.expression) || ts.isIdentifier(current.expression))) {
+    && (current.expression.kind === ts.SyntaxKind.ThisKeyword || ts.isIdentifier(current.expression))) {
     return current.getText(ast);
   }
   return null;
@@ -154,7 +187,7 @@ function methodName(node) {
 function scanReturnedObjects() {
   const usages = new Map();
   for (const file of logicFiles()) {
-    const ast = sourceFile(file);
+    const ast = logicSource(file);
     const aliases = new Map();
     const methodReturns = new Map();
 
@@ -264,7 +297,7 @@ function specCoverage() {
   // The specs every showcase shares ship in @lingxia/test; one counts when this example's
   // tests import it, which puts it in the tests project.
   const shared = fs.realpathSync(path.join(root, 'node_modules/@lingxia/test/showcase'));
-  const imported = (file) => compilerProjects.some((project) => project.program.getSourceFile(file));
+  const imported = (file) => programs.some((candidate) => candidate.getSourceFile(file));
   const files = [
     ...filesBelow(path.join(root, 'tests'), '.test.ts'),
     ...filesBelow(shared, '.test.ts').filter(imported),
