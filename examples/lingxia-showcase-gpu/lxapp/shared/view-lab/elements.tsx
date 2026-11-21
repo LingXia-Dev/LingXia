@@ -252,17 +252,17 @@ export function WebSchemeDemo() {
 // scales with the box; at full size the live page returns.
 export function WebMotionDemo() {
   const web = useWebView('lab-web-motion');
-  const small = useLocal('lab-web-motion-small', false);
+  const faded = useLocal('lab-web-motion-faded', false);
   const loads = useLocal('lab-web-motion-loads', 0);
   const t = useSay();
   return (
     <>
-      <Button testId="lab-web-motion-toggle" size="sm" onClick={() => small.set(!small.value)}>{t(small.value ? labels.grow : labels.shrink)}</Button>
-      <view data-testid="lab-web-motion-box" className={`w-full h-32 transition-transform duration-700 ${small.value ? 'scale-75' : 'scale-100'}`}>
+      <Button testId="lab-web-motion-toggle" size="sm" onClick={() => faded.set(!faded.value)}>{t(faded.value ? labels.show : labels.fade)}</Button>
+      <view data-testid="lab-web-motion-box" className={`w-full h-32 transition-opacity duration-700 ${faded.value ? 'opacity-40' : 'opacity-100'}`}>
         <webview web={web} data-testid="lab-web-motion-frame" src="public/embed/motion.html" aria-label={t(labels.webMotionFrame)}
           onLoad={() => loads.set(loads.value + 1)} className="w-full h-full rounded-xl" />
       </view>
-      <Readout testId="lab-web-motion-state" state={`loads=${loads.value} small=${small.value}`} />
+      <Readout testId="lab-web-motion-state" state={`loads=${loads.value} faded=${faded.value}`} />
     </>
   );
 }

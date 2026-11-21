@@ -267,30 +267,31 @@ test('a drag inside a scrollable web page scrolls it to its edge, then the scree
   await t.waitFor(() => frame.boundingBox(), { until: now => now.y < box.y - 40 });
 });
 
-// A web view in a box that scales draws its picture, which scales with the box; at full size it
-// is the live page again. The page is one solid orange, so a pixel tells it from its empty box.
-test('a web page in a scaling box keeps showing while it shrinks and grows', { covers: ['view:webview'], start: openDemo('webMotion') }, async (t) => {
+// A web view in a fading box draws its picture, which fades with the box; solid again, it is the
+// live page. The page is one solid orange, so the box's centre tells solid, faint and empty apart.
+test('a web page in a fading box keeps showing while it fades and returns', { covers: ['view:webview'], start: openDemo('webMotion') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-web-motion-state');
-  await expect(state).toHaveAttribute('data-state', /loads=1 small=false/, { timeout: 8_000 });
+  await expect(state).toHaveAttribute('data-state', /loads=1 faded=false/, { timeout: 8_000 });
   const box = await onScreen(t, view.testId('lab-web-motion-box'));
   const vp = await view.viewport();
-  const orange = (px: number[]) => px[0] > 200 && px[1] > 60 && px[1] < 130 && px[2] < 60;
-  // The centre, and a point inside the full box that a 75% box leaves out.
+  const look = (px: number[]) => {
+    const tint = px[0] - px[2];
+    return tint > 180 ? 'solid' : tint > 40 ? 'faint' : 'empty';
+  };
   const probe = async () => {
     const raw = await view.screenshot();
     const scale = raw.width / vp.width;
     const centre = [Math.round((box.x + box.width / 2) * scale), Math.round((box.y + box.height / 2) * scale)];
-    const edge = [Math.round((box.x + 6) * scale), Math.round((box.y + box.height / 2) * scale)];
     const shot = await decodePng(raw.base64, () => centre[1] + 2);
-    return { centre: orange(shot.at(centre[0], centre[1])), edge: orange(shot.at(edge[0], edge[1])) };
+    return look(shot.at(centre[0], centre[1]));
   };
-  await expect.poll(probe, { timeout: 5_000 }).toEqual({ centre: true, edge: true });
+  await expect.poll(probe, { timeout: 5_000 }).toBe('solid');
   await view.testId('lab-web-motion-toggle').click();
-  await expect(state).toHaveAttribute('data-state', /small=true/);
-  await expect.poll(probe, { timeout: 3_000 }).toEqual({ centre: true, edge: false });
+  await expect(state).toHaveAttribute('data-state', /faded=true/);
+  await expect.poll(probe, { timeout: 3_000 }).toBe('faint');
   await view.testId('lab-web-motion-toggle').click();
-  await expect(state).toHaveAttribute('data-state', /small=false/);
-  await expect.poll(probe, { timeout: 3_000 }).toEqual({ centre: true, edge: true });
+  await expect(state).toHaveAttribute('data-state', /faded=false/);
+  await expect.poll(probe, { timeout: 3_000 }).toBe('solid');
   expect(await state.getAttribute('data-state'), 'the web page did not reload').toMatch(/loads=1 /);
 });
