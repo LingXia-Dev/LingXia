@@ -178,7 +178,7 @@ async function apiPageProbe(app: TestApp): Promise<ApiPageProbe | null> {
     const page = pageStack<AnyLogicPage<{ loadCount?: number }>>()
       .find((candidate) => candidate.route.includes('/API/'));
     return page
-      ? { loadCount: page.data.loadCount ?? -1, logicMarker: (page.__relaunchMarker as string | undefined) ?? null }
+      ? { loadCount: page.data.loadCount ?? -1, logicMarker: (page as unknown as { __relaunchMarker?: string }).__relaunchMarker ?? null }
       : null;
   });
 }

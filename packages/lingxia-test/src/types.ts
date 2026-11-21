@@ -362,8 +362,10 @@ type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : 
 type JsonArgs<A extends unknown[]> = A & { [K in keyof A]: JsonMember<A[K]> };
 
 /** A page on the stack, as `pageStack()` returns it. */
-export interface LogicPage<TData = Record<string, unknown>> {
+export interface LogicPage<TData = Record<string, unknown>, TActions = {}> {
   readonly route: string;
+  /** The page's actions, as the View calls them. */
+  readonly actions: TActions;
   readonly data: TData;
   setData(patch: Record<string, unknown>): void;
   /** Resolves once pending `setData` writes reached the View. */
@@ -372,11 +374,8 @@ export interface LogicPage<TData = Record<string, unknown>> {
   readonly page?: PageApi<any, any, any>;
 }
 
-/** A page whose declared methods are not typed: any member may be read. */
-export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData> & {
-  /** Actions the page's `setup` returns. */
-  readonly [member: string]: unknown;
-};
+/** A page whose actions are not typed: any action name may be called. */
+export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData, Readonly<Record<string, (...args: any[]) => unknown>>>;
 
 /** The object `App({...})` registered, as `appInstance()` returns it. */
 export interface LogicApp {

@@ -67,7 +67,7 @@ test("page.refresh runs onPullDownRefresh, and the indicator stays until it sett
     await app.logic.eval(async ({ pageStack, currentPage }) => {
       const pages = pageStack();
       const top = pages[pages.length - 1];
-      (top.stopRefresh as () => void)();
+      top.actions.stopRefresh();
       await Promise.resolve();
       await Promise.resolve();
       currentPage()!.refresh();

@@ -257,7 +257,9 @@ test('typed Logic access', async t => {
   // @ts-expect-error `logic.call` is gone: `page.actions.<name>(payload)`.
   await t.app.logic.call('rename', 'dev-1');
   const untyped: AnyLogicPage = null as unknown as AnyLogicPage;
-  void untyped.anything;
+  void untyped.actions.anything;
+  // @ts-expect-error An action is reached through `actions`, never on the page itself.
+  void untyped.stopRefresh;
   // `getPage` may find nothing: the instance is gone.
   const gone: boolean = await t.app.logic.eval(({ getPage }, id: string) => getPage(id) === undefined, '7');
   void gone;

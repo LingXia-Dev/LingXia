@@ -75,6 +75,11 @@
 
     pageSvc.data = cloneJsonValue(pageConfig.data || {});
     pageSvc.route = pageConfig.route;
+    // For `lxdev test`: a spec calls an action the way the View does, by name.
+    Object.defineProperty(pageSvc, "actions", {
+      value: Object.freeze({ ...svcConfig.actions }),
+      enumerable: false,
+    });
 
     // Aborted as the page unloads — just before `onUnload` runs, or when the
     // page is retired without one — so work the page started (a fetch, a

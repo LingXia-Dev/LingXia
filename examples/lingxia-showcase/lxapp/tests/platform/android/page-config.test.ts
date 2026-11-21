@@ -56,6 +56,6 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
     await expect(page.view.testId('pull-refresh-count')).toHaveText('1');
     await expect(page.view.testId('pull-refresh-status')).toContainText('Refreshing');
   } finally {
-    await app.logic.eval(({ pageStack }) => { const pages = pageStack(); (pages[pages.length - 1].stopRefresh as () => void)(); });
+    await app.logic.eval(({ pageStack }) => { const pages = pageStack(); pages[pages.length - 1].actions.stopRefresh(); });
   }
 });

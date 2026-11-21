@@ -106,6 +106,9 @@ assert.equal(run('orderPage.name'), 'order');
 assert.equal(run('orderPage.params.id'), 7);
 run("orderSvc.config.onLoad({ id: 8 })");
 assert.equal(run('orderPage.params.id'), 8, 'onLoad refreshes params');
+// A test reaches the page's actions by name on the stack entry, read-only.
+assert.equal(run('orderSvc.actions.bump === orderSvc.config.actions.bump && Object.isFrozen(orderSvc.actions)'), true);
+assert.equal(run('Object.keys(orderSvc).includes("actions")'), false);
 run("orderSvc.config.actions.bump()");
 await new Promise(resolve => setTimeout(resolve, 30));
 assert.deepEqual(JSON.parse(JSON.stringify(run('acks[0].ops'))), [
