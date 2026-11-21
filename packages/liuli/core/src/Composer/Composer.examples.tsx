@@ -3,7 +3,7 @@ import { unused } from '../example';
 import { IconButton } from '../IconButton/IconButton';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { Token } from '../Token/Token';
-import { Composer } from './Composer';
+import { Composer, type ComposerProps } from './Composer';
 
 /** Write and send: the button wakes when there is something to send, and the draft empties once it is sent. */
 export function Reply() {
@@ -110,4 +110,9 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return <Composer value="" onChange={unused} label="Message" placeholder="Message" sendLabel="Send" onSubmit={unused} className="w-36" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { onSubmit: unused } satisfies Partial<ComposerProps>;
 }

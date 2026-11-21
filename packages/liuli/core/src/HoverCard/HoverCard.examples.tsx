@@ -1,6 +1,6 @@
 import { Avatar } from '../Avatar/Avatar';
 import { StatusDot } from '../StatusDot/StatusDot';
-import { HoverCard } from './HoverCard';
+import { HoverCard, type HoverCardProps } from './HoverCard';
 import { Link } from '../Link/Link';
 
 /** A name in a line of activity: resting on it shows who that is. A dotted underline sets a term apart from a link. */
@@ -60,4 +60,20 @@ export function InSentence() {
       {' '}yesterday.
     </text>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    content: (
+      <view className="flex-row items-center gap-3">
+        <Avatar name="Ana Lima" isDecorative />
+        <view className="gap-0.5">
+          <text className="text-body font-medium text-text">Ana Lima</text>
+          <text className="text-footnote text-muted">Design lead · Lisbon</text>
+        </view>
+      </view>
+    ),
+    children: <text className="text-body font-medium text-text">Ana Lima</text>,
+  } satisfies Partial<HoverCardProps>;
 }

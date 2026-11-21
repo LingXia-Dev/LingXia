@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     'No pinch to zoom and no pan: the View has no pinch gesture.',
     'No previous and next arrows; on a desktop the dots move between pictures.',
   ],
+  playground: { props: { isOpen: false, label: 'Photos of the house', closeLabel: 'Close' }, fixture: true, opener: 'View photos' },
   related: ['Thumbnail', 'Carousel', 'Dialog'],
   gallery: {
     specimen: 'Specimen',

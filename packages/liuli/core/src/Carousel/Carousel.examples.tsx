@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { Carousel } from './Carousel';
+import { Carousel, type CarouselProps } from './Carousel';
 
 const photo = (n: number) => `public/photos/photo-${n}.png`;
 const photos = [
@@ -59,4 +59,16 @@ export function Specimen() {
       </Carousel>
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    pageLabel: (page: number, count: number) => `Photo ${page + 1} of ${count}`,
+    children: photos.map(([n, alt]) => (
+      <view key={alt} className="relative w-full aspect-4/3">
+        <image src={photo(n)} alt={alt} className="absolute inset-0 size-full object-cover" />
+      </view>
+    )),
+  } satisfies Partial<CarouselProps>;
 }

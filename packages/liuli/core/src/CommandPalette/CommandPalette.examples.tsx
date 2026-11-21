@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
 import { Button } from '../Button/Button';
-import { CommandPalette, type CommandGroup } from './CommandPalette';
+import { CommandPalette, type CommandGroup, type CommandPaletteProps } from './CommandPalette';
 
 const groups: CommandGroup[] = [
   { label: 'Go to', items: [
@@ -42,4 +42,9 @@ export function Commands() {
 /** The home tile. */
 export function Specimen() {
   return <Button label="Search" startIcon="search" size="sm" onClick={unused} />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { groups, onSelect: unused } satisfies Partial<CommandPaletteProps>;
 }

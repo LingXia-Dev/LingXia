@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     'Every page is the full width; a carousel does not show part of the next page.',
     'There are no previous and next arrows; on a desktop the dots page it.',
   ],
+  playground: { props: { label: 'Photos of the house', dots: 'over' }, fixture: true },
   related: ['PageControl', 'Lightbox', 'Thumbnail'],
   gallery: {
     specimen: 'Specimen',

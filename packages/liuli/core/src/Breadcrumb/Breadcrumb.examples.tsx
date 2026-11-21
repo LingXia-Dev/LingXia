@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Said, unused } from '../example';
-import { Breadcrumb } from './Breadcrumb';
+import { Breadcrumb, type BreadcrumbProps } from './Breadcrumb';
 
 /** Where a file sits: each level above it is a way back. */
 export function Path() {
@@ -48,4 +48,15 @@ export function Deep() {
 /** The home tile. */
 export function Specimen() {
   return <Breadcrumb label="Breadcrumb" items={[{ key: 'a', label: 'Home', onClick: unused }, { key: 'b', label: 'Plan' }]} />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    items: [
+      { key: 'home', label: 'Home', onClick: unused },
+      { key: 'projects', label: 'Projects', onClick: unused },
+      { key: 'plan', label: 'Q3 plan' },
+    ],
+  } satisfies Partial<BreadcrumbProps>;
 }

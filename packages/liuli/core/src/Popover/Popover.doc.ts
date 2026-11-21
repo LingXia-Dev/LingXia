@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       today: 'Above or below the trigger, lined up with its start, centre or end.',
     },
   ],
+  playground: { props: { isOpen: false, label: 'View options', title: 'Show in the list' }, fixture: true },
   related: ['DropdownMenu', 'InfoTip', 'Dialog'],
   gallery: {
     specimen: 'Specimen',

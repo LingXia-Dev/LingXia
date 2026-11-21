@@ -76,6 +76,7 @@ export const doc: ComponentDoc = {
       today: 'Bound fields chain with enterKeyHint="next" or cell.focus().',
     },
   ],
+  playground: { props: { value: '', label: 'Email', placeholder: 'you@example.com' } },
   related: ['Field'],
   gallery: {
     specimen: 'Specimen',

@@ -2,7 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
 import type { CalendarRange } from '../Calendar/Calendar';
 import { calendarEn } from '../Calendar/locale/en';
-import { DateRangeInput } from './DateRangeInput';
+import { DateRangeInput, type DateRangeInputProps } from './DateRangeInput';
 
 const today = '2026-11-15';
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -60,4 +60,9 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return <DateRangeInput label="Stay" isLabelHidden size="sm" value={set} onChange={unused} format={short} locale={calendarEn} today={today} className="w-36" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { value: { start: '2026-11-18', end: '2026-11-24' }, format: short, locale: calendarEn } satisfies Partial<DateRangeInputProps>;
 }

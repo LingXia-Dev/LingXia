@@ -1,5 +1,5 @@
 import { Avatar } from '../Avatar/Avatar';
-import { Timestamp } from './Timestamp';
+import { Timestamp, type TimestampProps } from './Timestamp';
 import { timestampEn } from './locale/en';
 import { timestampZh } from './locale/zh';
 
@@ -60,4 +60,9 @@ export function Chinese() {
 /** The home tile. */
 export function Specimen() {
   return <Timestamp value="2026-11-14T09:42" now={now} locale={timestampEn} className="text-footnote text-muted" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { locale: timestampEn } satisfies Partial<TimestampProps>;
 }

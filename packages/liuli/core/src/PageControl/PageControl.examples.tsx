@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { PageControl } from './PageControl';
+import { PageControl, type PageControlProps } from './PageControl';
 
 const steps = [
   ['Write anywhere', 'Notes open in a tap and save as you type.'],
@@ -36,4 +36,9 @@ export function OnMedia() {
 /** The home tile. */
 export function Specimen() {
   return <PageControl label="Pages" count={4} value={1} onChange={unused} pageLabel={at => `Page ${at + 1}`} />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { pageLabel: (at: number) => `Step ${at + 1} of 4` } satisfies Partial<PageControlProps>;
 }

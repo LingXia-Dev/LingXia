@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
     { missing: 'Ready-made spans beside the calendar: this week, last month.', needs: 'nothing from the View', today: 'An app puts its own buttons beside the field.' },
     { missing: 'Arrow keys through the days.', needs: 'a grid whose cells take one Tab stop and move by arrows in two directions', today: 'Every day is its own Tab stop, as in Calendar.' },
   ],
+  playground: { props: { label: 'Stay', today: '2026-11-15', closeLabel: 'Close' }, fixture: true },
   related: ['Calendar', 'DateInput', 'Combobox'],
   gallery: {
     specimen: 'Specimen',

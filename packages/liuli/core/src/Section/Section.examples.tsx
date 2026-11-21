@@ -1,7 +1,7 @@
-import { Said } from '../example';
+import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { Item, ItemList } from '../Item/Item';
-import { Section } from './Section';
+import { Section, type SectionProps } from './Section';
 
 /** A part of a page with its heading, a line about it and a way to see more. */
 export function Recent() {
@@ -40,4 +40,17 @@ export function Specimen() {
       <view className="h-6 rounded-control bg-text/8" />
     </Section>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    action: <Button label="See all" variant="link" size="sm" onClick={unused} />,
+    children: (
+      <ItemList label="Recent notes">
+        <Item label="Trip to the coast" description="Edited yesterday" hasChevron onClick={unused} />
+        <Item label="Reading list" description="Edited on Monday" hasChevron onClick={unused} />
+      </ItemList>
+    ),
+  } satisfies Partial<SectionProps>;
 }

@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
-import { RadioGroup } from './RadioGroup';
+import { RadioGroup, type RadioGroupProps } from './RadioGroup';
 
 const deliveries = [
   { value: 'standard', label: 'Standard', description: '3 to 5 working days, free' },
@@ -103,4 +103,9 @@ export function Inline() {
       data-testid="billing"
     />
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: deliveries } satisfies Partial<RadioGroupProps>;
 }

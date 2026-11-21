@@ -68,6 +68,7 @@ export const doc: ComponentDoc = {
     'No reactions, threads or read receipts.',
     'No typing mark.',
   ],
+  playground: { props: { text: 'See you at six?', side: 'start', author: 'Ana Lima' } },
   related: ['Composer', 'Avatar', 'Markdown'],
   gallery: {
     specimen: 'Specimen',

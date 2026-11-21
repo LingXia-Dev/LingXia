@@ -49,6 +49,7 @@ export const doc: ComponentDoc = {
     { name: 'Nested', title: 'Sections inside a section' },
   ],
   gaps: [],
+  playground: { props: { title: 'Recent notes', description: 'Edited in the last week' }, fixture: true },
   related: ['Card', 'Item', 'Divider'],
   gallery: {
     specimen: 'Specimen',

@@ -77,6 +77,7 @@ export const doc: ComponentDoc = {
       today: 'The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label.',
     },
   ],
+  playground: { props: { label: 'Project', value: 'overview' }, fixture: true },
   related: ['Button', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

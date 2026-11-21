@@ -1347,6 +1347,14 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Move to"
+        },
+        "fixture": true,
+        "opener": "Move note"
+      },
       "theming": {
         "classProps": [
           {
@@ -1551,6 +1559,12 @@
           "today": "The current page is the last item of the list and not a button."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Breadcrumb"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -2133,6 +2147,12 @@
           "today": "Rows only."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Draft actions"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -2481,6 +2501,14 @@
           "today": "The app passes a `locale`."
         }
       ],
+      "playground": {
+        "props": {
+          "value": "2026-11-19",
+          "label": "Due date",
+          "today": "2026-11-15"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -2785,6 +2813,10 @@
           "today": "The selected border and the focus ring sit in the same place."
         }
       ],
+      "playground": {
+        "props": {},
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -2975,6 +3007,13 @@
         "Every page is the full width; a carousel does not show part of the next page.",
         "There are no previous and next arrows; on a desktop the dots page it."
       ],
+      "playground": {
+        "props": {
+          "label": "Photos of the house",
+          "dots": "over"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -3250,6 +3289,13 @@
           "today": "Two states only."
         }
       ],
+      "playground": {
+        "props": {
+          "value": false,
+          "label": "Email me a weekly summary",
+          "description": "Every Monday morning."
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -3537,6 +3583,12 @@
           "today": "One column."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Notify me about"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -3961,6 +4013,13 @@
         "No syntax colouring and no line numbers.",
         "Copying is the app's: Liuli has no clipboard."
       ],
+      "playground": {
+        "props": {
+          "code": "npm run build",
+          "label": "Build command",
+          "title": "Terminal"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -4370,6 +4429,16 @@
           "today": "One choice. With a keyboard, emptying the field clears it; on touch an app that needs \"none\" adds an option for it."
         }
       ],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Country",
+          "placeholder": "Choose a country",
+          "searchLabel": "Search countries",
+          "emptyLabel": "No country matches"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -4634,6 +4703,16 @@
         "It binds no shortcut of its own: the app opens it.",
         "A row does not lead to a second page of rows."
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Search commands",
+          "placeholder": "Type a command or a place",
+          "emptyLabel": "No commands match"
+        },
+        "fixture": true,
+        "opener": "Open commands"
+      },
       "theming": {
         "classProps": [],
         "tokens": [
@@ -4868,6 +4947,15 @@
       "limits": [
         "It shows what is attached and leaves choosing and uploading files to the app."
       ],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Message",
+          "placeholder": "Message Kai",
+          "sendLabel": "Send"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -5059,6 +5147,12 @@
         "It holds no submenu: a menu item that opens another menu closes the first.",
         "At a point the menu is placed from the size of the page; a very long menu can still reach past its edge."
       ],
+      "playground": {
+        "props": {
+          "label": "Trip to the coast"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -5363,6 +5457,12 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Start date"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -5735,6 +5835,14 @@
           "today": "Every day is its own Tab stop, as in Calendar."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Stay",
+          "today": "2026-11-15",
+          "closeLabel": "Close"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -5996,6 +6104,14 @@
       "limits": [
         "The earliest and latest are days: a time cannot be limited on one particular day."
       ],
+      "playground": {
+        "props": {
+          "value": "2026-11-19T09:30",
+          "label": "Meeting",
+          "dateLabel": "Date",
+          "timeLabel": "Time"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -6216,6 +6332,13 @@
           "today": "Liuli builds the same button with aria-expanded, so the chevron can sit at the end."
         }
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "What counts as an active member?"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -6500,6 +6623,16 @@
           "today": "duration-200 ease-out in the recipe."
         }
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Delete the file?",
+          "description": "It goes to the bin for 30 days.",
+          "closeLabel": "Close"
+        },
+        "fixture": true,
+        "opener": "Delete the file"
+      },
       "theming": {
         "classProps": [
           {
@@ -6655,6 +6788,11 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "orientation": "horizontal"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -6864,6 +7002,15 @@
         "It does not follow the finger; it opens and closes as a whole.",
         "It is always modal: a panel that stays open beside the page is SplitView."
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Filters",
+          "closeLabel": "Close"
+        },
+        "fixture": true,
+        "opener": "Show filters"
+      },
       "theming": {
         "classProps": [
           {
@@ -7304,6 +7451,13 @@
           "today": "The icon carries the danger colour; the text stays in the text role."
         }
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Sort by"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -7814,6 +7968,13 @@
           "today": "Validate on change or on submit."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Billing period",
+          "description": "You can change it later."
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -8110,6 +8271,14 @@
         "Nothing can be dropped onto it: the View has no drop target.",
         "It shows no previews; pair it with Thumbnail for pictures."
       ],
+      "playground": {
+        "props": {
+          "label": "Documents",
+          "pickLabel": "Choose files",
+          "hint": "PDF or image, up to 25 MB each"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -8277,6 +8446,10 @@
           "today": "One or two columns; a field takes one or the whole line."
         }
       ],
+      "playground": {
+        "props": {},
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -8432,6 +8605,12 @@
       "limits": [
         "The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text."
       ],
+      "playground": {
+        "props": {
+          "label": "About Ana Lima"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [],
         "tokens": [
@@ -8638,6 +8817,12 @@
           "today": "One outline per name; an app passes its own filled icon with `icon`."
         }
       ],
+      "playground": {
+        "props": {
+          "name": "calendar",
+          "size": "md"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -8899,6 +9084,12 @@
           "today": "The label is read by assistive tech only."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Settings",
+          "icon": "settings"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -9126,6 +9317,13 @@
           "today": "The pressed and open pictures are still drawings."
         }
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "About seats",
+          "content": "A seat is one person who can edit. People who only read are free."
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -9602,6 +9800,14 @@
           "today": "The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Notifications",
+          "description": "Mentions and replies",
+          "startIcon": "notifications",
+          "hasChevron": true
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -9803,6 +10009,12 @@
       "limits": [
         "The keys are whatever the app passes; Liuli does not know the platform's modifier names."
       ],
+      "playground": {
+        "props": {
+          "label": "Command K"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -9980,6 +10192,15 @@
         "No pinch to zoom and no pan: the View has no pinch gesture.",
         "No previous and next arrows; on a desktop the dots move between pictures."
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "Photos of the house",
+          "closeLabel": "Close"
+        },
+        "fixture": true,
+        "opener": "View photos"
+      },
       "theming": {
         "classProps": [],
         "tokens": [
@@ -10385,6 +10606,15 @@
         "Rows are not reordered by dragging.",
         "It does not move focus to a new row; the app's controls can ask for it."
       ],
+      "playground": {
+        "props": {
+          "label": "Phone numbers",
+          "addLabel": "Add a phone number",
+          "min": 1,
+          "max": 4
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -10641,6 +10871,11 @@
           "today": "Not handled; split the paragraph."
         }
       ],
+      "playground": {
+        "props": {
+          "source": "**Bold**, _italic_ and `code`, in a short note."
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -10970,6 +11205,13 @@
         "No reactions, threads or read receipts.",
         "No typing mark."
       ],
+      "playground": {
+        "props": {
+          "text": "See you at six?",
+          "side": "start",
+          "author": "Ana Lima"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -11174,6 +11416,12 @@
           "today": "The app puts an IconButton in `content`."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Invoice details"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -11440,6 +11688,13 @@
         "The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.",
         "The error state colours the boundary but is not reported as invalid on the group."
       ],
+      "playground": {
+        "props": {
+          "label": "Labels",
+          "addLabel": "Add a label"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -11668,6 +11923,13 @@
           "today": "Arrows, Home and End"
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Workspace",
+          "value": "inbox"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -12030,6 +12292,16 @@
           "today": "One step per press."
         }
       ],
+      "playground": {
+        "props": {
+          "value": 2,
+          "label": "Guests",
+          "decrementLabel": "Fewer guests",
+          "incrementLabel": "More guests",
+          "min": 1,
+          "max": 12
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -12238,6 +12510,14 @@
       "limits": [
         "Many pages are not folded into a window of dots; the row grows with `count`."
       ],
+      "playground": {
+        "props": {
+          "label": "Welcome steps",
+          "count": 4,
+          "value": 0
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -12470,6 +12750,16 @@
           "today": "An app puts a Select or a NumberInput beside it."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Results pages",
+          "value": 3,
+          "pageCount": 12,
+          "previousLabel": "Previous page",
+          "nextLabel": "Next page"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -12693,6 +12983,14 @@
           "today": "Above or below the trigger, lined up with its start, centre or end."
         }
       ],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "View options",
+          "title": "Show in the list"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -13378,6 +13676,13 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "label": "Delivery",
+          "value": "standard"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -13700,6 +14005,14 @@
           "today": "The clear button empties the text; the page decides what an empty search shows."
         }
       ],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Search",
+          "clearLabel": "Clear search",
+          "placeholder": "Search files"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -13880,6 +14193,13 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "title": "Recent notes",
+          "description": "Edited in the last week"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -14076,6 +14396,13 @@
           "today": "Segments carry a text label."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Units",
+          "value": "km"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -14366,6 +14693,14 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Country",
+          "placeholder": "Choose a country"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -14881,6 +15216,14 @@
           "today": "VideoControls builds its scrubber on `<slider>` directly."
         }
       ],
+      "playground": {
+        "props": {
+          "value": 40,
+          "label": "Volume",
+          "min": 0,
+          "max": 100
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -15628,6 +15971,13 @@
           "today": "Labels are cut short; use `vertical` on a phone."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Checkout steps",
+          "value": 1
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -15872,6 +16222,13 @@
           "today": "The built-in ring also draws around the track."
         }
       ],
+      "playground": {
+        "props": {
+          "value": true,
+          "label": "Wi-Fi",
+          "description": "Join known networks"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -16226,6 +16583,13 @@
           "today": "Each cell is named with its heading."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Invoices",
+          "keyField": "id"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -16495,6 +16859,13 @@
           "today": "The tabs are drawn and work; the indicator is not shown, and the chosen tab is told by its darker label."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Project",
+          "value": "overview"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -16881,6 +17252,13 @@
           "today": "Validate as the value changes, or on submit."
         }
       ],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Comment",
+          "placeholder": "Add a comment"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -17339,6 +17717,13 @@
           "today": "Bound fields chain with enterKeyHint=\"next\" or cell.focus()."
         }
       ],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Email",
+          "placeholder": "you@example.com"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -17576,6 +17961,13 @@
       "limits": [
         "A picture that fails to load leaves the tint; there is no broken-image mark."
       ],
+      "playground": {
+        "props": {
+          "src": "public/photos/photo-1.png",
+          "alt": "Coast, November",
+          "size": "md"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -17896,6 +18288,12 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "value": "",
+          "label": "Reminder"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -18237,6 +18635,13 @@
         "There is no clock and no time zone in the View: the app passes `now` and local date-times.",
         "Words come from a locale module, not from the system; two locales ship."
       ],
+      "playground": {
+        "props": {
+          "value": "2026-11-14T09:42",
+          "now": "2026-11-14T10:05"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {
@@ -18426,6 +18831,12 @@
         }
       ],
       "gaps": [],
+      "playground": {
+        "props": {
+          "message": "Changes saved",
+          "tone": "success"
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -18649,6 +19060,12 @@
           "today": "Toggle buttons carry a text label."
         }
       ],
+      "playground": {
+        "props": {
+          "label": "Unread",
+          "value": false
+        }
+      },
       "theming": {
         "classProps": [
           {
@@ -19237,6 +19654,12 @@
           "today": "Shown by the View's interest: a pointer resting or keyboard focus."
         }
       ],
+      "playground": {
+        "props": {
+          "content": "Undo"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [],
         "tokens": [
@@ -19631,6 +20054,13 @@
       "limits": [
         "Rows are not checked, dragged or loaded on demand."
       ],
+      "playground": {
+        "props": {
+          "label": "Folders",
+          "value": "coast"
+        },
+        "fixture": true
+      },
       "theming": {
         "classProps": [
           {

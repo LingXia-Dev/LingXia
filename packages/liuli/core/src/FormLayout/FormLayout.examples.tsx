@@ -1,10 +1,10 @@
 import { useLocal } from '@lingxia/view';
-import { Said } from '../example';
+import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { Select } from '../Select/Select';
 import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
-import { FormLayout, FormSpan } from './FormLayout';
+import { FormLayout, FormSpan, type FormLayoutProps } from './FormLayout';
 
 const countries = [{ value: 'pt', label: 'Portugal' }, { value: 'es', label: 'Spain' }, { value: 'fr', label: 'France' }];
 
@@ -64,4 +64,22 @@ export function Specimen() {
       <view className="h-6 rounded-control border border-line-strong" />
     </FormLayout>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    columns: 2,
+    children: [
+      <TextInput key="first" label="First name" autoComplete="given-name" value="" onChange={unused} />,
+      <TextInput key="last" label="Last name" autoComplete="family-name" value="" onChange={unused} />,
+      <FormSpan key="street"><TextInput label="Street and number" value="" onChange={unused} /></FormSpan>,
+    ],
+    actions: (
+      <>
+        <Button label="Cancel" onClick={unused} />
+        <Button label="Save address" variant="primary" onClick={unused} />
+      </>
+    ),
+  } satisfies Partial<FormLayoutProps>;
 }

@@ -57,6 +57,7 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [],
+  playground: { props: { value: '', label: 'Country', placeholder: 'Choose a country' }, fixture: true },
   related: ['Combobox', 'RadioGroup', 'DropdownMenu', 'Field'],
   gallery: {
     specimen: 'Specimen',

@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
     { name: 'Inline', title: 'Side by side' },
   ],
   gaps: [],
+  playground: { props: { label: 'Delivery', value: 'standard' }, fixture: true },
   related: ['CheckboxInput', 'Field', 'Tabs'],
   gallery: {
     specimen: 'Specimen',

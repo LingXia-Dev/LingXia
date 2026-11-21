@@ -670,12 +670,12 @@
     "iphone-15-pro/playground-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "30eed5b51488ef52a4a1e400f013641997fa21b9376ca6df4c58cc4648901f23"
+      "sha256": "aadea251f4edfe92f131f06d197e8010a2560a70f73461d46c0b32e0f1693a35"
     },
     "iphone-15-pro/playground-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "19fa88bff226dd49ed76f3024f2db26aad88a095a30c4c90184d779cdf16eb71"
+      "sha256": "2f6a241f5d6e59eb363137100b163142700863fb2f2aab88bcc3fc7362f21bd7"
     },
     "iphone-15-pro/popover-dark.png": {
       "width": 1179,
@@ -1680,12 +1680,12 @@
     "desktop-1280/playground-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "e8f44832b237f3b63908c396dbe72b95bd787d639d3eba091f37234e20977d27"
+      "sha256": "6726e3eba5d346009690ed186f8d5661719086c1a3585f545d1f8dd15cd5e386"
     },
     "desktop-1280/playground-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "a23de906d361c938eb2f42b9ae6bf63568821cf1339d572c4693f510ebe3ffc2"
+      "sha256": "98bc9e9d6247d5327be11f526c708fb58646285baacdfa52598a1e8c8b4131f9"
     },
     "desktop-1280/popover-dark.png": {
       "width": 2536,

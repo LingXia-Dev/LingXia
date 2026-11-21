@@ -53,6 +53,7 @@ export const doc: ComponentDoc = {
   limits: [
     'The earliest and latest are days: a time cannot be limited on one particular day.',
   ],
+  playground: { props: { value: '2026-11-19T09:30', label: 'Meeting', dateLabel: 'Date', timeLabel: 'Time' } },
   related: ['DateInput', 'TimeInput', 'DateRangeInput', 'Timestamp'],
   gallery: {
     specimen: 'Specimen',

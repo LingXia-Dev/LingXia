@@ -71,6 +71,7 @@ export const doc: ComponentDoc = {
     { missing: 'The current row read as "current page"', needs: '`aria-current` in the View', today: 'Read as selected' },
     { missing: 'Typing a name to jump to its row', needs: 'Type-ahead in a View `tree`, as `menu` has', today: 'Arrows, Home and End' },
   ],
+  playground: { props: { label: 'Workspace', value: 'inbox' }, fixture: true },
   related: ['Tabs', 'Item'],
   gallery: {
     specimen: 'Specimen',

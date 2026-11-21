@@ -1,4 +1,4 @@
-import { Kbd } from './Kbd';
+import { Kbd, type KbdProps } from './Kbd';
 
 const shortcuts = [
   { key: 'search', label: 'Search notes', keys: ['⌘', 'K'], spoken: 'Command K' },
@@ -40,4 +40,9 @@ export function Hint() {
 /** The home tile. */
 export function Specimen() {
   return <Kbd keys={['⌘', 'K']} size="md" label="Command K" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { keys: ['⌘', 'K'] } satisfies Partial<KbdProps>;
 }

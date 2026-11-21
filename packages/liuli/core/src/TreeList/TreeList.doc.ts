@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
   limits: [
     'Rows are not checked, dragged or loaded on demand.',
   ],
+  playground: { props: { label: 'Folders', value: 'coast' }, fixture: true },
   related: ['NavList', 'Details', 'Breadcrumb'],
   gallery: {
     specimen: 'Specimen',

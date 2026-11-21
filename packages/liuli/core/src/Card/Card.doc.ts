@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       today: 'The selected border and the focus ring sit in the same place.',
     },
   ],
+  playground: { props: {  }, fixture: true },
   related: ['Item', 'Button'],
   gallery: {
     specimen: 'Specimen',

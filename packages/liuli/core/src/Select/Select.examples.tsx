@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
-import { Select } from './Select';
+import { Select, type SelectProps } from './Select';
 
 const countries = [
   { value: 'de', label: 'Germany' },
@@ -76,4 +76,9 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return <Select value="title" onChange={unused} label="Sort by" isLabelHidden size="sm" items={sorts} className="w-32 max-w-full" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: countries } satisfies Partial<SelectProps>;
 }

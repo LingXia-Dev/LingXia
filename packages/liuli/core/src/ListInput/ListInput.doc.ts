@@ -57,6 +57,7 @@ export const doc: ComponentDoc = {
     'Rows are not reordered by dragging.',
     'It does not move focus to a new row; the app\'s controls can ask for it.',
   ],
+  playground: { props: { label: 'Phone numbers', addLabel: 'Add a phone number', min: 1, max: 4 }, fixture: true },
   related: ['Field', 'MultiSelect', 'FormLayout'],
   gallery: {
     specimen: 'Specimen',

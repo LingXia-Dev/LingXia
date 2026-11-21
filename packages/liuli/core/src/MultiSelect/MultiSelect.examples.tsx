@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { MultiSelect } from './MultiSelect';
+import { MultiSelect, type MultiSelectProps } from './MultiSelect';
 
 const labels = [
   { value: 'travel', label: 'Travel' },
@@ -52,4 +52,13 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden items={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    value: ['travel', 'recipes'],
+    items: labels,
+    removeLabel: (name: string) => `Remove ${name}`,
+  } satisfies Partial<MultiSelectProps>;
 }

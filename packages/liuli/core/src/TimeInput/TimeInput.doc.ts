@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [],
+  playground: { props: { value: '', label: 'Reminder' } },
   related: ['DateInput', 'TextInput', 'Field'],
   gallery: {
     specimen: 'Specimen',

@@ -72,6 +72,7 @@ export const doc: ComponentDoc = {
       today: 'The clear button empties the text; the page decides what an empty search shows.',
     },
   ],
+  playground: { props: { value: '', label: 'Search', clearLabel: 'Clear search', placeholder: 'Search files' } },
   related: ['TextInput', 'Combobox'],
   gallery: {
     specimen: 'Specimen',

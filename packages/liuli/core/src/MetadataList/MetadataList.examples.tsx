@@ -1,5 +1,5 @@
 import { Badge } from '../Badge/Badge';
-import { MetadataList } from './MetadataList';
+import { MetadataList, type MetadataListProps } from './MetadataList';
 
 /** What is known about a record: the labels in one column, the values in the next. */
 export function Invoice() {
@@ -38,4 +38,16 @@ export function Stacked() {
 /** The home tile. */
 export function Specimen() {
   return <MetadataList label="Details" className="w-32" items={[{ key: 'a', label: 'Size', value: '4.2 MB' }, { key: 'b', label: 'Kind', value: 'PDF' }]} />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    items: [
+      { key: 'customer', label: 'Customer', value: 'Blue Harbor Ltd' },
+      { key: 'status', label: 'Status', value: 'Overdue', content: <Badge label="Overdue" tone="danger" size="sm" /> },
+      { key: 'issued', label: 'Issued', value: '9 October 2026' },
+      { key: 'due', label: 'Due', value: '9 November 2026' },
+    ],
+  } satisfies Partial<MetadataListProps>;
 }

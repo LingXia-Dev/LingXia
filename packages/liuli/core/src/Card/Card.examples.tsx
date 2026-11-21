@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, Said, unused } from '../example';
 import { Button } from '../Button/Button';
-import { Card, ClickableCard, ClickableCardGroup } from './Card';
+import { Card, ClickableCard, ClickableCardGroup, type CardProps } from './Card';
 
 export function Variants() {
   return (
@@ -118,4 +118,14 @@ export function Floating() {
       </Card>
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: [
+      <text key="title" role="heading" headingLevel={3} className="text-callout font-semibold text-text">Back up your notes</text>,
+      <text key="body" className="text-footnote text-muted">Keep a copy on another device in case this one is lost.</text>,
+    ],
+  } satisfies Partial<CardProps>;
 }

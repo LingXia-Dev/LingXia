@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { NavList } from './NavList';
+import { NavList, type NavListProps } from './NavList';
 
 const workspace = [
   { id: 'mail', items: [
@@ -48,4 +48,9 @@ export function Specimen() {
       <NavList label="Mail" sections={[{ id: 'mail', items: [{ value: 'inbox', label: 'Inbox', endText: '12' }, { value: 'sent', label: 'Sent' }] }]} value="inbox" onChange={unused} />
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { sections: workspace } satisfies Partial<NavListProps>;
 }

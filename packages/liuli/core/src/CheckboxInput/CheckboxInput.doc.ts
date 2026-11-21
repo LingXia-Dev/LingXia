@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       today: 'Two states only.',
     },
   ],
+  playground: { props: { value: false, label: 'Email me a weekly summary', description: 'Every Monday morning.' } },
   related: ['Field'],
   gallery: {
     specimen: 'Specimen',

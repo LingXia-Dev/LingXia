@@ -53,6 +53,7 @@ export const doc: ComponentDoc = {
     { missing: 'Actions that stack full-width on a phone.', needs: 'nothing from the View', today: 'The buttons sit at the end edge and wrap.' },
     { missing: 'More than two columns, and fields that span some of them.', needs: 'nothing from the View', today: 'One or two columns; a field takes one or the whole line.' },
   ],
+  playground: { props: {  }, fixture: true },
   related: ['Field', 'TextInput', 'Section'],
   gallery: {
     specimen: 'Specimen',

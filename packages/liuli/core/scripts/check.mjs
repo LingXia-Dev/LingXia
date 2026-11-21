@@ -44,7 +44,14 @@ const pressed = new Set(['Button', 'IconButton', 'Link']);
 const answering = new Set(['onClick', 'clickAction', 'isDisabled', 'isLoading']);
 // An overlay's trigger answers a press by opening it.
 const overlays = new Set(['Popover', 'HoverCard', 'Tooltip', 'DropdownMenu']);
-const isTrigger = node => ts.isJsxElement(node.parent) && ts.isIdentifier(node.parent.openingElement.tagName) && overlays.has(node.parent.openingElement.tagName.text);
+const fixtureOf = node => {
+  while (node && !ts.isSatisfiesExpression(node)) node = node.parent;
+  return node ? /^Partial<(\w+)Props>$/.exec(node.type.getText())?.[1] : undefined;
+};
+// A Playground fixture hands the trigger over as the overlay's `children`.
+const isTrigger = node =>
+  (ts.isJsxElement(node.parent) && ts.isIdentifier(node.parent.openingElement.tagName) && overlays.has(node.parent.openingElement.tagName.text)) ||
+  (ts.isPropertyAssignment(node.parent) && node.parent.name.getText() === 'children' && overlays.has(fixtureOf(node.parent)));
 function answers(file, report) {
   const visit = node => {
     if (ts.isArrowFunction(node) && ts.isBlock(node.body) && node.body.statements.length === 0 && !ts.isVariableDeclaration(node.parent))
@@ -202,6 +209,8 @@ for (const name of readdirSync(src)) {
   const listed = new Set([...doc.matchAll(/\{ name: '(\w+)', title:/g)].map(match => match[1]));
   // The gallery may show exports the reference does not list: the tile specimen and the page's hero.
   for (const match of doc.matchAll(/(?:specimen|hero): '(\w+)'/g)) listed.add(match[1]);
+  // `playground()` is the playground's props, not an example.
+  if (/fixture: true/.test(doc)) listed.add('playground');
   if (!new RegExp(`name: '${name}'`).test(doc)) problems.push(`src/${name}/${parts.doc}: doc: name is not '${name}'`);
   for (const example of listed) if (!exported.has(example)) problems.push(`src/${name}/${parts.doc}: doc: lists example ${example}, which ${parts.examples} does not export`);
   for (const example of exported) if (!listed.has(example)) problems.push(`src/${name}/${parts.examples}: doc: ${example} is not listed in the doc`);

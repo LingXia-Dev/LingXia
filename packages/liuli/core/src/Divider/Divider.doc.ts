@@ -45,6 +45,7 @@ export const doc: ComponentDoc = {
     { name: 'Vertical', title: 'Upright, in a row' },
   ],
   gaps: [],
+  playground: { props: { orientation: 'horizontal' } },
   related: ['Section', 'Card', 'Item'],
   gallery: {
     specimen: 'Specimen',

@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Badge } from '../Badge/Badge';
-import { Table, type TableColumn, type TableRow } from './Table';
+import { Table, type TableColumn, type TableRow, type TableProps } from './Table';
 
 const invoices = [
   { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },
@@ -90,4 +90,9 @@ export function StateEmpty() {
 export function Specimen() {
   // Short values: a tile is too narrow for a name beside a price, and a table wraps its text rather than cutting it.
   return <Table label="Cities by population" columns={[{ field: 'city', header: 'City' }, { field: 'people', header: 'Millions', align: 'end', format: value => Number(value).toFixed(1) }]} rows={cities.slice(0, 1)} density="compact" className="w-full" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { value: null, columns, rows: invoices } satisfies Partial<TableProps>;
 }

@@ -68,6 +68,7 @@ export const doc: ComponentDoc = {
       today: 'Segments carry a text label.',
     },
   ],
+  playground: { props: { label: 'Units', value: 'km' }, fixture: true },
   related: ['Tabs', 'RadioGroup', 'ToggleButton'],
   gallery: {
     specimen: 'Specimen',

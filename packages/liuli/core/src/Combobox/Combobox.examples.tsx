@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
 import { Button } from '../Button/Button';
-import { Combobox } from './Combobox';
+import { Combobox, type ComboboxProps } from './Combobox';
 
 const countries = [
   'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',
@@ -138,4 +138,9 @@ export function Shipping() {
 /** The home tile. */
 export function Specimen() {
   return <Combobox label="Country" isLabelHidden value="kenya" onChange={unused} items={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: countries } satisfies Partial<ComboboxProps>;
 }

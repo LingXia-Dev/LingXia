@@ -99,6 +99,7 @@ export const doc: ComponentDoc = {
       today: 'The slide and the button inside it are two stops with the same name: the first offers the actions, the second opens the row. Not yet heard on a screen reader.',
     },
   ],
+  playground: { props: { label: 'Notifications', description: 'Mentions and replies', startIcon: 'notifications', hasChevron: true } },
   related: ['DropdownMenu', 'Card'],
   gallery: {
     specimen: 'Specimen',

@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
       today: 'Toggle buttons carry a text label.',
     },
   ],
+  playground: { props: { label: 'Unread', value: false } },
   related: ['Button', 'SegmentedControl', 'Switch'],
   gallery: {
     specimen: 'Specimen',

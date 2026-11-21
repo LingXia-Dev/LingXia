@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
 import { TextInput } from '../TextInput/TextInput';
-import { Field } from './Field';
+import { Field, type FieldControl, type FieldProps } from './Field';
 
 const periods = [
   { value: 'monthly', label: 'Monthly' },
@@ -107,4 +107,22 @@ export function Info() {
       data-testid="vat"
     />
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: (control: FieldControl) => (
+      <select
+        aria-label={control['aria-label']}
+        aria-describedby={control['aria-describedby']}
+        aria-invalid={control['aria-invalid']}
+        aria-required={control['aria-required']}
+        disabled={control.disabled}
+        placeholder="Choose…"
+        options={periods}
+        className="min-h-control-md px-3 rounded-control border border-line-strong bg-surface text-body text-text"
+      />
+    ),
+  } satisfies Partial<FieldProps>;
 }

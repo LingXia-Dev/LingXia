@@ -1,3 +1,5 @@
+import { unused } from '../example';
+import type { DrawerProps } from './Drawer';
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { CheckboxList } from '../CheckboxList/CheckboxList';
@@ -63,4 +65,12 @@ export function Specimen() {
       <view className="w-12 h-full rounded-s-control border-s border-text/12 bg-surface-overlay" />
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: <text className="text-body text-muted">Notes, lists and photos edited in the last month.</text>,
+    actions: <Button label="Show results" variant="primary" onClick={unused} />,
+  } satisfies Partial<DrawerProps>;
 }

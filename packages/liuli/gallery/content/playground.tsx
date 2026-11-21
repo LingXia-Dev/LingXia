@@ -2,13 +2,14 @@ import { useLocal, useView } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { ItemList } from '@liulidesign/core/Item';
 import { CodeBlock } from '@liulidesign/core/Code';
+import { Combobox } from '@liulidesign/core/Combobox';
 import { NumberInput } from '@liulidesign/core/NumberInput';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { Select } from '@liulidesign/core/Select';
 import { Switch } from '@liulidesign/core/Switch';
 import { TextInput } from '@liulidesign/core/TextInput';
 import { PageSection, Stage } from '../shared/Layout';
-import { playgroundEntries, PlaygroundSubject, type PlaygroundControl, type PlaygroundProps } from '../shared/playground.generated';
+import { playgroundEntries, PlaygroundSubject, type PlaygroundControl, type PlaygroundProps, type PlaygroundValue } from '../shared/playground.generated';
 
 type Value = string | number | boolean | undefined;
 
@@ -53,6 +54,21 @@ function Control({ control, value, onChange }: { control: PlaygroundControl; val
         <SegmentedControl label={control.name} items={options} value={String(value)} onChange={onChange} size="sm" data-testid={testId} />
       </view>
     );
+  // A long list, such as an icon's names, is searched rather than scrolled.
+  if (options.length > 24)
+    return (
+      <Combobox
+        label={control.name}
+        value={typeof value === 'string' ? value : ''}
+        onChange={next => onChange(next === '' ? undefined : next)}
+        placeholder="Not set"
+        items={options}
+        searchLabel={`Search ${control.name}`}
+        emptyLabel="No match"
+        size="sm"
+        data-testid={testId}
+      />
+    );
   return (
     <Select
       label={control.name}
@@ -66,14 +82,19 @@ function Control({ control, value, onChange }: { control: PlaygroundControl; val
   );
 }
 
-/** The JSX that draws what the stage shows: one line when short, a prop per line when not. */
-function codeFor(name: string, props: PlaygroundProps, order: string[]) {
-  const written = order
-    .filter(prop => props[prop] !== undefined && props[prop] !== false)
-    .map(prop => {
-      const value = props[prop];
-      return value === true ? prop : typeof value === 'number' ? `${prop}={${value}}` : `${prop}=${JSON.stringify(value)}`;
-    });
+/** The JSX that draws what the stage shows: one line when short, a prop per line when not. Props that are not plain values are named, as an app would pass them. */
+function codeFor(name: string, props: PlaygroundProps, order: string[], fixed: string[], binds: Record<string, string>) {
+  const written = [
+    ...order
+      .filter(prop => props[prop] !== undefined && props[prop] !== false)
+      .map(prop => {
+        const value = props[prop];
+        return value === true ? prop : typeof value === 'number' ? `${prop}={${value}}` : typeof value === 'string' ? `${prop}=${JSON.stringify(value)}` : `${prop}={${prop}}`;
+      }),
+    ...fixed.map(prop => `${prop}={${prop}}`),
+    ...Object.entries(binds).filter(([state]) => props[state] !== undefined && !order.includes(state)).map(([state]) => `${state}={${state}}`),
+    ...Object.values(binds).map(handler => `${handler}={${handler}}`),
+  ];
   const line = `<${name} ${written.join(' ')} />`;
   return line.length <= 44 ? line : `<${name}\n${written.map(each => `  ${each}`).join('\n')}\n/>`;
 }
@@ -88,7 +109,7 @@ export function Content() {
   const props = edits.value[entry.name] ?? entry.defaults;
   const fields = entry.controls.filter(control => control.kind !== 'boolean').sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind]);
   const flags = entry.controls.filter(control => control.kind === 'boolean');
-  const set = (name: string, value: Value) => {
+  const set = (name: string, value: PlaygroundValue | undefined) => {
     const next = { ...props };
     if (value === undefined) delete next[name];
     else next[name] = value;
@@ -101,25 +122,31 @@ export function Content() {
   // On a phone the component stays put while its props scroll under it; beside the gallery's sidebar the two sit side by side.
   const isWide = useView().env.sizeClass === 'regular';
   const row = (control: PlaygroundControl) => (
-    <Control key={`${entry.name}-${control.name}`} control={control} value={props[control.name]} onChange={value => set(control.name, value)} />
+    <Control key={`${entry.name}-${control.name}`} control={control} value={props[control.name] as Value} onChange={value => set(control.name, value)} />
   );
+  // Every component is in the list, so it is searched.
   const picker = (
-    <Select
+    <Combobox
       label="Component"
       isLabelHidden={!isWide}
       bind={chosen}
       items={playgroundEntries.map(each => ({ value: each.name, label: each.name }))}
+      searchLabel="Search components"
+      emptyLabel="No component by that name"
       data-testid="playground-component"
     />
   );
   const stage = (
     <Stage>
-      <view className="min-h-20 justify-center" data-testid="playground-stage">
-        <PlaygroundSubject name={entry.name} props={props} />
+      {/* A vertical part (a divider, a slider) takes its height from a row. */}
+      <view className={props.orientation === 'vertical' ? 'h-24 flex-row justify-center' : 'min-h-20 justify-center'} data-testid="playground-stage">
+        {/* An overlay with no trigger of its own opens from the stage, as on its page. */}
+        {entry.opener !== undefined && <Button label={entry.opener} width="content" onClick={() => set('isOpen', true)} data-testid="playground-opener" />}
+        <PlaygroundSubject name={entry.name} props={props} set={set} />
       </view>
     </Stage>
   );
-  const code = <CodeBlock code={codeFor(entry.name, props, entry.controls.map(each => each.name))} label={`${entry.name} code`} data-testid="playground-code" />;
+  const code = <CodeBlock code={codeFor(entry.component, props, entry.controls.map(each => each.name), entry.fixed, entry.binds)} label={`${entry.component} code`} data-testid="playground-code" />;
   const form = (
     <PageSection title="Props">
       <view className="gap-4">

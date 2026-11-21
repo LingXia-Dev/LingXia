@@ -63,6 +63,7 @@ export const doc: ComponentDoc = {
   gaps: [
     { missing: 'Choosing how many rows a page holds, and jumping to a page by typing it.', needs: 'nothing from the View', today: 'An app puts a Select or a NumberInput beside it.' },
   ],
+  playground: { props: { label: 'Results pages', value: 3, pageCount: 12, previousLabel: 'Previous page', nextLabel: 'Next page' }, fixture: true },
   related: ['Table', 'Tabs', 'IconButton'],
   gallery: {
     specimen: 'Specimen',

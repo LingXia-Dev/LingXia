@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       today: 'duration-200 ease-out in the recipe.',
     },
   ],
+  playground: { props: { isOpen: false, label: 'Delete the file?', description: 'It goes to the bin for 30 days.', closeLabel: 'Close' }, fixture: true, opener: 'Delete the file' },
   related: ['Button', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

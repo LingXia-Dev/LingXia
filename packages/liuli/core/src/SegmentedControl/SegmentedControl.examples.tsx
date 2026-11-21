@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentedControlProps } from './SegmentedControl';
 
 /** A unit for the numbers below it, bound to a View-local cell. */
 export function Units() {
@@ -88,4 +88,9 @@ export function StateDisabled() {
 /** The home tile: two short segments, so it fits a half tile at 360 pt. */
 export function Specimen() {
   return <SegmentedControl label="Layout" items={[{ value: 'list', label: 'List' }, { value: 'grid', label: 'Grid' }]} value="list" onChange={unused} size="sm" className="w-32" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: [{ value: 'km', label: 'Kilometres' }, { value: 'mi', label: 'Miles' }] } satisfies Partial<SegmentedControlProps>;
 }

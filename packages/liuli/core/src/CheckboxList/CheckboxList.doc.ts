@@ -71,6 +71,7 @@ export const doc: ComponentDoc = {
       today: 'One column.',
     },
   ],
+  playground: { props: { label: 'Notify me about' }, fixture: true },
   related: ['CheckboxInput', 'RadioGroup', 'Switch'],
   gallery: {
     specimen: 'Specimen',

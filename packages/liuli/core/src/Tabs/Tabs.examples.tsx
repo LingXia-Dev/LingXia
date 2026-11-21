@@ -1,7 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
 import { Item } from '../Item/Item';
-import { Tabs } from './Tabs';
+import { Tabs, type TabsProps } from './Tabs';
 
 const sections = [
   { value: 'overview', label: 'Overview' },
@@ -128,4 +128,9 @@ export function StateSegmentedDisabled() {
 /** The home tile. */
 export function Specimen() {
   return <Tabs label="Range" items={ranges.slice(0, 2)} value="week" onChange={unused} className="w-full" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: sections, children: <text className="text-body text-muted">{summaries.overview}</text> } satisfies Partial<TabsProps>;
 }

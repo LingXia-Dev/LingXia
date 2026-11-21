@@ -59,6 +59,7 @@ export const doc: ComponentDoc = {
     'The list is not searched by typing, and new values cannot be typed in: it chooses from the options given.',
     'The error state colours the boundary but is not reported as invalid on the group.',
   ],
+  playground: { props: { label: 'Labels', addLabel: 'Add a label' }, fixture: true },
   related: ['Token', 'CheckboxList', 'Combobox', 'Select'],
   gallery: {
     specimen: 'Specimen',

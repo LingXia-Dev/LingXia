@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { TextInput } from '../TextInput/TextInput';
-import { Details, DetailsGroup } from './Details';
+import { Details, DetailsGroup, type DetailsProps } from './Details';
 
 const surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';
 
@@ -90,4 +90,11 @@ export function WithForm() {
       <TextInput bind={name} label="Nickname" placeholder="Shown beside your name" data-testid="form-name" />
     </Details>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: <text className="text-body text-muted">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>,
+  } satisfies Partial<DetailsProps>;
 }

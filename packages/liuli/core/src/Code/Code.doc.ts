@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     'No syntax colouring and no line numbers.',
     'Copying is the app\'s: Liuli has no clipboard.',
   ],
+  playground: { props: { code: 'npm run build', label: 'Build command', title: 'Terminal' } },
   related: ['Markdown', 'Kbd'],
   gallery: {
     specimen: 'Specimen',

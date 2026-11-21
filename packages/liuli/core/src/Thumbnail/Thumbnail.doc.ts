@@ -53,6 +53,7 @@ export const doc: ComponentDoc = {
   limits: [
     'A picture that fails to load leaves the tint; there is no broken-image mark.',
   ],
+  playground: { props: { src: 'public/photos/photo-1.png', alt: 'Coast, November', size: 'md' } },
   related: ['Lightbox', 'Carousel', 'Avatar'],
   gallery: {
     specimen: 'Specimen',

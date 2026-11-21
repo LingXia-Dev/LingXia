@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
       today: 'Validate on change or on submit.',
     },
   ],
+  playground: { props: { label: 'Billing period', description: 'You can change it later.' }, fixture: true },
   related: ['TextInput', 'CheckboxInput'],
   gallery: {
     specimen: 'Specimen',

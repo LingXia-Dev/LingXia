@@ -73,6 +73,7 @@ export const doc: ComponentDoc = {
       today: 'One outline per name; an app passes its own filled icon with `icon`.',
     },
   ],
+  playground: { props: { name: 'calendar', size: 'md' } },
   related: ['Button', 'Item'],
   gallery: {
     specimen: 'Specimen',

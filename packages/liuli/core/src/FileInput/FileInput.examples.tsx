@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { FileInput, type FileInputFile } from './FileInput';
+import { FileInput, type FileInputFile, type FileInputProps } from './FileInput';
 
 const first: FileInputFile[] = [
   { id: 'lease', name: 'Lease agreement.pdf', detail: '1.8 MB' },
@@ -69,4 +69,15 @@ export function Specimen() {
   return (
     <FileInput label="Files" isLabelHidden files={[]} onPick={unused} pickLabel="Choose files" onRemove={unused} removeLabel={name => `Remove ${name}`} progressLabel={name => `Uploading ${name}`} className="w-36" />
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    files: first,
+    onPick: unused,
+    onRemove: unused,
+    removeLabel: (name: string) => `Remove ${name}`,
+    progressLabel: (name: string) => `Uploading ${name}`,
+  } satisfies Partial<FileInputProps>;
 }

@@ -2,7 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
 import { DropdownMenuDivider, DropdownMenuItem } from '../DropdownMenu/DropdownMenu';
 import { Item, ItemList } from '../Item/Item';
-import { ContextMenu } from './ContextMenu';
+import { ContextMenu, type ContextMenuProps } from './ContextMenu';
 
 const notes = [
   ['coast', 'Trip to the coast', 'Edited yesterday'],
@@ -48,4 +48,19 @@ export function Specimen() {
       </view>
     </ContextMenu>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    menu: (
+      <>
+        <DropdownMenuItem label="Pin to top" onClick={unused} />
+        <DropdownMenuItem label="Share" onClick={unused} />
+        <DropdownMenuDivider />
+        <DropdownMenuItem label="Delete" variant="destructive" onClick={unused} />
+      </>
+    ),
+    children: <Item label="Trip to the coast" description="Edited yesterday" hasChevron onClick={unused} />,
+  } satisfies Partial<ContextMenuProps>;
 }

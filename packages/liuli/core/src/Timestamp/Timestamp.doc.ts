@@ -47,6 +47,7 @@ export const doc: ComponentDoc = {
     'There is no clock and no time zone in the View: the app passes `now` and local date-times.',
     'Words come from a locale module, not from the system; two locales ship.',
   ],
+  playground: { props: { value: '2026-11-14T09:42', now: '2026-11-14T10:05' }, fixture: true },
   related: ['Timer', 'Calendar', 'DateInput'],
   gallery: {
     specimen: 'Specimen',

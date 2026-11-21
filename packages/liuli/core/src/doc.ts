@@ -39,8 +39,13 @@ export interface ComponentDoc {
   readonly related?: readonly string[];
   /** What the gallery shows, by example export name. */
   readonly gallery: GalleryDoc;
-  /** Puts the component in the gallery's playground, starting from these props. Only for components that draw from plain values: no handlers, no children. */
-  readonly playground?: { readonly props: Readonly<Record<string, string | number | boolean>> };
+  /**
+   * Puts the component in the gallery's playground, starting from these plain props. With `fixture`, the
+   * examples file exports `playground()`, returning the props that are not plain values (items, children, labels made by a function).
+   * The playground keeps `value` and `isOpen` itself through `onChange` and `onOpenChange`. `opener` labels a button on the
+   * stage that sets `isOpen`, for an overlay with no trigger of its own.
+   */
+  readonly playground?: { readonly props: Readonly<Record<string, string | number | boolean>>; readonly fixture?: boolean; readonly opener?: string };
   /** Optional translations of the prose fields, keyed by BCP 47 tag (`zh-Hans`). */
   readonly translations?: Readonly<Record<string, Partial<Pick<ComponentDoc, 'summary' | 'description' | 'guidance'>>>>;
 }

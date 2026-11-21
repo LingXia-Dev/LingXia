@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
   limits: [
     'It shows what is attached and leaves choosing and uploading files to the app.',
   ],
+  playground: { props: { value: '', label: 'Message', placeholder: 'Message Kai', sendLabel: 'Send' }, fixture: true },
   related: ['MessageBubble', 'TextArea', 'IconButton', 'Token'],
   gallery: {
     specimen: 'Specimen',

@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Thumbnail } from '../Thumbnail/Thumbnail';
-import { Lightbox } from './Lightbox';
+import { Lightbox, type LightboxProps } from './Lightbox';
 
 const photo = (n: number) => `public/photos/photo-${n}.png`;
 const photos = [
@@ -53,4 +53,12 @@ export function Specimen() {
       <image src={photo(1)} alt="" className="w-20 aspect-4/3 object-cover" />
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    images: photos,
+    pageLabel: (at: number, count: number) => `${at + 1} of ${count}`,
+  } satisfies Partial<LightboxProps>;
 }

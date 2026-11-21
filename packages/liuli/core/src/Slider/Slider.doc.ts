@@ -70,6 +70,7 @@ export const doc: ComponentDoc = {
       today: 'VideoControls builds its scrubber on `<slider>` directly.',
     },
   ],
+  playground: { props: { value: 40, label: 'Volume', min: 0, max: 100 } },
   related: ['ProgressBar'],
   gallery: {
     specimen: 'Specimen',

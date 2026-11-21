@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       today: 'The pressed and open pictures are still drawings.',
     },
   ],
+  playground: { props: { isOpen: false, label: 'About seats', content: 'A seat is one person who can edit. People who only read are free.' } },
   related: ['Tooltip', 'DropdownMenu', 'Dialog'],
   gallery: {
     specimen: 'Specimen',

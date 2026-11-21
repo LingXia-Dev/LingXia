@@ -94,6 +94,7 @@ export const doc: ComponentDoc = {
       today: 'The icon carries the danger colour; the text stays in the text role.',
     },
   ],
+  playground: { props: { isOpen: false, label: 'Sort by' }, fixture: true },
   related: ['Button', 'ContextMenu'],
   gallery: {
     specimen: 'Specimen',

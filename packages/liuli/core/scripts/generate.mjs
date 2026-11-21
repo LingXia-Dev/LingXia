@@ -43,7 +43,9 @@ function literalChoices(type) {
   const members = (type.isUnion() ? type.types : [type]).filter(member => !(member.flags & ts.TypeFlags.Undefined));
   if (members.length < 2 || !members.every(member => member.isStringLiteral())) return null;
   const values = members.map(member => member.value).sort();
-  return values.every(value => sizeOrder.includes(value)) ? values.sort((a, b) => sizeOrder.indexOf(a) - sizeOrder.indexOf(b)) : values;
+  // Sizes in their order, any other value (an icon's `inline`) after them.
+  const rank = value => (sizeOrder.includes(value) ? sizeOrder.indexOf(value) : sizeOrder.length);
+  return values.some(value => sizeOrder.includes(value)) ? values.sort((a, b) => rank(a) - rank(b)) : values;
 }
 
 /** The exported props type's properties: name, type, required, description, default. */
@@ -139,44 +141,82 @@ const rolePattern = new RegExp(`(?:bg|text|border(?:-[a-z])?|ring|inset-ring|div
 const textRolePattern = new RegExp(`(?:^|[\\s:])text-(${roleNames.filter(name => name.startsWith('text-')).map(name => name.slice(5)).join('|')})(?![a-z-])`, 'g');
 
 // The gallery's playground: each component that opts in, its starting props, and a control for
-// every prop that is a plain value.
-const playgroundChoiceLimit = 12;
+// every prop that is a plain value. A doc names its component by its props type: Code's is CodeBlock.
+const propsTypes = new Map();
+const folders = new Map();
+const componentOf = entry => propsTypes.get(entry.name).replace(/Props$/, '');
+// A state prop the playground keeps for the component, through the handler that reports it.
+const bindings = [['value', 'onChange'], ['isOpen', 'onOpenChange']];
+/** The keys of what `playground()` in a component's examples file returns: the props that are not plain values. */
+function fixtureKeys(name) {
+  const file = program.getSourceFile(join(src, name, `${name}.examples.tsx`));
+  const fixture = file?.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'playground' && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+  if (!fixture) return null;
+  const [signature] = checker.getSignaturesOfType(checker.getTypeAtLocation(fixture.name), ts.SignatureKind.Call);
+  return checker.getPropertiesOfType(signature.getReturnType()).map(property => property.name);
+}
 function playgroundControl(entry, prop) {
   if (/^(className|data-testid)$|ClassName$|^aria-/.test(prop.name)) return null;
   const base = { name: prop.name, required: prop.required };
   if (prop.type === 'boolean') return { ...base, kind: 'boolean' };
   if (prop.type === 'string') return { ...base, kind: 'text' };
   if (prop.type === 'number') return { ...base, kind: 'number' };
-  const options = choiceValues.get(`${entry.name}Props.${prop.name}`);
-  return options && options.length <= playgroundChoiceLimit ? { ...base, kind: 'choice', options } : null;
+  const options = choiceValues.get(`${propsTypes.get(entry.name)}.${prop.name}`);
+  return options ? { ...base, kind: 'choice', options } : null;
 }
 
 function playgroundModule(entries) {
   const playable = entries.filter(entry => entry.playground);
   const data = playable.map(entry => {
-    const controls = entry.props.map(prop => playgroundControl(entry, prop)).filter(Boolean);
+    const doc = `src/${folders.get(entry.name)}/${folders.get(entry.name)}.doc.ts`;
+    const fixed = entry.playground.fixture ? fixtureKeys(folders.get(entry.name)) : [];
+    if (fixed === null) problems.push(`${doc}: playground: fixture is set, but ${folders.get(entry.name)}.examples.tsx exports no \`playground()\``);
+    const has = name => entry.props.some(prop => prop.name === name);
+    const binds = Object.fromEntries(bindings.filter(([state, handler]) => has(state) && has(handler)));
+    const covered = new Set([...(fixed ?? []), ...Object.keys(binds), ...Object.values(binds)]);
+    for (const prop of entry.props)
+      if (prop.required && !covered.has(prop.name) && !playgroundControl(entry, prop)) problems.push(`${doc}: playground: ${prop.name} is required and not a plain value; return it from the examples file's \`playground()\``);
+    // A bound `value` is edited on the component itself; `isOpen` keeps its switch, which opens an overlay.
+    const controls = entry.props.filter(prop => !(fixed ?? []).includes(prop.name) && !(prop.name === 'value' && binds.value)).map(prop => playgroundControl(entry, prop)).filter(Boolean);
     for (const [name, value] of Object.entries(entry.playground.props)) {
       const control = controls.find(each => each.name === name);
       const fits = control && (control.kind === 'choice' ? control.options.includes(value) : typeof value === { boolean: 'boolean', text: 'string', number: 'number' }[control.kind]);
-      if (!fits) problems.push(`src/${entry.name}/${entry.name}.doc.ts: playground: ${name} is not a plain-value prop of ${entry.name}, or ${JSON.stringify(value)} is not one of its values`);
+      if (!fits && !(name in binds)) problems.push(`${doc}: playground: ${name} is not a plain-value prop of ${entry.name}, or ${JSON.stringify(value)} is not one of its values`);
     }
     for (const control of controls)
-      if (control.required && !(control.name in entry.playground.props)) problems.push(`src/${entry.name}/${entry.name}.doc.ts: playground: ${control.name} is required and has no starting value`);
-    return { name: entry.name, defaults: entry.playground.props, controls };
+      if (control.required && !(control.name in entry.playground.props) && !(control.name in binds)) problems.push(`${doc}: playground: ${control.name} is required and has no starting value`);
+    // A kept state starts from a value: the component would otherwise show one it was never given.
+    for (const state of Object.keys(binds)) {
+      const prop = entry.props.find(each => each.name === state);
+      if (prop && !(state in entry.playground.props) && !(fixed ?? []).includes(state)) problems.push(`${doc}: playground: ${state} is kept through ${binds[state]} and needs a starting value`);
+    }
+    const { opener } = entry.playground;
+    if (opener !== undefined && binds.isOpen === undefined) problems.push(`${doc}: playground: opener is set, but ${entry.name} keeps no isOpen through onOpenChange`);
+    return { name: entry.name, component: componentOf(entry), defaults: entry.playground.props, controls, fixed: fixed ?? [], binds, ...(opener === undefined ? {} : { opener }) };
   });
   return [
     `// ${generated}`,
-    ...playable.map(entry => `import { ${entry.name} } from '${entry.import}';`),
+    ...playable.map(entry => `import { ${componentOf(entry)} } from '${entry.import}';`),
+    ...playable.filter(entry => entry.playground.fixture).map(entry => `import { playground as ${entry.name}Fixture } from '../../core/src/${folders.get(entry.name)}/${folders.get(entry.name)}.examples';`),
     '',
     "export interface PlaygroundControl { name: string; required: boolean; kind: 'boolean' | 'text' | 'number' | 'choice'; options?: string[] }",
-    'export type PlaygroundProps = Record<string, string | number | boolean>;',
-    'export interface PlaygroundEntry { name: string; defaults: PlaygroundProps; controls: PlaygroundControl[] }',
+    '/** A prop the playground holds: a plain value, or the data a component reports through its handler (a date, a list). */',
+    'type Leaf = string | number | boolean | null;',
+    'type Flat = Leaf | readonly Leaf[] | { readonly [key: string]: Leaf };',
+    'export type PlaygroundValue = Flat | readonly Flat[] | { readonly [key: string]: Flat };',
+    'export type PlaygroundProps = Record<string, PlaygroundValue>;',
+    '/** `fixed`: props the examples file gives, not plain values. `binds`: a state prop and the handler the playground keeps it through. `opener`: the label of the stage\'s button that opens it. */',
+    'export interface PlaygroundEntry { name: string; component: string; defaults: PlaygroundProps; controls: PlaygroundControl[]; fixed: string[]; binds: Record<string, string>; opener?: string }',
     '',
     `export const playgroundEntries: PlaygroundEntry[] = ${JSON.stringify(data, null, 2)};`,
     '',
-    '/** The chosen component, drawn from the props in hand. */',
-    'export function PlaygroundSubject({ name, props }: { name: string; props: PlaygroundProps }) {',
-    ...playable.map(entry => `  if (name === ${JSON.stringify(entry.name)}) return <${entry.name} {...(props as any)} />;`),
+    '/** The chosen component, drawn from the props in hand; `set` keeps a state prop it reports. */',
+    'export function PlaygroundSubject({ name, props, set }: { name: string; props: PlaygroundProps; set: (prop: string, value: PlaygroundValue) => void }) {',
+    ...playable.map(entry => {
+      const binds = data.find(each => each.name === entry.name).binds;
+      const handlers = Object.entries(binds).map(([state, handler]) => ` ${handler}={(next: unknown) => set(${JSON.stringify(state)}, next as PlaygroundValue)}`).join('');
+      return `  if (name === ${JSON.stringify(entry.name)}) return <${componentOf(entry)}${entry.playground.fixture ? ` {...(${entry.name}Fixture() as any)}` : ''} {...(props as any)}${handlers} />;`;
+    }),
     '  return null;',
     '}',
     '',
@@ -470,6 +510,8 @@ const outputs = new Map();
 const catalog = [];
 for (const name of names) {
   const doc = await loadDoc(name);
+  propsTypes.set(doc.name, doc.propsType);
+  folders.set(doc.name, name);
   // The doc files are loaded as plain modules here, so their shape is checked here as well as by tsc.
   const docPath = `src/${name}/${name}.doc.ts`;
   for (const state of doc.accessibility.states)

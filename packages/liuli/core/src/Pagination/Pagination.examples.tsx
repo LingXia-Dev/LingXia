@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { Pagination } from './Pagination';
+import { Pagination, type PaginationProps } from './Pagination';
 
 const words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };
 
@@ -41,4 +41,12 @@ export function Narrow() {
 /** The home tile. */
 export function Specimen() {
   return <Pagination label="Pages" variant="compact" value={3} pageCount={12} onChange={unused} {...words} />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    pageLabel: words.pageLabel,
+    positionLabel: (at: number, of: number | undefined) => `Page ${at} of ${of}`,
+  } satisfies Partial<PaginationProps>;
 }

@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { Calendar, calendarWeekday, type CalendarRange } from './Calendar';
+import { Calendar, calendarWeekday, type CalendarRange, type CalendarProps } from './Calendar';
 import { calendarEn } from './locale/en';
 import { calendarZh } from './locale/zh';
 
@@ -45,4 +45,9 @@ export function Specimen() {
       <Calendar label="Calendar" locale={calendarEn} value="2026-11-05" onChange={unused} today={today} className="w-[260px] scale-50 ltr:origin-top-left rtl:origin-top-right" />
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { locale: calendarEn } satisfies Partial<CalendarProps>;
 }

@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     'It holds no submenu: a menu item that opens another menu closes the first.',
     'At a point the menu is placed from the size of the page; a very long menu can still reach past its edge.',
   ],
+  playground: { props: { label: 'Trip to the coast' }, fixture: true },
   related: ['DropdownMenu', 'Item', 'BottomSheet'],
   gallery: {
     specimen: 'Specimen',

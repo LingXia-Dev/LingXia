@@ -51,6 +51,7 @@ export const doc: ComponentDoc = {
   limits: [
     'The keys are whatever the app passes; Liuli does not know the platform\'s modifier names.',
   ],
+  playground: { props: { label: 'Command K' }, fixture: true },
   related: ['Tooltip', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

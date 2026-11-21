@@ -60,6 +60,7 @@ export const doc: ComponentDoc = {
     'It does not follow the finger; it opens and closes as a whole.',
     'It is always modal: a panel that stays open beside the page is SplitView.',
   ],
+  playground: { props: { isOpen: false, label: 'Filters', closeLabel: 'Close' }, fixture: true, opener: 'Show filters' },
   related: ['Dialog', 'BottomSheet', 'SplitView'],
   gallery: {
     specimen: 'Specimen',

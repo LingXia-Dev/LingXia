@@ -1,7 +1,7 @@
 import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
 import { tooltipRecipe } from './Tooltip.recipe';
-import { Tooltip } from './Tooltip';
+import { Tooltip, type TooltipProps } from './Tooltip';
 import { Link } from '../Link/Link';
 
 /** A toolbar of icon buttons: each hint says the button's name in words. */
@@ -63,4 +63,9 @@ export function InSentence() {
       {' '}this morning.
     </text>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { children: <IconButton label="Undo" icon="undo" /> } satisfies Partial<TooltipProps>;
 }

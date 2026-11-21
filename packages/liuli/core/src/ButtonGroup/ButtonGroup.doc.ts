@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
       today: 'Rows only.',
     },
   ],
+  playground: { props: { label: 'Draft actions' }, fixture: true },
   related: ['Button', 'IconButton', 'SegmentedControl'],
   gallery: {
     specimen: 'Specimen',

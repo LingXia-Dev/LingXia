@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     { missing: 'A label column as wide as its longest label.', needs: 'text measurement before layout', today: 'A third of the row.' },
     { missing: 'A value that can be copied with a press.', needs: 'nothing from the View', today: 'The app puts an IconButton in `content`.' },
   ],
+  playground: { props: { label: 'Invoice details' }, fixture: true },
   related: ['Table', 'Item', 'Badge'],
   gallery: {
     specimen: 'Specimen',

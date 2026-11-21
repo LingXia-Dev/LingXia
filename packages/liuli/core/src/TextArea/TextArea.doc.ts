@@ -69,6 +69,7 @@ export const doc: ComponentDoc = {
       today: 'Validate as the value changes, or on submit.',
     },
   ],
+  playground: { props: { value: '', label: 'Comment', placeholder: 'Add a comment' } },
   related: ['TextInput', 'Field'],
   gallery: {
     specimen: 'Specimen',

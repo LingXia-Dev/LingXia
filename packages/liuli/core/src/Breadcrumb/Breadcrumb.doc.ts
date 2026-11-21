@@ -60,6 +60,7 @@ export const doc: ComponentDoc = {
     { missing: 'Folding by the room there is, not by a count.', needs: 'nothing from the View', today: 'Folds past `maxItems`; otherwise the trail wraps.' },
     { missing: 'The current page announced as current.', needs: 'a current-page state for assistive tech', today: 'The current page is the last item of the list and not a button.' },
   ],
+  playground: { props: { label: 'Breadcrumb' }, fixture: true },
   related: ['Tabs', 'NavList', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

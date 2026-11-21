@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
   limits: [
     'The trigger is its own row or wrapped word: it cannot sit inside a sentence as a run of text.',
   ],
+  playground: { props: { label: 'About Ana Lima' }, fixture: true },
   related: ['Popover', 'Tooltip', 'Link'],
   gallery: {
     specimen: 'Specimen',

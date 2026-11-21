@@ -1,3 +1,5 @@
+import { unused } from '../example';
+import type { BottomSheetProps } from './BottomSheet';
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { LayerContext } from '../internal/layer';
@@ -118,4 +120,15 @@ export function Specimen() {
       </view>
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: (
+      <ItemList label="Folders">
+        {moveTargets.map(name => <Item key={name} label={name} onClick={unused} />)}
+      </ItemList>
+    ),
+  } satisfies Partial<BottomSheetProps>;
 }

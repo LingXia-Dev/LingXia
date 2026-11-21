@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'Required', title: 'A question that must be answered' },
   ],
   gaps: [],
+  playground: { props: { isOpen: false, label: 'Move to' }, fixture: true, opener: 'Move note' },
   related: ['Dialog', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

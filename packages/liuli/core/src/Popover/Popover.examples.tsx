@@ -3,7 +3,7 @@ import { Said } from '../example';
 import { Button } from '../Button/Button';
 import { Switch } from '../Switch/Switch';
 import { popoverRecipe } from './Popover.recipe';
-import { Popover } from './Popover';
+import { Popover, type PopoverProps } from './Popover';
 import { Link } from '../Link/Link';
 
 /** View options for a list: switches that apply at once, in a panel under the trigger. */
@@ -106,4 +106,12 @@ export function InSentence() {
       , at the front door.
     </text>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    content: <text className="text-footnote text-muted">Previews and dates show under each title.</text>,
+    children: <Button label="View options" />,
+  } satisfies Partial<PopoverProps>;
 }

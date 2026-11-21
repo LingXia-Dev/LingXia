@@ -60,6 +60,7 @@ export const doc: ComponentDoc = {
       today: 'Liuli builds the same button with aria-expanded, so the chevron can sit at the end.',
     },
   ],
+  playground: { props: { isOpen: false, label: 'What counts as an active member?' }, fixture: true },
   related: ['Item', 'Card'],
   gallery: {
     specimen: 'Specimen',

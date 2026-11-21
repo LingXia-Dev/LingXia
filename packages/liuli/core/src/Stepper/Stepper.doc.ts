@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
     { missing: 'A step marked as failed or optional.', needs: 'nothing from the View', today: 'Done, in progress or ahead.' },
     { missing: 'Horizontal steps that fold to "2 of 4" where they do not fit.', needs: 'nothing from the View', today: 'Labels are cut short; use `vertical` on a phone.' },
   ],
+  playground: { props: { label: 'Checkout steps', value: 1 }, fixture: true },
   related: ['ProgressBar', 'Tabs', 'Breadcrumb'],
   gallery: {
     specimen: 'Specimen',

@@ -82,6 +82,7 @@ export const doc: ComponentDoc = {
     { missing: 'Rows drawn only while in view.', needs: 'grid rows inside a `<List>`', today: 'Every row is laid out; page a long set.' },
     { missing: 'Column headings read as headers by a screen reader.', needs: 'a column header role', today: 'Each cell is named with its heading.' },
   ],
+  playground: { props: { label: 'Invoices', keyField: 'id' }, fixture: true },
   related: ['Item', 'Card', 'Badge'],
   gallery: {
     specimen: 'Specimen',

@@ -2,7 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
 import { Select } from '../Select/Select';
 import { TextInput } from '../TextInput/TextInput';
-import { ListInput } from './ListInput';
+import { ListInput, type ListInputProps } from './ListInput';
 
 interface Phone { id: string; kind: string; number: string }
 const kinds = [{ value: 'mobile', label: 'Mobile' }, { value: 'home', label: 'Home' }, { value: 'work', label: 'Work' }];
@@ -91,4 +91,15 @@ export function Specimen() {
       <view className="h-5 w-14 rounded-control border border-text/12 bg-surface" />
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    rowKeys: ['p1', 'p2'],
+    renderRow: (index: number) => <TextInput label={`Phone ${index + 1}`} isLabelHidden type="tel" placeholder="Number" value="" onChange={unused} />,
+    onAdd: unused,
+    onRemove: unused,
+    removeLabel: (index: number) => `Remove phone ${index + 1}`,
+  } satisfies Partial<ListInputProps>;
 }

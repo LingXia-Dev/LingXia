@@ -2,7 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { IconButton } from '../IconButton/IconButton';
-import { ButtonGroup } from './ButtonGroup';
+import { ButtonGroup, type ButtonGroupProps } from './ButtonGroup';
 
 /** Actions on one thing sit together, the main one last. */
 export function Actions() {
@@ -104,4 +104,15 @@ export function Specimen() {
       <Button label="Redo" onClick={unused} />
     </ButtonGroup>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    children: [
+      <Button key="discard" label="Discard" variant="ghost" onClick={unused} />,
+      <Button key="save" label="Save" onClick={unused} />,
+      <Button key="publish" label="Publish" variant="primary" onClick={unused} />,
+    ],
+  } satisfies Partial<ButtonGroupProps>;
 }

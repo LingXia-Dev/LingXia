@@ -82,6 +82,7 @@ export const doc: ComponentDoc = {
       today: 'One step per press.',
     },
   ],
+  playground: { props: { value: 2, label: 'Guests', decrementLabel: 'Fewer guests', incrementLabel: 'More guests', min: 1, max: 12 } },
   related: ['TextInput', 'Slider'],
   gallery: {
     specimen: 'Specimen',

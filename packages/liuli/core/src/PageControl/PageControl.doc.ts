@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
   limits: [
     'Many pages are not folded into a window of dots; the row grows with `count`.',
   ],
+  playground: { props: { label: 'Welcome steps', count: 4, value: 0 }, fixture: true },
   related: ['Carousel', 'Pagination', 'Tabs'],
   gallery: {
     specimen: 'Specimen',

@@ -8,6 +8,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSubmenu,
+  type DropdownMenuProps,
 } from './DropdownMenu';
 import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
@@ -275,4 +276,18 @@ export function InSentence() {
       .
     </text>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    menu: (
+      <>
+        <DropdownMenuItem label="Name" onClick={unused} />
+        <DropdownMenuItem label="Last updated" description="Newest first" onClick={unused} />
+        <DropdownMenuItem label="Size" onClick={unused} />
+      </>
+    ),
+    children: <Button label="Sort by" endIcon="chevron-down" />,
+  } satisfies Partial<DropdownMenuProps>;
 }

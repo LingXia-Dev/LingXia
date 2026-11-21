@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { TreeList, type TreeNode } from './TreeList';
+import { TreeList, type TreeNode, type TreeListProps } from './TreeList';
 
 const folders: TreeNode[] = [
   {
@@ -61,4 +61,9 @@ export function Specimen() {
       className="w-full"
     />
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { items: folders, defaultOpenBranches: ['notes', 'travel'] } satisfies Partial<TreeListProps>;
 }

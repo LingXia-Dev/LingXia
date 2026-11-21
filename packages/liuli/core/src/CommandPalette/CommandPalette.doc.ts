@@ -64,6 +64,7 @@ export const doc: ComponentDoc = {
     'It binds no shortcut of its own: the app opens it.',
     'A row does not lead to a second page of rows.',
   ],
+  playground: { props: { isOpen: false, label: 'Search commands', placeholder: 'Type a command or a place', emptyLabel: 'No commands match' }, fixture: true, opener: 'Open commands' },
   related: ['Combobox', 'SearchField', 'DropdownMenu', 'Kbd'],
   gallery: {
     specimen: 'Specimen',

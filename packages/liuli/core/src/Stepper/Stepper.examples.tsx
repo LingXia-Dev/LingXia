@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { Stepper } from './Stepper';
+import { Stepper, type StepperProps } from './Stepper';
 
 const states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };
 const checkout = [
@@ -29,4 +29,9 @@ export function Across() {
 /** The home tile. */
 export function Specimen() {
   return <Stepper label="Steps" orientation="horizontal" steps={[{ key: 'a', label: 'One' }, { key: 'b', label: 'Two' }, { key: 'c', label: 'Three' }]} value={1} stateLabels={states} className="w-32" />;
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { steps: checkout, stateLabels: states } satisfies Partial<StepperProps>;
 }

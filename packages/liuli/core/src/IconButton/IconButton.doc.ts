@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
       today: 'The label is read by assistive tech only.',
     },
   ],
+  playground: { props: { label: 'Settings', icon: 'settings' } },
   related: ['Button', 'ButtonGroup', 'Icon'],
   gallery: {
     specimen: 'Specimen',

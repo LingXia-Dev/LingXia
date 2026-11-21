@@ -4,7 +4,7 @@ import { Button } from '../Button/Button';
 import { LayerContext } from '../internal/layer';
 import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
-import { Dialog } from './Dialog';
+import { Dialog, type DialogProps } from './Dialog';
 import { dialogRecipe } from './Dialog.recipe';
 
 /** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */
@@ -159,4 +159,11 @@ export function Full() {
       </Dialog>
     </view>
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return {
+    actions: <Button label="Delete" variant="destructive" onClick={unused} />,
+  } satisfies Partial<DialogProps>;
 }

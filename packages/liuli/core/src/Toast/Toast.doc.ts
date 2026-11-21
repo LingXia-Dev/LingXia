@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
     { name: 'Faces', title: 'Each face, at phone width' },
   ],
   gaps: [],
+  playground: { props: { message: 'Changes saved', tone: 'success' } },
   related: ['Banner', 'Dialog'],
   gallery: {
     specimen: 'Specimen',

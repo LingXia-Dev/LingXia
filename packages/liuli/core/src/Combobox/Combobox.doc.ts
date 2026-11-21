@@ -100,6 +100,7 @@ export const doc: ComponentDoc = {
       today: 'One choice. With a keyboard, emptying the field clears it; on touch an app that needs "none" adds an option for it.',
     },
   ],
+  playground: { props: { value: '', label: 'Country', placeholder: 'Choose a country', searchLabel: 'Search countries', emptyLabel: 'No country matches' }, fixture: true },
   related: ['Select', 'TextInput', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

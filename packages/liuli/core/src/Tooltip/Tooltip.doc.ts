@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
       today: 'Shown by the View\'s interest: a pointer resting or keyboard focus.',
     },
   ],
+  playground: { props: { content: 'Undo' }, fixture: true },
   related: ['InfoTip', 'IconButton', 'HoverCard'],
   gallery: {
     specimen: 'Specimen',

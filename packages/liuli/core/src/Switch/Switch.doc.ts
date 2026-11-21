@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
       today: 'The built-in ring also draws around the track.',
     },
   ],
+  playground: { props: { value: true, label: 'Wi-Fi', description: 'Join known networks' } },
   related: ['CheckboxInput', 'Item'],
   gallery: {
     specimen: 'Specimen',

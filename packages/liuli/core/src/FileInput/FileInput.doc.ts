@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     'Nothing can be dropped onto it: the View has no drop target.',
     'It shows no previews; pair it with Thumbnail for pictures.',
   ],
+  playground: { props: { label: 'Documents', pickLabel: 'Choose files', hint: 'PDF or image, up to 25 MB each' }, fixture: true },
   related: ['Field', 'CircularProgress', 'Thumbnail'],
   gallery: {
     specimen: 'Specimen',

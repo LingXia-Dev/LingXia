@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { unused } from '../example';
-import { CheckboxList } from './CheckboxList';
+import { CheckboxList, type CheckboxListProps } from './CheckboxList';
 
 const topics = [
   { value: 'mentions', label: 'Mentions', description: 'When someone names you in a note.' },
@@ -80,4 +80,9 @@ export function SelectAll() {
       data-testid="export"
     />
   );
+}
+
+/** The playground's props that are not plain values. */
+export function playground() {
+  return { value: ['mentions'], items: topics } satisfies Partial<CheckboxListProps>;
 }

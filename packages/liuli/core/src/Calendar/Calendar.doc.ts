@@ -75,6 +75,7 @@ export const doc: ComponentDoc = {
     { missing: 'Jumping to a month or year, and two months side by side.', needs: 'nothing from the View', today: 'One month, a month at a time.' },
     { missing: 'Month and weekday names from the device\'s own language.', needs: 'date formatting in the View\'s engine', today: 'The app passes a `locale`.' },
   ],
+  playground: { props: { value: '2026-11-19', label: 'Due date', today: '2026-11-15' }, fixture: true },
   related: ['DateInput', 'TimeInput', 'Popover'],
   gallery: {
     specimen: 'Specimen',

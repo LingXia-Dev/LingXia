@@ -73,6 +73,7 @@ export const doc: ComponentDoc = {
     { missing: 'Raw HTML, footnotes and definition lists.', needs: 'nothing from the View', today: 'Shown as the text they were written as.' },
     { missing: 'A paragraph of more than 256 styled runs.', needs: 'a higher run limit on `<text>`', today: 'Not handled; split the paragraph.' },
   ],
+  playground: { props: { source: '**Bold**, _italic_ and `code`, in a short note.' } },
   related: ['Table', 'Item', 'TextArea'],
   gallery: {
     specimen: 'Specimen',
