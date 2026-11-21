@@ -1631,7 +1631,14 @@ pub(crate) fn import_frames(
     let mut imported = false;
     let keys = keys(display);
     let mut players = players();
+    // Desktop draws come here without passing `has_new`.
+    let views = views(display);
     for key in &keys {
+        if let Some(&(px, _)) = views.get(key)
+            && let Some(entry) = players.get_mut(*key)
+        {
+            start_by_box(key, entry, px[1]);
+        }
         let Some(entry) = touch(&mut players, key) else {
             continue;
         };
