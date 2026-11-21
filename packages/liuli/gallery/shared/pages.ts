@@ -3,6 +3,7 @@
 // entry's page when the window is narrow, and a pushed page returns to the workspace, selected there,
 // when it is wide. The build reads a page's actions from what its own `setup` returns, so pages
 // call these from actions written there.
+import { lx } from '@lingxia/logic';
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 

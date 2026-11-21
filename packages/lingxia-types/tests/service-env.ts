@@ -1,5 +1,8 @@
 import type { HostAppEnv, HostServiceEnvState } from '../src/index.js';
 
+// What `import { lx } from '@lingxia/logic'` gives.
+declare const lx: import('../src/index.js').Lx;
+
 const state: HostServiceEnvState = lx.host.getServiceEnv();
 const running: HostAppEnv = state.serviceEnv;
 const next: HostAppEnv = state.nextLaunchEnv;

@@ -1,5 +1,5 @@
 import type { BenchRequest, BenchResult, DriveRequest, PerfData, PerfRow } from '../../shared/perf-types';
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 

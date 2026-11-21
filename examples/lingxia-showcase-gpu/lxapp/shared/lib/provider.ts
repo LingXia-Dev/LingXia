@@ -1,3 +1,4 @@
+import { lx } from '@lingxia/logic';
 import type { CloudApi, CloudAuthApi } from "../../provider";
 
 // `lx.cloud` / `lx.auth` exist only when the build injected the cloud provider

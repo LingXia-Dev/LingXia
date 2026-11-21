@@ -1,76 +1,62 @@
 import type { SurfaceErrorCode } from './generated/logic.js';
-import { ERR_CODE_INFO_BY_CODE, type LxErrorCode, type LxErrorCodeInfo } from "./generated/error.js";
 
-const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
+/** Every code an `lx` call documents with `@throws`. */
+export const LX_ERROR_CODES = [
+  'E_ABORT',
+  'E_ALREADY_EXISTS',
+  'E_CAPABILITY_MISSING',
+  'E_INTERNAL',
+  'E_INVALID_ARG',
+  'E_INVALID_DATA',
+  'E_INVALID_STATE',
+  'E_IO',
+  'E_NETWORK',
+  'E_NOT_FOUND',
+  'E_NOT_SUPPORTED',
+  'E_OUT_OF_RANGE',
+  'E_PERMISSION_DENIED',
+  'E_QUOTA',
+  'E_STREAM',
+  'E_SURFACE_CLOSED',
+  'E_SURFACE_CONFLICT',
+  'E_SURFACE_ROLE_LOCKED',
+  'E_TIMEOUT',
+  'E_TYPE',
+] as const;
 
-/** A caught `lx` rejection, normalized. */
-export interface LxApiError {
-  /** Closed union, so a mistyped literal in `error.code === …` is a type error. */
-  readonly code: LxErrorCode;
-  /** The i18n key of the code's message. */
-  readonly key: LxErrorCodeInfo["key"];
-  /** The host's detail when it gave one, else the error's message. */
+/** A closed union, so a mistyped literal in `error.code === …` is a type error. */
+export type LxErrorCode = (typeof LX_ERROR_CODES)[number];
+
+/**
+ * What an `lx` call rejects with. Branch on `code`, never on `message`:
+ *
+ * ```ts
+ * async function pickFolder() {
+ *   try {
+ *     return await lx.pick.directory()
+ *   } catch (e) {
+ *     if (isLxError(e) && e.code === 'E_NOT_SUPPORTED') return null
+ *     throw e
+ *   }
+ * }
+ * ```
+ */
+export interface LxError {
+  readonly name: string;
+  /** For a log line; it can change between releases. */
   readonly message: string;
-  /** The value that was caught. */
-  readonly raw: unknown;
+  readonly code: LxErrorCode;
 }
 
-/** Check an already-normalized error without modifying the caught value. */
-export function isLxApiError(error: unknown): error is LxApiError {
+/** Whether `error` is an `lx` rejection; works on every engine, where `instanceof` does not yet. */
+export function isLxError(error: unknown): error is LxError {
   const target = toRecord(error);
-  if (!target) return false;
-  const code = parseIntegerCode(target.code);
-  if (code === null) return false;
-  const info = infoForLxErrorCode(code);
   return Boolean(
-    info &&
-      target.code === code &&
-      target.key === info.key &&
-      typeof target.message === "string" &&
-      Object.prototype.hasOwnProperty.call(target, "raw"),
+    target &&
+      typeof target.code === "string" &&
+      /^E_[A-Z0-9_]+$/.test(target.code) &&
+      typeof target.message === "string",
   );
-}
-
-function readMessage(error: unknown): string {
-  const root = toRecord(error);
-  const data = root && toRecord(root.data);
-  const detail = data?.detail;
-  if (typeof detail === "string" && detail.trim() !== "") return detail;
-  if (typeof error === "string") return error;
-  if (error instanceof Error && typeof error.message === "string") return error.message;
-  if (typeof error === "object" && error !== null) {
-    const value = (error as { message?: unknown }).message;
-    if (typeof value === "string") return value;
-  }
-  return "Unknown LingXia error";
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null) return null;
-  return value as Record<string, unknown>;
-}
-
-function parseIntegerCode(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isInteger(parsed)) return parsed;
-  }
-  return null;
-}
-
-/** The numeric code on a caught rejection: its `code`, else `data.bizCode` or `data.code`. */
-export function extractLxErrorCode(error: unknown): number | null {
-  const root = toRecord(error);
-  if (!root) return null;
-
-  const rootCode = parseIntegerCode(root.code);
-  if (rootCode !== null) return rootCode;
-
-  const data = toRecord(root.data);
-  if (!data) return null;
-
-  return parseIntegerCode(data.bizCode) ?? parseIntegerCode(data.code);
 }
 
 /**
@@ -129,15 +115,12 @@ export function lxAppUnavailableReason(error: unknown): LxAppUnavailableReason |
     : null;
 }
 
-/** Business code of a rejection because the host is older than the lxapp's `minRuntime`. */
-export const LX_BIZ_CODE_HOST_UPGRADE_REQUIRED = 6002;
-
 /**
  * Whether an open, navigation, or update was refused because the host is
  * older than the lxapp's `minRuntime`.
  *
  * The rejection's `code` is `E_NOT_SUPPORTED`, which also covers missing
- * capabilities; only `data.bizCode` says the user needs a newer host app.
+ * capabilities; only this says the user needs a newer host app.
  *
  * ```ts
  * try {
@@ -149,7 +132,7 @@ export const LX_BIZ_CODE_HOST_UPGRADE_REQUIRED = 6002;
  * ```
  */
 export function hostUpgradeRequired(error: unknown): boolean {
-  return extractLxErrorCode(error) === LX_BIZ_CODE_HOST_UPGRADE_REQUIRED;
+  return Number(toRecord(toRecord(error)?.data)?.bizCode) === HOST_UPGRADE_REQUIRED;
 }
 
 /** Every member of `SurfaceErrorCode`, for runtime narrowing. */
@@ -165,38 +148,10 @@ export const SURFACE_ERROR_CODES = [
   'failed',
 ] as const satisfies readonly SurfaceErrorCode[];
 
-/** Whether `code` is one the runtime defines. */
-export function isKnownLxErrorCode(code: number): code is LxErrorCode {
-  return Number.isInteger(code) && Object.prototype.hasOwnProperty.call(ERR_CODE_INDEX, code);
+const HOST_UPGRADE_REQUIRED = 6002;
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null) return null;
+  return value as Record<string, unknown>;
 }
 
-/** The name and description of a known code; `null` for any other. */
-export function infoForLxErrorCode(code: number): LxErrorCodeInfo | null {
-  if (!isKnownLxErrorCode(code)) return null;
-  return ERR_CODE_INDEX[code];
-}
-
-/** Normalize a caught value; `null` when it carries no known code. */
-export function parseLxApiError(error: unknown): LxApiError | null {
-  const code = extractLxErrorCode(error);
-  if (code === null) return null;
-  const info = infoForLxErrorCode(code);
-  if (!info) return null;
-  return {
-    ...info,
-    message: readMessage(error),
-    raw: error,
-  };
-}
-
-/** Normalize a caught value; throws when it carries no known code. */
-export function requireLxApiError(error: unknown): LxApiError {
-  const parsed = parseLxApiError(error);
-  if (parsed) return parsed;
-  throw new Error(`Unknown LingXia API error: ${readMessage(error)}`);
-}
-
-/** `[code] message`, for a log line. */
-export function formatLxApiError(error: LxApiError): string {
-  return `[${error.code}] ${error.message}`;
-}

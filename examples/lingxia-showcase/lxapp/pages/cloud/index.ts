@@ -1,5 +1,5 @@
 import { authApi, cloudApi } from "../../shared/lib/provider";
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 const CLOUD_PAGE_TYPES = {
   AUTH: "auth",
   MQTT: "mqtt",

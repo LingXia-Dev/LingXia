@@ -1,11 +1,10 @@
-import type { TypedStorage } from "@lingxia/types";
+import { definePage, lx, type TypedStorage } from '@lingxia/logic';
 import {
   generateTodoId,
   validateTodoText,
   getCurrentTimestamp,
   type Todo,
 } from "../../shared/lib/todo-utils";
-import { definePage } from '@lingxia/types/page';
 
 // Pinning the schema means `get` returns the stored shape instead of `unknown`,
 // and a key typo is a compile error.

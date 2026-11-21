@@ -1,4 +1,6 @@
-// Product Logic code: `lx` is the app's global.
+// Product Logic code: `lx` is imported, as every Logic module does.
+import { lx } from '@lingxia/logic';
+
 export function userDataPath(): string {
   return lx.fs.userData;
 }

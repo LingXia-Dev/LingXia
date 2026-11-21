@@ -1,6 +1,9 @@
 import type { FsWriteOptions, SystemDownloadsPath, LxFile, DirEntry } from '../src/index.js';
 import type { LxAppDriver, PageDriver, PageQueryOptions, DesktopWindowSel, DesktopAppQuitOptions } from '../src/automation/index.js';
 
+// What `import { lx } from '@lingxia/logic'` gives.
+declare const lx: import('../src/index.js').Lx;
+
 const binaryOptions: FsWriteOptions = { encoding: 'base64' };
 // @ts-expect-error named options cannot give binary input a string encoding
 lx.fs.write('test.bin', new Uint8Array([1]), binaryOptions);

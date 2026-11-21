@@ -22,6 +22,9 @@
     "prepublishOnly": "npm run build:lxapp",
     "check:types": "tsc -p tsconfig.json"
   },
+  "devDependencies": {
+    "@lingxia/logic": "*"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|html|page-runtime|polyfills|terminal-settings|types|test|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|html|page-runtime|polyfills|terminal-settings|types|logic|test|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -47,7 +47,7 @@ fi
 
 # Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react),
 # then prebuilt lxapps.
-ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "terminal-settings")
+ALL_TARGETS=("bridge" "polyfills" "types" "logic" "test" "elements" "page-runtime" "html" "react" "terminal-settings")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
@@ -58,6 +58,7 @@ case "$PACKAGE_SET" in
   polyfills) targets=("polyfills") ;;
   terminal-settings) targets=("terminal-settings") ;;
   types) targets=("types") ;;
+  logic) targets=("logic") ;;
   test) targets=("test") ;;
   all) targets=("${ALL_TARGETS[@]}") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
@@ -73,6 +74,7 @@ pkg_dir() {
     polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
     terminal-settings) echo "$ROOT_DIR/packages/lingxia-terminal-settings" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
+    logic) echo "$ROOT_DIR/packages/lingxia-logic" ;;
     test) echo "$ROOT_DIR/packages/lingxia-test" ;;
     *) return 1 ;;
   esac
@@ -129,6 +131,7 @@ pkg_target_for_name() {
     @lingxia/bridge) echo "bridge" ;;
     @lingxia/polyfills) echo "polyfills" ;;
     @lingxia/types) echo "types" ;;
+    @lingxia/logic) echo "logic" ;;
     @lingxia/test) echo "test" ;;
     @lingxia/elements) echo "elements" ;;
     @lingxia/page-runtime) echo "page-runtime" ;;
@@ -149,6 +152,7 @@ const dirOf = {
   bridge: "packages/lingxia-bridge",
   polyfills: "packages/lingxia-polyfills",
   types: "packages/lingxia-types",
+  logic: "packages/lingxia-logic",
   test: "packages/lingxia-test",
   elements: "packages/lingxia-elements",
   "page-runtime": "packages/lingxia-page-runtime",

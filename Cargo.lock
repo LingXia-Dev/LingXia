@@ -3822,6 +3822,7 @@ dependencies = [
  "rand 0.10.2",
  "rcgen",
  "resvg 0.48.1",
+ "rong",
  "roxmltree 0.21.1",
  "rsa",
  "rustls-native-certs",

@@ -33,7 +33,7 @@ export function render({ actions }: View) {
 Its Logic, `index.ts`:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 export default definePage({
   actions: {

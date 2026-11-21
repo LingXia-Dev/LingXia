@@ -1,4 +1,4 @@
-import type { TypedStorage } from '@lingxia/types';
+import { definePage, lx, type TypedStorage } from '@lingxia/logic';
 import { generateTodoId, validateTodoText, getCurrentTimestamp, type Todo } from '../../shared/lib/todo-utils';
 import type {
   TodoActions,
@@ -9,7 +9,6 @@ import type {
   TodoIdRequest,
   TodoFilterRequest,
 } from '../../shared/todo-types';
-import { definePage } from '@lingxia/types/page';
 interface TodoStorage {
   'todo:state': Snapshot;
   'todo:todos': Todo[];

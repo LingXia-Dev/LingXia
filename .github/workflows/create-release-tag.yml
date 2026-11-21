@@ -29,6 +29,7 @@ on:
           - lingxia-bridge
           - lingxia-elements
           - lingxia-html
+          - lingxia-logic
           - lingxia-page-runtime
           - lingxia-polyfills
           - lingxia-react
@@ -55,6 +56,7 @@ env:
     lingxia-react
     lingxia-terminal-settings
     lingxia-types
+    lingxia-logic
     lingxia-test
 
 jobs:

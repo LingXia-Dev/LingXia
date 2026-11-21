@@ -1,5 +1,5 @@
 import type { ChartData, Message, ChatChunk, SendMessage } from "../../shared/stream-types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 interface MockScenario {
   text: string;

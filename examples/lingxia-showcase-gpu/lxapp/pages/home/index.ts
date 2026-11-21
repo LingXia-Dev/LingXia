@@ -6,7 +6,7 @@ import {
 } from "../../shared/display-language";
 import { formatHomeGreeting, getMessages } from "./messages";
 import type { HomeActions, HomePageData, GreetingRequest, AppearanceRequest, DisplayLanguageRequest } from '../../shared/home-types';
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 
 

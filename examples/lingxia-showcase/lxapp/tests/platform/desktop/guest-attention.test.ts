@@ -115,7 +115,7 @@ test('a guest lxapp gets attention for itself only', {
         id: 'guest-own',
         title: 'Run finished',
         body: 'DESKTOP-GUEST-ATTENTION-001',
-        target: { kind: 'app', appId: 'lingxia-showcase-web', query: { run: 'probe' } },
+        target: { app: 'lingxia-showcase-web', params: { run: 'probe' } },
         silent: true,
       });
       await n.cancel('guest-own');
@@ -143,7 +143,7 @@ test('a guest lxapp gets attention for itself only', {
       id,
       title: 'Run finished',
       body: 'DESKTOP-GUEST-ATTENTION-001',
-      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', appId: 'lingxia-showcase-web', query: { run: 'probe' } } }],
+      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { app: 'lingxia-showcase-web', params: { run: 'probe' } } }],
       timeoutMs: 0,
     }).then(
       (result) => { probe.result = result; },

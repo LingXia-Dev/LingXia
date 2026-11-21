@@ -26,6 +26,7 @@
   "dependencies": {
     "@lingxia/bridge": "file:../../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../../packages/lingxia-react",
+    "@lingxia/logic": "file:../../../packages/lingxia-logic",
     "@lingxia/types": "file:../../../packages/lingxia-types",
     "@radix-ui/react-slot": ">=1.3.3",
     "@tailwindcss/postcss": ">=4.3.3",

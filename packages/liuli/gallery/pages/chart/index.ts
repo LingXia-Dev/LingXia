@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 
 export default definePage({

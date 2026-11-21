@@ -39,7 +39,7 @@ export function render({ actions }: View) {
 Its Logic, `index.ts`:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 type SignUp = { email: string; code: string; plan: string; news: boolean; seats: number };
 

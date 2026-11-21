@@ -150,5 +150,12 @@ filetime = "0.2"
 # Match the desktop scanner's image-compatible decoder version.
 rxing = { version = "0.8.3", default-features = false }
 
+# The engine each host uses, so a bundle test runs on it (JavaScriptCore on macOS).
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+rong = { workspace = true, features = ["jscore"] }
+
+[target.'cfg(not(target_os = "macos"))'.dev-dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+
 [target.'cfg(windows)'.dependencies]
 junction = "2.1"

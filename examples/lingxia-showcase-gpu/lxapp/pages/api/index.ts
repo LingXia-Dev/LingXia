@@ -1,7 +1,7 @@
 import { cloudProviderAvailable } from '../../shared/lib/provider';
 import { errorMessage } from '../../shared/lib/errors';
 import { openFeedback } from '../../shared/lib/feedback';
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 export default definePage({
   data: { cloudAvailable: false, loadCount: 0 },

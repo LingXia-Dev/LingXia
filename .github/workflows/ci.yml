@@ -1680,6 +1680,7 @@ jobs:
           # against the published types.
           node lingxia-types/tests/error-runtime.mjs
           node lingxia-types/tests/page-runtime.mjs
+          npm test --workspace @lingxia/logic
 
       # The test SDK grades every other suite, so its own specs gate here.
       - name: Test GPU authoring and compiler

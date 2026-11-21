@@ -10,14 +10,15 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // (`definePage`, `page.*`) and the error helpers, with each type those modules export.
 export function catalogue({ entries = false } = {}) {
   const entry = resolve(packageDir, "src/index.ts");
-  const roots = entries ? [entry, resolve(packageDir, "src/page.ts")] : [entry];
+  const globals = resolve(packageDir, "typegen/catalogue-lx.d.ts");
+  const roots = entries ? [entry, globals, resolve(packageDir, "src/page.ts")] : [entry, globals];
   const program = ts.createProgram(roots, {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
     strict: true, noEmit: true, skipLibCheck: true, types: [],
   });
   const checker = program.getTypeChecker();
   const lx = checker.resolveName("lx", undefined, ts.SymbolFlags.Value, false);
-  if (!lx) throw Error("no global `lx` in the declarations");
+  if (!lx) throw Error("no `lx` in typegen/catalogue-lx.d.ts");
   const at = lx.valueDeclaration;
   const members = [];
   const types = new Map();
@@ -154,6 +155,8 @@ export function catalogue({ entries = false } = {}) {
       const module = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, file)));
       exportsByEntry[entry] = checker.getExportsOfModule(module).map(s => s.name).sort();
     }
+    // `@lingxia/logic` is where Logic imports from: all three, plus the host's `lx`.
+    exportsByEntry["@lingxia/logic"] = [...new Set([...exportsByEntry["@lingxia/types"], ...exportsByEntry["@lingxia/types/page"], "lx"])].sort();
     const start = members.length;
     const app = checker.resolveName("App", undefined, ts.SymbolFlags.Value, false);
     const logicModule = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, "src/generated/logic.ts")));
@@ -161,7 +164,7 @@ export function catalogue({ entries = false } = {}) {
     walk(null, null, "", 0, [app]);
     if (appConfig) walk(appConfig, checker.getDeclaredTypeOfSymbol(appConfig), "App", 1);
     for (const member of members.slice(start)) member.entry = "global";
-    for (const [file, entry] of [["src/page.ts", "@lingxia/types/page"], ["src/error.ts", "@lingxia/types/error"]]) {
+    for (const [file, entry] of [["src/page.ts", "@lingxia/logic"], ["src/error.ts", "@lingxia/logic"]]) {
       const before = members.length;
       const module = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, file)));
       const exported = checker.getExportsOfModule(module).map(s => (s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s)).filter(ownDeclaration);
@@ -173,7 +176,7 @@ export function catalogue({ entries = false } = {}) {
       for (const member of members.slice(before)) member.entry = entry;
     }
     // Every other named type, so a union (`DownloadResult`) or a type no member names is found by name.
-    for (const file of ["src/generated/logic.ts", "src/generated/error.ts"]) {
+    for (const file of ["src/generated/logic.ts"]) {
       const module = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, file)));
       for (const symbol of checker.getExportsOfModule(module)) {
         if (symbol.flags & (ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias) && ownDeclaration(symbol)) recordType(symbol, false);

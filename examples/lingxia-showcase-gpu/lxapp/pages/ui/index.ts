@@ -1,17 +1,18 @@
 import { errorMessage } from "../../shared/lib/errors";
-import type {
-  PageSurface,
-  OverlaySurfaceSizeValue,
-  SurfaceEdge,
-  SurfaceErrorCode,
-  SurfaceFloatPosition,
-  ActionSheetResult,
-  ToastHandle,
-  ToastOptions,
-  NavigationBarPatch,
-  TabBarItemPatch,
-} from "@lingxia/types";
-import { definePage } from '@lingxia/types/page';
+import {
+  definePage,
+  lx,
+  type PageSurface,
+  type OverlaySurfaceSizeValue,
+  type SurfaceEdge,
+  type SurfaceErrorCode,
+  type SurfaceFloatPosition,
+  type ActionSheetResult,
+  type ToastHandle,
+  type ToastOptions,
+  type NavigationBarPatch,
+  type TabBarItemPatch,
+} from '@lingxia/logic';
 
 /** What the modal demo shows: whether the dialog was confirmed. */
 type ModalResult = { status: 'ok' } | { status: 'canceled' };

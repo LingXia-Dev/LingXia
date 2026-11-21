@@ -1,5 +1,4 @@
-import type { PageMessagePort, PageSurface } from "@lingxia/types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx, type PageMessagePort, type PageSurface } from '@lingxia/logic';
 
 export default definePage({
   data: {
@@ -51,15 +50,10 @@ export default definePage({
 
         const payload = { message, timestamp: Date.now() };
         console.log("surface page message:", payload);
-        if (page.surface) {
-          page.surface.send(payload);
-          await actions.closeSelf();
-          return;
-        }
-        if (page.opener) {
-          page.opener.send(payload);
-          await lx.nav.back();
-        }
+        // Floated or pushed, the opener is the same line; `close` leaves either way.
+        if (!page.opener) return;
+        page.opener.send(payload);
+        await page.close();
       },
       async hideSelf() {
         // Absent unless this page was opened as a surface.

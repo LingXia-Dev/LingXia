@@ -189,6 +189,12 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const symbol = ts.isShorthandPropertyAssignment(parent) ? checker.getShorthandAssignmentValueSymbol(parent) : checker.getSymbolAtLocation(node);
       if (!propertyName && !symbol) report(node, `UI_DOM: ${node.text} is unavailable in GPU Views`);
     }
+    // `@lingxia/logic` carries the host's `lx`; a View imports only its types.
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === '@lingxia/logic') {
+      const clause = node.importClause;
+      const values = clause && !clause.isTypeOnly && (clause.name || (clause.namedBindings && (ts.isNamespaceImport(clause.namedBindings) || clause.namedBindings.elements.some(element => !element.isTypeOnly))));
+      if (values) report(node, "UI_LX: @lingxia/logic is Logic-only; a View imports its types with `import type`, and does a call in a Logic action");
+    }
     // `lx` is Logic's; a View reaches it only through an action. A local binding named lx is fine.
     if (ts.isIdentifier(node) && node.text === 'lx') {
       const parent = node.parent;

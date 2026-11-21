@@ -1,5 +1,4 @@
-import type { PageMessagePort, PageSurface } from "@lingxia/types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, type PageMessagePort, type PageSurface } from '@lingxia/logic';
 
 export default definePage({
   data: {

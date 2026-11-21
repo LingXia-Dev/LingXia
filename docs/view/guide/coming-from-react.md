@@ -32,7 +32,7 @@ export function render({ data, actions }: View) {
 The network call lives in its Logic, `index.ts`, where `fetch` and `lx` are:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 type Product = { id: string; name: string; price: string };
 const catalog: Product[] = [{ id: 'p1', name: 'Desk lamp', price: '29.00' }];

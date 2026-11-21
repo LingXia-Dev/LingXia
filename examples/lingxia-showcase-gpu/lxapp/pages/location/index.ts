@@ -1,5 +1,4 @@
-import type { LocationInfo } from "@lingxia/types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx, type LocationInfo } from '@lingxia/logic';
 export default definePage({
   data: {
     location: null as LocationInfo | null,

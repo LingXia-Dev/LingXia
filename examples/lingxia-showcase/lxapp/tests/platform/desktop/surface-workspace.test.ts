@@ -1962,7 +1962,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       // Each call passes what the typings refuse on purpose: the host must
       // reject it, not ignore the extra field.
       const openApp = lx.surface.openApp as (appId: string, options: unknown) => Promise<unknown>;
-      const openPage = lx.surface.openPage as (page: string, options: unknown) => Promise<unknown>;
+      const openPage = lx.surface.openPage as unknown as (page: string, options: unknown) => Promise<unknown>;
       const go = lx.nav.go as (target: unknown) => Promise<unknown>;
       const rejected: Partial<Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', Rejection>> = {};
       try {

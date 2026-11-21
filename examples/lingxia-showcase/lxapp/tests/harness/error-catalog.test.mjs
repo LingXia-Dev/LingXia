@@ -5,16 +5,16 @@ import { families, runtimeOwners } from '../error-catalog.mjs';
 
 const root = new URL('../../../../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
-const business = read('packages/lingxia-types/src/generated/error.ts');
 const surface = read('packages/lingxia-types/src/generated/logic.ts')
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .match(/export type SurfaceErrorCode\s*=([\s\S]*?);/)?.[1];
 const bridge = read('packages/lingxia-bridge/src/types.ts')
   .match(/export const BRIDGE_ERROR\s*=\s*\{([\s\S]*?)\}/)?.[1];
-const surfaceRuntime = read('packages/lingxia-types/src/error.ts')
+const errorModule = read('packages/lingxia-types/src/error.ts');
+const surfaceRuntime = errorModule
   .match(/export const SURFACE_ERROR_CODES\s*=\s*\[([\s\S]*?)\]/)?.[1];
 const declarations = {
-  LxErrorCode: [...business.matchAll(/^\s*(\d+):\s*\{ code:/gm)].map((match) => Number(match[1])),
+  LxErrorCode: [...(errorModule.match(/export const LX_ERROR_CODES = \[([\s\S]*?)\]/)?.[1] ?? '').matchAll(/'(E_[A-Z_]+)'/g)].map((match) => match[1]),
   SurfaceErrorCode: [...(surface ?? '').matchAll(/'([a-z_]+)'/g)].map((match) => match[1]),
   'BRIDGE_*': [...(bridge ?? '').matchAll(/'(BRIDGE_[A-Z_]+)'/g)].map((match) => match[1]),
 };

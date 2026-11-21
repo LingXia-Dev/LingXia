@@ -1,4 +1,10 @@
-import type { AppLaunchOptions, ConfiguredPageName, NavTarget, OpenLink } from "@lingxia/types";
+import {
+  lx,
+  type AppLaunchOptions,
+  type ConfiguredPageName,
+  type NavTarget,
+  type OpenLink,
+} from '@lingxia/logic';
 import { appState, setIpAddr } from "./shared/lib/app";
 import { getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";

@@ -1,6 +1,11 @@
-import type { HostInfo, HostTarget, SystemSettingInfo } from "@lingxia/types";
-import type { PageLoadOptions } from '@lingxia/types';
-import { definePage } from '@lingxia/types/page';
+import {
+  definePage,
+  lx,
+  type HostInfo,
+  type HostTarget,
+  type SystemSettingInfo,
+  type PageLoadOptions,
+} from '@lingxia/logic';
 
 export default definePage({
   data: {

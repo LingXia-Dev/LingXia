@@ -1,19 +1,20 @@
 import { errorMessage } from "../../shared/lib/errors";
-import type {
-  ActionSheetResult,
-  PageSurface,
-  ToastHandle,
-  ToastOptions,
-  SurfaceEdge,
-  SurfaceErrorCode,
-  NavigationBarPatch,
-  SurfaceFloatPosition,
-  TabBarItemPatch,
-} from "@lingxia/types";
+import {
+  definePage,
+  lx,
+  type ActionSheetResult,
+  type PageSurface,
+  type ToastHandle,
+  type ToastOptions,
+  type SurfaceEdge,
+  type SurfaceErrorCode,
+  type NavigationBarPatch,
+  type SurfaceFloatPosition,
+  type TabBarItemPatch,
+} from '@lingxia/logic';
 
 /** What the modal demo shows: whether the dialog was confirmed. */
 type ModalResult = { status: 'ok' } | { status: 'canceled' };
-import { definePage } from '@lingxia/types/page';
 
 type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
 

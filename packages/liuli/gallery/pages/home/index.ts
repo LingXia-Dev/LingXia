@@ -1,5 +1,5 @@
 import { publish, pushEntryWhenNarrow, rememberEntry, rememberedEntry, signIn, takeHandedOff } from '../../shared/pages';
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 export default definePage({
   data: { page: '' },

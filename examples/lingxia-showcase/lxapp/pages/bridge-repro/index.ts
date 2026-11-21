@@ -1,7 +1,7 @@
 // Bridge delivery repro: the logic layer emits a gap-free tick sequence; the
 // view audits what actually arrives. Any missing seq means the transport
 // dropped a frame (Apple downstream queue loss around connect/replace).
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 export interface Tick {
   seq: number;

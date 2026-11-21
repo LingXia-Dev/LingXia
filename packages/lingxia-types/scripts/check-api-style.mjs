@@ -19,6 +19,7 @@ const rules = {
   "readonly-array-param": "an array parameter is `readonly`",
   "required-member": "an API member is never optional; a missing capability rejects `E_NOT_SUPPORTED`",
   "summary": "every member and every option or result field has a one-sentence summary",
+  "error-code": "a `@throws` code is a member of `LX_ERROR_CODES` in src/error.ts",
   "tags": "an error code, a `lx.supports` key or a default named in prose is written as `@throws {E_…}`, `@supports key` or `@default value`",
   "doc-length": "a member's doc is at most 12 lines; details go on its option and result fields",
   "jargon": "a summary says what the member does, without its own path or internal terms",
@@ -82,6 +83,14 @@ const table = [
   ...members.map(member => `| \`${member.path}\` | ${member.signatures.map(signature => `\`${signature.text.replace(/\|/g, "\\|")}\``).join("<br>") || member.kind} | ${member.summary.replace(/\|/g, "\\|")} |`),
   "",
 ].join("\n");
+
+// A `@throws` code must be one `LxErrorCode` names, or `e.code === …` on it would not type-check.
+const declaredCodes = new Set(readFileSync(resolve(packageDir, "src/error.ts"), "utf8").match(/LX_ERROR_CODES = \[([^]*?)\]/)[1].match(/E_[A-Z_]+/g));
+for (const file of ["src/generated/logic.ts", "src/page.ts", "src/index.ts"]) {
+  for (const [, code] of readFileSync(resolve(packageDir, file), "utf8").matchAll(/@throws \{(E_[A-Z_]+)\}/g)) {
+    if (!declaredCodes.has(code)) find("error-code", `${file}:${code}`);
+  }
+}
 
 const current = [...new Set(findings)].sort();
 if (write) {

@@ -16,6 +16,7 @@ on:
           - lingxia-bridge
           - lingxia-elements
           - lingxia-html
+          - lingxia-logic
           - lingxia-page-runtime
           - lingxia-polyfills
           - lingxia-react
@@ -54,6 +55,7 @@ env:
     lingxia-react
     lingxia-terminal-settings
     lingxia-types
+    lingxia-logic
     lingxia-test
 
 jobs:
@@ -108,6 +110,7 @@ jobs:
               lingxia-bridge-v*) package="lingxia-bridge"; version="${tag#lingxia-bridge-v}" ;;
               lingxia-elements-v*) package="lingxia-elements"; version="${tag#lingxia-elements-v}" ;;
               lingxia-html-v*) package="lingxia-html"; version="${tag#lingxia-html-v}" ;;
+              lingxia-logic-v*) package="lingxia-logic"; version="${tag#lingxia-logic-v}" ;;
               lingxia-page-runtime-v*) package="lingxia-page-runtime"; version="${tag#lingxia-page-runtime-v}" ;;
               lingxia-polyfills-v*) package="lingxia-polyfills"; version="${tag#lingxia-polyfills-v}" ;;
               lingxia-react-v*) package="lingxia-react"; version="${tag#lingxia-react-v}" ;;
@@ -124,7 +127,7 @@ jobs:
               directory="packages"
               package_set="all"
               ;;
-            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-terminal-settings|lingxia-test|lingxia-types)
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-logic|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-terminal-settings|lingxia-test|lingxia-types)
               directory="packages/$package"
               package_set="${package#lingxia-}"
               ;;
@@ -225,11 +228,11 @@ jobs:
           set -euo pipefail
           expected="${{ needs.determine-package.outputs.version }}"
 
-          # bridge/polyfills/types/test/terminal-settings track the workspace version in lockstep; other
+          # bridge/logic/polyfills/types/test/terminal-settings track the workspace version in lockstep; other
           # packages are framework/tools and may legitimately stay at an older
           # version when version.sh skipped their bump.
           is_base_npm() {
-            case " lingxia-bridge lingxia-polyfills lingxia-terminal-settings lingxia-test lingxia-types " in
+            case " lingxia-bridge lingxia-logic lingxia-polyfills lingxia-terminal-settings lingxia-test lingxia-types " in
               *" $1 "*) return 0 ;;
             esac
             return 1

@@ -111,7 +111,7 @@ test('guide examples type-check against the authoring API', async () => {
     const options = {
       target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
       jsx: ts.JsxEmit.Preserve, strict: true, noEmit: true, types: [], lib: ['lib.es2020.d.ts'],
-      paths: { '@lingxia/view': [join(packageRoot, 'src/index.d.ts')], '@lingxia/types/page': [join(packageRoot, '../lingxia-types/src/page.ts')] },
+      paths: { '@lingxia/view': [join(packageRoot, 'src/index.d.ts')], '@lingxia/types/page': [join(packageRoot, '../lingxia-types/src/page.ts')], '@lingxia/logic': [join(packageRoot, '../lingxia-logic/index.d.ts')] },
     };
     const program = ts.createProgram([...files.map(([file]) => file), join(packageRoot, 'src/index.d.ts')], options);
     const names = new Map(files);

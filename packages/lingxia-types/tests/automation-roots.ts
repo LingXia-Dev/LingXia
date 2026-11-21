@@ -1,5 +1,8 @@
 import type { Automation, HostRunAutomation, LogicLxAppDriver, LxAppDriver } from '../src/automation/index.js';
 
+// What `import { lx } from '@lingxia/logic'` gives.
+declare const lx: import('../src/index.js').Lx;
+
 // App Logic: `lx.automation()` is the Logic-facing root.
 async function logicRoot() {
   const logic: Automation = lx.automation();

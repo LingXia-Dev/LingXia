@@ -11,6 +11,7 @@
     "@liulidesign/core": "file:../../../packages/liuli/core"
   },
   "devDependencies": {
+    "@lingxia/logic": "file:../../../packages/lingxia-logic",
     "@lingxia/types": "file:../../../packages/lingxia-types",
     "typescript": "^5.7.2",
     "@lingxia/test": "file:../../../packages/lingxia-test"

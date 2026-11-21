@@ -7,8 +7,7 @@
 //!
 //! - `.lingxia/types/pages.generated.d.ts`: page and tab names, for Logic and View.
 //! - `.lingxia/logic-types/pages.generated.d.ts`: each page's `definePage`
-//!   type, which `lx.nav` reads params and result from. Logic only: it imports
-//!   the pages' Logic files, which a View program cannot type-check.
+//!   type, which `lx.nav` and a View's `<link to>` read params and result from.
 //! - `.lingxia/types/<page directory>/$types.d.ts`, per GPU page: the tsconfig's
 //!   `rootDirs` lays it beside the page, so `import type { View } from './$types'`
 //!   types the View from the page's Logic.
@@ -117,10 +116,9 @@ fn render_view_types(dir: &Path, logic: Option<&str>) -> String {
     };
     // `.lingxia/types/`, then one step per directory of the page.
     let up = "../".repeat(2 + dir.components().count());
-    // The View program type-checks the Logic module too, so the Logic globals must resolve there.
-    out.push_str("/// <reference types=\"@lingxia/types\" />\n");
+    // Types only: the Logic module imports its `lx`, so no Logic global enters the View program.
     out.push_str("import type { View as PageView } from \"@lingxia/view\";\n");
-    out.push_str("import type { MessagesOf, ParamsOf, ResultOf } from \"@lingxia/types/page\";\n");
+    out.push_str("import type { MessagesOf, ParamsOf, ResultOf } from \"@lingxia/logic\";\n");
     out.push_str(&format!(
         "import type page from {:?};\n\n",
         format!("{up}{logic}")

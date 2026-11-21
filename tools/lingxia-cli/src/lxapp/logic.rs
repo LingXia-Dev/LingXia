@@ -363,6 +363,20 @@ impl<'a> LogicBundler<'a> {
             );
         }
         let program = parse_result.program;
+        if !path
+            .components()
+            .any(|part| part.as_os_str() == "node_modules")
+            && let Some(line) = unimported_lx_line(&program, &source)
+        {
+            bail!(
+                "{}:{line}: `lx` is not imported; add `import {{ lx }} from '@lingxia/logic'`",
+                relative_to(
+                    &path,
+                    &normalize_path(&self.project.root)
+                        .unwrap_or_else(|_| self.project.root.clone())
+                )
+            );
+        }
 
         let imports = collect_imports(&program, &source, &path, self.project.root.as_path())?;
         let export_dependencies =
@@ -789,7 +803,7 @@ fn rewrite_module_source(
         && !exports.iter().any(|(exported, _)| exported == "default")
     {
         bail!(
-            "{page_path}: a page's Logic must `export default definePage({{ data, setup }})` from '@lingxia/types/page'"
+            "{page_path}: a page's Logic must `export default definePage({{ data, setup }})` from '@lingxia/logic'"
         );
     }
     if let ModuleRole::Page { page_path } = role {
@@ -1020,7 +1034,7 @@ fn refuse_removed_registration(expression: &Expression<'_>, role: &ModuleRole) -
     };
     match identifier.name.as_str() {
         "Page" | "PageInstance" if matches!(role, ModuleRole::Page { .. }) => bail!(
-            "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/types/page'",
+            "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/logic'",
             identifier.name.as_str()
         ),
         "defineApp" if matches!(role, ModuleRole::App) => {
@@ -1118,6 +1132,38 @@ fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
         Expression::TSNonNullExpression(expr) => unwrap_expression(&expr.expression),
         _ => expression,
     }
+}
+
+/// The line of the first `lx` that no import or local binding provides: the runtime has a
+/// global `lx`, but Logic imports it so a View cannot reach it by mistake.
+fn unimported_lx_line(program: &oxc_ast::ast::Program<'_>, source: &str) -> Option<usize> {
+    use oxc_ast_visit::Visit;
+    struct Uses<'s> {
+        scoping: &'s oxc_semantic::Scoping,
+        first: Option<u32>,
+    }
+    impl<'a> Visit<'a> for Uses<'_> {
+        fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+            let unresolved = ident
+                .reference_id
+                .get()
+                .is_some_and(|id| self.scoping.get_reference(id).symbol_id().is_none());
+            if ident.name == "lx" && unresolved {
+                self.first = Some(
+                    self.first
+                        .map_or(ident.span.start, |f| f.min(ident.span.start)),
+                );
+            }
+        }
+    }
+    let semantic = SemanticBuilder::new().build(program).semantic;
+    let mut uses = Uses {
+        scoping: semantic.scoping(),
+        first: None,
+    };
+    uses.visit_program(program);
+    let start = uses.first?;
+    Some(source[..start as usize].matches('\n').count() + 1)
 }
 
 pub(crate) fn transpile_module(path: &Path, source: &str) -> Result<String> {
@@ -1445,6 +1491,91 @@ mod tests {
         let path = root.join(path);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn logic_using_lx_without_the_import_names_the_import() {
+        let temp = TempDir::new().unwrap();
+        let error = page_build_error(temp.path(), "export default {};\n\nlx.nav.back();\n");
+        assert!(
+            error.contains("pages/home/index.ts:3: `lx` is not imported; add `import { lx } from '@lingxia/logic'`"),
+            "{error}"
+        );
+    }
+
+    /// The real `@lingxia/logic` runtime entry, bundled as a project would, run on this host's
+    /// engine: the app entry and every page see the one injected `lx`, the app entry first.
+    #[test]
+    fn imported_lx_is_the_injected_object_in_the_app_entry_and_pages() {
+        use rong::{JSEngine, RongJS, Source};
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "node_modules/@lingxia/logic/package.json",
+            include_str!("../../../../packages/lingxia-logic/package.json"),
+        );
+        write(
+            root,
+            "node_modules/@lingxia/logic/index.js",
+            include_str!("../../../../packages/lingxia-logic/index.js"),
+        );
+        write(
+            root,
+            "node_modules/@lingxia/types/package.json",
+            r#"{"name":"@lingxia/types","type":"module","exports":{"./page":"./page.js","./error":"./error.js"}}"#,
+        );
+        write(
+            root,
+            "node_modules/@lingxia/types/page.js",
+            "export function definePage(d) { return d; }\n",
+        );
+        write(
+            root,
+            "node_modules/@lingxia/types/error.js",
+            "export function isLxError() { return false; }\n",
+        );
+        write(
+            root,
+            "lxapp.ts",
+            "import { lx } from '@lingxia/logic';\nglobalThis.seen.push(['app', lx]);\nApp({});\n",
+        );
+        write(
+            root,
+            "pages/home/index.ts",
+            "import { definePage, lx } from '@lingxia/logic';\nglobalThis.seen.push(['page', lx]);\nexport default definePage({});\n",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        bundler
+            .add_entry(root.join("lxapp.ts"), ModuleRole::App)
+            .unwrap();
+        bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .unwrap();
+        let bundle = bundler.render_bundle(false).unwrap();
+
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        let prelude = "globalThis.lx = { nav: {} }; globalThis.seen = []; \
+                       globalThis.__registerApp = () => seen.push(['App', null]); \
+                       globalThis.__registerDefinedPage = () => seen.push(['register', null]);";
+        ctx.eval::<()>(Source::from_bytes(prelude)).unwrap();
+        ctx.eval::<()>(Source::from_bytes(bundle)).unwrap();
+        let order: String = ctx
+            .eval(Source::from_bytes(
+                "JSON.stringify(seen.map(([who, value]) => [who, value === null || value === globalThis.lx]))",
+            ))
+            .unwrap();
+        assert_eq!(
+            order,
+            r#"[["app",true],["App",true],["page",true],["register",true]]"#
+        );
     }
 
     #[test]

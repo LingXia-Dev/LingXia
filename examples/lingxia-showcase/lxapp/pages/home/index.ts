@@ -5,7 +5,7 @@ import {
   type DisplayLanguagePreference,
 } from "../../shared/display-language";
 import { formatHomeGreeting, getMessages } from "./messages";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 
 

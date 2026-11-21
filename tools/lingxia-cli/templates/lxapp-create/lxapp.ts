@@ -1,3 +1,4 @@
+import { lx } from '@lingxia/logic';
 App({
   onLaunch() {
     console.log('LingXia app launched');

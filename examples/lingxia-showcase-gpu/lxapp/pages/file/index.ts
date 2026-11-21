@@ -1,7 +1,6 @@
-import type { DownloadTask, DownloadResult } from "@lingxia/types";
+import { definePage, lx, type DownloadTask, type DownloadResult } from '@lingxia/logic';
 import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
 import { errorMessage } from "../../shared/lib/errors";
-import { definePage } from '@lingxia/types/page';
 
 /** The slice of the page the module-level download helpers write back to. */
 // The page instance a download reports to; the download outlives a page.

@@ -31,7 +31,7 @@ export function render({ data, actions }: View) {
 `View` is typed from the page's Logic beside it, `index.ts`:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 export default definePage({
   data: { id: 'n1' },

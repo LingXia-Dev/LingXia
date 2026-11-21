@@ -8,18 +8,14 @@ export * from './generated/logic.js';
 export type { Automation } from './automation/index.js';
 export type { MockAnswer, MockContext, MockHandler, MockRequest, Mocks } from './mocks.js';
 export * from './error.js';
-export * from './generated/error.js';
 export * from './generated/i18n.js';
 
 import './generated/logic.js';
 
 import type {
-  AppConfig,
-  AppLifecycleName,
   BinaryFileData,
   FsWriteOptions,
   ManagedPath,
-  NoLifecycleTypos,
 } from './generated/logic.js';
 import type { Automation } from './automation/index.js';
 
@@ -55,20 +51,6 @@ declare global {
      */
     automation(): Automation;
   }
-
-  const lx: Lx;
-
-  /**
-   * `TCustom` is inferred from the members you write beside the lifecycle
-   * hooks, so `this.myMethod()` resolves inside the config and a key that is
-   * only a case away from a hook is rejected.
-   */
-  function App<TCustom>(
-    config: AppConfig &
-      TCustom &
-      NoLifecycleTypos<TCustom, AppLifecycleName> &
-      ThisType<AppConfig & TCustom>
-  ): AppConfig & TCustom;
 }
 
 export {};

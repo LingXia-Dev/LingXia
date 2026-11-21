@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 import { errorMessage } from "../../shared/lib/errors";
 import type { Animation, Direction, ObjectFit, SwiperItem, SwiperPage } from './contract';
 

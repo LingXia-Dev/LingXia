@@ -1,5 +1,7 @@
 import { definePage, type } from '../../src/page.js';
 
+declare const lx: import('../../src/index.js').Lx;
+
 export const alpha = definePage({
   params: type<{ id: number }>(),
   setup() {

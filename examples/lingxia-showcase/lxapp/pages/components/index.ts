@@ -1,5 +1,4 @@
-import type { ConfiguredPageName, PageQuery } from "@lingxia/types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx, type ConfiguredPageName, type PageQuery } from '@lingxia/logic';
 
 export default definePage({
   data: {},

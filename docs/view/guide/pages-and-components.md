@@ -44,7 +44,7 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
 Its Logic, `index.ts`:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 type Item = { id: string; title: string; done: boolean };
 

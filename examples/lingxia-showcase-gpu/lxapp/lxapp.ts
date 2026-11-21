@@ -1,3 +1,4 @@
+import { lx } from '@lingxia/logic';
 import { appState, setIpAddr } from './shared/lib/app';
 import { openFeedback } from './shared/lib/feedback';
 

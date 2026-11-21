@@ -1,7 +1,12 @@
-import type { DeviceInfo, NetworkInfo, ScreenInfo } from "@lingxia/types";
+import {
+  definePage,
+  lx,
+  type DeviceInfo,
+  type NetworkInfo,
+  type ScreenInfo,
+  type PageLoadOptions,
+} from '@lingxia/logic';
 import { errorMessage } from "../../shared/lib/errors";
-import type { PageLoadOptions } from '@lingxia/types';
-import { definePage } from '@lingxia/types/page';
 export default definePage({
   data: {
     currentType: "device",

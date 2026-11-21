@@ -20,6 +20,7 @@
   "dependencies": {
     "@lingxia/bridge": "file:../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../packages/lingxia-react",
+    "@lingxia/logic": "file:../../packages/lingxia-logic",
     "@lingxia/types": "file:../../packages/lingxia-types",
     "@tailwindcss/postcss": "^4.3.3",
     "echarts": "^6.1.0",

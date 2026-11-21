@@ -1,19 +1,18 @@
-import { isKnownLxErrorCode, type LxApiError, type LxErrorCode } from "../src/index.js";
+import { isLxError, type LxError } from "../src/index.js";
 
-declare const error: LxApiError;
+declare const caught: unknown;
 
 function branchesOnAClosedCodeUnion(): string {
-  if (error.code === 12000) return error.message;
-  // @ts-expect-error 999999 is not a LingXia error code
-  if (error.code === 999999) return error.message;
+  if (isLxError(caught) && caught.code === "E_NOT_SUPPORTED") return caught.message;
+  // @ts-expect-error E_NOT_SUPPROTED is not a LingXia error code
+  if (isLxError(caught) && caught.code === "E_NOT_SUPPROTED") return caught.message;
+  // @ts-expect-error numeric codes are gone
+  if (isLxError(caught) && caught.code === 1002) return "";
   return "";
 }
 
-function narrowsAnUnknownNumber(code: number): LxErrorCode | null {
-  return isKnownLxErrorCode(code) ? code : null;
-}
+// No class yet: `instanceof LxError` is not offered until every engine makes it true.
+// @ts-expect-error LxError is a type only
+void (caught instanceof LxError);
 
-export type ErrorTypingGate = [
-  typeof branchesOnAClosedCodeUnion,
-  typeof narrowsAnUnknownNumber,
-];
+export type ErrorTypingGate = [typeof branchesOnAClosedCodeUnion];

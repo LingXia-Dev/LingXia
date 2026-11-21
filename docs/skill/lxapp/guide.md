@@ -38,7 +38,7 @@ my-lxapp/
   raises it. The CLI builds only for lines from its supported floor up to
   its own, and names the CLI to use otherwise. An older host refuses the
   package; detect that with `hostUpgradeRequired(error)` from
-  `@lingxia/types/error` and ask the user to update the host app.
+  `@lingxia/logic` and ask the user to update the host app.
 - `lxapp.config.ts` — build config (view tooling, aliases, `staticDirs`).
 
 ### Static assets
@@ -64,11 +64,11 @@ export default {
 
 ## Logic — `definePage`
 
-A page's Logic file default-exports `definePage(...)` from `@lingxia/types/page`.
+A page's Logic file default-exports `definePage(...)`; it and `lx` come from `@lingxia/logic`.
 
 ```ts
 // pages/order/index.ts
-import { definePage, type } from '@lingxia/types/page';
+import { definePage, lx, type } from '@lingxia/logic';
 
 export default definePage({
   params: type<{ id: string }>(),                // what onLoad receives
@@ -626,4 +626,4 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Expecting changes to shared module state to re-render.
 - Pushing a tab page instead of `lx.nav.go({ tab })`.
 - A page subscription without `{ signal: page.signal }`.
-- Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).
+- Missing `@lingxia/logic`: see [Install typing](./lx-api.md#install-typing).

@@ -1123,7 +1123,7 @@ mod tests {
         // Block-bodied setup, a named local action and an `actions` binding.
         let block = extract_action_modes(
             r#"
-            import { definePage } from '@lingxia/types/page';
+            import { definePage } from '@lingxia/logic';
             export default definePage({
               data: { n: 0 },
               setup(page) {

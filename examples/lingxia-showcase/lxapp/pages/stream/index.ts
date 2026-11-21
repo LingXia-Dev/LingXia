@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 export interface ChartData {
   kind: 'bar' | 'line' | 'pie';
   title: string;

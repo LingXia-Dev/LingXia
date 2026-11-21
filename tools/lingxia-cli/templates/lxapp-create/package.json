@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "{{FRAMEWORK_PKG}}": "{{LINGXIA_FRAMEWORK_RANGE}}",
+    "@lingxia/logic": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     {{FRAMEWORK_RUNTIME_DEPS}}
   },

@@ -151,18 +151,21 @@ impl Catalogue {
     }
 }
 
-/// The project's installed catalogue, nearest the working directory first; an in-repo link
-/// without a build has only the package-root copy.
+/// The project's installed catalogue, nearest the working directory first. `@lingxia/logic`
+/// carries its own copy, so a project that installs only it is found wherever npm put
+/// `@lingxia/types`; an in-repo link without a build has only the package-root copy.
 fn project_catalogue(start: &Path) -> Option<PathBuf> {
     for dir in start.ancestors() {
         for base in [
             dir.join("node_modules"),
             dir.join("lxapp").join("node_modules"),
         ] {
-            let package = base.join("@lingxia").join("types");
+            let logic = base.join("@lingxia").join("logic");
+            let types = base.join("@lingxia").join("types");
             for file in [
-                package.join("dist").join("api.json"),
-                package.join("api.json"),
+                logic.join("api.json"),
+                types.join("dist").join("api.json"),
+                types.join("api.json"),
             ] {
                 if file.is_file() {
                     return Some(file);
@@ -415,11 +418,11 @@ fn header(catalogue: &Catalogue, title: &str) -> Vec<String> {
     let mut lines = Vec::new();
     if catalogue.origin.is_none() {
         lines.push(format!(
-            "note: no project install found; showing @lingxia/types {}",
+            "note: no project install found; showing @lingxia/logic {}",
             catalogue.version
         ));
     }
-    let tag = format!("@lingxia/types {}", catalogue.version);
+    let tag = format!("@lingxia/logic {}", catalogue.version);
     let width = 64usize.saturating_sub(title.len()).max(2);
     lines.push(format!("{title}{}{tag}", " ".repeat(width)));
     lines
@@ -786,9 +789,25 @@ fn render_type(catalogue: &Catalogue, entry: &TypeEntry) -> String {
     finish(lines)
 }
 
-/// A source line inside the package the catalogue came from.
+/// A source line inside `@lingxia/types`, found from the package the catalogue came from.
 fn source_path(catalogue: &Catalogue, source: &str) -> String {
-    match catalogue.origin.as_deref().and_then(package_dir) {
+    let types = catalogue
+        .origin
+        .as_deref()
+        .and_then(package_dir)
+        .and_then(|dir| {
+            if !dir.ends_with("logic") {
+                return Some(dir.to_path_buf());
+            }
+            // `@lingxia/logic` carries no sources: its `@lingxia/types`, nested or beside it.
+            [
+                dir.join("node_modules/@lingxia/types"),
+                dir.with_file_name("types"),
+            ]
+            .into_iter()
+            .find(|types| types.join(source).is_file())
+        });
+    match types {
         Some(dir) => dir.join(source).display().to_string(),
         None => format!("@lingxia/types/{source}"),
     }
@@ -827,7 +846,7 @@ pub fn load(start: &Path) -> Result<Catalogue> {
         Ok(project) => {
             if project.version != embedded.version {
                 eprintln!(
-                    "note: the project has @lingxia/types {}; this CLI carries {}. Showing the project's.",
+                    "note: the project has @lingxia/logic {}; this CLI carries {}. Showing the project's.",
                     project.version, embedded.version
                 );
             }
@@ -973,8 +992,21 @@ mod tests {
         std::fs::create_dir_all(&nested).unwrap();
         let catalogue = load(&nested).unwrap();
         assert_eq!(catalogue.version, "9.9.9");
-        assert!(found_in(&catalogue, "lx.nav.go").contains("@lingxia/types 9.9.9"));
+        assert!(found_in(&catalogue, "lx.nav.go").contains("@lingxia/logic 9.9.9"));
         assert!(!found_in(&catalogue, "lx.nav.go").contains("note: no project install"));
+    }
+
+    #[test]
+    fn a_project_with_only_lingxia_logic_finds_its_catalogue() {
+        let dir = tempfile::tempdir().unwrap();
+        let package = dir.path().join("node_modules/@lingxia/logic");
+        std::fs::create_dir_all(&package).unwrap();
+        let mut value: Value = serde_json::from_str(EMBEDDED).unwrap();
+        value["version"] = Value::from("8.8.8");
+        std::fs::write(package.join("api.json"), value.to_string()).unwrap();
+        let catalogue = load(&dir.path().join("pages")).unwrap();
+        assert_eq!(catalogue.version, "8.8.8");
+        assert!(found_in(&catalogue, "definePage").contains("from '@lingxia/logic'"));
     }
 
     fn found_in(catalogue: &Catalogue, query: &str) -> String {

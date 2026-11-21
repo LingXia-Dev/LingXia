@@ -3,7 +3,7 @@ import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
 // What the native swiper reports back.
 type SwiperEventDetail = { index: number; code: string };
 import { errorMessage } from "../../shared/lib/errors";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 let nextItemId = 1;
 function makeId() {
   const id = `picked-${nextItemId}`;

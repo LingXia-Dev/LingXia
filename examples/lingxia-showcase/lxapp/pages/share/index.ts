@@ -1,6 +1,5 @@
-import type { ShareOptions } from "@lingxia/types";
+import { definePage, lx, type ShareOptions } from '@lingxia/logic';
 import { errorMessage } from "../../shared/lib/errors";
-import { definePage } from '@lingxia/types/page';
 function mediaPath(entry: unknown): string {
   if (!entry) return "";
   if (typeof entry === "string") return entry;

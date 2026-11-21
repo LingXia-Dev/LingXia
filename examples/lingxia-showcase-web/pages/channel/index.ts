@@ -1,6 +1,6 @@
 // A mock stock ticker: the View opens the channel, Logic pushes a price every
 // 800 ms, and the View sends `subscribe` to change the watched symbol.
-import { definePage, type PageChannel } from '@lingxia/types/page';
+import { definePage, type PageChannel } from '@lingxia/logic';
 import type { ClientCommand, ServerMessage } from './contract';
 
 const SYMBOLS: Record<string, { base: number; volatility: number }> = {

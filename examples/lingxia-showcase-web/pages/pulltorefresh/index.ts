@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 import type { PullToRefreshPage } from './contract';
 
 const initialData: PullToRefreshPage['data'] = { refreshCount: 0, lastRefreshTime: null, isRefreshing: false };

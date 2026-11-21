@@ -1,20 +1,21 @@
 import { errorMessage } from "../../shared/lib/errors";
-import type {
-  PickMediaOptions,
-  PickedFile,
-  CompressVideoTask,
-  CompressImageOptions,
-  CompressVideoOptions,
-  VideoThumbnailOptions,
-  ImageInfo,
-  PreviewMediaOptions,
-  PreviewMediaResult,
-  PickCodeOptions,
-  VideoCompressQuality,
-  VideoInfo,
-} from "@lingxia/types";
+import {
+  definePage,
+  lx,
+  type PickMediaOptions,
+  type PickedFile,
+  type CompressVideoTask,
+  type CompressImageOptions,
+  type CompressVideoOptions,
+  type VideoThumbnailOptions,
+  type ImageInfo,
+  type PreviewMediaOptions,
+  type PreviewMediaResult,
+  type PickCodeOptions,
+  type VideoCompressQuality,
+  type VideoInfo,
+} from '@lingxia/logic';
 import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
-import { definePage } from '@lingxia/types/page';
 
 /** A labelled choice the page offers through an action sheet. */
 interface MediaOption {

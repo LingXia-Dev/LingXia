@@ -1,7 +1,9 @@
 # Logic runtime
 
-The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `App`,
-and the Web profile; `definePage` is imported from `@lingxia/types/page`.
+What every Logic file (`pages/*/index.ts`, `lxapp.ts`, shared modules) runs
+against. Logic imports the runtime from one place:
+`import { definePage, lx } from '@lingxia/logic'`. `App` and the Web profile are
+globals.
 
 **`@lingxia/types` is the API reference.** Its declarations and JSDoc are
 generated from the runtime and are authoritative for signatures, options,
@@ -14,7 +16,7 @@ View types). This page covers only what the declarations cannot say.
 The scaffold configures this. For an existing lxapp, match the CLI version:
 
 ```bash
-npm install --save-dev @lingxia/types@<lingxia-version>
+npm install @lingxia/logic@<lingxia-version>
 ```
 
 ```json
@@ -33,7 +35,9 @@ library, and the root `tsconfig.json` references both.
 
 - Type `lx.` in the editor and hover for JSDoc; the full declaration is
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
-- Import shapes from the root: `import type { PickCodeResult } from '@lingxia/types'`.
+- Import shapes from the same place: `import type { PickCodeResult } from '@lingxia/logic'`.
+- `lx` without the import is a type error that names it; a View never imports it
+  (`UI_LX` at build), it calls an action.
   Automation types come from `@lingxia/types/automation`; Logic
   `lx.automation()` needs the `automation` (and, for other apps, `host`)
   [grant](../native/permissions.md).
@@ -212,24 +216,20 @@ if (scan.status === 'canceled') return                   // the user backed out
 lx.ui.toast(scan.value)                    // narrowed: the payload is present
 ```
 
-Branch on the numeric code through `@lingxia/types/error`, never on the
-localized message:
+Branch on `code` with `isLxError`, never on the localized message:
 
 ```ts
-import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
+import { isLxError, lx } from '@lingxia/logic'
 
 try {
   await lx.media.saveToLibrary(path)
-} catch (error) {
-  const failure = parseLxApiError(error)
-  if (!failure) throw error                 // not a runtime error; let it surface
-  lx.ui.toast(formatLxApiError(failure))
+} catch (e) {
+  if (isLxError(e) && e.code === 'E_PERMISSION_DENIED') return lx.ui.toast('Allow photo access in Settings')
+  throw e
 }
 ```
 
-The module also exports `isLxApiError`, `requireLxApiError`,
-`extractLxErrorCode`, `infoForLxErrorCode`, and `hostUpgradeRequired`; a parsed
-error's `key` is an i18n key for your own copy.
+`instanceof` does not work for these errors yet; `hostUpgradeRequired(e)` says the host app needs updating.
 
 ## Logic and native APIs
 

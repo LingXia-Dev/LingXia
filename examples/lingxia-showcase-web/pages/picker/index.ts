@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 import type { PickerField, PickerPage, PickerTab } from './contract';
 
 const TABS: readonly PickerTab[] = ['selector', 'multiSelector', 'time', 'date'];

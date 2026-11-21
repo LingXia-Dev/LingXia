@@ -1,7 +1,6 @@
-import type { ConnectWifiOptions, WifiInfo } from "@lingxia/types";
+import { definePage, lx, type ConnectWifiOptions, type WifiInfo } from '@lingxia/logic';
 import { appState } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
-import { definePage } from '@lingxia/types/page';
 
 export default definePage({
   data: {

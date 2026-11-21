@@ -33,7 +33,7 @@ function Bubble({ text }: { text: string }) {
 Its Logic, `index.ts`:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 type Message = { id: string; text: string };
 

@@ -1,5 +1,5 @@
 import { expect, test, type Fixture, type TestApp, type TestView } from '@lingxia/test';
-import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
+import type { Automation, DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
@@ -311,7 +311,7 @@ function inWindowCaption(window: DesktopWindowInfo, node: DesktopAxNode): boolea
 }
 
 async function captionButton(
-  desktop: ReturnType<typeof lx.automation>['desktop'],
+  desktop: Automation['desktop'],
   window: DesktopWindowInfo,
   names: string[],
 ): Promise<DesktopAxNode> {
@@ -341,7 +341,7 @@ async function captionButton(
 }
 
 async function invokeCaption(
-  desktop: ReturnType<typeof lx.automation>['desktop'],
+  desktop: Automation['desktop'],
   window: DesktopWindowInfo,
   names: string[],
 ): Promise<void> {

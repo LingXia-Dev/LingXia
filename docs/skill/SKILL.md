@@ -111,7 +111,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
-| `@lingxia/types` | Declarations for Logic `lx.*`, `definePage`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
+| `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `isLxError` and every API type | lxapp Logic | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |

@@ -1,7 +1,7 @@
 import { cloudProviderAvailable } from "../../shared/lib/provider";
 import { errorMessage } from "../../shared/lib/errors";
 import { appState } from "../../shared/lib/app";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 
 export default definePage({
   data: {

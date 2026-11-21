@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 import type { HomePage } from './contract';
 
 export default definePage({

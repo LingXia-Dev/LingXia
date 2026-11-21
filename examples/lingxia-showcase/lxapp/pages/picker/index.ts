@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 const tabs = ["selector", "multiSelector", "time", "date"];
 
 export default definePage({

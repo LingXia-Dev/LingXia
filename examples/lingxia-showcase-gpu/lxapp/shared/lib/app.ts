@@ -1,4 +1,4 @@
-import type { AppLaunchOptions } from "@lingxia/types";
+import type { AppLaunchOptions } from '@lingxia/logic';
 
 /** State the App and its pages share. A module, so every importer sees this one object. */
 export const appState = {

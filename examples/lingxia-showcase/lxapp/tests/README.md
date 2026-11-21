@@ -183,7 +183,7 @@ pending entry only after replacing it with an executable assertion.
 
 ## Error-code ownership
 
-`error-catalog.mjs` assigns all 41 `LxErrorCode`, 8 `SurfaceErrorCode`, and
+`error-catalog.mjs` assigns all 20 `LxErrorCode`, 9 `SurfaceErrorCode`, and
 14 `BRIDGE_*` values to executable tests. `npm run test:harness` checks this
 inventory against the source declarations and rejects missing or stale owners.
 Run the owners from the repository root:

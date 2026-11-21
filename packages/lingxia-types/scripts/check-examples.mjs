@@ -10,7 +10,7 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The test API (`automation/`) is checked with `@lingxia/test`.
 const SOURCES = ["src/index.ts", "src/page.ts", "src/error.ts", "src/mocks.ts", "src/generated/logic.ts"];
 const PLACEHOLDER = new Set([2304, 2552, 2582]);
-const PROVIDED = { "@lingxia/types/page": ["definePage", "type"] };
+const PROVIDED = { "@lingxia/logic": ["definePage", "type", "isLxError", "lx"] };
 
 export function examplesIn(file) {
   const text = readFileSync(file, "utf8");
@@ -49,7 +49,7 @@ function main() {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
     strict: true, noEmit: true, skipLibCheck: true, types: [], lib: ["lib.es2022.d.ts"],
     baseUrl: packageDir,
-    paths: { "@lingxia/types": ["src/index.ts"], "@lingxia/types/*": ["src/*"] },
+    paths: { "@lingxia/types": ["src/index.ts"], "@lingxia/types/*": ["src/*"], "@lingxia/logic": ["../lingxia-logic/index.d.ts"] },
   };
   const host = ts.createCompilerHost(options);
   const readFile = host.readFile.bind(host);
@@ -61,7 +61,7 @@ function main() {
     const entry = virtual.get(resolve(name));
     return entry ? ts.createSourceFile(name, entry.text, version, true) : getSourceFile(name, version, ...rest);
   };
-  const roots = [resolve(packageDir, "src/index.ts"), resolve(packageDir, "src/generated/logic-web.d.ts"), ...virtual.keys()];
+  const roots = [resolve(packageDir, "src/index.ts"), resolve(packageDir, "src/logic-globals.d.ts"), ...virtual.keys()];
   const program = ts.createProgram(roots, options, host);
   const problems = [];
   for (const [name, { example }] of virtual) {

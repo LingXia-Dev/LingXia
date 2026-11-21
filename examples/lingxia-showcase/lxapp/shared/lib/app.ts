@@ -1,4 +1,4 @@
-import type { AppLaunchOptions } from "@lingxia/types";
+import type { AppLaunchOptions } from '@lingxia/logic';
 
 export interface AppLifecycleState {
   launches: number;

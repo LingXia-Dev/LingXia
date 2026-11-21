@@ -48,7 +48,7 @@ payload is wrapped, `onClick={() => actions.open({ id })}`, and passing it bare 
 Logic for the first example:
 
 ```ts
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 const names = new Map<string, string>([['u1', 'Ada']]);
 
@@ -142,7 +142,7 @@ export function render({ actions }: View) {
 Its Logic types the channel with `PageChannel<Send, Receive>`:
 
 ```ts
-import { definePage, type PageChannel } from '@lingxia/types/page';
+import { definePage, type PageChannel } from '@lingxia/logic';
 
 type Tick = { symbol: string; price: number };
 

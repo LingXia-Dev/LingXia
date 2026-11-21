@@ -1,3 +1,3 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 
 export default definePage({});

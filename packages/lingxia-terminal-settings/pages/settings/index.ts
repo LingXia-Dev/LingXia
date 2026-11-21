@@ -1,5 +1,4 @@
-import type { DownloadTask } from '@lingxia/types';
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx, type DownloadTask } from '@lingxia/logic';
 type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
 type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;

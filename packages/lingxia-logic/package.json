@@ -1,0 +1,48 @@
+{
+  "name": "@lingxia/logic",
+  "version": "0.30.0",
+  "description": "What an lxapp's Logic imports: lx, definePage, type, isLxError and every API type",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "packages/lingxia-logic"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "node": "./node.js",
+      "default": "./index.js"
+    },
+    "./testing": {
+      "types": "./testing.d.ts",
+      "node": "./testing.js"
+    },
+    "./api.json": "./api.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "node.js",
+    "testing.js",
+    "testing.d.ts",
+    "api.json"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node scripts/copy-api.mjs",
+    "prepublishOnly": "npm run build",
+    "test": "node --test tests/*.test.mjs && tsc -p tests/tsconfig.json"
+  },
+  "dependencies": {
+    "@lingxia/types": "~0.30.0"
+  },
+  "devDependencies": {
+    "@lingxia/types": "file:../lingxia-types",
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

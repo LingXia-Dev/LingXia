@@ -1,5 +1,5 @@
 import type { ServerMessage, ClientCommand } from "../../shared/channel-types";
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 // ChannelHandle is injected by the runtime — no import needed.
 // The type is declared here locally for readability.
 interface ChannelHandle<TSend = unknown, TReceive = unknown> {

@@ -1,6 +1,6 @@
 // ChannelHandle is injected by the runtime — no import needed.
 // The type is declared here locally for readability.
-import { definePage } from '@lingxia/types/page';
+import { definePage } from '@lingxia/logic';
 interface ChannelHandle<TSend = unknown, TReceive = unknown> {
   send(payload: TSend): void;
   close(code?: string, reason?: string): void;

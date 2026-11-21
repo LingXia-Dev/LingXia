@@ -1,4 +1,4 @@
-import { definePage } from '@lingxia/types/page';
+import { definePage, lx } from '@lingxia/logic';
 import type { ChartData, ChatChunk, ChatPage } from './contract';
 
 interface MockScenario {

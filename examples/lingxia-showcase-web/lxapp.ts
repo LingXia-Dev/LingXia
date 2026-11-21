@@ -1,4 +1,4 @@
-import type { AppLaunchOptions } from "@lingxia/types";
+import { lx, type AppLaunchOptions } from '@lingxia/logic';
 
 const moreFeedbackByLanguage = {
   "en-US": "Feedback",

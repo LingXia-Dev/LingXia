@@ -71,7 +71,6 @@
       "DownloadTask",
       "DownloadsDownloadOptions",
       "DownloadsDownloadResult",
-      "ERR_CODE_INFO_BY_CODE",
       "ExternalPageName",
       "FileDialogFilter",
       "FileStats",
@@ -104,15 +103,14 @@
       "KeyEvent",
       "KeyEventCallback",
       "LXAPP_UNAVAILABLE_REASONS",
-      "LX_BIZ_CODE_HOST_UPGRADE_REQUIRED",
+      "LX_ERROR_CODES",
       "LocationInfo",
       "Lx",
-      "LxApiError",
       "LxAppApi",
       "LxAppReleaseType",
       "LxAppUnavailableReason",
+      "LxError",
       "LxErrorCode",
-      "LxErrorCodeInfo",
       "LxFeature",
       "LxFile",
       "ManagedPath",
@@ -273,15 +271,9 @@
       "WindowChrome",
       "WindowsTerminalApi",
       "WindowsTerminalInlineImageStatus",
-      "extractLxErrorCode",
-      "formatLxApiError",
       "hostUpgradeRequired",
-      "infoForLxErrorCode",
-      "isKnownLxErrorCode",
-      "isLxApiError",
+      "isLxError",
       "lxAppUnavailableReason",
-      "parseLxApiError",
-      "requireLxApiError",
       "surfaceErrorCode"
     ],
     "@lingxia/types/page": [
@@ -303,20 +295,302 @@
     ],
     "@lingxia/types/error": [
       "LXAPP_UNAVAILABLE_REASONS",
-      "LX_BIZ_CODE_HOST_UPGRADE_REQUIRED",
-      "LxApiError",
+      "LX_ERROR_CODES",
       "LxAppUnavailableReason",
+      "LxError",
+      "LxErrorCode",
       "SURFACE_ERROR_CODES",
-      "extractLxErrorCode",
-      "formatLxApiError",
       "hostUpgradeRequired",
-      "infoForLxErrorCode",
-      "isKnownLxErrorCode",
-      "isLxApiError",
+      "isLxError",
       "lxAppUnavailableReason",
-      "parseLxApiError",
-      "requireLxApiError",
       "surfaceErrorCode"
+    ],
+    "@lingxia/logic": [
+      "ActionSheetOptions",
+      "ActionSheetResult",
+      "ActivateTarget",
+      "AlertOptions",
+      "AnySurface",
+      "AppCacheApi",
+      "AppConfig",
+      "AppDisplayPatch",
+      "AppDownloadFilePath",
+      "AppDownloadOptions",
+      "AppDownloadResult",
+      "AppInfo",
+      "AppLaunchOptions",
+      "AppLaunchScene",
+      "AppLifecycleEventArgs",
+      "AppLifecycleName",
+      "AppLinkTarget",
+      "AppPersistedDownloadResult",
+      "AppScreenshotOptions",
+      "AppScreenshotResult",
+      "AppSurface",
+      "AppTarget",
+      "AppTempDownloadResult",
+      "AppearanceApi",
+      "AppearancePreference",
+      "Automation",
+      "AutostartApi",
+      "BannerApi",
+      "BinaryFileData",
+      "BuiltinShellPage",
+      "BuiltinSurface",
+      "CancelableTask",
+      "CanceledResult",
+      "ChannelHandle",
+      "ClipboardApi",
+      "ClipboardItem",
+      "ClipboardReadOptions",
+      "ClipboardReadResult",
+      "ClipboardTextResult",
+      "ClipboardType",
+      "ClipboardWriteItem",
+      "CompressImageOptions",
+      "CompressImageResult",
+      "CompressVideoOptions",
+      "CompressVideoProgressEvent",
+      "CompressVideoResult",
+      "CompressVideoTask",
+      "ConfiguredPageName",
+      "ConfirmOptions",
+      "ConnectWifiOptions",
+      "Declared",
+      "DeclaredSurface",
+      "DeepReadonly",
+      "DeviceApi",
+      "DeviceInfo",
+      "DeviceOrientation",
+      "DeviceOrientationChangeEvent",
+      "DirEntry",
+      "DisplayLanguageApi",
+      "DisplayLanguagePreference",
+      "DownloadOptions",
+      "DownloadOptionsBase",
+      "DownloadProgressEvent",
+      "DownloadResult",
+      "DownloadTask",
+      "DownloadsDownloadOptions",
+      "DownloadsDownloadResult",
+      "ExternalPageName",
+      "FileDialogFilter",
+      "FileStats",
+      "FileSystemApi",
+      "FsCopyOptions",
+      "FsMkdirOptions",
+      "FsRemoveOptions",
+      "FsRenameOptions",
+      "FsWriteOptions",
+      "GetLocationOptions",
+      "HostAppApi",
+      "HostAppEnv",
+      "HostAppUpdateApplyStage",
+      "HostAppUpdateCheckResult",
+      "HostAppUpdateEvent",
+      "HostAppUpdateInfo",
+      "HostAppUpdateResult",
+      "HostAppUpdateTask",
+      "HostInfo",
+      "HostOs",
+      "HostServiceEnvState",
+      "HostServiceEnvSwitchResult",
+      "HostTarget",
+      "I18N_KEYS",
+      "I18nKey",
+      "ImageInfo",
+      "ImageInfoOptions",
+      "InstalledTerminalFont",
+      "JsonData",
+      "JsonValue",
+      "KeyEvent",
+      "KeyEventCallback",
+      "LXAPP_UNAVAILABLE_REASONS",
+      "LX_ERROR_CODES",
+      "LocationInfo",
+      "Lx",
+      "LxAppApi",
+      "LxAppReleaseType",
+      "LxAppUnavailableReason",
+      "LxError",
+      "LxErrorCode",
+      "LxFeature",
+      "LxFile",
+      "ManagedPath",
+      "MediaApi",
+      "MediaObjectFit",
+      "MediaRotation",
+      "MessageIn",
+      "MessageOut",
+      "MessagesOf",
+      "MisspelledLifecycle",
+      "MockAnswer",
+      "MockContext",
+      "MockHandler",
+      "MockRequest",
+      "Mocks",
+      "MoreAction",
+      "NavApi",
+      "NavMessages",
+      "NavParams",
+      "NavResult",
+      "NavTarget",
+      "NavigationBarPatch",
+      "NavigationBarStylePatch",
+      "NetworkApi",
+      "NetworkChangeCallback",
+      "NetworkInfo",
+      "NetworkType",
+      "NoLifecycleTypos",
+      "NotificationApi",
+      "OpenAppOptions",
+      "OpenDeclaredOptions",
+      "OpenFileOptions",
+      "OpenLink",
+      "OpenPageArgs",
+      "OpenPageOptions",
+      "OpenPageShared",
+      "OpenUrlOptions",
+      "OrientationApi",
+      "OverlaySurfaceSize",
+      "OverlaySurfaceSizeValue",
+      "PageApi",
+      "PageChannel",
+      "PageContract",
+      "PageDefinition",
+      "PageEnvContext",
+      "PageHandle",
+      "PageHookName",
+      "PageLoadOptions",
+      "PageMessagePort",
+      "PageQuery",
+      "PageQueryValue",
+      "PageResult",
+      "PageSetup",
+      "PageSurface",
+      "PageTarget",
+      "ParamsOf",
+      "PickApi",
+      "PickCodeOptions",
+      "PickCodeResult",
+      "PickDirectoryOptions",
+      "PickDirectoryResult",
+      "PickFileOptions",
+      "PickFileResult",
+      "PickFilesResult",
+      "PickMediaOptions",
+      "PickedDirectory",
+      "PickedFile",
+      "PreviewMediaAdvance",
+      "PreviewMediaChange",
+      "PreviewMediaCloseReason",
+      "PreviewMediaHandle",
+      "PreviewMediaOptions",
+      "PreviewMediaResult",
+      "PreviewMediaSequenceOptions",
+      "PreviewMediaShownSource",
+      "PreviewMediaSingleOptions",
+      "PreviewMediaSource",
+      "ResolvedAppearance",
+      "ResultOf",
+      "RouteTarget",
+      "SURFACE_ERROR_CODES",
+      "ScreenInfo",
+      "SetBadgeOptions",
+      "ShareFilesOptions",
+      "ShareOptions",
+      "SharePage",
+      "SharePageOptions",
+      "ShareQuery",
+      "ShareResult",
+      "ShareTextBaseOptions",
+      "ShareTextOptions",
+      "ShareTitleOptions",
+      "ShellApi",
+      "ShellSidebarAction",
+      "ShellSidebarActionBase",
+      "ShellSidebarActionPlacement",
+      "ShellSidebarActionUpdate",
+      "ShellSidebarActionsApi",
+      "SignalOptions",
+      "Storage",
+      "StorageInfo",
+      "StorageSchema",
+      "StreamHandle",
+      "StreamSourceOptions",
+      "SurfaceApi",
+      "SurfaceBase",
+      "SurfaceCloseReason",
+      "SurfaceClosedEvent",
+      "SurfaceEdge",
+      "SurfaceError",
+      "SurfaceErrorCode",
+      "SurfaceFloatPosition",
+      "SurfaceInteraction",
+      "SurfaceKind",
+      "SurfaceMessaging",
+      "SurfacePlacement",
+      "SurfaceShowable",
+      "SurfaceVisibilityEvent",
+      "SystemDownloadsPath",
+      "SystemSettingInfo",
+      "TabBarApi",
+      "TabBarItemPatch",
+      "TabBarPatch",
+      "TabBarVisibilityPreference",
+      "TabName",
+      "TabSurface",
+      "TabTarget",
+      "Task",
+      "TerminalApi",
+      "TerminalColorScheme",
+      "TerminalColorSchemeDetails",
+      "TerminalColorSchemesApi",
+      "TerminalFontSettings",
+      "TerminalFontsApi",
+      "TerminalPreviewController",
+      "TerminalSettingsApi",
+      "TerminalSettingsPatch",
+      "TerminalSettingsSnapshot",
+      "TerminalSettingsValue",
+      "TerminalSettingsWarning",
+      "TerminalThemeSettings",
+      "ToastHandle",
+      "ToastOptions",
+      "TrayApi",
+      "TrayMenuItem",
+      "TrayMenuSeparator",
+      "TypedStorage",
+      "UiApi",
+      "UpdateFailedInfo",
+      "UpdateReadyInfo",
+      "UpdateRecipe",
+      "UploadOptions",
+      "UploadProgressEvent",
+      "UploadResult",
+      "UploadTask",
+      "UrlTarget",
+      "VideoCompressQuality",
+      "VideoContext",
+      "VideoInfo",
+      "VideoInfoOptions",
+      "VideoThumbnailOptions",
+      "VideoThumbnailResult",
+      "VisibilityPreference",
+      "WifiApi",
+      "WifiConnectedCallback",
+      "WifiConnectedInfo",
+      "WifiInfo",
+      "WindowChrome",
+      "WindowsTerminalApi",
+      "WindowsTerminalInlineImageStatus",
+      "definePage",
+      "hostUpgradeRequired",
+      "isLxError",
+      "lx",
+      "lxAppUnavailableReason",
+      "surfaceErrorCode",
+      "type"
     ]
   },
   "aliases": {
@@ -471,38 +745,6 @@
   },
   "members": [
     {
-      "path": "App",
-      "kind": "function",
-      "entry": "global",
-      "summary": "`TCustom` is inferred from the members you write beside the lifecycle hooks, so `this.myMethod()` resolves inside the config and a key that is only a case away from a hook is rejected.",
-      "description": "`TCustom` is inferred from the members you write beside the lifecycle\nhooks, so `this.myMethod()` resolves inside the config and a key that is\nonly a case away from a hook is rejected.",
-      "signatures": [
-        {
-          "text": "App<TCustom>(config: AppConfig & TCustom & NoLifecycleTypos<TCustom, AppLifecycleName> & ThisType<AppConfig & TCustom>): AppConfig & TCustom",
-          "parameters": [
-            {
-              "name": "config",
-              "type": "AppConfig & TCustom & NoLifecycleTypos<TCustom, AppLifecycleName> & ThisType<AppConfig & TCustom>",
-              "required": true
-            }
-          ],
-          "returns": "AppConfig & TCustom"
-        }
-      ],
-      "types": [
-        "AppConfig",
-        "AppLaunchOptions",
-        "AppLifecycleEventArgs",
-        "AppLifecycleName",
-        "NavTarget",
-        "NoLifecycleTypos",
-        "OpenLink"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/index.ts:66"
-    },
-    {
       "path": "App.onHide",
       "kind": "hook",
       "entry": "global",
@@ -636,7 +878,7 @@
     {
       "path": "LXAPP_UNAVAILABLE_REASONS",
       "kind": "property",
-      "entry": "@lingxia/types/error",
+      "entry": "@lingxia/logic",
       "summary": "Every member of `LxAppUnavailableReason`, for runtime narrowing.",
       "description": "Every member of `LxAppUnavailableReason`, for runtime narrowing.",
       "signatures": [],
@@ -644,25 +886,25 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:102"
+      "source": "src/error.ts:88"
     },
     {
-      "path": "LX_BIZ_CODE_HOST_UPGRADE_REQUIRED",
+      "path": "LX_ERROR_CODES",
       "kind": "property",
-      "entry": "@lingxia/types/error",
-      "summary": "Business code of a rejection because the host is older than the lxapp's `minRuntime`.",
-      "description": "Business code of a rejection because the host is older than the lxapp's `minRuntime`.",
+      "entry": "@lingxia/logic",
+      "summary": "Every code an `lx` call documents with `@throws`.",
+      "description": "Every code an `lx` call documents with `@throws`.",
       "signatures": [],
-      "type": "6002",
+      "type": "readonly [\"E_ABORT\", \"E_ALREADY_EXISTS\", \"E_CAPABILITY_MISSING\", \"E_INTERNAL\", \"E_INVALID_ARG\", \"E_INVALID_DATA\", \"E_INVALID_STATE\", \"E_IO\", \"E_NETWORK\", \"E_NOT_FOUND\", \"E_NOT_SUPPORTED\", \"E_OUT_OF_RANGE\", \"E_PERMISSION_DENIED\", \"E_QUOTA\", \"E_STREAM\", \"E_SURFACE_CLOSED\", \"E_SURFACE_CONFLICT\", \"E_SURFACE_ROLE_LOCKED\", \"E_TIMEOUT\", \"E_TYPE\"]",
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:133"
+      "source": "src/error.ts:4"
     },
     {
       "path": "SURFACE_ERROR_CODES",
       "kind": "property",
-      "entry": "@lingxia/types/error",
+      "entry": "@lingxia/logic",
       "summary": "Every member of `SurfaceErrorCode`, for runtime narrowing.",
       "description": "Every member of `SurfaceErrorCode`, for runtime narrowing.",
       "signatures": [],
@@ -670,12 +912,12 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:156"
+      "source": "src/error.ts:139"
     },
     {
       "path": "definePage",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Define a page.",
       "description": "Define a page. Declare what it takes and returns at the top, then its\nbehaviour in one of two forms. `setup(page)` is the form for lifecycle\nhooks and per-instance state: it runs once per instance, before `onLoad`,\nand returns its hooks and `actions`. `actions: page => ({ … })` is the\nshort form for a page with only actions; it also runs once per instance.\n\n```ts\nexport default definePage({\n  params: type<{ id: string }>(),\n  data: { order: null as Order | null },\n  setup(page) {\n    return {\n      async onLoad({ id }) { const order = await load(id); page.update(d => { d.order = order; }); },\n      actions: { close() { return page.close(); } },\n    };\n  },\n});\n\nexport default definePage({\n  data: { count: 0 },\n  actions: page => ({ bump() { page.update(d => { d.count += 1; }); } }),\n});\n```",
       "signatures": [
@@ -737,61 +979,11 @@
       "source": "src/page.ts:232"
     },
     {
-      "path": "extractLxErrorCode",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "The numeric code on a caught rejection: its `code`, else `data.bizCode` or `data.code`.",
-      "description": "The numeric code on a caught rejection: its `code`, else `data.bizCode` or `data.code`.",
-      "signatures": [
-        {
-          "text": "extractLxErrorCode(error: unknown): number | null",
-          "parameters": [
-            {
-              "name": "error",
-              "type": "unknown",
-              "required": true
-            }
-          ],
-          "returns": "number | null"
-        }
-      ],
-      "types": [],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:63"
-    },
-    {
-      "path": "formatLxApiError",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "`[code] message`, for a log line.",
-      "description": "`[code] message`, for a log line.",
-      "signatures": [
-        {
-          "text": "formatLxApiError(error: LxApiError): string",
-          "parameters": [
-            {
-              "name": "error",
-              "type": "LxApiError",
-              "required": true
-            }
-          ],
-          "returns": "string"
-        }
-      ],
-      "types": [
-        "LxApiError"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:200"
-    },
-    {
       "path": "hostUpgradeRequired",
       "kind": "function",
-      "entry": "@lingxia/types/error",
+      "entry": "@lingxia/logic",
       "summary": "Whether an open, navigation, or update was refused because the host is older than the lxapp's `minRuntime`.",
-      "description": "Whether an open, navigation, or update was refused because the host is\nolder than the lxapp's `minRuntime`.\n\nThe rejection's `code` is `E_NOT_SUPPORTED`, which also covers missing\ncapabilities; only `data.bizCode` says the user needs a newer host app.\n\n```ts\ntry {\n  await lx.nav.go({ app: appId })\n} catch (error) {\n  if (hostUpgradeRequired(error)) showUpdateHostNotice()\n  else throw error\n}\n```",
+      "description": "Whether an open, navigation, or update was refused because the host is\nolder than the lxapp's `minRuntime`.\n\nThe rejection's `code` is `E_NOT_SUPPORTED`, which also covers missing\ncapabilities; only this says the user needs a newer host app.\n\n```ts\ntry {\n  await lx.nav.go({ app: appId })\n} catch (error) {\n  if (hostUpgradeRequired(error)) showUpdateHostNotice()\n  else throw error\n}\n```",
       "signatures": [
         {
           "text": "hostUpgradeRequired(error: unknown): boolean",
@@ -808,69 +1000,17 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:151"
+      "source": "src/error.ts:134"
     },
     {
-      "path": "infoForLxErrorCode",
+      "path": "isLxError",
       "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "The name and description of a known code; `null` for any other.",
-      "description": "The name and description of a known code; `null` for any other.",
+      "entry": "@lingxia/logic",
+      "summary": "Whether `error` is an `lx` rejection; works on every engine, where `instanceof` does not yet.",
+      "description": "Whether `error` is an `lx` rejection; works on every engine, where `instanceof` does not yet.",
       "signatures": [
         {
-          "text": "infoForLxErrorCode(code: number): LxErrorCodeInfo | null",
-          "parameters": [
-            {
-              "name": "code",
-              "type": "number",
-              "required": true
-            }
-          ],
-          "returns": "LxErrorCodeInfo | null"
-        }
-      ],
-      "types": [
-        "LxErrorCodeInfo"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:174"
-    },
-    {
-      "path": "isKnownLxErrorCode",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "Whether `code` is one the runtime defines.",
-      "description": "Whether `code` is one the runtime defines.",
-      "signatures": [
-        {
-          "text": "isKnownLxErrorCode(code: number): code is LxErrorCode",
-          "parameters": [
-            {
-              "name": "code",
-              "type": "number",
-              "required": true
-            }
-          ],
-          "returns": "boolean"
-        }
-      ],
-      "types": [
-        "LxErrorCode"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:169"
-    },
-    {
-      "path": "isLxApiError",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "Check an already-normalized error without modifying the caught value.",
-      "description": "Check an already-normalized error without modifying the caught value.",
-      "signatures": [
-        {
-          "text": "isLxApiError(error: unknown): error is LxApiError",
+          "text": "isLxError(error: unknown): error is LxError",
           "parameters": [
             {
               "name": "error",
@@ -882,11 +1022,11 @@
         }
       ],
       "types": [
-        "LxApiError"
+        "LxError"
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:19"
+      "source": "src/error.ts:52"
     },
     {
       "path": "lx.app",
@@ -1153,7 +1293,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/index.ts:56"
+      "source": "src/index.ts:52"
     },
     {
       "path": "lx.clipboard",
@@ -5058,7 +5198,7 @@
     {
       "path": "lxAppUnavailableReason",
       "kind": "function",
-      "entry": "@lingxia/types/error",
+      "entry": "@lingxia/logic",
       "summary": "Read why an open was refused, or `null` when it failed for another reason.",
       "description": "Read why an open was refused, or `null` when it failed for another reason.\n\nNavigation rejects like any other `lx` API; the reason rides on `data.code`,\nthe same way a surface error carries its own. Branch on it rather than on the\nmessage: `maintain` deserves \"try again later\" and `suspended` does not.\n\n```ts\ntry {\n  await lx.nav.go({ app: appId })\n} catch (error) {\n  const reason = lxAppUnavailableReason(error)\n  if (reason === 'maintain') showMaintenanceNotice()\n  else if (reason === 'suspended') showUnavailableNotice()\n  else throw error\n}\n```",
       "signatures": [
@@ -5079,12 +5219,12 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:122"
+      "source": "src/error.ts:108"
     },
     {
       "path": "page.close",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Leave, with `value` as the opener's result.",
       "description": "Leave, with `value` as the opener's result. A pushed page goes back; a\nsurface page closes its surface. Throws for a root or tab page, or a\npushed page that is not on top, and while `setup` runs.",
       "signatures": [
@@ -5108,7 +5248,7 @@
     {
       "path": "page.data",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The current data.",
       "description": "The current data. Readonly: change it with `update`.",
       "signatures": [],
@@ -5121,7 +5261,7 @@
     {
       "path": "page.env",
       "kind": "namespace",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The size class this page lays out for.",
       "description": "The size class this page lays out for. `watch` delivers it at once, then\nwhen `sizeClass` or `canDock` changes (not on every resize), and stops\nwhen the page unloads.",
       "signatures": [],
@@ -5133,7 +5273,7 @@
     {
       "path": "page.env.canDock",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Whether the window currently has a dock region, so `as: 'aside'` docks beside the main instead of being reprojected as an overlay.",
       "description": "Whether the window currently has a dock region, so `as: 'aside'` docks\nbeside the main instead of being reprojected as an overlay. A capability\nof the window, not where this lxapp is presented.",
       "signatures": [],
@@ -5146,7 +5286,7 @@
     {
       "path": "page.env.sizeClass",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "compact (<600) / regular (≥600).",
       "description": "compact (<600) / regular (≥600). Shell medium/expanded are not distinct here.",
       "signatures": [],
@@ -5159,7 +5299,7 @@
     {
       "path": "page.env.watch",
       "kind": "watcher",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "",
       "description": "",
       "signatures": [
@@ -5191,7 +5331,7 @@
     {
       "path": "page.flush",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Resolves when the View has everything updated so far.",
       "description": "Resolves when the View has everything updated so far. Rejects on unload.\nThrows while `setup` runs; call it from a hook or an action.",
       "signatures": [
@@ -5209,7 +5349,7 @@
     {
       "path": "page.name",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "This page's name in `lxapp.json`.",
       "description": "This page's name in `lxapp.json`.",
       "signatures": [],
@@ -5222,7 +5362,7 @@
     {
       "path": "page.navigationBar",
       "kind": "namespace",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "This page's navigation bar, reached even while another page is on top.",
       "description": "This page's navigation bar, reached even while another page is on top.",
       "signatures": [],
@@ -5234,7 +5374,7 @@
     {
       "path": "page.navigationBar.update",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Patch it; unset fields stay as they are.",
       "description": "Patch it; unset fields stay as they are.",
       "signatures": [
@@ -5262,7 +5402,7 @@
     {
       "path": "page.opener",
       "kind": "namespace",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The page that opened this one, by `lx.nav.go` or `lx.surface.openPage`; absent for a root, a tab, after a restart, and while `setup` runs (read it in a hook or an action).",
       "description": "The page that opened this one, by `lx.nav.go` or `lx.surface.openPage`;\nabsent for a root, a tab, after a restart, and while `setup` runs (read\nit in a hook or an action).",
       "signatures": [],
@@ -5274,7 +5414,7 @@
     {
       "path": "page.opener.onMessage",
       "kind": "event",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Receives what the opener sends.",
       "description": "Receives what the opener sends. Returns a function that removes the handler.",
       "signatures": [
@@ -5306,7 +5446,7 @@
     {
       "path": "page.opener.send",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Delivers to the opener's `onMessage` handlers; until it first subscribes, messages wait.",
       "description": "Delivers to the opener's `onMessage` handlers; until it first subscribes, messages wait.",
       "signatures": [
@@ -5332,7 +5472,7 @@
     {
       "path": "page.params",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The params this instance was opened with.",
       "description": "The params this instance was opened with.",
       "signatures": [],
@@ -5345,7 +5485,7 @@
     {
       "path": "page.refresh",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Show the refresh indicator and run `onPullDownRefresh`, as a pull would.",
       "description": "Show the refresh indicator and run `onPullDownRefresh`, as a pull would.\nThrows `E_INVALID_STATE` unless the page config sets `enablePullDownRefresh`.",
       "signatures": [
@@ -5363,7 +5503,7 @@
     {
       "path": "page.setResult",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "What the opener's result is when this page leaves another way (Back, a dismiss).",
       "description": "What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs.",
       "signatures": [
@@ -5387,7 +5527,7 @@
     {
       "path": "page.signal",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Aborted as the page unloads, before `onUnload`.",
       "description": "Aborted as the page unloads, before `onUnload`.",
       "signatures": [],
@@ -5400,7 +5540,7 @@
     {
       "path": "page.surface",
       "kind": "namespace",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs.",
       "description": "This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs.",
       "signatures": [],
@@ -5412,7 +5552,7 @@
     {
       "path": "page.surface.alive",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "True until `close()` fires; afterwards the page instance is torn down.",
       "description": "True until `close()` fires; afterwards the page instance is torn down.",
       "signatures": [],
@@ -5425,7 +5565,7 @@
     {
       "path": "page.surface.close",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Leave the page; rejects for a pushed page that is not on top.",
       "description": "Leave the page; rejects for a pushed page that is not on top. Called\nbefore `opened` settles, it stops the open instead.",
       "signatures": [
@@ -5443,7 +5583,7 @@
     {
       "path": "page.surface.hide",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Hide without destroying.",
       "description": "Hide without destroying. Main surfaces cannot be hidden and reject.\nIdempotent.",
       "signatures": [
@@ -5461,7 +5601,7 @@
     {
       "path": "page.surface.key",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The caller-supplied identity, when this surface was opened with one.",
       "description": "The caller-supplied identity, when this surface was opened with one.",
       "signatures": [],
@@ -5474,7 +5614,7 @@
     {
       "path": "page.surface.kind",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Which kind of surface this is; narrows the handle.",
       "description": "Which kind of surface this is; narrows the handle.\nOne of this lxapp's pages.",
       "signatures": [],
@@ -5487,7 +5627,7 @@
     {
       "path": "page.surface.onClose",
       "kind": "event",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Fires once when the surface closes, whoever closed it.",
       "description": "Fires once when the surface closes, whoever closed it. Returns a function that removes the handler.",
       "signatures": [
@@ -5520,7 +5660,7 @@
     {
       "path": "page.surface.onHide",
       "kind": "event",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Fires on a real transition to hidden, whichever side drove it.",
       "description": "Fires on a real transition to hidden, whichever side drove it.",
       "signatures": [
@@ -5552,7 +5692,7 @@
     {
       "path": "page.surface.onShow",
       "kind": "event",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Fires on a real transition to visible, whichever side drove it.",
       "description": "Fires on a real transition to visible, whichever side drove it.",
       "signatures": [
@@ -5584,7 +5724,7 @@
     {
       "path": "page.surface.realized",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The placement the host produced, which an ordered preference may narrow.",
       "description": "The placement the host produced, which an ordered preference may narrow.\nLive rather than a snapshot: a later open that moves the surface, or the\nuser dragging it, updates the handle you already hold.\nWhere it is shown.",
       "signatures": [],
@@ -5597,7 +5737,7 @@
     {
       "path": "page.surface.show",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Restore a hidden surface.",
       "description": "Restore a hidden surface. The page instance survived, so scroll\nposition, form input, and JS state come back with it. Idempotent.",
       "signatures": [
@@ -5615,7 +5755,7 @@
     {
       "path": "page.surface.visible",
       "kind": "property",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Last-known visibility, kept in sync with the native side.",
       "description": "Last-known visibility, kept in sync with the native side. Safe to bind\ninto declarative UI; for event-driven updates use `onShow` / `onHide`.",
       "signatures": [],
@@ -5628,7 +5768,7 @@
     {
       "path": "page.update",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The one way to change data: `page.update(d => { d.n += 1; })`.",
       "description": "The one way to change data: `page.update(d => { d.n += 1; })`. `page.data`\nchanges at once; the View gets the changes once per turn. Throws inside\nanother `update`; ignored after the page unloads.",
       "signatures": [
@@ -5654,7 +5794,7 @@
     {
       "path": "page.video",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id.",
       "description": "The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id.",
       "signatures": [
@@ -5679,61 +5819,9 @@
       "source": "src/page.ts:150"
     },
     {
-      "path": "parseLxApiError",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "Normalize a caught value; `null` when it carries no known code.",
-      "description": "Normalize a caught value; `null` when it carries no known code.",
-      "signatures": [
-        {
-          "text": "parseLxApiError(error: unknown): LxApiError | null",
-          "parameters": [
-            {
-              "name": "error",
-              "type": "unknown",
-              "required": true
-            }
-          ],
-          "returns": "LxApiError | null"
-        }
-      ],
-      "types": [
-        "LxApiError"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:180"
-    },
-    {
-      "path": "requireLxApiError",
-      "kind": "function",
-      "entry": "@lingxia/types/error",
-      "summary": "Normalize a caught value; throws when it carries no known code.",
-      "description": "Normalize a caught value; throws when it carries no known code.",
-      "signatures": [
-        {
-          "text": "requireLxApiError(error: unknown): LxApiError",
-          "parameters": [
-            {
-              "name": "error",
-              "type": "unknown",
-              "required": true
-            }
-          ],
-          "returns": "LxApiError"
-        }
-      ],
-      "types": [
-        "LxApiError"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/error.ts:193"
-    },
-    {
       "path": "surfaceErrorCode",
       "kind": "function",
-      "entry": "@lingxia/types/error",
+      "entry": "@lingxia/logic",
       "summary": "The surface code carried by a `lx.surface.*` / `lx.shell.*` rejection.",
       "description": "The surface code carried by a `lx.surface.*` / `lx.shell.*` rejection.\n\nA rejection's `code` is the host code (`E_SURFACE_CONFLICT`,\n`E_SURFACE_ROLE_LOCKED`, `E_CAPABILITY_MISSING`, …); the finer\n`SurfaceErrorCode` rides on `data.code`. Reading it through this helper\nkeeps callers off both the message text and the shape.",
       "signatures": [
@@ -5754,12 +5842,12 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:84"
+      "source": "src/error.ts:70"
     },
     {
       "path": "type",
       "kind": "function",
-      "entry": "@lingxia/types/page",
+      "entry": "@lingxia/logic",
       "summary": "Declare a page's `params`, `result` or `messages` type.",
       "description": "Declare a page's `params`, `result` or `messages` type.",
       "signatures": [
@@ -8718,42 +8806,6 @@
       "source": "src/generated/logic.ts:3226"
     },
     {
-      "name": "LxApiError",
-      "summary": "A caught `lx` rejection, normalized.",
-      "description": "A caught `lx` rejection, normalized.",
-      "fields": [
-        {
-          "name": "code",
-          "type": "1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 2000 | 2001 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 4000 | 4001 | 4002 | 4003 | 4004 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 12000 | 12001 | 12002 | 12003 | 12004 | 12005 | 12006 | 12007 | 12008 | 12009 | 12010",
-          "required": true,
-          "summary": "Closed union, so a mistyped literal in `error.code === …` is a type error.",
-          "description": "Closed union, so a mistyped literal in `error.code === …` is a type error."
-        },
-        {
-          "name": "key",
-          "type": "\"err_code_1000\" | \"err_code_1001\" | \"err_code_1002\" | \"err_code_1003\" | \"err_code_1004\" | \"err_code_1005\" | \"err_code_2000\" | \"err_code_2001\" | \"err_code_3000\" | \"err_code_3001\" | \"err_code_3002\" | \"err_code_3003\" | \"err_code_3004\" | \"err_code_3005\" | \"err_code_3006\" | \"err_code_3007\" | \"err_code_3008\" | \"err_code_4000\" | \"err_code_4001\" | \"err_code_4002\" | \"err_code_4003\" | \"err_code_4004\" | \"err_code_5000\" | \"err_code_5001\" | \"err_code_5002\" | \"err_code_5003\" | \"err_code_5004\" | \"err_code_6000\" | \"err_code_6001\" | \"err_code_6002\" | \"err_code_12000\" | \"err_code_12001\" | \"err_code_12002\" | \"err_code_12003\" | \"err_code_12004\" | \"err_code_12005\" | \"err_code_12006\" | \"err_code_12007\" | \"err_code_12008\" | \"err_code_12009\" | \"err_code_12010\" | \"album_add_more_media\" | \"album_add_more_photos\" | \"album_add_more_videos\" | \"album_all_media\" | \"album_all_photos\" | \"album_all_videos\" | \"album_label\" | \"album_original_image\" | \"album_selected\" | \"aside_open_in_main\" | \"aside_open_in_side\" | \"aside_show_content\" | \"aside_tab_menu\" | \"browser_add_bookmark\" | \"browser_address_placeholder\" | \"browser_bookmarks\" | \"browser_clear_browsing_data\" | \"browser_clear_site_data\" | \"browser_close_other_tabs\" | \"browser_close_tabs_below\" | \"browser_copy_link\" | \"browser_downloads\" | \"browser_history\" | \"browser_label\" | \"browser_link_copied\" | \"browser_manage_bookmarks\" | \"browser_manage_pinned_sites\" | \"browser_new_tab\" | \"browser_open_in_system_browser\" | \"browser_page_menu\" | \"browser_pin_to_sidebar\" | \"browser_remove_bookmark\" | \"browser_settings\" | \"browser_tabs\" | \"browser_unpin\" | \"camera_access_denied\" | \"camera_audio_init_failed\" | \"camera_cancelling\" | \"camera_init_failed\" | \"camera_label\" | \"camera_long_press_to_record\" | \"camera_max_duration_reached\" | \"camera_preparing\" | \"camera_record_video\" | \"camera_release_to_stop\" | \"camera_switch\" | \"camera_switch_failed\" | \"camera_switch_to_back\" | \"camera_switch_to_front\" | \"camera_switching\" | \"camera_tap_to_capture\" | \"camera_video_input_failed\" | \"camera_video_output_failed\" | \"capsule_clean_cache\" | \"capsule_restart\" | \"capsule_uninstall\" | \"common_about\" | \"common_back\" | \"common_cancel\" | \"common_close\" | \"common_confirm\" | \"common_delete\" | \"common_done\" | \"common_exit\" | \"common_forward\" | \"common_loading\" | \"common_ok\" | \"common_refresh\" | \"common_version\" | \"date_last_30_days\" | \"date_last_7_days\" | \"date_last_month\" | \"date_last_week\" | \"date_this_month\" | \"date_this_week\" | \"error_video_too_short\" | \"file_chooser_choose_images\" | \"file_chooser_choose_media\" | \"file_chooser_choose_videos\" | \"file_chooser_default_title\" | \"file_chooser_empty_subtitle\" | \"file_chooser_empty_title\" | \"file_chooser_filter_audio\" | \"file_chooser_filter_images\" | \"file_chooser_filter_label\" | \"file_chooser_filter_videos\" | \"file_chooser_filtered_empty_subtitle\" | \"file_chooser_filtered_empty_title\" | \"file_chooser_folder_subtitle\" | \"file_chooser_select_file\" | \"file_chooser_select_folder\" | \"gpu_a11y_busy\" | \"gpu_a11y_link\" | \"gpu_a11y_suggestions\" | \"gpu_back\" | \"gpu_display_failed\" | \"gpu_keep_waiting\" | \"gpu_reload\" | \"gpu_retry\" | \"gpu_retrying\" | \"gpu_session_failed\" | \"gpu_slow_load\" | \"gpu_update_failed\" | \"gpu_update_required\" | \"lxapp_unavailable_maintain\" | \"lxapp_unavailable_suspended\" | \"lxapp_unavailable_title\" | \"notification_target_unavailable\" | \"permission_camera_reason\" | \"permission_limited_access_add_more_media\" | \"permission_limited_access_add_more_photos\" | \"permission_limited_access_add_more_videos\" | \"permission_limited_access_warning\" | \"permission_location_reason\" | \"permission_media_reason\" | \"permission_microphone_reason\" | \"permission_network_reason\" | \"permission_wifi_reason\" | \"pull_refresh_refreshed\" | \"pull_refresh_refreshing\" | \"shell_pin_limit_message\" | \"shell_pin_limit_title\" | \"sidebar_action_value_separator\" | \"sidebar_collapse\" | \"sidebar_expand\" | \"splash_skip\" | \"surface_close\" | \"surface_close_after\" | \"surface_close_others\" | \"surface_rename\" | \"surface_reset_title\" | \"tabbar_more\" | \"terminal_change_title\" | \"terminal_close_pane\" | \"terminal_copy\" | \"terminal_new_tab\" | \"terminal_paste\" | \"terminal_read_only\" | \"terminal_reset\" | \"terminal_search\" | \"terminal_split_down\" | \"terminal_split_left\" | \"terminal_split_right\" | \"terminal_split_up\" | \"terminal_title\" | \"text_menu_copy\" | \"text_menu_cut\" | \"text_menu_paste\" | \"text_menu_redo\" | \"text_menu_select_all\" | \"text_menu_undo\" | \"update_open_store\" | \"update_store_message\" | \"update_store_title\" | \"video_quality\" | \"video_speed\" | \"webview_load_error_message\" | \"webview_load_error_title\" | \"webview_retry\"",
-          "required": true,
-          "summary": "The i18n key of the code's message.",
-          "description": "The i18n key of the code's message."
-        },
-        {
-          "name": "message",
-          "type": "string",
-          "required": true,
-          "summary": "The host's detail when it gave one, else the error's message.",
-          "description": "The host's detail when it gave one, else the error's message."
-        },
-        {
-          "name": "raw",
-          "type": "unknown",
-          "required": true,
-          "summary": "The value that was caught.",
-          "description": "The value that was caught."
-        }
-      ],
-      "source": "src/error.ts:7"
-    },
-    {
       "name": "LxAppApi",
       "summary": "",
       "description": "",
@@ -8817,37 +8869,44 @@
       "description": "Why an lxapp refused to open, when the operator took it down.\n\nBoth values block the open and mean opposite things to a user, so a caller\nthat shows one message for both is showing the wrong one half the time.",
       "text": "\"maintain\" | \"suspended\"",
       "fields": [],
-      "source": "src/error.ts:99"
+      "source": "src/error.ts:85"
     },
     {
-      "name": "LxErrorCode",
-      "summary": "",
-      "description": "",
-      "text": "1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 2000 | 2001 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 4000 | 4001 | 4002 | 4003 | 4004 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 12000 | 12001 | 12002 | 12003 | 12004 | 12005 | 12006 | 12007 | 12008 | 12009 | 12010",
-      "fields": [],
-      "source": "src/generated/error.ts:49"
-    },
-    {
-      "name": "LxErrorCodeInfo",
-      "summary": "",
-      "description": "",
+      "name": "LxError",
+      "summary": "What an `lx` call rejects with.",
+      "description": "What an `lx` call rejects with. Branch on `code`, never on `message`:\n\n```ts\nasync function pickFolder() {\n  try {\n    return await lx.pick.directory()\n  } catch (e) {\n    if (isLxError(e) && e.code === 'E_NOT_SUPPORTED') return null\n    throw e\n  }\n}\n```",
       "fields": [
         {
-          "name": "code",
-          "type": "1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 2000 | 2001 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 4000 | 4001 | 4002 | 4003 | 4004 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 12000 | 12001 | 12002 | 12003 | 12004 | 12005 | 12006 | 12007 | 12008 | 12009 | 12010",
+          "name": "name",
+          "type": "string",
           "required": true,
           "summary": "",
           "description": ""
         },
         {
-          "name": "key",
-          "type": "\"err_code_1000\" | \"err_code_1001\" | \"err_code_1002\" | \"err_code_1003\" | \"err_code_1004\" | \"err_code_1005\" | \"err_code_2000\" | \"err_code_2001\" | \"err_code_3000\" | \"err_code_3001\" | \"err_code_3002\" | \"err_code_3003\" | \"err_code_3004\" | \"err_code_3005\" | \"err_code_3006\" | \"err_code_3007\" | \"err_code_3008\" | \"err_code_4000\" | \"err_code_4001\" | \"err_code_4002\" | \"err_code_4003\" | \"err_code_4004\" | \"err_code_5000\" | \"err_code_5001\" | \"err_code_5002\" | \"err_code_5003\" | \"err_code_5004\" | \"err_code_6000\" | \"err_code_6001\" | \"err_code_6002\" | \"err_code_12000\" | \"err_code_12001\" | \"err_code_12002\" | \"err_code_12003\" | \"err_code_12004\" | \"err_code_12005\" | \"err_code_12006\" | \"err_code_12007\" | \"err_code_12008\" | \"err_code_12009\" | \"err_code_12010\" | \"album_add_more_media\" | \"album_add_more_photos\" | \"album_add_more_videos\" | \"album_all_media\" | \"album_all_photos\" | \"album_all_videos\" | \"album_label\" | \"album_original_image\" | \"album_selected\" | \"aside_open_in_main\" | \"aside_open_in_side\" | \"aside_show_content\" | \"aside_tab_menu\" | \"browser_add_bookmark\" | \"browser_address_placeholder\" | \"browser_bookmarks\" | \"browser_clear_browsing_data\" | \"browser_clear_site_data\" | \"browser_close_other_tabs\" | \"browser_close_tabs_below\" | \"browser_copy_link\" | \"browser_downloads\" | \"browser_history\" | \"browser_label\" | \"browser_link_copied\" | \"browser_manage_bookmarks\" | \"browser_manage_pinned_sites\" | \"browser_new_tab\" | \"browser_open_in_system_browser\" | \"browser_page_menu\" | \"browser_pin_to_sidebar\" | \"browser_remove_bookmark\" | \"browser_settings\" | \"browser_tabs\" | \"browser_unpin\" | \"camera_access_denied\" | \"camera_audio_init_failed\" | \"camera_cancelling\" | \"camera_init_failed\" | \"camera_label\" | \"camera_long_press_to_record\" | \"camera_max_duration_reached\" | \"camera_preparing\" | \"camera_record_video\" | \"camera_release_to_stop\" | \"camera_switch\" | \"camera_switch_failed\" | \"camera_switch_to_back\" | \"camera_switch_to_front\" | \"camera_switching\" | \"camera_tap_to_capture\" | \"camera_video_input_failed\" | \"camera_video_output_failed\" | \"capsule_clean_cache\" | \"capsule_restart\" | \"capsule_uninstall\" | \"common_about\" | \"common_back\" | \"common_cancel\" | \"common_close\" | \"common_confirm\" | \"common_delete\" | \"common_done\" | \"common_exit\" | \"common_forward\" | \"common_loading\" | \"common_ok\" | \"common_refresh\" | \"common_version\" | \"date_last_30_days\" | \"date_last_7_days\" | \"date_last_month\" | \"date_last_week\" | \"date_this_month\" | \"date_this_week\" | \"error_video_too_short\" | \"file_chooser_choose_images\" | \"file_chooser_choose_media\" | \"file_chooser_choose_videos\" | \"file_chooser_default_title\" | \"file_chooser_empty_subtitle\" | \"file_chooser_empty_title\" | \"file_chooser_filter_audio\" | \"file_chooser_filter_images\" | \"file_chooser_filter_label\" | \"file_chooser_filter_videos\" | \"file_chooser_filtered_empty_subtitle\" | \"file_chooser_filtered_empty_title\" | \"file_chooser_folder_subtitle\" | \"file_chooser_select_file\" | \"file_chooser_select_folder\" | \"gpu_a11y_busy\" | \"gpu_a11y_link\" | \"gpu_a11y_suggestions\" | \"gpu_back\" | \"gpu_display_failed\" | \"gpu_keep_waiting\" | \"gpu_reload\" | \"gpu_retry\" | \"gpu_retrying\" | \"gpu_session_failed\" | \"gpu_slow_load\" | \"gpu_update_failed\" | \"gpu_update_required\" | \"lxapp_unavailable_maintain\" | \"lxapp_unavailable_suspended\" | \"lxapp_unavailable_title\" | \"notification_target_unavailable\" | \"permission_camera_reason\" | \"permission_limited_access_add_more_media\" | \"permission_limited_access_add_more_photos\" | \"permission_limited_access_add_more_videos\" | \"permission_limited_access_warning\" | \"permission_location_reason\" | \"permission_media_reason\" | \"permission_microphone_reason\" | \"permission_network_reason\" | \"permission_wifi_reason\" | \"pull_refresh_refreshed\" | \"pull_refresh_refreshing\" | \"shell_pin_limit_message\" | \"shell_pin_limit_title\" | \"sidebar_action_value_separator\" | \"sidebar_collapse\" | \"sidebar_expand\" | \"splash_skip\" | \"surface_close\" | \"surface_close_after\" | \"surface_close_others\" | \"surface_rename\" | \"surface_reset_title\" | \"tabbar_more\" | \"terminal_change_title\" | \"terminal_close_pane\" | \"terminal_copy\" | \"terminal_new_tab\" | \"terminal_paste\" | \"terminal_read_only\" | \"terminal_reset\" | \"terminal_search\" | \"terminal_split_down\" | \"terminal_split_left\" | \"terminal_split_right\" | \"terminal_split_up\" | \"terminal_title\" | \"text_menu_copy\" | \"text_menu_cut\" | \"text_menu_paste\" | \"text_menu_redo\" | \"text_menu_select_all\" | \"text_menu_undo\" | \"update_open_store\" | \"update_store_message\" | \"update_store_title\" | \"video_quality\" | \"video_speed\" | \"webview_load_error_message\" | \"webview_load_error_title\" | \"webview_retry\"",
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "summary": "For a log line; it can change between releases.",
+          "description": "For a log line; it can change between releases."
+        },
+        {
+          "name": "code",
+          "type": "\"E_ABORT\" | \"E_ALREADY_EXISTS\" | \"E_CAPABILITY_MISSING\" | \"E_INTERNAL\" | \"E_INVALID_ARG\" | \"E_INVALID_DATA\" | \"E_INVALID_STATE\" | \"E_IO\" | \"E_NETWORK\" | \"E_NOT_FOUND\" | \"E_NOT_SUPPORTED\" | \"E_OUT_OF_RANGE\" | \"E_PERMISSION_DENIED\" | \"E_QUOTA\" | \"E_STREAM\" | \"E_SURFACE_CLOSED\" | \"E_SURFACE_CONFLICT\" | \"E_SURFACE_ROLE_LOCKED\" | \"E_TIMEOUT\" | \"E_TYPE\"",
           "required": true,
           "summary": "",
           "description": ""
         }
       ],
-      "source": "src/generated/error.ts:50"
+      "source": "src/error.ts:44"
+    },
+    {
+      "name": "LxErrorCode",
+      "summary": "A closed union, so a mistyped literal in `error.code === …` is a type error.",
+      "description": "A closed union, so a mistyped literal in `error.code === …` is a type error.",
+      "text": "\"E_ABORT\" | \"E_ALREADY_EXISTS\" | \"E_CAPABILITY_MISSING\" | \"E_INTERNAL\" | \"E_INVALID_ARG\" | \"E_INVALID_DATA\" | \"E_INVALID_STATE\" | \"E_IO\" | \"E_NETWORK\" | \"E_NOT_FOUND\" | \"E_NOT_SUPPORTED\" | \"E_OUT_OF_RANGE\" | \"E_PERMISSION_DENIED\" | \"E_QUOTA\" | \"E_STREAM\" | \"E_SURFACE_CLOSED\" | \"E_SURFACE_CONFLICT\" | \"E_SURFACE_ROLE_LOCKED\" | \"E_TIMEOUT\" | \"E_TYPE\"",
+      "fields": [],
+      "source": "src/error.ts:28"
     },
     {
       "name": "LxFeature",
@@ -9999,7 +10058,7 @@
       "name": "PageHookName",
       "summary": "Lifecycle hook names a page's `setup` may return.",
       "description": "Lifecycle hook names a page's `setup` may return.",
-      "text": "\"onShow\" | \"onHide\" | \"onLoad\" | \"onReady\" | \"onUnload\" | \"onPullDownRefresh\"",
+      "text": "\"onLoad\" | \"onShow\" | \"onReady\" | \"onHide\" | \"onUnload\" | \"onPullDownRefresh\"",
       "fields": [],
       "source": "src/page.ts:54"
     },
@@ -13696,7 +13755,7 @@
       "fields": [
         {
           "name": "setup",
-          "type": "((page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & { [K in keyof R]: K extends PageHookName | \"actions\" ? R[K] : Lowercase<K & string> extends \"onshow\" | \"onhide\" | \"onload\" | \"onready\" | \"onunload\" | \"onpulldownrefresh\" ? { 'LingXia type error': `'${K & string}' differs only in case from a lifecycle hook`; } : { 'LingXia type error': `'${K & string}' is not a lifecycle hook; put View-callable functions under actions`; }; } & (R extends PromiseLike<unknown> ? { 'LingXia type error': \"setup is synchronous; start async work in onLoad\"; } : unknown)) | undefined",
+          "type": "((page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & { [K in keyof R]: K extends PageHookName | \"actions\" ? R[K] : Lowercase<K & string> extends \"onload\" | \"onshow\" | \"onready\" | \"onhide\" | \"onunload\" | \"onpulldownrefresh\" ? { 'LingXia type error': `'${K & string}' differs only in case from a lifecycle hook`; } : { 'LingXia type error': `'${K & string}' is not a lifecycle hook; put View-callable functions under actions`; }; } & (R extends PromiseLike<unknown> ? { 'LingXia type error': \"setup is synchronous; start async work in onLoad\"; } : unknown)) | undefined",
           "required": false,
           "summary": "",
           "description": ""
@@ -13846,7 +13905,7 @@
           "description": ""
         }
       ],
-      "source": "src/index.ts:39"
+      "source": "src/index.ts:35"
     },
     {
       "name": "lx.fs.write(path)",
