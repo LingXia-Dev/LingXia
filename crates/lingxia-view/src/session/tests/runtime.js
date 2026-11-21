@@ -31,6 +31,7 @@
     prepareWindows: () => prepareWindows,
     readsHostContext: () => readsHostContext,
     receiveActionResponse: () => receiveActionResponse,
+    registerCatalogues: () => registerCatalogues,
     requestLeave: () => requestLeave,
     reset: () => reset,
     reveal: () => reveal,
@@ -6385,6 +6386,14 @@
     commit();
     return output;
   }
+
+  // src/runtime/i18n.js
+  var catalogues = null;
+  function registerCatalogues(compiled) {
+    catalogues = compiled;
+    formatters.clear();
+  }
+  var formatters = /* @__PURE__ */ new Map();
 
   // src/runtime/hot-swap.js
   function exportState() {

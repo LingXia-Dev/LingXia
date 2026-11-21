@@ -124,6 +124,11 @@ export declare function createContext<T>(defaultValue: T): Context<T>;
 export declare function useContext<T>(context: Context<T>): T;
 /** An element `id` unique to this component instance (and list row), stable across renders and hot swaps. */
 export declare function useId(): string;
+/**
+ * The lxapp's message `key` from `i18n/<tag>.json` in the page's language, with ICU `args`
+ * (`{ count: 3 }`); a switch of language re-renders the page. During render only.
+ */
+export declare function t(key: string, args?: Readonly<Record<string, unknown>>): string;
 
 export interface RequestResource<T> {
   /** A load is in flight; `value` keeps the previous result until it settles. */
