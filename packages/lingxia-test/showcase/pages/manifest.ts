@@ -5,13 +5,13 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'api', text: 'capabilities provided by LingXia' },
   { page: 'cloud', text: 'Cloud Authentication' },
   { page: 'video', text: 'HTML Video' },
-  { page: 'media', text: 'lx.pickMedia / lx.previewMedia' },
+  { page: 'media', text: 'lx.pick.media / lx.media.preview' },
   { page: 'ui', text: 'navigateTo/Back, redirectTo' },
   { page: 'device', text: 'Get Device Information' },
   { page: 'wifi', text: 'WiFi Management' },
   { page: 'system', text: 'Fetch App Base Info' },
   { page: 'location', text: 'Current Location' },
-  { page: 'file', text: 'PDF via lx.downloadFile()' },
+  { page: 'file', text: 'PDF via lx.network.download()' },
   { page: 'share', text: 'lx.share opens the native system share sheet.' },
   { page: 'clipboard', text: 'lx.clipboard reads and writes the system clipboard.' },
   { page: 'components', text: 'Native-backed UI components' },
@@ -23,6 +23,7 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'channel', text: 'Recent Ticks' },
   { page: 'swiper', text: 'Media Swiper' },
   { page: 'bridge-repro', text: 'Restart the lxapp to repeat.' },
+  { page: 'spec-embedded', text: 'Host page of the embedded-document specs.' },
   { page: 'leaveGuard', text: 'Edit the draft, then go back or home' },
 ] as const;
 
@@ -55,6 +56,7 @@ export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
   channel: 'Channel',
   swiper: 'LxMediaSwiper',
   'bridge-repro': 'Bridge Repro',
+  'spec-embedded': 'Embedded Document',
   // Declared per language; the document <title> bakes the first entry.
   leaveGuard: 'Leave guard',
 };

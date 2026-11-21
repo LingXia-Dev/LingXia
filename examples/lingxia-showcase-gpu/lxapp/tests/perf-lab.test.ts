@@ -131,7 +131,7 @@ test('a dragged box shows the finger within the input budget', { id: 'PERF-TOUCH
   withinBudget(t, metrics, verdict.pass, verdict.line);
 });
 
-test('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.navigateTo', 'lx.navigateBack'] }, async (t) => {
+test('pushed and popped pages show their first frame within budget', { id: 'PERF-NAV-001', covers: ['lx.nav.go', 'lx.nav.back'] }, async (t) => {
   await scene(t, 'transition', 100);
   const back = await runBudget(t, 'transition', 100);
   await t.attach('pop-metrics', back);
@@ -141,7 +141,7 @@ test('pushed and popped pages show their first frame within budget', { id: 'PERF
   withinBudget(t, back, popped.pass, popped.line);
   const pushes: number[] = [];
   for (let round = 0; round < 3; round++) {
-    await t.app.nav.to({ page: 'perf-target', query: { rows: '100' } });
+    await t.app.nav.go({ page: 'perf-target', params: { rows: '100' } });
     await t.app.view.testId('perf-target').waitFor({ state: 'visible' });
     // Each push reloads the page's module; its reveal statistics outlive the reload and would
     // report an earlier push, so read the time from this load to its first present.
@@ -182,9 +182,9 @@ test('a page past its View budget shows recovery chrome while the rest of the ap
   // A real tap where the tab is on screen (a collapsed desktop sidebar shows none).
   const home = chrome.find(e => HOME.test(e.label) && (e.scope === 'tabBar' || e.scope === 'sidebar'));
   if (home) await t.app.chrome.tap({ label: home.label, scope: home.scope as 'tabBar' });
-  else await t.app.nav.switchTab({ page: 'home' });
+  else await t.app.nav.go({ tab: 'home' });
   await expect.poll(async () => (await t.app.nav.current()).name).toBe('home');
-  await t.app.nav.switchTab({ page: 'perf-lab' });
+  await t.app.nav.go({ tab: 'perf-lab' });
   const again = await t.waitFor(() => t.app.chrome.elements(), { until: elements => elements.some(e => RELOAD.test(e.label)) });
   await t.app.chrome.tap({ label: again.find(e => RELOAD.test(e.label))!.label, scope: 'window' });
   await expect(t.app.view.testId('perf-tab-list')).toBeVisible({ timeout: 15_000 });

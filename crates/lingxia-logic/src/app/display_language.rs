@@ -30,18 +30,12 @@ struct StateEvent {
 
 /// `lx.host.displayLanguage` — the language this lxapp renders in. Every context
 /// gets it, including the control surfaces that have no other `lx.host` members:
-/// following the product is not a privilege.
+/// following the product is not a privilege. The preference members beside it
+/// authorize on each call, so only the Control app gets past them.
 pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get)?.name("get")?)?;
     namespace.set("watch", JSFunc::new(ctx, watch)?.name("watch")?)?;
-    app.set("displayLanguage", namespace)?;
-    Ok(())
-}
-
-/// `lx.host.control.displayLanguage` — the preference behind that language.
-pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> {
-    let namespace = JSObject::new(ctx);
     namespace.set(
         "getPreference",
         JSFunc::new(ctx, get_preference)?.name("getPreference")?,
@@ -54,7 +48,7 @@ pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> 
         "watchPreference",
         JSFunc::new(ctx, watch_preference)?.name("watchPreference")?,
     )?;
-    control.set("displayLanguage", namespace)?;
+    app.set("displayLanguage", namespace)?;
     Ok(())
 }
 

@@ -1,57 +1,9 @@
 import type { ConnectWifiOptions, WifiInfo } from "@lingxia/types";
-import { showcaseApp } from "../../shared/lib/app";
+import { appState } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
-const app = showcaseApp();
+import { definePage } from '@lingxia/types/page';
 
-// The two module-level listener helpers take the page instance, so they need a
-// name for the slice of it they touch.
-interface WifiPage {
-  data: {
-    readonly wifiListenerEnabled: boolean;
-    readonly wifiConnectedEvents: readonly unknown[];
-  };
-  _offWifiConnected: (() => void) | null;
-  setData(patch: Record<string, unknown>): void;
-}
-
-function startWifiConnectedListener(page: WifiPage) {
-  if (page.data.wifiListenerEnabled) {
-    return;
-  }
-
-  try {
-    page._offWifiConnected = lx.onWifiConnected((payload) => {
-      const event = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        time: new Date().toLocaleTimeString(),
-        ...payload,
-      };
-
-      const nextEvents = [event, ...page.data.wifiConnectedEvents].slice(0, 5);
-      page.setData({ wifiConnectedEvents: nextEvents });
-    });
-    page.setData({ wifiListenerEnabled: true });
-  } catch (error) {
-    console.error("Failed to register WiFi listener:", error);
-  }
-}
-
-function stopWifiConnectedListener(page: WifiPage) {
-  if (!page.data.wifiListenerEnabled) {
-    return;
-  }
-  try {
-    page._offWifiConnected?.();
-  } catch (error) {
-    console.error("Failed to unregister WiFi listener:", error);
-  } finally {
-    page._offWifiConnected = null;
-    page.setData({ wifiListenerEnabled: false });
-  }
-}
-
-Page({
-  async goBack() { await lx.navigateBack(); },
+export default definePage({
   data: {
     statusText: "Ready",
     scanning: false,
@@ -61,126 +13,167 @@ Page({
     wifiListenerEnabled: false,
     wifiConnectedEvents: [] as unknown[],
   },
-
-  // The unsubscribe handle is not serializable state, so it lives on the
-  // instance rather than in `data`.
-  _offWifiConnected: null as (() => void) | null,
-
-  onLoad: async function (options) {
-    console.log("WiFi page onLoad options:", options);
-    // Restore WiFi module state from app globalData
-    const wifiModuleEnabled = !!(app.globalData && app.globalData.wifiModuleEnabled);
-    if (wifiModuleEnabled) {
-      this.setData({ wifiModuleEnabled: true, statusText: "Module started" });
-    }
-  },
-
-  onShow: function () {
-    console.log("WiFi page onShow");
-    // Sync WiFi module state from app globalData
-    const wifiModuleEnabled = !!(app.globalData && app.globalData.wifiModuleEnabled);
-    if (wifiModuleEnabled !== this.data.wifiModuleEnabled) {
-      this.setData({ wifiModuleEnabled: wifiModuleEnabled });
-    }
-  },
-
-  onHide: function () {
-    console.log("WiFi page onHide");
-    // Stop WiFi listener to prevent events firing against hidden page
-    stopWifiConnectedListener(this);
-  },
-
-  onUnload: function () {
-    console.log("WiFi page onUnload");
-    // Cleanup: stop listener when page is destroyed
-    stopWifiConnectedListener(this);
-  },
-
-  // WiFi APIs
-  startWifi: async function () {
-    try {
-      await lx.startWifi();
-      console.log("WiFi module started");
-      // Persist state to app globalData
-      if (app.globalData) {
-        app.globalData.wifiModuleEnabled = true;
+  setup(page) {
+    // The unsubscribe handle is not data, so it lives here, not in `data`.
+    let _offWifiConnected = null as (() => void) | null;
+    function startWifiConnectedListener() {
+      if (page.data.wifiListenerEnabled) {
+        return;
       }
-      this.setData({ wifiModuleEnabled: true, statusText: "Module started" });
-    } catch (error) {
-      console.error("Failed to start WiFi:", error);
-      this.setData({ statusText: errorMessage(error, "Wi-Fi request failed") });
-      lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
-    }
-  },
 
-  stopWifi: async function () {
-    try {
-      await lx.stopWifi();
-      console.log("WiFi module stopped");
-      stopWifiConnectedListener(this);
-      // Persist state to app globalData
-      if (app.globalData) {
-        app.globalData.wifiModuleEnabled = false;
+      try {
+        _offWifiConnected = lx.network.wifi.onConnected((payload) => {
+          const event = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            time: new Date().toLocaleTimeString(),
+            ...payload,
+          };
+
+          const nextEvents = [event, ...page.data.wifiConnectedEvents].slice(0, 5);
+          page.update(d => { d.wifiConnectedEvents = nextEvents; });
+        });
+        page.update(d => { d.wifiListenerEnabled = true; });
+      } catch (error) {
+        console.error("Failed to register WiFi listener:", error);
       }
-      this.setData({
-        wifiModuleEnabled: false,
-        wifiList: null,
-        connectedWifi: null,
-        statusText: "Module stopped",
-      });
-    } catch (error) {
-      console.error("Failed to stop WiFi:", error);
-      this.setData({ statusText: errorMessage(error, "Wi-Fi request failed") });
     }
-  },
 
-  getWifiList: async function () {
-    if (this.data.scanning) return;
-    this.setData({ scanning: true, statusText: "Scanning nearby networks…" });
-    try {
-      const wifiList = await lx.getWifiList();
-      console.log("WiFi list:", wifiList);
-      this.setData({ wifiList, statusText: `Found ${wifiList.length} networks` });
-    } catch (error) {
-      console.error("Failed to get WiFi list:", error);
-      this.setData({ statusText: errorMessage(error, "Wi-Fi scan failed") });
-      lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
-    } finally {
-      this.setData({ scanning: false });
+    function stopWifiConnectedListener() {
+      if (!page.data.wifiListenerEnabled) {
+        return;
+      }
+      try {
+        _offWifiConnected?.();
+      } catch (error) {
+        console.error("Failed to unregister WiFi listener:", error);
+      } finally {
+        _offWifiConnected = null;
+        page.update(d => { d.wifiListenerEnabled = false; });
+      }
     }
-  },
 
-  getConnectedWifi: async function () {
-    try {
-      const connectedWifi = await lx.getConnectedWifi();
-      console.log("Connected WiFi:", connectedWifi);
-      this.setData({ connectedWifi, statusText: connectedWifi ? "Connected network read" : "No connected network" });
-    } catch (error) {
-      console.error("Failed to get connected WiFi:", error);
-      this.setData({ statusText: errorMessage(error, "Unable to read connected network") });
-    }
-  },
-
-  connectWifi: async function (options: ConnectWifiOptions) {
-    try {
-      await lx.connectWifi(options);
-      this.setData({ statusText: "Connection requested" });
-      console.log("WiFi connection requested:", options?.ssid);
-    } catch (error) {
-      console.error("Failed to connect to WiFi:", error);
-      this.setData({ statusText: errorMessage(error, "Connection request failed") });
-    }
-  },
-
-  onWifiConnected: function () {
-    startWifiConnectedListener(this);
-  },
-
-  offWifiConnected: function () {
-    stopWifiConnectedListener(this);
-  },
-
-  clearWifiConnectedEvents: function () {
-    this.setData({ wifiConnectedEvents: [] });
+    const actions = {
+      async goBack() { await lx.nav.back(); },
+      // WiFi APIs
+      async startWifi() {
+        try {
+          await lx.network.wifi.start();
+          console.log("WiFi module started");
+          // Persist state to the shared app state
+          appState.wifiModuleEnabled = true;
+          page.update(d => {
+            d.wifiModuleEnabled = true;
+            d.statusText = "Module started";
+          });
+        } catch (error) {
+          console.error("Failed to start WiFi:", error);
+          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi request failed"); });
+          lx.ui.toast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
+        }
+      },
+      async stopWifi() {
+        try {
+          await lx.network.wifi.stop();
+          console.log("WiFi module stopped");
+          stopWifiConnectedListener();
+          // Persist state to the shared app state
+          appState.wifiModuleEnabled = false;
+          page.update(d => {
+            d.wifiModuleEnabled = false;
+            d.wifiList = null;
+            d.connectedWifi = null;
+            d.statusText = "Module stopped";
+          });
+        } catch (error) {
+          console.error("Failed to stop WiFi:", error);
+          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi request failed"); });
+        }
+      },
+      async getWifiList() {
+        if (page.data.scanning) return;
+        page.update(d => {
+          d.scanning = true;
+          d.statusText = "Scanning nearby networks…";
+        });
+        try {
+          const wifiList = await lx.network.wifi.list();
+          console.log("WiFi list:", wifiList);
+          page.update(d => {
+            d.wifiList = wifiList;
+            d.statusText = `Found ${wifiList.length} networks`;
+          });
+        } catch (error) {
+          console.error("Failed to get WiFi list:", error);
+          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi scan failed"); });
+          lx.ui.toast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
+        } finally {
+          page.update(d => { d.scanning = false; });
+        }
+      },
+      async getConnectedWifi() {
+        try {
+          const connectedWifi = await lx.network.wifi.current();
+          console.log("Connected WiFi:", connectedWifi);
+          page.update(d => {
+            d.connectedWifi = connectedWifi;
+            d.statusText = connectedWifi ? "Connected network read" : "No connected network";
+          });
+        } catch (error) {
+          console.error("Failed to get connected WiFi:", error);
+          page.update(d => { d.statusText = errorMessage(error, "Unable to read connected network"); });
+        }
+      },
+      async connectWifi(options: ConnectWifiOptions) {
+        try {
+          await lx.network.wifi.connect(options);
+          page.update(d => { d.statusText = "Connection requested"; });
+          console.log("WiFi connection requested:", options?.ssid);
+        } catch (error) {
+          console.error("Failed to connect to WiFi:", error);
+          page.update(d => { d.statusText = errorMessage(error, "Connection request failed"); });
+        }
+      },
+      onWifiConnected() {
+        startWifiConnectedListener();
+      },
+      offWifiConnected() {
+        stopWifiConnectedListener();
+      },
+      clearWifiConnectedEvents() {
+        page.update(d => { d.wifiConnectedEvents = []; });
+      },
+    };
+    return {
+      async onLoad(options) {
+        console.log("WiFi page onLoad options:", options);
+        // Restore WiFi module state from the shared app state
+        const wifiModuleEnabled = appState.wifiModuleEnabled;
+        if (wifiModuleEnabled) {
+          page.update(d => {
+            d.wifiModuleEnabled = true;
+            d.statusText = "Module started";
+          });
+        }
+      },
+      onShow() {
+        console.log("WiFi page onShow");
+        // Sync WiFi module state from the shared app state
+        const wifiModuleEnabled = appState.wifiModuleEnabled;
+        if (wifiModuleEnabled !== page.data.wifiModuleEnabled) {
+          page.update(d => { d.wifiModuleEnabled = wifiModuleEnabled; });
+        }
+      },
+      onHide() {
+        console.log("WiFi page onHide");
+        // Stop WiFi listener to prevent events firing against hidden page
+        stopWifiConnectedListener();
+      },
+      onUnload() {
+        console.log("WiFi page onUnload");
+        // Cleanup: stop listener when page is destroyed
+        stopWifiConnectedListener();
+      },
+      actions,
+    };
   },
 });

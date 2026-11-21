@@ -1,4 +1,4 @@
-use ::lxapp::LxApp;
+use ::lxapp::{AppSessionClass, LxApp};
 use rong::{IntoJSObject, JSContext, JSResult};
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -10,9 +10,14 @@ struct AppInfo {
     #[js_name = "channel"]
     #[ts_type = "LxAppReleaseType"]
     release_type: String,
+    /// `'control'` is the product's Control app, the only lxapp Control-only
+    /// members admit. `'control-surface'` is a host-bundled settings UI the
+    /// Control app opens (Terminal Settings), admitted only to its own members.
+    #[ts_type = "'control' | 'control-surface' | 'guest'"]
+    role: &'static str,
 }
 
-/// Identify the running lxapp: its id, display name, version, and channel.
+/// Identify the running lxapp: its id, display name, version, channel, and role.
 fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let info = lxapp.get_lxapp_info();
@@ -21,16 +26,29 @@ fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
         name: info.app_name,
         version: info.version,
         release_type: info.release_type,
+        role: match lxapp.app_session_class() {
+            AppSessionClass::ControlApp => "control",
+            AppSessionClass::ControlSurface => "control-surface",
+            AppSessionClass::StandardApp => "guest",
+        },
     })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_api(ctx)?;
+    register_app_api(ctx)
 }
 
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getAppInfo(ts_return = "AppInfo") = get_app_info;
+        const app: "LxAppApi" = crate::namespace::app(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_app_api(ctx) {
+        namespace LxAppApi = crate::namespace::app(ctx)?;
+        const info: "Readonly<AppInfo>" = get_app_info(ctx.clone())?;
     }
 }

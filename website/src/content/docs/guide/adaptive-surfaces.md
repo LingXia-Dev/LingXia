@@ -56,7 +56,7 @@ There is no `sidebar:` field. App-owned sidebar entries are runtime actions decl
 
 ## Size classes
 
-An lxapp receives its own surface viewport class through `lx.surface.watchContext`:
+An lxapp's View reads its own surface viewport class from `env.sizeClass`, and its Logic from `page.env.sizeClass`:
 
 | Size class | Viewport width |
 |---|---:|
@@ -85,8 +85,9 @@ lx.surface.openUrl('https://example.com', { as: 'aside' })
 lx.surface.openPage('inspector', { as: 'float' })
 lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 
-// Logic: only when Logic itself acts on the size class.
-const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
+// Logic, in a page: only when Logic itself acts on the size class.
+// Called on a change of sizeClass or canDock; stops when the page unloads.
+page.env.watch(({ sizeClass }) => { /* … */ })
 ```
 
 A View reads the same size class with `useLxHost().sizeClass` from
@@ -98,9 +99,9 @@ only when the size class does; exact widths are CSS and container queries.
 - `openPage(page)` opens one of **this** lxapp's pages as a chrome-less `float` or a desktop `window`. A page cannot become an `aside` — declare an lxapp surface for your own side panel.
 - Ask `lx.supports('surface.window.fullChrome')` before offering an edge-to-edge window. Pad custom chrome with `var(--lx-page-chrome-top-inset)`.
 - `hide()` preserves state; `close()` destroys the surface. Page-overlay form is chosen when opened, while declared surfaces continue to adapt with the shell.
-- `lx.surface.getByKey(key)` returns a handle only for pages and URLs this lxapp opened **with a `key`**. The Control app finds a live app with `lx.shell.getApp(appId)` and a declared surface with `lx.shell.getDeclared(id, key?)`; handles carry no runtime id.
+- `lx.surface.get(key)` returns a handle only for pages and URLs this lxapp opened **with a `key`**. The Control app finds a live app with `lx.shell.getApp(appId)` and a declared surface with `lx.shell.getDeclared(id, key?)`; handles carry no runtime id.
 
-`lx.openSurface` and `lx.onSurfaceContext` no longer exist.
+`lx.openSurface`, `lx.onSurfaceContext` and `lx.surface.watchContext` no longer exist.
 
 ## Build-time rules worth remembering
 

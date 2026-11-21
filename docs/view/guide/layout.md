@@ -133,7 +133,7 @@ keyboard height for the bottom. Content inside `<page>` therefore never sits und
 the gesture area or the keyboard. When you need the numbers, `view.env.insets` and
 `view.env.keyboard.height` are in logical pixels, and the page re-renders when they change.
 The same holds for `env.viewport` and `env.sizeClass`: lay out from them in the View. Logic's
-`lx.surface.watchContext` is for Logic that acts on a size change itself; never subscribe there to
+`page.env.watch` is for Logic that acts on a size change itself; never subscribe there to
 pass the size on with `setData`: the View already has it, and the copy arrives after a `setData` round
 trip and renders the page again.
 

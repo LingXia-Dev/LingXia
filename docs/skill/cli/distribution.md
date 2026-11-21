@@ -32,7 +32,7 @@ Uploads a package to the LingXia server (OS stores are `lingxia store`).
   (`lingxia auth login lingxia --env prod --token …`, keyed by server + env).
 
 Draft lxapp publishes (`--channel draft`) print an HTTPS `/lxapp/open` URL
-on the publish server origin. Scan it with `lx.scanCode()` in a host using that
+on the publish server origin. Scan it with `lx.pick.code()` in a host using that
 server. Interactive terminals show a QR code (PNG on supported image terminals,
 text otherwise); redirected output keeps only the URL. HTTP servers cannot
 produce this HTTPS scan trigger. The link selects the draft channel, not a

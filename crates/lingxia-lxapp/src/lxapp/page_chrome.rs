@@ -384,7 +384,7 @@ impl LxApp {
     /// Paint may run before a presenter exists. That is not a failure: the
     /// patch stands in rust and the first presenter reads it, so the caller is
     /// told it succeeded. Every other native error means a mounted presenter
-    /// refused the revision — surface it, or `lx.tabBar.update()` resolves
+    /// refused the revision — surface it, or `lx.app.tabBar.update()` resolves
     /// while native still paints the old chrome.
     async fn apply_page_chrome_commit(
         &self,

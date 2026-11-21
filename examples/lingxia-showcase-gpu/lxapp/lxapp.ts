@@ -1,16 +1,13 @@
-import type { ShowcaseAppInstance } from './shared/lib/app';
+import { appState, setIpAddr } from './shared/lib/app';
 import { openFeedback } from './shared/lib/feedback';
 
 App({
-  globalData: {
-    lifecycle: { launches: 0, shows: 0, hides: 0, last: '' },
-    greeting: "This is from App's globalData.data",
-    ipAddr: 'loading',
-  },
-  async onLaunch(this: ShowcaseAppInstance) {
-    this.globalData.lifecycle.launches++;
-    this.globalData.lifecycle.last = 'launch';
-    lx.setMoreActions([{
+  // For `lxdev test`, which reads it through `appInstance().state`.
+  state: appState,
+  onLaunch() {
+    appState.lifecycle.launches++;
+    appState.lifecycle.last = 'launch';
+    lx.app.setMoreActions([{
       icon: 'public/showcase-icon.png',
       label: 'Feedback',
       onClick: async () => {
@@ -18,26 +15,30 @@ App({
         catch (error) { console.warn('failed to open feedback surface', error); }
       },
     }]);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    try {
-      const response = await fetch('https://api64.ipify.org?format=json', { signal: controller.signal });
-      if (!response.ok) throw new Error('Network information unavailable');
-      const data = await response.json() as { ip: string };
-      this.globalData.ipAddr = data.ip;
-    } catch {
-      this.globalData.ipAddr = 'Network information unavailable';
-    } finally {
-      clearTimeout(timeout);
-    }
-    this.ipReadyCallback?.(this.globalData.ipAddr);
+    // Not awaited: the first page's onLoad waits for onLaunch.
+    void loadIpAddr();
   },
-  onShow(this: ShowcaseAppInstance) {
-    this.globalData.lifecycle.shows++;
-    this.globalData.lifecycle.last = 'show';
+  onShow() {
+    appState.lifecycle.shows++;
+    appState.lifecycle.last = 'show';
   },
-  onHide(this: ShowcaseAppInstance) {
-    this.globalData.lifecycle.hides++;
-    this.globalData.lifecycle.last = 'hide';
+  onHide() {
+    appState.lifecycle.hides++;
+    appState.lifecycle.last = 'hide';
   },
 });
+
+async function loadIpAddr(): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch('https://api64.ipify.org?format=json', { signal: controller.signal });
+    if (!response.ok) throw new Error('Network information unavailable');
+    const data = await response.json() as { ip: string };
+    setIpAddr(data.ip);
+  } catch {
+    setIpAddr('Network information unavailable');
+  } finally {
+    clearTimeout(timeout);
+  }
+}

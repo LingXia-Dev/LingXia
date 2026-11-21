@@ -778,7 +778,7 @@ mod tests {
         let response = wait_for_terminal(&runtime, &started.run_id);
         assert_eq!(response.state, AutomationRunState::Succeeded);
         let answer = response.result.expect("terminal result").output;
-        if cfg!(target_os = "macos") {
+        if cfg!(any(target_os = "macos", target_os = "windows")) {
             // A test process may have no window-server session to ask.
             assert!(
                 matches!(

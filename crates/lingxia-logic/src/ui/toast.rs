@@ -9,7 +9,7 @@ use lxapp::LxApp;
 use lxapp::dialogs::ToastShown;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use rong::JSContextService;
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -96,10 +96,26 @@ impl From<JSToastOptions> for ToastOptions {
     }
 }
 
+/// `lx.ui.toast('Saved')` is `{ title: 'Saved' }`.
+fn toast_options(value: JSValue) -> JSResult<JSToastOptions> {
+    if value.is_string() {
+        return Ok(JSToastOptions {
+            title: value.to_rust::<String>()?,
+            icon: None,
+            image: None,
+            duration: None,
+            mask: None,
+            position: None,
+        });
+    }
+    value.to_rust::<JSToastOptions>()
+}
+
 /// Presents a toast and resolves a handle once the host accepted it. The handle
 /// dismisses only this toast, never a newer one — including a newer one posted
 /// by another lxapp onto a host's shared overlay.
-async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<JSObject> {
+async fn show_toast(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
+    let options = toast_options(options)?;
     let state = toast_generation(&ctx);
     let previous = state.fetch_add(1, Ordering::SeqCst);
     let generation = previous + 1;
@@ -195,7 +211,7 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     if !lxapp.is_opened() {
         return Err(js_service_unavailable_error(
-            "LxApp is closed; hideToast suppressed",
+            "LxApp is closed; toast dismissal suppressed",
         ));
     }
 
@@ -227,8 +243,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn showToast(ts_params = "options: ShowToastOptions", ts_return = "ToastHandle") = show_toast;
-        fn hideToast(ts_return = "void") = hide_toast;
+        namespace UiApi = super::ui_namespace(ctx)?;
+        fn toast(ts_params = "options: string | ToastOptions", ts_return = "ToastHandle") = show_toast;
     }
 }

@@ -98,22 +98,24 @@ test('a page whose first state never comes shows the slow-load notice; Keep wait
 test('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
-  const preference = await t.app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
+  const preference = await t.app.logic.eval(({ lx }) => lx.host.appearance.getPreference() ?? null);
   if (preference === null) t.skip('this host does not let an lxapp set its appearance; check the banner by hand in light and dark');
-  t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.control?.appearance.setPreference(look), preference!));
+  t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.appearance.setPreference(look), preference!));
   const banner = async () => {
     const elements = await t.waitFor(() => t.app.chrome.elements(), {
-      until: (now) => now.some((e) => words.updateFailed.includes(e.label)),
+      // Right after Retry the panel can show its message a moment before it offers anything.
+      until: (now) => [words.updateFailed, words.retry, words.back]
+        .every((choices) => now.some((e) => choices.includes(e.label))),
       timeout: 8_000,
     });
     return { elements, notice: elements.find((e) => words.updateFailed.includes(e.label))! };
   };
   for (const look of ['light', 'dark'] as const) {
-    await t.app.logic.eval(({ lx }, look) => lx.host.control?.appearance.setPreference(look), look);
+    await t.app.logic.eval(({ lx }, look) => lx.host.appearance.setPreference(look), look);
     const before = await openFailing(t, 'lab-recovery-break', 'spec-break');
     await expect(t.app.view.testId('spec-break-shown')).toBeVisible();
-    // Measured while the page still renders: once its update fails, a page query answers the failure.
-    const window = await t.app.view.viewport();
+    // In the frame chrome bounds are in: a desktop device frame scales the page's own points.
+    const window = await t.app.chrome.viewport();
     // The tap's update is the one that throws, so the frame the click waits for never comes.
     const tapped = t.app.view.testId('spec-break-go').click().catch(() => undefined);
     let { elements, notice } = await banner();

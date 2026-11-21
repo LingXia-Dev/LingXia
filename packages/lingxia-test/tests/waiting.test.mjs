@@ -328,24 +328,24 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
   let refused;
 
   lxTest("navigates", { timeout: 10_000 }, async (t) => {
-    await t.app.nav.to({ page: "detail" });
-    await t.app.nav.to({ page: "other", waitUntil: "commit" });
-    await t.app.nav.to({ page: "slow", timeout: 5_000 });
-    await t.app.nav.to({ page: "slower", timeout: 60_000 });
+    await t.app.nav.go({ page: "detail" });
+    await t.app.nav.go({ page: "other" }, { waitUntil: "commit" });
+    await t.app.nav.go({ page: "slow" }, { timeout: 5_000 });
+    await t.app.nav.go({ page: "slower" }, { timeout: 60_000 });
     await t.app.nav.back();
     const current = await t.app.nav.current();
     assert.equal(current.name, "slow");
-    refused = await t.reject(() => t.app.nav.to({ page: "x", timeoutMs: 1 }));
+    refused = await t.reject(() => t.app.nav.go({ page: "x" }, { timeoutMs: 1 }));
   });
 
   const report = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   const calls = world.navCalls.map(([verb, options]) => [verb, { ...options, ...(options.timeoutMs ? { timeoutMs: options.timeoutMs <= 10_000 && options.timeoutMs > 9_000 ? "room" : options.timeoutMs } : {}) }]);
   assert.deepEqual(calls, [
-    ["to", { page: "detail", waitUntil: "ready", timeoutMs: "room" }],
-    ["to", { page: "other", waitUntil: "commit" }],
-    ["to", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
-    ["to", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
+    ["go", { page: "detail", waitUntil: "ready", timeoutMs: "room" }],
+    ["go", { page: "other", waitUntil: "commit" }],
+    ["go", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
+    ["go", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
     ["back", { waitUntil: "ready", timeoutMs: "room" }],
   ]);
   assert.match(refused.message, /takes \{ timeout \} in ms/);
@@ -354,7 +354,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
 test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its cause", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
-  world.app.nav.to = async () => {
+  world.app.nav.go = async () => {
     throw Object.assign(new Error("page did not become ready within 50ms"), { code: "E_AUTOMATION_TIMEOUT", data: { page: "slow" } });
   };
   world.app.eval = async () => {
@@ -363,7 +363,7 @@ test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its c
   const seen = {};
 
   lxTest("times out", async (t) => {
-    seen.nav = await t.reject(() => t.app.nav.to({ page: "slow", timeout: 50 }), { code: "E_TIMEOUT" });
+    seen.nav = await t.reject(() => t.app.nav.go({ page: "slow" }, { timeout: 50 }), { code: "E_TIMEOUT" });
     seen.eval = await t.reject(() => t.app.logic.eval({ timeout: 100 }, () => 1), { code: "E_TIMEOUT" });
   });
   lxTest("runs after a relaunch", () => {});
@@ -388,14 +388,14 @@ test("a `start` spec relaunches on that page, with its query, before beforeEach,
 
   lxTest.beforeEach(async (t) => { order.push(`beforeEach on ${(await t.app.nav.current()).name}`); });
   lxTest("home", { start: { page: "home" } }, async () => {});
-  lxTest("detail", { start: { page: "detail", query: { id: "d1" } } }, async (t) => {
+  lxTest("detail", { start: { page: "detail", params: { id: "d1" } } }, async (t) => {
     order.push(`body on ${(await t.app.nav.current()).name}`);
   });
 
   await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(world.navCalls, [
-    ["relaunch", { page: "home", waitUntil: "ready" }],
-    ["relaunch", { page: "detail", query: { id: "d1" }, waitUntil: "ready" }],
+    ["reset", { page: "home", waitUntil: "ready" }],
+    ["reset", { page: "detail", params: { id: "d1" }, waitUntil: "ready" }],
   ]);
   assert.deepEqual(order, ["beforeEach on home", "beforeEach on detail", "body on detail"]);
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
@@ -501,7 +501,7 @@ test("a locked screen stops the run once, before the next spec, instead of faili
   assert.deepEqual(ran, ["first"]);
   const locks = events.filter((event) => event.type === "diagnostic" && event.phase === "screen_locked");
   assert.equal(locks.length, 1);
-  assert.match(locks[0].message, /^The screen is locked; unlock it — animations and sheets are paused\. Stopped after 1\/3 tests/);
+  assert.match(locks[0].message, /^The screen is locked; unlock it — animations, sheets and the clipboard stop while it is\. Stopped after 1\/3 tests/);
   assert.equal(report.partial, true);
   const saved = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(saved.cases.map((item) => item.status), ["passed", "skipped", "skipped"]);
@@ -765,17 +765,17 @@ test("a remote TypeError from Logic fails a retry at once; one from the page ret
   const world = createWorld();
   let pageReads = 0;
   world.usePage({ window: {}, document: { querySelector: () => (++pageReads < 3 ? null : { textContent: "ready" }) } });
-  world.useLogic({ lx: {}, getCurrentPages: () => [] });
+  world.useLogic({ lx: {}, __lxPageStack: () => [] });
   installFakeHost(world);
   const seen = {};
   lxTest("type errors", { forensics: false }, async (t) => {
     // In Logic a TypeError is a programming mistake: no retry.
     let logicReads = 0;
-    seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+    seen.waitFor = await t.reject(() => t.waitFor(() => { logicReads += 1; return t.app.logic.eval(({ pageStack }) => pageStack()[0].data); },
       { timeout: 500, interval: 5 }));
     seen.waitForReads = logicReads;
     logicReads = 0;
-    seen.poll = await t.reject(() => expect.poll(() => { logicReads += 1; return t.app.logic.eval(({ getCurrentPages }) => getCurrentPages()[0].data); },
+    seen.poll = await t.reject(() => expect.poll(() => { logicReads += 1; return t.app.logic.eval(({ pageStack }) => pageStack()[0].data); },
       { timeout: 500, interval: 5 }).toBe(1));
     seen.pollReads = logicReads;
     // In the page a null read can throw until rendering catches up.
@@ -817,12 +817,12 @@ test("a hidden-page note explains only a locator failure; a bound locator off th
     }, "hidden"],
     ["bound action off the current page", async (t) => {
       const home = await t.app.page();
-      await t.app.nav.to({ page: "other" });
+      await t.app.nav.go({ page: "other" });
       await home.view.testId("sheet").click({ timeout: 80 });
     }, "elsewhere"],
     ["bound assertion off the current page", async (t) => {
       const home = await t.app.page();
-      await t.app.nav.to({ page: "other" });
+      await t.app.nav.go({ page: "other" });
       await expect(home.view.testId("sheet")).toBeVisible({ timeout: 80 });
     }, "elsewhere"],
   ];
@@ -861,11 +861,11 @@ test("app.page() binds locators, eval, screenshot and scroll to an instance; cal
 
   let instanceId;
   lxTest("bound", { forensics: false }, async (t) => {
-    await t.app.nav.to({ page: "todo" });
+    await t.app.nav.go({ page: "todo" });
     const page = await t.app.page({ name: "todo" });
     instanceId = page.instanceId;
     const todo = page.view;
-    await t.app.nav.to({ page: "other" });
+    await t.app.nav.go({ page: "other" });
     await todo.testId("todo-input").fill("milk");
     await expect(todo.testId("todo-input")).toHaveValue("milk");
     assert.throws(() => todo.testId("todo-input", { page: "other" }), /takes no options/);
@@ -900,7 +900,7 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
   const seen = {};
   lxTest("binding", { forensics: false }, async (t) => {
     // Opens later: the bind waits for it.
-    setTimeout(() => { void world.app.nav.to({ page: "detail" }); }, 60);
+    setTimeout(() => { void world.app.nav.go({ page: "detail" }); }, 60);
     const started = Date.now();
     const detail = await t.app.page({ name: "detail" }, { timeout: 2_000 });
     seen.waited = Date.now() - started;
@@ -912,7 +912,7 @@ test("app.page() waits for a page to open, times out naming it, refuses an ambig
     // Never opens: the bind times out naming it.
     seen.timeout = await t.reject(() => t.app.page({ name: "settings" }, { timeout: 120 }), { code: "E_TIMEOUT" });
     // A second live instance of the name is ambiguous; its instance id is not.
-    await t.app.nav.to({ page: "detail" });
+    await t.app.nav.go({ page: "detail" });
     const second = await t.app.page();
     seen.ambiguous = await t.reject(() => t.app.page({ name: "detail" }));
     seen.byId = (await t.app.page({ instanceId: second.instanceId })).instanceId === second.instanceId;

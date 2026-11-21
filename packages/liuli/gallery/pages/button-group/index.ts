@@ -1,21 +1,24 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
+import { definePage } from '@lingxia/types/page';
 import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 
-Page({
-  _unwatch: undefined as (() => void) | undefined,
-  onLoad() {
-    this._unwatch = returnToWorkspaceWhenWide("button-group");
-  },
-  onUnload() {
-    this._unwatch?.();
-  },
-  async open({ page }: { page: string }) {
-    await lx.navigateTo({ page });
-  },
-  async publish() {
-    await publish();
-  },
-  async signIn() {
-    await signIn();
+export default definePage({
+  setup(thisPage) {
+    let unwatch: (() => void) | undefined;
+    return {
+      onLoad() {
+        unwatch = returnToWorkspaceWhenWide("button-group", thisPage.env);
+      },
+      onUnload() {
+        unwatch?.();
+      },
+      actions: {
+        async open({ page }: { page: string }) {
+          await lx.nav.go({ page }).opened;
+        },
+        publish,
+        signIn,
+      },
+    };
   },
 });

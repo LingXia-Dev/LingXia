@@ -6,7 +6,7 @@ import type { LingXiaBridgeInterface } from '@lingxia/bridge';
 
 test('receives channel ticks, switches symbols, and reconnects', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
-  await app.nav.relaunch({ page: 'channel' });
+  await app.nav.reset({ page: 'channel' });
   const channel = (await app.page({ name: 'channel' }, { timeout: 30_000 })).view;
   await channel.testId('channel-page').waitFor({ timeout: 30_000 });
   const waitForText = (css: string, predicate: (text: string) => boolean) =>
@@ -38,7 +38,7 @@ test('closing a real channel ends reads and rejects subsequent sends', {
   app: SHOWCASE_APP_ID,
   skip: GPU_MIRROR ? "drives the WebView page bridge's raw channel API (window.LingXiaBridge), which a GPU page does not have" : undefined,
 }, async (t) => {
-  await t.app.nav.relaunch({ page: 'channel' });
+  await t.app.nav.reset({ page: 'channel' });
   const view = (await t.app.page({ name: 'channel' })).view;
   await view.testId('channel-page').waitFor();
   const result = await view.eval(async ({ window }) => {

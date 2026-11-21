@@ -36,9 +36,6 @@ import type {
   AutostartApi,
   BannerApi,
   CompressVideoTask,
-  ControlApi,
-  ControlAppearanceApi,
-  ControlDisplayLanguageApi,
   DisplayLanguageApi,
   DownloadTask,
   ClipboardApi,
@@ -47,9 +44,16 @@ import type {
   HostAppUpdateInfo,
   HostAppUpdateTask,
   LxFile,
-  NavigationBarApi,
+  UiApi,
+  NavApi,
+  PickApi,
+  MediaApi,
+  NetworkApi,
+  DeviceApi,
+  OrientationApi,
+  WifiApi,
   NotificationApi,
-  PageMessagePort,
+  PageHandle,
   PreviewMediaHandle,
   TabSurface,
   PageSurface,
@@ -63,81 +67,30 @@ import type {
   TerminalPreviewController,
   TerminalSettingsApi,
   TrayApi,
-  UpdateManager,
+  LxAppApi,
   UploadTask,
   VideoContext,
 } from '../generated/logic.js';
 
 export const LX_API_NAMES = [
   'host',
+  'app',
   'automation',
-  'alert',
-  'confirm',
-  'pickFile',
-  'pickFiles',
-  'pickDirectory',
-  'pickMedia',
   'clipboard',
-  'compressImage',
-  'compressVideo',
-  'connectWifi',
-  'createVideoContext',
-  'downloadFile',
-  'env',
-  'extractVideoThumbnail',
   'fs',
-  'getAppInfo',
-  'getConnectedWifi',
-  'getDeviceInfo',
-  'getImageInfo',
-  'getLocation',
-  'getNetworkInfo',
-  'getScreenInfo',
-  'getStorage',
-  'getSystemSetting',
-  'getUpdateManager',
-  'getVideoInfo',
-  'getWifiList',
-  'hideToast',
-  'makePhoneCall',
-  'navigateBack',
-  'navigateBackApp',
-  'navigateTo',
-  'navigateToApp',
-  'navigationBar',
-  'onDeviceOrientationChange',
-  'onKeyDown',
-  'onKeyUp',
-  'onNetworkChange',
-  'onWifiConnected',
+  'nav',
   'openExternal',
+  'device',
+  'media',
+  'network',
   'openFile',
-  'previewMedia',
-  'reLaunch',
-  'redirectTo',
-  'saveImageToPhotosAlbum',
-  'saveVideoToPhotosAlbum',
-  'scanCode',
-  'setDeviceOrientation',
-  'setMoreActions',
+  'pick',
   'share',
+  'storage',
   'shell',
-  'showActionSheet',
-  'showModal',
-  'showToast',
-  'startPullDownRefresh',
-  'startWifi',
-  'stopPullDownRefresh',
-  'stopWifi',
   'supports',
   'surface',
-  'switchTab',
-  'tabBar',
-  'terminal',
-  'tray',
-  'uploadFile',
-  'vibrateLong',
-  'vibrateShort',
+  'ui',
 ] as const;
 
 const HOST_APP_API = [
@@ -147,26 +100,27 @@ const HOST_APP_API = [
   'cache',
   'checkUpdate',
   'claimCustomUpdate',
-  'control',
   'displayLanguage',
   'env',
   'exit',
-  'getBaseInfo',
   'getServiceEnv',
+  'info',
   'notification',
   'screenshot',
   'setBadge',
+  'terminal',
   'toggleServiceEnv',
+  'tray',
 ] as const;
-// `autostart`, `banner`, `control`, `cache`, and `notification` are injected
+// `autostart`, `banner`, `cache`, `notification`, and `terminal` are injected
 // only where they apply, so a runtime walk of `lx.host` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
   (name) =>
     name !== 'autostart' &&
     name !== 'banner' &&
-    name !== 'control' &&
     name !== 'cache' &&
-    name !== 'notification',
+    name !== 'notification' &&
+    name !== 'terminal',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const BANNER_API = ['dismiss', 'show'] as const;
@@ -178,30 +132,31 @@ const NOTIFICATION_API = [
   'show',
 ] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
-const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
-const CONTROL_API = ['appearance', 'displayLanguage'] as const;
-const CONTROL_DISPLAY_LANGUAGE_API = [
+const DISPLAY_LANGUAGE_API = [
+  'get',
   'getPreference',
   'setPreference',
+  'watch',
   'watchPreference',
 ] as const;
-const APPEARANCE_API = ['get', 'watch'] as const;
-const CONTROL_APPEARANCE_API = [
-  'getPreference',
-  'setPreference',
-  'watchPreference',
-] as const;
-const NAVIGATION_BAR_API = ['update'] as const;
+const APPEARANCE_API = DISPLAY_LANGUAGE_API;
 const TAB_BAR_API = ['update'] as const;
+const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
+const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
+const DEVICE_API = ['haptics', 'info', 'location', 'onKeyDown', 'onKeyUp', 'orientation', 'screen', 'systemSettings'] as const;
+const ORIENTATION_API = ['set', 'watch'] as const;
+const NETWORK_API = ['download', 'status', 'upload', 'watch', 'wifi'] as const;
+const WIFI_API = ['connect', 'current', 'list', 'onConnected', 'start', 'stop'] as const;
+const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
+const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
-const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SURFACE_NAMESPACE_API = ['bringToFront', 'getByKey', 'watchContext', 'openDeclared', 'openPage', 'openUrl'] as const;
-const SHELL_API = ['getApp', 'getDeclared', 'openApp', 'openBuiltin', 'openDeclared', 'setAppDisplay', 'sidebarActions'] as const;
+const SURFACE_NAMESPACE_API = ['get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
+const SHELL_API = ['activate', 'getApp', 'getDeclared', 'openBuiltin', 'setAppDisplay', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const CLIPBOARD_API = ['clear', 'read', 'readText', 'types', 'write', 'writeText'] as const;
@@ -214,6 +169,8 @@ const FILE_SYSTEM_API = [
   'remove',
   'rename',
   'stat',
+  'userCache',
+  'userData',
   'write',
 ] as const;
 const LX_FILE_API = [
@@ -227,7 +184,7 @@ const LX_FILE_API = [
   'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
-const UPDATE_MANAGER_API = ['applyUpdate', 'onUpdateFailed', 'onUpdateReady'] as const;
+const APP_API = ['applyUpdate', 'info', 'onUpdateFailed', 'onUpdateReady', 'setMoreActions', 'tabBar'] as const;
 const VIDEO_CONTEXT_API = [
   'exitFullScreen',
   'pause',
@@ -313,13 +270,11 @@ const PAGE_GESTURE_API = ['capabilities', 'chrome', 'edgeBack', 'inputs', 'orien
 const NAV_DRIVER_API = [
   'back',
   'current',
+  'go',
   'info',
   'press',
-  'redirect',
-  'relaunch',
+  'reset',
   'stack',
-  'switchTab',
-  'to',
 ] as const;
 const DEVICE_DRIVER_API = ['get', 'list', 'set'] as const;
 const BROWSER_DRIVER_API = [
@@ -410,18 +365,19 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx',
     members: LX_API_NAMES,
-    optionalMembers: ['terminal'],
     properties: [
+      'app',
       'clipboard',
-      'env',
       'fs',
+      'device',
       'host',
-      'navigationBar',
+      'media',
+      'nav',
+      'network',
+      'pick',
       'shell',
       'surface',
-      'tabBar',
-      'terminal',
-      'tray',
+      'ui',
     ],
   },
   {
@@ -429,35 +385,31 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'displayLanguage', 'env'],
+    properties: ['appearance', 'displayLanguage', 'env', 'info', 'tray'],
   },
   {
     name: 'lx.host.autostart',
     layer: 'logic',
     expression: 'lx.host.autostart',
     members: AUTOSTART_API,
-    optional: true,
   },
   {
     name: 'lx.host.banner',
     layer: 'logic',
     expression: 'lx.host.banner',
     members: BANNER_API,
-    optional: true,
   },
   {
     name: 'lx.host.notification',
     layer: 'logic',
     expression: 'lx.host.notification',
     members: NOTIFICATION_API,
-    optional: true,
   },
   {
     name: 'lx.host.cache',
     layer: 'logic',
     expression: 'lx.host.cache',
     members: APP_CACHE_API,
-    optional: true,
   },
   {
     name: 'lx.host.displayLanguage',
@@ -465,90 +417,105 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.host.displayLanguage',
     members: DISPLAY_LANGUAGE_API,
   },
-  {
-    name: 'lx.host.control',
-    layer: 'logic',
-    expression: 'lx.host.control',
-    members: CONTROL_API,
-    properties: CONTROL_API,
-    optional: true,
-  },
-  {
-    name: 'lx.host.control.displayLanguage',
-    layer: 'logic',
-    expression: 'lx.host.control?.displayLanguage',
-    members: CONTROL_DISPLAY_LANGUAGE_API,
-    optional: true,
-  },
+
   {
     name: 'lx.host.appearance',
     layer: 'logic',
     expression: 'lx.host.appearance',
     members: APPEARANCE_API,
   },
+
+
   {
-    name: 'lx.host.control.appearance',
+    name: 'lx.app.tabBar',
     layer: 'logic',
-    expression: 'lx.host.control?.appearance',
-    members: CONTROL_APPEARANCE_API,
-    optional: true,
-  },
-  {
-    name: 'lx.navigationBar',
-    layer: 'logic',
-    expression: 'lx.navigationBar',
-    members: NAVIGATION_BAR_API,
-  },
-  {
-    name: 'lx.tabBar',
-    layer: 'logic',
-    expression: 'lx.tabBar',
+    expression: 'lx.app.tabBar',
     members: TAB_BAR_API,
   },
   {
-    name: 'lx.terminal',
+    name: 'lx.ui',
     layer: 'logic',
-    expression: 'lx.terminal',
+    expression: 'lx.ui',
+    members: UI_API,
+  },
+  {
+    name: 'lx.pick',
+    layer: 'logic',
+    expression: 'lx.pick',
+    members: PICK_API,
+  },
+  {
+    name: 'lx.device',
+    layer: 'logic',
+    expression: 'lx.device',
+    members: DEVICE_API,
+    properties: ['info', 'orientation'],
+  },
+  {
+    name: 'lx.device.orientation',
+    layer: 'logic',
+    expression: 'lx.device.orientation',
+    members: ORIENTATION_API,
+  },
+  {
+    name: 'lx.network',
+    layer: 'logic',
+    expression: 'lx.network',
+    members: NETWORK_API,
+    properties: ['wifi'],
+  },
+  {
+    name: 'lx.network.wifi',
+    layer: 'logic',
+    expression: 'lx.network.wifi',
+    members: WIFI_API,
+  },
+  {
+    name: 'lx.media',
+    layer: 'logic',
+    expression: 'lx.media',
+    members: MEDIA_API,
+  },
+  {
+    name: 'lx.nav',
+    layer: 'logic',
+    expression: 'lx.nav',
+    members: NAV_API,
+  },
+  {
+    name: 'lx.host.terminal',
+    layer: 'logic',
+    expression: 'lx.host.terminal',
     members: TERMINAL_API,
     properties: TERMINAL_API,
     optionalMembers: ['windows'],
-    optional: true,
   },
   {
-    name: 'lx.terminal.settings',
+    name: 'lx.host.terminal.settings',
     layer: 'logic',
-    expression: 'lx.terminal?.settings',
+    expression: 'lx.host.terminal.settings',
     members: TERMINAL_SETTINGS_API,
-    optional: true,
   },
   {
-    name: 'lx.terminal.colorSchemes',
+    name: 'lx.host.terminal.colorSchemes',
     layer: 'logic',
-    expression: 'lx.terminal?.colorSchemes',
+    expression: 'lx.host.terminal.colorSchemes',
     members: TERMINAL_COLOR_SCHEMES_API,
-    optional: true,
   },
   {
-    name: 'lx.terminal.fonts',
+    name: 'lx.host.terminal.fonts',
     layer: 'logic',
-    expression: 'lx.terminal?.fonts',
+    expression: 'lx.host.terminal.fonts',
     members: TERMINAL_FONTS_API,
-    optional: true,
   },
   {
-    name: 'lx.terminal.windows',
+    name: 'lx.host.terminal.windows',
     layer: 'logic',
-    expression: 'lx.terminal?.windows',
+    expression: 'lx.host.terminal.windows',
     members: WINDOWS_TERMINAL_API,
     optional: true,
   },
-  {
-    name: 'lx.env',
-    layer: 'logic',
-    expression: 'lx.env',
-    members: ENV_API,
-    properties: ENV_API,
-  },
+
   {
     name: 'lx.surface',
     layer: 'logic',
@@ -568,11 +535,17 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
   },
-  { name: 'lx.tray', layer: 'logic', expression: 'lx.tray', members: TRAY_API },
-  { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
+  { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API },
+  {
+    name: 'lx.fs',
+    layer: 'logic',
+    expression: 'lx.fs',
+    members: FILE_SYSTEM_API,
+    properties: ['userCache', 'userData'],
+  },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
-  { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
-  { name: 'UpdateManager', layer: 'logic', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
+  { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
+  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'tabBar'] },
   {
     name: 'Automation',
     layer: 'automation',
@@ -701,8 +674,9 @@ const PAGE_SURFACE_API = [
   'onHide',
   'onMessage',
   'onShow',
-  'postMessage',
   'realized',
+  'result',
+  'send',
   'show',
   'visible',
 ] as const;
@@ -717,7 +691,7 @@ const TAB_SURFACE_API = [
   'scope',
   'visible',
 ] as const;
-const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage'] as const;
+const PAGE_HANDLE_API = ['close', 'onMessage', 'opened', 'result', 'send'] as const;
 
 export const LX_RETURNED_OBJECT_SURFACES = [
   {
@@ -734,7 +708,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: [],
     optionalProperties: [],
     fixture: 'native-component',
-    factory: 'lx.createVideoContext',
+    factory: 'page.video',
   },
   {
     name: 'DownloadTask',
@@ -742,7 +716,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-service',
-    factory: 'lx.downloadFile',
+    factory: 'lx.network.download',
   },
   {
     name: 'UploadTask',
@@ -750,7 +724,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-service',
-    factory: 'lx.uploadFile',
+    factory: 'lx.network.upload',
   },
   {
     name: 'CompressVideoTask',
@@ -758,7 +732,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-media',
-    factory: 'lx.compressVideo',
+    factory: 'lx.media.compressVideo',
   },
   {
     name: 'HostAppUpdateInfo',
@@ -782,13 +756,13 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['completed', 'current', 'presented'],
     optionalProperties: [],
     fixture: 'external-ui',
-    factory: 'lx.previewMedia',
+    factory: 'lx.media.preview',
   },
   {
     name: 'PageSurface',
     members: PAGE_SURFACE_API,
-    properties: ['alive', 'key', 'kind', 'realized', 'visible'],
-    optionalProperties: ['key'],
+    properties: ['alive', 'key', 'kind', 'realized', 'result', 'visible'],
+    optionalProperties: ['key', 'result'],
     fixture: 'surface',
     factory: 'lx.surface.openPage',
   },
@@ -801,12 +775,11 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     factory: 'lx.surface.openUrl',
   },
   {
-    name: 'PageMessagePort',
-    members: PAGE_MESSAGE_PORT_API,
-    properties: [],
-    optionalProperties: [],
+    name: 'PageHandle',
+    members: PAGE_HANDLE_API,
+    properties: ['opened', 'result'],
     fixture: 'navigation',
-    factory: 'lx.navigateTo',
+    factory: 'lx.nav.go',
   },
 ] as const;
 
@@ -820,7 +793,7 @@ export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_CAPABILITY_NAME
 /**
  * Shape coverage a run on any host must prove. A surface marked `optional`, or
  * a member listed in `optionalMembers`, is absent on hosts that do not build
- * it — `lx.terminal` ships only inside the bundled Terminal Settings lxapp —
+ * it — `lx.host.terminal` ships only inside the bundled Terminal Settings lxapp —
  * so a suite that skips it has not covered it. Requiring it here would let the
  * covers gate report a surface nobody touched as proven.
  */
@@ -858,18 +831,21 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
-  AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
-  AssertTrue<Exact<ControlDisplayLanguageApi, typeof CONTROL_DISPLAY_LANGUAGE_API>>,
-  AssertTrue<Exact<ControlAppearanceApi, typeof CONTROL_APPEARANCE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
-  AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
+  AssertTrue<Exact<UiApi, typeof UI_API>>,
+  AssertTrue<Exact<PickApi, typeof PICK_API>>,
+  AssertTrue<Exact<MediaApi, typeof MEDIA_API>>,
+  AssertTrue<Exact<NetworkApi, typeof NETWORK_API>>,
+  AssertTrue<Exact<DeviceApi, typeof DEVICE_API>>,
+  AssertTrue<Exact<OrientationApi, typeof ORIENTATION_API>>,
+  AssertTrue<Exact<WifiApi, typeof WIFI_API>>,
+  AssertTrue<Exact<NavApi, typeof NAV_API>>,
   AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
   AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,
   AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,
   AssertTrue<Exact<TerminalFontsApi, typeof TERMINAL_FONTS_API>>,
   AssertTrue<Exact<TerminalPreviewController, typeof TERMINAL_PREVIEW_API>>,
-  AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
@@ -877,7 +853,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
-  AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,
+  AssertTrue<Exact<LxAppApi, typeof APP_API>>,
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
@@ -918,5 +894,5 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<SurfaceApi, typeof SURFACE_NAMESPACE_API>>,
   AssertTrue<Exact<PageSurface, typeof PAGE_SURFACE_API>>,
   AssertTrue<Exact<Extract<TabSurface, { scope: 'tab' }>, typeof TAB_SURFACE_API>>,
-  AssertTrue<Exact<PageMessagePort, typeof PAGE_MESSAGE_PORT_API>>,
+  AssertTrue<Exact<PageHandle, typeof PAGE_HANDLE_API>>,
 ];

@@ -1,16 +1,13 @@
 import type { LxPickerCascadingColumns, LxPickerColumns } from "./picker.js";
 import type {
-  NavigatorChannel,
+  LinkTarget,
   NavigatorEdge,
   NavigatorFloatPosition,
   NavigatorInteraction,
-  NavigatorOpenType,
   NavigatorPlacement,
   NavigatorSize,
-  NavigatorTarget,
   NavigatorWindowChrome,
 } from "./navigator.js";
-import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
 
 export function appendDataAttrs(
@@ -42,22 +39,15 @@ export function appendPassthroughAttrs(
 }
 
 export interface NavigatorNativeAttrOptions {
-  url?: string;
-  page?: string;
-  openType?: NavigatorOpenType;
-  target?: NavigatorTarget;
-  delta?: number;
+  to?: LinkTarget;
+  replace?: boolean;
+  reset?: boolean;
   as?: NavigatorPlacement;
   edge?: NavigatorEdge;
   position?: NavigatorFloatPosition;
   chrome?: NavigatorWindowChrome;
   size?: NavigatorSize;
   interaction?: NavigatorInteraction;
-  appId?: string;
-  query?: NavigatorQuery;
-  channel?: NavigatorChannel;
-  targetVersion?: string;
-  phoneNumber?: string;
   hoverClass?: string;
   hoverStopPropagation?: boolean;
   hoverStartTime?: number;
@@ -69,28 +59,21 @@ export function buildNavigatorNativeAttrs(
   extraAttrs: Record<string, unknown> = {}
 ): Record<string, string> {
   const result: Record<string, string> = {
-    "open-type": options.openType ?? "navigate",
-    delta: String(options.delta ?? 1),
     "hover-class": options.hoverClass ?? "navigator-hover",
     "hover-stop-propagation": String(options.hoverStopPropagation ?? false),
     "hover-start-time": String(options.hoverStartTime ?? 20),
     "hover-stay-time": String(options.hoverStayTime ?? 70),
   };
 
-  if (options.url) result.url = options.url;
-  if (options.page) result.page = options.page;
-  if (options.target) result.target = options.target;
+  if (options.to) result.to = JSON.stringify(options.to);
+  if (options.replace) result.replace = "";
+  if (options.reset) result.reset = "";
   if (options.as) result.as = options.as;
   if (options.edge) result.edge = options.edge;
   if (options.position) result.position = options.position;
   if (options.chrome) result.chrome = options.chrome;
   if (options.size) result.size = JSON.stringify(options.size);
   if (options.interaction) result.interaction = JSON.stringify(options.interaction);
-  if (options.appId) result["app-id"] = options.appId;
-  if (options.query) result.query = JSON.stringify(options.query);
-  if (options.channel) result.channel = options.channel;
-  if (options.targetVersion) result["target-version"] = options.targetVersion;
-  if (options.phoneNumber) result["phone-number"] = options.phoneNumber;
 
   appendPassthroughAttrs(extraAttrs, result);
   return result;

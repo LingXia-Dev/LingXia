@@ -32,10 +32,10 @@ await control.appearance.setPreference('dark')
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`, `lx.host.setBadge()`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`
-- `lx.host.control.displayLanguage` / `lx.host.control.appearance` (writers)
+- `lx.host.displayLanguage` / `lx.host.appearance` (writers)
 - `lx.shell.*` — `sidebarActions`, `setAppDisplay` (the app's displayed name and icon), opening, moving or finding apps and declared surfaces
 
-Every lxapp may still **read** `lx.host.displayLanguage.get()` and `lx.host.appearance.get()`, and should follow those values. Bundle updates for this lxapp stay on `lx.getUpdateManager()`.
+Every lxapp may still **read** `lx.host.displayLanguage.get()` and `lx.host.appearance.get()`, and should follow those values. Bundle updates for this lxapp stay on `lx.app.onUpdateReady` / `applyUpdate`.
 
 A refusal is `E_PERMISSION_DENIED` and names the class that would have been admitted. Treat it as a design signal: ask the Control app to do the product work; do not impersonate it. It is not the user dismissing a dialog, and it is not a missing capability (`lx.supports()` answers that).
 

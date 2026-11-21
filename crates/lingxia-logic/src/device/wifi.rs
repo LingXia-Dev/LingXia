@@ -270,7 +270,8 @@ fn parse_connected_wifi(data: String) -> Result<WifiInfo, RongJSError> {
     Ok(parse_wifi_info_from_json(&parsed, 100, true))
 }
 
-/// Initialize WiFi module
+/// Starts the Wi-Fi module; call it before any other `lx.network.wifi` call,
+/// which otherwise rejects "not initialized". Rejects when Wi-Fi is off.
 async fn start_wifi(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -287,16 +288,14 @@ async fn start_wifi(ctx: JSContext) -> JSResult<()> {
     handle_wifi_callback(&ctx, |id| lxapp.runtime.start_wifi(id), "start WiFi").await
 }
 
-/// Stop WiFi module
+/// Stops the Wi-Fi module and its event delivery.
 async fn stop_wifi(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     handle_wifi_callback(&ctx, |id| lxapp.runtime.stop_wifi(id), "stop WiFi").await
 }
 
-/// Connect to WiFi (async - waits for request submission, not actual connection)
-///
-/// This function returns when the connection request is successfully submitted to the system.
-/// The actual connection status will be reported via onWifiConnected event.
+/// Asks the system to join a network. Resolves once the request is submitted,
+/// not when the device has joined: `onConnected` reports that.
 async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let JSConnectWifiOptions { ssid, password } = options;
@@ -315,7 +314,7 @@ async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult
     .await
 }
 
-/// Get WiFi list (scan results)
+/// Scans and resolves the networks in range.
 async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<WifiInfo>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     handle_wifi_callback_with_data(
@@ -327,7 +326,7 @@ async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<WifiInfo>> {
     .await
 }
 
-/// Get connected WiFi info
+/// The network the device is on now.
 async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     handle_wifi_callback_with_data(
@@ -344,7 +343,7 @@ async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
 
 /// Subscribes to WiFi connection events and returns the unsubscribe fn.
 fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    info!("onWifiConnected called");
+    info!("wifi.onConnected called");
     let token = register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback)?;
     if let Err(err) = ensure_wifi_connected_callback(&ctx) {
         let _ = unregister_app_handler_token(&ctx, WIFI_CONNECTED_EVENT, token);
@@ -356,7 +355,7 @@ fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
         if unsubscribed.get() {
             return;
         }
-        info!("onWifiConnected unsubscribe called");
+        info!("wifi.onConnected unsubscribe called");
         let remaining = unregister_app_handler_token(&off_ctx, WIFI_CONNECTED_EVENT, token);
         if remaining == 0
             && let Err(err) = clear_wifi_connected_callback(&off_ctx)
@@ -375,13 +374,13 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn startWifi = start_wifi;
-        fn stopWifi = stop_wifi;
-        fn connectWifi(ts_params = "options: ConnectWifiOptions") = connect_wifi;
-        fn getWifiList(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
-        fn getConnectedWifi(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
-        fn onWifiConnected(
+        namespace WifiApi = crate::namespace::wifi(ctx)?;
+        fn start = start_wifi;
+        fn stop = stop_wifi;
+        fn connect(ts_params = "options: ConnectWifiOptions") = connect_wifi;
+        fn list(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
+        fn current(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
+        fn onConnected(
             ts_params = "callback: WifiConnectedCallback",
             ts_return = "() => void"
         ) = on_wifi_connected;

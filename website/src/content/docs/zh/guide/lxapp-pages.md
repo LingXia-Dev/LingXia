@@ -13,7 +13,7 @@ lxapp 是有明确 View / Logic 边界的页面式应用。View 在 WebView 中�
 
 ```text
 pages/home/
-├── index.ts      # Logic：Page({ data, lifecycle, actions })
+├── index.ts      # Logic：definePage({ data, setup })
 ├── index.tsx     # View：React + useLxPage()
 └── index.json    # 页面配置
 ```
@@ -23,28 +23,31 @@ HTML 项目使用 `index.html`。项目是 React 或 HTML；同一路由同时�
 ## Logic 掌管状态与 actions
 
 ```ts
-type PageData = { count: number }
+import { definePage } from '@lingxia/types/page'
 
-Page({
-  data: { count: 0 } as PageData,
-
-  increment() {
-    this.setData({ count: this.data.count + 1 })
-  },
+const page = definePage({
+  data: { count: 0 },
+  setup: page => ({
+    actions: {
+      increment() {
+        page.update(d => { d.count += 1 })
+      },
+    },
+  }),
 })
+export default page
 ```
 
-公开方法会成为 View 可调用的 action；生命周期 hooks 与 `_` 开头的辅助方法保持私有。`data` 中只放可序列化值，函数、DOM 节点和 unsubscribe handle 都不能穿过 bridge。
+只有 `setup` 在 `actions` 下返回的函数可由 View 调用；生命周期 hooks 与闭包里的其他内容保持私有。`data` 中只放可序列化值，函数、DOM 节点和 unsubscribe handle 都不能穿过 bridge。
 
 ## View 订阅并派发动作
 
 ```tsx
 import { useLxPage } from '@lingxia/react'
-
-type PageActions = { increment(): Promise<void> }
+import type page from './index'
 
 export default function Home() {
-  const { data, actions } = useLxPage<PageData, PageActions>()
+  const { data, actions } = useLxPage<typeof page>()
 
   return <button onClick={() => actions.increment()}>{data.count}</button>
 }
@@ -54,7 +57,7 @@ export default function Home() {
 
 ## 类型与平台 API
 
-把 `@lingxia/types` 安装为开发依赖。它在 Logic 中提供全局声明，`lx`、`Page`、`App` 都不需要 import。
+把 `@lingxia/types` 安装为开发依赖。它在 Logic 中提供全局声明，`lx`、`App` 都不需要 import；`definePage` 从 `@lingxia/types/page` 引入。
 
 ```bash
 npm install --save-dev @lingxia/types
@@ -84,7 +87,7 @@ import { LxPicker } from '@lingxia/react'
 
 ## 适配 surface
 
-间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.surface.watchContext`，通过 `setData` 复制可序列化 context，再用 `sizeClass` **和** `isDesktop()` 选择 Compact 或 Workspace——`regular` 不是桌面。详见[自适应 surfaces](../adaptive-surfaces/)。
+间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 View 中读取 `env.sizeClass`（Logic 自己要处理变化时用 `page.env`），再用 `sizeClass` **和** `isDesktop()` 选择 Compact 或 Workspace——`regular` 不是桌面。详见[自适应 surfaces](../adaptive-surfaces/)。
 
 ## 开发与验证
 

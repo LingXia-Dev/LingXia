@@ -103,7 +103,7 @@ test('a provided value reaches List rows under rtl and follows its changes', { c
   await expect(view.testId('lab-choice-gamma-state')).toHaveText('sm');
   await expect(view.testId('lab-choice-beta-state')).toHaveText('sm on');
   // Leaving the page unmounts the demo; coming back provides the defaults afresh.
-  await t.app.nav.relaunch(openDemo('shared'));
+  await t.app.nav.reset(openDemo('shared'));
   await view.testId('lab-choice-gamma').click();
   await expect(view.testId('lab-choice-gamma-state')).toHaveText('md on');
   await expect(view.testId('lab-choice-alpha-state')).toHaveText('md');

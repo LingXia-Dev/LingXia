@@ -28,7 +28,7 @@ fn emit_orientation_change_event(appid: &str, value: &str) {
 #[inline]
 fn should_emit_orientation_event_after_set() -> bool {
     // iOS/Harmony may not deliver a host orientation callback immediately after
-    // setDeviceOrientation, so we actively emit one to keep JS state in sync.
+    // orientation.set, so we actively emit one to keep JS state in sync.
     // Android already emits orientation events from Activity callbacks; emitting
     // again here would create duplicate events.
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
@@ -99,9 +99,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn setDeviceOrientation(ts_params = "orientation: DeviceOrientation") = set_device_orientation;
-        fn onDeviceOrientationChange(
+        namespace OrientationApi = crate::namespace::orientation(ctx)?;
+        fn set(ts_params = "orientation: DeviceOrientation") = set_device_orientation;
+        fn watch(
             ts_params = "callback: (event: DeviceOrientationChangeEvent) => void",
             ts_return = "() => void"
         ) = on_device_orientation_change;

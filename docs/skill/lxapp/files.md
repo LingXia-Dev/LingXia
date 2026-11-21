@@ -1,6 +1,6 @@
 # Files
 
-LingXia-managed files: storage classes, `downloadFile`, `lx.fs`, uploads,
+LingXia-managed files: storage classes, `lx.network.download`, `lx.fs`, uploads,
 media outputs, and cleanup. A returned `lx://` path tells you its lifetime.
 
 ## Storage classes
@@ -15,35 +15,33 @@ Use only `lx://` URIs, never native paths. Never keep a business reference to a
 temp URI; copy it into userdata first. User-visible downloads belong to the
 host downloads center, not to these classes.
 
-## `downloadFile`
+## `lx.network.download`
 
-The result's `storage` (`temp` | `userdata` | `downloads`) says where it went.
+`download(url, options?)`: `to` picks where the file goes, and the result's
+`storage` (`temp` | `userdata` | `downloads`) says where it went.
 
 ```ts
-const result = await lx.downloadFile({ url, headers, timeoutMs, signal }).result;
+const result = await lx.network.download(url, { headers, timeoutMs, signal }).result;
 result.uri; // lx://temp/<opaque_id>
 ```
 
 ```ts
-const result = await lx.downloadFile({
-  url,
-  filePath: "videos/video.mp4",
-}).result;
+const result = await lx.network.download(url, { to: "videos/video.mp4" }).result;
 result.uri; // lx://userdata/videos/video.mp4
 ```
 
 ```ts
-const task = lx.downloadFile({
-  url,
-  destination: "downloads",
+const task = lx.network.download(url, {
+  to: "downloads",
   suggestedName: "video.mp4",
 });
 ```
 
-- `filePath` is relative or `lx://userdata/...`. Rejected: `lx://usercache`,
-  native absolute or drive paths, backslashes, empty, `.` or `..` segments, and
-  the userdata root.
-- `destination: "downloads"` saves to the user's Downloads (shown in the
+- A `to` path is relative or `lx://userdata/...` and must not exist yet.
+  Rejected: `lx://usercache`, native absolute or drive paths, backslashes,
+  empty, `.` or `..` segments, and the userdata root. A file literally named
+  `downloads` needs `lx://userdata/downloads`.
+- `to: "downloads"` saves to the user's Downloads (shown in the
   downloads page) and needs the `downloads` host grant **and** a native session
   grant ([permissions](../native/permissions.md)); without it the call fails.
   `suggestedName` is sanitized and never overwrites. A `downloads` URI is
@@ -65,8 +63,8 @@ const buffer = await file.arrayBuffer();    // ArrayBuffer
 const encoded = await file.base64();        // string
 ```
 
-- Relative paths resolve under userdata; `lx.env.USER_DATA_PATH` and
-  `lx.env.USER_CACHE_PATH` are the explicit roots. Reads also accept
+- Relative paths resolve under userdata; `lx.fs.userData` and
+  `lx.fs.userCache` are the explicit roots. Reads also accept
   `lx://temp/...`.
 - Each read is limited to 16 MiB. Pass larger files by path to upload,
   preview, or native APIs.
@@ -85,7 +83,7 @@ await lx.fs.copy(
 
 await lx.fs.rename(
   result.uri,
-  `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
+  `${lx.fs.userCache}/previews/video.mp4`,
 );
 ```
 
@@ -95,9 +93,10 @@ await lx.fs.rename(
 - `rename` moves: a temp download renamed into usercache becomes cache without
   a second copy.
 
-## `uploadFile`
+## `lx.network.upload`
 
-Call from Logic; the file streams without entering JavaScript memory.
+`upload(url, { file, ... })`, from Logic; the file streams without entering
+JavaScript memory.
 
 - Form endpoint: default `bodyMode: 'multipart'`, method `POST`; `name`,
   `fileName`, `formData` build the envelope.
@@ -105,9 +104,8 @@ Call from Logic; the file streams without entering JavaScript memory.
   MIME type, and no form fields.
 
 ```ts
-const task = lx.uploadFile({
-  url: presignedUrl,
-  filePath,
+const task = lx.network.upload(presignedUrl, {
+  file: filePath,
   method: 'PUT',
   bodyMode: 'raw',
   mimeType: contentType,
@@ -124,43 +122,50 @@ const { statusCode, data } = await task.result;
   until the transfer ends.
 - Check `statusCode` and `data` against the endpoint before reporting success.
 
-## Pickers
+## Picking files
 
-`pickFile`, `pickFiles`, and `pickDirectory` open the system picker and resolve
-`{ status: 'ok', uri, name }` (`pickFiles`: `files: [{ uri, name }]`) or
-`{ status: 'canceled' }`.
+`lx.pick.file()` / `files()` / `media()` resolve
+`{ status: 'ok', files: PickedFile[] }` or `{ status: 'canceled' }`;
+`pick.directory()` resolves `{ directory: { path, name } }` and
+`pick.code()` resolves `{ value, format }`. Each `PickedFile` is
+`{ path, name, size, type }` on every platform: `name` always has an
+extension and `type` is the MIME type derived from it, never the platform's.
+Branch on `type`, not on `path`, which may be a `content://` or native path.
 
-- `uri` is opaque; never parse it. Pass it to the APIs that take a picked
-  file (`lx.share`, the clipboard image write); a platform reference such as
-  an Android `content://` URI is not a managed path, so other file APIs may
-  reject it.
-- `name` is display-only: not unique, and it may lack an extension or disagree
-  with the content type. Do not use it as a path or key.
+```ts
+const r = await lx.pick.media({ mediaType: ['image', 'video'] })
+if (r.status === 'canceled') return
+const videos = r.files.filter(f => f.type.startsWith('video/'))
+```
+
+- `path` is opaque; never parse it. Pass it to LingXia APIs (`lx.fs` reads,
+  `lx.share`, the clipboard image write, uploads).
+- `name` is display-only and not unique; do not use it as a path or key.
 - `filters[].name` labels the filter on desktop only.
-- A picked `uri` is read-only and valid for the current session only. To keep
+- A picked `path` is read-only and valid for the current session only. To keep
   the file, `lx.fs.copy` it into userdata or usercache.
-- A `pickDirectory` `uri` is a read-only root: `readDir` it, then read a child
-  as `` `${uri}/${relative}` `` (percent-encode each segment) with `exists`,
-  `stat`, `readDir`, `file()`, or as a `copy` source. Empty, `.`, `..`
-  segments, `:`, `\`, and paths leaving the directory through a symlink do
-  not resolve; `lx.fs.file` throws on a missing child, so check `exists`
+- A `pick.directory` `path` is a read-only root: `readDir` it, then read a
+  child as `` `${path}/${relative}` `` (percent-encode each segment) with
+  `exists`, `stat`, `readDir`, `file()`, or as a `copy` source. Empty, `.`,
+  `..` segments, `:`, `\`, and paths leaving the directory through a symlink
+  do not resolve; `lx.fs.file` throws on a missing child, so check `exists`
   first. `copy` takes one file; it is not recursive.
 - Whether the file is copied differs by host, so do not assume either:
 
 | | Mobile | Desktop |
 | --- | --- | --- |
-| `pickFile` / `pickFiles` | iOS: the system hands over a copy. Android, Harmony: no copy, a session-scoped reference to the original | No copy; the live original, so later edits or deletion show |
-| `pickMedia` | Copied into the lxapp temp directory and counted against its temp quota | No copy; the live original |
-| `pickDirectory` | iOS: no copy, a session-scoped grant on the directory. Android, Harmony: see below | No copy; a session-scoped grant on the directory |
+| `pick.file` / `pick.files` | iOS: the system hands over a copy. Android, Harmony: no copy, a session-scoped reference to the original | No copy; the live original, so later edits or deletion show |
+| `pick.media` | Copied into the lxapp temp directory and counted against its temp quota | No copy; the live original |
+| `pick.directory` | iOS: no copy, a session-scoped grant on the directory. Android, Harmony: see below | No copy; a session-scoped grant on the directory |
 
-`pickDirectory` on Android and on HarmonyOS phones and tablets has no usable
+`pick.directory` on Android and on HarmonyOS phones and tablets has no usable
 system folder picker. Pass a `defaultPath` directory in lxapp storage (for
 example `lx://userdata/`) to get the in-app chooser; without one the call
-rejects with `E_NOT_SUPPORTED`, so catch it and fall back to `pickFile(s)`.
+rejects with `E_NOT_SUPPORTED`, so catch it and fall back to `pick.files`.
 
 ## Media outputs
 
-`pickMedia`, `compressImage`, `compressVideo`, and video thumbnails return
+`lx.pick.media` on mobile, `lx.media.compressImage`, `compressVideo` and `videoThumbnail` return
 temp files. `lx.fs.copy` keeps a copy; `lx.fs.rename` moves it into userdata or
 usercache.
 
@@ -190,14 +195,13 @@ Limits come from host [`storage`](../app/project.md#storage):
 
 ## Host cache
 
-`lx.host.cache` exists only in the [Control app](../app/control-app.md), for a
-product-wide "clear cache" setting:
+`lx.host.cache` works only in the [Control app](../app/control-app.md); elsewhere
+its calls fail `E_PERMISSION_DENIED`. For a product-wide "clear cache" setting:
 
 ```ts
-const cache = lx.host.cache;
-if (!cache) return; // not the Control app
-const reclaimableBytes = await cache.size();
-const result = await cache.clear();
+if (lx.app.info.role !== 'control') return;
+const reclaimableBytes = await lx.host.cache.size();
+const result = await lx.host.cache.clear();
 // result: { freedBytes, skippedActivePaths, webview, failures }
 ```
 

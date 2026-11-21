@@ -674,9 +674,14 @@ impl HostEvents for WindowsAdapter {
             .unwrap_or_else(|p| p.into_inner())
             .as_ref()
             .is_some_and(|facts| facts.dark);
-        let (shell, failure) = (self.shell.clone(), failure.cloned());
+        let (shell, failure, token) = (self.shell.clone(), failure.cloned(), self.token);
         self.dispatcher.post(Box::new(move || {
-            crate::recovery::show(page, failure.as_ref(), dark, &|key, fallback| {
+            let back = failure.is_some() && shell.can_go_back(token);
+            let leave = shell.clone();
+            let back = back.then(|| -> crate::recovery::Back {
+                std::sync::Arc::new(move || leave.go_back(token))
+            });
+            crate::recovery::show(page, failure.as_ref(), dark, back, &|key, fallback| {
                 shell.text(key, fallback)
             });
         }));

@@ -237,14 +237,23 @@ fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_api(ctx)?;
+    register_network_api(ctx)
 }
 
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getNetworkInfo(ts_return = "Promise<NetworkInfo>") = get_network_info;
-        fn onNetworkChange(
+        const network: "NetworkApi" = crate::namespace::network(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_network_api(ctx) {
+        namespace NetworkApi = crate::namespace::network(ctx)?;
+        const wifi: "WifiApi" = crate::namespace::wifi(ctx)?;
+        fn status(ts_return = "Promise<NetworkInfo>") = get_network_info;
+        fn watch(
             ts_params = "callback: NetworkChangeCallback",
             ts_return = "() => void"
         ) = on_network_change;

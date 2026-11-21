@@ -1,21 +1,39 @@
-// LxNavigator - Navigation component for LingXia apps
-// Similar to WeChat mini program navigator component
+// LxNavigator - a tappable link to a navigation target, for WebView pages.
 
-export type NavigatorOpenType =
-  | 'navigate'      // Push new page (default)
-  | 'redirect'      // Replace current page
-  | 'navigateBack'  // Go back
-  | 'reLaunch'      // Restart app with new page
-  | 'switchTab'     // Switch to tab page
-  | 'exit'          // Exit current lxapp
-  | 'tel';          // Make a phone call
+/** A JSON value a page param can hold. */
+export type NavigatorParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | NavigatorParamValue[]
+  | { [key: string]: NavigatorParamValue };
+export type NavigatorParams = Record<string, NavigatorParamValue>;
+export type NavigatorChannel = 'release' | 'draft';
 
-// What to open. Inferred when omitted: app-id → lxapp, url → url, else page.
-export type NavigatorTarget = 'page' | 'lxapp' | 'url';
+/**
+ * Where a tap goes: the targets of `lx.nav.go`, plus `{ back }`. Each branch
+ * types the others' keys `never`.
+ */
+export type LinkTarget =
+  | { page: string; params?: NavigatorParams; tab?: never; app?: never; url?: never; back?: never }
+  | { tab: string; page?: never; app?: never; url?: never; back?: never; params?: never }
+  | {
+      app: string;
+      page?: string;
+      params?: NavigatorParams;
+      channel?: NavigatorChannel;
+      version?: string;
+      tab?: never;
+      url?: never;
+      back?: never;
+    }
+  | { url: string; page?: never; tab?: never; app?: never; back?: never; params?: never }
+  | { back: number; page?: never; tab?: never; app?: never; url?: never; params?: never };
 
-// Where to open it; mirrors `as` of lx.surface.openUrl / openPage.
-// A url defaults to `external`; a page without `as` follows open-type.
-export type NavigatorUrlPlacement = 'external' | 'tab' | 'aside';
+// Where to open it; mirrors `as` of lx.surface.openUrl / openPage. A url
+// opens in the in-app browser unless `as="external"` hands it to the system.
+export type NavigatorUrlPlacement = 'external' | 'main' | 'aside';
 export type NavigatorPagePlacement = 'float' | 'window';
 export type NavigatorPlacement = NavigatorUrlPlacement | NavigatorPagePlacement;
 export type NavigatorEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -28,10 +46,6 @@ export type NavigatorInteraction = {
   dismiss?: 'tapOutside' | 'manual';
   modal?: boolean;
 };
-
-export type NavigatorQueryValue = string | number | boolean | null | undefined;
-export type NavigatorQuery = Record<string, NavigatorQueryValue>;
-export type NavigatorChannel = 'release' | 'draft';
 
 export interface LxNavigatorEventDetail {
   success?: boolean;
@@ -48,33 +62,22 @@ type LingXiaBridgeCall = {
 };
 
 type NavigateOptions = {
-  url: string;
-  page: string | null;
-  path: string | null;
-  query: string | null;
-  openType: NavigatorOpenType;
-  target: NavigatorTarget;
-  delta: number;
+  to: LinkTarget;
+  replace: boolean;
+  reset: boolean;
   placement: NavigatorPlacement | null;
   edge: string | null;
   position: string | null;
   chrome: string | null;
   size: string | null;
   interaction: string | null;
-  appId: string | null;
-  channel: NavigatorChannel | null;
-  targetVersion: string | null;
-  phoneNumber: string | null;
 };
 
 export type LxNavigatorAttributes = {
   // Navigation
-  url?: string;                    // http(s) URL
-  page?: string;                   // Configured page name from lxapp.json; routes are unsupported
-  query?: string;                  // JSON-encoded page query params
-  'open-type'?: NavigatorOpenType; // Navigation type
-  target?: NavigatorTarget;        // What to open (inferred if not specified)
-  delta?: number;                  // Pages to go back (for navigateBack)
+  to?: string;                     // JSON-encoded LinkTarget
+  replace?: boolean;               // { page }: replace the current page instead of pushing
+  reset?: boolean;                 // { page } | { tab }: clear the stack to it
 
   // Placement
   as?: NavigatorPlacement;
@@ -83,14 +86,6 @@ export type LxNavigatorAttributes = {
   chrome?: NavigatorWindowChrome;      // as="window"
   size?: string;                       // JSON-encoded NavigatorSize
   interaction?: string;                // JSON-encoded NavigatorInteraction (float/window)
-
-  // Open external lxapp
-  'app-id'?: string;              // Target lxapp ID
-  channel?: NavigatorChannel; // Target lxapp channel
-  'target-version'?: string;      // Exact target lxapp version
-
-  // Phone call
-  'phone-number'?: string;        // Phone number for tel open-type
 
   // Hover effect
   'hover-class'?: string;         // CSS class for hover state
@@ -124,22 +119,15 @@ declare global {
 export class LxNavigatorElement extends HTMLElement {
   static get observedAttributes() {
     return [
-      "url",
-      "page",
-      "query",
-      "open-type",
-      "target",
-      "delta",
+      "to",
+      "replace",
+      "reset",
       "as",
       "edge",
       "position",
       "chrome",
       "size",
       "interaction",
-      "app-id",
-      "channel",
-      "target-version",
-      "phone-number",
       "hover-class",
       "hover-stop-propagation",
       "hover-start-time",
@@ -298,33 +286,35 @@ export class LxNavigatorElement extends HTMLElement {
     }
   }
 
+  /** The target, when set as a property rather than the `to` attribute. */
+  to: LinkTarget | undefined;
+
   private handleClick(e: MouseEvent) {
     e.preventDefault();
     const attr = (name: string) => this.getAttribute(name);
-    const url = attr('url') || '';
-    const appId = attr('app-id');
-    const options: NavigateOptions = {
-      url,
-      page: attr('page'),
-      // Read the removed attribute only to provide a forward-only runtime error
-      // for untyped HTML callers instead of silently ignoring it.
-      path: attr('path'),
-      query: attr('query'),
-      openType: (attr('open-type') || 'navigate') as NavigatorOpenType,
-      target: (attr('target') as NavigatorTarget | null) ?? (appId ? 'lxapp' : url ? 'url' : 'page'),
-      delta: parseInt(attr('delta') || '1', 10),
+    const flag = (name: string) => {
+      const value = attr(name);
+      return value !== null && value !== 'false';
+    };
+    let to: LinkTarget | undefined;
+    try {
+      to = this.to ?? (this.readJsonObject('to', attr('to')) as LinkTarget | undefined);
+      if (!to) throw new Error('lx-navigator needs a to target');
+    } catch (error) {
+      this.dispatchFail(error);
+      return;
+    }
+    void this.navigate({
+      to,
+      replace: flag('replace'),
+      reset: flag('reset'),
       placement: attr('as') as NavigatorPlacement | null,
       edge: attr('edge'),
       position: attr('position'),
       chrome: attr('chrome'),
       size: attr('size'),
       interaction: attr('interaction'),
-      appId,
-      channel: attr('channel') as NavigatorChannel | null,
-      targetVersion: attr('target-version'),
-      phoneNumber: attr('phone-number'),
-    };
-    void this.navigate(options);
+    });
   }
 
   private async navigate(options: NavigateOptions) {
@@ -418,106 +408,88 @@ export class LxNavigatorElement extends HTMLElement {
   }
 
   private async performNavigation(options: NavigateOptions) {
-    const { url, placement } = options;
-    const delta = Number.isFinite(options.delta) && options.delta > 0 ? options.delta : 1;
-
-    if (options.path !== null) {
-      throw new Error('path is not supported; pass the configured page name in page');
+    const { to, placement } = options;
+    // An app target may also name its page.
+    const named = (['page', 'tab', 'app', 'url', 'back'] as const)
+      .filter((key) => to[key] !== undefined && !(key === 'page' && to.app !== undefined));
+    if (named.length !== 1) {
+      throw new Error('to names exactly one of page, tab, app, url or back');
+    }
+    const isPage = named[0] === 'page';
+    if (options.replace && !isPage) throw new Error('replace applies to { page }');
+    if (options.reset && !isPage && to.tab === undefined) {
+      throw new Error('reset applies to { page } or { tab }');
+    }
+    if (placement && !isPage && to.url === undefined) {
+      throw new Error('as applies to { page } or { url }');
     }
 
-    if (options.openType === 'tel') {
-      if (!options.phoneNumber) {
-        throw new Error('tel requires phone-number attribute');
-      }
-      await this.callHost('device.makePhoneCall', { phoneNumber: options.phoneNumber });
+    if (to.back !== undefined) {
+      if (!Number.isInteger(to.back) || to.back < 1) throw new Error('back must be a positive integer');
+      await this.callHost('navigation.navigateBack', { delta: to.back });
       return;
     }
 
-    if (options.openType === 'exit') {
-      await this.callHost('navigator.navigateBackApp');
+    if (to.tab !== undefined) {
+      await this.callHost(options.reset ? 'navigation.reLaunch' : 'navigation.switchTab', { page: to.tab });
       return;
     }
 
-    if (options.openType === 'navigateBack') {
-      if (options.target === 'lxapp') {
-        await this.callHost('navigator.navigateBackApp');
-      } else {
-        await this.callHost('navigation.navigateBack', { delta });
-      }
+    if (to.app !== undefined) {
+      const target: Record<string, unknown> = { appId: to.app };
+      if (to.page) target.page = to.page;
+      if (to.params) target.query = to.params;
+      if (to.channel) target.channel = to.channel;
+      if (to.version) target.targetVersion = to.version;
+      await this.callHost('navigator.navigateToApp', target);
       return;
     }
 
-    switch (options.target) {
-      case 'url': {
-        if (!url) {
-          throw new Error('target url requires url');
-        }
-        if (!placement || placement === 'external') {
-          await this.callHost('device.openUrl', { url, target: 'external' });
-          return;
-        }
-        if (placement !== 'tab' && placement !== 'aside') {
-          throw new Error(`a url opens as external, tab, or aside; got ${placement}`);
-        }
-        const surfaceOptions: Record<string, unknown> = { as: placement };
-        if (options.edge) surfaceOptions.edge = options.edge;
-        const size = this.readJsonObject('size', options.size);
-        if (size) surfaceOptions.size = size;
-        await this.callSurface('openUrl', { url, options: surfaceOptions });
+    if (to.url !== undefined) {
+      if (to.url.startsWith('tel:')) {
+        await this.callHost('device.makePhoneCall', { phoneNumber: to.url.slice('tel:'.length) });
         return;
       }
-      case 'lxapp':
-        if (!options.appId) {
-          throw new Error('target lxapp requires app-id');
-        }
-        if (placement) {
-          throw new Error('as is not supported for target lxapp');
-        }
-        await this.callHost('navigator.navigateToApp', this.buildLxAppTarget(options));
+      if (placement === 'external') {
+        await this.callHost('device.openUrl', { url: to.url, target: 'external' });
         return;
-      case 'page':
-        break;
-      default:
-        throw new Error(`Unsupported target: ${options.target}`);
+      }
+      if (placement && placement !== 'main' && placement !== 'aside') {
+        throw new Error(`a url opens as external, main, or aside; got ${placement}`);
+      }
+      const surfaceOptions: Record<string, unknown> = {};
+      if (placement) surfaceOptions.as = placement;
+      if (options.edge) surfaceOptions.edge = options.edge;
+      const size = this.readJsonObject('size', options.size);
+      if (size) surfaceOptions.size = size;
+      await this.callSurface('openUrl', { url: to.url, options: surfaceOptions });
+      return;
     }
 
-    const target = this.buildPageTarget(options);
-    if (!target) {
-      throw new Error(`${options.openType} requires page`);
-    }
+    const page = to.page?.trim();
+    if (!page) throw new Error('page must be a configured page name');
 
     if (placement) {
       if (placement !== 'float' && placement !== 'window') {
         throw new Error(`a page opens as float or window; got ${placement}`);
       }
+      if (options.replace || options.reset) throw new Error('as cannot combine with replace or reset');
       const surfaceOptions: Record<string, unknown> = { as: placement };
-      if (target.query) surfaceOptions.query = target.query;
+      if (to.params) surfaceOptions.params = to.params;
       if (options.position) surfaceOptions.position = options.position;
       if (options.chrome) surfaceOptions.chrome = options.chrome;
       const size = this.readJsonObject('size', options.size);
       if (size) surfaceOptions.size = size;
       const interaction = this.readJsonObject('interaction', options.interaction);
       if (interaction) surfaceOptions.interaction = interaction;
-      await this.callSurface('openPage', { page: target.page, options: surfaceOptions });
+      await this.callSurface('openPage', { page, options: surfaceOptions });
       return;
     }
 
-    switch (options.openType) {
-      case 'navigate':
-        await this.callHost('navigation.navigateTo', target);
-        break;
-      case 'redirect':
-        await this.callHost('navigation.redirectTo', target);
-        break;
-      case 'switchTab':
-        await this.callHost('navigation.switchTab', target);
-        break;
-      case 'reLaunch':
-        await this.callHost('navigation.reLaunch', target);
-        break;
-      default:
-        throw new Error(`Unsupported openType: ${options.openType}`);
-    }
+    const target = { page, ...(to.params ? { query: to.params } : {}) };
+    if (options.reset) await this.callHost('navigation.reLaunch', target);
+    else if (options.replace) await this.callHost('navigation.redirectTo', target);
+    else await this.callHost('navigation.navigateTo', target);
   }
 
   private readJsonObject(name: string, raw?: string | null): Record<string, unknown> | undefined {
@@ -527,38 +499,6 @@ export class LxNavigatorElement extends HTMLElement {
       throw new Error(`${name} must be an object`);
     }
     return parsed as Record<string, unknown>;
-  }
-
-  private readQuery(raw?: string | null): NavigatorQuery | undefined {
-    return this.readJsonObject('query', raw) as NavigatorQuery | undefined;
-  }
-
-  private buildPageTarget(options: {
-    page?: string | null;
-    query?: string | null;
-  }): { page: string; query?: NavigatorQuery } | null {
-    const page = options.page?.trim();
-    if (!page) return null;
-    const query = this.readQuery(options.query);
-    return {
-      page,
-      ...(query ? { query } : {}),
-    };
-  }
-
-  private buildLxAppTarget(options: {
-    appId?: string | null;
-    page?: string | null;
-    query?: string | null;
-    channel?: NavigatorChannel | null;
-    targetVersion?: string | null;
-  }): Record<string, unknown> {
-    const target: Record<string, unknown> = { appId: options.appId };
-    const pageTarget = this.buildPageTarget(options);
-    if (pageTarget) Object.assign(target, pageTarget);
-    if (options.channel) target.channel = options.channel;
-    if (options.targetVersion) target.targetVersion = options.targetVersion;
-    return target;
   }
 
 }

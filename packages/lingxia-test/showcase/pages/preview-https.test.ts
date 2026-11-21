@@ -34,7 +34,7 @@ interface HttpsHandleState {
 }
 
 /**
- * `previewMedia` accepts a remote http(s) source without `downloadFile`; the fixture serves it.
+ * `media.preview` accepts a remote http(s) source without a download; the fixture serves it.
  * The host overlay is native, so this asserts the JS handle: presented while
  * the session is still open, `current.source.path` verbatim, teardown via
  * AbortSignal. Dismissal gestures and desktop window identity are out of
@@ -70,7 +70,7 @@ async function presentHttpsPreview(
 
   const started = await app.logic.eval({ timeout: 20_000 }, ({ lx }, key, url, type) => {
     const controller = new AbortController();
-    const handle = lx.previewMedia({ path: url, type, signal: controller.signal });
+    const handle = lx.media.preview({ path: url, type, signal: controller.signal });
     const state: HttpsPreviewSession = { handle, controller, presented: false, completed: null, completedError: null };
     (globalThis as unknown as Sessions)[key] = state;
     handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
@@ -113,7 +113,7 @@ async function presentHttpsPreview(
 test('present a remote image without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-IMAGE-001',
   covers: [
-    'lx.previewMedia',
+    'lx.media.preview',
     'PreviewMediaHandle.presented',
     'PreviewMediaHandle.current',
   ],
@@ -126,7 +126,7 @@ test('present a remote image without downloading first', {
 test('present a remote video without downloading first', {
   id: 'DESKTOP-PREVIEW-HTTPS-VIDEO-001',
   covers: [
-    'lx.previewMedia',
+    'lx.media.preview',
     'PreviewMediaHandle.presented',
     'PreviewMediaHandle.current',
   ],

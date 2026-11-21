@@ -258,6 +258,16 @@ pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
 }
 
+/// The bezel window drawn around `window`.
+pub(crate) fn device_frame_window(window: isize) -> Option<isize> {
+    native::frame_window(window)
+}
+
+/// The bezel around `window` is on screen, not only registered.
+pub(crate) fn device_frame_shown(window: isize) -> bool {
+    native::frame_shown(window)
+}
+
 /// Hide the bezel and companion overlays for a parked page parent so it cannot
 /// sit beside the workspace as a second runner silhouette.
 pub(crate) fn hide_window_device_frame(window: isize) {

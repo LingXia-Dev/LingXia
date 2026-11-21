@@ -1,7 +1,7 @@
 //! A test run's view of the dialogs an lxapp's Logic opens.
 //!
-//! `lx.showToast` reports each toast it presented; `lx.showModal` (and
-//! `alert` / `confirm`) and `lx.showActionSheet` ask before presenting and
+//! `lx.ui.toast` reports each toast it presented; `lx.ui.alert` /
+//! `confirm` and `lx.ui.actionSheet` ask before presenting and
 //! report how a drawn one closed. With no hook registered, or a hook that is
 //! not watching the app, every dialog is presented as usual; a watching test
 //! run either records a drawn dialog or, once its spec queued answers,
@@ -30,7 +30,7 @@ pub struct ModalShown {
     pub show_cancel: bool,
 }
 
-/// An `lx.showActionSheet` about to be presented.
+/// An `lx.ui.actionSheet` about to be presented.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionSheetShown {
     /// Item labels, in order.

@@ -59,6 +59,13 @@ const PAGE_SVC_READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// overlay on this signal.
 static HOME_FIRST_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+static RELAUNCH_OBSERVER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Runs as a reLaunch begins, while the pages it ends are still on screen.
+pub fn set_relaunch_observer(observer: fn()) {
+    let _ = RELAUNCH_OBSERVER.set(observer);
+}
+
 fn notify_home_first_ready_once(appid: &str) {
     if lingxia_app_context::home_app_id() != Some(appid) {
         return;
@@ -275,6 +282,8 @@ pub struct PageState {
     /// The View asked to confirm leaving (unsaved changes). Belongs to the
     /// current document: a new document, or leaving the stack, clears it.
     leave_guard: bool,
+    /// Why the instance was disposed, for the result its opener receives.
+    leave_reason: Option<crate::page::runtime::CloseReason>,
     // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
     /// The page's own `maxTextScale`, which may only lower the lxapp's.
@@ -530,6 +539,7 @@ impl PageInstance {
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             leave_guard: false,
+            leave_reason: None,
             presentation_orientation: None,
             orientation_override: page_config.get_orientation_override(),
             max_text_scale: page_config.max_text_scale,
@@ -2425,6 +2435,21 @@ impl PageInstance {
             .unwrap_or(false)
     }
 
+    pub(crate) fn set_leave_reason(&self, reason: crate::page::runtime::CloseReason) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.leave_reason = Some(reason);
+        }
+    }
+
+    /// The disposal reason recorded for this instance, consumed once.
+    pub(crate) fn take_leave_reason(&self) -> Option<crate::page::runtime::CloseReason> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|mut state| state.leave_reason.take())
+    }
+
     pub(crate) fn set_leave_guard(&self, enabled: bool) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.leave_guard = enabled;
@@ -2538,6 +2563,11 @@ impl PageInstance {
                     // with its old document, Logic page object, data and no
                     // new onLoad. See `relaunch_retirees`.
                     let retiring = lxapp.relaunch_retirees();
+                    if !retiring.is_empty()
+                        && let Some(observer) = RELAUNCH_OBSERVER.get()
+                    {
+                        observer();
+                    }
                     for page in &retiring {
                         if page.owes_on_unload() {
                             page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
@@ -2582,8 +2612,8 @@ impl PageInstance {
                         .is_some_and(|page| id == &page.instance_id_string())
                 }) {
                     return Err(LxAppError::InvalidParameter(format!(
-                        "navigateTo target '{path}' is already on the page stack; \
-                         use lx.switchTab or lx.navigateBack to return to it."
+                        "'{path}' is already on the page stack; \
+                         use lx.nav.go({{ tab }}) or lx.nav.back() to return to it."
                     )));
                 }
             }
@@ -3094,6 +3124,7 @@ mod tests {
             config_load_error: None,
             enable_pull_down_refresh: false,
             leave_guard: false,
+            leave_reason: None,
             presentation_orientation: None,
             orientation_override: OrientationOverride::default(),
             max_text_scale: None,

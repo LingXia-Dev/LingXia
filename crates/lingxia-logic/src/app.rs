@@ -19,7 +19,7 @@ mod update;
 /// the language the app renders in is not, and lives on
 /// `lx.host.displayLanguage`.
 #[derive(Debug, Clone, IntoJSObject)]
-struct AppBaseInfo {
+struct HostInfo {
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
     /// `"Harmony"`. Matches the View-side `useLxHost().os` value.
     #[ts_type = "HostOs"]
@@ -32,12 +32,12 @@ struct AppBaseInfo {
     sdk_version: String,
 }
 
-/// Read the host app's identity: OS, product name, product version, and SDK
-/// runtime version.
-fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
+/// The host app's identity: OS, product name, product version, and SDK runtime
+/// version.
+fn host_info() -> JSResult<HostInfo> {
     let app_cfg =
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
-    Ok(AppBaseInfo {
+    Ok(HostInfo {
         os: lingxia_platform::os_label().to_string(),
         product_name: lingxia_app_context::product_name()
             .unwrap_or(app_cfg.product_name.as_str())
@@ -52,7 +52,7 @@ fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
 /// Control app only: quitting the product is not an lxapp's decision. Other
 /// lxapps get a permission error.
 ///
-/// If the user should confirm first, call `lx.showModal(...)` and invoke this
+/// If the user should confirm first, call `lx.ui.confirm(...)` and invoke this
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppExit)?;
@@ -195,9 +195,10 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
     init_base(ctx)?;
     register_app_controls(ctx)?;
-    init_control_namespace(ctx, &app)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    unsupported_autostart(ctx, &app)?;
     banner::init(ctx, &app)?;
     notification::init(ctx, &app)?;
     cache::init(ctx, &app)?;
@@ -221,21 +222,6 @@ pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     appearance::init_follower(ctx, &app)
 }
 
-/// `lx.host.control` — the members that edit product-wide settings, and the one
-/// writer for each. Injected only into the ControlApp session, so
-/// `lx.host.control !== undefined` reports that identity. Every member
-/// behind it still authorizes on its own.
-fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::is_control_app(ctx) {
-        return Ok(());
-    }
-    let control = JSObject::new(ctx);
-    display_language::init_control(ctx, &control)?;
-    appearance::init_control(ctx, &control)?;
-    app.set("control", control)?;
-    Ok(())
-}
-
 rong::js_api! {
     fn register_app_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
@@ -247,7 +233,7 @@ rong::js_api! {
     fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         const env: "HostAppEnv" = env().as_str();
-        fn getBaseInfo = get_app_base_info;
+        const info: "Readonly<HostInfo>" = host_info()?;
     }
 }
 
@@ -260,4 +246,39 @@ rong::js_api! {
             ts_return = "Promise<boolean>"
         ) = set_app_badge;
     }
+}
+
+fn unsupported_autostart(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+    crate::capability::unsupported_namespace(
+        ctx,
+        app,
+        "autostart",
+        "app.autostart",
+        &["isEnabled", "setEnabled"],
+    )?;
+    Ok(())
+}
+
+/// `lx.host.terminal` where the host has no terminal: present, every call
+/// fails `E_NOT_SUPPORTED`.
+pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
+    let terminal = JSObject::new(ctx);
+    const FEATURE: &str = "terminal";
+    crate::capability::unsupported_namespace(
+        ctx,
+        &terminal,
+        "settings",
+        FEATURE,
+        &["get", "update", "reset", "onChange"],
+    )?;
+    crate::capability::unsupported_namespace(
+        ctx,
+        &terminal,
+        "colorSchemes",
+        FEATURE,
+        &["list", "import", "createPreview"],
+    )?;
+    crate::capability::unsupported_namespace(ctx, &terminal, "fonts", FEATURE, &["list"])?;
+    app_namespace(ctx)?.set("terminal", terminal)?;
+    Ok(())
 }

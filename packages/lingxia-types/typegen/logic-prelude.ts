@@ -5,31 +5,8 @@ declare const systemDownloadsPathBrand: unique symbol;
 /** Managed paths and relative userdata paths; system Downloads references are excluded. */
 export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
-/** JSON-shaped state; undefined removes a property in setData. */
-export type PageDataValue<T> = unknown extends T ? T : T extends string | number | boolean | null | undefined ? T
-  : T extends (...args: never[]) => unknown ? never
-  : T extends object ? { [K in keyof T]: PageDataValue<T[K]> } : never;
-
-export type NoReservedPageMembers<T> = {
-  [K in keyof T]: K extends 'data' ? T[K]
-    : K extends keyof PageInstance | '_setData' | '_cancelPendingSetData' ? never : T[K];
-};
-
-export interface PageConfig<TData extends object = Record<string, unknown>> {
-  data?: TData & PageDataValue<TData>;
-  onLoad?: (options?: PageLoadOptions) => void | Promise<void>;
-  onShow?: () => void | Promise<void>;
-  onReady?: () => void | Promise<void>;
-  onHide?: () => void | Promise<void>;
-  onUnload?: () => void | Promise<void>;
-  onPullDownRefresh?: () => void | Promise<void>;
-}
-
-/** Lifecycle hook names a `Page({...})` config may declare. */
-export type PageLifecycleName = Exclude<keyof PageConfig, 'data'>;
-
 /** Lifecycle hook names an `App({...})` config may declare. */
-export type AppLifecycleName = Exclude<keyof AppConfig, 'globalData'>;
+export type AppLifecycleName = keyof AppConfig;
 
 /**
  * What a key that differs from a lifecycle hook only in case resolves to, so
@@ -40,7 +17,7 @@ export type MisspelledLifecycle<K extends string> = {
 };
 
 /**
- * Applied to the custom half of a `Page`/`App` config. `onload` and `onShow`
+ * Applied to the custom half of an `App` config. `onload` and `onShow`
  * are one keystroke apart from real hooks and the runtime would simply never
  * call the misspelling, so the closest case-insensitive match is rejected.
  * Genuinely different names stay ordinary methods.
@@ -147,9 +124,20 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    */
   surface?: PageSurface;
   /**
-   * Available when this page was opened by `lx.navigateTo(...)`.
+   * Available when this page was pushed by `lx.nav.go(...)`.
    */
   opener?: PageMessagePort;
+  /**
+   * Set what the opener's `result` resolves with when this page leaves, by
+   * Back or any other way. JSON only.
+   */
+  setResult(value: JsonValue): void;
+  /**
+   * Leave this page, with `value` as its result when given. A pushed page
+   * goes back; a surface page closes its surface. Throws for a root or tab
+   * page, and for a pushed page that is not on top.
+   */
+  close(value?: JsonValue): Promise<void>;
   setData<TPatch extends Record<string, unknown>>(
     data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
   ): void;
@@ -215,20 +203,14 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 }
 
 /**
- * Download options.
+ * Where `lx.network.download` writes, chosen by `to`:
  *
- * - `app`: app-owned temporary output, or durable `lx://userdata` output when
- *   `filePath` is set
- * - `downloads`: user-visible system Downloads output, requiring a host
- *   privilege grant and a native Downloads grant
- *
- * Default: `app`.
+ * - omitted: a temporary file this lxapp owns
+ * - a path: durable output under `lx://userdata` (relative paths resolve there)
+ * - `'downloads'`: the user's Downloads folder, which needs the host's
+ *   downloads grant
  */
-export type DownloadOptions<TDestination extends DownloadDestination = DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadOptions : AppDownloadOptions;
-
-export type DownloadResultForDestination<TDestination extends DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
+export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
 export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
   | {
@@ -271,9 +253,52 @@ export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgr
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
+  /** Resumes a paused download from where it stopped; does nothing in any other state. */
   resume(): Promise<void>;
 }
+
+/** The params page `N` declares; any JSON params before the registry exists. */
+export type NavParams<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly params: infer T } } ? T : PageQuery
+    : PageQuery;
+
+/** The result page `N` declares; any JSON value before the registry exists. */
+export type NavResult<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly result: infer T } } ? T : JsonValue
+    : JsonValue;
+
+/** The messages page `N` declares as `{ in, out }`; undeclared when it has none. */
+export type NavMessages<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly messages: infer M } } ? M : never
+    : never;
+
+/** What the opener sends to a page declaring `messages: type<{ in; out }>()`; anything when undeclared. */
+export type MessageIn<M> = [M] extends [never] ? unknown : M extends { in: infer I } ? I : never;
+/** What such a page sends back to its opener; anything when undeclared. */
+export type MessageOut<M> = [M] extends [never] ? unknown : M extends { out: infer O } ? O : never;
+
+/** A page to push or replace. `params` is required when the page's declared params have a required key. */
+export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
+    & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
+
+/** What `lx.nav.go` returns for a pushed page. */
+export type PageHandle<R = JsonValue, M = never> = {
+    /** Settles when the page is on screen; rejects when it could not open. */
+    readonly opened: Promise<void>;
+    /** Settles once, after the page's `onUnload`. */
+    readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    /**
+     * Delivers `message` to the page's `page.opener.onMessage` handlers, at
+     * once and uncopied. Until the page first subscribes, messages wait for it.
+     */
+    send(message: MessageIn<M>): void;
+    /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
+    onMessage(handler: (message: MessageOut<M>) => void): () => void;
+    /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
+    close(): void;
+};
 
 declare global {
   /**
@@ -285,10 +310,44 @@ declare global {
    */
   interface LxAppPages {}
 
-  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
-  // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). env re-declares
-  // the generated member doc-only; tsc rejects the merge if the types drift.
+  /** The lxapp's tab roots, one key per tab page. Generated beside `LxAppPages`. */
+  interface LxAppTabs {}
+
+  /** Each page's `definePage` type, generated for Logic; `lx.nav` reads params and result from it. */
+  interface LxAppPageTypes {}
+
+  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  interface NavApi {
+    /**
+     * Push a page. The handle is returned at once: `opened` settles when the
+     * page is on screen, `result` when it leaves.
+     *
+     * Throws `E_INVALID_ARG` for a malformed target (an unknown key, params
+     * over 8 KB as JSON) or when ten pages are already stacked
+     * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
+     * not declare. `opened` rejects only when the platform fails to show it.
+     */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
+    /** Replace the current page; the new page inherits its opener and pending result. */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
+    /**
+     * Switch tabs, open another lxapp, or open a URL in the in-app browser.
+     * A `{ tab }` takes no params. Rejects `E_NOT_FOUND` for an undeclared tab.
+     */
+    go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
+    /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
+    back(n?: number): Promise<void>;
+    /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
+    reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
+    /** Back to the lxapp that opened this one. */
+    leaveApp(): Promise<void>;
+  }
+
+  // HostAppApi/FileSystemApi members are emitted from the Rust js_api
+  // metadata; these merges only add what Rong cannot express — the
+  // capability members' docs and doc comments (js_api consts cannot carry docs).
+  // host.env, fs.userData and fs.userCache re-declare the generated members
+  // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
@@ -298,44 +357,48 @@ declare global {
     readonly env: HostAppEnv;
 
     /**
-     * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports('app.autostart')` always
-     * agree, so `lx.host.autostart?.…` and the query are interchangeable.
+     * Launch-at-startup control. Where the host cannot register a startup
+     * item every call fails `E_NOT_SUPPORTED`; ask `lx.supports('app.autostart')`
+     * first.
      */
-    autostart?: AutostartApi;
+    readonly autostart: AutostartApi;
 
     /**
-     * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports('app.notification')` always agree.
+     * Local notifications. Where the host cannot post them every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.notification')` first.
      */
-    notification?: NotificationApi;
+    readonly notification: NotificationApi;
 
     /**
-     * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports('app.banner')`
-     * always agree.
+     * Product-drawn desktop banner (top-right). Off desktop every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.banner')` first.
      */
-    banner?: BannerApi;
+    readonly banner: BannerApi;
 
-    /** The language this lxapp renders in. Every lxapp follows it. */
+    /**
+     * The language this lxapp renders in. Every lxapp follows it; only the
+     * Control app changes it.
+     */
     readonly displayLanguage: DisplayLanguageApi;
 
-    /** The light/dark scheme this lxapp renders in. */
+    /**
+     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
+     * only the Control app changes it.
+     */
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time. Use
-     * `lx.host.control !== undefined` to inspect that identity.
+     * Product-wide cache reporting and clearing for a settings screen. Control
+     * app only: another lxapp's calls fail `E_PERMISSION_DENIED`.
      */
-    readonly control?: ControlApi;
+    readonly cache: AppCacheApi;
 
     /**
-     * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; presence agrees with
-     * `lx.host.control !== undefined`.
+     * Terminal product settings, for the host-bundled Terminal Settings lxapp.
+     * Without `capabilities.terminal` every call fails `E_NOT_SUPPORTED`; ask
+     * `lx.supports('terminal')` first.
      */
-    cache?: AppCacheApi;
+    readonly terminal: TerminalApi;
 
     /**
      * Take over host updates for the rest of this process. Irreversible: the
@@ -346,40 +409,41 @@ declare global {
     claimCustomUpdate(): void;
   }
 
-  /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {}
+  interface FileSystemApi {
+    /** The root of this lxapp's durable files; a relative path resolves here. */
+    readonly userData: 'lx://userdata';
+    /** The root of this lxapp's cache, which the host may clear. */
+    readonly userCache: 'lx://usercache';
+  }
+
+  interface NetworkApi {
+    /**
+     * Download over HTTP(S), streamed to disk. Returns the task before the
+     * transfer starts: `result` settles once, `progress` streams, `cancel()`
+     * aborts.
+     */
+    download(url: string, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable path under `lx://userdata`. */
+    download(
+      url: string,
+      options: AppDownloadOptions & { to: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary file this lxapp owns. */
+    download(
+      url: string,
+      options?: AppDownloadOptions & { to?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
+    download(url: string, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    download(url: string, options?: DownloadOptions): DownloadTask<DownloadResult>;
+  }
 
   interface Lx {
-    /**
-     * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
-     */
-    readonly terminal?: TerminalApi;
-
-    /** Download to the downloads directory. */
-    downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath: string },
-    ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath?: undefined },
-    ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    downloadFile<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
-
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of
      * repeating `get<T>()` at each call site.
      */
-    getStorage<S extends StorageSchema>(): TypedStorage<S>;
+    storage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
 
@@ -397,7 +461,7 @@ type StorageEntry<S extends object> = {
 }[StorageKey<S>];
 
 /**
- * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Schema-typed view of the same store `lx.storage()` returns.
  * Runtime is identical; only the key/value types are pinned.
  *
  * The schema constrains what this handle writes and reads, not what the store

@@ -1,10 +1,7 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
-const require = createRequire(new URL('../../../packages/lingxia-view/package.json', import.meta.url));
-const source = require('esbuild').buildSync({ entryPoints: [fileURLToPath(new URL('../lxapp/pages/todo/index.ts', import.meta.url))], bundle: true, write: false, format: 'iife' }).outputFiles[0].text;
+import { bundlePage, mountPage } from './page-harness.mjs';
+const source = bundlePage('../lxapp/pages/todo/index.ts');
 function fixture(seed = {}) {
   const saved = new Map(Object.entries(seed));
   let page, readFailure = false, writeFailure = false, writes = 0, reads = 0, hold, readHold;
@@ -12,9 +9,7 @@ function fixture(seed = {}) {
     async get(key) { reads++; if (readHold) await readHold; if (readFailure) throw Error('read unavailable'); return structuredClone(saved.get(key)); },
     async set(key, value) { if (hold) await hold; if (writeFailure) throw Error('disk full'); writes++; saved.set(key, structuredClone(value)); },
   };
-  vm.runInNewContext(source, { lx: { getStorage: () => storage }, Page(definition) {
-    page = { ...definition, data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); }, async flush() {} };
-  } });
+  page = mountPage(source, { lx: { storage: () => storage } });
   return { page, saved, writes: () => writes, reads: () => reads, readHold(value) { readHold = value; }, readFailure(value) { readFailure = value; }, writeFailure(value) { writeFailure = value; }, hold(value) { hold = value; } };
 }
 test('empty legacy task lists restore their saved filter and migrate in one write', async () => {

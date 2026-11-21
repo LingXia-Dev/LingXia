@@ -22,7 +22,7 @@ where
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             js_internal_error(format!(
-                "pickMedia failed to create temp directory {}: {}",
+                "pick.media failed to create temp directory {}: {}",
                 parent.display(),
                 e
             ))

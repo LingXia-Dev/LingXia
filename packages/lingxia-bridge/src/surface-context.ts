@@ -1,6 +1,6 @@
 /**
- * The lxapp's adaptive context, from the host: the same value Logic's
- * `lx.surface.watchContext()` delivers, so a View picks its layout without
+ * The lxapp's adaptive context, from the host: the value Logic's
+ * `page.env` reads (plus the viewport in pixels), so a View picks its layout without
  * Logic forwarding it through `setData`. It describes the lxapp's main
  * presentation; a page shown in an aside, float or window sees the same value.
  */

@@ -1,6 +1,6 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 /// <reference types="@lingxia/types/logic-globals" preserve="true" />
-import type { PageContract } from "@lingxia/types/page";
+import type { PageApi, PageContract } from "@lingxia/types/page";
 export type { PageContract } from "@lingxia/types/page";
 import type {
   ActionSheetAnswer,
@@ -42,6 +42,7 @@ import type {
   Screenshot,
   TerminalDriver,
   ToastRecord,
+  NavDriverTarget,
 } from "@lingxia/types/automation";
 
 /**
@@ -81,7 +82,7 @@ export interface TestOptions {
    */
   id?: string;
   /**
-   * Requirement ids this test proves, e.g. `AC-OPEN-01` or `lx.getStorage`;
+   * Requirement ids this test proves, e.g. `AC-OPEN-01` or `lx.storage`;
    * a file's `test.configure({ covers })` adds to them. Not selection `tags`.
    */
   covers?: readonly string[];
@@ -104,7 +105,7 @@ export interface TestOptions {
    * `start`, or on its home page. Needs an
    * isolated run (`lxdev test --profile`); if the rollback fails, the rest of
    * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
-   * the `lx.getStorage()` keys those globs match, which keep their state at
+   * the `lx.storage()` keys those globs match, which keep their state at
    * the end of the test (see `ProfileRestoreOptions`).
    */
   restoreProfile?: boolean | RestoreProfileOptions;
@@ -134,8 +135,8 @@ export interface TestOptions {
 export interface TestStart {
   /** Configured page name (from lxapp.json). */
   page: string;
-  /** Query forwarded to the page. */
-  query?: Record<string, unknown>;
+  /** Params forwarded to the page. */
+  params?: Record<string, unknown>;
 }
 
 /** `requires`: run inputs a test cannot mean anything without. */
@@ -158,7 +159,7 @@ export interface TestRequirements {
 
 /** `restoreProfile: { keep }`. */
 export interface RestoreProfileOptions {
-  /** `lx.getStorage()` key globs that survive the rollback (`*`, `?`). */
+  /** `lx.storage()` key globs that survive the rollback (`*`, `?`). */
   keep: string[];
 }
 
@@ -360,37 +361,43 @@ type CheckedResult<R> = [Awaited<R>] extends [Jsonable<Awaited<R>>] ? unknown : 
 };
 type JsonArgs<A extends unknown[]> = A & { [K in keyof A]: JsonMember<A[K]> };
 
-/** A page instance as app Logic sees it (`getCurrentPages()` entries). */
+/** A page on the stack, as `pageStack()` returns it. */
 export interface LogicPage<TData = Record<string, unknown>> {
   readonly route: string;
   readonly data: TData;
   setData(patch: Record<string, unknown>): void;
   /** Resolves once pending `setData` writes reached the View. */
   flush(): Promise<void>;
+  /** The object a `definePage` page's `setup` received, with `navigationBar`, `refresh` and `video`. */
+  readonly page?: PageApi<any, any, any>;
 }
 
 /** A page whose declared methods are not typed: any member may be read. */
 export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData> & {
-  /** Page methods declared in `Page({...})`. */
+  /** Actions the page's `setup` returns. */
   readonly [member: string]: unknown;
 };
 
-/** The app instance as app Logic sees it (`getApp()`). */
+/** The object `App({...})` registered, as `appInstance()` returns it. */
 export interface LogicApp {
   readonly [member: string]: unknown;
 }
 
 /**
  * What a function passed to `t.app.logic.eval(fn)` receives. It runs inside
- * the app's Logic runtime, so these are the app's own `lx`, `getApp` and
- * `getCurrentPages` — not globals of the test context.
+ * the app's Logic runtime, so `lx` is the app's own. `appInstance` and
+ * `pageStack` reach runtime state app code has no global for.
  */
 export interface LogicScope {
   readonly lx: Lx & { automation(): Automation };
-  getApp<T extends LogicApp = LogicApp>(): T | null;
-  getCurrentPages<T extends LogicPage<any> = AnyLogicPage>(): T[];
+  /** The object `App({...})` registered; `null` before it ran. */
+  appInstance<T extends LogicApp = LogicApp>(): T | null;
+  /** The page stack, bottom first. */
+  pageStack<T extends LogicPage<any> = AnyLogicPage>(): T[];
   /** A live page by instance id, surface pages included; `undefined` once it is gone. */
   getPage<T extends LogicPage<any> = AnyLogicPage>(instanceId: string): T | undefined;
+  /** The object the top page's `setup` received: `navigationBar`, `refresh`, `video`. */
+  currentPage(): PageApi<any, any, any> | undefined;
 }
 
 type PageGlobal<K extends string, Fallback> = typeof globalThis extends { [P in K]: infer V } ? V : Fallback;
@@ -687,6 +694,11 @@ export interface TestChrome {
   elements(options?: { scope?: string }): Promise<ChromeElement[]>;
   /** Waits (5 s) for exactly one element with the label, then taps it. */
   tap(target: ChromeTarget, options?: { timeout?: number }): Promise<GestureTrace>;
+  /**
+   * The host window, in the frame `elements` reports bounds in. A page's
+   * `t.app.view.viewport()` is in its own points, which a desktop device frame scales.
+   */
+  viewport(): Promise<{ left: number; top: number; width: number; height: number }>;
 }
 
 /** The tab bar (`t.app.tabBar`); on a desktop shell, the app's sidebar rows. */
@@ -777,7 +789,7 @@ export type PageInvokeCalls<A> = {
 /**
  * One live page instance, fixed when `t.app.page()` resolved: it never
  * follows navigation or a replacement, and every call on it rejects once
- * the instance is gone. Type it with the page's `PageContract`.
+ * the instance is gone. Type it with `typeof page` or a `PageContract`.
  */
 export interface TestPage<C extends PageContract> {
   readonly instanceId: string;
@@ -785,7 +797,7 @@ export interface TestPage<C extends PageContract> {
   readonly name: string;
   /** This instance's View. */
   readonly view: TestView;
-  /** This instance's Logic `data`, as `setData` delivers it to the View. */
+  /** This instance's Logic `data`, as `page.update` delivers it to the View. */
   data(): Promise<C["data"]>;
   /** The contract's public actions, invoked through the page's own bridge. */
   readonly actions: PageActionCalls<C["actions"]>;
@@ -823,12 +835,13 @@ export interface NavWaitOptions {
   timeout?: number;
 }
 
-/** `t.app.nav.to` / `redirect` / `switchTab` / `relaunch` options. */
-export interface NavOptions extends NavWaitOptions {
-  /** Configured page name (from lxapp.json). */
-  page: string;
-  /** Query forwarded to the destination page. */
-  query?: Record<string, unknown>;
+/** Where `t.app.nav.go` / `reset` land: a configured page with its params, or a tab. */
+export type NavTarget = NavDriverTarget;
+
+/** `t.app.nav.go` options. */
+export interface NavGoOptions extends NavWaitOptions {
+  /** Replace the current page instead of pushing (rejects tab targets). */
+  replace?: boolean;
 }
 
 /** A navigation bar button `t.app.nav.press` can press. */
@@ -842,14 +855,10 @@ export interface NavBackOptions extends NavWaitOptions {
 
 /** `t.app.nav`: the page stack. Actions resolve to the landed page. */
 export interface TestNav {
-  /** Push a page onto the stack. */
-  to(options: NavOptions): Promise<PageInfo>;
-  /** Replace the current page (rejects tab-bar targets). */
-  redirect(options: NavOptions): Promise<PageInfo>;
-  /** Switch to a configured tab page. */
-  switchTab(options: NavOptions): Promise<PageInfo>;
-  /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
-  relaunch(options: NavOptions): Promise<PageInfo>;
+  /** Push `{ page }`, replace with `{ replace: true }`, or switch to `{ tab }`. */
+  go(target: NavTarget, options?: NavGoOptions): Promise<PageInfo>;
+  /** Unload every page (cached tab pages included) and open a fresh instance of the target. */
+  reset(target: NavTarget, options?: NavWaitOptions): Promise<PageInfo>;
   /** Pop pages programmatically; a leave guard is not asked. */
   back(options?: NavBackOptions): Promise<PageInfo>;
   /**
@@ -1013,7 +1022,7 @@ export interface TestClock {
 
 /**
  * `t.app.dialogs`: the dialogs the app's Logic opens during this test, all
- * recorded. Toasts are always drawn. Modals (`lx.showModal`, `alert`,
+ * recorded. Toasts are always drawn. Dialogs (`lx.ui.alert`,
  * `confirm`) and action sheets are drawn unless an answer is queued for the
  * next one or strict answer mode is explicitly enabled.
  * An answer no dialog used fails the test when it ends. Each test starts
@@ -1024,7 +1033,7 @@ export interface TestDialogs {
   toasts(): Promise<ToastRecord[]>;
   /** Modals opened so far, with the answer each got (the user's, when drawn). */
   modals(): Promise<ModalRecord[]>;
-  /** `lx.showActionSheet` calls so far, with the answer each got. */
+  /** `lx.ui.actionSheet` calls so far, with the answer each got. */
   actionSheets(): Promise<ActionSheetRecord[]>;
   /**
    * Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }`
@@ -1130,7 +1139,7 @@ export interface ProfileFixture {
   checkpoint(): Promise<ProfileCheckpoint>;
   /**
    * Roll the app's data back to `checkpoint` (or its id). With `keep`, the
-   * `lx.getStorage()` keys those globs match keep their current state;
+   * `lx.storage()` keys those globs match keep their current state;
    * `kept` lists the ones that existed.
    */
   restore(checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions): Promise<ProfileRestoreResult>;
@@ -1141,7 +1150,7 @@ export interface ProfileFixture {
 /** `t.app.profile.restore` options. */
 export interface ProfileRestoreOptions {
   /**
-   * `lx.getStorage()` keys whose current state survives the rollback: globs
+   * `lx.storage()` keys whose current state survives the rollback: globs
    * over the whole key (`*` any run of characters, `?` one). A matching key
    * keeps its current value, one added since the checkpoint stays, and one
    * deleted since stays deleted. Files always roll back.

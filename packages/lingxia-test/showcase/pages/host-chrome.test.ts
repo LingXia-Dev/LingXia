@@ -18,7 +18,7 @@ test('a tap on a tab label switches to that tab and shows its declared chrome', 
   requires: { input: ['touch', 'mouse'], chrome: true, hostInput: true },
 }, async (t) => {
   const { app } = bindFixture(t, 'CHROME-TAB-001');
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   // home declares navigationStyle custom: no host navigation bar to press.
   await expect.poll(async () => (await app.chrome.elements({ scope: 'navigationBar' })).length).toBe(0);
 
@@ -40,8 +40,8 @@ test('the navigation bar back button returns to the page below', {
   requires: { input: ['touch', 'mouse'], chrome: true, hostInput: true },
 }, async (t) => {
   const { app } = bindFixture(t, 'CHROME-BACK-001');
-  await app.nav.relaunch({ page: 'api' });
-  await app.nav.to({ page: 'system' });
+  await app.nav.reset({ page: 'api' });
+  await app.nav.go({ page: 'system' });
   await waitForCurrentPage(app, 'system');
   await app.chrome.tap({ label: 'Back', scope: 'navigationBar' });
   await waitForCurrentPage(app, 'api');

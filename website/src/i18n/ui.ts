@@ -58,7 +58,7 @@ export const ui = {
           tag: 'Bridge',
           runs: 'Rust runtime',
           owns: 'Moves data & events',
-          desc: 'setData, streams, channels, and native calls. The typed seam between the two worlds.',
+          desc: 'Page state, streams, channels, and native calls. The typed seam between the two worlds.',
         },
         {
           tag: 'Logic',
@@ -158,7 +158,7 @@ export const ui = {
         label: 'Session driver',
         title: 'lxdev',
         desc: 'Connects to the running session to automate the UI, inspect both JavaScript contexts, run tests, capture screenshots, and stream every layer of logs.',
-        command: 'lxdev lxapp nav to home',
+        command: 'lxdev lxapp nav go home',
         bullets: ['Browser, host window, and lxapp page automation', 'Logic eval and page DOM eval', 'Repeatable tests, screenshots, and filtered logs'],
       },
       loopLabel: 'The closed loop',
@@ -199,7 +199,7 @@ export const ui = {
       items: [
         { name: '@lingxia/react', desc: 'React hooks + native component wrappers for Views' },
         { name: '@lingxia/html', desc: 'DOM helpers for HTML-only Views' },
-        { name: '@lingxia/types', desc: 'TypeScript declarations for Page({}), App({}), lx.*' },
+        { name: '@lingxia/types', desc: 'TypeScript declarations for definePage, App({}), lx.*' },
         { name: '@lingxia/bridge', desc: 'Low-level bridge runtime and invocation helpers' },
         { name: '@lingxia/elements', desc: 'Custom elements behind the framework wrappers' },
         { name: '@lingxia/test', desc: 'Authoring SDK for cases lxdev test runs against a live app' },
@@ -285,7 +285,7 @@ export const ui = {
           tag: 'Bridge 桥',
           runs: 'Rust 运行时',
           owns: '传递数据与事件',
-          desc: 'setData、流、通道与原生调用。连接两端的类型化接缝。',
+          desc: '页面状态、流、通道与原生调用。连接两端的类型化接缝。',
         },
         {
           tag: 'Logic 逻辑',
@@ -385,7 +385,7 @@ export const ui = {
         label: '会话驱动器',
         title: 'lxdev',
         desc: '连接运行中的会话，自动化 UI、检查两个 JavaScript context、运行测试、截图，并汇总每一层日志。',
-        command: 'lxdev lxapp nav to home',
+        command: 'lxdev lxapp nav go home',
         bullets: ['浏览器、宿主窗口与 lxapp 页面自动化', 'Logic eval 与页面 DOM eval', '可重复测试、截图与日志过滤'],
       },
       loopLabel: '完整闭环',
@@ -426,7 +426,7 @@ export const ui = {
       items: [
         { name: '@lingxia/react', desc: 'React Hooks + 视图用原生组件封装' },
         { name: '@lingxia/html', desc: '纯 HTML 视图的 DOM 辅助函数' },
-        { name: '@lingxia/types', desc: 'Page({})、App({})、lx.* 的 TypeScript 声明' },
+        { name: '@lingxia/types', desc: 'definePage、App({})、lx.* 的 TypeScript 声明' },
         { name: '@lingxia/bridge', desc: '底层桥运行时与调用辅助' },
         { name: '@lingxia/elements', desc: '框架封装背后的自定义元素' },
         { name: '@lingxia/test', desc: '编写用例的 SDK，由 lxdev test 对真实应用执行' },

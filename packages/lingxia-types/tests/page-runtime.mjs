@@ -66,4 +66,87 @@ assert.throws(
   () => run(`__registerPage('taken', { signal: null }); __LX_CREATE_PAGE__('taken');`),
   /reserved by the runtime/,
 );
-console.log('Page state validation, acknowledgement, and teardown checks passed.');
+// The opener's result settles once, after the page leaves.
+const settled = async (expr) => JSON.parse(JSON.stringify(await run(expr)));
+run(`globalThis.resultPage = __LX_CREATE_PAGE__('home');
+globalThis.first = resultPage._bindResult();
+globalThis.second = resultPage._bindResult();`);
+assert.deepEqual(await settled('first'), { status: 'canceled', reason: 'opener' });
+run(`resultPage.setResult({ id: 7 });
+resultPage._settleResult('user');
+resultPage._settleResult('app_closed');`);
+assert.deepEqual(await settled('second'), { status: 'ok', value: { id: 7 } });
+run(`globalThis.third = resultPage._bindResult(); resultPage._settleResult('user');`);
+assert.deepEqual(await settled('third'), { status: 'canceled', reason: 'user' }, 'a new opener starts without a result');
+assert.throws(() => run('resultPage.setResult(new Date())'), /class instances/);
+run(`globalThis.left = 0; resultPage._leave = () => { left += 1; };
+globalThis.fourth = resultPage._bindResult(); resultPage.close('done'); resultPage._settleResult('user');`);
+assert.equal(run('left'), 1);
+assert.deepEqual(await settled('fourth'), { status: 'ok', value: 'done' });
+console.log('Page state validation, acknowledgement, teardown and result checks passed.');
+
+// definePage: setup's hooks and actions run as the page; update diffs a draft.
+run(`globalThis.define = (def) => Object.defineProperty(def, Symbol.for('lingxia.page'), { value: true });
+__registerPage('order', define({
+  data: { list: [{ n: 1 }, { n: 2 }], meta: { a: 1, b: 2 } },
+  setup(page) {
+    page.update(d => { d.meta.a = 10; });
+    globalThis.orderPage = page;
+    return {
+      onLoad(params) { globalThis.loadedWith = params; },
+      actions: { bump() { page.update(d => { d.list[1].n = 3; delete d.meta.b; }); } },
+    };
+  },
+}));
+globalThis.orderSvc = __LX_CREATE_PAGE__('pages/order/index', 'order', 'o1', false, JSON.stringify({ name: 'order', params: { id: 7 } }));
+acks.length = 0;`);
+assert.equal(run('orderPage.data.meta.a'), 10, 'an update in setup is the initial data');
+assert.equal(run('orderPage.name'), 'order');
+assert.equal(run('orderPage.params.id'), 7);
+run('orderSvc.onLoad({ id: 8 })');
+assert.equal(run('orderPage.params.id'), 8, 'onLoad refreshes params');
+run('orderSvc.bump()');
+await new Promise(resolve => setTimeout(resolve, 30));
+assert.deepEqual(JSON.parse(JSON.stringify(run('acks[0].ops'))), [
+  { op: 'replace', path: '/list/1/n', value: 3 },
+  { op: 'remove', path: '/meta/b' },
+], 'update sends only what changed');
+assert.throws(() => run('orderPage.update(d => { orderPage.update(e => {}); })'), /inside page.update/);
+assert.throws(() => run('orderPage.update(async d => { d.list = []; })'), /synchronous/);
+assert.throws(() => run('orderPage.update(d => ({ ...d }))'), /in place/);
+assert.equal(run('orderPage.data.list.length'), 2, 'a rejected recipe changes nothing');
+// The draft copies only what a recipe writes; these are the writes a naive copy-on-write loses.
+run(`orderPage.update(d => { d.extra = { a: 1 }; d.extra.c = 2; });
+orderPage.update(d => { d.list.push({ n: 4 }); d.list[0].n = 9; });
+orderPage.update(d => { d.kept = d.list.filter(item => item.n > 3); });`);
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.extra'))), { a: 1, c: 2 }, 'a replaced object keeps edits made through the draft');
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.list'))), [{ n: 9 }, { n: 3 }, { n: 4 }], 'a grown array keeps edited items');
+assert.deepEqual(JSON.parse(JSON.stringify(run('orderPage.data.kept'))), [{ n: 9 }, { n: 4 }], 'drafts read out of a derived array');
+run('orderPage.update(d => { d.kept[0].n = 1; })');
+assert.equal(run('orderPage.data.list[0].n'), 9, 'a derived array shares nothing with its source');
+assert.throws(() => run('orderPage.update(d => { d.self = d; })'), /acyclic/);
+assert.throws(() => run('orderPage.update(d => { d.when = new Date(); })'), /class instances/);
+assert.equal(run('orderPage.data.when'), undefined, 'a rejected write changes nothing');
+run('globalThis.leaked = null; orderPage.update(d => { leaked = d.extra; })');
+assert.throws(() => run('leaked.a = 5'), /only usable inside the recipe/);
+assert.throws(
+  () => run(`__registerPage('loose', define({ setup: () => ({ save() {} }) })); __LX_CREATE_PAGE__('loose', null, 'l1');`),
+  /under actions/,
+);
+assert.throws(
+  () => run(`__registerPage('later', define({ setup: async () => ({}) })); __LX_CREATE_PAGE__('later', null, 'l2');`),
+  /synchronous/,
+);
+run('orderSvc._cancelPendingSetData(); orderPage.update(d => { d.meta.a = 0; });');
+assert.equal(run('orderPage.data.meta.a'), 10, 'update after unload is ignored');
+
+// A View `<link to>`: back pops, a push settles when the page is on screen.
+run(`globalThis.navs = [];
+globalThis.lx = { nav: {
+  back(n) { navs.push(['back', n]); return Promise.resolve(); },
+  go(target) { navs.push(['go', target.page ?? target.tab]); return target.page ? { opened: Promise.resolve() } : Promise.resolve(); },
+} };`);
+await run(`__lxNavForView({ back: 2 })`);
+await run(`__lxNavForView({ page: 'detail' })`);
+await run(`__lxNavForView({ tab: 'home' })`);
+assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['back', 2], ['go', 'detail'], ['go', 'home']]));

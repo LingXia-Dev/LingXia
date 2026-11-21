@@ -42,14 +42,14 @@ pub(crate) enum LogicRoute {
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
-    ShellOpenApp,
+    SurfaceOpenApp,
     ShellOpenBuiltin,
-    ShellOpenDeclared,
+    SurfaceOpenDeclaredPlacement,
     ShellGetApp,
     ShellGetDeclared,
     ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
-    SurfaceBringToFront,
+    ShellActivate,
     #[cfg(feature = "terminal")]
     TerminalSettingsGet,
     #[cfg(feature = "terminal")]
@@ -115,14 +115,14 @@ impl LogicRoute {
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
-        Self::ShellOpenApp,
+        Self::SurfaceOpenApp,
         Self::ShellOpenBuiltin,
-        Self::ShellOpenDeclared,
+        Self::SurfaceOpenDeclaredPlacement,
         Self::ShellGetApp,
         Self::ShellGetDeclared,
         Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
-        Self::SurfaceBringToFront,
+        Self::ShellActivate,
         #[cfg(feature = "terminal")]
         Self::TerminalSettingsGet,
         #[cfg(feature = "terminal")]
@@ -153,9 +153,9 @@ impl LogicRoute {
         Self::TerminalWindowsSetEnabled,
     ];
 
-    /// `lx.terminal.*` serves the host-bundled Settings surface. The
-    /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`,
-    /// `lx.surface.bringToFront`) admit every lxapp session and then scope
+    /// `lx.host.terminal.*` serves the host-bundled Settings surface. The
+    /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`)
+    /// admit every lxapp session and then scope
     /// what each may touch with [`AttentionScope`]. Every other direct route
     /// belongs to the ControlApp.
     ///
@@ -190,12 +190,13 @@ impl LogicRoute {
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
-            | Self::ShellOpenApp
+            | Self::SurfaceOpenApp
             | Self::ShellOpenBuiltin
-            | Self::ShellOpenDeclared
+            | Self::SurfaceOpenDeclaredPlacement
             | Self::ShellGetApp
             | Self::ShellGetDeclared
             | Self::ShellSetAppDisplay
+            | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
@@ -203,8 +204,7 @@ impl LogicRoute {
             | Self::AppNotificationCancel
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
-            | Self::AppBannerDismiss
-            | Self::SurfaceBringToFront => RouteAudience::AppSessionOnly,
+            | Self::AppBannerDismiss => RouteAudience::AppSessionOnly,
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet
             | Self::TerminalSettingsUpdate
@@ -232,18 +232,12 @@ impl LogicRoute {
             Self::AppSetBadge => "lx.host.setBadge",
             Self::AppCacheSize => "lx.host.cache.size",
             Self::AppCacheClear => "lx.host.cache.clear",
-            Self::AppGetAppearancePreference => "lx.host.control.appearance.getPreference",
-            Self::AppSetAppearancePreference => "lx.host.control.appearance.setPreference",
-            Self::AppWatchAppearancePreference => "lx.host.control.appearance.watchPreference",
-            Self::AppGetDisplayLanguagePreference => {
-                "lx.host.control.displayLanguage.getPreference"
-            }
-            Self::AppSetDisplayLanguagePreference => {
-                "lx.host.control.displayLanguage.setPreference"
-            }
-            Self::AppWatchDisplayLanguagePreference => {
-                "lx.host.control.displayLanguage.watchPreference"
-            }
+            Self::AppGetAppearancePreference => "lx.host.appearance.getPreference",
+            Self::AppSetAppearancePreference => "lx.host.appearance.setPreference",
+            Self::AppWatchAppearancePreference => "lx.host.appearance.watchPreference",
+            Self::AppGetDisplayLanguagePreference => "lx.host.displayLanguage.getPreference",
+            Self::AppSetDisplayLanguagePreference => "lx.host.displayLanguage.setPreference",
+            Self::AppWatchDisplayLanguagePreference => "lx.host.displayLanguage.watchPreference",
             Self::AppCheckUpdate => "lx.host.checkUpdate",
             Self::AppApplyUpdate => "lx.host.checkUpdate.apply",
             Self::AppScreenshot => "lx.host.screenshot",
@@ -256,51 +250,51 @@ impl LogicRoute {
             Self::AppNotificationCancelAll => "lx.host.notification.cancelAll",
             Self::AppBannerShow => "lx.host.banner.show",
             Self::AppBannerDismiss => "lx.host.banner.dismiss",
-            Self::TraySetIcon => "lx.tray.setIcon",
-            Self::TraySetTitle => "lx.tray.setTitle",
-            Self::TraySetMenu => "lx.tray.setMenu",
-            Self::TrayOnClick => "lx.tray.onClick",
-            Self::TrayShow => "lx.tray.show",
-            Self::TrayHide => "lx.tray.hide",
+            Self::TraySetIcon => "lx.host.tray.setIcon",
+            Self::TraySetTitle => "lx.host.tray.setTitle",
+            Self::TraySetMenu => "lx.host.tray.setMenu",
+            Self::TrayOnClick => "lx.host.tray.onClick",
+            Self::TrayShow => "lx.host.tray.show",
+            Self::TrayHide => "lx.host.tray.hide",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
-            Self::ShellOpenApp => "lx.shell.openApp",
+            Self::SurfaceOpenApp => "lx.surface.openApp",
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
-            Self::ShellOpenDeclared => "lx.shell.openDeclared",
+            Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
             Self::ShellGetApp => "lx.shell.getApp",
             Self::ShellGetDeclared => "lx.shell.getDeclared",
             Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
-            Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
-            Self::SurfaceBringToFront => "lx.surface.bringToFront",
+            Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
+            Self::ShellActivate => "lx.shell.activate",
             #[cfg(feature = "terminal")]
-            Self::TerminalSettingsGet => "lx.terminal.settings.get",
+            Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
             #[cfg(feature = "terminal")]
-            Self::TerminalSettingsUpdate => "lx.terminal.settings.update",
+            Self::TerminalSettingsUpdate => "lx.host.terminal.settings.update",
             #[cfg(feature = "terminal")]
-            Self::TerminalSettingsReset => "lx.terminal.settings.reset",
+            Self::TerminalSettingsReset => "lx.host.terminal.settings.reset",
             #[cfg(feature = "terminal")]
-            Self::TerminalSettingsOnChange => "lx.terminal.settings.onChange",
+            Self::TerminalSettingsOnChange => "lx.host.terminal.settings.onChange",
             #[cfg(feature = "terminal")]
-            Self::TerminalSchemesList => "lx.terminal.colorSchemes.list",
+            Self::TerminalSchemesList => "lx.host.terminal.colorSchemes.list",
             #[cfg(feature = "terminal")]
-            Self::TerminalSchemesImport => "lx.terminal.colorSchemes.import",
+            Self::TerminalSchemesImport => "lx.host.terminal.colorSchemes.import",
             #[cfg(feature = "terminal")]
-            Self::TerminalPreviewCreate => "lx.terminal.colorSchemes.createPreview",
+            Self::TerminalPreviewCreate => "lx.host.terminal.colorSchemes.createPreview",
             #[cfg(feature = "terminal")]
-            Self::TerminalPreviewShow => "lx.terminal.colorSchemes.preview.show",
+            Self::TerminalPreviewShow => "lx.host.terminal.colorSchemes.preview.show",
             #[cfg(feature = "terminal")]
-            Self::TerminalPreviewClear => "lx.terminal.colorSchemes.preview.clear",
+            Self::TerminalPreviewClear => "lx.host.terminal.colorSchemes.preview.clear",
             #[cfg(feature = "terminal")]
-            Self::TerminalPreviewClose => "lx.terminal.colorSchemes.preview.close",
+            Self::TerminalPreviewClose => "lx.host.terminal.colorSchemes.preview.close",
             #[cfg(feature = "terminal")]
-            Self::TerminalFontsList => "lx.terminal.fonts.list",
+            Self::TerminalFontsList => "lx.host.terminal.fonts.list",
             #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsStatus => "lx.terminal.windows.status",
+            Self::TerminalWindowsStatus => "lx.host.terminal.windows.status",
             #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsInstall => "lx.terminal.windows.install",
+            Self::TerminalWindowsInstall => "lx.host.terminal.windows.install",
             #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsSetEnabled => "lx.terminal.windows.setEnabled",
+            Self::TerminalWindowsSetEnabled => "lx.host.terminal.windows.setEnabled",
         }
     }
 }
@@ -565,7 +559,7 @@ mod audience_tests {
     use lxapp::host::RouteAudience;
 
     /// The status item belongs to the product, not to whichever lxapp is
-    /// running. Adding a `lx.tray.*` method without a gate is the regression
+    /// running. Adding a `lx.host.tray.*` method without a gate is the regression
     /// this catches — the audience arm is exhaustive, so a new route cannot
     /// compile without choosing one, but it can still choose wrong.
     #[test]
@@ -573,9 +567,9 @@ mod audience_tests {
         let tray: Vec<LogicRoute> = LogicRoute::ALL
             .iter()
             .copied()
-            .filter(|route| route.name().starts_with("lx.tray."))
+            .filter(|route| route.name().starts_with("lx.host.tray."))
             .collect();
-        assert!(!tray.is_empty(), "lx.tray has routes to gate");
+        assert!(!tray.is_empty(), "lx.host.tray has routes to gate");
         for route in tray {
             assert_eq!(
                 route.audience(),
@@ -637,7 +631,7 @@ mod tests {
         for route in LogicRoute::ALL {
             let audience = inventory[route.name()].policy().audience();
             assert_eq!(audience, route.audience(), "{}", route.name());
-            let expected = if route.name().starts_with("lx.terminal.") {
+            let expected = if route.name().starts_with("lx.host.terminal.") {
                 RouteAudience::ControlSurfaceOnly
             } else if is_attention_route(*route) {
                 RouteAudience::AppSessionOnly
@@ -658,7 +652,6 @@ mod tests {
     fn is_attention_route(route: LogicRoute) -> bool {
         route.name().starts_with("lx.host.notification.")
             || route.name().starts_with("lx.host.banner.")
-            || route == LogicRoute::SurfaceBringToFront
     }
 
     #[test]
@@ -678,12 +671,11 @@ mod tests {
                 "lx.host.notification.cancelAll",
                 "lx.host.banner.show",
                 "lx.host.banner.dismiss",
-                "lx.surface.bringToFront",
             ]
         );
         // Composing other lxapps into the shell stays with the Control app.
         assert_eq!(
-            LogicRoute::ShellOpenApp.audience(),
+            LogicRoute::SurfaceOpenApp.audience(),
             RouteAudience::ControlAppOnly
         );
         // A guest renaming itself in host chrome is a spoofing vector.

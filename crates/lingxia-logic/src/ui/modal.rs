@@ -1,6 +1,5 @@
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::dismissal::USER_DISMISSED;
-use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
@@ -11,26 +10,55 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::LxApp;
 use lxapp::dialogs::{DialogDecision, ModalShown};
-use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
+use rong::{FromJSObject, JSContext, JSResult, JSValue, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
-/// Modal options from JavaScript (compatible with common mini-app APIs)
+/// `lx.ui.alert` / `lx.ui.confirm` options; a bare string is the title.
 #[derive(FromJSObject)]
 #[ts_skip]
+struct JSDialogOptions {
+    title: Option<String>,
+    message: Option<String>,
+    tone: Option<String>,
+    #[js_name = "confirmText"]
+    confirm_text: Option<String>,
+    #[js_name = "cancelText"]
+    cancel_text: Option<String>,
+}
+
 struct JSModalOptions {
     title: Option<String>,
     content: Option<String>,
-    #[js_name = "showCancel"]
     show_cancel: Option<bool>,
-    #[js_name = "cancelText"]
     cancel_text: Option<String>,
-    #[js_name = "cancelColor"]
     cancel_color: Option<String>,
-    #[js_name = "confirmText"]
     confirm_text: Option<String>,
-    #[js_name = "confirmColor"]
     confirm_color: Option<String>,
+}
+
+fn dialog_options(value: JSValue, show_cancel: bool) -> JSResult<JSModalOptions> {
+    let options = if value.is_string() {
+        JSDialogOptions {
+            title: Some(value.to_rust::<String>()?),
+            message: None,
+            tone: None,
+            confirm_text: None,
+            cancel_text: None,
+        }
+    } else {
+        value.to_rust::<JSDialogOptions>()?
+    };
+    let confirm_color = super::tone_color(options.tone.as_deref())?;
+    Ok(JSModalOptions {
+        title: options.title,
+        content: options.message,
+        show_cancel: Some(show_cancel),
+        cancel_text: options.cancel_text.filter(|_| show_cancel),
+        cancel_color: None,
+        confirm_text: options.confirm_text,
+        confirm_color,
+    })
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -55,12 +83,9 @@ struct ViewModalResult {
     confirm: bool,
 }
 
-/// Shows a confirmation modal.
-///
-/// Resolves `{ status: 'ok' }` when the user confirms and `{ status: 'canceled' }`
-/// only when the user dismisses or cancels the modal. Rejects when presentation
-/// fails or the host returns an invalid payload.
-async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObject> {
+/// Resolves true when the user confirmed, false when they dismissed or
+/// canceled. Rejects when presentation fails.
+async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
@@ -82,11 +107,7 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObjec
         DialogDecision::Answer(confirm) => confirm,
         DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
     };
-    if confirmed {
-        completed(&ctx)
-    } else {
-        canceled(&ctx)
-    }
+    Ok(confirmed)
 }
 
 /// A test run watching the app records the modal, or answers it instead
@@ -109,17 +130,14 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 }
 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.
-async fn alert(ctx: JSContext, mut options: JSModalOptions) -> JSResult<()> {
-    options.show_cancel = Some(false);
-    show_modal(ctx, options).await?;
+async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
+    show_modal(ctx, dialog_options(options, false)?).await?;
     Ok(())
 }
 
 /// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
-async fn confirm(ctx: JSContext, mut options: JSModalOptions) -> JSResult<bool> {
-    options.show_cancel = Some(true);
-    let result = show_modal(ctx, options).await?;
-    Ok(result.get::<_, String>("status")? == "ok")
+async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {
+    show_modal(ctx, dialog_options(options, true)?).await
 }
 
 /// Resolves true when the user confirmed.
@@ -185,12 +203,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn alert(ts_params = "options: AlertOptions", ts_return = "Promise<void>") = alert;
-        fn confirm(ts_params = "options: ConfirmOptions", ts_return = "Promise<boolean>") = confirm;
-        fn showModal(
-            ts_params = "options: ShowModalOptions",
-            ts_return = "Promise<ModalResult>"
-        ) = show_modal;
+        namespace UiApi = super::ui_namespace(ctx)?;
+        fn alert(ts_params = "options: string | AlertOptions", ts_return = "Promise<void>") = alert;
+        fn confirm(
+            ts_params = "options: string | ConfirmOptions",
+            ts_return = "Promise<boolean>"
+        ) = confirm;
     }
 }

@@ -1,39 +1,35 @@
 import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
-import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+import { bindFixture, expectReject, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 
-const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
-  ?? {} as Record<string, string>;
-// The published API intentionally omits autostart on mobile hosts. Keep the
+// Autostart refuses on mobile hosts. Keep the
 // behavioral case for desktop hosts, where the login-item contract exists.
 const MOBILE_HOSTS = new Set(['android', 'ios']);
-const autostartSkip = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+const autostartSkip = MOBILE_HOSTS.has(globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '')
   ? 'autostart is desktop only'
   : undefined;
 const DESKTOP_HOSTS = new Set(['macos', 'windows']);
-const bannerSkip = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+const bannerSkip = DESKTOP_HOSTS.has(globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '')
   ? undefined
   : 'host banners are desktop only';
 
-test('publish the lxapp sandbox roots through lx.env', {
+test('publish the lxapp sandbox roots on lx.fs', {
   id: 'ENV-001',
-  covers: ['lx.env', 'lx.env.USER_DATA_PATH', 'lx.env.USER_CACHE_PATH'],
+  covers: ['lx.fs.userData', 'lx.fs.userCache'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ENV-001');
 
   const env = await app.logic.eval(async ({ lx }) => {
     return {
-          keys: Object.keys(lx.env).sort(),
-          data: lx.env.USER_DATA_PATH,
-          cache: lx.env.USER_CACHE_PATH,
-          // A second read must return the same roots — env is a snapshot, not a probe.
-          stable: lx.env.USER_DATA_PATH === lx.env.USER_DATA_PATH,
-        };
+      data: lx.fs.userData,
+      cache: lx.fs.userCache,
+      // A second read must return the same roots: they are constants, not probes.
+      stable: lx.fs.userData === lx.fs.userData,
+    };
   });
 
-  expect(env.keys).toEqual(['USER_CACHE_PATH', 'USER_DATA_PATH']);
   expect(env.data).toMatch(/^lx:\/\//);
   expect(env.cache).toMatch(/^lx:\/\//);
   expect(env.data).not.toBe(env.cache);
@@ -100,23 +96,23 @@ test('set and clear the host app badge without leaving one behind', {
 
 test('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.host.setBadge', 'lx.tray.show', 'lx.tray.hide'],
+  covers: ['lx.host.setBadge', 'lx.host.tray.show', 'lx.host.tray.hide'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); lx.tray.hide(); } catch {} return true;
+      try { await lx.host.setBadge(null); lx.host.tray.hide(); } catch {} return true;
     });
   });
 
   // A declared tray has a status item from the start but stays hidden until
   // `show()`, so "the item took the value" is not "the user can see it".
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -205,14 +201,14 @@ test('reject a badge value that is neither a string, a number, nor null', {
 
 test('answer checkUpdate with a decision instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
-  covers: ['lx.host.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
+  covers: ['lx.host.checkUpdate', 'lx.app.onUpdateReady', 'lx.app.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-UPDATE-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
     const decision = await lx.host.checkUpdate();
-    const manager = lx.getUpdateManager();
+    const manager = lx.app;
     const ready = manager.onUpdateReady(() => {});
     const failed = manager.onUpdateFailed(() => {});
     ready();
@@ -234,18 +230,18 @@ test('answer checkUpdate with a decision instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.control.displayLanguage.setPreference'],
+  covers: ['lx.host.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.control?.displayLanguage?.setPreference);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.setPreference);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.control!.displayLanguage.setPreference(language);
+        await lx.host.displayLanguage.setPreference(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -291,13 +287,15 @@ test('request permission and replace local notifications by id', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
-  const offered = await app.logic.eval(({ lx }) => !!(lx.host.notification && typeof lx.host.notification.show === 'function'));
-  expect(offered).toBe(true);
+  // The member is always present; a host without notifications refuses the call.
   const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.notification'));
-  expect(supported).toBe(true);
+  if (!supported) {
+    await expectReject(() => app.logic.eval(({ lx }) => lx.host.notification.getPermission()), { message: 'E_NOT_SUPPORTED' });
+    return;
+  }
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-    const n = lx.host.notification!;
+    const n = lx.host.notification;
     const permission = await n.getPermission();
     // A pending OS prompt has nobody to answer it here, so only ask when
     // the answer is already known.
@@ -388,8 +386,8 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   id: 'HOSTAPP-BANNER-001',
   covers: [
     'lx.host.banner',
-    'lx.host.banner!.show',
-    'lx.host.banner!.dismiss',
+    'lx.host.banner.show',
+    'lx.host.banner.dismiss',
   ],
   app: SHOWCASE_APP_ID,
   reason: 'Desktop banner is Control-app / macOS / Windows only.',
@@ -398,8 +396,8 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.host.banner!.dismiss('automation-banner-toast');
-        await lx.host.banner!.dismiss('automation-banner-prompt');
+        await lx.host.banner.dismiss('automation-banner-toast');
+        await lx.host.banner.dismiss('automation-banner-prompt');
       } catch {}
             return true;
     });
@@ -411,7 +409,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
   expect(supported).toBe(true);
 
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const banner = lx.host.banner!;
+    const banner = lx.host.banner;
     const toast = await banner.show({
       id: 'automation-banner-toast',
       title: 'LingXia automation',
@@ -480,12 +478,10 @@ test('report autostart state and accept an idempotent write', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-AUTOSTART-001');
 
-  // Autostart is a login-item concept the inventory marks optional; a phone
-  // host does not build it, and asking is how a caller finds out.
-  const offered = await app.logic.eval(({ lx }) => !!(lx.host.autostart && typeof lx.host.autostart.isEnabled === 'function'));
-  if (!offered) {
-    const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.autostart'));
-    expect(supported).toBe(false);
+  // The member is always present; a host without login items refuses the call.
+  const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.autostart'));
+  if (!supported) {
+    await expectReject(() => app.logic.eval(({ lx }) => lx.host.autostart.isEnabled()), { message: 'E_NOT_SUPPORTED' });
     return;
   }
 
@@ -493,9 +489,9 @@ test('report autostart state and accept an idempotent write', {
   // registering or removing a real login item on the developer's machine.
   // The macOS login-item service answers well past an eval's default budget.
   const result = await app.logic.eval({ timeout: 45_000 }, async ({ lx }) => {
-    const before = await lx.host.autostart!.isEnabled();
-    await lx.host.autostart!.setEnabled(before);
-    const after = await lx.host.autostart!.isEnabled();
+    const before = await lx.host.autostart.isEnabled();
+    await lx.host.autostart.setEnabled(before);
+    const after = await lx.host.autostart.isEnabled();
     return { before, after };
   });
 
@@ -515,20 +511,20 @@ test('clear product caches while preserving live app storage', {
 
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }) => {
     const payload = 'x'.repeat(256 * 1024);
-    const cached = lx.env.USER_CACHE_PATH + '/automation/cache-probe.txt';
+    const cached = lx.fs.userCache + '/automation/cache-probe.txt';
     const durable = 'automation/cache-probe.txt';
     await lx.fs.write(cached, payload, { overwrite: true });
     await lx.fs.write(durable, payload, { overwrite: true });
 
-    await lx.getStorage().set('automation-cache-probe', 'keep');
-    const before = await lx.host.cache!.size();
-    const report = await lx.host.cache!.clear();
-    const after = await lx.host.cache!.size();
+    await lx.storage().set('automation-cache-probe', 'keep');
+    const before = await lx.host.cache.size();
+    const report = await lx.host.cache.clear();
+    const after = await lx.host.cache.size();
 
     const cachedSurvived = await lx.fs.exists(cached);
     const durableSurvived = await lx.fs.exists(durable);
-    const kv = await lx.getStorage().get('automation-cache-probe');
-    await lx.getStorage().delete('automation-cache-probe');
+    const kv = await lx.storage().get('automation-cache-probe');
+    await lx.storage().delete('automation-cache-probe');
     await lx.fs.remove(durable);
     await lx.fs.remove(cached);
 
@@ -548,38 +544,38 @@ test('clear product caches while preserving live app storage', {
 test('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [
-    'lx.tray',
-    'lx.tray.show',
-    'lx.tray.hide',
-    'lx.tray.setTitle',
-    'lx.tray.setMenu',
-    'lx.tray.setIcon',
-    'lx.tray.onClick',
+    'lx.host.tray',
+    'lx.host.tray.show',
+    'lx.host.tray.hide',
+    'lx.host.tray.setTitle',
+    'lx.host.tray.setMenu',
+    'lx.host.tray.setIcon',
+    'lx.host.tray.onClick',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-TRAY-001');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { lx.tray.hide(); } catch {} return true;
+      try { lx.host.tray.hide(); } catch {} return true;
     });
   });
 
   const result = await app.logic.eval(async ({ lx }) => {
-    lx.tray.show();
-    lx.tray.setTitle('LX');
-    lx.tray.setIcon('public/showcase-icon.svg');
-    lx.tray.setMenu([
+    lx.host.tray.show();
+    lx.host.tray.setTitle('LX');
+    lx.host.tray.setIcon('public/showcase-icon.svg');
+    lx.host.tray.setMenu([
       { label: 'Open Showcase', onClick: () => {} },
       { separator: true },
       { label: 'Disabled', enabled: false },
     ]);
-    const off = lx.tray.onClick(() => {});
+    const off = lx.host.tray.onClick(() => {});
     off();
-    lx.tray.setTitle(null);
-    lx.tray.hide();
+    lx.host.tray.setTitle(null);
+    lx.host.tray.hide();
     // Hiding a hidden tray stays a no-op.
-    lx.tray.hide();
+    lx.host.tray.hide();
     return { unsubscribe: typeof off };
   });
 
@@ -840,14 +836,14 @@ test('set and restore the name and icon the host shows for this app', {
         return { ok: false, code: (error as { code?: string }).code ?? '' };
       }
     };
-    const packageName = lx.getAppInfo().name;
+    const packageName = lx.app.info.name;
     const set = await attempt({ name: '  Showcase Brand  ', icon: 'public/showcase-icon.png' });
     const again = await attempt({ name: 'Showcase Brand', icon: 'public/showcase-icon.png' });
     return {
       set,
       again,
       svg: await attempt({ icon: 'public/showcase-icon.svg' }),
-      nameAfterSet: lx.getAppInfo().name === packageName,
+      nameAfterSet: lx.app.info.name === packageName,
       empty: await attempt({}),
       unknown: await attempt({ title: 'x' }),
       notObject: await attempt('x'),
@@ -874,14 +870,14 @@ test('set and restore the name and icon the host shows for this app', {
 
 test('refuse to move the root main out of main', {
   id: 'HOSTAPP-SHELL-OPENAPP-ROOT-001',
-  covers: ['lx.shell.openApp'],
+  covers: ['lx.surface.openApp'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SHELL-OPENAPP-ROOT-001');
 
   const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      await lx.shell.openApp(lx.getAppInfo().appId, { as: 'aside' });
+      await lx.surface.openApp(lx.app.info.appId, { as: 'aside' });
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -893,28 +889,29 @@ test('refuse to move the root main out of main', {
   expect(result.code).toBe('E_SURFACE_ROLE_LOCKED');
 });
 
-test('subscribe to and release the surface context listener', {
+test('read the page size class and release its watcher', {
   id: 'HOSTAPP-SURFACE-CTX-001',
-  covers: ['lx.surface', 'lx.surface.watchContext'],
+  covers: ['lx.surface'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
 
-  const result = await app.logic.eval(async ({ lx }) => {
-    let context: { canDock?: unknown } | undefined;
-    const first = lx.surface.watchContext(value => { context = value; });
-    const second = lx.surface.watchContext(() => {});
+  const result = await app.logic.eval(({ currentPage }) => {
+    const env = currentPage()!.env;
+    const first = env.watch(() => {});
+    const second = env.watch(() => {});
     first();
     second();
     // Releasing twice must stay inert rather than throwing.
     first();
     return {
       kinds: [typeof first, typeof second], distinct: first !== second,
-      canDock: typeof context?.canDock,
+      sizeClass: env.sizeClass, canDock: typeof env.canDock,
     };
   });
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
+  expect(['compact', 'regular']).toContain(result.sizeClass);
   expect(result.canDock).toBe('boolean');
 });

@@ -22,6 +22,7 @@ mod pull_to_refresh;
 mod registry;
 mod screenshot;
 mod secure_store;
+mod session;
 mod surface;
 mod toast_activator;
 mod ui_update;
@@ -56,6 +57,7 @@ pub use pull_to_refresh::{
     set_windows_pull_refresh_indicator_reader, set_windows_pull_to_refresh_handler,
     windows_pull_refresh_indicator,
 };
+pub use session::screen_locked;
 pub use surface::{
     WindowsUrlSurfaceWebTag, install_windows_aside_panel_bridge, set_windows_layout_plan_handler,
     set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,

@@ -13,7 +13,7 @@ use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     AppHandlerUnsub, BROWSER_TAB_CLOSED_EVENT, LxApp, LxAppError, PageQueryInput,
     PageSurfaceRequest, PageSurfaceTarget, PageTarget, app_handler_unsub, publish_app_event,
-    register_app_handler, try_get, unregister_app_handler_token,
+    register_app_handler, try_get,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -24,7 +24,6 @@ use rong::{
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -163,7 +162,7 @@ impl JSSurface {
         })
     }
 
-    #[js_method(rename = "postMessage")]
+    #[js_method(rename = "send")]
     fn post_message(&self, payload: JSValue) -> JSResult<()> {
         crate::message_port::emit_message(&self.message_port, payload)
     }
@@ -239,112 +238,24 @@ rong::js_api! {
             ts_params = "url: string, options?: OpenUrlOptions",
             ts_return = "Promise<TabSurface>"
         ) = open_url;
+        fn openApp(
+            ts_params = "appId: string, options?: OpenAppOptions",
+            ts_return = "Promise<AppSurface>"
+        ) = open_app;
         fn openDeclared(
-            ts_params = "id: string",
+            ts_params = "id: string, options?: OpenDeclaredOptions",
             ts_return = "Promise<DeclaredSurface | AppSurface>"
         ) = open_declared;
-        fn getByKey(
+        fn get(
             ts_params = "key: string",
             ts_return = "PageSurface | TabSurface | undefined"
         ) = get_surface;
-        fn watchContext(
-            ts_params = "handler: (context: SurfaceContext) => void",
-            ts_return = "() => void"
-        ) = surface_on_change;
-        fn bringToFront(
-            ts_params = "options?: BringToFrontOptions",
-            ts_return = "Promise<void>"
-        ) = surface_bring_to_front;
     }
-}
-
-#[derive(rong::FromJSObject)]
-#[ts_skip]
-struct BringToFrontOptions {
-    page: Option<String>,
-    query: Option<JSObject>,
-}
-
-/// `lx.surface.bringToFront(options?)` — bring the product forward on this
-/// lxapp, the way a notification tap with `{ kind: 'app', appId: <self> }`
-/// does: a docked aside comes back where it is, otherwise it opens in main,
-/// and `page` / `query` reach it as a reopen. A guest may do this only right
-/// after the person picked an action on its banner; the Control app may
-/// whenever it likes.
-async fn surface_bring_to_front(
-    ctx: JSContext,
-    options: Optional<BringToFrontOptions>,
-) -> JSResult<()> {
-    use lingxia_service::navigation::{
-        self, NavigationRequest, NavigationSource, NavigationTarget,
-    };
-    const ROUTE: &str = "lx.surface.bringToFront";
-
-    let invocation = authorization::require(&ctx, LogicRoute::SurfaceBringToFront)?;
-    let app = invocation.lxapp();
-    let BringToFrontOptions { page, query } = options.0.unwrap_or(BringToFrontOptions {
-        page: None,
-        query: None,
-    });
-    let query = match query {
-        None => serde_json::Map::new(),
-        Some(object) => {
-            let json = object.to_json_string().map_err(|error| {
-                crate::i18n::js_invalid_parameter_error(format!(
-                    "{ROUTE} query must be a plain object: {error}"
-                ))
-            })?;
-            match serde_json::from_str::<Value>(&json) {
-                Ok(Value::Object(map)) => map,
-                _ => {
-                    return Err(crate::i18n::js_invalid_parameter_error(format!(
-                        "{ROUTE} query must be a plain object"
-                    )));
-                }
-            }
-        }
-    };
-    let target = NavigationTarget::App {
-        appid: app.appid.clone(),
-        page,
-        query,
-    };
-    let navigation_error = |error: navigation::NavigationError| -> rong::RongJSError {
-        match error {
-            navigation::NavigationError::InvalidTarget(message) => {
-                crate::i18n::js_invalid_parameter_error(format!("{ROUTE} {message}"))
-            }
-            navigation::NavigationError::Unavailable(message)
-            | navigation::NavigationError::Internal(message) => {
-                HostError::new(rong::error::E_INTERNAL, message).into()
-            }
-        }
-    };
-    navigation::validate(&target).map_err(navigation_error)?;
-    if authorization::AttentionScope::of(&invocation)
-        .owner()
-        .is_some()
-        && !crate::user_activation::take(&app.appid, app.session_id())
-    {
-        return Err(crate::i18n::js_error_from_business_code_with_detail(
-            3000,
-            format!(
-                "{ROUTE}: a guest lxapp may come forward only right after the person picks an action on its lx.host.banner"
-            ),
-        ));
-    }
-    navigation::activate();
-    navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
-        .map_err(navigation_error)
 }
 
 rong::js_api! {
     fn register_shell_surface_api(ctx) {
         namespace ShellApi = shell_namespace(ctx)?;
-        fn openApp(
-            ts_params = "appId: string, options?: ShellOpenAppOptions",
-            ts_return = "Promise<AppSurface>"
-        ) = shell_open_app;
         fn getApp(
             ts_params = "appId: string",
             ts_return = "AppSurface | undefined"
@@ -357,10 +268,6 @@ rong::js_api! {
             ts_params = "page: BuiltinShellPage",
             ts_return = "Promise<BuiltinSurface>"
         ) = shell_open_builtin;
-        fn openDeclared(
-            ts_params = "id: string, options?: ShellOpenDeclaredOptions",
-            ts_return = "Promise<DeclaredSurface | AppSurface>"
-        ) = shell_open_declared;
     }
 }
 
@@ -393,21 +300,42 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 /// Event name on the per-app bus carrying `{ sizeClass, width, height, canDock }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
-/// `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
-/// lxapp's JS context), invoke it immediately, then again whenever that
-/// presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
-fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let initial = surface_context_for(&lxapp);
-    let token = register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
-    let payload = JSValue::from_rust(&ctx, initial);
-    if let Err(err) = handler.call::<_, ()>(None, (payload,)) {
-        unregister_app_handler_token(&ctx, SURFACE_CONTEXT_EVENT, token);
-        return Err(err);
-    }
-    let off = app_handler_unsub(&ctx, SURFACE_CONTEXT_EVENT, token);
+/// Per lxapp, the `(sizeClass, canDock)` Logic last saw. Pixels stay with the
+/// View, so a resize that keeps both does not wake Logic.
+static SURFACE_CONTEXT_SEEN: OnceLock<Mutex<HashMap<String, (String, bool)>>> = OnceLock::new();
+
+/// Record `context` as seen by Logic; true if it differs from the last one.
+fn surface_context_flipped(appid: &str, context: &JSSurfaceContext) -> bool {
+    let key = (context.size_class.clone(), context.can_dock);
+    let Ok(mut seen) = SURFACE_CONTEXT_SEEN
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    else {
+        return true;
+    };
+    seen.insert(appid.to_string(), key.clone()).as_ref() != Some(&key)
+}
+
+/// `page.env`: the lxapp's `{ sizeClass, canDock }`. Pixels stay in the View.
+pub(crate) fn page_env(ctx: &JSContext) -> JSResult<JSObject> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let context = surface_context_for(&lxapp);
+    surface_context_flipped(&lxapp.appid, &context);
+    let env = JSObject::new(ctx);
+    env.set("sizeClass", context.size_class)?;
+    env.set("canDock", context.can_dock)?;
+    Ok(env)
+}
+
+/// `page.env.watch(handler)`: called when `sizeClass` or `canDock` flips, not
+/// on every resize. Returns an unsubscribe function.
+pub(crate) fn page_env_watch(ctx: &JSContext, handler: JSFunc) -> JSResult<JSFunc> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    surface_context_flipped(&lxapp.appid, &surface_context_for(&lxapp));
+    let token = register_app_handler(ctx, SURFACE_CONTEXT_EVENT, handler)?;
+    let off = app_handler_unsub(ctx, SURFACE_CONTEXT_EVENT, token);
     let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
+    JSFunc::new(ctx, move || {
         if unsubscribed.replace(true) {
             return;
         }
@@ -426,10 +354,14 @@ pub(crate) fn notify_surface_context_changed(appid: &str) {
     };
     // The revision first, then the value it carries: see the revision's doc.
     let revision = ::lxapp::next_surface_context_revision();
-    let context = context_json(&lxapp);
+    let context = surface_context_for(&lxapp);
+    let flipped = surface_context_flipped(appid, &context);
+    let context = context_value_json(&context);
     // Views read the very same JSON through `useLxHost()`.
     lxapp.push_surface_context_to_views(&context, revision);
-    publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
+    if flipped {
+        publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
+    }
 }
 
 /// This lxapp's adaptive context as the JSON both Logic and Views receive.
@@ -438,7 +370,10 @@ pub(crate) fn surface_context_json(appid: &str) -> Option<String> {
 }
 
 fn context_json(lxapp: &LxApp) -> String {
-    let context = surface_context_for(lxapp);
+    context_value_json(&surface_context_for(lxapp))
+}
+
+fn context_value_json(context: &JSSurfaceContext) -> String {
     serde_json::json!({
         "sizeClass": context.size_class,
         "width": context.width,
@@ -483,7 +418,7 @@ async fn open_page(
             "position",
             "size",
             "interaction",
-            "query",
+            "params",
             "key",
         ],
         "lx.surface.openPage",
@@ -519,7 +454,10 @@ async fn open_page(
     let spec = JSObject::new(&ctx);
     spec.set("page", page)?;
     spec.set("as", realized.as_str())?;
-    let mut carried = vec!["size", "interaction", "query"];
+    if let Some(params) = get_property(&options, "params") {
+        spec.set("query", params)?;
+    }
+    let mut carried = vec!["size", "interaction"];
     // `position` anchors a float and is meaningless on a window; carry it only
     // where it applies, for the same reason `chrome` is dropped above.
     if realized == "float" {
@@ -543,8 +481,12 @@ async fn open_page(
 }
 
 /// `lx.surface.openUrl(url, options?)` — external content in the in-app
-/// browser, as a tab or docked as an aside.
-async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> JSResult<JSObject> {
+/// browser, as a main tab or docked as an aside.
+pub(crate) async fn open_url(
+    ctx: JSContext,
+    url: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
     reject_unknown_options(
         &options,
@@ -556,7 +498,7 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
     // dock, but it still projects an aside through the in-app browser's own
     // chrome. Refusing it here would take URL asides away from every phone —
     // `scope` is how that platform difference is reported, not a rejection.
-    let realized = resolve_placement(&ctx, &options, &["tab", "aside"], "tab", |_| true)?;
+    let realized = resolve_placement(&ctx, &options, &["main", "aside"], "main", |_| true)?;
 
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
@@ -571,23 +513,28 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
 }
 
 /// `lx.surface.openDeclared(id, options?)` — a surface the host declared in
-/// `lingxia.yaml`, opened with the declaration's own presentation.
+/// `lingxia.yaml`. Without options it opens with the declaration's own
+/// placement; `key`, `as` and `edge` change shared shell composition and are
+/// the Control app's.
 async fn open_declared(
     ctx: JSContext,
-    id: String,
-    options: Optional<JSObject>,
+    id: JSValue,
+    options: Optional<JSValue>,
 ) -> JSResult<JSObject> {
-    // Every override this could carry — `key`, `as`, `edge` — mutates shared
-    // shell composition, so it lives on `lx.shell.openDeclared` behind the home
-    // privilege. Taking one silently would open a surface nobody asked for.
-    if let Some(options) = options.0.as_ref()
-        && !options.keys_as::<String>()?.is_empty()
-    {
-        return Err(surface_error(
-            SurfaceErrorCode::InvalidArg,
-            "lx.surface.openDeclared takes no options; use lx.shell.openDeclared to set key, as, or edge",
-        ));
+    let options = options
+        .0
+        .filter(|value| !value.is_undefined() && !value.is_null());
+    let has_options = match options.as_ref() {
+        Some(value) => match value.clone().into_object() {
+            Some(object) => !object.keys_as::<String>()?.is_empty(),
+            None => true,
+        },
+        None => false,
+    };
+    if has_options {
+        return open_declared_with_placement(ctx, id, options).await;
     }
+    let id = shell_string_argument(id, "lx.surface.openDeclared id")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     let (handle, kind) = open_declared_surface_spec(&ctx, &spec, None).await?;
@@ -614,36 +561,39 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
     Ok(JSValue::undefined(&ctx))
 }
 
-/// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
-/// slot. Control-app only; the namespace is the privilege.
-async fn shell_open_app(
+/// `lx.surface.openApp(appId, options)` — compose another lxapp into a shell
+/// slot. Control app only.
+async fn open_app(
     ctx: JSContext,
     app_id: JSValue,
     options: Optional<JSValue>,
 ) -> JSResult<JSObject> {
     let (invocation, (app_id, options)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenApp, || {
-            let app_id = shell_string_argument(app_id, "lx.shell.openApp appId")?;
+        authorization::require_before_decode(&ctx, LogicRoute::SurfaceOpenApp, || {
+            let app_id = shell_string_argument(app_id, "lx.surface.openApp appId")?;
             let options = options
                 .0
                 .filter(|value| !value.is_undefined() && !value.is_null())
-                .map(|value| shell_object_argument(value, "lx.shell.openApp options"))
+                .map(|value| shell_object_argument(value, "lx.surface.openApp options"))
                 .transpose()?
                 .unwrap_or_else(|| JSObject::new(&ctx));
             Ok((app_id, options))
         })?;
     reject_unknown_options(
         &options,
-        &["as", "edge", "page", "query", "channel", "targetVersion"],
-        "lx.shell.openApp",
+        &["as", "edge", "page", "params", "channel", "targetVersion"],
+        "lx.surface.openApp",
     )?;
     let spec = JSObject::new(&ctx);
     spec.set("appId", app_id)?;
     copy_options(
         &options,
         &spec,
-        &["as", "edge", "page", "query", "channel", "targetVersion"],
+        &["as", "edge", "page", "channel", "targetVersion"],
     )?;
+    if let Some(params) = get_property(&options, "params") {
+        spec.set("query", params)?;
+    }
     let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
     finish_handle(&ctx, &handle, "app", None, None, None)
 }
@@ -745,25 +695,26 @@ async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject>
     builtin_surface_handle(&ctx)
 }
 
-/// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-/// keyed multi-instance form and placement overrides. Control-app only.
-async fn shell_open_declared(
+/// `lx.surface.openDeclared(id, { key, as, edge })` — the keyed
+/// multi-instance form and placement overrides. Control app only.
+async fn open_declared_with_placement(
     ctx: JSContext,
     id: JSValue,
-    options: Optional<JSValue>,
+    options: Option<JSValue>,
 ) -> JSResult<JSObject> {
-    let (invocation, (id, options)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenDeclared, || {
-            let id = shell_string_argument(id, "lx.shell.openDeclared id")?;
+    let (invocation, (id, options)) = authorization::require_before_decode(
+        &ctx,
+        LogicRoute::SurfaceOpenDeclaredPlacement,
+        || {
+            let id = shell_string_argument(id, "lx.surface.openDeclared id")?;
             let options = options
-                .0
-                .filter(|value| !value.is_undefined() && !value.is_null())
-                .map(|value| shell_object_argument(value, "lx.shell.openDeclared options"))
+                .map(|value| shell_object_argument(value, "lx.surface.openDeclared options"))
                 .transpose()?
                 .unwrap_or_else(|| JSObject::new(&ctx));
             Ok((id, options))
-        })?;
-    reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
+        },
+    )?;
+    reject_unknown_options(&options, &["key", "as", "edge"], "lx.surface.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
@@ -874,7 +825,7 @@ fn reject_unknown_options(options: &JSObject, allowed: &[&str], api: &str) -> JS
                 "edge is not supported for page surfaces; use position with as: 'float'".to_string()
             }
             ("lx.surface.openPage", "appId") | ("lx.surface.openUrl", "appId") => {
-                "composing another lxapp is a shell operation; use lx.shell.openApp".to_string()
+                "another lxapp opens with lx.surface.openApp".to_string()
             }
             _ => format!(
                 "{api} has no option '{key}'; it accepts {}",
@@ -922,7 +873,7 @@ fn surface_registry(ctx: &JSContext) -> JSResult<JSObject> {
 const SURFACE_REGISTRY_SLOT: &str = "__lxSurfaces";
 
 /// Stamps the content-keyed fields onto a handle and records it for
-/// `lx.surface.getByKey`.
+/// `lx.surface.get`.
 fn finish_handle(
     ctx: &JSContext,
     handle: &JSObject,
@@ -955,7 +906,7 @@ fn finish_handle(
             peer.set("key", key)?;
         }
     }
-    // `getByKey` finds the caller's own pages and URLs; declared surfaces
+    // `get` finds the caller's own pages and URLs; declared surfaces
     // have `lx.shell.getDeclared`. Only keyed handles are kept alive here.
     if let Some(key) = key {
         handle.set("key", key.as_str())?;
@@ -1189,7 +1140,7 @@ fn shell_object_argument(value: JSValue, label: &str) -> JSResult<JSObject> {
     })
 }
 
-/// Backs `lx.shell.openApp`. Opens another lxapp
+/// Backs `lx.surface.openApp`. Opens another lxapp
 /// by appId and optional configured page name. The target version is prepared
 /// through the same update path as app navigation, then composed independently
 /// from any YAML declaration. Dynamic composition supports main/aside only;
@@ -1302,7 +1253,7 @@ async fn open_app_spec(
     lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id)
 }
 
-/// How `lx.shell.openApp` treats the app's live role.
+/// How `lx.surface.openApp` treats the app's live role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AppOpenPlan {
     region: lxapp::LxAppOpenRegion,
@@ -1387,7 +1338,7 @@ async fn open_declared_surface_spec(
     if has_orchestration_override && privileged_invocation.is_none() {
         return Err(surface_error(
             SurfaceErrorCode::Denied,
-            "declared-surface overrides are reserved; use lx.shell.openDeclared",
+            "declared-surface key, as and edge are reserved for the Control app",
         ));
     }
     if key.is_none()
@@ -1997,7 +1948,7 @@ fn ensure_handle_cache_scope(ctx: &JSContext, caller: &LxApp) {
 }
 
 /// Lifecycle-complete handle for a host-managed native surface. Native
-/// capabilities without messaging omit only postMessage/onMessage.
+/// capabilities without messaging omit only send/onMessage.
 fn managed_surface_handle(
     ctx: &JSContext,
     lxapp: Arc<LxApp>,
@@ -2556,11 +2507,14 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             page_surface.clone(),
             "page",
         )?;
-        page_svc.bind_surface(page_surface.clone()).map_err(|err| {
-            unregister_closed_sender(&surface_id);
-            let _ = lxapp.close_surface(&surface_id, "failed");
-            surface_error(SurfaceErrorCode::Failed, err)
-        })?;
+        page_svc
+            .bind_surface(page_surface.clone())
+            .and_then(|()| surface.set("result", page_svc.bind_result()?))
+            .map_err(|err| {
+                unregister_closed_sender(&surface_id);
+                let _ = lxapp.close_surface(&surface_id, "failed");
+                surface_error(SurfaceErrorCode::Failed, err)
+            })?;
         // Link the two surface objects so visibility events fired on one also
         // fire on the other. Borrow scope is tight so we never hold a borrow
         // across the JSObject.clone() call.
@@ -2663,7 +2617,7 @@ fn attach_surface_methods(
 
     let post_surface = surface_ref.clone();
     surface.set(
-        "postMessage",
+        "send",
         JSFunc::new(ctx, move |payload: JSValue| {
             let surface = post_surface.borrow::<JSSurface>()?;
             if !surface.alive.get() {
@@ -3151,26 +3105,9 @@ fn parse_query(obj: &JSObject) -> JSResult<Option<PageQueryInput>> {
             format!("query must be JSON serializable: {err}"),
         )
     })?;
-    let Some(map) = json.as_object() else {
-        return Err(surface_error(
-            SurfaceErrorCode::InvalidArg,
-            "query must be an object",
-        ));
-    };
-
-    let mut params = BTreeMap::new();
-    for (key, value) in map {
-        if value.is_null() {
-            continue;
-        }
-        let value = match value {
-            Value::String(value) => value.clone(),
-            other => other.to_string(),
-        };
-        params.insert(key.clone(), value);
-    }
-
-    Ok(Some(PageQueryInput::Params(params)))
+    let query = lxapp::append_page_query(String::new(), &json)
+        .map_err(|err| surface_error(SurfaceErrorCode::InvalidArg, err))?;
+    Ok(Some(PageQueryInput::Raw(query)))
 }
 
 fn parse_surface_kind(obj: &JSObject) -> JSResult<SurfaceKind> {

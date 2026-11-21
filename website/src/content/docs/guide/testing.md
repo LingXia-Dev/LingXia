@@ -25,7 +25,7 @@ A case is a `test` whose async body receives a test handle `t`. Drive the app th
 import { test, expect } from '@lingxia/test';
 
 test('greets through real page input and the Logic bridge', async (t) => {
-  await t.app.nav.relaunch({ page: 'home' });
+  await t.app.nav.reset({ page: 'home' });
   await expect(t.app.view.testId('home-page')).toBeVisible();
 
   await t.app.view.testId('name').fill('Ada');

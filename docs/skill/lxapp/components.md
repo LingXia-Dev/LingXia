@@ -68,9 +68,10 @@ The wrapper props (`LxPickerProps`) are the contract. Column mode comes from
 />
 ```
 
-## `lx.createVideoContext`
+## `page.video`
 
-Drive a GPU page's video from Logic by its `useVideo` name or `<video id>`:
+Drive a GPU page's video from Logic with `page.video(name)` (the `page`
+`setup` received), by its `useVideo` name or `<video id>`:
 `play`, `pause`, `stop`, `seek(seconds)`, `setQuality`, `setPlaybackRate`,
 `setMuted`, `setVolume`. Each returns a `Promise<void>` that rejects with a
 `VIDEO_*` code; fullscreen and `setStreamSource` reject `VIDEO_UNSUPPORTED`.
@@ -107,44 +108,29 @@ The ref (`LxMediaSwiperRef`) has `next()`,
 
 ## `LxNavigator`
 
-Wraps content that opens a page, another lxapp, or a URL when tapped. `page` is
-a page name. `target` is inferred (`app-id` → `lxapp`, `url` → `url`, else
-`page`); `as` picks where, as in `lx.surface.openUrl` / `openPage`:
+Wraps content that goes somewhere when tapped. `to` takes the targets of
+`lx.nav.go`, plus `{ back: n }`:
 
-| `target` | `as` | Result | Extra attributes |
-|---|---|---|---|
-| `url` | `external` (default) | System browser | — |
-| `url` | `tab` | In-app browser tab | — |
-| `url` | `aside` | Browser docked beside the main | `edge`, `size` |
-| `page` | *(omitted)* | Runs `open-type` in the page stack | — |
-| `page` | `float` | Page float over the current surface | `position`, `size`, `interaction` |
-| `page` | `window` | Separate desktop window (rejected on mobile) | `chrome`, `size`, `interaction` |
-| `lxapp` | *(not allowed)* | Opens `app-id` (optional `page`, `query`, `channel`, `target-version`) | — |
+| `to` | Result | Also |
+|---|---|---|
+| `{ page, params? }` | Push the page | `replace`, `reset`; `as="float"` (`position`) or `"window"` (`chrome`), with `size`, `interaction` |
+| `{ tab }` | Switch to the tab | `reset` |
+| `{ app, page?, params?, channel?, version? }` | Open another lxapp | — |
+| `{ url }` | In-app browser, placed by the shell | `as="main"` or `"aside"` (`edge`, `size`); `as="external"` hands it to the system. `tel:` places a call |
+| `{ back: n }` | Pop `n` pages | — |
 
-`open-type` applies to `target="page"` without `as`; `navigateBack`, `exit`,
-and `tel` work for any target:
-
-| Value | Behavior |
-|---|---|
-| `navigate` (default) | Push a new page in the current lxapp |
-| `redirect` | Replace the current page |
-| `navigateBack` | Pop back by `delta`; with `target="lxapp"`, return from the opened lxapp |
-| `reLaunch` | Restart the app at a new page: every page, cached tab pages included, is unloaded and the target opens fresh |
-| `switchTab` | Switch to a tab page |
-| `exit` | Exit the current lxapp |
-| `tel` | Trigger a phone call (use with `phone-number`) |
-
-`size` and `interaction` are objects in React (JSON strings on the raw
-tag). No handle comes back; use `lx.surface.*` from Logic to message or close
-a surface. Events `onSuccess` / `onFail` / `onComplete` carry
-`{ success?, errMsg? }`.
+`replace` swaps the current page; `reset` unloads every page, cached tabs
+included, and opens the target fresh. On the raw tag `to`, `size` and
+`interaction` are JSON strings. No handle comes back; use `lx.surface.*` from
+Logic to message or close a surface. Events `onSuccess` / `onFail` /
+`onComplete` carry `{ success?, errMsg? }`.
 
 ```tsx
-<LxNavigator page="detail" query={{ id: 42 }} onFail={actions.onNavFail}>
+<LxNavigator to={{ page: 'detail', params: { id: 42 } }} onFail={actions.onNavFail}>
   <div>Open detail</div>
 </LxNavigator>
 
-<LxNavigator url="https://example.com" as="aside" edge="right">
+<LxNavigator to={{ url: 'https://example.com' }} as="aside" edge="right">
   <div>Docs</div>
 </LxNavigator>
 ```

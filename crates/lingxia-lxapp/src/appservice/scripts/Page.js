@@ -13,6 +13,16 @@
     }
     realTimers = { set, clear };
   }
+  // A View `<link to>`: `{ back: n }` or a target of `lx.nav.go`, settled
+  // once the destination is on screen.
+  Object.defineProperty(globalThis, "__lxNavForView", {
+    value: async (target) => {
+      if (target.back !== undefined) return lx.nav.back(target.back);
+      const went = lx.nav.go(target);
+      await (went && went.opened ? went.opened : went);
+    },
+    configurable: true,
+  });
   Object.defineProperty(globalThis, "__lxCaptureTimers", {
     value: captureTimers,
     enumerable: false,
@@ -32,13 +42,13 @@
     return timers().clear(id);
   }
 
-  function createPageInstance(definition, pagePath, pageInstanceId, gpu) {
+  function createPageInstance(definition, pagePath, pageInstanceId, gpu, lifetime = new AbortController()) {
     const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
     }
 
-    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', '_abortLifetime', '_cancelPendingSetData', '_setData']) {
+    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', 'close', 'setResult', '_abortLifetime', '_cancelPendingSetData', '_setData', '_leave', '_bindResult', '_settleResult', '_handOver', '_adopt']) {
       if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
         throw new TypeError(`Page member '${key}' is reserved by the runtime`);
       }
@@ -69,7 +79,6 @@
     // Aborted as the page unloads — just before `onUnload` runs, or when the
     // page is retired without one — so work the page started (a fetch, a
     // subscription) stops with it instead of resolving into a page that is gone.
-    const lifetime = new AbortController();
     Object.defineProperty(pageSvc, "signal", {
       value: lifetime.signal,
       enumerable: false,
@@ -194,6 +203,67 @@
       });
     };
 
+    // What the opener's `result` resolves with. It settles once, after
+    // `onUnload`: `{ status: 'ok', value }` when a result was set, otherwise
+    // `{ status: 'canceled', reason }`.
+    let result = null;
+    let settleOpener = null;
+
+    pageSvc.setResult = function (value) {
+      assertPageData(value);
+      result = { value: cloneJsonValue(value) };
+    };
+
+    pageSvc.close = function (value) {
+      if (arguments.length > 0) pageSvc.setResult(value);
+      if (pageSvc.surface) return pageSvc.surface.close();
+      pageSvc._leave();
+      return Promise.resolve();
+    };
+
+    pageSvc._bindResult = function () {
+      if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
+      result = null;
+      return new Promise((resolve) => {
+        settleOpener = resolve;
+      });
+    };
+
+    // A replacing page takes over the opener and the result it is owed.
+    pageSvc._handOver = function (target) {
+      const settle = settleOpener;
+      settleOpener = null;
+      const opener = pageSvc.opener;
+      delete pageSvc.opener;
+      target._adopt(opener, settle);
+    };
+
+    pageSvc._adopt = function (opener, settle) {
+      if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
+      result = null;
+      settleOpener = settle;
+      if (opener) pageSvc.opener = opener;
+      else delete pageSvc.opener;
+    };
+
+    pageSvc._settleResult = function (reason) {
+      const settle = settleOpener;
+      settleOpener = null;
+      if (!settle) return;
+      settle(result ? { status: "ok", value: result.value } : { status: "canceled", reason });
+    };
+
+    // `page.update`: the writes its recipe made join the batch.
+    pageSvc._applyChanges = function (changes) {
+      if (disposed) return;
+      for (const [segments, value] of changes) {
+        applyUpdateSegments(pageSvc.data, pendingBaseState, pendingOps, segments, value);
+      }
+      if (changes.length > 0 && updateTimer === null) {
+        updateTimer = setTimer(submitPending, BATCH_DELAY);
+      }
+    };
+
     pageSvc.setPath = function (path, value) {
       return pageSvc.setData({ [pathSegmentsToKey(path)]: value });
     };
@@ -208,6 +278,210 @@
     return pageSvc;
   }
 
+  const PAGE_BRAND = Symbol.for("lingxia.page");
+  const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onPullDownRefresh"];
+  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "opens"]);
+
+  // `definePage({ data, setup(page) { return { onLoad, actions } } })`. The
+  // hooks and actions `setup` returns become the config a `PageSvc` runs, so
+  // dispatch is the same as for any page; `page` is what they close over.
+  function instantiateDefinedPage(definition, pagePath, pageInstanceId, gpu, identityJson) {
+    const def = definition.config;
+    for (const key of Object.keys(def)) {
+      if (!DEFINITION_KEYS.has(key)) {
+        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data and setup`);
+      }
+    }
+    if (def.setup !== undefined && typeof def.setup !== "function") {
+      throw new TypeError("definePage: setup must be a function");
+    }
+    assertPageData(def.data || {});
+    const identity = identityJson ? JSON.parse(identityJson) : {};
+    const lifetime = new AbortController();
+    let svc = null;
+    let initial = cloneJsonValue(def.data || {});
+    let params = identity.params || {};
+    let updating = false;
+    let warnedUnloaded = false;
+
+    function live() {
+      if (!svc) throw new Error("page: not available until setup has returned");
+      return svc;
+    }
+
+    function native() {
+      return globalThis.__LX_PAGE_NATIVE__;
+    }
+
+    const navigationBar = Object.freeze({
+      update(patch) {
+        return native().navigationBarUpdate(pageInstanceId, patch);
+      },
+    });
+
+    // Size class only; a watcher goes with the page.
+    const env = Object.freeze({
+      get sizeClass() {
+        return native().env().sizeClass;
+      },
+      get canDock() {
+        return native().env().canDock;
+      },
+      watch(callback) {
+        if (typeof callback !== "function") {
+          throw new TypeError("page.env.watch takes a callback");
+        }
+        if (lifetime.signal.aborted) return () => {};
+        const off = native().envWatch((context) => {
+          const parsed = typeof context === "string" ? JSON.parse(context) : context;
+          callback({ sizeClass: parsed.sizeClass, canDock: parsed.canDock });
+        });
+        lifetime.signal.addEventListener("abort", off, { once: true });
+        return () => {
+          lifetime.signal.removeEventListener("abort", off);
+          off();
+        };
+      },
+    });
+
+    const page = Object.freeze({
+      get data() {
+        return svc ? svc.data : initial;
+      },
+      update(recipe) {
+        if (typeof recipe !== "function") {
+          throw new TypeError("page.update takes a recipe: page.update(d => { d.n += 1; })");
+        }
+        if (updating) throw new Error("page.update cannot be called inside page.update");
+        if (lifetime.signal.aborted) {
+          if (!warnedUnloaded) {
+            warnedUnloaded = true;
+            console.warn(`page.update after '${page.name}' unloaded is ignored`);
+          }
+          return;
+        }
+        const draft = createDraft(svc ? svc.data : initial);
+        updating = true;
+        let returned;
+        try {
+          returned = recipe(draft.root);
+        } finally {
+          updating = false;
+          draft.close();
+        }
+        if (returned !== undefined) {
+          throw new TypeError(returned && typeof returned.then === "function"
+            ? "page.update: the recipe must be synchronous; await first, then update"
+            : "page.update: change the draft in place; the recipe returns nothing");
+        }
+        const changes = draft.changes();
+        if (svc) {
+          svc._applyChanges(changes);
+        } else {
+          for (const [segments, value] of changes) setValueBySegments(initial, segments, value);
+        }
+      },
+      flush() {
+        return live().flush();
+      },
+      get params() {
+        return params;
+      },
+      get name() {
+        return identity.name || pagePath.replace(/\.[^./]+$/, "");
+      },
+      signal: lifetime.signal,
+      close(value) {
+        return arguments.length > 0 ? live().close(value) : live().close();
+      },
+      setResult(value) {
+        live().setResult(value);
+      },
+      get opener() {
+        return svc ? svc.opener : undefined;
+      },
+      get surface() {
+        return svc ? svc.surface : undefined;
+      },
+      navigationBar,
+      refresh() {
+        native().startRefresh(pageInstanceId);
+      },
+      video(name) {
+        return native().video(pageInstanceId, name);
+      },
+      env,
+    });
+
+    const returned = def.setup ? def.setup(page) : {};
+    if (returned && typeof returned.then === "function") {
+      throw new TypeError("definePage: setup must be synchronous; start async work in onLoad");
+    }
+    if (returned !== undefined && (returned === null || typeof returned !== "object")) {
+      throw new TypeError("definePage: setup returns { onLoad?, …, actions? }");
+    }
+    const config = { data: initial };
+    for (const [key, value] of Object.entries(returned || {})) {
+      if (key === "actions") continue;
+      if (!PAGE_HOOKS.includes(key)) {
+        throw new TypeError(typeof value === "function"
+          ? `definePage: '${key}' is not a lifecycle hook; put View-callable functions under actions`
+          : `definePage: setup returned an unknown key '${key}'`);
+      }
+      if (typeof value !== "function") throw new TypeError(`definePage: ${key} must be a function`);
+      config[key] = value;
+    }
+    // The indicator goes away when the hook settles; a page without one
+    // still gets it put away.
+    const userRefresh = config.onPullDownRefresh;
+    config.onPullDownRefresh = function () {
+      const stop = () => {
+        try {
+          native().stopRefresh(pageInstanceId);
+        } catch (error) {
+          console.warn("Could not stop the refresh indicator:", error);
+        }
+      };
+      let result;
+      try {
+        result = userRefresh ? userRefresh() : undefined;
+      } catch (error) {
+        stop();
+        throw error;
+      }
+      Promise.resolve(result).then(stop, stop);
+      return result;
+    };
+    const userOnLoad = config.onLoad;
+    config.onLoad = function (options) {
+      params = options || {};
+      return userOnLoad ? userOnLoad(params) : undefined;
+    };
+    const actions = (returned && returned.actions) || {};
+    if (typeof actions !== "object") {
+      throw new TypeError("definePage: actions must be an object of functions");
+    }
+    for (const [name, fn] of Object.entries(actions)) {
+      if (typeof fn !== "function") throw new TypeError(`definePage: action '${name}' must be a function`);
+      if (name.startsWith("_") || PAGE_HOOKS.includes(name) || name === "data") {
+        throw new TypeError(`definePage: '${name}' cannot be an action name`);
+      }
+      config[name] = fn;
+    }
+    config.route = pagePath.replace(/\.[^./]+$/, "");
+    svc = createPageInstance(
+      { config, bindingMetaJson: JSON.stringify({ handlers: Object.keys(actions) }) },
+      pagePath,
+      pageInstanceId,
+      gpu,
+      lifetime,
+    );
+    // What a test's getPage(id) reaches the page-scoped members through.
+    Object.defineProperty(svc, "page", { value: page, enumerable: false });
+    return svc;
+  }
+
+  // Registers a raw config; runtime tests drive PageSvc through it.
   globalThis.__registerPage = function (
     pagePath,
     pageConfig,
@@ -224,18 +498,27 @@
     });
   };
 
-  function pageRegistrationTransformError(symbolName) {
+  globalThis.__registerDefinedPage = function (pagePath, definition) {
+    if (!definition || definition[PAGE_BRAND] !== true) {
+      throw new TypeError(
+        `Page '${pagePath}' must default-export definePage({ ... }) from '@lingxia/types/page'`,
+      );
+    }
+    pageDefinitions.set(pagePath, { config: definition });
+  };
+
+  function removedPageRegistration(symbolName) {
     throw new Error(
-      `${symbolName}() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.`,
+      `${symbolName}() was removed: a page's Logic default-exports definePage({ data, setup }) from '@lingxia/types/page'.`,
     );
   }
 
   globalThis.Page = function () {
-    pageRegistrationTransformError("Page");
+    removedPageRegistration("Page");
   };
 
   globalThis.PageInstance = function () {
-    pageRegistrationTransformError("PageInstance");
+    removedPageRegistration("PageInstance");
   };
 
   globalThis.__LX_CREATE_PAGE__ = function (
@@ -243,6 +526,7 @@
     definitionPath,
     pageInstanceId,
     gpu,
+    identityJson,
   ) {
     const resolvedDefinitionPath = definitionPath || pagePath;
     const definition = pageDefinitions.get(resolvedDefinitionPath);
@@ -250,13 +534,19 @@
       throw new Error(`PageInstance not found: ${resolvedDefinitionPath}`);
     }
     // The route is the configured page path, not the renderer's file.
+    if (definition.config[PAGE_BRAND] === true) {
+      return instantiateDefinedPage(definition, pagePath, pageInstanceId, gpu === true, identityJson);
+    }
     definition.config.route = pagePath.replace(/\.[^./]+$/, "");
     return createPageInstance(definition, pagePath, pageInstanceId, gpu === true);
   };
 })();
 
 function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
-  const segments = parseDataPath(path);
+  applyUpdateSegments(root, pendingBaseState, pendingOps, parseDataPath(path), nextValue);
+}
+
+function applyUpdateSegments(root, pendingBaseState, pendingOps, segments, nextValue) {
   captureBaseState(root, pendingBaseState, segments);
 
   const previous = getValueAtPath(root, segments);
@@ -277,6 +567,119 @@ function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
 
   setValueBySegments(root, segments, nextValue);
   enqueuePendingPatch(root, pendingOps, segments, existedBefore);
+}
+
+// `page.update`'s draft reads through to `base`; a write copies only the object it lands in, so
+// an update costs what it touches, not the size of the page's data.
+function createDraft(base) {
+  const states = new WeakMap();
+  let closed = false;
+
+  function make(value, parent) {
+    const state = { base: value, copy: null, children: new Map(), modified: false, parent, proxy: null };
+    const current = () => state.copy || state.base;
+    const write = () => {
+      if (closed) throw new TypeError("page.update: the draft is only usable inside the recipe");
+      if (!state.copy) state.copy = Array.isArray(value) ? value.slice() : Object.assign({}, value);
+      for (let s = state; s && !s.modified; s = s.parent) s.modified = true;
+      return state.copy;
+    };
+    const proxy = new Proxy(Array.isArray(value) ? [] : {}, {
+      get(_, key) {
+        const child = current()[key];
+        if (typeof key === "symbol" || child === null || typeof child !== "object" || states.has(child)) return child;
+        if (!Object.prototype.hasOwnProperty.call(current(), key)) return child;
+        const cached = state.children.get(key);
+        if (cached && cached.state.base === child) return cached.proxy;
+        const made = make(child, state);
+        state.children.set(key, made);
+        return made.proxy;
+      },
+      set(_, key, next) {
+        write()[key] = next;
+        state.children.delete(key);
+        return true;
+      },
+      deleteProperty(_, key) {
+        delete write()[key];
+        state.children.delete(key);
+        return true;
+      },
+      defineProperty(_, key, descriptor) {
+        if (!("value" in descriptor)) throw new TypeError("Page data cannot contain accessors");
+        write()[key] = descriptor.value;
+        state.children.delete(key);
+        return true;
+      },
+      has: (_, key) => key in current(),
+      ownKeys: () => Reflect.ownKeys(current()),
+      getOwnPropertyDescriptor(_, key) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(current(), key);
+        // An array's `length` is the one property the stand-in target also has.
+        if (descriptor && key !== "length") descriptor.configurable = true;
+        return descriptor;
+      },
+    });
+    state.proxy = proxy;
+    states.set(proxy, state);
+    return { state, proxy };
+  }
+
+  // A value written into the draft, as page data: drafts inside it read out, nothing shared.
+  function plain(value) {
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) return Array.prototype.map.call(value, plain);
+    const out = {};
+    for (const key of Object.keys(value)) out[key] = plain(value[key]);
+    return out;
+  }
+
+  function collect(state, segments, out) {
+    if (!state.modified) return;
+    const { base, copy } = state;
+    if (!copy) {
+      for (const [key, child] of state.children) {
+        if (child.state.modified) collect(child.state, [...segments, key], out);
+      }
+      return;
+    }
+    // A resized array goes whole, read through the draft so its edited items come along.
+    if (Array.isArray(base) && copy.length !== base.length) {
+      out.push([segments, state.proxy]);
+      return;
+    }
+    const has = (key) => Object.prototype.hasOwnProperty.call(base, key);
+    for (const key of Object.keys(base)) {
+      if (!Object.prototype.hasOwnProperty.call(copy, key)) out.push([[...segments, key], undefined]);
+    }
+    for (const key of Object.keys(copy)) {
+      const next = copy[key];
+      const cached = state.children.get(key);
+      const child = cached && cached.state.base === next ? cached : null;
+      if (child && has(key) && next === base[key]) {
+        collect(child.state, [...segments, key], out);
+      } else if (!has(key) || next !== base[key] || (child && child.state.modified)) {
+        out.push([[...segments, key], child ? child.proxy : next]);
+      }
+    }
+  }
+
+  const root = make(base, null);
+  return {
+    root: root.proxy,
+    close() {
+      closed = true;
+    },
+    changes() {
+      const out = [];
+      collect(root.state, [], out);
+      for (const change of out) {
+        assertPageData(change[1]);
+        change[1] = plain(change[1]);
+      }
+      return out;
+    },
+  };
 }
 
 function pathSegmentsToKey(path) {

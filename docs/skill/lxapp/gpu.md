@@ -82,7 +82,8 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;
-  runs take text paint only; links are accent + underline by default. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
+  runs take text paint only; links are accent + underline by default. `<link to={{ page: 'detail', params }}>`
+  navigates without an action: `to` takes `lx.nav.go` targets or `{ back: n }`, and a refused target reports like a failed action. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,
@@ -97,9 +98,9 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
   screen readers get those as the row's actions; tests call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
   stays across pages (a mini player), and it always sits above the page and its dialogs.
-- There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'tab' | 'aside' })`.
-- Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `lx.surface.watchContext` is for Logic that acts
-  on a size change itself, never to forward it with `setData`.
+- There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
+- Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `page.env.watch` is for Logic that acts
+  on a size change itself, never to forward it with `page.update`.
 - Sheet detents: `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>`; resting wholly off screen calls `onClose`, the scrim fades with it.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,

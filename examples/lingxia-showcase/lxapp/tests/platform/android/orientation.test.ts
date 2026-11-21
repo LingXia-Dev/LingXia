@@ -2,7 +2,7 @@ import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 
-const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.args?.platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 type Orientation = 'portrait' | 'landscape';
@@ -16,12 +16,12 @@ interface OrientationProbe {
 test('rotate the Android viewport and deliver events only to live listeners', {
   id: 'ANDROID-ORIENTATION-001',
   app: SHOWCASE_APP_ID,
-  covers: ['lx.setDeviceOrientation', 'lx.onDeviceOrientationChange'],
+  covers: ['lx.device.orientation.set', 'lx.device.orientation.watch'],
   timeout: 60_000,
   reason: 'requires the Android host orientation implementation',
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'ANDROID-ORIENTATION-001');
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const page = await app.page({ name: 'home' });
   const dimensions = () => page.view.eval(({ window }) => ({ width: window.innerWidth, height: window.innerHeight }));
   const initial = await dimensions();
@@ -32,12 +32,12 @@ test('rotate the Android viewport and deliver events only to live listeners', {
       states[key]?.offRemoved();
       states[key]?.offLive();
       delete states[key];
-      lx.setDeviceOrientation(original);
+      lx.device.orientation.set(original);
     }, namespace, original);
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {
-    expect(await app.logic.eval(({ lx }, value) => lx.setDeviceOrientation(value), orientation)).toBe(true);
+    expect(await app.logic.eval(({ lx }, value) => lx.device.orientation.set(value), orientation)).toBe(true);
     const size = await t.waitFor(dimensions, {
       until: size => size.width > 0 && size.height > 0 && (size.width > size.height) === (orientation === 'landscape'),
       timeout: 15000,
@@ -47,8 +47,8 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   await rotate('portrait');
   await app.logic.eval(({ lx }, key) => {
     const state: OrientationProbe = { removed: [], live: [], offRemoved: () => {}, offLive: () => {} };
-    state.offRemoved = lx.onDeviceOrientationChange(event => state.removed.push(event.value));
-    state.offLive = lx.onDeviceOrientationChange(event => state.live.push(event.value));
+    state.offRemoved = lx.device.orientation.watch(event => state.removed.push(event.value));
+    state.offLive = lx.device.orientation.watch(event => state.live.push(event.value));
     (globalThis as unknown as Record<string, OrientationProbe>)[key] = state;
   }, namespace);
   const events = () => app.logic.eval((_, key) => {

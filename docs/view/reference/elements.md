@@ -337,6 +337,7 @@ Children: text and `<span>` runs; links do not nest. Only inside `<text>`.
 | --- | --- | --- |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `onClick` | `() => void` |  |
+| `to` | `LinkTarget` |  |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 | `popoverTarget` | `string` |  |

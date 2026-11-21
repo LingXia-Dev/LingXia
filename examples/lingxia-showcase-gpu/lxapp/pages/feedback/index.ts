@@ -1,19 +1,27 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: {},
-  async goBack() {
-    if (this.surface) await this.surface.close();
-    else await lx.navigateBack();
-  },
-  async submitFeedback(params: { category?: string; message?: string; email?: string }) {
-    const category = typeof params?.category === 'string' ? params.category.trim() : 'Other';
-    const message = typeof params?.message === 'string' ? params.message.trim() : '';
-    const email = typeof params?.email === 'string' ? params.email.trim() : '';
-    if (!message) {
-      lx.showToast({ title: 'Tell us what happened', icon: 'none' });
-      return;
-    }
-    console.log('[Feedback] Submitted', { category, message, email });
-    lx.showToast({ title: 'Thanks for the feedback', icon: 'success' });
-    await this.surface?.close();
+  setup(page) {
+    const actions = {
+      async goBack() {
+        if (page.surface) await page.surface.close();
+        else await lx.nav.back();
+      },
+      async submitFeedback(params: { category?: string; message?: string; email?: string }) {
+        const category = typeof params?.category === 'string' ? params.category.trim() : 'Other';
+        const message = typeof params?.message === 'string' ? params.message.trim() : '';
+        const email = typeof params?.email === 'string' ? params.email.trim() : '';
+        if (!message) {
+          lx.ui.toast({ title: 'Tell us what happened', icon: 'none' });
+          return;
+        }
+        console.log('[Feedback] Submitted', { category, message, email });
+        lx.ui.toast({ title: 'Thanks for the feedback', icon: 'success' });
+        await page.surface?.close();
+      },
+    };
+    return {
+      actions,
+    };
   },
 });

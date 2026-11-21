@@ -396,7 +396,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         active?.dismissVisibleIndependentPanels()
     }
 
-    // MARK: - Tray runtime updates (lx.tray.*)
+    // MARK: - Tray runtime updates (lx.host.tray.*)
 
     func setTrayBadge(_ text: String?) -> Bool { trayController.setBadge(text) }
     func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }
@@ -980,7 +980,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     /// Activate a switcher main from the sidebar. Declared YAML surfaces go
-    /// through `openSurface`. A dynamic lxapp opened via `lx.navigateToApp`
+    /// through `openSurface`. A dynamic lxapp opened via `lx.nav.go({ app })`
     /// has no YAML entry, so `openSurface` would throw "unknown surface" and
     /// leave its tabBar clicks stranded — attach it through the lxapp
     /// provider path instead, matching `restoreActiveMainProvider`.

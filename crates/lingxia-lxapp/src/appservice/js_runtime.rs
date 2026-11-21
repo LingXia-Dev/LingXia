@@ -321,7 +321,7 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
 /// global instead would record every background call the app happened to make
 /// and credit it to whatever spec was running.
 ///
-/// Primitive members (`lx.env.USER_DATA_PATH`) are published capabilities too;
+/// Primitive members (`lx.fs.userData`) are published capabilities too;
 /// recording only functions and objects would miss the get that reached them.
 const RECORDER_PRELUDE: &str = r#"
 const __lxCalls = new Set();
@@ -766,7 +766,7 @@ async fn handle_service_message(
             // Register LxApp runtime context and bind identity to JSContext
             register_app_ctx(&ctx, &lxapp);
 
-            // register PageInstance, App and getApp function
+            // register PageInstance and App
             if let Err(e) = app::init(&ctx) {
                 error!(
                     "[Worker {}] Failed to initialize App runtime: {}",
@@ -1061,6 +1061,8 @@ async fn handle_service_message(
                     if page_svc.lifecycle_pending() {
                         runtime_ctx::retire_page_svc(ctx, page_svc.clone());
                     } else {
+                        // No owed `onUnload` will settle the opener's result.
+                        page_svc.settle_result(ctx);
                         page_svc.release_js();
                     }
 
@@ -1996,7 +1998,7 @@ mod worker_assignment_tests {
                         state.pages_by_id.lock().unwrap().insert(id.clone(), page);
                     }
                     let script = format!(
-                        "__registerApp({{ onLaunch() {{}}, globalData: {{ ballast: [] }} }}, '[\"onLaunch\"]'); \
+                        "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
                          __registerPage('pages/home/index', {{ data: {{}}, onLoad() {{}} }}); \
                          (() => {{ \
                            const svc = __LX_CREATE_PAGE__('pages/home/index', null, {id:?}); \
@@ -2199,7 +2201,7 @@ mod eval_script_shape_tests {
     #[test]
     fn await_without_semicolon_is_a_function_body() {
         assert!(script_looks_like_function_body(
-            r#"await lx.host.control.displayLanguage.setPreference("zh-CN")"#
+            r#"await lx.host.displayLanguage.setPreference("zh-CN")"#
         ));
         assert!(script_looks_like_function_body(
             "await(lx.host.cache.clear())"
@@ -2209,14 +2211,14 @@ mod eval_script_shape_tests {
     #[test]
     fn return_and_declarations_are_function_bodies() {
         assert!(script_looks_like_function_body(
-            "return lx.host.control.displayLanguage.getPreference()"
+            "return lx.host.displayLanguage.getPreference()"
         ));
         assert!(script_looks_like_function_body("const x = 1; return x"));
     }
 
     #[test]
     fn a_plain_expression_is_not_a_function_body() {
-        assert!(!script_looks_like_function_body("lx.host.getBaseInfo()"));
+        assert!(!script_looks_like_function_body("lx.host.info"));
     }
 
     /// An `lx.*` rejection reaches the eval caller with its code and data.

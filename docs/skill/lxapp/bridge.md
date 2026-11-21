@@ -1,40 +1,38 @@
 # Bridge
 
-How View and Logic exchange data: `setData`, streams, and channels. The page
+How View and Logic exchange data: page state, streams, and channels. The page
 model itself is in [Lxapp pages](./guide.md).
 
 ## Three primitives
 
 | Primitive | Direction | Transport | Use for |
 |---|---|---|---|
-| **State** (`setData`) | Logic → View | Diff, batched | Durable page state that outlives a stream or channel: lists, flags, final results |
+| **State** (`page.update`) | Logic → View | Diff, batched | Durable page state that outlives a stream or channel: lists, flags, final results |
 | **Stream** (`yield` / `stream.send`) | Logic → View | Payload as sent, immediate, ordered | One View-started operation with incremental output: tokens, progress |
 | **Channel** (`ch.send`) | both | Payload as sent, immediate | Long-lived sessions: live sync, collaboration |
 
-Never push per-chunk or per-event data with `setData`. Logic subscribes to
-external systems itself and surfaces results through `setData`; View never
+Never push per-chunk or per-event data with `page.update`. Logic subscribes to
+external systems itself and surfaces results through `page.update`; View never
 gets subscription APIs.
 
-## `setData`
+## State
 
 ```ts
 // pages/counter/index.ts
-Page({
-  data: {
-    count: 0,
-    label: 'Start',
-  },
-
-  increment() {
-    this.setData({ count: this.data.count + 1 });
-  },
+export default definePage({
+  data: { count: 0, profile: { name: '' } },
+  setup: page => ({
+    actions: {
+      increment() { page.update(d => { d.count += 1; }); },
+      rename(name: string) { page.update(d => { d.profile.name = name; }); },
+    },
+  }),
 });
 ```
 
-- `this.data` is read-only. `setData` takes typed top-level keys; nested
-  writes use `setPath(['profile', 'name'], value)` or
-  `setDataPath('profile.name', value)`.
-- The call is synchronous; replication is asynchronous. `await this.flush()`
+- `page.data` is read-only. `page.update` runs the recipe on a copy and sends
+  the View only what changed, at any depth.
+- The call is synchronous; replication is asynchronous. `await page.flush()`
   waits until the View has everything written so far.
 - `useLxPage().data` follows it reactively.
 
@@ -45,28 +43,31 @@ done`.
 
 ### Generator form
 
-An `async *` page method is a stream; each `yield` is a chunk, `return` ends
+An `async *` action is a stream; each `yield` is a chunk, `return` ends
 it, and `finally` runs on cancel.
 
 ```ts
-Page({
+export default definePage({
   data: { messages: [] as Message[], isStreaming: false },
-
-  async *onSend(params: { text: string }) {
-    this.setData({ isStreaming: true });
-    let text = '';
-    try {
-      for await (const chunk of chatStream(params.text)) {
-        if (chunk.type === 'token') text += chunk.token;
-        yield chunk;
-      }
-    } finally {
-      this.setData({
-        messages: [...this.data.messages, { role: 'assistant', content: text }],
-        isStreaming: false,
-      });
-    }
-  },
+  setup: page => ({
+    actions: {
+      async *onSend(params: { text: string }) {
+        page.update(d => { d.isStreaming = true; });
+        let text = '';
+        try {
+          for await (const chunk of chatStream(params.text)) {
+            if (chunk.type === 'token') text += chunk.token;
+            yield chunk;
+          }
+        } finally {
+          page.update(d => {
+            d.messages.push({ role: 'assistant', content: text });
+            d.isStreaming = false;
+          });
+        }
+      },
+    },
+  }),
 });
 ```
 
@@ -76,19 +77,19 @@ For callback-based sources, take the injected `StreamHandle` as the second
 parameter (no import):
 
 ```ts
-Page({
+actions: {
   async onProcess(params: { fileId: string }, stream: StreamHandle) {
-    const job = lx.files.process(params.fileId);
+    const job = processFile(params.fileId);
     stream.onCancel(() => job.abort());
 
     job.on('progress', (pct) => stream.send({ type: 'progress', pct }));
     job.on('done',     (out) => stream.end(out));
     job.on('error',    (err) => stream.error('PROCESS_FAILED', err.message));
   },
-});
+},
 ```
 
-The build classifies a method returning an `AsyncGenerator` or taking the
+The build classifies an action returning an `AsyncGenerator` or taking the
 handle as a stream; there is nothing to declare.
 
 ### `useLxStream`
@@ -121,7 +122,7 @@ A long-lived, two-way session opened by the View. The handler receives the
 injected `ChannelHandle`:
 
 ```ts
-Page({
+actions: {
   syncSession(params: { sessionId: string }, ch: ChannelHandle) {
     const session = openSession(params.sessionId);
     ch.send({ type: 'init', state: session.state });
@@ -131,7 +132,7 @@ Page({
     });
     ch.on('close', () => session.release());
   },
-});
+},
 ```
 
 Carry several message types over one channel as a discriminated union.

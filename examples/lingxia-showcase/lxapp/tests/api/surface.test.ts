@@ -127,8 +127,8 @@ test('publish every public runtime and returned-object member', {
           propertyNames,
         )
         : await app.logic.eval(({ lx }, expression, members, optionalMembers, properties) => {
-          // `expression` is a member path such as `lx.host.control?.displayLanguage`
-          // or `lx.getStorage()`; walk it on this runtime's `lx`.
+          // `expression` is a member path such as `lx.host.displayLanguage`
+          // or `lx.storage()`; walk it on this runtime's `lx`.
           let target: unknown = lx;
           for (const part of expression.replace(/\?\./g, '.').split('.').slice(1)) {
             if (target === null || target === undefined) break;

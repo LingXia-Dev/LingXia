@@ -1,6 +1,7 @@
+import { definePage } from '@lingxia/types/page';
 const tabs = ["selector", "multiSelector", "time", "date"];
 
-Page({
+export default definePage({
   data: {
     activeTab: "selector",
     coffee: undefined,
@@ -12,65 +13,69 @@ Page({
     date: undefined,
     dateRange: undefined,
   },
-
-  onLoad: function () {},
-
-  setActiveTab: function (params: { tab?: string } = {}) {
-    const next = params?.tab;
-    if (typeof next !== "string" || !tabs.includes(next)) {
-      return;
-    }
-    this.setData({ activeTab: next });
-  },
-
-  _applyPickerValue: function ({
-    field,
-    value,
-  }: {
-    field: string;
-    value: any;
-  }) {
-    switch (field) {
-      case "coffee":
-        this.setData({ coffee: value });
-        return;
-      case "location":
-        this.setData({ location: value });
-        return;
-      case "multiTime":
-        this.setData({ multiTime: value });
-        return;
-      case "time":
-        this.setData({ time: value });
-        return;
-      case "year":
-        this.setData({ year: value });
-        return;
-      case "month":
-        this.setData({ month: value });
-        return;
-      case "date":
-        this.setData({ date: value });
-        return;
-      case "dateRange":
-        this.setData({ dateRange: value });
-        return;
-      default:
-        return;
-    }
-  },
-
-  onPickerConfirm: function (params: { field?: string; value?: any } = {}) {
-    var field = params?.field;
-    var value = params?.value;
-    if (!field || value === undefined) return;
-    this._applyPickerValue({ field, value });
-  },
-
-  onPickerScroll: function (params: { field?: string; value?: any } = {}) {
-    var field = params?.field;
-    var value = params?.value;
-    if (!field || value === undefined) return;
-    this._applyPickerValue({ field, value });
+  setup(page) {
+    const helpers = {
+      applyPickerValue({
+        field,
+        value,
+      }: {
+        field: string;
+        value: any;
+      }) {
+        switch (field) {
+          case "coffee":
+            page.update(d => { d.coffee = value; });
+            return;
+          case "location":
+            page.update(d => { d.location = value; });
+            return;
+          case "multiTime":
+            page.update(d => { d.multiTime = value; });
+            return;
+          case "time":
+            page.update(d => { d.time = value; });
+            return;
+          case "year":
+            page.update(d => { d.year = value; });
+            return;
+          case "month":
+            page.update(d => { d.month = value; });
+            return;
+          case "date":
+            page.update(d => { d.date = value; });
+            return;
+          case "dateRange":
+            page.update(d => { d.dateRange = value; });
+            return;
+          default:
+            return;
+        }
+      },
+    };
+    const actions = {
+      setActiveTab(params: { tab?: string } = {}) {
+        const next = params?.tab;
+        if (typeof next !== "string" || !tabs.includes(next)) {
+          return;
+        }
+        page.update(d => { d.activeTab = next; });
+      },
+      onPickerConfirm(params: { field?: string; value?: any } = {}) {
+        var field = params?.field;
+        var value = params?.value;
+        if (!field || value === undefined) return;
+        helpers.applyPickerValue({ field, value });
+      },
+      onPickerScroll(params: { field?: string; value?: any } = {}) {
+        var field = params?.field;
+        var value = params?.value;
+        if (!field || value === undefined) return;
+        helpers.applyPickerValue({ field, value });
+      },
+    };
+    return {
+      onLoad() {},
+      actions,
+    };
   },
 });

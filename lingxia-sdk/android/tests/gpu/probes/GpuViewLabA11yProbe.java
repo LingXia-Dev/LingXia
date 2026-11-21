@@ -13,7 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * View lab through an accessibility service: roles, collections and the polite live region; an editor
  * set, selected, copied, cut and pasted; static text selected and copied. Navigate first
- * (`lxdev lxapp nav to view-lab`). Copies are checked by pasting into an editor, not by reading the clipboard.
+ * (`lxdev lxapp nav go view-lab`). Copies are checked by pasting into an editor, not by reading the clipboard.
  */
 public final class GpuViewLabA11yProbe {
  static UiAutomation a;

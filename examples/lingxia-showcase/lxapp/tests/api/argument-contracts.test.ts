@@ -53,7 +53,7 @@ async function assertRejections(
 
 test('reject malformed navigation arguments with stable codes', {
   id: 'ARGS-NAV-001',
-  covers: ['lx.navigateTo', 'lx.redirectTo', 'lx.switchTab'],
+  covers: ['lx.nav.go'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ARGS-NAV-001');
@@ -62,11 +62,12 @@ test('reject malformed navigation arguments with stable codes', {
   const before = await app.nav.current();
 
   await assertRejections(t, app, [
-    { label: 'navigateTo no page', api: 'navigateTo', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'navigateTo empty page', api: 'navigateTo', args: [{ page: '' }], code: 'E_INVALID_ARG' },
-    { label: 'navigateTo unknown page', api: 'navigateTo', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
-    { label: 'redirectTo unknown page', api: 'redirectTo', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
-    { label: 'switchTab unknown page', api: 'switchTab', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
+    { label: 'go no target', api: 'nav.go', args: [{}], code: 'E_INVALID_ARG' },
+    { label: 'go empty page', api: 'nav.go', args: [{ page: '' }], code: 'E_INVALID_ARG' },
+    { label: 'go unknown key', api: 'nav.go', args: [{ page: 'home', query: {} }], code: 'E_INVALID_ARG' },
+    { label: 'go unknown page', api: 'nav.go', args: [{ page: 'no-such-page' }], code: 'E_NOT_FOUND' },
+    { label: 'replace unknown page', api: 'nav.go', args: [{ page: 'no-such-page' }, { replace: true }], code: 'E_NOT_FOUND' },
+    { label: 'go unknown tab', api: 'nav.go', args: [{ tab: 'no-such-page' }], code: 'E_NOT_FOUND' },
   ]);
 
   // A rejected navigation must not have moved the stack.
@@ -77,35 +78,37 @@ test('reject malformed navigation arguments with stable codes', {
 
 test('reject malformed transfer arguments before touching the network', {
   id: 'ARGS-TRANSFER-001',
-  covers: ['lx.downloadFile', 'lx.uploadFile'],
+  covers: ['lx.network.download', 'lx.network.upload'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ARGS-TRANSFER-001');
 
   await assertRejections(t, app, [
-    { label: 'no url', api: 'downloadFile', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'empty url', api: 'downloadFile', args: [{ url: '' }], code: 'E_INVALID_ARG' },
+    { label: 'no url', api: 'network.download', args: [], code: 'E_INVALID_ARG' },
+    { label: 'options first', api: 'network.download', args: [{ url: 'https://example.com/a' }], code: 'E_INVALID_ARG' },
+    { label: 'empty url', api: 'network.download', args: [''], code: 'E_INVALID_ARG' },
+    { label: 'empty to', api: 'network.download', args: ['https://example.com/a', { to: '' }], code: 'E_INVALID_ARG' },
     // Home has no provider, so public hosts are allowed. ftp is not a grant
     // question; the transfer client rejects the scheme as a network error.
     // Transfer-time failures surface on `result`, not from the factory call.
-    { label: 'non-http scheme', api: 'downloadFile', args: [{ url: 'ftp://example.com/a' }], then: 'result', code: 'E_NETWORK' },
+    { label: 'non-http scheme', api: 'network.download', args: ['ftp://example.com/a'], then: 'result', code: 'E_NETWORK' },
     // A dev session unlocks loopback so the suite can reach a fixture. Port 1
     // answers nothing, so this fails at connect. A release build has no dev
     // session and denies loopback outright.
-    { label: 'trusted loopback', api: 'downloadFile', args: [{ url: 'http://127.0.0.1:1/a' }], then: 'result', code: 'E_NETWORK' },
+    { label: 'trusted loopback', api: 'network.download', args: ['http://127.0.0.1:1/a'], then: 'result', code: 'E_NETWORK' },
 
-    // uploadFile rejects on shape before it opens the file, so these rows need
+    // upload rejects on shape before it opens the file, so these rows need
     // no fixture and no source file -- they hold on every platform.
-    { label: 'upload no url', api: 'uploadFile', args: [{}], code: 'E_INVALID_ARG' },
-    { label: 'upload no filePath', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload' }], code: 'E_INVALID_ARG' },
-    { label: 'upload empty url', api: 'uploadFile', args: [{ url: '', filePath: 'a.bin' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown method', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown bodyMode', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
+    { label: 'upload no url', api: 'network.upload', args: [], code: 'E_INVALID_ARG' },
+    { label: 'upload no file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', {}], code: 'E_INVALID_ARG' },
+    { label: 'upload empty url', api: 'network.upload', args: ['', { file: 'a.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown method', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown bodyMode', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
     // Multipart-only options under a raw body are rejected, never dropped.
-    { label: 'upload raw with formData', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } }], code: 'E_INVALID_ARG' },
-    { label: 'upload raw with name', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', name: 'asset' }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with formData', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with name', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'raw', name: 'asset' }], code: 'E_INVALID_ARG' },
     // Shape is fine here; the file simply is not there.
-    { label: 'upload missing file', api: 'uploadFile', args: [{ url: 'http://127.0.0.1:1/upload', filePath: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload missing file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
   ]);
 });
 

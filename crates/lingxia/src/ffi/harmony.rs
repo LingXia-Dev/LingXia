@@ -618,9 +618,6 @@ pub fn get_page_instance_id(appid: String, path: String, session_id: i64) -> Str
     let page_instance_id = lxapp_instance
         .page_instance_id_for_path(&resolved_path)
         .unwrap_or_default();
-    if !page_instance_id.is_empty() {
-        let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
-    }
     page_instance_id
 }
 
@@ -680,7 +677,7 @@ pub fn dispose_page_instance(page_instance_id: String, reason: String) -> bool {
 #[napi]
 pub fn on_surface_closed(appid: String, id: String, reason: String) -> bool {
     if let Some(lxapp) = lxapp::try_get(&appid) {
-        let _ = lxapp.forget_surface(&id);
+        let _ = lxapp.forget_surface_with_reason(&id, &reason);
     }
     #[cfg(feature = "standard")]
     {

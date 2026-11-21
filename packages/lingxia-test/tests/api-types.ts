@@ -28,7 +28,7 @@ test('typed test boundary', async t => {
   // @ts-expect-error The fixture has no string eval; a script string is for the raw driver.
   await app.eval({script:'1'});
   await t.automation.browser.tabs();
-  const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
+  const landed = await app.nav.go({ page:'editor' }, { waitUntil:'commit' });
   landed.webviewAttached.valueOf();
   landed.instanceId?.toUpperCase();
   await t.reject(async () => (await app.page({ name: 'devices' })).view.css('#save').click(), {code:'E_PAGE_NOT_ACTIVE'});
@@ -41,13 +41,13 @@ test('typed test boundary', async t => {
   // @ts-expect-error `app.page()` waits with `timeout`.
   await app.page({ name: 'editor' }, { timeoutMs: 1_000 });
   await app.nav.back({waitUntil:'ready', timeout:5_000});
-  await app.nav.relaunch({page:'editor', timeout:5_000});
+  await app.nav.reset({ page:'editor' }, { timeout:5_000 });
   // @ts-expect-error Fixture waits take `timeout`; `timeoutMs` is the raw driver's.
-  await app.nav.to({page:'editor', timeoutMs:5_000});
+  await app.nav.go({ page:'editor' }, { timeoutMs:5_000 });
   const stack: string[] = (await app.nav.stack()).map((page) => page.path);
   void stack;
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
-  await app.nav.to({page:'editor', waitFor:'ready'});
+  await app.nav.go({ page:'editor' }, { waitFor:'ready' });
   await input.waitFor({state:'attached'});
   await input.waitFor({state:'inViewport'});
   const rows = app.view.css('li').filter({hasText:/ready/i});
@@ -141,14 +141,14 @@ test.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => 
 
 test('typed Logic access', async t => {
   // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
-  const count: number = await t.app.logic.eval(({ getCurrentPages }) => getCurrentPages().length);
+  const count: number = await t.app.logic.eval(({ pageStack }) => pageStack().length);
   count.toFixed();
-  const route: string = await t.app.logic.eval(async ({ getCurrentPages }, index: number) => {
-    const pages = getCurrentPages();
+  const route: string = await t.app.logic.eval(async ({ pageStack }, index: number) => {
+    const pages = pageStack();
     return pages[pages.length - 1 - index].route;
   }, 0);
   route.toUpperCase();
-  const envPath = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+  const envPath = await t.app.logic.eval(({ lx }) => lx.fs.userData);
   envPath.valueOf();
   // @ts-expect-error Logic API members are checked against the published `lx`.
   await t.app.logic.eval(({ lx }) => lx.noSuchApi());
@@ -175,7 +175,7 @@ test('typed Logic access', async t => {
   const surface = await t.app.page({ name: 'surface' });
   const surfaceTitle: string = await surface.view.eval(({ document }, suffix: string) => document.title + suffix, '!');
   surfaceTitle.toUpperCase();
-  const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.env.USER_DATA_PATH.length, 1);
+  const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.fs.userData.length, 1);
   slow.toFixed();
   await surface.view.eval({ timeout: 20_000 }, ({ document }) => document.title);
   // @ts-expect-error `page` is not an eval option: bind the page and use its view.
@@ -450,7 +450,7 @@ test('contract only', { requires: { openapi: true } }, async (t) => {
 });
 // File defaults: every TestOptions key but `id`, plus `requires`.
 test.configure({ timeout: 60_000, start: { page: 'home' }, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
-test('starts on a page', { start: { page: 'detail', query: { id: 'd1' } } }, async () => {});
+test('starts on a page', { start: { page: 'detail', params: { id: 'd1' } } }, async () => {});
 // @ts-expect-error `fresh` is gone: `start: { page }` relaunches on that page.
 test('fresh', { fresh: true }, async () => {});
 // @ts-expect-error `start` names a page.

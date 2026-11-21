@@ -157,6 +157,7 @@ async fn pick(dialog: OpenDialog) -> Result<FileDialogResult, PlatformError> {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned()),
                 path: path.to_string_lossy().into_owned(),
+                size: None,
             })
             .collect(),
     })

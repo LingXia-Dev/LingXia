@@ -77,14 +77,14 @@ export default function PullDownRefreshPage() {
                   : 'bg-blue-500 hover:bg-blue-600 text-white'
               }`}
             >
-              lx.startPullDownRefresh()
+              page.refresh()
             </button>
             <button
               data-testid="pull-refresh-stop"
               onClick={stopRefresh}
               className="w-full bg-surface-500 hover:bg-surface-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
             >
-              lx.stopPullDownRefresh()
+              Finish refresh
             </button>
           </div>
         </div>

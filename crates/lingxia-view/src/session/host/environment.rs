@@ -45,7 +45,7 @@ const APPEARANCE: [&str; 3] = ["theme", "highContrast", "palette"];
 /// Environment keys a surface push sets that only the View reads.
 const HOST_CONTEXT: [&str; 2] = ["sizeClass", "canDock"];
 
-/// The lxapp's adaptive context, as Logic's `lx.surface.watchContext()` reports it.
+/// The lxapp's adaptive context, as Logic's `page.env` reads it, plus pixels.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SurfaceContext {

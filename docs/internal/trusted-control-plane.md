@@ -175,22 +175,23 @@ two put ingress and outbound in opposite lock orders.
 
 ## Attention routes
 
-`lx.host.notification.*`, `lx.host.banner.*` and `lx.surface.bringToFront`
-are the direct routes a guest reaches. They are `AppSessionOnly`, and the
+`lx.host.notification.*` and `lx.host.banner.*` are the direct routes a guest
+reaches. They are `AppSessionOnly`, and the
 handler then scopes the effect by `AttentionScope`, derived from the session
 class, never from a payload:
 
 - A guest's ids are a digest of its app id and its own id, so it cannot name
   another app's notification or banner. The product's ids are unchanged.
-- A guest's notification target can only be itself.
+- A guest's notification target, and each of its banner actions' targets, can
+  only be itself. Bringing the product forward on its own (`lx.shell.activate`)
+  is the Control app's.
 - A guest may hold 32 notifications and 3 banners; a banner is up 60 s at
   most and waits behind the product's, so a guest cannot hold the one slot.
 - A guest spends the product's notification permission at most once per
   session, only while open; a show the platform suppressed without asking
   returns the claim.
-- A guest's banner carries its name, and an action picked on it is the only
-  thing that lets that session call `bringToFront`, once, within 10 seconds
-  (`user_activation`). Nothing the guest sends can mint one.
+- A guest's banner carries its name and icon, so it cannot pass as the
+  product's.
 
 Widening that list widens what every downloaded lxapp can do;
 `the_attention_routes_are_exactly_these` pins it.

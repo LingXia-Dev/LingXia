@@ -230,10 +230,10 @@ function validateOptions(options: FileOptions, where: string): void {
   const start = options.start;
   if (start !== undefined) {
     if (!start || typeof start !== "object" || typeof start.page !== "string" || start.page.length === 0) {
-      throw new TypeError(`${where} start must be { page, query? } with a configured page name`);
+      throw new TypeError(`${where} start must be { page, params? } with a configured page name`);
     }
-    if (start.query !== undefined && (!start.query || typeof start.query !== "object" || Array.isArray(start.query))) {
-      throw new TypeError(`${where} start.query must be an object`);
+    if (start.params !== undefined && (!start.params || typeof start.params !== "object" || Array.isArray(start.params))) {
+      throw new TypeError(`${where} start.params must be an object`);
     }
   }
   for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
@@ -633,7 +633,7 @@ async function bringForward(appId: string): Promise<string | undefined> {
 async function relaunchHome(app: LxAppDriver, start?: TestStart): Promise<void> {
   const page = start?.page ?? (await app.pages())[0]?.name ?? "home";
   try {
-    await app.nav.relaunch({ page, ...(start?.query ? { query: start.query } : {}), waitUntil: "ready" });
+    await app.nav.reset({ page, ...(start?.params ? { params: start.params } : {}) }, { waitUntil: "ready" });
   } catch (error) {
     // The home page may hand off to another page itself (a gate, a login
     // redirect); that is the app's own start, not a failed relaunch.

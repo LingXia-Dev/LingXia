@@ -3,7 +3,7 @@
 
 use crate::i18n::js_internal_error;
 use lxapp::LxApp;
-use rong::{HostError, JSContext, JSContextService, JSResult, JSValue};
+use rong::{HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock, Weak};
@@ -104,10 +104,6 @@ impl JSContextService for FeatureSnapshot {
     }
 }
 
-pub(crate) fn is_control_app(ctx: &JSContext) -> bool {
-    LxApp::from_ctx(ctx).is_ok_and(|app| app.is_control_app())
-}
-
 fn autostart_supported() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -169,6 +165,36 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 pub(crate) fn exposes(ctx: &JSContext, key: &str) -> bool {
     ctx.get_service::<FeatureSnapshot>()
         .is_some_and(|snapshot| snapshot.supported.contains(key))
+}
+
+/// A capability member stays present without the capability (rule 2): each
+/// of `members` fails with `E_NOT_SUPPORTED` naming `feature`. Subscriptions
+/// (`on*`) throw; every other call rejects.
+pub(crate) fn unsupported_namespace(
+    ctx: &JSContext,
+    parent: &JSObject,
+    name: &str,
+    feature: &'static str,
+    members: &[&'static str],
+) -> JSResult<JSObject> {
+    let namespace = JSObject::new(ctx);
+    for member in members {
+        let message = format!(
+            "{feature} is not supported by this host; check lx.supports('{feature}') first"
+        );
+        let error = move || HostError::new(rong::error::E_NOT_SUPPORTED, message.clone());
+        let func = if member.starts_with("on") {
+            JSFunc::new(ctx, move || -> JSResult<()> { Err(error().into()) })?
+        } else {
+            JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
+                let error = error();
+                Promise::from_future(&ctx, None, async move { Err::<(), _>(error.into()) })
+            })?
+        };
+        namespace.set(*member, func.name(member)?)?;
+    }
+    parent.set(name, namespace.clone())?;
+    Ok(namespace)
 }
 
 /// Frozen feature support, not permission or current layout. Unknown strings

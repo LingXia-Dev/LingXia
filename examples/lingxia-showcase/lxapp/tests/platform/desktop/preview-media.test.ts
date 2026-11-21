@@ -38,7 +38,7 @@ interface HandleState {
 }
 
 /**
- * `previewMedia` hands back a handle synchronously and presents the host's own
+ * `media.preview` hands back a handle synchronously and presents the host's own
  * preview surface. What this case proves is that handle: the host says it
  * presented, `current` describes the source it was opened with, and the change
  * listener is a real subscription.
@@ -54,7 +54,7 @@ test('present a local image and report it through the handle', {
   skip: previewSkip,
   id: 'DESKTOP-PREVIEW-MEDIA-001',
   covers: [
-    'lx.previewMedia',
+    'lx.media.preview',
     'PreviewMediaHandle.presented',
     'PreviewMediaHandle.current',
     'PreviewMediaHandle.onChange',
@@ -112,9 +112,9 @@ test('present a local image and report it through the handle', {
   });
 
   const started = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, base) => {
-    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
+    const png = await lx.network.download(base + '/media/sample.png').result;
     const controller = new AbortController();
-    const handle = lx.previewMedia({ path: png.uri, type: 'image', signal: controller.signal });
+    const handle = lx.media.preview({ path: png.uri, type: 'image', signal: controller.signal });
     const state: PreviewSession = {
       handle, controller, presented: false, changes: 0, completed: null, off: null,
     };
@@ -159,7 +159,7 @@ test('skip an unreachable https item and keep request indexes', {
   skip: httpsPreviewSkip,
   id: 'DESKTOP-PREVIEW-HTTPS-SKIP-001',
   covers: [
-    'lx.previewMedia',
+    'lx.media.preview',
     'PreviewMediaHandle.current',
     'PreviewMediaHandle.onChange',
   ],
@@ -181,7 +181,7 @@ test('skip an unreachable https item and keep request indexes', {
 
   await app.logic.eval(({ lx }, key, missing, image) => {
     const controller = new AbortController();
-    const handle = lx.previewMedia({
+    const handle = lx.media.preview({
       sources: [
         { path: missing, type: 'image' },
         { path: image, type: 'image', durationMs: 60000 },

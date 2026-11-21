@@ -15,15 +15,15 @@ type Probes = Record<string, BannerProbe | undefined>;
  * A guest lxapp (Chat, docked as an aside) speaks only for itself through
  * `lx.host.notification` and `lx.host.banner`: a notification may only open
  * Chat, the Control app cannot dismiss Chat's banner by naming the same id,
- * and Chat may come forward with `lx.surface.bringToFront` only after the
- * person picks an action on its banner.
+ * a banner action may only target Chat, and only the Control app may bring
+ * the product forward with `lx.shell.activate`.
  *
  * Picking an action needs the card's accessibility node, which only the macOS
  * card has; on Windows the card is drawn by hand, so that phase runs on macOS.
  */
 test('a guest lxapp gets attention for itself only', {
   id: 'DESKTOP-GUEST-ATTENTION-001',
-  covers: ['lx.surface.bringToFront'],
+  covers: ['lx.shell.activate'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-GUEST-ATTENTION-001');
@@ -33,7 +33,7 @@ test('a guest lxapp gets attention for itself only', {
 
   defer(async () => {
     await app.logic.eval(async ({ lx }, id) => {
-      await lx.host.banner?.dismiss(id).catch(() => undefined);
+      await lx.host.banner.dismiss(id).catch(() => undefined);
     }, bannerId).catch(() => undefined);
     const manager = t.automation.lxapps;
     const chat = (await manager.list()).find((candidate) => candidate.appId === CHAT_APP_ID);
@@ -41,26 +41,26 @@ test('a guest lxapp gets attention for itself only', {
   });
 
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+    await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
   });
   const chat = t.automation.lxapp(CHAT_APP_ID);
 
   const offered = await chat.logic.eval(({ lx }) => ({
-    banner: typeof lx.host.banner?.show,
+    banner: typeof lx.host.banner.show,
     supportsBanner: lx.supports('app.banner'),
-    notification: typeof lx.host.notification?.show,
-    bringToFront: typeof lx.surface.bringToFront,
+    notification: typeof lx.host.notification.show,
+    activate: typeof lx.shell.activate,
   }));
   expect(offered).toEqual({
     banner: 'function',
     supportsBanner: true,
     notification: 'function',
-    bringToFront: 'function',
+    activate: 'function',
   });
 
   // Every refusal lands before anything is posted, so none of these prompts.
   const refused = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const show = lx.host.notification!.show as (options: unknown) => Promise<unknown>;
+    const show = lx.host.notification.show as (options: unknown) => Promise<unknown>;
     const code = async (target: unknown) => {
       try {
         await show({ id: 'guest-scope', title: 'scope', target });
@@ -69,11 +69,20 @@ test('a guest lxapp gets attention for itself only', {
         return (error as { code?: string }).code ?? String(error);
       }
     };
-    let front = 'resolved';
+    const banner = lx.host.banner.show as (options: unknown) => Promise<unknown>;
+    const bannerCode = async (target: unknown) => {
+      try {
+        await banner({ id: 'guest-scope', title: 'scope', actions: [{ id: 'go', label: 'Go', target }] });
+        return 'shown';
+      } catch (error) {
+        return (error as { code?: string }).code ?? String(error);
+      }
+    };
+    let shellActivate = 'returned';
     try {
-      await lx.surface.bringToFront({ query: { probe: 'no-activation' } });
+      lx.shell.activate();
     } catch (error) {
-      front = (error as { code?: string }).code ?? String(error);
+      shellActivate = (error as { code?: string }).code ?? String(error);
     }
     return {
       activate: await code({ kind: 'activate' }),
@@ -81,7 +90,9 @@ test('a guest lxapp gets attention for itself only', {
       route: await code({ kind: 'route', name: 'anything' }),
       appLink: await code({ kind: 'appLink', url: 'https://example.com/x' }),
       otherApp: await code({ kind: 'app', appId: 'lingxia-showcase' }),
-      bringToFront: front,
+      bannerActivate: await bannerCode({ kind: 'activate' }),
+      bannerOtherApp: await bannerCode({ kind: 'app', appId: 'lingxia-showcase' }),
+      shellActivate,
     };
   });
   expect(refused).toEqual({
@@ -90,12 +101,14 @@ test('a guest lxapp gets attention for itself only', {
     route: 'E_PERMISSION_DENIED',
     appLink: 'E_PERMISSION_DENIED',
     otherApp: 'E_PERMISSION_DENIED',
-    bringToFront: 'E_PERMISSION_DENIED',
+    bannerActivate: 'E_PERMISSION_DENIED',
+    bannerOtherApp: 'E_PERMISSION_DENIED',
+    shellActivate: 'E_PERMISSION_DENIED',
   });
 
   // Its own notification, opening itself, under its own id.
   const own = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const n = lx.host.notification!;
+    const n = lx.host.notification;
     const permission = await n.getPermission();
     try {
       const shown = await n.show({
@@ -126,11 +139,11 @@ test('a guest lxapp gets attention for itself only', {
     const probes = globalThis as unknown as Probes;
     const probe: BannerProbe = { result: null };
     probes[key] = probe;
-    void lx.host.banner!.show({
+    void lx.host.banner.show({
       id,
       title: 'Run finished',
       body: 'DESKTOP-GUEST-ATTENTION-001',
-      actions: [{ id: 'open', label: 'Open run', style: 'primary' }],
+      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { kind: 'app', appId: 'lingxia-chat', query: { run: 'probe' } } }],
       timeoutMs: 0,
     }).then(
       (result) => { probe.result = result; },
@@ -143,7 +156,7 @@ test('a guest lxapp gets attention for itself only', {
   ), namespace);
 
   // The Control app's ids are not the guest's: the same id names nothing.
-  await app.logic.eval(async ({ lx }, id) => { await lx.host.banner!.dismiss(id); }, bannerId);
+  await app.logic.eval(async ({ lx }, id) => { await lx.host.banner.dismiss(id); }, bannerId);
   await new Promise<void>((resolve) => setTimeout(resolve, 400));
   expect(await bannerResult()).toBe(null);
 
@@ -158,40 +171,15 @@ test('a guest lxapp gets attention for itself only', {
     await desktop.ax.invoke({ window: card!.id, match: 'name:Open run' });
     expect(await eventually(bannerResult, (value) => value !== null, { describe: 'the banner action' }))
       .toEqual({ status: 'ok', id: bannerId, action: 'open' });
-
-    await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.bringToFront({ query: { probe: 'after-action' } });
-    });
-    // The activation is spent by that call.
-    const again = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      try {
-        await lx.surface.bringToFront();
-        return 'resolved';
-      } catch (error) {
-        return (error as { code?: string }).code ?? String(error);
-      }
-    });
-    expect(again).toBe('E_PERMISSION_DENIED');
   } else {
-    await chat.logic.eval(async ({ lx }, id) => { await lx.host.banner!.dismiss(id); }, bannerId);
+    await chat.logic.eval(async ({ lx }, id) => { await lx.host.banner.dismiss(id); }, bannerId);
     expect(await eventually(bannerResult, (value) => value !== null, { describe: 'the guest dismissal' }))
       .toEqual({ status: 'canceled', id: bannerId, reason: 'dismissed' });
   }
 
-  // The Control app needs no activation, and the query reaches App onShow.
-  await app.logic.eval({ timeout: 20_000 }, async ({ lx }, probe) => {
-    await lx.surface.bringToFront({ query: { probe } });
-  }, namespace);
-  const shown = await eventually(
-    () => app.logic.eval(({ getApp }) => {
-      const instance = getApp() as unknown as {
-        globalData: { lifecycle: { lastShow?: { reason?: string; query?: Record<string, unknown> } } };
-      } | null;
-      const last = instance?.globalData.lifecycle.lastShow;
-      return { reason: last?.reason ?? null, probe: last?.query?.probe ?? null };
-    }),
-    (value) => value.probe === namespace,
-    { describe: 'the Control app reopen query in App onShow' },
-  );
-  expect(shown).toEqual({ reason: 'switch_back', probe: namespace });
+  // The Control app brings the product forward without a banner.
+  expect(await app.logic.eval(({ lx }) => {
+    lx.shell.activate();
+    return true;
+  })).toBe(true);
 });

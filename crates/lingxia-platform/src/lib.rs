@@ -63,7 +63,7 @@ pub mod desktop;
 
 /// Canonical platform-family label — the single source of truth for "which
 /// OS is this," shared by the WebView bridge config injection
-/// (`lingxia-lxapp`), `lx.host.getBaseInfo().os`, and `lx.getDeviceInfo().osName`
+/// (`lingxia-lxapp`), `lx.host.info.os`, and `lx.device.info.osName`
 /// (`lingxia-logic`) so the three can never drift apart. Matches the values
 /// the View-side bridge already exposes via `useLxHost().os`.
 pub fn os_label() -> &'static str {

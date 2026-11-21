@@ -1,49 +1,54 @@
 import type { LocationInfo } from "@lingxia/types";
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: {
     location: null as LocationInfo | null,
     locationError: "",
     isLoading: false,
   },
+  setup(page) {
+    const actions = {
+      async getLocation() {
+        if (page.data.isLoading) {
+          return;
+        }
 
-  onLoad: function (options) {
-    console.log("Location page onLoad options:", options);
-  },
+        page.update(d => {
+          d.isLoading = true;
+          d.locationError = "";
+        });
 
-  getLocation: async function () {
-    if (this.data.isLoading) {
-      return;
-    }
+        try {
+          const location = await lx.device.location({ timeoutMs: 10_000 });
 
-    this.setData({
-      isLoading: true,
-      locationError: "",
-    });
+          console.log("Location info:", location);
 
-    try {
-      const location = await lx.getLocation({ timeoutMs: 10_000 });
+          page.update(d => {
+            d.location = location;
+            d.isLoading = false;
+          });
+        } catch (error) {
+          console.warn("Failed to get location:", error);
 
-      console.log("Location info:", location);
-
-      this.setData({
-        location: location,
-        isLoading: false,
-      });
-    } catch (error) {
-      console.warn("Failed to get location:", error);
-
-      this.setData({
-        locationError: error instanceof Error ? error.message : String(error),
-        isLoading: false,
-      });
-    }
-  },
-
-  // Clear location data
-  clearLocation: async function () {
-    this.setData({
-      location: null,
-      locationError: "",
-    });
+          page.update(d => {
+            d.locationError = error instanceof Error ? error.message : String(error);
+            d.isLoading = false;
+          });
+        }
+      },
+      // Clear location data
+      async clearLocation() {
+        page.update(d => {
+          d.location = null;
+          d.locationError = "";
+        });
+      },
+    };
+    return {
+      onLoad(options) {
+        console.log("Location page onLoad options:", options);
+      },
+      actions,
+    };
   },
 });

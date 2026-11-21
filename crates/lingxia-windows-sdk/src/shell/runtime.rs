@@ -1173,7 +1173,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_host_color_mode_handler(Arc::new(|| {
         apply_windows_host_color_mode();
     }));
-    // Awaited `lx.tabBar.update()` calls: run the layout sync off
+    // Awaited `lx.app.tabBar.update()` calls: run the layout sync off
     // the caller's thread and complete the callback once it has applied.
     lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {
         std::mem::drop(lingxia::task::spawn(async move {
@@ -1303,7 +1303,7 @@ pub(super) fn install() {
     lingxia_platform::set_windows_surface_closed_handler(Arc::new(|id, reason| {
         let (appid, _, _) = lxapp::get_current_lxapp();
         if let Some(app) = lxapp::try_get(&appid) {
-            let _ = app.forget_surface(id);
+            let _ = app.forget_surface_with_reason(id, reason);
         }
         lingxia_logic::notify_surface_closed(id, reason);
     }));
@@ -1361,8 +1361,8 @@ fn sync_related_shell_layouts(appid: &str) {
 /// The app, the shell owner, the visible main, and the stack-top app.
 ///
 /// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
-/// stack top, which can lag the on-screen main (a later `navigateToApp`, a
-/// presented browser tab), so the visible main is added separately; without
+/// stack top, which can lag the on-screen main (a later `lx.nav.go({ app })`,
+/// a presented browser tab), so the visible main is added separately; without
 /// it, toggling that guest rebuilds home's hidden webtag and the last-opened
 /// guest, never the one the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
@@ -2201,7 +2201,7 @@ fn tab_bar_owner_for_layout<'a>(
     visible_main: Option<&'a LxApp>,
 ) -> &'a LxApp {
     // The visible lxapp owns the tab pages the user is looking at. Desktop
-    // used to keep drawing the shell owner's items after `navigateToApp`, so
+    // used to keep drawing the shell owner's items after `lx.nav.go({ app })`, so
     // sidebar clicks SwitchTab'd a background home app (macOS had the same
     // hole). Present-time callers pass the incoming app here so the first
     // chrome pass does not wait for a later switcher snapshot. Sidebar
@@ -3857,7 +3857,7 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
         log::warn!("failed to reconcile Windows lxapp main from layout: {app_id}");
         return;
     }
-    // `lx.shell.openApp` has no sidebar click to activate the host or repaint
+    // `lx.surface.openApp` has no sidebar click to activate the host or repaint
     // the switcher. A matching physical webtag used to return before either.
     if explicitly_requested {
         if let Some(owner_appid) = shell_owner_appid() {
@@ -4614,7 +4614,7 @@ pub(crate) fn demote_lxapp_main(appid: &str) -> bool {
     demote_lxapp_main_at(appid, "")
 }
 
-/// `lx.shell.openApp` asking a live app to change role: the same moves as a
+/// `lx.surface.openApp` asking a live app to change role: the same moves as a
 /// sidebar drag.
 fn move_lxapp_region_for_api(appid: &str, to_main: bool, edge: &str) -> bool {
     if to_main {

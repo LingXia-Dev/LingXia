@@ -673,7 +673,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * TabBar update with a real completion signal for lx.tabBar.update().
+   * TabBar update with a real completion signal for lx.app.tabBar.update().
    * The @State change renders on the next frame, so `done` is chained through
    * two frame callbacks: the second fires at the start of the frame after the
    * one that applied the state, i.e. once the hide/show has actually committed.

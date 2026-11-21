@@ -1,5 +1,5 @@
-import type { AppLaunchOptions, ConfiguredPageName } from "@lingxia/types";
-import type { ShowcaseAppInstance } from "./shared/lib/app";
+import type { AppLaunchOptions, ConfiguredPageName, NavTarget, OpenLink } from "@lingxia/types";
+import { appState, setIpAddr } from "./shared/lib/app";
 import { getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";
 
@@ -21,19 +21,18 @@ async function testManagedFileAccess() {
 
 const PRODUCT_LINK_PREFIX = "/showcase/";
 
-function routeFromAppLink(options?: AppLaunchOptions) {
-  if (options?.scene !== 8003) return;
-  const pathname = options.url ? new URL(options.url).pathname : "";
-  // Two shapes: a product path this app recognises, and `/lxapp/open?page=`.
+/** Where an App Link goes: a product path this app recognises, or `/lxapp/open?page=`. */
+function targetOfLink(link: OpenLink): NavTarget | undefined {
+  const pathname = link.url ? new URL(link.url).pathname : "";
   const page = pathname.startsWith(PRODUCT_LINK_PREFIX)
     ? pathname.slice(PRODUCT_LINK_PREFIX.length)
-    : options.query?.page;
-  if (!page) return;
-  const query = { ...options.query };
-  delete query.page;
+    : link.query.page;
+  if (!page) return undefined;
+  const params = { ...link.query };
+  delete params.page;
   // A link carries whatever the sender wrote, so the name cannot be checked
-  // here — navigateTo rejects one this lxapp does not have.
-  void lx.navigateTo({ page: page as ConfiguredPageName, query });
+  // here — navigation rejects one this lxapp does not have.
+  return { page: page as ConfiguredPageName, params };
 }
 
 async function applyHostChrome(os: string, tag: string) {
@@ -72,7 +71,7 @@ async function applyHostChrome(os: string, tag: string) {
       icon: "public/sidebar-terminal-settings.svg",
       label: t("sidebarTerminalSettings"),
       onActivate: () => {
-        void lx.shell
+        void lx.surface
           .openApp("app.lingxia.terminal-settings", { as: "aside", edge: "right" })
           .catch((error) => console.warn("terminal settings action failed", error));
       },
@@ -96,7 +95,7 @@ async function applyHostChrome(os: string, tag: string) {
     icon: "public/activator.svg",
     label: t("sidebarPing"),
     onActivate: () => {
-      lx.showToast({ title: t("pingToast"), icon: "success" });
+      lx.ui.toast({ title: t("pingToast"), icon: "success" });
     },
   });
   // The one footer action with a `value`: the display language is a fact that
@@ -110,13 +109,13 @@ async function applyHostChrome(os: string, tag: string) {
     value: t("languageName"),
     onActivate: () => {
       const next = language === "zh-CN" ? "en-US" : "zh-CN";
-      void lx.host.control?.displayLanguage
+      void lx.host.displayLanguage
         .setPreference(next)
         .catch((error) => console.warn("language action failed", error));
     },
   });
   await lx.shell.sidebarActions.replace(sidebarActions);
-  lx.setMoreActions([
+  lx.app.setMoreActions([
     {
       icon: "public/showcase-icon.png",
       label: t("moreFeedback"),
@@ -141,11 +140,10 @@ async function applyHostChrome(os: string, tag: string) {
 }
 
 App({
-  onLaunch: async function (this: ShowcaseAppInstance, options?: AppLaunchOptions) {
-    this.globalData.lifecycle.launches++;
-    this.globalData.lifecycle.last = "launch";
-    routeFromAppLink(options);
-    const { os } = lx.host.getBaseInfo();
+  onLaunch(options?: AppLaunchOptions) {
+    appState.lifecycle.launches++;
+    appState.lifecycle.last = "launch";
+    const { os } = lx.host.info;
     const applyChrome = (tag = lx.host.displayLanguage.get()) => {
       void applyHostChrome(os, tag).catch((error) =>
         console.warn("host chrome language update failed", error),
@@ -157,68 +155,59 @@ App({
     lx.host.displayLanguage.watch((tag) => {
       applyChrome(tag);
     });
-    lx.host.control?.displayLanguage.watchPreference(() => {
+    lx.host.displayLanguage.watchPreference(() => {
       applyChrome();
     });
 
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
+    lx.app.onUpdateReady(async () => {
       console.log("Update ready; asking user to apply...");
       const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-      const applyNow = await lx.showModal({
+      const applyNow = await lx.ui.confirm({
         title: t("updateTitle"),
-        content: t("updateBody"),
-        showCancel: true,
+        message: t("updateBody"),
         cancelText: t("updateLater"),
         confirmText: t("updateApply"),
       });
-      if (applyNow.status !== 'canceled') {
-        um.applyUpdate();
+      if (applyNow) {
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn("Update failed", info);
     });
 
     testManagedFileAccess();
 
-    try {
-      const response = await fetch("https://api64.ipify.org?format=json");
-      const data = (await response.json()) as { ip: string };
-      this.globalData.ipAddr = data.ip;
-      console.log("Got public address:", data.ip);
-    } catch (error) {
-      this.globalData.ipAddr = (error as Error).message;
-    }
-
-    // Call the registered callback function if available
-    if (this.ipReadyCallback) {
-      console.log("Calling IP ready callback");
-      this.ipReadyCallback(this.globalData.ipAddr);
-    }
+    // Not awaited: the first page's onLoad waits for onLaunch.
+    void fetch("https://api64.ipify.org?format=json")
+      .then((response) => response.json() as Promise<{ ip: string }>)
+      .then(
+        (data) => setIpAddr(data.ip),
+        (error: Error) => setIpAddr(error.message),
+      );
   },
 
-  onHide(this: ShowcaseAppInstance) {
-    this.globalData.lifecycle.hides++;
-    this.globalData.lifecycle.last = "hide";
+  onHide() {
+    appState.lifecycle.hides++;
+    appState.lifecycle.last = "hide";
     console.log("App.onHide");
   },
 
-  onShow(this: ShowcaseAppInstance, options?: AppLaunchOptions) {
-    this.globalData.lifecycle.shows++;
-    this.globalData.lifecycle.last = "show";
-    this.globalData.lifecycle.lastShow = options;
-    routeFromAppLink(options);
+  onShow(options?: AppLaunchOptions) {
+    appState.lifecycle.shows++;
+    appState.lifecycle.last = "show";
+    appState.lifecycle.lastShow = options;
     console.log("App.onShow");
+  },
+
+  onOpen(link: OpenLink) {
+    return targetOfLink(link);
   },
 
   onUserCaptureScreen() {
     console.log("App.onUserCaptureScreen");
   },
 
-  globalData: {
-    lifecycle: { launches: 0, shows: 0, hides: 0, last: "", pageHides: 0, pageShows: 0 },
-    greeting: "This is from App's globalData.data",
-    ipAddr: "loading",
-  },
+  // For `lxdev test`, which reads it through `appInstance().state`.
+  state: appState,
 });

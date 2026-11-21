@@ -1,5 +1,6 @@
 import { tabIndex } from '../helpers/tabs.js';
 import type { JsonValue, TestApp } from '@lingxia/test';
+import type { ToastHandle } from '@lingxia/types';
 import { expect, test } from '@lingxia/test';
 import type { LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { bindFixture, eventually, relaunchFromLogic, type Caught } from '../helpers/poll.js';
@@ -45,7 +46,7 @@ async function waitForTabBar(
 
 async function appearanceOf(app: TestApp): Promise<{ preference: string; resolved: string }> {
   return app.logic.eval(({ lx }) => ({
-    preference: String(lx.host.control?.appearance.getPreference()),
+    preference: String(lx.host.appearance.getPreference()),
     resolved: String(lx.host.appearance.get()),
   }));
 }
@@ -59,9 +60,10 @@ async function caughtChromeUpdate(
   target: 'navigationBar' | 'tabBar',
   patch: JsonValue,
 ): Promise<Caught> {
-  return app.logic.eval(async ({ lx }, target, patch) => {
+  return app.logic.eval(async ({ lx, currentPage }, target, patch) => {
     try {
-      await (lx[target].update as (patch: unknown) => Promise<void>)(patch);
+      const bar = target === 'tabBar' ? lx.app.tabBar : currentPage()!.navigationBar;
+      await (bar.update as (patch: unknown) => Promise<void>)(patch);
       return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -72,19 +74,19 @@ async function caughtChromeUpdate(
 
 test("apply navigationBar title, colors, home button, and reset", {
   id: "UI-NAVBAR-001",
-  covers: ['lx.navigationBar', 'lx.navigationBar.update'],
+  covers: ['page.navigationBar.update'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-NAVBAR-001");
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({ title: null, style: null, homeButton: 'auto' });
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({ title: null, style: null, homeButton: 'auto' });
     }).catch(() => undefined);
   });
 
   const ui = await t.step('drive the ui page presets', async () => {
-    await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('navbar-preset-blue').click({ timeout: 30_000 });
     const styled = await waitForNavBar(
@@ -99,8 +101,8 @@ test("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('set divider color and hide the home button', async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({
         style: { dividerColor: '#112233' },
         homeButton: 'hidden',
       });
@@ -143,14 +145,14 @@ test("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('survive reLaunch', async () => {
-    await app.logic.eval(async ({ lx }) => {
-      await lx.navigationBar.update({
+    await app.logic.eval(async ({ currentPage }) => {
+      await currentPage()!.navigationBar.update({
         title: 'Kept Title',
         style: { backgroundColor: '#10B981', foregroundColor: '#FFFFFF', dividerColor: '#0F766E' },
       });
     });
     await waitForNavBar(app, (state) => state.title === 'Kept Title', 'title before relaunch');
-    await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
     await waitForCurrentPage(app, 'ui', 30_000);
     const relaunched = await app.page({ name: 'ui' });
     await relaunched.view.testId('navbar-preset-blue').waitFor({ state: 'visible', timeout: 30_000 });
@@ -163,23 +165,17 @@ test("apply navigationBar title, colors, home button, and reset", {
 
 test("round-trip appearance preference through the ui controls", {
   id: "UI-APPEARANCE-001",
-  covers: [
-    'lx.host.control',
-    'lx.host.appearance.get',
-    'lx.host.appearance.watch',
-    'lx.host.control.appearance.getPreference',
-    'lx.host.control.appearance.setPreference',
-  ],
+  covers: ['lx.host.appearance.get', 'lx.host.appearance.watch', 'lx.host.appearance.getPreference', 'lx.host.appearance.setPreference'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-APPEARANCE-001");
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.host.control?.appearance.setPreference('auto'); })
+    await app.logic.eval(async ({ lx }) => { await lx.host.appearance.setPreference('auto'); })
       .catch(() => undefined);
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'appearance' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'appearance' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('ui-appearance-light').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -203,8 +199,8 @@ test("round-trip appearance preference through the ui controls", {
     const before = await appearanceOf(app);
     const rejected: Caught = await app.logic.eval(async ({ lx }, preference) => {
       try {
-        const control = lx.host.control!.appearance;
-        await (control.setPreference as (preference: unknown) => Promise<void>)(preference);
+        const appearance = lx.host.appearance;
+        await (appearance.setPreference as (preference: unknown) => Promise<void>)(preference);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -246,7 +242,7 @@ const OVERLAY_SURFACE: Record<string, 'dom' | 'native'> = {
 
 test("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
-  covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.alert', 'lx.confirm', 'lx.showActionSheet'],
+  covers: ['lx.ui.toast', 'lx.ui.alert', 'lx.ui.confirm', 'lx.ui.actionSheet'],
   app: SHOWCASE_APP_ID,
   reason: 'Mobile hosts render feedback through native overlays rather than DOM elements.',
   timeout: 60_000,
@@ -271,11 +267,13 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
   // Desktop overlays are drawn in the ui page's own document.
   const ui = await t.step('show and hide a toast', async () => {
-    await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
+    await app.nav.reset({ page: 'ui', params: { type: 'toast' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('toast-show').waitFor({ state: 'visible', timeout: 30_000 });
+    // The handle stays in Logic: it is not JSON.
     await app.logic.eval(async ({ lx }) => {
-      await lx.showToast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
+      (globalThis as { coverageToast?: ToastHandle }).coverageToast =
+        await lx.ui.toast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
     });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toContainText('Coverage toast', { timeout: 30_000 });
@@ -284,7 +282,9 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       await expect.poll(() => hostShows('Coverage toast'), { timeout: 10_000 }).toBe(true);
       await expect(page.view.testId('lx-toast')).toHaveCount(0);
     }
-    await app.logic.eval(async ({ lx }) => { await lx.hideToast(); });
+    await app.logic.eval(async () => {
+      await (globalThis as { coverageToast?: ToastHandle }).coverageToast?.dismiss();
+    });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toHaveCount(0, { timeout: 10_000 });
     } else {
@@ -308,16 +308,16 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.logic.eval(({ lx }) =>
-      lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' }));
+      lx.ui.confirm({ title: 'Coverage', message: 'Confirm this', confirmText: 'OK', cancelText: 'Cancel' }));
     await press('lx-modal-confirm', 'OK');
-    expect((await confirmed).status === 'canceled').toBeFalsy();
+    expect(await confirmed).toBe(true);
 
     const canceled = app.logic.eval(({ lx }) =>
-      lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true }));
+      lx.ui.confirm({ title: 'Coverage', message: 'Cancel this' }));
     await press('lx-modal-cancel', 'Cancel');
-    expect((await canceled).status === 'canceled').toBeTruthy();
+    expect(await canceled).toBe(false);
 
-    const noCancel = app.logic.eval(({ lx }) => lx.showModal({ content: 'No cancel', showCancel: false }));
+    const noCancel = app.logic.eval(async ({ lx }) => { await lx.ui.alert('No cancel'); return true; });
     if (overlays === 'dom') {
       await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
       await expect(ui.view.testId('lx-modal-cancel')).toHaveCount(0);
@@ -326,34 +326,34 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       expect(await hostShows('Cancel')).toBe(false);
     }
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
-    expect((await noCancel).status === 'canceled').toBeFalsy();
+    expect(await noCancel).toBe(true);
   });
 
   await t.step('use acknowledgement and boolean dialogs', async () => {
     const alert = app.logic.eval(async ({ lx }) => {
-      await lx.alert({ title: 'Notice' });
+      await lx.ui.alert({ title: 'Notice' });
       return 'acknowledged';
     });
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await alert).toBe('acknowledged');
-    const confirmed = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
+    const confirmed = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
     await press('lx-modal-confirm', DEFAULT_CONFIRM);
     expect(await confirmed).toBe(true);
-    const canceled = app.logic.eval(({ lx }) => lx.confirm({ title: 'Continue?' }));
+    const canceled = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
     await press('lx-modal-cancel', 'Cancel');
     expect(await canceled).toBe(false);
   });
 
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.logic.eval(({ lx }) =>
-      lx.showActionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
+      lx.ui.actionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
     await press('lx-action-sheet-item-1', '查看日志');
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();
     expect(selected.status === 'ok' ? selected.id : null).toBe('查看日志');
 
     const dismissed = app.logic.eval(({ lx }) =>
-      lx.showActionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
+      lx.ui.actionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
     await press('lx-action-sheet-cancel', 'Cancel');
     expect((await dismissed).status === 'canceled').toBeTruthy();
   });
@@ -361,7 +361,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
   await t.step('reject an empty action sheet', async () => {
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.showActionSheet({ items: [] });
+        await lx.ui.actionSheet({ items: [] });
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -375,14 +375,14 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
 
 test("assert tabBar failure codes, resets, and button-driven patches", {
   id: "UI-TABBAR-002",
-  covers: ['lx.tabBar', 'lx.tabBar.update', 'lx.switchTab'],
+  covers: ['lx.app.tabBar', 'lx.app.tabBar.update', 'lx.nav.go'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-002");
   defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         visibility: 'auto',
         items: [{
           index: 0,
@@ -399,10 +399,10 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
         }],
       });
     }).catch(() => undefined);
-    await app.nav.relaunch({ page: 'home' }).catch(() => undefined);
+    await app.nav.reset({ page: 'home' }).catch(() => undefined);
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'tabbar' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').click({ timeout: 30_000 });
   await waitForTabBar(app, (state) => state.effectiveVisible, 'forced tab bar');
@@ -421,7 +421,7 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
 
   await t.step('patch the selected tab and a second item together', async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         items: [
           { index: 0, badge: '1' },
           { index: 1, badge: '2', redDot: false },
@@ -462,8 +462,8 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
   await t.step('last concurrent update wins without a torn item', async () => {
     await app.logic.eval(async ({ lx }) => {
       await Promise.all([
-        lx.tabBar.update({ items: [{ index: 1, text: 'First', badge: 'A' }] }),
-        lx.tabBar.update({ items: [{ index: 1, text: 'Second', badge: 'B' }] }),
+        lx.app.tabBar.update({ items: [{ index: 1, text: 'First', badge: 'A' }] }),
+        lx.app.tabBar.update({ items: [{ index: 1, text: 'Second', badge: 'B' }] }),
       ]);
     });
     const after = await waitForTabBar(
@@ -479,7 +479,7 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
 
   await t.step('switchTab agrees with selectedIndex after a badge change', async () => {
     await app.logic.eval(({ lx }) => {
-      void lx.switchTab({ page: 'todo' });
+      void lx.nav.go({ tab: 'todo' });
       return 'scheduled';
     });
     await waitForCurrentPage(app, 'todo');

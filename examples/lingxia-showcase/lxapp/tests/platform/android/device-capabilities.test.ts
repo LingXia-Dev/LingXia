@@ -5,7 +5,7 @@ import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
-const platform = testArgs.platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 const androidSkip = platform === 'android' ? undefined : 'Android only';
 const androidMediaSkip = platform === 'android' && httpBase ? undefined : 'Android only, with --arg httpBase';
 
@@ -30,7 +30,7 @@ interface WifiRoundTrip {
 test('scan, read, and observe Wi-Fi on a real radio', {
   skip: androidSkip,
   id: 'ANDROID-WIFI-001',
-  covers: ['lx.startWifi', 'lx.getWifiList', 'lx.getConnectedWifi', 'lx.onWifiConnected', 'lx.stopWifi'],
+  covers: ['lx.network.wifi.start', 'lx.network.wifi.list', 'lx.network.wifi.current', 'lx.network.wifi.onConnected', 'lx.network.wifi.stop'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs a device with Wi-Fi on, location services on, and the location permission granted',
@@ -38,12 +38,12 @@ test('scan, read, and observe Wi-Fi on a real radio', {
   const { app, defer } = bindFixture(t, 'ANDROID-WIFI-001');
   expect(await runtimePlatform(app)).toBe('android');
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.stopWifi(); }).catch(() => undefined);
+    await app.logic.eval(async ({ lx }) => { await lx.network.wifi.stop(); }).catch(() => undefined);
   });
 
   const result: WifiRoundTrip = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     try {
-      await lx.startWifi();
+      await lx.network.wifi.start();
     } catch (error) {
       // 12009: Wi-Fi is off, a device precondition rather than a failure.
       if ((error as { data?: { bizCode?: number } }).data?.bizCode === 12009) {
@@ -51,14 +51,14 @@ test('scan, read, and observe Wi-Fi on a real radio', {
       }
       throw error;
     }
-    const list = await lx.getWifiList();
-    const connected = await lx.getConnectedWifi();
+    const list = await lx.network.wifi.list();
+    const connected = await lx.network.wifi.current();
     // A listener handle must be a function and stay inert after unsubscribe.
-    const off = lx.onWifiConnected(() => {});
+    const off = lx.network.wifi.onConnected(() => {});
     const listener = typeof off;
     off();
     off();
-    await lx.stopWifi();
+    await lx.network.wifi.stop();
     return {
       started: true,
       list: {
@@ -91,7 +91,7 @@ test('scan, read, and observe Wi-Fi on a real radio', {
 test('save an image and a video into the photo library', {
   skip: androidMediaSkip,
   id: 'ANDROID-PHOTOS-001',
-  covers: ['lx.saveImageToPhotosAlbum', 'lx.saveVideoToPhotosAlbum', 'lx.downloadFile'],
+  covers: ['lx.media.saveToLibrary', 'lx.media.saveToLibrary', 'lx.network.download'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs the HTTP fixture reachable from the device (adb reverse) and an Android host',
@@ -102,10 +102,10 @@ test('save an image and a video into the photo library', {
   // Android 10+ writes an app's own media through MediaStore with no permission
   // prompt, so this is a complete contract with no external UI.
   const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
-    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
-    const mp4 = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
-    await lx.saveImageToPhotosAlbum({ filePath: png.uri });
-    await lx.saveVideoToPhotosAlbum({ filePath: mp4.uri });
+    const png = await lx.network.download(base + '/media/sample.png').result;
+    const mp4 = await lx.network.download(base + '/media/sample.mp4').result;
+    await lx.media.saveToLibrary(png.uri);
+    await lx.media.saveToLibrary(mp4.uri);
     return { image: png.sizeBytes, video: mp4.sizeBytes };
   }, httpBase ?? '');
   expect(saved.image).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ test('save an image and a video into the photo library', {
   await t.step('a missing source rejects instead of reporting a save', async () => {
     const rejected: Caught = await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' });
+        await lx.media.saveToLibrary('lx://temp/does-not-exist.png');
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -129,7 +129,7 @@ test('save an image and a video into the photo library', {
 test('fire both haptics without a dialog', {
   skip: androidSkip,
   id: 'ANDROID-HAPTICS-001',
-  covers: ['lx.vibrateShort', 'lx.vibrateLong'],
+  covers: ['lx.device.haptics'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-HAPTICS-001');
@@ -138,8 +138,8 @@ test('fire both haptics without a dialog', {
   // Whether the motor moved is not observable from here; that the call is
   // supported and resolves — where a desktop rejects it — is.
   const result = await app.logic.eval(async ({ lx }) => {
-    const short: unknown = await lx.vibrateShort();
-    const long: unknown = await lx.vibrateLong();
+    const short: unknown = await lx.device.haptics();
+    const long: unknown = await lx.device.haptics('long');
     return { short, long };
   });
   expect(result.short).toBe(true);

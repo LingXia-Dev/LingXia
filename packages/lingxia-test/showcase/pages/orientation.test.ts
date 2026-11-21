@@ -15,7 +15,7 @@ test('a page that follows the device turns with it', {
   requires: { input: ['touch', 'mouse'] },
 }, async (t) => {
   const { app } = bindFixture(t, 'ORIENT-AUTO-001');
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const view = app.view;
   await view.testId('home-page').waitFor({ timeout: 30_000 });
   const start = await wide(view);
@@ -42,9 +42,9 @@ test('a landscape page lies down while the phone is upright, and the next page s
   await requireTurn(t);
   t.defer(async () => { await turn(t, 'restore'); });
   await turn(t, 'portrait');
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await expect.poll(() => wide(app.view), { timeout: 10_000 }).toBe(false);
-  await app.nav.to({ page: 'wifi' });
+  await app.nav.go({ page: 'wifi' });
   // Turning the window relays the page out; a read can wait on that.
   const wifi = (await app.page({ name: 'wifi' }, { timeout: 30_000 })).view;
   await expect.poll(() => wide(wifi), { timeout: 20_000 }).toBe(true);

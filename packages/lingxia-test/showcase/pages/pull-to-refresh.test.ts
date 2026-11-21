@@ -10,8 +10,8 @@ interface RefreshState {
 }
 
 async function refreshState(app: TestApp): Promise<RefreshState> {
-  return app.logic.eval(({ getCurrentPages }): RefreshState => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
+  return app.logic.eval(({ pageStack }): RefreshState => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/pulltorefresh/'));
     const data = (page?.data ?? {}) as { refreshCount?: number; isRefreshing?: boolean };
     return { count: data.refreshCount ?? -1, refreshing: !!data.isRefreshing };
   });
@@ -37,10 +37,10 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
   );
 }
 
-test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+test("page.refresh runs onPullDownRefresh, and the indicator stays until it settles", { id: "PULL-001", covers: ['page.refresh', 'PageSetup.onPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const pull = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await pull.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
 
@@ -59,13 +59,18 @@ test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
 
   await t.step('a restart while the stopped indicator still lingers refreshes again', async () => {
     const idle = await refreshState(app);
-    // Start, stop and start again in one Logic turn: the native indicator
-    // stays up for a minimum time after a stop, and a start that lands in
-    // that window must still reach onPullDownRefresh.
-    await app.logic.eval(({ lx }) => {
-      lx.startPullDownRefresh();
-      lx.stopPullDownRefresh();
-      lx.startPullDownRefresh();
+    await pull.testId("pull-refresh-start").click();
+    await waitForRefreshState(app, (state) => state.refreshing && state.count === idle.count + 1);
+    // Finish and start again in one Logic turn: the native indicator stays up
+    // for a minimum time after a stop, and a start that lands in that window
+    // must still reach onPullDownRefresh.
+    await app.logic.eval(async ({ pageStack, currentPage }) => {
+      const pages = pageStack();
+      const top = pages[pages.length - 1];
+      (top.stopRefresh as () => void)();
+      await Promise.resolve();
+      await Promise.resolve();
+      currentPage()!.refresh();
     });
     const restarted = await waitForRefreshState(
       app,
@@ -78,14 +83,14 @@ test("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
     expect(await waitForStatus(t, pull, 'Idle')).toContain('Idle');
   });
 
-  await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
-    await app.nav.relaunch({ page: 'home' });
+  await t.step('refresh throws when the page has not enabled pull-down refresh', async () => {
+    await app.nav.reset({ page: 'home' });
     // The relaunch waited for home to be ready, so it is the current page.
     await app.view.testId('home-page').waitFor({ timeout: 30_000 });
 
-    const rejected: Caught = await app.logic.eval(async ({ lx }) => {
+    const rejected: Caught = await app.logic.eval(async ({ currentPage }) => {
       try {
-        await lx.startPullDownRefresh();
+        currentPage()!.refresh();
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -111,7 +116,7 @@ async function expectPageIntact(view: TestView, when: string): Promise<void> {
 
 test("a pull follows the finger, refreshes once past the threshold, and leaves the page whole", { id: "PULL-002", covers: ['page:enablePullDownRefresh'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true, hostInput: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-002");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   await expectPageIntact(view, 'before the pull');
@@ -162,7 +167,7 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
 
 test("a swipe scrolls the page and a pull below the top scrolls back instead of refreshing", { id: "PULL-003", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch', 'trackpad'], refreshIndicator: true } }, async (t) => {
   const { app } = bindFixture(t, "PULL-003");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   const status = view.testId('pull-refresh-status');
@@ -191,7 +196,7 @@ test("a swipe scrolls the page and a pull below the top scrolls back instead of 
 // so a desktop fling would measure the injector, not the page.
 test("a fling carries the page past where the finger stopped", { id: "PULL-004", covers: ['view:scroll'], app: SHOWCASE_APP_ID, requires: { input: ['touch'] } }, async (t) => {
   const { app } = bindFixture(t, "PULL-004");
-  await app.nav.relaunch({ page: 'pullToRefresh' });
+  await app.nav.reset({ page: 'pullToRefresh' });
   const view = (await app.page({ name: 'pullToRefresh' }, { timeout: 30_000 })).view;
   await view.testId('pull-refresh-page').waitFor({ timeout: 30_000 });
   const lastRow = view.testId('pull-refresh-row').last();

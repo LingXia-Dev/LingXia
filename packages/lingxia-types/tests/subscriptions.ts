@@ -2,15 +2,15 @@ import type { Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
-const unsubscribeNetwork: () => void = lx.onNetworkChange(() => {});
-const unsubscribeWifi: () => void = lx.onWifiConnected(() => {});
-const unsubscribeOrientation: () => void = lx.onDeviceOrientationChange(() => {});
-const unsubscribeKeyDown: () => void = lx.onKeyDown(() => {});
-const unsubscribeKeyUp: () => void = lx.onKeyUp(() => {});
+const unsubscribeNetwork: () => void = lx.network.watch(() => {});
+const unsubscribeWifi: () => void = lx.network.wifi.onConnected(() => {});
+const unsubscribeOrientation: () => void = lx.device.orientation.watch(() => {});
+const unsubscribeKeyDown: () => void = lx.device.onKeyDown(() => {});
+const unsubscribeKeyUp: () => void = lx.device.onKeyUp(() => {});
 
 // The update manager is a listener set; each subscribe call returns its own
 // unsubscribe handle, same idiom as the rest of the surface.
-const updates = lx.getUpdateManager();
+const updates = lx.app;
 const unsubscribeUpdateReady: () => void = updates.onUpdateReady(() => {});
 const secondReady: () => void = updates.onUpdateReady(() => {});
 const unsubscribeUpdateFailed: () => void = updates.onUpdateFailed(() => {});

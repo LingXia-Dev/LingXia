@@ -110,7 +110,7 @@ fn should_navigate_to_app(
 fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
     if appid == lingxia_terminal_config::SETTINGS_APP_ID {
         return Err(LxAppError::UnsupportedOperation(
-            "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+            "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                 .to_string(),
         ));
     }
@@ -195,7 +195,7 @@ fn register_host_terminal_settings_bundle(
     let Some(invocation) = control_invocation else {
         return Err(js_error_from_lxapp_error(
             &LxAppError::UnsupportedOperation(
-                "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                     .to_string(),
             ),
         ));
@@ -253,7 +253,7 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 /// Navigating to the lxapp already running is a no-op. Rejects with
 /// `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
 /// close that aside before opening it as a main.
-async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
+pub(crate) async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(&ctx)?;
     let lxapp = invocation.lxapp();
 
@@ -283,22 +283,10 @@ async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSRes
 }
 
 /// Leave this lxapp and reveal the one that opened it.
-async fn navigate_back_app(ctx: JSContext) -> JSResult<()> {
+pub(crate) async fn navigate_back_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     do_navigate_back_lxapp(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
     Ok(())
-}
-
-pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
-}
-
-rong::js_api! {
-    fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn navigateToApp(ts_params = "options: NavigateToAppOptions") = navigate_to_app;
-        fn navigateBackApp = navigate_back_app;
-    }
 }
 
 #[cfg(test)]
@@ -337,7 +325,7 @@ mod tests {
     fn ordinary_navigation_cannot_promote_a_settings_app_id() {
         let error = ensure_ordinary_app_target(lingxia_terminal_config::SETTINGS_APP_ID)
             .expect_err("the fixed shell route is the only control entry");
-        assert!(error.to_string().contains("lx.shell.openApp"));
+        assert!(error.to_string().contains("lx.surface.openApp"));
         assert!(ensure_ordinary_app_target("same.app").is_ok());
     }
 }

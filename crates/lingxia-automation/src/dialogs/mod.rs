@@ -2,7 +2,7 @@
 //!
 //! The test runner watches the app under test for each spec. While it does,
 //! toasts are recorded as they are presented (the host still draws them),
-//! and so are modals and `lx.showActionSheet`: drawn, with how the user
+//! and so are dialogs and `lx.ui.actionSheet`: drawn, with how the user
 //! closed them. Queued answers apply once; later dialogs are drawn unless
 //! the spec explicitly selects strict mode, where a missing answer fails
 //! immediately. A watch belongs to its spec attempt; an unwatched app
@@ -479,7 +479,7 @@ impl JSDialogDriver {
         })
     }
 
-    /// `lx.showActionSheet` calls since the watch started: `{ items, answer }`.
+    /// `lx.ui.actionSheet` calls since the watch started: `{ items, answer }`.
     #[js_method(rename = "actionSheets")]
     fn action_sheets(&self, ctx: JSContext) -> JSResult<JSValue> {
         self.records(&ctx, |watch| {
@@ -506,7 +506,7 @@ impl JSDialogDriver {
         })?
     }
 
-    /// Queue the answer of the next `lx.showActionSheet`: `{ index }` picks
+    /// Queue the answer of the next `lx.ui.actionSheet`: `{ index }` picks
     /// that item, `{ cancel: true }` dismisses it. Later unqueued sheets
     /// are drawn by default.
     #[js_method(rename = "answerNextActionSheet")]

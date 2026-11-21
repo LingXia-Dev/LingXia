@@ -1,6 +1,6 @@
 // A dependency-free HTTP server the transfer specs run against.
 //
-// `lx.downloadFile` and `lx.uploadFile` cannot be tested against the public
+// `lx.network.download` and `lx.network.upload` cannot be tested against the public
 // internet without importing its flakiness and its outages, and neither can
 // their failure contracts — a 500, a truncated body, a slow stream — be
 // produced on demand. This serves all of it deterministically.

@@ -148,8 +148,8 @@ fn build_component_pages(
         };
         if !unused_actions.is_empty() {
             eprintln!(
-                "Warning: view {} does not reference Page(...) actions: {}\n  \
-                 → Move logic-only helpers outside Page(...), prefix intentional private actions with _, or remove unused actions.",
+                "Warning: view {} does not reference page actions: {}\n  \
+                 → Keep logic-only helpers out of `actions` in setup, or remove unused actions.",
                 page_path,
                 unused_actions.join(", ")
             );

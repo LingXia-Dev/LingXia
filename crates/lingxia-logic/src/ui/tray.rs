@@ -13,25 +13,17 @@ use std::sync::{LazyLock, Mutex};
 static MENU_COUNTS: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Live `lx.tray.onClick` subscriptions (the tray is host-global). While any
+/// Live `lx.host.tray.onClick` subscriptions (the tray is host-global). While any
 /// exist, the native tray intercepts left-clicks for JS instead of running the
 /// configured surface action.
 static CLICK_HANDLERS: AtomicUsize = AtomicUsize::new(0);
 
 /// The desktop tray item this product publishes.
 fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
-    let lx = ctx.global().get::<_, JSObject>("lx")?;
-    match lx.get::<_, JSObject>("tray") {
-        Ok(obj) => Ok(obj),
-        Err(_) => {
-            let obj = JSObject::new(ctx);
-            lx.set("tray", obj.clone())?;
-            Ok(obj)
-        }
-    }
+    crate::namespace::child(ctx, &crate::app::app_namespace(ctx)?, "tray")
 }
 
-/// lx.tray.setIcon(icon) — replace the tray icon (a resource path).
+/// lx.host.tray.setIcon(icon) — replace the tray icon (a resource path).
 fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TraySetIcon)?;
     let lxapp = invocation.lxapp();
@@ -41,7 +33,7 @@ fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it.
+/// lx.host.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it.
 fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TraySetTitle)?;
     let lxapp = invocation.lxapp();
@@ -51,7 +43,7 @@ fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.tray.show() — show the tray status item.
+/// lx.host.tray.show() — show the tray status item.
 fn show(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TrayShow)?;
     let lxapp = invocation.lxapp();
@@ -61,7 +53,7 @@ fn show(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.tray.hide() — hide the tray status item.
+/// lx.host.tray.hide() — hide the tray status item.
 fn hide(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::TrayHide)?;
     let lxapp = invocation.lxapp();
@@ -71,17 +63,17 @@ fn hide(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// lx.tray.onClick(handler) — left-click on the tray icon. While at least one
+/// lx.host.tray.onClick(handler) — left-click on the tray icon. While at least one
 /// handler is registered, the left-click runs only the handler(s); the tray's
 /// configured surface action is suppressed. Returns an unsubscribe function.
 fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     let invocation = authorization::require(&ctx, LogicRoute::TrayOnClick)?;
     let lxapp = invocation.lxapp();
-    let token = register_app_handler(&ctx, "lx.tray.click", handler)?;
+    let token = register_app_handler(&ctx, "lx.host.tray.click", handler)?;
     if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
         let _ = lxapp.runtime.set_tray_click_intercept(true);
     }
-    let off = app_handler_unsub(&ctx, "lx.tray.click", token);
+    let off = app_handler_unsub(&ctx, "lx.host.tray.click", token);
     let runtime = lxapp.runtime.clone();
     // Guard against a double `off()`: a second call must not decrement the count
     // again (which would underflow and break future interception).
@@ -97,7 +89,7 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     })
 }
 
-/// lx.tray.setMenu(items) — replace the tray dropdown menu. Each item is
+/// lx.host.tray.setMenu(items) — replace the tray dropdown menu. Each item is
 /// `{ label, onClick?, enabled?, checked? }` or `{ separator: true }`. The native
 /// menu is built from labels; clicks are routed back to each item's `onClick` by
 /// index over the app event bus.
@@ -110,7 +102,7 @@ fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let previous = MENU_COUNTS.lock().ok().and_then(|m| m.get(&appid).copied());
     if let Some(prev) = previous {
         for i in 0..prev {
-            unregister_app_handler(&ctx, &format!("lx.tray.menu:{i}"), None);
+            unregister_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), None);
         }
     }
 
@@ -125,7 +117,7 @@ fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
         let checked = item.get::<_, bool>("checked").unwrap_or(false);
         specs.push(json!({ "label": label, "enabled": enabled, "checked": checked }));
         if let Ok(on_click) = item.get::<_, JSFunc>("onClick") {
-            register_app_handler(&ctx, &format!("lx.tray.menu:{i}"), on_click)?;
+            register_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), on_click)?;
         }
     }
 
@@ -147,7 +139,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_tray_property(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        namespace HostAppApi = crate::app::app_namespace(ctx)?;
         const tray: "TrayApi" = tray_namespace(ctx)?;
     }
 }

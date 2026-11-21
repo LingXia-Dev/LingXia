@@ -69,7 +69,7 @@ lingxia dev stop
 
 **A successful build is not done.** Done means you watched the change work:
 
-1. Navigate to it (`lxdev lxapp nav to ...`) and use it
+1. Navigate to it (`lxdev lxapp nav go ...`) and use it
    (`lxdev lxapp page click/type ...`). A new control gets clicked.
 2. Assert the effect: DOM via `lxdev lxapp page eval`, Logic state via
    `lxdev lxapp eval`. Screenshot only visual changes.
@@ -85,14 +85,14 @@ and `lxdev test --last-failed` while fixing; run everything once before pushing.
 
 ```
 ┌─────────────────────┐                          ┌──────────────────────┐
-│ View (WebView)      │ ◄── setData(patch) ───── │ Logic (JS runtime)   │
-│ React / HTML        │                          │ Page({}) instance    │
+│ View (WebView)      │ ◄── page.update(…) ───── │ Logic (JS runtime)   │
+│ React / HTML        │                          │ definePage instance  │
 │ renders `data`      │ ──── actions.foo() ────► │ owns state + `lx.*`  │
 └─────────────────────┘                          └──────────────────────┘
 ```
 
 View never mutates `data`; it calls an action and Logic answers with
-`setData`.
+`page.update`.
 
 | Shape | What it is | Pick when |
 |---|---|---|
@@ -111,7 +111,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
-| `@lingxia/types` | Declarations for Logic `lx.*`, `Page({})`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
+| `@lingxia/types` | Declarations for Logic `lx.*`, `definePage`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
@@ -131,14 +131,14 @@ never add them to a project.
 | Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
-| Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
+| Pages: `definePage`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
 | Experimental native GPU Views: TSX, Tailwind subset, bindings, compatibility | [lxapp/gpu.md](./lxapp/gpu.md) |
-| `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
+| Page state, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
 | Native components: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs. In WebView pages, use HTML `<video>` / `<audio>` | [lxapp/components.md](./lxapp/components.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
-| Files: `lx://` storage, `downloadFile`, `lx.fs`, `uploadFile`, quotas | [lxapp/files.md](./lxapp/files.md) |
+| Files: `lx://` storage, `lx.network.download`, `lx.fs`, `lx.network.upload`, quotas | [lxapp/files.md](./lxapp/files.md) |
 | **Host app** | |
 | `lingxia.yaml`: sections, surfaces, tray, theme, update, env | [app/project.md](./app/project.md) |
 | Session classes: Control app vs control surface vs guest | [app/control-app.md](./app/control-app.md) |
@@ -158,7 +158,7 @@ never add them to a project.
 | Job | Lives in | Surface |
 |---|---|---|
 | UI rendering, page state | lxapp `pages/index.{tsx,html}` | View |
-| Page lifecycle, `setData`, action handlers (JS) | lxapp `pages/index.ts` | `Page({})` Logic |
+| Page lifecycle, state, actions (JS) | lxapp `pages/index.ts` | `definePage` Logic |
 | Cross-page business helpers callable as `lx.X(...)` | host Rust crate | `lingxia::js` extension (needs `standard` feature) |
 | Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route |
 | Background services (devtool, push, ipc) | host Rust crate | `HostAddon::start_services` |
@@ -175,7 +175,7 @@ never add them to a project.
 | Is `fetch` / `setTimeout` / `URL` available in Logic? | [lx-api.md → Web globals](./lxapp/lx-api.md#web-globals) |
 | Read/write files | [files.md](./lxapp/files.md) |
 | Surface config rejected (`aside` edge, one `main`, terminal capability) | [project.md → Surfaces](./app/project.md#rules) |
-| `setData` not reaching the View | [bridge.md → `setData`](./lxapp/bridge.md#setdata) |
+| `page.update` not reaching the View | [bridge.md → State](./lxapp/bridge.md#state) |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [development.md → Registration](./native/development.md#registration) |
 | `#[lingxia::native]` compiles but the View can't call it | [development.md → Generated native client](./native/development.md#generated-native-client) |
 | Stream cancel never cleans up | [bridge.md → Stream](./lxapp/bridge.md#stream) |
@@ -183,7 +183,7 @@ never add them to a project.
 | iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
 | A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
 | `lxdev test` takes too long / runs unrelated tests | [testing.md → Running](./lxapp/testing.md#running) |
-| TS doesn't know `lx.foo()` / `Page({})` | [Install typing](./lxapp/lx-api.md#install-typing) |
+| TS doesn't know `lx.foo()` / `definePage` | [Install typing](./lxapp/lx-api.md#install-typing) |
 | `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [components.md](./lxapp/components.md) |
 | Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
 | `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

@@ -25,6 +25,11 @@ pub fn set_gpu_simulation(simulation: Option<GpuSimulation>) {
     lingxia_view_windows::set_simulation(simulation);
 }
 
+/// A GPU page has come on screen and not yet shown its first frame.
+pub fn gpu_page_settling() -> bool {
+    lingxia_view_windows::pages_settling()
+}
+
 /// Starts the configured home lxapp's Logic worker without opening a page.
 ///
 /// Native and browser main surfaces keep the home lxapp as their control app,

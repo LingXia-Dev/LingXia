@@ -35,11 +35,25 @@ struct JSShowOptions {
     silent: Option<bool>,
 }
 
-/// `lx.host.notification` — local banners as a resume affordance. Absent unless
-/// the host declared `capabilities.notifications`. Every lxapp gets it; a
+/// `lx.host.notification` — local banners as a resume affordance, when the host
+/// declared `capabilities.notifications`; otherwise every call fails
+/// `E_NOT_SUPPORTED`. Every lxapp gets it; a
 /// guest's calls are scoped to itself by [`AttentionScope`].
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.notification") {
+        crate::capability::unsupported_namespace(
+            ctx,
+            app,
+            "notification",
+            "app.notification",
+            &[
+                "getPermission",
+                "requestPermission",
+                "show",
+                "cancel",
+                "cancelAll",
+            ],
+        )?;
         return Ok(());
     }
     let notification = JSObject::new(ctx);

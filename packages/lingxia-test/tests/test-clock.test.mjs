@@ -90,7 +90,7 @@ test("t.app.clock is traced and uninstalled when the spec ends", async () => {
     "clock.setSystemTime 2031-01-01T00:00:00Z",
     "clock.runAll max 5",
   ]);
-  assert.equal(world.navCalls.filter(([name]) => name === "relaunch").length, 0, "nothing was dropped");
+  assert.equal(world.navCalls.filter(([name]) => name === "reset").length, 0, "nothing was dropped");
 });
 
 test("dropping pending test timers relaunches the next spec", async () => {
@@ -107,7 +107,7 @@ test("dropping pending test timers relaunches the next spec", async () => {
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.deepEqual(clock.calls.map(([name]) => name), ["install", "uninstall"]);
-  assert.equal(world.navCalls.filter(([name]) => name === "relaunch").length, 1);
+  assert.equal(world.navCalls.filter(([name]) => name === "reset").length, 1);
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
   assert.equal(notes.length, 1);
   assert.match(notes[0].message, /uninstalled the test clock of .* and dropped 1 pending test timer; they never fired/);

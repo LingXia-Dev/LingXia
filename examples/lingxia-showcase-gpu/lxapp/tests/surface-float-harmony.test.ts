@@ -43,7 +43,7 @@ test('a modal float draws its GPU page in its own window', {
     expect(ink, `dark text points in the card: ${ink}/${scan.length}`).toBeGreaterThan(3);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.getByKey(key);
+      const surface = lx.surface.get(key);
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }

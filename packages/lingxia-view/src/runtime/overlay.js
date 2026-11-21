@@ -1,5 +1,5 @@
-// Feedback the Logic layer asks the page to present (`lx.showToast`, `showModal`,
-// `showActionSheet`), drawn by the View itself on desktop GPU pages. Each call answers
+// Feedback the Logic layer asks the page to present (`lx.ui.toast`, `alert`,
+// `confirm`, `actionSheet`), drawn by the View itself on desktop GPU pages. Each call answers
 // through the same bridge reply the WebView polyfill sends, so Logic sees no difference.
 import { h } from './nodes.js';
 import { lowerStyle } from '../style/lower.js';

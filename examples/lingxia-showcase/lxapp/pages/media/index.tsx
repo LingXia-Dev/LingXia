@@ -466,7 +466,7 @@ export default function MediaPage() {
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || 'Tap Preview to open media preview.';
-  const headerSubtitle = data?.headerSubtitle || 'choose/previewMedia';
+  const headerSubtitle = data?.headerSubtitle || 'lx.pick.media / lx.media.preview';
 
   const scanResult = (typeof data?.scanResult === 'string') ? data?.scanResult : '';
   const scanBusy = Boolean(data?.scanBusy);
@@ -1150,14 +1150,14 @@ export default function MediaPage() {
   const getPageInfo = () => {
     if (isScanMode) {
       return {
-        title: 'lx.scanCode',
+        title: 'lx.pick.code',
         subtitle: 'QR & Barcode Scanner',
         description: 'Scan QR codes and barcodes using camera or album',
       };
     }
     if (isImageInfoMode) {
       return {
-        title: 'lx.getImageInfo / lx.compressImage',
+        title: 'lx.media.imageInfo / lx.media.compressImage',
         subtitle: 'Image Tools',
         description: 'Get image info and create compressed copy',
       };
@@ -1165,13 +1165,13 @@ export default function MediaPage() {
     if (isVideoToolsMode) {
       return {
         title: 'Video Tools',
-        subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo',
+        subtitle: 'lx.media.videoInfo / lx.media.videoThumbnail / lx.media.compressVideo',
         description: 'Get video info, generate thumbnail, and create compressed copy',
       };
     }
     if (isSaveToAlbumMode) {
       return {
-        title: 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum',
+        title: 'lx.media.saveToLibrary',
         subtitle: 'Save to Album',
         description: 'Capture photo or video and save to device album',
       };

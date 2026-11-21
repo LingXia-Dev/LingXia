@@ -13,7 +13,7 @@ A React page typically contains:
 
 ```text
 pages/home/
-├── index.ts      # Logic: Page({ data, lifecycle, actions })
+├── index.ts      # Logic: definePage({ data, setup })
 ├── index.tsx     # View: React + useLxPage()
 └── index.json    # page configuration
 ```
@@ -23,28 +23,31 @@ HTML projects use `index.html`. A project is React or HTML — set `"framework"`
 ## Logic owns state and actions
 
 ```ts
-type PageData = { count: number }
+import { definePage } from '@lingxia/types/page'
 
-Page({
-  data: { count: 0 } as PageData,
-
-  increment() {
-    this.setData({ count: this.data.count + 1 })
-  },
+const page = definePage({
+  data: { count: 0 },
+  setup: page => ({
+    actions: {
+      increment() {
+        page.update(d => { d.count += 1 })
+      },
+    },
+  }),
 })
+export default page
 ```
 
-Public methods become View-callable actions. Lifecycle hooks and `_`-prefixed helpers stay private. Keep values in `data` serializable; functions, DOM nodes, and unsubscribe handles do not cross the bridge.
+Only what `setup` returns under `actions` is View-callable; lifecycle hooks and everything else in its closure stay private. Keep values in `data` serializable; functions, DOM nodes, and unsubscribe handles do not cross the bridge.
 
 ## The View subscribes and dispatches
 
 ```tsx
 import { useLxPage } from '@lingxia/react'
-
-type PageActions = { increment(): Promise<void> }
+import type page from './index'
 
 export default function Home() {
-  const { data, actions } = useLxPage<PageData, PageActions>()
+  const { data, actions } = useLxPage<typeof page>()
 
   return <button onClick={() => actions.increment()}>{data.count}</button>
 }
@@ -54,7 +57,7 @@ The first bridge snapshot may be empty while the page connects. Guard required n
 
 ## Types and platform APIs
 
-Install `@lingxia/types` as a development dependency. Its declarations are global in Logic—there is no import for `lx`, `Page`, or `App`.
+Install `@lingxia/types` as a development dependency. Its declarations are global in Logic—there is no import for `lx` or `App`; `definePage` comes from `@lingxia/types/page`.
 
 ```bash
 npm install --save-dev @lingxia/types
@@ -84,7 +87,7 @@ Use the generated [Components reference](../../reference/components/) for attrib
 
 ## Adapt to the surface
 
-Use CSS or container queries for spacing and column changes. When the interaction model changes, subscribe in Logic with `lx.surface.watchContext`, replicate the serializable context through `setData`, and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
+Use CSS or container queries for spacing and column changes. When the interaction model changes, read `env.sizeClass` in the View (Logic has `page.env` when it acts on a change itself) and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
 
 ## Develop and verify
 

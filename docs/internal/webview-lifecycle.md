@@ -303,22 +303,22 @@ The owner is recorded in `PageInstanceRuntimeRecord` and used by
 > `Window` and `Overlay`, and `open_surface()` maps `Window→Window`,
 > `Overlay→Overlay`. No code path produces `Panel`; treat it as reserved.
 
-### Dispose TTL and `CloseReason::Reclaimed`
+### Surface pages: close destroys, hide preserves
 
-A `PageInstance` can have an optional `dispose_ttl` (duration). When the page
-receives a `Hidden` event whose reason is **not** `AppClosed`:
+A page hosted by a surface is disposed as soon as the surface's record is
+removed (`forget_surface_with_reason`, or `close_surface` after the platform
+dismissed it), with the close reason. `hide` keeps the page with no timer.
+There is no dispose TTL.
 
-- If `dispose_ttl` is set: a timer is scheduled. When it fires, the instance is
-  disposed (WebView destroyed, PageSvc terminated) **with reason
-  `CloseReason::Reclaimed`** — distinct from the original `Hidden` reason, so JS
-  can tell SDK-initiated resource reclamation apart from a user/programmatic
-  close.
-- If `dispose_ttl` is `None`: the page stays alive while hidden (no automatic
-  disposal).
-
-Surfaces use a **30-second** dispose TTL (`SURFACE_DISPOSE_TTL_MS = 30_000`).
-Regular pages typically have no TTL (they survive hide/show cycles). A
-`Hidden { reason: AppClosed }` always disposes immediately, ignoring any TTL.
+- A content page that is also on its app's stack or path-pinned outlives the
+  surface (an ownerless surface can show a stack page).
+- Memory pressure (`on_low_memory`) disposes every page held by a hidden
+  surface with `CloseReason::Reclaimed`; the content cascade closes the surface,
+  so the owner's handle sees `reclaimed`.
+- `dispose_page_instance_internal` is re-entrant-safe: closing the hosting
+  surface disposes the content page, which closes the hosting surface again;
+  the inner entry returns at once.
+- `Hidden { reason: AppClosed }` still disposes immediately.
 
 ### Lifecycle State Machine
 
@@ -331,10 +331,10 @@ Transitions are driven by `PageInstanceEvent`. `Visible`/`Hidden` before
 
 | Event | Effect |
 | --- | --- |
-| `Mounted` | SDK container attached the view; cancels any pending dispose timer |
-| `Visible` | Cancels the dispose timer, marks the instance active, dispatches `onShow` |
-| `Hidden { reason }` | Dispatches `onHide`; then: `AppClosed` → dispose immediately; else if a dispose TTL is set → start the timer; else cancel the timer (page stays alive) |
-| `Disposed { reason }` | Cancels the timer, then runs full disposal (see [PageInstance disposal](#pageinstance-disposal)) |
+| `Mounted` | SDK container attached the view |
+| `Visible` | Marks the instance active, dispatches `onShow` |
+| `Hidden { reason }` | Dispatches `onHide`; `AppClosed` → dispose immediately; otherwise the page stays alive |
+| `Disposed { reason }` | Runs full disposal (see [PageInstance disposal](#pageinstance-disposal)) |
 | `Resized { width, height }` | Informational; no state change |
 
 ## App and page hook dispatch
@@ -369,7 +369,7 @@ sync when dispatch changes. The runtime side:
   `Opened`/`Opening`.
 - **Restart is not a user activation.** `restart()` and
   `cold_restart_app_service()` must never raise the host window over other
-  apps; only an explicit `lx.shell.openApp` may.
+  apps; only an explicit `lx.surface.openApp` may.
 
 ## Core Objects and Ownership
 
@@ -528,9 +528,9 @@ to the page.
    platform UI. On the success path the `SurfaceRecord` is removed when the
    platform's close callback fires (not inline).
 3. Page-target surfaces: the platform close callback sends
-   `PageInstanceEvent::Hidden { reason }`. Because of the 30-second dispose TTL,
-   the WebView is **not** destroyed immediately — it stays alive for 30s and is
-   disposed (reason `Reclaimed`) if not re-shown. This makes quick re-open cheap.
+   `PageInstanceEvent::Hidden { reason }` (`onHide`), then removing the surface
+   record disposes the content page with the same reason (`onUnload`, WebView
+   destroyed).
 4. URL-target surfaces: the platform destroys its own view; the only Rust-side
    work is forgetting the surface record.
 
@@ -932,7 +932,7 @@ is the quickest way to keep them straight:
 
 `dispose_page_instance_internal()` is the full teardown path, in this order:
 
-1. Cancel any pending dispose timer.
+1. Return at once if this instance's disposal is already in progress.
 2. **Owner cascade**: `close_surfaces_for_owner()` (reason `AppClosed` during
    shutdown, else `OwnerClosed`).
 3. **Content cascade**: `close_surfaces_hosting()` — close the surface that hosts
@@ -947,8 +947,8 @@ is the quickest way to keep them straight:
 
 Disposal is triggered by:
 - `PageInstanceEvent::Hidden { reason: AppClosed }` — immediate.
-- `PageInstanceEvent::Hidden` with a dispose TTL — timer-based, reason
-  `Reclaimed` (used by surfaces).
+- Removal of the hosting surface's record — the surface's close reason.
+- Memory pressure, for pages of hidden surfaces — reason `Reclaimed`.
 - `PageInstanceEvent::Disposed { reason }` — explicit.
 
 ### Page reset on leaving the stack (distinct from disposal)
@@ -1076,8 +1076,7 @@ its termination message.
 
 - `close_surface()` calls the platform `close_surface()`; the record is removed
   when the platform close callback fires.
-- Page-target surfaces: the 30-second dispose TTL controls when the WebView is
-  actually destroyed (reason `Reclaimed`).
+- Page-target surfaces: the content page is disposed when the record is removed.
 - URL-target surfaces: the platform destroys its own view.
 
 ### Browser tab teardown
@@ -1206,10 +1205,8 @@ sequenceDiagram
   Note over JS,Platform: ... later, surface is dismissed ...
 
   Platform->>LxApp: on_surface_closed(id, reason)
-  LxApp->>PI: PageInstanceEvent::Hidden { reason }
-  LxApp->>LxApp: schedule 30s dispose timer
-  Note over LxApp: if not re-shown within 30s:
-  LxApp->>PI: dispose (reason Reclaimed) → detach_webview + destroy_webview_if_matches
+  LxApp->>PI: PageInstanceEvent::Hidden { reason } (onHide)
+  LxApp->>PI: forget record → dispose (same reason) → onUnload + destroy_webview_if_matches
 ```
 
 ## Sequence: Surface (URL Target)

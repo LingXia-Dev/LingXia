@@ -124,7 +124,7 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
         fn update_tabbar_ui(appid: &str) -> bool;
 
-        // TabBar UI update with completion callback (`lx.tabBar.update()`)
+        // TabBar UI update with completion callback (`lx.app.tabBar.update()`)
         #[swift_bridge(swift_name = "LxApp.updateTabBarUIAsync")]
         fn update_tabbar_ui_async(appid: &str, callback_id: u64);
 

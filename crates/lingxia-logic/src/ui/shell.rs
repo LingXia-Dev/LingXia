@@ -485,7 +485,15 @@ rong::js_api! {
             ts_params = "patch: AppDisplayPatch",
             ts_return = "Promise<void>"
         ) = set_app_display;
+        fn activate(ts_return = "void") = activate;
     }
+}
+
+/// `lx.shell.activate()` — bring the product window forward. Control app only.
+fn activate(ctx: JSContext) -> JSResult<()> {
+    authorization::require(&ctx, LogicRoute::ShellActivate)?;
+    lingxia_service::navigation::activate();
+    Ok(())
 }
 
 rong::js_api! {

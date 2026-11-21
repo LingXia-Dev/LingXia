@@ -74,7 +74,7 @@ test('the system back gesture closes an open dialog and leaves the page where it
 test('a finger on the covered tab bar strip in full screen stays with the video', {
   id: 'TOP-LAYER-BARS-002', covers: ['view:dialog'],
   reason: 'taps through the system input path of the Harmony device fixture',
-  start: { page: 'view', query: { spec: 'video', media: 'packaged' } },
+  start: { page: 'view', params: { spec: 'video', media: 'packaged' } },
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);

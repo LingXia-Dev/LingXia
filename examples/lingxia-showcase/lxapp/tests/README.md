@@ -16,9 +16,9 @@ The page and flow specs both showcases run, and their helpers, live in
 | `shared.test.ts` | All cross-platform API, Logic, Bridge, page, component, and render contracts | every platform |
 | `windows.test.ts` | Shared suite plus physical desktop and Windows-only behavior | Windows |
 | `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS |
-| `android.test.ts` | Shared suite, https `previewMedia`, and Android device capabilities | Android, local |
-| `ios.test.ts` | Shared suite plus https `previewMedia` handle contracts | iOS, local |
-| `harmony.test.ts` | Shared suite plus https `previewMedia` handle contracts | Harmony, local |
+| `android.test.ts` | Shared suite, https `media.preview`, and Android device capabilities | Android, local |
+| `ios.test.ts` | Shared suite plus https `media.preview` handle contracts | iOS, local |
+| `harmony.test.ts` | Shared suite plus https `media.preview` handle contracts | Harmony, local |
 
 `contract/` holds routed contract tests that need their OpenAPI document:
 `lxdev test tests/contract --openapi tests/contract/devices.openapi.yaml

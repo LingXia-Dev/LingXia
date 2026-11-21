@@ -17,12 +17,12 @@ test("leave no native overlay window after page navigation", { id: "WINDOWS-NAV-
       .filter((window) => window.visible && window.pid === host.pid)
       .map((window) => window.id));
 
-    await app.nav.relaunch({ page: 'home' });
-    await app.nav.to({ page: 'device', query: { type: 'screen' } });
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'device', params: { type: 'screen' } });
     await app.nav.back();
-    await app.nav.to({ page: 'components' });
-    await app.nav.redirect({ page: 'picker' });
-    await app.nav.relaunch({ page: 'device' });
+    await app.nav.go({ page: 'components' });
+    await app.nav.go({ page: 'picker' }, { replace: true });
+    await app.nav.reset({ page: 'device' });
 
     await eventually(
       async () => (await desktop.windows()).filter((window) => (

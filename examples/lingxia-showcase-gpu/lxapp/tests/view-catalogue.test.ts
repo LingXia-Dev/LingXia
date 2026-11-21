@@ -37,7 +37,7 @@ const zhNames: Record<string, string[]> = {
   'view-accessibility': ['名称与角色', '文件夹树', '有名称的列表', '日期网格'],
 };
 for (const group of groups) {
-  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, query: { lang: 'zh' } } }, async (t) => {
+  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, params: { lang: 'zh' } } }, async (t) => {
     const view = t.app.view;
     // Retrying: the page can draw a first frame before its `lang` reaches it.
     for (const title of zhNames[group.page]) await expect(view.getByRole('heading', { name: title })).toHaveCount(1);
@@ -45,7 +45,7 @@ for (const group of groups) {
   });
 }
 
-test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', query: { lang: 'en' } } }, async (t) => {
+test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', params: { lang: 'en' } } }, async (t) => {
   const view = t.app.view;
   await expect(view.getByRole('heading', { name: 'Suggestions while typing' })).toHaveCount(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
@@ -59,7 +59,8 @@ test('a finger on an index row opens its group', { covers: ['view:catalogue'], s
     const box = await view.testId(`view-index-${id}`).boundingBox();
     const at = [box.x + box.width / 2, box.y + box.height / 2] as const;
     await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });
-    await expect(view.testId(`view-group-${id}`)).toBeVisible({ timeout: 3_000 });
+    // A group with web views opens only once they start, which on Windows takes seconds.
+    await expect(view.testId(`view-group-${id}`)).toBeVisible({ timeout: 10_000 });
     await t.app.nav.back();
     await expect(view.testId('view-index')).toBeVisible();
   }

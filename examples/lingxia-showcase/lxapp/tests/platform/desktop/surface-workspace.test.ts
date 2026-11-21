@@ -55,7 +55,7 @@ interface DynamicHandleGlobals {
 }
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
-const targetPlatform = testArgs.platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const desktopCapableSkip = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
   ? 'macOS and Windows only'
@@ -1081,7 +1081,7 @@ async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> 
   // "managed surface request rejected".
   await closeChatSurface(t, app);
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.shell.openApp('lingxia-chat', { as: 'main' });
+    await lx.surface.openApp('lingxia-chat', { as: 'main' });
   });
 }
 
@@ -1164,7 +1164,7 @@ async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurface
   return app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     const probe = globalThis as unknown as DynamicHandleGlobals;
     for (const unsubscribe of probe.__surfaceSwitcherDynamicHandleGate?.unsubscribe ?? []) unsubscribe();
-    const handle = await lx.shell.openApp('lingxia-chat', { as: 'main' });
+    const handle = await lx.surface.openApp('lingxia-chat', { as: 'main' });
     const events: RetainedAppSurfaceState['events'] = [];
     const unsubscribe = [
       handle.onHide((event) => events.push({ type: 'hide', ...event })),
@@ -1366,7 +1366,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         : undefined;
     }, `${platform} expanded root baseline`);
 
-    await app.nav.switchTab({ page: 'api' });
+    await app.nav.go({ tab: 'api' });
     const api = await app.page({ name: 'api' }, { timeout: 30_000 });
     await api.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
 
@@ -1649,7 +1649,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
       }
     }
     if (originalPage.name && (originalPage.name !== 'api' || browserTabId)) {
-      await app.nav.switchTab({ page: originalPage.name }).catch(() => undefined);
+      await app.nav.go({ tab: originalPage.name }).catch(() => undefined);
     }
     await restoreHostBounds(desktop, host.id, originalBounds);
   }
@@ -1659,7 +1659,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
   skip: windowsHostSkip,
   id: 'DESKTOP-CHAT-DOCK-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'TestApp.surfaceLayout'],
+  covers: ['lx.surface.openApp', 'TestApp.surfaceLayout'],
 }, async (t) => {
   const app = await desktopApp(t);
   const automation = t.automation;
@@ -1896,7 +1896,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
   skip: dynamicMainDesktopSkip,
   id: 'DESKTOP-DYNAMIC-MAIN-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'PageSurface.close', 'PageSurface.onClose'],
+  covers: ['lx.surface.openApp', 'PageSurface.close', 'PageSurface.onClose'],
 }, async (t) => {
   const app = await automationPhase('resolve showcase driver', () => desktopApp(t));
   const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
@@ -1961,9 +1961,9 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       };
       // Each call passes what the typings refuse on purpose: the host must
       // reject it, not ignore the extra field.
-      const openApp = lx.shell.openApp as (appId: string, options: unknown) => Promise<unknown>;
+      const openApp = lx.surface.openApp as (appId: string, options: unknown) => Promise<unknown>;
       const openPage = lx.surface.openPage as (page: string, options: unknown) => Promise<unknown>;
-      const navigateToApp = lx.navigateToApp as (options: unknown) => Promise<unknown>;
+      const go = lx.nav.go as (target: unknown) => Promise<unknown>;
       const rejected: Partial<Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', Rejection>> = {};
       try {
         await openApp('lingxia-chat', {
@@ -1973,8 +1973,8 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
         rejected.path = rejection(error);
       }
       try {
-        await navigateToApp({
-          appId: 'lingxia-chat', path: 'pages/chat/index.tsx',
+        await go({
+          app: 'lingxia-chat', path: 'pages/chat/index.tsx',
         });
       } catch (error) {
         rejected.navigatePath = rejection(error);
@@ -2001,7 +2001,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
       () => app.surfaceLayout(),
     );
     const openedHandle = await automationPhase('open dynamic Chat main', () => app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-      const handle = await lx.shell.openApp('lingxia-chat', {
+      const handle = await lx.surface.openApp('lingxia-chat', {
         as: 'main', page: 'chat',
       });
       const events: RetainedAppSurfaceState['events'] = [];
@@ -2036,7 +2036,7 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
     hidden = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, rootId) => {
       const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
       if (!gate || !rootId) throw new Error('dynamic main gate lost its root or handle');
-      await lx.shell.openDeclared(rootId, { as: 'main' });
+      await lx.surface.openDeclared(rootId, { as: 'main' });
       const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
         if (!gate.handle.visible
@@ -2337,7 +2337,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => (
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat baseline');
-    await app.nav.switchTab({ page: 'todo' });
+    await app.nav.go({ tab: 'todo' });
     // The tab stays alive under Chat, so the marker is removed from this instance.
     todo = (await app.page({ name: 'todo' })).view;
 
@@ -2837,7 +2837,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await restoreHostBounds(desktop, host.id, originalBounds);
     if (originalPageName) {
-      await app.nav.relaunch({ page: originalPageName });
+      await app.nav.reset({ page: originalPageName });
     }
   }
 });
@@ -2846,7 +2846,7 @@ test('rejects stable-root mutations without changing the host model', {
   skip: desktopSkip,
   id: 'DESKTOP-STABLE-ROOT-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openDeclared'],
+  covers: ['lx.surface.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
@@ -2855,13 +2855,13 @@ test('rejects stable-root mutations without changing the host model', {
     const initial = await snapshot();
     const rootId = initial.mainSwitcher.rootSurfaceId;
     if (!rootId) throw new Error('surface graph has no stable root');
-    const root = await lx.shell.openDeclared(rootId, { as: 'main' });
+    const root = await lx.surface.openDeclared(rootId, { as: 'main' });
     const beforeRejections = await snapshot();
     let closeError = '';
     try { await root.close(); } catch (error) { closeError = String(error); }
     let roleError = '';
     try {
-      await lx.shell.openDeclared(rootId, { as: 'aside', edge: 'right' });
+      await lx.surface.openDeclared(rootId, { as: 'aside', edge: 'right' });
     } catch (error) {
       roleError = String(error);
     }
@@ -3006,7 +3006,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.navigateTo', 'lx.navigateBack', 'lx.surface.openPage', 'lx.surface.getByKey'],
+  covers: ['lx.surface.openApp', 'lx.shell.getApp', 'lx.nav.go', 'lx.nav.back', 'lx.surface.openPage', 'lx.surface.get'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -3028,7 +3028,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       nativeWindowExtent(platform, host, 640),
     );
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
     const asideLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -3061,7 +3061,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // navigateTo from the aside lxapp's Logic: the page pushes inside the aside.
     const pushFeedback = async (phase: string) => {
       await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.navigateTo({ page: 'feedback' });
+        await lx.nav.go({ page: 'feedback' }).opened;
       });
       await waitForValue(async () => {
         const current = await chat.nav.current();
@@ -3138,7 +3138,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // navigateBack pops inside the aside and reveals the chat page there again.
     await pushFeedback('navigateBack');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.navigateBack();
+      await lx.nav.back();
     });
     await expectChatBackInAside('navigateBack');
 
@@ -3170,7 +3170,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       expect(inRightAside(host, floatWindow.bounds)).toBeTruthy();
       await expectMainUnchanged('after float');
       await chat.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
-        const handle = lx.surface.getByKey(key) as { close(): Promise<void> } | null;
+        const handle = lx.surface.get(key) as { close(): Promise<void> } | null;
         if (handle) await handle.close();
       }, floatKey);
     }
@@ -3179,7 +3179,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // their own regions: the new main takes the main area, Chat keeps its
     // aside and its page.
     await app.logic.eval({ timeout: 60_000 }, async ({ lx }, appId) => {
-      const handle = await lx.shell.openApp(appId, { as: 'main' });
+      const handle = await lx.surface.openApp(appId, { as: 'main' });
       (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain = handle;
     }, ASIDE_NAV_OTHER_APP_ID);
     try {
@@ -3247,13 +3247,13 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       await expectMainUnchanged('after the aside tab close');
 
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+        await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
       });
       const reopened = await waitForChatInput(desktop, host, 'Chat input after reopening the aside');
       expect(inRightAside(host, reopened.rect)).toBeTruthy();
       await pushFeedback('after reopen');
       await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.navigateBack();
+        await lx.nav.back();
       });
       await expectChatBackInAside('navigateBack after reopen');
     }
@@ -3262,7 +3262,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     throw error;
   } finally {
     await chat.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
-      const handle = lx.surface.getByKey(key) as { close(): Promise<void> } | null;
+      const handle = lx.surface.get(key) as { close(): Promise<void> } | null;
       if (handle) await handle.close();
     }, floatKey).catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
@@ -3312,7 +3312,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
   skip: macosHostSkip,
   id: 'DESKTOP-ASIDE-MAXIMIZE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp'],
+  covers: ['lx.surface.openApp'],
 }, async (t) => {
   const app = await desktopApp(t);
   const desktop = t.automation.desktop;
@@ -3327,9 +3327,9 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
       nativeWindowExtent('macos', host, 1_000),
       nativeWindowExtent('macos', host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -3473,7 +3473,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     throw error;
   } finally {
     await closeChatSurface(t, app).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });
@@ -3482,7 +3482,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
   skip: desktopSkip,
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openDeclared', 'lx.shell.getDeclared'],
+  covers: ['lx.surface.openDeclared', 'lx.shell.getDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
@@ -3497,7 +3497,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
     const off = [];
     let output;
     try {
-      surface = await lx.shell.openDeclared('terminal', {
+      surface = await lx.surface.openDeclared('terminal', {
         key, as: 'aside', edge: 'right',
       });
       off.push(
@@ -3506,13 +3506,13 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
         surface.onClose((event) => closed.push(event)),
       );
       const aside = await snapshot();
-      const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
+      const main = await lx.surface.openDeclared('terminal', { key, as: 'main' });
       const mainLayout = await snapshot();
       const roleAfterMain = main.realized;
       let hideError = '';
       try { await main.hide(); } catch (error) { hideError = String(error); }
       const afterRejectedHide = await snapshot();
-      const docked = await lx.shell.openDeclared('terminal', {
+      const docked = await lx.surface.openDeclared('terminal', {
         key, as: 'aside', edge: 'bottom',
       });
       const dockedLayout = await snapshot();
@@ -3639,7 +3639,7 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
   skip: desktopSkip,
   id: 'DESKTOP-SWITCH-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openDeclared'],
+  covers: ['lx.surface.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
@@ -3672,7 +3672,7 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
     let output;
     try {
       const baseline = await snapshot();
-      const first = await lx.shell.openDeclared('terminal', {
+      const first = await lx.surface.openDeclared('terminal', {
         key: '  ' + keys.first + '  ', as: 'main',
       });
       opened.push(first);
@@ -3682,7 +3682,7 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
       );
       const afterFirst = await snapshot();
 
-      const second = await lx.shell.openDeclared('terminal', {
+      const second = await lx.surface.openDeclared('terminal', {
         key: keys.second, as: 'main',
       });
       opened.push(second);
@@ -3690,7 +3690,7 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
       await waitFor(() => events.firstHide.length === 1, 'first hide after second open');
       const afterSecond = await snapshot();
 
-      const reopened = await lx.shell.openDeclared('terminal', {
+      const reopened = await lx.surface.openDeclared('terminal', {
         key: keys.first, as: 'main',
       });
       opened.push(reopened);
@@ -3701,8 +3701,8 @@ test('switches, deduplicates concurrent opens, and leaves no ghost rows', {
       const afterReopen = await snapshot();
 
       const [concurrentFirst, concurrentSecond] = await Promise.all([
-        lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
-        lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
+        lx.surface.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
+        lx.surface.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
       ]);
       opened.push(concurrentFirst, concurrentSecond);
       off.push(concurrentFirst.onClose((event) => events.concurrentClose.push(event)));
@@ -3934,11 +3934,11 @@ function windowContainsRect(
 }
 
 async function lifecycleCounts(app: TestApp): Promise<ShowcaseLifecycleCounts> {
-  return app.logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as {
-      globalData: { lifecycle: ShowcaseLifecycleCounts };
+  return app.logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as {
+      state: { lifecycle: ShowcaseLifecycleCounts };
     } | null;
-    const lifecycle = instance?.globalData.lifecycle;
+    const lifecycle = instance?.state.lifecycle;
     return {
       shows: lifecycle?.shows ?? 0,
       hides: lifecycle?.hides ?? 0,
@@ -4015,7 +4015,7 @@ test('docks a URL aside on every edge, shows it, and closes it from the browser 
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
 
     for (const edge of BROWSER_ASIDE_EDGES) {
       const key = `${namespace}-${edge}`;
@@ -4055,7 +4055,7 @@ test('docks a URL aside on every edge, shows it, and closes it from the browser 
         (await visibleBrowserAsideFrame(platform, desktop, host!, key, edge)) ? undefined : true
       ), `browser aside gone from the screen (${edge})`);
       const handle = await app.logic.eval(({ lx }, key) => {
-        const held = lx.surface.getByKey(key);
+        const held = lx.surface.get(key);
         return { registered: held != null, alive: held?.alive ?? false };
       }, key);
       expect({ edge, ...handle }).toEqual({ edge, registered: false, alive: false });
@@ -4073,7 +4073,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
   skip: desktopSkip,
   id: 'DESKTOP-BROWSER-ASIDE-LIFECYCLE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.surface.openUrl', 'lx.shell.openApp', 'BrowserDriver.close'],
+  covers: ['lx.surface.openUrl', 'lx.surface.openApp', 'BrowserDriver.close'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -4092,13 +4092,13 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await waitForValue(async () => {
       const current = await app.nav.current();
       return current.name === 'home' && current.ready ? true : undefined;
     }, 'main on the Home page');
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
     await waitForValue(async () => {
       const slot = chatAsideSlot(await app.surfaceLayout());
@@ -4313,7 +4313,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-PROMOTE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp'],
+  covers: ['lx.surface.openApp'],
 }, async (t) => {
   const app = await desktopApp(t);
   const desktop = t.automation.desktop;
@@ -4330,9 +4330,9 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
     const before = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4374,7 +4374,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     // The main chrome now drives Chat: a pushed page pops with the main Back.
     const chat = t.automation.lxapp('lingxia-chat');
     await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.navigateTo({ page: 'about' });
+      await lx.nav.go({ page: 'about' }).opened;
     });
     await waitForValue(async () => {
       const current = await chat.nav.current();
@@ -4398,7 +4398,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       activeMain: closed.activeMainId === 'lingxia-chat',
     }).toEqual({ inSwitcher: false, activeMain: false });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
     });
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4417,7 +4417,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       .then((page) => page.view.css('textarea[placeholder="Message..."]').fill(''))
       .catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });
@@ -4440,7 +4440,7 @@ interface OpenAppMoveOptions {
 
 interface MovedHandleState {
   same: boolean;
-  /** `getApp` and `getDeclared` of the declared Chat return that same object. */
+  /** `appInstance` and `getDeclared` of the declared Chat return that same object. */
   lookedUp: boolean;
   realized: string;
   visible: boolean;
@@ -4452,19 +4452,19 @@ interface MovedHandleState {
 async function chatLastShow(
   t: Fixture,
 ): Promise<{ reason?: string; path?: string; query?: Record<string, string> } | null> {
-  return t.automation.lxapp('lingxia-chat').logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as {
-      globalData?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
+  return t.automation.lxapp('lingxia-chat').logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as {
+      state?: { lastShow?: { reason?: string; path?: string; query?: Record<string, string> } };
     } | null;
-    return instance?.globalData?.lastShow ?? null;
+    return instance?.state?.lastShow ?? null;
   });
 }
 
-test('moves a live lxapp between aside and main through lx.shell.openApp', {
+test('moves a live lxapp between aside and main through lx.surface.openApp', {
   skip: desktopSkip,
   id: 'DESKTOP-OPENAPP-MOVE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.shell.openApp', 'lx.shell.getApp', 'lx.shell.getDeclared', 'lx.shell.openDeclared'],
+  covers: ['lx.surface.openApp', 'lx.shell.getApp', 'lx.shell.getDeclared', 'lx.surface.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   await closeChatSurface(t, app);
@@ -4476,7 +4476,7 @@ test('moves a live lxapp between aside and main through lx.shell.openApp', {
     async ({ lx }, options): Promise<MovedHandleState> => {
       const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
       if (!probe) throw new Error('openApp move probe is not installed');
-      const handle = await lx.shell.openApp('lingxia-chat', options);
+      const handle = await lx.surface.openApp('lingxia-chat', options);
       return {
         same: handle === probe.handle,
         lookedUp: lx.shell.getApp('lingxia-chat') === handle
@@ -4491,7 +4491,7 @@ test('moves a live lxapp between aside and main through lx.shell.openApp', {
   );
   try {
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      const handle = await lx.shell.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
+      const handle = await lx.surface.openApp('lingxia-chat', { as: 'aside', edge: 'right' });
       const closes: string[] = [];
       const unsubscribe = handle.onClose((event) => closes.push(event.reason));
       (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe = { handle, closes, unsubscribe };
@@ -4505,20 +4505,20 @@ test('moves a live lxapp between aside and main through lx.shell.openApp', {
     const identity = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
       if (!probe) throw new Error('openApp move probe is not installed');
-      const declared = await lx.shell.openDeclared('lingxia-chat');
+      const declared = await lx.surface.openDeclared('lingxia-chat');
       return {
-        getApp: lx.shell.getApp('lingxia-chat') === probe.handle,
+        appInstance: lx.shell.getApp('lingxia-chat') === probe.handle,
         getDeclared: lx.shell.getDeclared('lingxia-chat') === probe.handle,
         openDeclared: declared === probe.handle,
         kind: declared.kind,
       };
     });
-    expect(identity).toEqual({ getApp: true, getDeclared: true, openDeclared: true, kind: 'app' });
+    expect(identity).toEqual({ appInstance: true, getDeclared: true, openDeclared: true, kind: 'app' });
 
     // A page Chat does not configure is refused before anything moves.
     const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       try {
-        await lx.shell.openApp('lingxia-chat', { as: 'main', page: 'nowhere' as never });
+        await lx.surface.openApp('lingxia-chat', { as: 'main', page: 'nowhere' as never });
         return 'resolved';
       } catch (error) {
         return (error as { code?: string }).code ?? String(error);
@@ -4599,7 +4599,7 @@ test('moves a dragged URL aside tab into the main browser without reloading it',
       nativeWindowExtent(platform, host, 1_000),
       nativeWindowExtent(platform, host, 640),
     );
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     const url = await writeBrowserAsideFixture(app, namespace, key);
     const opened = await openBrowserAside(app, url, key, 'right');
     await waitForValue(async () => {
@@ -4641,7 +4641,7 @@ test('moves a dragged URL aside tab into the main browser without reloading it',
     }
     // The aside handle is gone; the page is the browser's now.
     const handle = await app.logic.eval(({ lx }, key) => {
-      const held = lx.surface.getByKey(key);
+      const held = lx.surface.get(key);
       return { registered: held != null, alive: held?.alive ?? false };
     }, key);
     expect(handle).toEqual({ registered: false, alive: false });
@@ -4653,7 +4653,7 @@ test('moves a dragged URL aside tab into the main browser without reloading it',
     await app.logic.eval(async ({ lx }, namespace) => {
       await lx.fs.remove('lx://userdata/' + namespace, { recursive: true }).catch(() => undefined);
     }, namespace).catch(() => undefined);
-    await app.nav.switchTab({ page: 'home' }).catch(() => undefined);
+    await app.nav.go({ tab: 'home' }).catch(() => undefined);
     if (host) await restoreHostBounds(desktop, host.id, originalBounds).catch(() => undefined);
   }
 });

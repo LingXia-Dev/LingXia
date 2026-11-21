@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import type { ModalResult, ActionSheetResult } from '@lingxia/types';
+import type { ActionSheetResult } from '@lingxia/types';
 import type { PageContract } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { androidDevice, androidCancelLabels } from '@lingxia/test/showcase/helpers/android-device.js';
@@ -11,7 +11,7 @@ test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' 
 for (const kind of ['modal', 'actionsheet'] as const) {
   const id = `ANDROID-${kind.toUpperCase()}-REPLACE-001`;
   test(`replacing a native ${kind} settles the old request and keeps the new one usable`, {
-    id, app: SHOWCASE_APP_ID, covers: [kind === 'modal' ? 'lx.showModal' : 'lx.showActionSheet'], timeout: 60000,
+    id, app: SHOWCASE_APP_ID, covers: [kind === 'modal' ? 'lx.ui.confirm' : 'lx.ui.actionSheet'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
     start: { page: 'home' },
   }, async (t) => {
@@ -26,26 +26,27 @@ for (const kind of ['modal', 'actionsheet'] as const) {
       const results: unknown[] = [];
       (globalThis as Record<string, unknown>)[key] = results;
       const request = kind === 'modal'
-        ? lx.showModal({ title: 'First modal', content: 'Replace me', confirmText: 'OK', cancelText: 'Cancel' })
-        : lx.showActionSheet({ items: [{ id: 'first', label: 'First choice' }] });
-      void request.then((result) => results.push({ request: 'first', result }));
+        ? lx.ui.confirm({ title: 'First modal', message: 'Replace me', confirmText: 'OK', cancelText: 'Cancel' })
+        : lx.ui.actionSheet({ items: [{ id: 'first', label: 'First choice' }] });
+      void request.then((result: unknown) => results.push({ request: 'first', result }));
     }, kind, namespace);
     await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => node.text === (kind === 'modal' ? 'First modal' : 'First choice')) });
     await app.logic.eval(({ lx }, kind, key) => {
       const results = (globalThis as Record<string, unknown>)[key] as unknown[];
       const request = kind === 'modal'
-        ? lx.showModal({ title: 'Second modal', content: 'Confirm me', confirmText: 'OK', cancelText: 'Cancel' })
-        : lx.showActionSheet({ items: [{ id: 'second', label: 'Second choice' }] });
-      void request.then((result) => results.push({ request: 'second', result }));
+        ? lx.ui.confirm({ title: 'Second modal', message: 'Confirm me', confirmText: 'OK', cancelText: 'Cancel' })
+        : lx.ui.actionSheet({ items: [{ id: 'second', label: 'Second choice' }] });
+      void request.then((result: unknown) => results.push({ request: 'second', result }));
     }, kind, namespace);
     const read = () => app.logic.eval((_, key) => (globalThis as Record<string, unknown>)[key], namespace);
-    await expect.poll(read).toEqual([{ request: 'first', result: { status: 'canceled' } }]);
+    const firstCanceled = kind === 'modal' ? false : { status: 'canceled' };
+    await expect.poll(read).toEqual([{ request: 'first', result: firstCanceled }]);
     const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === (kind === 'modal' ? 'Second modal' : 'Second choice')) });
     expect(nodes.some((node) => node.text === (kind === 'modal' ? 'First modal' : 'First choice'))).toBe(false);
     await device.tapText(kind === 'modal' ? 'OK' : 'Second choice');
     await expect.poll(read).toEqual([
-      { request: 'first', result: { status: 'canceled' } },
-      { request: 'second', result: kind === 'modal' ? { status: 'ok' } : { status: 'ok', id: 'second' } },
+      { request: 'first', result: firstCanceled },
+      { request: 'second', result: kind === 'modal' ? true : { status: 'ok', id: 'second' } },
     ]);
   });
 }
@@ -53,7 +54,7 @@ for (const kind of ['modal', 'actionsheet'] as const) {
 for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
   const id = `ANDROID-MODAL-${action.toUpperCase()}-001`;
   test(`settle a native modal by ${action} without navigating the page`, {
-    id, app: SHOWCASE_APP_ID, covers: ['lx.showModal'], timeout: 60000,
+    id, app: SHOWCASE_APP_ID, covers: ['lx.ui.confirm'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   }, async (t) => {
     const { app, defer } = bindFixture(t, id);
@@ -61,12 +62,12 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
     defer(async () => {
       const cancel = (await device.nodes()).find((node) => node.text === 'CANCEL');
       if (cancel) await device.tap(cancel);
-      await app.nav.relaunch({ page: 'home' });
+      await app.nav.reset({ page: 'home' });
     });
-    await app.nav.relaunch({ page: 'home' });
-    await app.nav.to({ page: 'ui', query: { type: 'modal' } });
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'ui', params: { type: 'modal' } });
     const current = await app.nav.current();
-    const page = await app.page<PageContract<{ modalResult: ModalResult | null }>>();
+    const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
     await page.view.testId('modal-show').click();
     await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => node.text === 'CANCEL') });
     if (action === 'confirm') {
@@ -89,7 +90,7 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
 }
 
 test('a confirm-only modal consumes Back and outside taps until confirmed', {
-  id: 'ANDROID-MODAL-CONFIRM-ONLY-001', app: SHOWCASE_APP_ID, covers: ['lx.showModal'], timeout: 60000,
+  id: 'ANDROID-MODAL-CONFIRM-ONLY-001', app: SHOWCASE_APP_ID, covers: ['lx.ui.confirm'], timeout: 60000,
   requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-MODAL-CONFIRM-ONLY-001');
@@ -97,12 +98,12 @@ test('a confirm-only modal consumes Back and outside taps until confirmed', {
   defer(async () => {
     const ok = (await device.nodes()).find((node) => node.text === 'OK' && node.className === 'android.widget.Button');
     if (ok) await device.tap(ok);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'home' });
-  await app.nav.to({ page: 'ui', query: { type: 'modal' } });
+  await app.nav.reset({ page: 'home' });
+  await app.nav.go({ page: 'ui', params: { type: 'modal' } });
   const current = await app.nav.current();
-  const page = await app.page<PageContract<{ modalResult: ModalResult | null }>>();
+  const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
   await page.view.css('#modalShowCancel').click();
   await page.view.testId('modal-show').click();
   const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK' && node.className === 'android.widget.Button') });
@@ -120,7 +121,7 @@ test('a confirm-only modal consumes Back and outside taps until confirmed', {
 for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
   const id = `ANDROID-ACTIONSHEET-${action.toUpperCase()}-001`;
   test(`settle a native action sheet by ${action} without navigating the page`, {
-    id, app: SHOWCASE_APP_ID, covers: ['lx.showActionSheet'], timeout: 60000,
+    id, app: SHOWCASE_APP_ID, covers: ['lx.ui.actionSheet'], timeout: 60000,
     requires: { args: ['androidDevice'] }, reason: 'requires Android OS input fixture',
   }, async (t) => {
     const { app, defer } = bindFixture(t, id);
@@ -128,10 +129,10 @@ for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
     defer(async () => {
       const cancel = (await device.nodes()).find((node) => androidCancelLabels.includes(node.text));
       if (cancel) await device.tap(cancel);
-      await app.nav.relaunch({ page: 'home' });
+      await app.nav.reset({ page: 'home' });
     });
-    await app.nav.relaunch({ page: 'home' });
-    await app.nav.to({ page: 'ui', query: { type: 'actionsheet' } });
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'ui', params: { type: 'actionsheet' } });
     const current = await app.nav.current();
     const page = await app.page<PageContract<{ actionSheetResult: ActionSheetResult | null }>>();
     await page.view.testId('actionsheet-show').click();

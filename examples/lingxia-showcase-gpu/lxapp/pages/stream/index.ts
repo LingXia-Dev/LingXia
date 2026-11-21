@@ -1,4 +1,5 @@
 import type { ChartData, Message, ChatChunk, SendMessage } from "../../shared/stream-types";
+import { definePage } from '@lingxia/types/page';
 
 interface MockScenario {
   text: string;
@@ -123,52 +124,57 @@ async function* mockChatStream(kind?: string): AsyncGenerator<ChatChunk, void> {
   }
 }
 
-Page({
-  async goBack() { await lx.navigateBack(); },
+export default definePage({
   data: {
     messages: [] as Message[],
     isStreaming: false,
   },
+  setup(page) {
+    const actions = {
+      async goBack() { await lx.nav.back(); },
+      async *onSend(params: SendMessage): AsyncGenerator<ChatChunk, void> {
+        const text = (params?.text ?? '').trim();
+        if (!text || page.data.isStreaming) return;
 
-  async *onSend(params: SendMessage): AsyncGenerator<ChatChunk, void> {
-    const text = (params?.text ?? '').trim();
-    if (!text || this.data.isStreaming) return;
+        const userMsg: Message = {
+          id: `u${Date.now()}`,
+          role: 'user',
+          content: text,
+        };
+        page.update(d => {
+          d.messages.push(userMsg);
+          d.isStreaming = true;
+        });
 
-    const userMsg: Message = {
-      id: `u${Date.now()}`,
-      role: 'user',
-      content: text,
+        let accumulated = '';
+        let chartData: ChartData | undefined;
+
+        try {
+          for await (const chunk of mockChatStream(params.chartKind)) {
+            if (chunk.type === 'token') accumulated += chunk.token;
+            if (chunk.type === 'artifact') chartData = chunk.chart;
+            yield chunk;
+          }
+        } finally {
+          const assistantMsg: Message = {
+            id: `a${Date.now()}`,
+            role: 'assistant',
+            content: accumulated || '(no response)',
+            chart: chartData,
+          };
+          page.update(d => {
+            d.messages.push(assistantMsg);
+            d.isStreaming = false;
+          });
+        }
+      },
+      onClear() {
+        if (page.data.isStreaming) return;
+        page.update(d => { d.messages = []; });
+      },
     };
-    this.setData({
-      messages: [...this.data.messages, userMsg],
-      isStreaming: true,
-    });
-
-    let accumulated = '';
-    let chartData: ChartData | undefined;
-
-    try {
-      for await (const chunk of mockChatStream(params.chartKind)) {
-        if (chunk.type === 'token') accumulated += chunk.token;
-        if (chunk.type === 'artifact') chartData = chunk.chart;
-        yield chunk;
-      }
-    } finally {
-      const assistantMsg: Message = {
-        id: `a${Date.now()}`,
-        role: 'assistant',
-        content: accumulated || '(no response)',
-        chart: chartData,
-      };
-      this.setData({
-        messages: [...this.data.messages, assistantMsg],
-        isStreaming: false,
-      });
-    }
-  },
-
-  onClear() {
-    if (this.data.isStreaming) return;
-    this.setData({ messages: [] });
+    return {
+      actions,
+    };
   },
 });

@@ -8,31 +8,8 @@ declare const systemDownloadsPathBrand: unique symbol;
 /** Managed paths and relative userdata paths; system Downloads references are excluded. */
 export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
-/** JSON-shaped state; undefined removes a property in setData. */
-export type PageDataValue<T> = unknown extends T ? T : T extends string | number | boolean | null | undefined ? T
-  : T extends (...args: never[]) => unknown ? never
-  : T extends object ? { [K in keyof T]: PageDataValue<T[K]> } : never;
-
-export type NoReservedPageMembers<T> = {
-  [K in keyof T]: K extends 'data' ? T[K]
-    : K extends keyof PageInstance | '_setData' | '_cancelPendingSetData' ? never : T[K];
-};
-
-export interface PageConfig<TData extends object = Record<string, unknown>> {
-  data?: TData & PageDataValue<TData>;
-  onLoad?: (options?: PageLoadOptions) => void | Promise<void>;
-  onShow?: () => void | Promise<void>;
-  onReady?: () => void | Promise<void>;
-  onHide?: () => void | Promise<void>;
-  onUnload?: () => void | Promise<void>;
-  onPullDownRefresh?: () => void | Promise<void>;
-}
-
-/** Lifecycle hook names a `Page({...})` config may declare. */
-export type PageLifecycleName = Exclude<keyof PageConfig, 'data'>;
-
 /** Lifecycle hook names an `App({...})` config may declare. */
-export type AppLifecycleName = Exclude<keyof AppConfig, 'globalData'>;
+export type AppLifecycleName = keyof AppConfig;
 
 /**
  * What a key that differs from a lifecycle hook only in case resolves to, so
@@ -43,7 +20,7 @@ export type MisspelledLifecycle<K extends string> = {
 };
 
 /**
- * Applied to the custom half of a `Page`/`App` config. `onload` and `onShow`
+ * Applied to the custom half of an `App` config. `onload` and `onShow`
  * are one keystroke apart from real hooks and the runtime would simply never
  * call the misspelling, so the closest case-insensitive match is rejected.
  * Genuinely different names stay ordinary methods.
@@ -150,9 +127,20 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
    */
   surface?: PageSurface;
   /**
-   * Available when this page was opened by `lx.navigateTo(...)`.
+   * Available when this page was pushed by `lx.nav.go(...)`.
    */
   opener?: PageMessagePort;
+  /**
+   * Set what the opener's `result` resolves with when this page leaves, by
+   * Back or any other way. JSON only.
+   */
+  setResult(value: JsonValue): void;
+  /**
+   * Leave this page, with `value` as its result when given. A pushed page
+   * goes back; a surface page closes its surface. Throws for a root or tab
+   * page, and for a pushed page that is not on top.
+   */
+  close(value?: JsonValue): Promise<void>;
   setData<TPatch extends Record<string, unknown>>(
     data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
   ): void;
@@ -218,20 +206,14 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 }
 
 /**
- * Download options.
+ * Where `lx.network.download` writes, chosen by `to`:
  *
- * - `app`: app-owned temporary output, or durable `lx://userdata` output when
- *   `filePath` is set
- * - `downloads`: user-visible system Downloads output, requiring a host
- *   privilege grant and a native Downloads grant
- *
- * Default: `app`.
+ * - omitted: a temporary file this lxapp owns
+ * - a path: durable output under `lx://userdata` (relative paths resolve there)
+ * - `'downloads'`: the user's Downloads folder, which needs the host's
+ *   downloads grant
  */
-export type DownloadOptions<TDestination extends DownloadDestination = DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadOptions : AppDownloadOptions;
-
-export type DownloadResultForDestination<TDestination extends DownloadDestination> =
-  TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
+export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
 export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
   | {
@@ -274,9 +256,52 @@ export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgr
 
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
+  /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
   pause(): Promise<void>;
+  /** Resumes a paused download from where it stopped; does nothing in any other state. */
   resume(): Promise<void>;
 }
+
+/** The params page `N` declares; any JSON params before the registry exists. */
+export type NavParams<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly params: infer T } } ? T : PageQuery
+    : PageQuery;
+
+/** The result page `N` declares; any JSON value before the registry exists. */
+export type NavResult<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly result: infer T } } ? T : JsonValue
+    : JsonValue;
+
+/** The messages page `N` declares as `{ in, out }`; undeclared when it has none. */
+export type NavMessages<N> = N extends keyof LxAppPageTypes
+    ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly messages: infer M } } ? M : never
+    : never;
+
+/** What the opener sends to a page declaring `messages: type<{ in; out }>()`; anything when undeclared. */
+export type MessageIn<M> = [M] extends [never] ? unknown : M extends { in: infer I } ? I : never;
+/** What such a page sends back to its opener; anything when undeclared. */
+export type MessageOut<M> = [M] extends [never] ? unknown : M extends { out: infer O } ? O : never;
+
+/** A page to push or replace. `params` is required when the page's declared params have a required key. */
+export type PageTarget<N = ConfiguredPageName> = { page: N; tab?: never; app?: never; url?: never }
+    & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
+
+/** What `lx.nav.go` returns for a pushed page. */
+export type PageHandle<R = JsonValue, M = never> = {
+    /** Settles when the page is on screen; rejects when it could not open. */
+    readonly opened: Promise<void>;
+    /** Settles once, after the page's `onUnload`. */
+    readonly result: Promise<{ status: 'ok'; value: R } | Extract<PageResult, { status: 'canceled' }>>;
+    /**
+     * Delivers `message` to the page's `page.opener.onMessage` handlers, at
+     * once and uncopied. Until the page first subscribes, messages wait for it.
+     */
+    send(message: MessageIn<M>): void;
+    /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
+    onMessage(handler: (message: MessageOut<M>) => void): () => void;
+    /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
+    close(): void;
+};
 
 declare global {
   /**
@@ -288,10 +313,44 @@ declare global {
    */
   interface LxAppPages {}
 
-  // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
-  // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). env re-declares
-  // the generated member doc-only; tsc rejects the merge if the types drift.
+  /** The lxapp's tab roots, one key per tab page. Generated beside `LxAppPages`. */
+  interface LxAppTabs {}
+
+  /** Each page's `definePage` type, generated for Logic; `lx.nav` reads params and result from it. */
+  interface LxAppPageTypes {}
+
+  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  interface NavApi {
+    /**
+     * Push a page. The handle is returned at once: `opened` settles when the
+     * page is on screen, `result` when it leaves.
+     *
+     * Throws `E_INVALID_ARG` for a malformed target (an unknown key, params
+     * over 8 KB as JSON) or when ten pages are already stacked
+     * (`data.reason: 'stack_full'`), and `E_NOT_FOUND` for a page the app does
+     * not declare. `opened` rejects only when the platform fails to show it.
+     */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
+    /** Replace the current page; the new page inherits its opener and pending result. */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: { replace: true }): Promise<void>;
+    /**
+     * Switch tabs, open another lxapp, or open a URL in the in-app browser.
+     * A `{ tab }` takes no params. Rejects `E_NOT_FOUND` for an undeclared tab.
+     */
+    go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
+    /** Pop `n` pages (default 1), stopping at the root. Resolves once the revealed page is ready. */
+    back(n?: number): Promise<void>;
+    /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
+    reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
+    /** Back to the lxapp that opened this one. */
+    leaveApp(): Promise<void>;
+  }
+
+  // HostAppApi/FileSystemApi members are emitted from the Rust js_api
+  // metadata; these merges only add what Rong cannot express — the
+  // capability members' docs and doc comments (js_api consts cannot carry docs).
+  // host.env, fs.userData and fs.userCache re-declare the generated members
+  // doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
@@ -301,44 +360,48 @@ declare global {
     readonly env: HostAppEnv;
 
     /**
-     * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports('app.autostart')` always
-     * agree, so `lx.host.autostart?.…` and the query are interchangeable.
+     * Launch-at-startup control. Where the host cannot register a startup
+     * item every call fails `E_NOT_SUPPORTED`; ask `lx.supports('app.autostart')`
+     * first.
      */
-    autostart?: AutostartApi;
+    readonly autostart: AutostartApi;
 
     /**
-     * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports('app.notification')` always agree.
+     * Local notifications. Where the host cannot post them every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.notification')` first.
      */
-    notification?: NotificationApi;
+    readonly notification: NotificationApi;
 
     /**
-     * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports('app.banner')`
-     * always agree.
+     * Product-drawn desktop banner (top-right). Off desktop every call fails
+     * `E_NOT_SUPPORTED`; ask `lx.supports('app.banner')` first.
      */
-    banner?: BannerApi;
+    readonly banner: BannerApi;
 
-    /** The language this lxapp renders in. Every lxapp follows it. */
+    /**
+     * The language this lxapp renders in. Every lxapp follows it; only the
+     * Control app changes it.
+     */
     readonly displayLanguage: DisplayLanguageApi;
 
-    /** The light/dark scheme this lxapp renders in. */
+    /**
+     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
+     * only the Control app changes it.
+     */
     readonly appearance: AppearanceApi;
 
     /**
-     * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time. Use
-     * `lx.host.control !== undefined` to inspect that identity.
+     * Product-wide cache reporting and clearing for a settings screen. Control
+     * app only: another lxapp's calls fail `E_PERMISSION_DENIED`.
      */
-    readonly control?: ControlApi;
+    readonly cache: AppCacheApi;
 
     /**
-     * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; presence agrees with
-     * `lx.host.control !== undefined`.
+     * Terminal product settings, for the host-bundled Terminal Settings lxapp.
+     * Without `capabilities.terminal` every call fails `E_NOT_SUPPORTED`; ask
+     * `lx.supports('terminal')` first.
      */
-    cache?: AppCacheApi;
+    readonly terminal: TerminalApi;
 
     /**
      * Take over host updates for the rest of this process. Irreversible: the
@@ -349,40 +412,41 @@ declare global {
     claimCustomUpdate(): void;
   }
 
-  /** Runtime environment constants backed by abstract `lx://` paths. */
-  interface LxEnv {}
+  interface FileSystemApi {
+    /** The root of this lxapp's durable files; a relative path resolves here. */
+    readonly userData: 'lx://userdata';
+    /** The root of this lxapp's cache, which the host may clear. */
+    readonly userCache: 'lx://usercache';
+  }
+
+  interface NetworkApi {
+    /**
+     * Download over HTTP(S), streamed to disk. Returns the task before the
+     * transfer starts: `result` settles once, `progress` streams, `cancel()`
+     * aborts.
+     */
+    download(url: string, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable path under `lx://userdata`. */
+    download(
+      url: string,
+      options: AppDownloadOptions & { to: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary file this lxapp owns. */
+    download(
+      url: string,
+      options?: AppDownloadOptions & { to?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
+    download(url: string, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    download(url: string, options?: DownloadOptions): DownloadTask<DownloadResult>;
+  }
 
   interface Lx {
-    /**
-     * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
-     */
-    readonly terminal?: TerminalApi;
-
-    /** Download to the downloads directory. */
-    downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath: string },
-    ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath?: undefined },
-    ): DownloadTask<AppTempDownloadResult>;
-    /** Download to the lxapp-managed app directory. */
-    downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    /** Download with a destination-correlated result type. */
-    downloadFile<TDestination extends DownloadDestination = "app">(
-      options: DownloadOptions<TDestination>,
-    ): DownloadTask<DownloadResultForDestination<TDestination>>;
-
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of
      * repeating `get<T>()` at each call site.
      */
-    getStorage<S extends StorageSchema>(): TypedStorage<S>;
+    storage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
 
@@ -400,7 +464,7 @@ type StorageEntry<S extends object> = {
 }[StorageKey<S>];
 
 /**
- * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Schema-typed view of the same store `lx.storage()` returns.
  * Runtime is identical; only the key/value types are pinned.
  *
  * The schema constrains what this handle writes and reads, not what the store
@@ -419,8 +483,14 @@ export type TypedStorage<S extends object> = {
   info(): Promise<StorageInfo>;
 };
 
+export type ActionSheetOptions = {
+    items: readonly { id: string; label: string }[];
+    /** `'danger'` draws the items as destructive. */
+    tone?: 'default' | 'danger';
+};
+
 /**
- * Result of `lx.showActionSheet`. Branch on `status` before reading
+ * Result of `lx.ui.actionSheet`. Branch on `status` before reading
  * the selected item id.
  */
 export type ActionSheetResult = {
@@ -430,7 +500,11 @@ export type ActionSheetResult = {
 } | CanceledResult;
 
 /** An acknowledgement dialog has no cancel button. */
-export type AlertOptions = Omit<ShowModalOptions, 'showCancel' | 'cancelText' | 'cancelColor'>;
+export type AlertOptions = {
+    title: string;
+    message?: string;
+    confirmText?: string;
+};
 
 /** Every surface handle, narrowable by `kind`. */
 export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
@@ -438,8 +512,8 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
 /**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
- * has run. Injected only into the Control app, same gate as
- * `lx.host.control` — guests do not have the member.
+ * has run. Injected only into the Control app — guests do not have
+ * the member.
  */
 export type AppCacheApi = {
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -461,8 +535,14 @@ export type AppCacheApi = {
 };
 
 export type AppConfig = {
-    globalData?: Record<string, unknown>;
     onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
+    /**
+     * An App Link from outside, cold (after `onLaunch` settles) or warm
+     * (before `onShow`). Turn its untrusted strings into a target here; the
+     * framework navigates to it, and returning nothing stays where the app
+     * is (the landing page on a cold start).
+     */
+    onOpen?: (link: OpenLink) => NavTarget | void | Promise<NavTarget | void>;
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onUserCaptureScreen?: () => void | Promise<void>;
@@ -491,17 +571,12 @@ export type AppDownloadFilePath = string & {
 
 export type AppDownloadOptions = DownloadOptionsBase & {
     /**
-     * Optional app-owned durable output path.
-     *
-     * Omit `filePath` to receive a temporary result in `uri`. Relative
-     * paths resolve under user data. `lx://` paths must target `lx://userdata`;
-     * `lx://usercache` is not accepted here.
+     * Durable output path under `lx://userdata`; relative paths resolve there.
+     * The file must not exist yet. Omit for a temporary file. `'downloads'`
+     * is the user's Downloads folder instead (`DownloadsDownloadOptions`).
      */
-    filePath?: string;
-    /**
-     * App-owned output. Omit to use a temporary output unless `filePath` is set.
-     */
-    destination?: 'app';
+    to?: string;
+    suggestedName?: never;
 };
 
 export type AppDownloadResult = {
@@ -516,9 +591,7 @@ export type AppDownloadResult = {
     sizeBytes: number;
 };
 
-export type AppInstance = AppConfig & {
-    globalData: Record<string, unknown>;
-};
+export type AppInstance = AppConfig;
 
 export type AppLaunchOptions = {
     path?: string;
@@ -576,6 +649,19 @@ export type AppSurface = SurfaceBase & SurfaceShowable & {
     readonly realized: 'main' | 'aside';
 };
 
+/** Another lxapp, optionally at one of its pages. */
+export type AppTarget = {
+    app: string;
+    /** A page name of that lxapp; omit for its initial page. */
+    page?: ExternalPageName;
+    tab?: never;
+    url?: never;
+    params?: PageQuery;
+    /** Lxapp publish channel. Defaults to `release`. */
+    channel?: LxAppEnvVersion;
+    version?: string;
+};
+
 /** `lx.host.appearance` — the scheme this lxapp renders in. */
 export type AppearanceApi = {
     /**
@@ -590,6 +676,21 @@ export type AppearanceApi = {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+    /** What the user chose for the whole product. Control app only. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     * Control app only.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns. Control app only.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 };
 
 /**
@@ -600,16 +701,15 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
 
 /**
  * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports('app.autostart')` and the member's presence always
- * agree, so either gate works:
+ * Wherever the host cannot register a startup item every call fails
+ * `E_NOT_SUPPORTED`; ask first:
  * ```ts
  * if (lx.supports('app.autostart')) {
  * // render the "Launch at startup" toggle
  * }
  * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it
+ * `lx.supports` says no on all platforms. Declaring the capability never enables
  * autostart by itself — the SDK registers the app only when `setEnabled(true)`
  * is called, so the decision stays with the user (typically a settings-page
  * toggle, default off).
@@ -636,13 +736,12 @@ export type AutostartApi = {
 
 /**
  * Product-drawn desktop banner, top-right. Not an OS notification and
- * not bound to App Link. Present on desktop, in every lxapp; presence
- * and `lx.supports('app.banner')` always agree.
+ * not bound to App Link. Desktop only, in every lxapp: elsewhere every
+ * call fails `E_NOT_SUPPORTED`, so ask `lx.supports('app.banner')` first.
  * A guest lxapp's banner carries its name and icon, so
  * it cannot pass as the product's. Its ids are its own, it may have
  * three banners showing or waiting, each closes after 60s at most
- * (`timeoutMs` is capped), the product's banners go first, and picking
- * one of its actions lets it call `lx.surface.bringToFront` once.
+ * (`timeoutMs` is capped), and the product's banners go first.
  * No buttons: an informational card that auto-dismisses (5s unless
  * `timeoutMs` is set). With buttons: a gate that waits for a choice,
  * dismiss, timeout, or replace. User outcomes resolve; presentation
@@ -657,6 +756,13 @@ export type BannerApi = {
             id: string;
             label: string;
             style?: 'default' | 'primary' | 'destructive';
+            /**
+             * Where picking this action goes, as a notification target: the
+             * product comes forward and the target opens. A guest may only
+             * target itself (`{ kind: 'app' }`). Checked before the banner
+             * shows. Omitted, picking it only resolves `show`.
+             */
+            target?: NavigationTarget;
         }>;
         timeoutMs?: number;
         /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
@@ -670,12 +776,6 @@ export type BannerApi = {
 };
 
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
-
-export type BringToFrontOptions = {
-    /** Configured page name from this lxapp's `lxapp.json`. */
-    page?: ExternalPageName;
-    query?: PageQuery;
-};
 
 /**
  * Built-in browser product page. Opening one requires
@@ -754,8 +854,8 @@ export type ClipboardWriteItem = {
 } | {
     type: 'image';
     /**
-     * Managed `lx://` path, or a picker result from `lx.pickFile` /
-     * `lx.pickMedia` — the same file rules as `lx.share`. Rejects
+     * Managed `lx://` path, or a path `lx.pick` returned — the same file
+     * rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
     filePath: string;
@@ -834,7 +934,7 @@ export type CompressVideoResult = {
 };
 
 /**
- * Handle returned by `lx.compressVideo`.
+ * Handle returned by `lx.media.compressVideo`.
  * Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
  * Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
  * while the transcode runs.
@@ -853,62 +953,18 @@ export type CompressVideoTask = CancelableTask<CompressVideoResult, CompressVide
 export type ConfiguredPageName = keyof LxAppPages extends never ? string : keyof LxAppPages;
 
 /** A confirmation dialog always permits declining. */
-export type ConfirmOptions = Omit<ShowModalOptions, 'showCancel'>;
+export type ConfirmOptions = {
+    title: string;
+    message?: string;
+    /** `'danger'` draws the confirm button as destructive. */
+    tone?: 'default' | 'danger';
+    confirmText?: string;
+    cancelText?: string;
+};
 
 export type ConnectWifiOptions = {
     ssid: string;
     password?: string;
-};
-
-/**
- * `lx.host.control` — product-wide settings, and their single writer.
- * Present only in the Control app. Bind it once rather than repeating
- * `lx.host.control!`:
- * ```js
- * const control = lx.host.control;
- * if (!control) return; // not the Control app
- * await control.appearance.setPreference('dark');
- * ```
- */
-export type ControlApi = {
-    readonly displayLanguage: ControlDisplayLanguageApi;
-    readonly appearance: ControlAppearanceApi;
-};
-
-/** `lx.host.control.appearance` — the product's own light/dark setting. */
-export type ControlAppearanceApi = {
-    /** What the user chose for the whole product. */
-    getPreference(): AppearancePreference;
-    /**
-     * Pin the product to `'light'` or `'dark'`, or follow the system with
-     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
-     */
-    setPreference(preference: AppearancePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
-     * current value; that first callback runs synchronously, before
-     * `watchPreference` returns.
-     */
-    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
-};
-
-/**
- * `lx.host.control.displayLanguage` — the preference behind that
- * language, for the one surface that edits it.
- */
-export type ControlDisplayLanguageApi = {
-    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
-    getPreference(): DisplayLanguagePreference;
-    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
-    setPreference(preference: DisplayLanguagePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system locale change under
-     * `'auto'` moves the language without moving the preference. Starts with
-     * the current value and returns an unsubscribe; that first callback runs
-     * synchronously, before `watchPreference` returns.
-     */
-    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
 
 /**
@@ -918,6 +974,8 @@ export type ControlDisplayLanguageApi = {
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
 };
+
+export type DeviceApi = globalThis.DeviceApi;
 
 /** Display and orientation APIs. */
 export type DeviceOrientation = "portrait" | "landscape";
@@ -946,6 +1004,20 @@ export type DisplayLanguageApi = {
      * unsubscribe is not yet bound inside it.
      */
     watch(callback: (language: string) => void): () => void;
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
+    getPreference(): DisplayLanguagePreference;
+    /**
+     * Persist the product's language. Rejects a tag that is not valid BCP-47.
+     * Control app only.
+     */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns. Control app only.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
 
 /**
@@ -955,11 +1027,7 @@ export type DisplayLanguageApi = {
  */
 export type DisplayLanguagePreference = 'auto' | (string & {});
 
-export type DownloadDestination = 'app' | 'downloads';
-
 export type DownloadOptionsBase = {
-    /** HTTP(S) source URL. */
-    url: string;
     /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
@@ -974,14 +1042,10 @@ export type DownloadOptionsBase = {
 export type DownloadResult = AppDownloadResult | DownloadsDownloadResult;
 
 export type DownloadsDownloadOptions = DownloadOptionsBase & {
-    /**
-     * Optional filename hint for the system Downloads destination.
-     * This is not an app-owned `lx.fs` path.
-     */
+    /** The user's Downloads folder. Needs the host's downloads grant. */
+    to: 'downloads';
+    /** Filename hint; the host picks a free name next to it. */
     suggestedName?: string;
-    filePath?: never;
-    /** Save into the user's system Downloads directory. */
-    destination: 'downloads';
 };
 
 export type DownloadsDownloadResult = {
@@ -997,55 +1061,6 @@ export type DownloadsDownloadResult = {
  * target runtime rejects a name it does not have.
  */
 export type ExternalPageName = string;
-
-export type ExtractVideoThumbnailOptions = {
-    /**
-     * Source video path or `lx://` URI.
-     */
-    path: string;
-    /**
-     * Optional output image path. If omitted, runtime chooses a temporary path.
-     */
-    outputPath?: string;
-    /**
-     * Max output width in pixels.
-     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
-     */
-    maxWidth?: number;
-    /**
-     * Max output height in pixels.
-     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
-     */
-    maxHeight?: number;
-    /**
-     * Target frame time in milliseconds from video start.
-     * `0` means first frame.
-     */
-    timeMs?: number;
-    /**
-     * JPEG quality in range `0-100`.
-     */
-    quality?: number;
-};
-
-export type ExtractVideoThumbnailResult = {
-    /**
-     * Generated thumbnail file path.
-     */
-    uri: string;
-    /**
-     * Output image width in pixels.
-     */
-    width: number;
-    /**
-     * Output image height in pixels.
-     */
-    height: number;
-    /**
-     * Output MIME type, usually `image/jpeg`.
-     */
-    type: string;
-};
 
 export type FileDialogFilter = {
     /** Optional label shown in the native dialog (desktop only). */
@@ -1084,24 +1099,12 @@ export type FsWriteOptions = {
     overwrite?: boolean;
 };
 
-/** Media picker, preview, scan, and file processing APIs. */
-export type GetImageInfoOptions = {
-    path: string;
-};
-
 /** Location APIs. */
 export type GetLocationOptions = {
     coordinateSystem?: 'wgs84' | 'gcj02';
     altitude?: boolean;
     isHighAccuracy?: boolean;
     timeoutMs?: number;
-};
-
-export type GetVideoInfoOptions = {
-    /**
-     * Video file path or `lx://` URI.
-     */
-    path: string;
 };
 
 export type HostAppApi = globalThis.HostAppApi;
@@ -1180,10 +1183,15 @@ export type HostAppUpdateResult = {
 export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
 
 /**
- * Canonical platform-family label shared by `lx.host.getBaseInfo().os`
- * and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
+ * Canonical platform-family label shared by `lx.host.info.os`
+ * and `lx.device.info.osName`. `"unknown"` is a non-product build.
  */
 export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
+
+/** Media picker, preview, scan, and file processing APIs. */
+export type ImageInfoOptions = {
+    path: string;
+};
 
 export type InstalledTerminalFont = {
     family: string;
@@ -1194,9 +1202,9 @@ export type InstalledTerminalFont = {
 
 /**
  * Local notifications as a resume affordance.
- * Absent unless the host declared `capabilities.notifications` and the
- * platform implements the local API. Presence and
- * `lx.supports('app.notification')` always agree.
+ * Without `capabilities.notifications`, or where the platform has no
+ * local API, every call fails `E_NOT_SUPPORTED`; ask
+ * `lx.supports('app.notification')` first.
  * Declaring the capability never prompts; permission runs on
  * `requestPermission()` or the first `show()` that reaches the OS.
  * Every lxapp may call it. The Control app speaks for the product; a
@@ -1234,29 +1242,18 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
+export type LxAppApi = globalThis.LxAppApi;
+
 export type LxAppEnvVersion = 'release' | 'draft';
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'draft';
 
-export type LxEnv = globalThis.LxEnv;
-
-/** Device action APIs. */
-export type MakePhoneCallOptions = {
-    phoneNumber: string;
-};
+export type MediaApi = globalThis.MediaApi;
 
 export type MediaObjectFit = 'cover' | 'contain' | 'fill' | 'fit';
 
 export type MediaRotation = 0 | 90 | 180 | 270;
-
-/**
- * Result of `lx.showModal`. `status: 'ok'` means the user confirmed;
- * there is no third resolved outcome. Presentation failures reject.
- */
-export type ModalResult = {
-    status: 'ok';
-} | CanceledResult;
 
 /**
  * One app-declared action shown in the host-provided More affordance.
@@ -1272,39 +1269,9 @@ export type MoreAction = {
     onClick: () => void | Promise<void>;
 };
 
-/**
- * Options for `lx.navigateBack()`. Omit the object or `delta` to pop
- * one page.
- */
-export type NavigateBackOptions = {
-    /** Number of pages to pop. Defaults to 1. */
-    delta?: number;
-};
+export type NavApi = globalThis.NavApi;
 
-/**
- * Navigate to another lxapp inside the current App Surface. JavaScript
- * callers address pages by their configured name; page routes are an
- * internal runtime detail and are not accepted as input.
- */
-export type NavigateToAppOptions = {
-    appId: string;
-    /**
-     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
-     * open the target app's initial page. Full routes such as
-     * `/pages/home/index` are not supported.
-     */
-    page?: ExternalPageName;
-    query?: PageQuery;
-    /**
-     * Lxapp publish channel. Defaults to `release` in every service environment.
-     */
-    channel?: LxAppEnvVersion;
-    targetVersion?: string;
-};
-
-export type NavigateToOptions = PageTargetOptions;
-
-export type NavigationBarApi = globalThis.NavigationBarApi;
+export type NavTarget = PageTarget | TabTarget | AppTarget | UrlTarget;
 
 export type NavigationBarPatch = {
     title?: string | null;
@@ -1320,8 +1287,8 @@ export type NavigationBarStylePatch = {
 
 /**
  * Where a notification tap, a menu item, or the tray goes.
- * `page` and `app` are the same contract as `lx.navigateTo` /
- * `lx.navigateToApp`: a configured page name and a query, ordinary
+ * `page` and `app` are the same contract as `lx.nav.go({ page })` /
+ * `lx.nav.go({ app })`: a configured page name and a query, ordinary
  * scene. `route` is a host-registered location that is not a page.
  * `appLink` is an `https://` product URL that is also a real inbound
  * App Link (`scene === 8003`). `activate` just brings the product
@@ -1335,6 +1302,8 @@ export type NavigationTarget =
     | { kind: 'app'; appId: string; page?: ExternalPageName; query?: PageQuery }
     | { kind: 'route'; name: string; params?: Record<string, JsonValue> }
     | { kind: 'appLink'; url: string };
+
+export type NetworkApi = globalThis.NetworkApi;
 
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
 
@@ -1373,8 +1342,8 @@ export type NotificationApi = {
      * its own `appId` or none, plus `page` / `query`; an omitted target opens
      * it too. Any other target rejects with `E_PERMISSION_DENIED`.
      * `{ kind: 'page' }` opens a page of this Control app the way
-     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
-     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * `lx.nav.go({ page })` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.nav.go({ app })` does. `{ kind: 'route' }` names a location the host
      * registered at startup that is not a page. `{ kind: 'appLink' }` takes
      * an `https://` URL that is also a real inbound App Link
      * (`scene === 8003`). An unknown page or route, a parameter the route
@@ -1414,6 +1383,58 @@ export type NotificationApi = {
     cancelAll(): Promise<void>;
 };
 
+/** Options of `lx.surface.openApp`. Control app only. */
+export type OpenAppOptions = {
+    /**
+     * `main` occupies the primary content area; `aside` a companion region.
+     * Omitted, a live app keeps its role and a closed one opens in main. A live
+     * app asked for the other role moves there without restarting.
+     */
+    as?: 'main' | 'aside';
+    /** Preferred docking side. Only meaningful with `as: 'aside'`. */
+    edge?: SurfaceEdge;
+    /**
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open that app's initial page. Full page routes are not supported.
+     */
+    page?: ExternalPageName;
+    /**
+     * The page's params. When the lxapp is already open, the surface is
+     * focused (and moved, if `as` names the other role), not reopened: `page`
+     * and `params` reach its Logic as App `onShow` with
+     * `reason: 'switch_back'`, `path` and `query`, and its page stack is kept.
+     */
+    params?: PageQuery;
+    /**
+     * Lxapp publish channel. Defaults to `release` in every service environment.
+     */
+    channel?: LxAppEnvVersion;
+    targetVersion?: string;
+};
+
+/**
+ * Options of `lx.surface.openDeclared`. Each one changes shared shell
+ * composition, so only the Control app may pass any; other lxapps call
+ * it without options and get the declaration as the host authored it.
+ */
+export type OpenDeclaredOptions = {
+    /**
+     * Which instance of the declaration: a declaration can be opened more than
+     * once, and a new key creates one. Find it again with
+     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
+     * without instantiable native providers reject it with `capability_missing`.
+     */
+    key?: string;
+    /**
+     * Open with a role other than the declaration's, or move the live instance
+     * to it. Must be realizable by the declared provider; a stable root rejects
+     * anything but `main`.
+     */
+    as?: 'main' | 'aside' | 'float';
+    /** Preferred docking side when the effective role is `aside`. */
+    edge?: SurfaceEdge;
+};
+
 /** File system APIs. */
 export type OpenFileOptions = {
     /** Local file path or runtime-managed temp path. */
@@ -1428,6 +1449,15 @@ export type OpenFileOptions = {
     mode?: 'auto' | 'review' | 'external';
     /** Hint for whether the native review UI should expose its action menu when supported. */
     showMenu?: boolean;
+};
+
+/** An inbound App Link, as `App.onOpen` receives it. */
+export type OpenLink = {
+    /** The link exactly as the OS delivered it. Untrusted. */
+    url: string;
+    /** The lxapp page path the link resolved to, if any. */
+    path: string;
+    query: Record<string, string>;
 };
 
 /**
@@ -1467,23 +1497,26 @@ export type OpenPageShared = {
      */
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
-    query?: PageQuery;
-    /** Caller-owned identity, for `lx.surface.getByKey(key)` later. */
+    /** The page's params, as `lx.nav.go` takes them. */
+    params?: PageQuery;
+    /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 };
 
 export type OpenUrlOptions = {
     /**
-     * `tab` opens a browser tab; `aside` docks the browser beside the main.
-     * Defaults to `'tab'`.
+     * `main` opens a browser tab in the main area; `aside` docks the browser
+     * beside the main. Defaults to `'main'`.
      */
-    as?: 'tab' | 'aside' | readonly ('tab' | 'aside')[];
+    as?: 'main' | 'aside' | readonly ('main' | 'aside')[];
     /** Preferred docking side when the realized placement is an aside. */
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
-    /** Stable identity for `lx.surface.getByKey(key)`. */
+    /** Stable identity for `lx.surface.get(key)`. */
     key?: string;
 };
+
+export type OrientationApi = globalThis.OrientationApi;
 
 export type OverlaySurfaceSize = {
     /** Width hint. */
@@ -1499,35 +1532,87 @@ export type OverlaySurfaceSize = {
  */
 export type OverlaySurfaceSizeValue = number | `${number}%`;
 
-export type PageLoadOptions = {
-    [key: string]: string | undefined;
+/**
+ * `page.env`: the size class Logic acts on. Pixels and insets stay in
+ * the View's `env`.
+ */
+export type PageEnvContext = {
+    /**
+     * Whether the window currently has a dock region, so `as: 'aside'` docks
+     * beside the main instead of being reprojected as an overlay. A capability
+     * of the window, not where this lxapp is presented.
+     */
+    readonly canDock: boolean;
+    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
+    readonly sizeClass: 'compact' | 'regular';
 };
 
+/**
+ * What `onLoad` receives: each param with the type it was passed with.
+ * Validate a query from outside (an app link, a URL): it is usually
+ * strings.
+ */
+export type PageLoadOptions = {
+    [key: string]: JsonValue | undefined;
+};
+
+/** A pushed page's line to the page that opened it (`page.opener`). */
 export type PageMessagePort = {
-    postMessage(message: unknown): void;
+    /**
+     * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
+     * as the same value (both sides share this Logic context; nothing is
+     * copied). Until the other side first subscribes, messages wait for it.
+     */
+    send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 };
 
 export type PageQuery = Record<string, PageQueryValue>;
 
-export type PageQueryValue = string | number | boolean | null | undefined;
+/**
+ * A page param: any JSON value. `null` and `undefined` mean absent. The
+ * whole set of non-string params is limited to 8 KB as JSON.
+ */
+export type PageQueryValue = JsonValue | undefined;
+
+/**
+ * A pushed or surface page's outcome. `canceled` means it left without a
+ * result: `user` (Back, a dismiss, a close), `opener` (the opener went
+ * away, or a newer result promise replaced this one), `reclaimed` (a
+ * hidden surface page unloaded under memory pressure), `app_closed`.
+ */
+export type PageResult = 
+    | { status: 'ok'; value: JsonValue }
+    | { status: 'canceled'; reason: 'user' | 'opener' | 'reclaimed' | 'app_closed' };
 
 /** One of this lxapp's own pages, opened as a float or a window. */
 export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
     readonly kind: 'page';
     readonly realized: 'float' | 'window';
+    /**
+     * The page's result, settled once after the page unloads with its surface:
+     * `ok` with what it set by `setResult` or `close(value)`, otherwise
+     * `canceled`. On the opener's handle only.
+     */
+    readonly result?: Promise<PageResult>;
 };
 
-/**
- * Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
- * JavaScript navigation accepts only the configured page name; full routes
- * are internal runtime details. Discover names with `lxdev lxapp pages`.
- */
-export type PageTargetOptions = {
-    /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
-    page: ConfiguredPageName;
-    query?: PageQuery;
+export type PickApi = globalThis.PickApi;
+
+export type PickCodeOptions = {
+    /** Default true. False also lets the user pick a picture to read the code from. */
+    onlyFromCamera?: boolean;
+    /** Symbologies to read. Default all. */
+    formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 };
+
+/** Result of `lx.pick.code`. `format` is the symbology that was read. */
+export type PickCodeResult = {
+    status: 'ok';
+    value: string;
+    format: string;
+} | CanceledResult;
 
 export type PickDirectoryOptions = {
     /**
@@ -1539,11 +1624,8 @@ export type PickDirectoryOptions = {
     defaultPath?: string;
 };
 
-/**
- * Result of `lx.pickDirectory`. Branch on `status` before reading
- * the selected directory.
- */
-export type PickDirectoryResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+/** Result of `lx.pick.directory`. */
+export type PickDirectoryResult = { status: 'ok'; directory: PickedDirectory } | CanceledResult;
 
 export type PickFileOptions = {
     /** Optional file filters. Empty or omitted means all file types. */
@@ -1557,70 +1639,70 @@ export type PickFileOptions = {
     defaultPath?: string;
 };
 
-/** Result of `lx.pickFile`. Branch on `status` before reading the file. */
-export type PickFileResult = ({ status: 'ok' } & PickedItem) | CanceledResult;
+/** Result of `lx.pick.file`: exactly one file. */
+export type PickFileResult = { status: 'ok'; files: [PickedFile] } | CanceledResult;
 
 /**
- * Result of `lx.pickFiles`. Branch on `status` before reading the
- * selected files.
+ * Result of `lx.pick.files` and `lx.pick.media`: at least one file.
+ * From `lx.pick.media` on mobile, each file is a copy in the lxapp
+ * temp directory, counted against its quota.
  */
-export type PickFilesResult = {
-    status: 'ok';
-    /** Always at least one file. */
-    files: [PickedItem, ...PickedItem[]];
-} | CanceledResult;
+export type PickFilesResult = { status: 'ok'; files: [PickedFile, ...PickedFile[]] } | CanceledResult;
 
 export type PickMediaOptions = {
     /**
-     * Maximum entries to return (default 9). Where the system picker cannot
-     * enforce it (desktop), entries beyond it are dropped from the result.
+     * Maximum files to return (default 9). Where the system picker cannot
+     * enforce it (desktop), files beyond it are dropped from the result.
      */
     count?: number;
+    /**
+     * Default both. The camera captures one kind, so with `sourceType` camera
+     * name a single entry (macOS excepted).
+     */
     mediaType?: ('image' | 'video')[];
+    /**
+     * Default `['album']`. With both, the user chooses first. Windows has no
+     * camera: it drops `camera` from a pair and rejects a camera-only request.
+     */
     sourceType?: ('album' | 'camera')[];
+    /** Camera facing. Default `back`. */
     camera?: 'back' | 'front';
+    /** Longest video the camera records, in seconds. */
     maxDurationSeconds?: number;
 };
 
 /**
- * Result of `lx.pickMedia`. Branch on `status` before reading the
- * selected entries.
- * On mobile each entry is a copy in the lxapp temp directory (counted
- * against its quota); on desktop it is a read-only grant on the
- * original file.
+ * A picked directory. `path` is a read-only root: `lx.fs.exists`,
+ * `stat`, `readDir` and `file()` reads, and `lx.fs.copy` as a source,
+ * also take `<path>/<relative>` with each segment percent-encoded.
+ * Empty, `.` or `..` segments, `:`, `\`, and any path that leaves the
+ * directory through a symlink do not resolve; writes are rejected.
  */
-export type PickMediaResult = {
-    status: 'ok';
-    /** Picked media; always at least one entry. */
-    entries: [PickedMediaEntry, ...PickedMediaEntry[]];
-} | CanceledResult;
-
-/**
- * One picked file or directory. `uri` is opaque: never parse it, and pass
- * it only to APIs that take a picked file such as `lx.share`. `name` is the
- * display name the picker reported, reduced to one path component:
- * display-only, not unique, and it may lack an extension or disagree
- * with the content type.
- * A picked `uri` is read-only and valid for the current session only;
- * `lx.fs.copy` it to keep the file. Whether the file was copied is
- * host-specific: desktop grants the live original, mobile may hand
- * over a copy (iOS) or a reference to the original (Android, Harmony).
- * A `pickDirectory` `uri` is a read-only root: `lx.fs.exists`, `stat`,
- * `readDir` and `file()` reads, and `lx.fs.copy` as a source, also take
- * `<uri>/<relative>` with each segment percent-encoded. Empty, `.` or
- * `..` segments, `:`, `\`, and any path that leaves the directory
- * through a symlink do not resolve; writes through the grant are
- * rejected.
- */
-export type PickedItem = {
-    uri: string;
+export type PickedDirectory = {
+    path: string;
     name: string;
 };
 
-export type PickedMediaEntry = {
-    uri: string;
-    fileType: 'image' | 'video';
-    isOriginal: boolean;
+/**
+ * One file the user picked. `path` is opaque: never parse it; pass it
+ * to LingXia APIs (`lx.fs`, `lx.openFile`, `lx.share`, uploads). It is
+ * read-only and valid for this session only; `lx.fs.copy` it to keep
+ * the file. Whether the host copied the file is host-specific: desktop
+ * grants the live original, iOS hands over a copy, Android and
+ * HarmonyOS a reference to the original.
+ * `name` is one path component and always has an extension; `type` is
+ * derived from that extension, so both are the same on every platform
+ * (`application/octet-stream` when unknown). A capture with no name of
+ * its own is named `IMG_YYYYMMDD_HHMMSS.jpg` / `VID_…` (UTC). `name` is
+ * display-only and not unique.
+ */
+export type PickedFile = {
+    path: string;
+    name: string;
+    /** Bytes. */
+    size: number;
+    /** MIME type, e.g. `application/pdf`, `image/jpeg`. */
+    type: string;
 };
 
 export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
@@ -1641,6 +1723,7 @@ export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | '
 export type PreviewMediaHandle = {
     readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
+    /** Fires when the shown item changes; \`current\` holds the latest. Returns a function that removes the listener. */
     onChange(listener: (change: PreviewMediaChange) => void): () => void;
     readonly completed: Promise<PreviewMediaResult>;
 };
@@ -1743,7 +1826,7 @@ export type PreviewMediaSource = {
      * Media source path.
      *
      * Accepts an `https://` (or `http://`) URL for a remote image or video —
-     * the host loads it directly, so no prior `lx.downloadFile` is required,
+     * the host loads it directly, so no prior `lx.network.download` is required,
      * and its domain must be permitted by the app's network policy — an
      * `lx://` path (for example `lx://usercache/...`), or a sandbox-local path
      * that can be resolved by runtime access rules.
@@ -1767,30 +1850,7 @@ export type PreviewMediaSource = {
     durationMs?: number;
 };
 
-export type ReLaunchOptions = PageTargetOptions;
-
-export type RedirectToOptions = PageTargetOptions;
-
 export type ResolvedAppearance = 'light' | 'dark';
-
-export type SaveMediaOptions = {
-    filePath: string;
-};
-
-export type ScanCodeOptions = {
-    onlyFromCamera?: boolean;
-    scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
-};
-
-/**
- * Result of `lx.scanCode`. Branch on `status` before reading the scan
- * payload.
- */
-export type ScanCodeResult = {
-    status: 'ok';
-    scanResult: string;
-    scanType: string;
-} | CanceledResult;
 
 /**
  * Where `lx.host.setBadge` paints.
@@ -1802,7 +1862,7 @@ export type ScanCodeResult = {
  * answers through its own callback has to be waited for to be believed.
  * A surface with nothing to paint on is reported, not raised: a macOS
  * status item exists from the moment a tray is declared but stays hidden
- * until `lx.tray.show()`, and a badge on a hidden item is not a badge
+ * until `lx.host.tray.show()`, and a badge on a hidden item is not a badge
  * anyone can see. That resolves `false` whether you named the surface or
  * took `auto`; only a malfunction rejects.
  * Apple ties the badge to notification permission. On macOS the label
@@ -1825,7 +1885,7 @@ export type ShareFilesOptions = ShareTitleOptions & {
      * File paths returned by LingXia APIs to share. Images, PDFs, and other
      * documents are all represented as file paths.
      *
-     * Use `lx.pickFiles` for system files and `lx.pickMedia` for picked media;
+     * Use `lx.pick.files` for system files and `lx.pick.media` for picked media;
      * pass the returned path here without parsing it.
      * Some platforms or receivers may limit multi-file shares. Share files one
      * at a time when targeting those receivers.
@@ -1923,15 +1983,11 @@ export type ShellApi = {
      */
     sidebarActions: ShellSidebarActionsApi;
     /**
-     * Open another lxapp in main or a companion slot, focus it if it is open,
-     * or move it to the role `as` names.
-     */
-    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
-    /**
      * The handle of an lxapp live as a surface of its own, declared or not;
-     * `undefined` when it is not. A live lxapp has one handle: `openApp`,
-     * `getApp`, and `openDeclared` / `getDeclared` of the declaration that
-     * shows it all return the same `AppSurface`.
+     * `undefined` when it is not. A live lxapp has one handle:
+     * `lx.surface.openApp`, `getApp`, and `lx.surface.openDeclared` /
+     * `getDeclared` of the declaration that shows it all return the same
+     * `AppSurface`.
      */
     getApp(appId: string): AppSurface | undefined;
     /**
@@ -1946,69 +2002,11 @@ export type ShellApi = {
      * Change the name and icon the host shows for this app, above the
      * registry's and `lxapp.json`'s. Kept per service env and dropped on
      * uninstall; identical values are a no-op, so calling it on every launch
-     * is cheap. `lx.getAppInfo().name` keeps the `lxapp.json` name.
+     * is cheap. `lx.app.info.name` keeps the `lxapp.json` name.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
-    /**
-     * Open a declared surface with shell privileges — the same declaration
-     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
-     * placement overrides; `as` and `edge` also move a live instance. A
-     * declaration that shows an lxapp resolves to that app's `AppSurface`.
-     */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
-};
-
-export type ShellOpenAppOptions = {
-    /**
-     * `main` occupies the primary content area; `aside` a companion region.
-     * Omitted, a live app keeps its role and a closed one opens in main. A live
-     * app asked for the other role moves there without restarting.
-     */
-    as?: 'main' | 'aside';
-    /** Preferred docking side. Only meaningful with `as: 'aside'`. */
-    edge?: SurfaceEdge;
-    /**
-     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
-     * open that app's initial page. Full page routes are not supported.
-     */
-    page?: ExternalPageName;
-    /**
-     * Startup query. When the lxapp is already open, the surface is focused
-     * (and moved, if `as` names the other role), not reopened: `page` and
-     * `query` reach its Logic as App `onShow` with `reason: 'switch_back'`,
-     * `path` and `query`, and its page stack is kept.
-     */
-    query?: PageQuery;
-    /**
-     * Lxapp publish channel. Defaults to `release` in every service environment.
-     */
-    channel?: LxAppEnvVersion;
-    targetVersion?: string;
-};
-
-/**
- * The declared-surface options only the native-assigned Control app may use.
- * Creating an extra instance and overriding a placement both mutate
- * shared shell composition, so they live here and not on
- * `lx.surface.openDeclared` — which consumes a declaration exactly as
- * the host authored it, and therefore takes no options at all.
- */
-export type ShellOpenDeclaredOptions = {
-    /**
-     * Which instance of the declaration: a declaration can be opened more than
-     * once, and a new key creates one. Find it again with
-     * `lx.shell.getDeclared(id, key)`. 1 to 128 UTF-8 bytes. Declarations
-     * without instantiable native providers reject it with `capability_missing`.
-     */
-    key?: string;
-    /**
-     * Open with a role other than the declaration's, or move the live instance
-     * to it. Must be realizable by the declared provider; a stable root rejects
-     * anything but `main`.
-     */
-    as?: 'main' | 'aside' | 'float';
-    /** Preferred docking side when the effective role is `aside`. */
-    edge?: SurfaceEdge;
+    /** Bring the product window forward without navigating. */
+    activate(): void;
 };
 
 /**
@@ -2103,36 +2101,11 @@ export type ShellSidebarActionUpdate = {
     disabled?: boolean;
 };
 
-export type ShowActionSheetOptions = {
-    items: readonly { id: string; label: string }[];
-    itemColor?: string;
-};
-
-export type ShowModalOptions = {
-    title?: string;
-    content?: string;
-    showCancel?: boolean;
-    cancelText?: string;
-    cancelColor?: string;
-    confirmText?: string;
-    confirmColor?: string;
-};
-
-/** UI feedback, navigation, and surface control APIs. */
-export type ShowToastOptions = {
-    title: string;
-    icon?: 'success' | 'error' | 'loading' | 'none';
-    image?: string;
-    durationMs?: number;
-    mask?: boolean;
-    position?: 'top' | 'center' | 'bottom';
-};
-
 /**
  * Asynchronous persistent key-value storage backed by the lxapp
  * database. Use `lx.fs` for path-based data.
  * `get<T>()` is an unchecked assertion at the call site. Pin every
- * key's shape once with `lx.getStorage<Schema>()` — that returns a
+ * key's shape once with `lx.storage<Schema>()` — that returns a
  * `TypedStorage<Schema>` instead of this untyped handle.
  */
 export type Storage = {
@@ -2171,8 +2144,9 @@ export type StreamSourceOptions = {
 };
 
 /**
- * Content-keyed surface composition, callable by any lxapp. Privileged
- * composition lives on `lx.shell`, so the namespace is the privilege.
+ * Surfaces beside or above the page stack, each with a handle.
+ * `openApp` and the options of `openDeclared` are the Control app's;
+ * other lxapps get a typed refusal.
  */
 export type SurfaceApi = {
     /** Open one of this lxapp's own pages as a float or a window. */
@@ -2180,36 +2154,24 @@ export type SurfaceApi = {
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
-     * Open a surface the host declared in `lingxia.yaml`, with the placement
-     * the declaration chose. Instance keys and placement overrides are shell
-     * composition; they live on `lx.shell.openDeclared`. A declaration that
-     * shows an lxapp resolves to that app's `AppSurface`.
+     * Open another lxapp in main or a companion slot, focus it if it is open,
+     * or move it to the role `as` names. Control app only.
      */
-    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
+    openApp(appId: string, options?: OpenAppOptions): Promise<AppSurface>;
+    /**
+     * Open a surface the host declared in `lingxia.yaml`, with the placement
+     * the declaration chose. `key`, `as` and `edge` (Control app only) open a
+     * keyed instance or override the placement; `as` and `edge` also move a
+     * live instance. A declaration that shows an lxapp resolves to that app's
+     * `AppSurface`.
+     */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /**
      * Find one of this lxapp's own live pages or browser tabs by the key passed
      * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
      * with `lx.shell.getDeclared` and `lx.shell.getApp`.
      */
-    getByKey(key: string): PageSurface | TabSurface | undefined;
-    /**
-     * Observe this presentation's viewport. Invoked immediately with the
-     * current context, then again whenever it changes. Returns an unsubscribe
-     * function.
-     */
-    watchContext(handler: (context: SurfaceContext) => void): () => void;
-    /**
-     * Bring the product forward on this lxapp, the way a notification tap
-     * with `{ kind: 'app', appId: <this app> }` does: a docked aside comes
-     * back where it is, otherwise the lxapp opens in main. `page` and `query`
-     * reach it as a reopen (App `onShow`, `reason: 'switch_back'`).
-     *
-     * A guest lxapp may call this only right after the person picked an
-     * action on one of its `lx.host.banner` cards (within 10 seconds, once
-     * per action); otherwise it rejects with `E_PERMISSION_DENIED`. The
-     * Control app may call it at any time.
-     */
-    bringToFront(options?: BringToFrontOptions): Promise<void>;
+    get(key: string): PageSurface | TabSurface | undefined;
 };
 
 /** What every surface handle carries, whatever opened it. */
@@ -2235,44 +2197,25 @@ export type SurfaceBase = {
      * calls after a successful close are idempotent.
      */
     close(): Promise<void>;
+    /** Fires once when the surface closes, whoever closed it. Returns a function that removes the handler. */
     onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 };
 
 /**
  * Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
  * and the desktop tray — the types behind `lx.surface`, `lx.shell`,
- * and `lx.tray`.
+ * and `lx.host.tray`.
  */
 export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
- * The SDK reclaimed a long-hidden overlay surface for resource reasons.
- * Treat as a normal close: the page instance is gone; further postMessage /
+ * The host unloaded a hidden surface's page under memory pressure.
+ * Treat as a normal close: the page instance is gone; further send /
  * show / hide calls will fail. The opener may immediately reopen if needed.
  */
  | 'reclaimed' | 'unknown';
 
 export type SurfaceClosedEvent = {
     reason: SurfaceCloseReason;
-};
-
-/**
- * The current surface viewport context, delivered to `lx.surface.watchContext()`
- * so an lxapp can choose a compact or workspace View. Column count and
- * spacing inside `regular` use CSS or the raw `width` / `height`.
- */
-export type SurfaceContext = {
-    /**
-     * Whether the window currently has a dock region, so `as: 'aside'` docks
-     * beside the main instead of being reprojected as an overlay. A capability
-     * of the window, not where this lxapp is presented.
-     */
-    canDock: boolean;
-    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
-    sizeClass: 'compact' | 'regular';
-    /** Actual surface viewport width in logical pixels. */
-    width: number;
-    /** Actual surface viewport height in logical pixels. */
-    height: number;
 };
 
 /**
@@ -2347,10 +2290,13 @@ export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab' | 'builtin';
 /** Two-way messaging, available when both sides are lxapp pages. */
 export type SurfaceMessaging = {
     /**
-     * Send to the other side. For the opener this targets the opened page;
-     * for the opened page it targets the opener.
+     * Sends to the other side: from the opener to the opened page, from the
+     * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
+     * the other side's \`onMessage\` handlers; until it first subscribes,
+     * messages wait for it.
      */
-    postMessage(message: unknown): void;
+    send(message: unknown): void;
+    /** Receives what the other side sends. Returns a function that removes the handler. */
     onMessage(handler: (message: unknown) => void): () => void;
 };
 
@@ -2358,7 +2304,7 @@ export type SurfaceMessaging = {
  * What the host actually produced. Reported by `realized`, which is
  * how a caller reads the outcome of an ordered placement preference.
  */
-export type SurfacePlacement = 'main' | 'aside' | 'float' | 'window' | 'tab';
+export type SurfacePlacement = 'main' | 'aside' | 'float' | 'window';
 
 export type SurfacePresentation = 'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window';
 
@@ -2393,8 +2339,6 @@ export type SurfaceVisibilityEvent = {
     source: 'opener' | 'page' | 'shell';
 };
 
-export type SwitchTabOptions = PageTargetOptions;
-
 /** Native system Downloads path. Do not pass this to `lx.fs`. */
 export type SystemDownloadsPath = string & {
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
@@ -2408,7 +2352,7 @@ export type TabBarItemPatch = {
     /**
      * Package-relative path, or an `lx://temp` / `lx://usercache` /
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
-     * download first (`lx.downloadFile`) and pass the returned path.
+     * download first (`lx.network.download`) and pass the returned path.
      *
      * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
      * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
@@ -2420,7 +2364,7 @@ export type TabBarItemPatch = {
 };
 
 /**
- * Patch for `lx.tabBar.update()`. Items, badges, red dots, and
+ * Patch for `lx.app.tabBar.update()`. Items, badges, red dots, and
  * visibility only — a `style` field is rejected. Colors stay in
  * static `lxapp.json` `tabBar.style`. `backgroundColor` is
  * mobile-only; the desktop sidebar follows the host
@@ -2433,17 +2377,23 @@ export type TabBarPatch = {
 
 export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';
 
+/** A tab root of this lxapp. */
+export type TabName = keyof LxAppPages extends never ? string : keyof LxAppTabs & string;
+
 /** External content in the in-app browser. */
 export type TabSurface = (SurfaceBase & {
     readonly kind: 'tab';
-    readonly realized: 'tab' | 'aside';
+    readonly realized: 'main' | 'aside';
     readonly scope: 'tab';
+    /** Brings this tab to the front. Rejects with \`closed\` once the tab is gone. */
     activate(): Promise<void>;
 }) | (Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'tab';
-    readonly realized: 'tab' | 'aside';
+    readonly realized: 'main' | 'aside';
     readonly scope: 'group';
 });
+
+export type TabTarget = { tab: TabName; page?: never; app?: never; url?: never; params?: never };
 
 export type TerminalApi = {
     /** Saved terminal settings, revision-checked on write. */
@@ -2584,6 +2534,16 @@ export type ToastHandle = {
     dismiss(): Promise<void>;
 };
 
+/** UI feedback, navigation, and surface control APIs. */
+export type ToastOptions = {
+    title: string;
+    icon?: 'success' | 'error' | 'loading' | 'none';
+    image?: string;
+    durationMs?: number;
+    mask?: boolean;
+    position?: 'top' | 'center' | 'bottom';
+};
+
 export type TrayApi = globalThis.TrayApi;
 
 /**
@@ -2608,24 +2568,10 @@ export type TrayMenuSeparator = {
     separator: true;
 };
 
+export type UiApi = globalThis.UiApi;
+
 export type UpdateFailedInfo = UpdateReadyInfo & {
     error?: string;
-};
-
-/**
- * Callback-based updates for this lxapp's bundle. Available to every
- * lxapp. To update the native host app, the Control app uses the
- * task-based `lx.host.checkUpdate()` API instead.
- * Listeners are a set: later subscriptions do not replace earlier ones.
- * The last pending ready/failed event is replayed to each new
- * subscriber until a newer event replaces it.
- */
-export type UpdateManager = {
-    applyUpdate(): void;
-    /** Subscribes to a ready update and returns the unsubscribe fn. */
-    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
-    /** Subscribes to a failed update and returns the unsubscribe fn. */
-    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
 };
 
 export type UpdateReadyInfo = {
@@ -2653,9 +2599,8 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
  * // so both have to match whatever the signer used.
- * const task = lx.uploadFile({
- * url: presignedUrl,
- * filePath: 'lx://media/clip.mp4',
+ * const task = lx.network.upload(presignedUrl, {
+ * file: 'lx://media/clip.mp4',
  * method: 'PUT',
  * bodyMode: 'raw',
  * mimeType: 'video/mp4',
@@ -2665,10 +2610,8 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * ```
  */
 export type UploadOptions = {
-    /** HTTP(S) destination URL. */
-    url: string;
-    /** Local file path or runtime-managed URI to upload. */
-    filePath: string;
+    /** The file to send: an `lx://` path from a LingXia API, or a path relative to `lx://userdata`. */
+    file: string;
     /**
      * HTTP method. Default: `POST`.
      * A presigned URL is signed for exactly one method, usually `PUT`.
@@ -2742,6 +2685,9 @@ export type UploadResult = {
 };
 
 export type UploadTask = CancelableTask<UploadResult, UploadProgressEvent>;
+
+/** A web page, opened in the in-app browser. `lx.openExternal` hands a URL to the system. */
+export type UrlTarget = { url: string; page?: never; tab?: never; app?: never; params?: never };
 
 export type VideoCompressQuality = 'low' | 'medium' | 'high';
 
@@ -2826,7 +2772,65 @@ export type VideoInfo = {
     path: string;
 };
 
+export type VideoInfoOptions = {
+    /**
+     * Video file path or `lx://` URI.
+     */
+    path: string;
+};
+
+export type VideoThumbnailOptions = {
+    /**
+     * Source video path or `lx://` URI.
+     */
+    path: string;
+    /**
+     * Optional output image path. If omitted, runtime chooses a temporary path.
+     */
+    outputPath?: string;
+    /**
+     * Max output width in pixels.
+     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
+     */
+    maxWidth?: number;
+    /**
+     * Max output height in pixels.
+     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
+     */
+    maxHeight?: number;
+    /**
+     * Target frame time in milliseconds from video start.
+     * `0` means first frame.
+     */
+    timeMs?: number;
+    /**
+     * JPEG quality in range `0-100`.
+     */
+    quality?: number;
+};
+
+export type VideoThumbnailResult = {
+    /**
+     * Generated thumbnail file path.
+     */
+    uri: string;
+    /**
+     * Output image width in pixels.
+     */
+    width: number;
+    /**
+     * Output image height in pixels.
+     */
+    height: number;
+    /**
+     * Output MIME type, usually `image/jpeg`.
+     */
+    type: string;
+};
+
 export type VisibilityPreference = 'auto' | 'hidden';
+
+export type WifiApi = globalThis.WifiApi;
 
 export type WifiConnectedCallback = (info: WifiConnectedInfo) => void;
 
@@ -2871,27 +2875,17 @@ export type WindowsTerminalInlineImageStatus = {
     };
 };
 
-/**
- * Host app identity. Everything here is fixed for the life of the process;
- * the language the app renders in is not, and lives on
- * `lx.host.displayLanguage`.
- */
-export interface AppBaseInfo {
-  /**
-   * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
-   * `"Harmony"`. Matches the View-side `useLxHost().os` value.
-   */
-  os: HostOs;
-  productName: string;
-  version: string;
-  sdkVersion: string;
-}
-
 export interface AppInfo {
   appId: string;
   name: string;
   version: string;
   channel: LxAppReleaseType;
+  /**
+   * `'control'` is the product's Control app, the only lxapp Control-only
+   * members admit. `'control-surface'` is a host-bundled settings UI the
+   * Control app opens (Terminal Settings), admitted only to its own members.
+   */
+  role: 'control' | 'control-surface' | 'guest';
 }
 
 /** Device info APIs. */
@@ -2918,6 +2912,22 @@ export interface FileStats {
   lastModifiedTime?: number;
   lastAccessedTime?: number;
   createTime?: number;
+}
+
+/**
+ * Host app identity. Everything here is fixed for the life of the process;
+ * the language the app renders in is not, and lives on
+ * `lx.host.displayLanguage`.
+ */
+export interface HostInfo {
+  /**
+   * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
+   * `"Harmony"`. Matches the View-side `useLxHost().os` value.
+   */
+  os: HostOs;
+  productName: string;
+  version: string;
+  sdkVersion: string;
 }
 
 export interface HostServiceEnvState {
@@ -2997,7 +3007,7 @@ export interface LxFile {
   /**
    * Read and parse the complete file as JSON. Stays `unknown`: a class
    * method cannot carry a type parameter through the binding, so unlike
-   * `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+   * `lx.storage().get<T>()` the assertion is spelled `as` at the call
    * site rather than passed in.
    */
   json(): Promise<unknown>;
@@ -3018,7 +3028,7 @@ declare global {
     /**
      * Replace the clipboard with Unicode text.
      * Empty string is a valid payload (it is not `clear()`). The runtime does not
-     * present a toast — call `lx.showToast` if the product wants one. Rejects
+     * present a toast — call `lx.ui.toast` if the product wants one. Rejects
      * `E_INVALID_ARG` above 1 MiB.
      */
     writeText(text: string): Promise<void>;
@@ -3065,10 +3075,34 @@ declare global {
 }
 
 declare global {
+  interface DeviceApi {
+    /**
+     * A vibration pulse, where the device has a vibrator: `short` (default) or
+     * `long`. Rejects `E_NOT_SUPPORTED` where it has none.
+     */
+    haptics(kind?: 'short' | 'long'): void;
+    readonly info: Readonly<DeviceInfo>;
+    readonly orientation: OrientationApi;
+    /** Read the screen geometry and pixel ratio this host reports. */
+    screen(): ScreenInfo;
+    /** Subscribes to key-down events and returns the unsubscribe fn. */
+    onKeyDown(callback: KeyEventCallback): () => void;
+    /** Subscribes to key-up events and returns the unsubscribe fn. */
+    onKeyUp(callback: KeyEventCallback): () => void;
+    /** Get location function */
+    location(options?: GetLocationOptions): Promise<LocationInfo>;
+    /** Read system switches the lxapp may branch on, such as location and WiFi. */
+    systemSettings(): SystemSettingInfo;
+  }
+}
+
+declare global {
   interface FileSystemApi {
+    readonly userData: 'lx://userdata';
+    readonly userCache: 'lx://usercache';
     /**
      * Create a lazy reference to a LingXia-managed path.
-     * Relative paths resolve under `lx.env.USER_DATA_PATH`. Creating a reference
+     * Relative paths resolve under `lx.fs.userData`. Creating a reference
      * does not require the path to exist.
      */
     file(path: ManagedPath): LxFile;
@@ -3129,16 +3163,12 @@ declare global {
      */
     claimCustomUpdate(): void;
     readonly env: HostAppEnv;
-    /**
-     * Read the host app's identity: OS, product name, product version, and SDK
-     * runtime version.
-     */
-    getBaseInfo(): AppBaseInfo;
+    readonly info: Readonly<HostInfo>;
     /**
      * Exit the host app immediately without a confirmation dialog.
      * Control app only: quitting the product is not an lxapp's decision. Other
      * lxapps get a permission error.
-     * If the user should confirm first, call `lx.showModal(...)` and invoke this
+     * If the user should confirm first, call `lx.ui.confirm(...)` and invoke this
      * only after confirmation.
      */
     exit(): void;
@@ -3156,6 +3186,7 @@ declare global {
      * can call this unconditionally.
      */
     setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
+    readonly tray: TrayApi;
   }
 }
 
@@ -3169,102 +3200,68 @@ declare global {
      */
     supports(feature: LxFeature): boolean;
     readonly clipboard: ClipboardApi;
-    /** Vibrate briefly, where the device has a vibrator. */
-    vibrateShort(): boolean;
-    /** Vibrate for a longer pulse, where the device has a vibrator. */
-    vibrateLong(): boolean;
-    /** Hand a number to the system dialer; the user still places the call. */
-    makePhoneCall(options: MakePhoneCallOptions): boolean;
-    /** Read the device and OS facts this host reports. */
-    getDeviceInfo(): DeviceInfo;
-    /** Read the screen geometry and pixel ratio this host reports. */
-    getScreenInfo(): ScreenInfo;
-    /** Read connectivity right now: whether it is connected, its type, and addresses. */
-    getNetworkInfo(): Promise<NetworkInfo>;
-    /** Subscribes to network changes and returns the unsubscribe fn. */
-    onNetworkChange(callback: NetworkChangeCallback): () => void;
-    /** Initialize WiFi module */
-    startWifi(): Promise<void>;
-    /** Stop WiFi module */
-    stopWifi(): Promise<void>;
-    /**
-     * Connect to WiFi (async - waits for request submission, not actual connection)
-     * This function returns when the connection request is successfully submitted to the system.
-     * The actual connection status will be reported via onWifiConnected event.
-     */
-    connectWifi(options: ConnectWifiOptions): Promise<void>;
-    /** Get WiFi list (scan results) */
-    getWifiList(): Promise<WifiInfo[]>;
-    /** Get connected WiFi info */
-    getConnectedWifi(): Promise<WifiInfo>;
-    /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
-    onWifiConnected(callback: WifiConnectedCallback): () => void;
-    /**
-     * Lock this lxapp to `portrait` or `landscape`.
-     * Any other value rejects. Where the host does not report the change back,
-     * the runtime emits the orientation event itself so JS state stays in sync.
-     */
-    setDeviceOrientation(orientation: DeviceOrientation): boolean;
-    /** Subscribes to orientation changes and returns the unsubscribe fn. */
-    onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
-    readonly env: LxEnv;
-    downloadFile(options: never): never;
-    /**
-     * Upload a file over HTTP, streamed from disk.
-     * Defaults to a `POST` with a `multipart/form-data` body. Set
-     * `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
-     * body instead, which is what presigned object-storage URLs expect.
-     * Returns the task handle synchronously, before the transfer starts, so
-     * progress and cancellation can be wired up without racing it: `result` settles
-     * once, `progress` streams to one consumer, and `cancel()` aborts.
-     */
-    uploadFile(options: UploadOptions): UploadTask;
+    readonly device: DeviceApi;
+    readonly network: NetworkApi;
     /**
      * Open a local file with the requested strategy.
      * Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
      * `mode: "auto"`.
      */
     openFile(options: OpenFileOptions): Promise<void>;
-    /** Pick one file. A completed selection is `{ status: 'ok', uri, name }`. */
-    pickFile(options?: PickFileOptions): Promise<PickFileResult>;
-    /**
-     * Pick one or more files. A completed selection is
-     * `{ status: 'ok', files: [{ uri, name }, ...] }` with at least one file.
-     */
-    pickFiles(options?: PickFileOptions): Promise<PickFilesResult>;
-    /**
-     * Opens a directory picker.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', uri, name }`. Rejects when the
-     * picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
-     * the host has no readable system folder picker (Android, HarmonyOS phones and
-     * tablets) and `defaultPath` is not in lxapp storage.
-     * The `uri` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
-     * source, also take `<uri>/<relative>` with each segment percent-encoded. A
-     * child outside the directory, including through a symlink, does not resolve.
-     */
-    pickDirectory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     readonly fs: FileSystemApi;
-    /** Subscribes to key-down events and returns the unsubscribe fn. */
-    onKeyDown(callback: KeyEventCallback): () => void;
-    /** Subscribes to key-up events and returns the unsubscribe fn. */
-    onKeyUp(callback: KeyEventCallback): () => void;
-    /** Get location function */
-    getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
-    /** Identify the running lxapp: its id, display name, version, and channel. */
-    getAppInfo(): AppInfo;
+    readonly app: LxAppApi;
+    readonly media: MediaApi;
+    readonly pick: PickApi;
+    /**
+     * Hand content to the system share sheet.
+     * Share text, files, or a page link — files cannot be combined with a page
+     * target or with text; share those separately.
+     */
+    share(options: ShareOptions): Promise<ShareResult>;
+    /**
+     * Open this lxapp's asynchronous persistent key-value store. `get` asserts the
+     * value shape at the call site and resolves `undefined` for a missing key. Use
+     * `lx.fs` instead for path-based data.
+     */
+    storage(): Storage;
+    /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
+    openExternal(url: string): void;
+    readonly surface: SurfaceApi;
+    readonly nav: NavApi;
+    readonly shell: ShellApi;
+    readonly ui: UiApi;
+  }
+}
+
+declare global {
+  interface LxAppApi {
+    readonly info: Readonly<AppInfo>;
+    /**
+     * Replace the current lxapp's complete app-declared More action list (seven
+     * entries maximum). Pass an empty array to clear it. Native hosts append these
+     * entries after their own lifecycle actions.
+     */
+    setMoreActions(items: MoreAction[]): void;
+    readonly tabBar: TabBarApi;
+    /** Restarts this lxapp on the update `onUpdateReady` announced. */
+    applyUpdate(): void;
+    /**
+     * Calls `callback` when a newer bundle is downloaded and ready. Each
+     * subscription adds a listener; the last event that arrived before it is
+     * delivered at once. Returns the unsubscribe fn.
+     */
+    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
+    /** Calls `callback` when downloading an update fails. Returns the unsubscribe fn. */
+    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
+  }
+}
+
+declare global {
+  interface MediaApi {
     /** Read an image's dimensions, type, and orientation without decoding it into a view. */
-    getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
+    imageInfo(options: ImageInfoOptions): Promise<ImageInfo>;
     /** Re-encode an image at a lower quality or size, writing a new managed file. */
     compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
-    /**
-     * Opens the media picker or camera.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', entries }` with at least one
-     * entry. Rejects when capture or selection fails, or the host returns an invalid
-     * payload.
-     */
-    pickMedia(options?: PickMediaOptions): Promise<PickMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:
@@ -3280,23 +3277,13 @@ declare global {
      * was on screen when the preview closed — handed back verbatim so the
      * caller never re-indexes their own array.
      */
-    previewMedia(options: PreviewMediaOptions): PreviewMediaHandle;
-    /** Save an image into the system photo library. */
-    saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
-    /** Save a video into the system photo library. */
-    saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
+    preview(options: PreviewMediaOptions): PreviewMediaHandle;
     /**
-     * Opens the scanner.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-     * completed scan resolves `{ status: 'ok', scanResult, scanType }`. Rejects
-     * when scanning fails or the host returns an invalid payload.
+     * Saves a picture or a video into the system photo library. Which one it is
+     * comes from the file's type (its extension, else its leading bytes); any
+     * other file rejects `E_INVALID_ARG`.
      */
-    scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
-    /**
-     * A control handle for the native video component with this id, or on a GPU page for the player
-     * of this `useVideo` name or `<video id>`.
-     */
-    createVideoContext(name: string): VideoContext;
+    saveToLibrary(path: string): Promise<void>;
     /**
      * Reads local video metadata for upload preflight and presentation.
      * Size, dimensions, duration, and path form the portable core. Container type,
@@ -3304,154 +3291,97 @@ declare global {
      * omitted when the platform cannot determine them. The receiving service must
      * still validate the uploaded bytes.
      */
-    getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
+    videoInfo(options: VideoInfoOptions): Promise<VideoInfo>;
     /** Write one frame of a video out as an image file. */
-    extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
+    videoThumbnail(options: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
     /**
      * Transcode a video to a smaller file.
      * Returns a task handle synchronously, so progress and cancellation can be
      * wired up before transcoding starts.
      */
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
-    /**
-     * Open another lxapp, optionally at one of its pages.
-     * Navigating to the lxapp already running is a no-op. Rejects with
-     * `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
-     * close that aside before opening it as a main.
-     */
-    navigateToApp(options: NavigateToAppOptions): Promise<void>;
-    /** Leave this lxapp and reveal the one that opened it. */
-    navigateBackApp(): Promise<void>;
-    /**
-     * Hand content to the system share sheet.
-     * Share text, files, or a page link — files cannot be combined with a page
-     * target or with text; share those separately.
-     */
-    share(options: ShareOptions): Promise<ShareResult>;
-    /**
-     * Open this lxapp's asynchronous persistent key-value store. `get` asserts the
-     * value shape at the call site and resolves `undefined` for a missing key. Use
-     * `lx.fs` instead for path-based data.
-     */
-    getStorage(): Storage;
-    /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
-    openExternal(url: string): void;
-    readonly surface: SurfaceApi;
-    /** Read system switches the lxapp may branch on, such as location and WiFi. */
-    getSystemSetting(): SystemSettingInfo;
-    /**
-     * Shows a list of actions.
-     * Resolves `{ status: 'ok', id }` when the user selects an item; `id` identifies the selected item. Resolves `{ status: 'canceled' }` only when the
-     * user dismisses the sheet. Rejects when presentation fails or the host returns
-     * an invalid selection.
-     */
-    showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    /** Acknowledgement-only dialog. Resolves when the user dismisses it. */
-    alert(options: AlertOptions): Promise<void>;
-    /** Ask a yes/no question. Dismissal resolves false; presentation failure rejects. */
-    confirm(options: ConfirmOptions): Promise<boolean>;
-    /**
-     * Shows a confirmation modal.
-     * Resolves `{ status: 'ok' }` when the user confirms and `{ status: 'canceled' }`
-     * only when the user dismisses or cancels the modal. Rejects when presentation
-     * fails or the host returns an invalid payload.
-     */
-    showModal(options: ShowModalOptions): Promise<ModalResult>;
-    /**
-     * Replace the current lxapp's complete app-declared More action list (seven
-     * entries maximum). Pass an empty array to clear it. Native hosts append these
-     * entries after their own lifecycle actions.
-     */
-    setMoreActions(items: MoreAction[]): void;
-    readonly navigationBar: NavigationBarApi;
-    /**
-     * lx.startPullDownRefresh()
-     * Programmatically start the pull-to-refresh animation.
-     * This will show the refresh indicator and trigger the onPullDownRefresh lifecycle method.
-     * Throws `E_INVALID_STATE` (`data.bizCode === 4004`) unless the current page
-     * config sets `enablePullDownRefresh: true`.
-     */
-    startPullDownRefresh(): void;
-    /**
-     * lx.stopPullDownRefresh()
-     * Stop the pull-to-refresh animation.
-     * This should be called after the refresh operation is complete.
-     */
-    stopPullDownRefresh(): void;
-    /**
-     * Push a configured page onto the stack.
-     * A route can appear on the stack only once. The promise rejects with
-     * `data.reason === "duplicate_route"` when the target is already present,
-     * or `data.reason === "stack_full"` when the ten-page limit is reached.
-     */
-    navigateTo(options: NavigateToOptions): Promise<PageMessagePort>;
-    /**
-     * Pop one or more pages and reveal the destination page.
-     * `options` and `options.delta` are optional; both default to one page. The
-     * promise resolves once the destination WebView is ready, so callers can
-     * safely continue with work that targets the revealed page.
-     */
-    navigateBack(options?: NavigateBackOptions): Promise<void>;
-    /**
-     * Replace the current stack entry with a configured page.
-     * Redirecting to the current route keeps its page instance and runs `onLoad`
-     * again with the new query. Redirecting to a route lower in the stack rejects
-     * with `data.reason === "duplicate_route"`.
-     */
-    redirectTo(options: RedirectToOptions): Promise<void>;
-    /**
-     * Switch to a configured tab page.
-     * The tab page being left is hidden and retained. Non-tab pages pushed above
-     * a tab leave the stack and receive `onUnload`.
-     */
-    switchTab(options: SwitchTabOptions): Promise<void>;
-    /**
-     * Clear the page stack and launch a configured page as the new root.
-     * Resolves once the navigation is dispatched, like `redirectTo` and `switchTab`;
-     * the new page loads after.
-     */
-    reLaunch(options: ReLaunchOptions): Promise<void>;
-    readonly shell: ShellApi;
-    readonly tabBar: TabBarApi;
-    /**
-     * Presents a toast and resolves a handle once the host accepted it. The handle
-     * dismisses only this toast, never a newer one — including a newer one posted
-     * by another lxapp onto a host's shared overlay.
-     */
-    showToast(options: ShowToastOptions): Promise<ToastHandle>;
-    /** Hides whichever toast is showing. */
-    hideToast(): Promise<void>;
-    readonly tray: TrayApi;
-    /**
-     * Return the callback-based update manager for this lxapp's bundle. This is
-     * available to every lxapp and is distinct from the Control-app-only
-     * `lx.host.checkUpdate()`, which updates the native host app.
-     */
-    getUpdateManager(): UpdateManager;
   }
 }
 
 declare global {
-  interface LxEnv {
-    readonly USER_DATA_PATH: 'lx://userdata';
-    readonly USER_CACHE_PATH: 'lx://usercache';
+  interface NetworkApi {
+    readonly wifi: WifiApi;
+    /** Read connectivity right now: whether it is connected, its type, and addresses. */
+    status(): Promise<NetworkInfo>;
+    /** Subscribes to network changes and returns the unsubscribe fn. */
+    watch(callback: NetworkChangeCallback): () => void;
+    download(url: never): never;
+    /**
+     * Upload a file over HTTP, streamed from disk.
+     * Defaults to a `POST` with a `multipart/form-data` body. Set
+     * `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
+     * body instead, which is what presigned object-storage URLs expect.
+     * Returns the task handle synchronously, before the transfer starts, so
+     * progress and cancellation can be wired up without racing it: `result` settles
+     * once, `progress` streams to one consumer, and `cancel()` aborts.
+     */
+    upload(url: string, options: UploadOptions): UploadTask;
   }
 }
 
 declare global {
-  interface NavigationBarApi {
-    /** Patch the navigation bar of the active page; unset fields stay as they are. */
-    update(patch: NavigationBarPatch): Promise<void>;
+  interface OrientationApi {
+    /**
+     * Lock this lxapp to `portrait` or `landscape`.
+     * Any other value rejects. Where the host does not report the change back,
+     * the runtime emits the orientation event itself so JS state stays in sync.
+     */
+    set(orientation: DeviceOrientation): boolean;
+    /** Subscribes to orientation changes and returns the unsubscribe fn. */
+    watch(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
+  }
+}
+
+declare global {
+  interface PickApi {
+    /**
+     * Picks one file. Resolves `{ status: 'canceled' }` only when the user
+     * dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
+     */
+    file(options?: PickFileOptions): Promise<PickFileResult>;
+    /**
+     * Picks one or more files. Resolves `{ status: 'canceled' }` only when the
+     * user dismisses the picker, otherwise `{ status: 'ok', files }`.
+     */
+    files(options?: PickFileOptions): Promise<PickFilesResult>;
+    /**
+     * Picks a folder. Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * completed selection resolves `{ status: 'ok', directory: { path, name } }`. Rejects when the
+     * picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
+     * the host has no readable system folder picker (Android, HarmonyOS phones and
+     * tablets) and `defaultPath` is not in lxapp storage.
+     * The `path` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
+     * source, also take `<path>/<relative>` with each segment percent-encoded. A
+     * child outside the directory, including through a symlink, does not resolve.
+     */
+    directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
+    /**
+     * Picks pictures and videos from the library, or captures one with the camera.
+     * Library items are copied to temp on mobile; desktop returns the user's file.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * completed selection resolves `{ status: 'ok', files }` with at least one
+     * file. Rejects when capture or selection fails, or the host returns an invalid
+     * payload.
+     */
+    media(options?: PickMediaOptions): Promise<PickFilesResult>;
+    /**
+     * Scans a barcode or QR code with the camera.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
+     * completed scan resolves `{ status: 'ok', value, format }`. A value that is an
+     * `/lxapp/` app link also opens that lxapp; other URLs are only returned.
+     * Rejects when scanning fails or the host returns an invalid payload.
+     */
+    code(options?: PickCodeOptions): Promise<PickCodeResult>;
   }
 }
 
 declare global {
   interface ShellApi {
-    /**
-     * `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
-     * slot. Control-app only; the namespace is the privilege.
-     */
-    openApp(appId: string, options?: ShellOpenAppOptions): Promise<AppSurface>;
     /**
      * `lx.shell.getApp(appId)` — the handle of an app live as a surface of its
      * own, declared or not. One live lxapp has one handle, its `AppSurface`.
@@ -3465,16 +3395,13 @@ declare global {
     /** `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
-     * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-     * keyed multi-instance form and placement overrides. Control-app only.
-     */
-    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
-    /**
      * Change the name and icon the host shows for the calling app. Only the
      * Control app may call this API. Resolves once stored; the host repaints only
      * when a value changed, so calling it on every launch is cheap.
      */
     setAppDisplay(patch: AppDisplayPatch): Promise<void>;
+    /** `lx.shell.activate()` — bring the product window forward. Control app only. */
+    activate(): void;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }
@@ -3521,31 +3448,23 @@ declare global {
     openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
     /**
      * `lx.surface.openUrl(url, options?)` — external content in the in-app
-     * browser, as a tab or docked as an aside.
+     * browser, as a main tab or docked as an aside.
      */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
+     * `lx.surface.openApp(appId, options)` — compose another lxapp into a shell
+     * slot. Control app only.
+     */
+    openApp(appId: string, options?: OpenAppOptions): Promise<AppSurface>;
+    /**
      * `lx.surface.openDeclared(id, options?)` — a surface the host declared in
-     * `lingxia.yaml`, opened with the declaration's own presentation.
+     * `lingxia.yaml`. Without options it opens with the declaration's own
+     * placement; `key`, `as` and `edge` change shared shell composition and are
+     * the Control app's.
      */
-    openDeclared(id: string): Promise<DeclaredSurface | AppSurface>;
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /** Find a live surface by its explicit caller-owned key. Runtime ids are not keys. */
-    getByKey(key: string): PageSurface | TabSurface | undefined;
-    /**
-     * `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
-     * lxapp's JS context), invoke it immediately, then again whenever that
-     * presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
-     */
-    watchContext(handler: (context: SurfaceContext) => void): () => void;
-    /**
-     * `lx.surface.bringToFront(options?)` — bring the product forward on this
-     * lxapp, the way a notification tap with `{ kind: 'app', appId: <self> }`
-     * does: a docked aside comes back where it is, otherwise it opens in main,
-     * and `page` / `query` reach it as a reopen. A guest may do this only right
-     * after the person picked an action on its banner; the Control app may
-     * whenever it likes.
-     */
-    bringToFront(options?: BringToFrontOptions): Promise<void>;
+    get(key: string): PageSurface | TabSurface | undefined;
   }
 }
 
@@ -3569,27 +3488,72 @@ declare global {
 
 declare global {
   interface TrayApi {
-    /** lx.tray.setIcon(icon) — replace the tray icon (a resource path). */
+    /** lx.host.tray.setIcon(icon) — replace the tray icon (a resource path). */
     setIcon(icon: string): void;
-    /** lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */
+    /** lx.host.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */
     setTitle(text: string | null): void;
     /**
-     * lx.tray.setMenu(items) — replace the tray dropdown menu. Each item is
+     * lx.host.tray.setMenu(items) — replace the tray dropdown menu. Each item is
      * `{ label, onClick?, enabled?, checked? }` or `{ separator: true }`. The native
      * menu is built from labels; clicks are routed back to each item's `onClick` by
      * index over the app event bus.
      */
     setMenu(items: Array<TrayMenuItem | TrayMenuSeparator>): void;
     /**
-     * lx.tray.onClick(handler) — left-click on the tray icon. While at least one
+     * lx.host.tray.onClick(handler) — left-click on the tray icon. While at least one
      * handler is registered, the left-click runs only the handler(s); the tray's
      * configured surface action is suppressed. Returns an unsubscribe function.
      */
     onClick(handler: () => void): () => void;
-    /** lx.tray.show() — show the tray status item. */
+    /** lx.host.tray.show() — show the tray status item. */
     show(): void;
-    /** lx.tray.hide() — hide the tray status item. */
+    /** lx.host.tray.hide() — hide the tray status item. */
     hide(): void;
+  }
+}
+
+declare global {
+  interface UiApi {
+    /**
+     * Shows a list of actions.
+     * Resolves `{ status: 'ok', id }` when the user selects an item; `id` identifies the selected item. Resolves `{ status: 'canceled' }` only when the
+     * user dismisses the sheet. Rejects when presentation fails or the host returns
+     * an invalid selection.
+     */
+    actionSheet(options: ActionSheetOptions): Promise<ActionSheetResult>;
+    /** Acknowledgement-only dialog. Resolves when the user dismisses it. */
+    alert(options: string | AlertOptions): Promise<void>;
+    /** Ask a yes/no question. Dismissal resolves false; presentation failure rejects. */
+    confirm(options: string | ConfirmOptions): Promise<boolean>;
+    /**
+     * Presents a toast and resolves a handle once the host accepted it. The handle
+     * dismisses only this toast, never a newer one — including a newer one posted
+     * by another lxapp onto a host's shared overlay.
+     */
+    toast(options: string | ToastOptions): Promise<ToastHandle>;
+  }
+}
+
+declare global {
+  interface WifiApi {
+    /**
+     * Starts the Wi-Fi module; call it before any other `lx.network.wifi` call,
+     * which otherwise rejects "not initialized". Rejects when Wi-Fi is off.
+     */
+    start(): Promise<void>;
+    /** Stops the Wi-Fi module and its event delivery. */
+    stop(): Promise<void>;
+    /**
+     * Asks the system to join a network. Resolves once the request is submitted,
+     * not when the device has joined: `onConnected` reports that.
+     */
+    connect(options: ConnectWifiOptions): Promise<void>;
+    /** Scans and resolves the networks in range. */
+    list(): Promise<WifiInfo[]>;
+    /** The network the device is on now. */
+    current(): Promise<WifiInfo>;
+    /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
+    onConnected(callback: WifiConnectedCallback): () => void;
   }
 }
 

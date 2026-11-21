@@ -159,7 +159,7 @@ host_api_async!(
         let url = resolve_page_target(&lxapp, &options)?;
         if is_tabbar_page_url(&lxapp, &url) {
             return Err(LxAppError::UnsupportedOperation(
-                "redirectTo cannot navigate to a tabBar page".to_string(),
+                "a tab page cannot replace a page".to_string(),
             ));
         }
         navigate_with_url(lxapp, url, NavigationType::Replace, true, &mut cancel).await?;

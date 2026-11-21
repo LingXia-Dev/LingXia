@@ -313,7 +313,7 @@ export interface PageEvalOptions extends PageTarget {
 }
 
 export interface PageActionOptions extends PageTarget {
-  /** Name of a unary action of the page's `Page({...})`; stream (generator) actions are refused. */
+  /** Name of a unary action of the page; stream (generator) actions are refused. */
   name: string;
   /** The action's one JSON argument, passed as is; omit for none. */
   payload?: unknown;
@@ -762,7 +762,7 @@ export interface PageDriver {
  * When a nav action resolves. `'commit'` (default) resolves once the page
  * stack changed, before the landed page is ready. `'ready'` also waits for its
  * `onReady` and rejects if the page is disposed or replaced first (e.g. by the
- * app's own `lx.reLaunch`); it is available only in a host automation run
+ * app's own `lx.nav.reset`); it is available only in a host automation run
  * ({@link NavDriver}), since app Logic awaiting its own `onReady` would
  * deadlock. The `@lingxia/test` fixture's `t.app.nav` defaults to `'ready'`.
  */
@@ -783,21 +783,24 @@ export interface NavWaitOptions {
 /** A navigation bar button `nav.press` can press. */
 export type NavButton = 'back' | 'home';
 
-interface NavTargetFields {
-  /** Configured page name (from lxapp.json). */
-  page: string;
-  /** Query forwarded to the destination page. */
-  query?: Record<string, unknown>;
-}
+/** A configured page (from lxapp.json) with its params, or a tab. */
+export type NavDriverTarget =
+  | { page: string; params?: Record<string, unknown> }
+  | { tab: string };
 
 interface NavBackFields {
   /** Number of pages to pop (default 1). */
   delta?: number;
 }
 
-export interface LogicNavOptions extends NavTargetFields, LogicNavWaitOptions {}
+/** `replace: true` replaces the current page; a tab cannot replace one. */
+export interface LogicNavGoOptions extends LogicNavWaitOptions {
+  replace?: boolean;
+}
 export interface LogicNavBackOptions extends NavBackFields, LogicNavWaitOptions {}
-export interface NavOptions extends NavTargetFields, NavWaitOptions {}
+export interface NavGoOptions extends NavWaitOptions {
+  replace?: boolean;
+}
 export interface NavBackOptions extends NavBackFields, NavWaitOptions {}
 
 /** A page's runtime position. */
@@ -820,21 +823,16 @@ export interface PageInfo {
 }
 
 /**
- * Page-stack navigation for the selected lxapp, as app Logic sees it. Action
- * verbs take a configured page name (`redirect` rejects a tab-bar page);
- * `back` pops; `current`/`stack` read. Unlike the JS `lx.navigateTo` family
+ * Page-stack navigation for the selected lxapp, as app Logic sees it, with
+ * the `lx.nav` verbs: `go` pushes, replaces or switches tabs, `reset` starts
+ * a new stack, `back` pops; `current`/`stack` read. Unlike `lx.nav`,
  * this returns the landed page. It resolves once the stack changed, before the
  * destination is ready.
  */
 export interface LogicNavDriver {
-  /** Push a page onto the stack. */
-  to(options: LogicNavOptions): Promise<PageInfo>;
-  /** Replace the current page (rejects tab-bar targets). */
-  redirect(options: LogicNavOptions): Promise<PageInfo>;
-  /** Switch to a configured tab page. */
-  switchTab(options: LogicNavOptions): Promise<PageInfo>;
-  /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
-  relaunch(options: LogicNavOptions): Promise<PageInfo>;
+  go(target: NavDriverTarget, options?: LogicNavGoOptions): Promise<PageInfo>;
+  /** Unload every page (cached tab pages included) and open a fresh instance of the target. */
+  reset(target: NavDriverTarget, options?: LogicNavWaitOptions): Promise<PageInfo>;
   /** Pop pages programmatically; a leave guard is not asked. */
   back(options?: LogicNavBackOptions): Promise<PageInfo>;
   /**
@@ -854,10 +852,8 @@ export interface LogicNavDriver {
  * landed page's `onReady`.
  */
 export interface NavDriver extends LogicNavDriver {
-  to(options: NavOptions): Promise<PageInfo>;
-  redirect(options: NavOptions): Promise<PageInfo>;
-  switchTab(options: NavOptions): Promise<PageInfo>;
-  relaunch(options: NavOptions): Promise<PageInfo>;
+  go(target: NavDriverTarget, options?: NavGoOptions): Promise<PageInfo>;
+  reset(target: NavDriverTarget, options?: NavWaitOptions): Promise<PageInfo>;
   back(options?: NavBackOptions): Promise<PageInfo>;
   press(button: NavButton, options?: NavWaitOptions): Promise<PageInfo>;
 }
@@ -906,7 +902,7 @@ export interface LxAppEvalOptions extends LogicLxAppEvalOptions {
   captureCalls?: boolean;
 }
 
-/** Shell admission class. Content `lx.surface.watchContext` uses `compact` | `regular`. */
+/** Shell admission class. Content `page.env` / View `env` use `compact` | `regular`. */
 export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
 export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
 export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';
@@ -1484,7 +1480,7 @@ export interface ProfileDriver {
 /** `ProfileDriver.restore` options. */
 export interface ProfileRestoreOptions {
   /**
-   * `lx.getStorage()` keys whose current state survives the rollback: globs
+   * `lx.storage()` keys whose current state survives the rollback: globs
    * over the whole key, `*` any run of characters (dots included), `?` one
    * character, anything else literal (at most 64 patterns). A matching key
    * keeps its current value, one added since the checkpoint stays, and one
@@ -1613,7 +1609,7 @@ export interface ModalRecord {
 /** `{ index }` picks that item; `{ cancel: true }` dismisses the sheet. */
 export type ActionSheetAnswer = { index: number } | { cancel: true };
 
-/** An `lx.showActionSheet` while watched: drawn, or answered like modals. */
+/** An `lx.ui.actionSheet` while watched: drawn, or answered like dialogs. */
 export interface ActionSheetRecord {
   /** Item labels, in order. */
   items: string[];
@@ -1631,8 +1627,8 @@ export interface DialogUnwatchResult {
 /**
  * The dialogs the selected lxapp's Logic opens while a test of a host
  * automation run (`lxdev test`) watches it; outside one every call rejects
- * with `E_AUTOMATION`. Toasts, modals (`showModal`, `alert`, `confirm`) and
- * `showActionSheet` are recorded and drawn. A queued answer applies once;
+ * with `E_AUTOMATION`. Toasts, dialogs (`lx.ui.alert`, `confirm`) and
+ * `lx.ui.actionSheet` are recorded and drawn. A queued answer applies once;
  * later dialogs are drawn unless strict mode explicitly requires an answer.
  * An unwatched app presents every dialog as usual.
  */

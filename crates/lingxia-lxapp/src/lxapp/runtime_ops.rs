@@ -304,23 +304,12 @@ pub fn installed_lxapp_path(appid: &str, release_type: Channel) -> Option<String
         .map(|record| record.install_path)
 }
 
-pub fn touch_page_instance_by_id(id: &str) -> Result<(), LxAppError> {
-    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
-        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
-    })?;
-    let page = super::runtime_registry::find_page_by_instance_id(id.as_str())
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
-    let app = super::runtime_registry::try_get(&page.appid())
-        .ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
-    app.refresh_page_instance_dispose_ttl(&id)
-}
-
 pub fn create_page_instance(
     req: CreatePageInstanceRequest,
 ) -> Result<CreatedPageInstance, LxAppError> {
     let app = super::runtime_registry::try_get(&req.appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(req.appid.clone()))?;
-    app.create_page_instance(req.owner, req.target, req.query, req.surface, None)
+    app.create_page_instance(req.owner, req.target, req.query, req.surface)
 }
 
 pub fn notify_page_instance(
@@ -359,10 +348,20 @@ pub fn dispose_page_instance_by_id(id: &str, reason: CloseReason) -> Result<(), 
 /// Triggers memory cleanup for LxApps.
 /// This function should be called by the platform when the system is under memory pressure.
 pub fn on_low_memory() {
-    info!("on_low_memory: discarding hidden-main tab WebViews, then evicting an unused lxapp");
+    info!(
+        "on_low_memory: discarding hidden-main tab WebViews and hidden surface pages, then evicting an unused lxapp"
+    );
     super::page_discard::enforce_page_webview_budget_with_limit(0);
     super::surface_retention::release_retained_surfaces();
     if let Some(manager) = super::runtime_registry::get_lxapps_manager() {
+        let apps: Vec<_> = manager
+            .lxapps
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for app in apps {
+            app.reclaim_hidden_surface_pages();
+        }
         manager.evict_lru_lxapp();
     }
 }

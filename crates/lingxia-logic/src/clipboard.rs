@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const TEXT_MAX_BYTES: usize = 1024 * 1024;
 
 /// System clipboard: text and PNG images on every host. The runtime never presents a toast on
-/// write — call `lx.showToast` if the product wants one (Android 13+ shows the
+/// write — call `lx.ui.toast` if the product wants one (Android 13+ shows the
 /// system's own "copied" notice, which no app can suppress).
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -35,7 +35,7 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
 /// Replace the clipboard with Unicode text.
 ///
 /// Empty string is a valid payload (it is not `clear()`). The runtime does not
-/// present a toast — call `lx.showToast` if the product wants one. Rejects
+/// present a toast — call `lx.ui.toast` if the product wants one. Rejects
 /// `E_INVALID_ARG` above 1 MiB.
 async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
     write_item(&ctx, ClipboardWrite::Text(validate_text(&text)?)).await
@@ -265,7 +265,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
     }
     if is_platform_file_reference(path) || !path.starts_with("lx://") {
         return Err(js_invalid_parameter_error(
-            "clipboard image filePath must be an lx:// path or a file returned by lx.pickFile/lx.pickMedia",
+            "clipboard image filePath must be an lx:// path or a file returned by lx.pick",
         ));
     }
     let resolved = lxapp

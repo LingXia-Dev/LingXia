@@ -754,7 +754,7 @@ fn rewrite_module_source(
             }
             Statement::ExpressionStatement(expr_stmt) => {
                 if let Some(rewritten) =
-                    rewrite_registration_call(project, source, &expr_stmt.expression, role)?
+                    rewrite_registration_call(source, &expr_stmt.expression, role)?
                 {
                     output.push_str(&rewritten);
                 } else {
@@ -780,6 +780,15 @@ fn rewrite_module_source(
     }
     for (exported, local) in &exports {
         output.push_str(&format!("__lx_module_exports[\"{exported}\"] = {local};\n"));
+    }
+    // `export default definePage({ ... })` is the page.
+    if let ModuleRole::Page { page_path } = role
+        && exports.iter().any(|(exported, _)| exported == "default")
+    {
+        output.push_str(&format!(
+            "globalThis.__registerDefinedPage({}, __lx_module_exports[\"default\"]);\n",
+            json_string_literal(&page_registration_path(project, page_path)?)
+        ));
     }
     Ok(output)
 }
@@ -954,7 +963,6 @@ fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, output: &mu
 }
 
 fn rewrite_registration_call(
-    project: &Project,
     source: &str,
     expression: &Expression<'_>,
     role: &ModuleRole,
@@ -987,55 +995,26 @@ fn rewrite_registration_call(
                 json_string_literal(&handler_json)
             )))
         }
-        "Page" | "PageInstance" => {
-            let ModuleRole::Page { page_path } = role else {
-                return Ok(None);
-            };
-            let first_arg = call_expr.arguments.first().ok_or_else(|| {
-                anyhow!(
-                    "{}() must be called with a configuration expression",
-                    identifier.name.as_str()
-                )
-            })?;
-            let config_expr = slice(source, first_arg.span())?;
-            let binding_meta_json = match unwrap_expression(first_arg.to_expression()) {
-                Expression::ObjectExpression(object) => serde_json::to_string(&BindingMeta {
-                    handlers: collect_page_handler_names(object),
-                })?,
-                _ => serde_json::to_string(&BindingMeta {
-                    handlers: Vec::new(),
-                })?,
-            };
-            let final_path = match project.kind {
-                ProjectKind::LxApp => page_path.clone(),
-                ProjectKind::LxPlugin => format!(
-                    "plugin/{}/{}",
-                    project
-                        .plugin_id
-                        .as_deref()
-                        .ok_or_else(|| anyhow!("Missing plugin id"))?,
-                    page_path
-                ),
-            };
-            Ok(Some(format!(
-                "globalThis.__registerPage({}, {}, {});",
-                json_string_literal(&final_path),
-                config_expr,
-                json_string_literal(&binding_meta_json)
-            )))
-        }
+        "Page" | "PageInstance" if matches!(role, ModuleRole::Page { .. }) => bail!(
+            "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/types/page'",
+            identifier.name.as_str()
+        ),
         _ => Ok(None),
     }
 }
 
-#[derive(serde::Serialize)]
-struct BindingMeta {
-    handlers: Vec<String>,
-}
-
-fn collect_page_handler_names(object: &oxc_ast::ast::ObjectExpression<'_>) -> Vec<String> {
-    collect_object_handler_names(object, |name| {
-        name != "data" && !name.starts_with('_') && !super::is_page_lifecycle(name)
+/// The path a page registers under: plugin pages are namespaced by plugin.
+fn page_registration_path(project: &Project, page_path: &str) -> Result<String> {
+    Ok(match project.kind {
+        ProjectKind::LxApp => page_path.to_string(),
+        ProjectKind::LxPlugin => format!(
+            "plugin/{}/{}",
+            project
+                .plugin_id
+                .as_deref()
+                .ok_or_else(|| anyhow!("Missing plugin id"))?,
+            page_path
+        ),
     })
 }
 
@@ -1439,6 +1418,66 @@ mod tests {
         let path = root.join(path);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn a_page_module_default_export_is_its_page() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "define.ts",
+            "export const definePage = (d: object) => d;
+",
+        );
+        write(
+            root,
+            "pages/home/index.ts",
+            "import { definePage } from '../../define';
+             export default definePage({ data: { n: 0 } });
+",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .unwrap();
+        let bundle = bundler.render_bundle(false).unwrap();
+        assert!(
+            bundle.contains(
+                "globalThis.__registerDefinedPage(\"pages/home/index\", __lx_module_exports[\"default\"]);"
+            ),
+            "{bundle}"
+        );
+    }
+
+    #[test]
+    fn a_page_calling_page_fails_with_the_replacement() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "pages/home/index.ts",
+            "Page({ data: {} });
+",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        let error = bundler
+            .add_entry(
+                root.join("pages/home/index.ts"),
+                ModuleRole::Page {
+                    page_path: "pages/home/index".to_string(),
+                },
+            )
+            .and_then(|_| bundler.render_bundle(false))
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("definePage"), "{error:#}");
     }
 
     #[test]

@@ -50,46 +50,37 @@ const GROUPS = [
     slug: 'navigation',
     title: 'Navigation',
     summary: 'Move between pages of this lxapp, and between lxapps.',
-    members: [
-      'navigateTo', 'redirectTo', 'reLaunch', 'navigateBack', 'switchTab',
-      'navigateToApp', 'navigateBackApp',
-    ],
+    members: ['nav'],
   },
   {
     slug: 'surfaces',
     title: 'Surfaces and host chrome',
     summary:
-      'Open host surfaces and drive the chrome around the page — navigation bar, tab bar, tray, shell, and pull-to-refresh.',
+      'Open host surfaces and arrange the window and its panes.',
     members: [
-      'surface', 'navigationBar', 'tabBar', 'setMoreActions',
-      'startPullDownRefresh', 'stopPullDownRefresh',
-      'tray', 'shell',
+      'surface', 'shell',
     ],
   },
   {
     slug: 'feedback',
     title: 'Dialogs and feedback',
     summary: 'Ask the user something, or report what just happened.',
-    members: ['alert', 'confirm', 'showModal', 'showActionSheet', 'showToast', 'hideToast', 'share'],
+    members: ['ui', 'share'],
   },
   {
     slug: 'files',
     title: 'Files and storage',
-    summary: 'Managed files, the system picker, transfers, and key-value storage.',
+    summary: 'Managed files, the system pickers (files, media, codes), transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'pickFile', 'pickFiles', 'pickDirectory',
-      'uploadFile', 'downloadFile', 'getStorage',
+      'fs', 'openFile', 'pick', 'storage',
     ],
   },
   {
     slug: 'media',
     title: 'Media',
-    summary: 'Pick, preview, transcode, and save images and video; read a code.',
+    summary: 'Preview, transcode, and save images and video.',
     members: [
-      'pickMedia', 'previewMedia', 'getImageInfo', 'compressImage',
-      'saveImageToPhotosAlbum', 'saveVideoToPhotosAlbum',
-      'createVideoContext', 'getVideoInfo', 'extractVideoThumbnail', 'compressVideo',
-      'scanCode',
+      'media',
     ],
   },
   {
@@ -97,29 +88,22 @@ const GROUPS = [
     title: 'Device and input',
     summary: 'Device, screen, and system facts, the clipboard, plus orientation and key events.',
     members: [
-      'getDeviceInfo', 'getScreenInfo', 'getSystemSetting',
-      'vibrateShort', 'vibrateLong', 'makePhoneCall', 'getLocation',
-      'setDeviceOrientation', 'onDeviceOrientationChange',
-      'onKeyDown', 'onKeyUp', 'clipboard',
+      'device', 'clipboard',
     ],
   },
   {
     slug: 'network',
     title: 'Network and WiFi',
-    summary: 'Connectivity facts and events, and the WiFi module.',
-    members: [
-      'getNetworkInfo', 'onNetworkChange',
-      'startWifi', 'stopWifi', 'connectWifi', 'getWifiList', 'getConnectedWifi',
-      'onWifiConnected',
-    ],
+    summary: 'Connectivity, transfers, and the WiFi module.',
+    members: ['network'],
   },
   {
     slug: 'host',
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
-      'host', 'env', 'getAppInfo', 'getUpdateManager', 'openExternal',
-      'supports', 'terminal',
+      'host', 'app', 'env', 'openExternal',
+      'supports',
     ],
   },
 ];
@@ -307,7 +291,7 @@ for (const group of written) {
   index += `| [${group.title}](./${group.slug}/) | ${group.summary} |\n`;
 }
 index += `\n:::note\nSignatures are reproduced from the published declarations; option and result shapes are types in the same package. In an editor, type \`lx.\` and hover a member to read the same information against the exact version your project installs.\n:::\n`;
-index += `\nThe \`Page({})\` and \`App({})\` contracts, error codes, and handle types ship in the same package — see [About the Logic JS API](../logic-api/).\n`;
+index += `\nThe \`definePage\` and \`App({})\` contracts, error codes, and handle types ship in the same package — see [About the Logic JS API](../logic-api/).\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 
 const expected = new Set(['index.md', ...written.map((g) => `${g.slug}.md`)]);

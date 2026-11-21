@@ -42,7 +42,7 @@ The lxapps and pages in the session. Commands target the current lxapp
 - `list` / `current` / `info` / `pages` — what is running, and configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches
   without rebuilding)
-- `nav to|redirect|switch-tab|relaunch|back` — navigate by page name
+- `nav go <page> [--param K=V] [--replace]` / `nav go --tab <tab>` / `nav reset <page>` / `nav back` — navigate by page name
 - `eval` — JS in the Logic runtime; `page eval` — JS in the page WebView
   ([JS contexts](#js-contexts))
 - `page current|list|info` — page instances, including surface pages and

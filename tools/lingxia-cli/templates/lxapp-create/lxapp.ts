@@ -2,25 +2,19 @@ App({
   onLaunch() {
     console.log('LingXia app launched');
 
-    // Setup update manager
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
-      const applyNow = await lx.showModal({
+    lx.app.onUpdateReady(async () => {
+      const applyNow = await lx.ui.confirm({
         title: "Update Available",
-        content: "A new version is ready. Apply now?",
-        showCancel: true,
+        message: "A new version is ready. Apply now?",
         cancelText: "Later",
         confirmText: "Apply",
       });
-      if (applyNow.status !== 'canceled') {
-        um.applyUpdate();
+      if (applyNow) {
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn("Update failed:", info?.error);
     });
   },
-  globalData: {
-    greeting: 'Hello from App global data'
-  }
 });

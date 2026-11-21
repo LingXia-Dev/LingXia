@@ -35,23 +35,23 @@ as an object. Nothing is consumed or rewritten, and the link always opens home.
 
 ```ts
 App({
-  onLaunch: routeFromAppLink, // cold
-  onShow: routeFromAppLink,   // warm; cold onShow has no 8003
+  // Cold (after onLaunch settles) and warm (before onShow), once per tap.
+  onOpen(link) {
+    const { pathname, searchParams } = new URL(link.url);
+    // Route from an allowlist. `url` is attacker-reachable: it can come from a
+    // scanned code, a push payload, or any email.
+    if (pathname === '/app/auth/reset-password') {
+      return { page: 'reset', params: { code: searchParams.get('code') ?? '' } };
+    }
+    // Nothing returned: stay where the app is (the landing page when cold).
+  },
 });
-
-function routeFromAppLink(options?: { scene?: number; url?: string }) {
-  if (options?.scene !== 8003 || !options.url) return;
-  const { pathname, searchParams } = new URL(options.url);
-  // Route from an allowlist. `url` is attacker-reachable: it can come from a
-  // scanned code, a push payload, or any email.
-  if (pathname === '/app/auth/reset-password') {
-    void lx.navigateTo({ page: 'reset', query: { code: searchParams.get('code') ?? '' } });
-  }
-}
 ```
 
-`scene === 8003` is delivered once per tap: cold → `onLaunch`, warm → `onShow`.
-Never feed a query value straight into `navigateTo` as a page name.
+The framework navigates to the target `onOpen` returns. On a cold start the
+landing page loads first and the target opens over it. `onLaunch` / `onShow`
+still see `scene: 8003` and `url`.
+Never feed a query value straight into `lx.nav.go` as a page name.
 
 ## The `/lxapp/` namespace
 
@@ -66,7 +66,7 @@ https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&c
 |---|---:|---|
 | `appId` | No | Target lxapp. Omitted → home. |
 | `path` | No | Target page path. Omitted → current/initial page. |
-| `channel` | No | `release` or `draft`, as in `navigateToApp`. Omitted → the channel the lxapp is already running on, else `release`. |
+| `channel` | No | `release` or `draft`, as in `lx.nav.go({ app })`. Omitted → the channel the lxapp is already running on, else `release`. |
 
 URL-encode keys and values. Routing parameters are consumed; other parameters
 go to the page as its query. Only in this namespace is a malformed URL rejected.

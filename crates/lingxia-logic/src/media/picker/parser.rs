@@ -13,7 +13,7 @@ pub(super) fn parse_pick_mode(values: Option<Vec<String>>) -> JSResult<PickMedia
             "video" => has_video = true,
             other => {
                 return Err(js_invalid_parameter_error(format!(
-                    "pickMedia invalid mediaType token \"{}\"",
+                    "pick.media invalid mediaType token \"{}\"",
                     other
                 )));
             }
@@ -43,7 +43,7 @@ pub(super) fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSo
             "camera" => MediaSource::Camera,
             other => {
                 return Err(js_invalid_parameter_error(format!(
-                    "pickMedia invalid sourceType token \"{}\"",
+                    "pick.media invalid sourceType token \"{}\"",
                     other
                 )));
             }

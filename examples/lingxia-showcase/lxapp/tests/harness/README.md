@@ -4,7 +4,7 @@
 deterministic bytes with a known digest, a trickled stream for progress and
 cancel, a truncated response, arbitrary status codes, and a multipart endpoint
 that echoes back the field names, filename, MIME type, and byte count it
-received. Testing `lx.downloadFile` / `lx.uploadFile` against the public
+received. Testing `lx.network.download` / `lx.network.upload` against the public
 internet imports its flakiness and cannot produce those failure modes at all.
 
 ```bash

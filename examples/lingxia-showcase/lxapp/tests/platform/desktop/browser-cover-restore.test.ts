@@ -162,7 +162,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
       },
       {
         id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal-settings.svg', label: 'Terminal Settings',
-        onActivate() { void lx.shell.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
+        onActivate() { void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
       },
       {
         id: 'terminal', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal',
@@ -170,7 +170,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
       },
       {
         id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
-        onActivate() { lx.showToast({ title: 'sidebar action clicked', icon: 'success' }); },
+        onActivate() { lx.ui.toast({ title: 'sidebar action clicked', icon: 'success' }); },
       },
       {
         id: 'language', placement: 'footer', icon: 'public/sidebar-language.svg', label: 'Language', value: 'English',
@@ -194,7 +194,7 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     const browser = t.automation.browser;
     const platform = await runtimePlatform(app);
 
-    await app.nav.switchTab({ page: 'home' });
+    await app.nav.go({ tab: 'home' });
     await waitForCurrentPage(app, 'home');
     // Web tabs cover this home instance and closing them uncovers the same one.
     const home = await app.page({ name: 'home' });

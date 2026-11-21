@@ -8,8 +8,8 @@ function testIdFromCss(css) {
 
 /**
  * Mirrors the host's dialog watch: `driver` is `lxapp().dialogs`, and
- * `logic` is what the app's Logic does when it calls `lx.showToast`,
- * `lx.showModal` or `lx.showActionSheet`. Watched, a dialog is recorded and
+ * `logic` is what the app's Logic does when it calls `lx.ui.toast`,
+ * `lx.ui.alert` / `confirm` or `lx.ui.actionSheet`. Watched, a dialog is recorded and
  * drawn until the spec queued an answer of its kind, then answered or
  * refused. A drawn modal or sheet returns `{ drawn, close(choice) }`: the
  * user's tap. Unwatched, `"presented"`.
@@ -406,11 +406,11 @@ export function createWorld(options = {}) {
   };
 
   const nav = {
-    async relaunch(options) {
-      navCalls.push(["relaunch", options]);
+    async reset(target, options) {
+      navCalls.push(["reset", { ...target, ...options }]);
       if (blocked) throw new Error("fixture should not reach the app after abort");
       if (relaunchError) throw relaunchError;
-      currentPage = landedPage(options.page);
+      currentPage = landedPage(target.page ?? target.tab);
       stack.splice(0, stack.length, currentPage);
       return currentPage;
     },
@@ -426,10 +426,12 @@ export function createWorld(options = {}) {
       return stack.find((entry) => entry.name === name || entry.instanceId === name)
         ?? { name, path: `pages/${name}/index`, instanceId: null, current: false, inStack: false, ready: false, webviewAttached: false };
     },
-    async to(options) {
-      navCalls.push(["to", options]);
-      currentPage = landedPage(options.page);
-      stack.push(currentPage);
+    async go(target, options) {
+      navCalls.push(["go", { ...target, ...options }]);
+      currentPage = landedPage(target.page ?? target.tab);
+      if (target.tab) stack.splice(0, stack.length, currentPage);
+      else if (options?.replace) stack.splice(stack.length - 1, 1, currentPage);
+      else stack.push(currentPage);
       return currentPage;
     },
     async back(options) {
@@ -579,7 +581,7 @@ export function createWorld(options = {}) {
     block() {
       blocked = true;
     },
-    /** Evaluate Logic scripts against these globals (`lx`, `getCurrentPages`, …). */
+    /** Evaluate Logic scripts against these globals (`lx`, `__lxPageStack`, …). */
     useLogic(globals) {
       logicGlobals = globals;
     },

@@ -1,5 +1,6 @@
 export {
   useLxPage,
+  type LxPage,
   useLxHost,
   useLxLeaveGuard,
   useLxStream,

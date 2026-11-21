@@ -9,13 +9,13 @@ test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' 
 
 test('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
+  covers: ['page.refresh', 'PageSetup.onPullDownRefresh'],
   requires: { args: ['androidDevice'] },
   reason: 'requires Android OS input fixture',
   start: { page: 'pullToRefresh' },
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-PULL-GESTURE-001');
-  defer(async () => { await app.nav.relaunch({ page: 'home' }); });
+  defer(async () => { await app.nav.reset({ page: 'home' }); });
   const page = await app.page<PageContract<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
   const device = androidDevice(t);
   const { width, height } = await device.size();
@@ -28,7 +28,7 @@ test('pull down from the screen to refresh, then refresh again', {
     await expect(page.view.testId('pull-refresh-count')).toHaveText(String(before + 1));
     // The refresh indicator translates the native WebView container; use its
     // screen bounds instead of a DOM click while that container is moving.
-    await device.tapText('lx.stopPullDownRefresh()', 'android.widget.Button');
+    await device.tapText('Finish refresh', 'android.widget.Button');
     await expect.poll(async () => (await page.data()).isRefreshing).toBe(false);
     await expect(page.view.testId('pull-refresh-status')).toContainText('Idle');
   }

@@ -16,7 +16,7 @@ test('open the clipboard demo from the API menu and round-trip text', {
 }, async (t) => {
   const { app } = bindFixture(t, 'UI-CLIPBOARD-001');
 
-  await app.nav.relaunch({ page: 'api' });
+  await app.nav.reset({ page: 'api' });
   const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
   await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
   await api.testId("api-device-section").click();

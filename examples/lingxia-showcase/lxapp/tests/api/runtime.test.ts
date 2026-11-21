@@ -4,26 +4,19 @@ import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 
-test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
-    'lx.getAppInfo',
-    'lx.getDeviceInfo',
-    'lx.getScreenInfo',
-    'lx.getNetworkInfo',
-    'lx.getSystemSetting',
-    'lx.host.getBaseInfo',
-    'lx.host.env',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: ['lx.app.info', 'lx.app.info.role', 'lx.device.info', 'lx.device.screen', 'lx.network.status', 'lx.device.systemSettings', 'lx.host.info', 'lx.host.env'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const app = lx.getAppInfo();
-    const device = lx.getDeviceInfo();
-    const screen = lx.getScreenInfo();
-    const network = await lx.getNetworkInfo();
-    const system = lx.getSystemSetting();
-    const host = lx.host.getBaseInfo();
+    const app = lx.app.info;
+    const device = lx.device.info;
+    const screen = lx.device.screen();
+    const network = await lx.network.status();
+    const system = lx.device.systemSettings();
+    const host = lx.host.info;
     return {
       appId: app.appId,
+      role: app.role,
       device: !!device.osName,
       screen: screen.width > 0 && screen.height > 0 && screen.scale > 0,
       network: typeof network.isConnected === 'boolean' && !!network.networkType,
@@ -34,6 +27,7 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
   });
 
   expect(result.appId).toBe('lingxia-showcase');
+  expect(['control', 'control-surface', 'guest']).toContain(result.role);
   expect(result.device).toBeTruthy();
   expect(result.screen).toBeTruthy();
   expect(result.network).toBeTruthy();
@@ -42,29 +36,23 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
   expect(['dev', 'prod']).toContain(result.env);
 });
 
-test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
-    'lx.onNetworkChange',
-    'lx.onDeviceOrientationChange',
-    'lx.onKeyDown',
-    'lx.onKeyUp',
-    'lx.onWifiConnected',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("register and remove portable runtime listeners", { id: "LOGIC-002", covers: ['lx.network.watch', 'lx.device.orientation.watch', 'lx.device.onKeyDown', 'lx.device.onKeyUp', 'lx.network.wifi.onConnected'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-002");
 
   const result = await app.logic.eval(async ({ lx }) => {
     const callback = () => {};
     const unsubscribes = [
-      lx.onNetworkChange(callback),
-      lx.onDeviceOrientationChange(callback),
-      lx.onKeyDown(callback),
-      lx.onKeyUp(callback),
-      lx.onWifiConnected(callback),
+      lx.network.watch(callback),
+      lx.device.orientation.watch(callback),
+      lx.device.onKeyDown(callback),
+      lx.device.onKeyUp(callback),
+      lx.network.wifi.onConnected(callback),
     ];
     if (unsubscribes.some((off) => typeof off !== 'function')) return false;
     unsubscribes.forEach((off) => off());
     // A spent handle is inert: calling it again must not disturb a later
     // subscription on the same function.
-    const offAgain = lx.onDeviceOrientationChange(callback);
+    const offAgain = lx.device.orientation.watch(callback);
     unsubscribes.forEach((off) => off());
     offAgain();
     return true;
@@ -73,14 +61,17 @@ test("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   expect(result).toBeTruthy();
 });
 
-test("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+test("answer capability questions and keep every capability member present", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const terminalAgrees = ('terminal' in lx) === lx.supports('terminal');
-    const autostartAgrees = !!lx.host.autostart === lx.supports('app.autostart');
-    const notificationAgrees = !!lx.host.notification === lx.supports('app.notification');
-    const bannerAgrees = !!lx.host.banner === lx.supports('app.banner');
+    // Rule 2: present whatever the host supports; a call without support fails E_NOT_SUPPORTED.
+    const present = (api: object) => Object.values(api).every((member) => typeof member === 'function' || typeof member === 'object');
+    const terminalAgrees = present(lx.host.terminal.settings) && present(lx.host.terminal.fonts);
+    const autostartAgrees = present(lx.host.autostart);
+    const notificationAgrees = present(lx.host.notification);
+    const bannerAgrees = present(lx.host.banner)
+      && (lx.supports('app.banner') || await lx.host.banner.dismiss('x').then(() => false, (error: { code?: string }) => error.code === 'E_NOT_SUPPORTED'));
     // Keys and values outside `LxFeature` on purpose: the contract is how it answers them.
     const supports = (value: unknown) => (lx.supports as (value: unknown) => boolean)(value);
     const rejects = (value: unknown) => {
@@ -93,7 +84,7 @@ test("answer capability questions consistently with the optional members", { id:
         'app.cache', 'surface.main', 'surface.float']
         .every(key => supports(key) === false),
       typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-      cacheIsControl: !!lx.host.cache === (lx.host.control !== undefined),
+      cacheIsControl: typeof lx.host.cache.size === 'function',
       surfaceAvailable: typeof lx.surface.openPage === 'function',
       dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
     };
@@ -112,11 +103,11 @@ test("answer capability questions consistently with the optional members", { id:
   });
 });
 
-test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.storage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const key = namespace;
     const before = await storage.info();
     const absentBefore = await storage.has(key);
@@ -154,30 +145,13 @@ test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
   expect(result.sizeRestored).toBeTruthy();
 });
 
-test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
-    'lx.fs',
-    'lx.fs.copy',
-    'lx.fs.exists',
-    'lx.fs.file',
-    'lx.fs.mkdir',
-    'lx.fs.remove',
-    'lx.fs.rename',
-    'lx.fs.write',
-    'lx.env.USER_CACHE_PATH',
-    'lx.env.USER_DATA_PATH',
-    'LxFile.text',
-    'LxFile.json',
-    'LxFile.base64',
-    'LxFile.bytes',
-    'LxFile.arrayBuffer',
-    'LxFile.stat',
-  ], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs', 'lx.fs.copy', 'lx.fs.exists', 'lx.fs.file', 'lx.fs.mkdir', 'lx.fs.remove', 'lx.fs.rename', 'lx.fs.write', 'lx.fs.userCache', 'lx.fs.userData', 'LxFile.text', 'LxFile.json', 'LxFile.base64', 'LxFile.bytes', 'LxFile.arrayBuffer', 'LxFile.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-004");
 
   const result = await app.logic.eval({ timeout: 15_000 }, async ({ lx }, namespace) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
-    const dataPathAvailable = typeof lx.env.USER_DATA_PATH === 'string' && lx.env.USER_DATA_PATH.length > 0;
+    const root = lx.fs.userCache + '/' + namespace;
+    const dataPathAvailable = typeof lx.fs.userData === 'string' && lx.fs.userData.length > 0;
     const source = root + '/source.txt';
     const renamed = root + '/renamed.txt';
     const copied = root + '/copied.txt';
@@ -225,21 +199,21 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
 
 test("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
   id: "LOGIC-007",
-  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.reLaunch'],
+  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.nav.reset'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "LOGIC-007");
   const persistKey = `${namespace}-persist`;
   defer(async () => {
     await app.logic.eval(async ({ lx }, namespace) => {
-      const storage = lx.getStorage();
+      const storage = lx.storage();
       const keys = await storage.list(namespace);
       for (const key of keys) await storage.delete(key);
     }, namespace).catch(() => undefined);
   });
 
   const first = await app.logic.eval(async ({ lx }, namespace, persistKey) => {
-    const storage = lx.getStorage();
+    const storage = lx.storage();
     const ns = namespace;
     await storage.set(ns + '-a', 1);
     await storage.set(ns + '-b', 2);
@@ -266,14 +240,14 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(first.afterClear).toEqual([]);
   expect(first.persistGone).toBe(null);
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home', 30_000);
-  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.getStorage().get(persistKey), persistKey);
+  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.storage().get(persistKey), persistKey);
   expect(persisted).toEqual({ kept: true });
 
   const oversized: Caught = await app.logic.eval(async ({ lx }, namespace) => {
     try {
-      await lx.getStorage().set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
+      await lx.storage().set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
       return { ok: true };
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
@@ -282,7 +256,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   }, namespace);
   expect(oversized.ok).toBeFalsy();
   expect(oversized.code).toBe('E_OUT_OF_RANGE');
-  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.getStorage().get(namespace + '-big'), namespace);
+  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.storage().get(namespace + '-big'), namespace);
   expect(leftover == null).toBeTruthy();
 });
 
@@ -295,7 +269,7 @@ test("read directories, LxFile.exists/path, and deny escaped paths", {
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
     const files = lx.fs;
-    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const root = lx.fs.userCache + '/' + namespace;
     const child = root + '/child.txt';
     await files.mkdir(root, { recursive: true });
     try {

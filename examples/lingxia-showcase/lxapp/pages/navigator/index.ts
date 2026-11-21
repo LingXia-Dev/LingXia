@@ -1,7 +1,11 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: {},
-
-  onLoad: function (options) {
-    console.log('Navigator page onLoad options:', options);
-  }
+  setup() {
+    return {
+      onLoad(options) {
+        console.log('Navigator page onLoad options:', options);
+      },
+    };
+  },
 });

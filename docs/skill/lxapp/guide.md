@@ -55,50 +55,60 @@ export default {
 
 - `lingxia build` builds into `dist/`; `lingxia build --release --package`
   produces the publish archive.
-- A View reaching for `lx.*`, or calling an action `Page({})` never defined,
+- A View reaching for `lx.*`, or calling an action its page never defined,
   fails the build. Other findings are warnings: the artifact is written, the
   code is still wrong.
 
-## Logic — `Page({})`
+## Logic — `definePage`
 
-`Page` is a runtime global; do not import it.
+A page's Logic file default-exports `definePage(...)` from `@lingxia/types/page`.
 
 ```ts
-// pages/home/index.ts
-Page({
-  data: {
-    count: 0,
-    message: "Hello",
-  },
+// pages/order/index.ts
+import { definePage, type } from '@lingxia/types/page';
 
-  onLoad: function (options) {
-    // Called when page is created. `options` contains URL query params.
-    console.log("query:", options);
-  },
-
-  onShow: function () {
-    // Called every time the page becomes visible.
-  },
-
-  // Action functions — callable from View
-  increment: function () {
-    this.setData({ count: this.data.count + 1 });
-  },
-
-  updateMessage: function (params) {
-    // params is whatever the View passes
-    this.setData({ message: params?.text || "" });
+export default definePage({
+  params: type<{ id: string }>(),                // what onLoad receives
+  result: type<{ status: 'open' | 'done' }>(),   // what close(value) returns to the opener
+  data: { order: null as Order | null, saving: false },
+  setup(page) {
+    let timer: number | undefined;               // private to this instance
+    return {
+      async onLoad({ id }) {
+        const res = await fetch(`/orders/${id}`, { signal: page.signal });
+        const order = (await res.json()) as Order;
+        page.update(d => { d.order = order; });
+      },
+      onUnload() { clearInterval(timer); },
+      actions: {                                 // everything the View may call
+        async markDone() {
+          page.update(d => { d.saving = true; });
+          await fetch(`/orders/${page.params.id}/done`, { method: 'POST', signal: page.signal });
+          await page.close({ status: 'done' });
+        },
+      },
+    };
   },
 });
 ```
 
-| API | Description |
+- `params`, `result`, `messages`, `data`, `setup` are all optional; `definePage({ data })` is a static page.
+- `messages: type<{ in: A; out: B }>()` types the line to the opener: the
+  opener's handle sends `A` and receives `B`, `page.opener` the reverse.
+  Messages sent before the other side's first `onMessage` wait for it.
+- `setup(page)` runs once per instance, before `onLoad`, and is synchronous. Per-instance state lives in its closure, never in module scope.
+- It returns lifecycle hooks under their names and `actions`, nothing else: a function beside `actions` or a hook a case away (`onUnLoad`) is a type error and throws.
+- Actions take zero or one JSON argument and are Promises to the View. An `async *` action is a stream ([bridge](./bridge.md)).
+
+| `page.` | Description |
 | --- | --- |
-| `this.data` | Current state, read-only. Change it with `setData()` / `setPath()`. |
-| `this.setData(patch)` | Merge top-level keys into `data` and replicate to View. Nested writes: `setPath` (checked), `setDataPath` (unchecked). |
-| `await this.flush()` | Resolves once every `setData` so far reached the View; rejects if the page unloads first or a write was discarded. |
-| `this.signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: this.signal })`. |
-| `this.yourMethod()` | Any other member is a page method. A name differing from a hook only in case (`onload`) is rejected. |
+| `data` | Current state, deep-readonly. |
+| `update(d => { d.count += 1; })` | The one way to change data. `page.data` changes at once; the View gets the changes once per turn. The recipe is synchronous and returns nothing: `await` first, then update. Throws inside another `update`; ignored after unload. |
+| `await flush()` | Resolves once every update so far reached the View; rejects if the page unloads first or a write was discarded. |
+| `params`, `name` | This instance's params, its page name. |
+| `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
+| `opener`, `surface` | The page that pushed this one, or this page's surface; absent otherwise. |
 
 ### Lifecycle
 
@@ -106,76 +116,63 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 | Hook | When it fires |
 | --- | --- |
-| `onLoad(options)` | Entering the page, with its query. |
+| `onLoad(options)` | Entering the page, with its query: each value keeps the JSON type it was passed with (`{ count: 3 }` arrives as `3`); validate what arrives from outside (an app link): it is usually strings. Non-string values are limited to 8 KB. |
 | `onShow()` | Becoming visible, on entry and every return. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
-| `onUnload()` | Left the stack (`navigateBack`, `redirectTo`, a `switchTab` that drops it). |
+| `onUnload()` | Left the stack (`lx.nav.back`, a replace, a tab switch that drops it, `lx.nav.reset`). |
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
-  `lx.getStorage()` or `App({})`.
+  `lx.storage()` or `App({})`.
 - **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
   desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
   and the next show brings `onShow` and a new `onReady`.
-- `redirectTo` onto the current page keeps the instance and calls `onLoad`
-  again.
-- Every `navigateTo` is its own instance, so `detail?id=1 → detail?id=2`
-  stacks. Tab pages are singletons. Rejections carry `error.data.reason`:
-  `"duplicate_route"` or `"stack_full"` (ten pages).
-- `await lx.navigateBack()` pops one; `lx.navigateBack({ delta: 2 })` pops more.
+- Replacing the current page with its own route keeps the instance and calls
+  `onLoad` again.
+- Every push is its own instance, so `detail {id: 1} → detail {id: 2}`
+  stacks. Tab pages are singletons. Refusals carry `error.data.reason`:
+  `"duplicate_route"` (a tab already on the stack) or `"stack_full"` (ten pages).
+- `await lx.nav.back()` pops one; `lx.nav.back(2)` pops more, stopping at the root.
 
 ### What resets
 
-Module scope (outside `Page({})`) is evaluated once per app session and is
-shared by every live instance of the route:
+Module scope is evaluated once per app session and is shared by every live
+instance of the page; `setup`'s closure belongs to one instance:
 
 ```ts
-let hits = 0;          // module scope: shared by every instance, never resets
+let hits = 0;               // module scope: every instance, never resets
 
-Page({
-  data: { count: 0 },  // instance scope: fresh on every entry
-  onLoad() {
-    hits += 1;         // counts entries across ALL instances
+export default definePage({
+  data: { count: 0 },       // fresh on every entry
+  setup(page) {
+    let opened = Date.now(); // this instance only
+    return { onLoad() { hits += 1; } };
   },
 });
 ```
 
 | State | Container | Lifetime |
 | --- | --- | --- |
-| One entry (form input, timers, request handles) | `data` / `this.xxx` | The page instance |
-| Every instance of the route (constants, caches) | Module scope | Until the lxapp restarts |
-| Must survive restarts | `lx.getStorage()` | Persistent |
+| One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
+| Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
+| Must survive restarts | `lx.storage()` | Persistent |
 
 Never keep per-entry state in module scope.
 
-### Private helpers
+### Types for the View
 
-A method starting with `_` stays private; every other method is a public
-action the View can call (`onCheckout` too). Name the `data` shape by
-annotating `data`, not with a type argument on `Page`, so `this` keeps your
-methods:
-
-```ts
-Page({
-  data: { total: 0 } as PageData,
-
-  _calculateTotal(items) {
-    return items.reduce((sum, item) => sum + item.price, 0);
-  },
-
-  checkout(params) {
-    this.setData({ total: this._calculateTotal(params?.items ?? []) });
-  },
-});
-```
+The page's type is its contract: `View<typeof page>`, `useLxPage<typeof page>()`
+and `t.app.page<typeof page>()` read `data` and `actions` from
+`import type page from './index.ts'`. That file must be in the View's
+tsconfig. A shared `PageContract<Data, Actions>` still works.
 
 ## View
 
 A View is a React component or an HTML module entry. It renders `data`
 and calls `actions`; it never mutates `data`.
 
-The page mounts once its first state (the `Page({ data })` defaults) has
+The page mounts once its first state (the `definePage({ data })` defaults) has
 arrived, so `data` is whole from the first render. Type `PageData` and
 `PageActions` fields as **required**; use `?:` only for a field filled later.
 Never write `actions.foo?.()`. If Logic fails to deliver state, the page shows
@@ -183,7 +180,7 @@ a panel naming itself.
 
 | Hook | Returns | Changes |
 |---|---|---|
-| `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and public methods | on every `setData` |
+| `useLxPage<typeof page>()` | `{ data, actions }` — this page's Logic state and actions | on every update |
 | `useLxHost()` | [host facts](#host-facts) | only when a field changes |
 | `useLxLeaveGuard(dirty, onRequest)` | nothing — [guards leaving](#leaving-a-page-with-unsaved-changes) while `dirty` | — |
 
@@ -192,7 +189,7 @@ Any component may call either. Geometry is CSS, not a hook:
 
 `data` is typed `DeepReadonly<PageData>`. In a dev session a write throws.
 Keep what the user edits as View state and submit it with an action; Logic's
-`setData` brings the result back:
+`page.update` brings the result back:
 
 ```tsx
 const { data, actions } = useLxPage<PageData, PageActions>();
@@ -290,35 +287,35 @@ payload. Native component callbacks and their payload shapes:
 ### `lx.on*` subscriptions
 
 Every `lx.on*` call returns its unsubscribe function, the only way to cancel
-it. Keep it on the page instance (never in `data`) and call it in `onUnload`:
+it. Keep it in `setup`'s closure (never in `data`) and call it in `onUnload`:
 
 ```ts
-Page({
+export default definePage({
   data: { online: true },
-
-  onLoad() {
-    this._offNetwork = lx.onNetworkChange((info) => {
-      this.setData({ online: info.isConnected });
-    });
-  },
-
-  onUnload() {
-    this._offNetwork?.();
-    this._offNetwork = null;
+  setup(page) {
+    let offNetwork: (() => void) | undefined;
+    return {
+      onLoad() {
+        offNetwork = lx.network.watch((info) => {
+          page.update(d => { d.online = info.isConnected; });
+        });
+      },
+      onUnload() { offNetwork?.(); },
+    };
   },
 });
 ```
 
-The same applies to `onWifiConnected`, `onDeviceOrientationChange`,
-`onKeyDown`, `onKeyUp`, `lx.surface.watchContext`, `onUpdateReady`,
+The same applies to `lx.network.wifi.onConnected`, `lx.device.orientation.watch`,
+`onKeyDown`, `onKeyUp`, `onUpdateReady`,
 `onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
 `onClose`. A route can be open more than once, so a leak multiplies per
-instance. Work started with `this.signal` needs no teardown; ignore its
+instance. Work started with `page.signal` needs no teardown; ignore its
 `AbortError`.
 
 ## Action shapes
 
-| Logic method shape | Use from View | Typical use |
+| Action shape | Use from View | Typical use |
 | --- | --- | --- |
 | function / async function | `actions.foo(...)` | buttons, navigation, one-shot work |
 | async generator | `useLxStream(actions.foo, ...)` | progress, streaming output |
@@ -332,24 +329,21 @@ The optional lxapp-wide singleton, in one root file (conventionally `app.ts`),
 created once at boot and shared by every page:
 
 ```ts
+// shared/session.ts — app state is a module the App and pages import
+export const session = { userId: '', theme: 'light' as 'light' | 'dark' };
+```
+
+```ts
 // app.ts
-interface AppGlobals {
-  userId: string;
-  theme: 'light' | 'dark';
-}
+import { session } from './shared/session';
 
 App({
-  globalData: <AppGlobals>{
-    userId: '',
-    theme: 'light',
-  },
-
   async onLaunch(options) {
     // Once per worker. AppLaunchOptions: path?, query?, scene?, url?, referrerInfo?
     // Cold AppLink: scene 8003 + the original `url` here. referrerInfo when
     // opened by another lxapp.
-    const stored = await lx.getStorage().get<string>('userId');
-    if (stored) this.globalData.userId = stored;
+    const stored = await lx.storage().get<string>('userId');
+    if (stored) session.userId = stored;
   },
 
   onShow(args) {
@@ -369,19 +363,25 @@ App({
 
 ```ts
 // pages/profile/index.ts
-Page({
+import { session } from '../../shared/session';
+
+export default definePage({
   data: { userId: '' },
-  onLoad() {
-    const app = getApp<AppInstance & { globalData: AppGlobals }>();
-    if (app) this.setData({ userId: app.globalData.userId });
-  },
+  setup: page => ({
+    onLoad() {
+      page.update(d => { d.userId = session.userId; });
+    },
+  }),
 });
 ```
 
-- `globalData` is not reactive; push changes to a page with `setData`.
-- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`.
+- There is no `getApp()` or `globalData`; `App({ globalData })` throws. Module
+  state is not reactive; push changes to a page with `page.update`.
+- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
+  `Page.onLoad` waits for an `async onLaunch` to settle.
   Foregrounding: `App.onShow` → top page's `onShow`.
-- `getCurrentPages()` returns the stack, top last.
+- There is no `getCurrentPages()`; a page reaches itself through `page`, and
+  another page through the handle `lx.nav.go` returned.
 
 ## Tab bar and page chrome
 
@@ -427,7 +427,7 @@ host `surfaces`.
   extends behind it; omit `backgroundColor` and `dividerColor`).
 - Style keys are optional. Mobile uses them as declared (no OS dark mode by
   itself); desktop draws the sidebar from the host `theme` and ignores
-  `backgroundColor`. `lx.tabBar.update()` cannot change style.
+  `backgroundColor`. `lx.app.tabBar.update()` cannot change style.
 - A phone shows the first four items plus **More**; order items by use.
   Desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
@@ -445,22 +445,34 @@ URLs, `file:` URLs, `..`, and absolute paths are rejected. Download remote art
 first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
-const { uri } = await lx.downloadFile({ url: brand.logoUrl }).result;
-await lx.tabBar.update({
+const { uri } = await lx.network.download(brand.logoUrl).result;
+await lx.app.tabBar.update({
   items: [{ index: 0, text: brand.shortName, iconPath: uri }],
 });
 ```
 
 `iconPath: null` restores the declared icon.
 
-### Switching tabs
+### Navigating
 
-`navigateTo` and `redirectTo` reject tab pages; use `lx.switchTab`. Navigation
-always takes a page name ([lx-api](./lx-api.md#find-a-method-or-type)).
+`lx.nav` takes a target naming one destination: `{ page, params? }`,
+`{ tab }`, `{ app, page?, params? }` or `{ url }`. Names come from
+`lxapp.json`; `params` is checked against what the page declares.
 
 ```ts
-lx.switchTab({ page: 'profile' }); // page name from lxapp.json
+const order = lx.nav.go({ page: 'order', params: { id } }); // handle, at once
+await order.opened;                          // on screen; rejects if it could not open
+const r = await order.result;                // { status: 'ok', value } | { status: 'canceled', reason }
+
+await lx.nav.go({ page: 'login' }, { replace: true }); // inherits this page's opener and result
+await lx.nav.go({ tab: 'profile' });
+await lx.nav.reset({ page: 'home' });        // new stack; discarded pages' results settle canceled
+await lx.nav.go({ app: 'lingxia-chat', page: 'chat' });
+await lx.nav.leaveApp();                     // back to the lxapp that opened this one
 ```
+
+A tab page cannot replace another page. `{ url }` opens the in-app browser and
+does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
 ### Navigation bar
 
@@ -500,7 +512,7 @@ changes — no Logic needed. Other manifest strings are not localizable.
 Resolution: the exact tag; else an entry of the same language, matching
 script first, then region (a Chinese region implies its script, so
 `zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else `default`.
-Key order does not matter. A runtime value from `lx.tabBar.update` / `lx.navigationBar.update`
+Key order does not matter. A runtime value from `lx.app.tabBar.update` / `page.navigationBar.update`
 wins until reset with `null`, so do not also translate the declared text
 through those calls. The map form needs a runtime that has it: raise
 `minRuntime` when you adopt it.
@@ -508,7 +520,7 @@ through those calls. The map form needs a runtime that has it: raise
 The language is the host's display language. A host app that keeps its own
 language setting must forward it with
 `lingxia::app::set_display_language_preference` (or
-`lx.host.control.displayLanguage.setPreference` from Logic); otherwise the
+`lx.host.displayLanguage.setPreference` from Logic); otherwise the
 page content follows the app's setting and the declared chrome text does not.
 
 ### Leaving a page with unsaved changes
@@ -537,25 +549,25 @@ release();
 - Several guards on one page are independent: the page is held while any is
   live, and all must return `true` to leave.
 - While a request is being answered, further back/home presses are ignored.
-- Not guarded: programmatic navigation (`lx.navigateBack`, `redirectTo`,
-  `reLaunch`, `<lx-navigator>`), tab switches, closing the lxapp from the
+- Not guarded: programmatic navigation (`lx.nav`, `<lx-navigator>`), tab switches, closing the lxapp from the
   capsule, and the root page (nothing to pop).
 - The guard belongs to the current document: a reload, or leaving the stack,
   clears it.
 
 ### Runtime updates
 
-`lx.tabBar.update()` changes a declared tab bar (it rejects without one);
-`lx.navigationBar.update()` patches the current page's bar. Each call is one
+`lx.app.tabBar.update()` changes a declared tab bar (it rejects without one);
+`page.navigationBar.update()` patches that page's bar, even while another
+page is on top. Each call is one
 transaction: `null` resets a field, omitted fields stay, an invalid patch
 applies nothing.
 
 ```ts
-await lx.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
-await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
-await lx.tabBar.update({ visibility: 'hidden' });   // or 'auto'
-await lx.navigationBar.update({ title: 'Account' });
-await lx.navigationBar.update({ style: null, homeButton: 'auto' });
+await lx.app.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
+await lx.app.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
+await lx.app.tabBar.update({ visibility: 'hidden' });   // or 'auto'
+await page.navigationBar.update({ title: 'Account' });
+await page.navigationBar.update({ style: null, homeButton: 'auto' });
 ```
 
 ### Appearance
@@ -611,7 +623,7 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Mutating `data` in the View, or keeping business state in `useState`/`ref`.
 - Touching the DOM from Logic; Logic has no DOM.
 - Expecting `_`-prefixed helpers or hooks to be actions.
-- Expecting `App({}).globalData` changes to re-render.
-- `navigateTo` / `redirectTo` on a tab page.
+- Expecting changes to shared module state to re-render.
+- Pushing a tab page instead of `lx.nav.go({ tab })`.
 - Dropping the function an `lx.on*` call returns.
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

@@ -1,5 +1,6 @@
-//! Host-owned recovery chrome over a failed page: a message and, when the core offers one,
-//! a Retry or Reload button. Page content cannot replace it.
+//! Host-owned recovery chrome over a failed page: a message, Back when the page has
+//! somewhere to go, and the core's Retry, Reload or Keep waiting. Page content cannot
+//! replace it.
 use crate::view;
 use lingxia_view::session::host::{Failure, RecoveryAction, RecoveryMessage};
 use std::cell::RefCell;
@@ -15,13 +16,16 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_PUSHBUTTON, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetParent, HMENU,
-    HWND_TOP, IDC_ARROW, LoadCursorW, RegisterClassW, SWP_NOACTIVATE, SendMessageW, SetWindowPos,
-    SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_PAINT, WM_SETFONT,
-    WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW, RegisterClassW, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_COMMAND, WM_ERASEBKGND, WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{HSTRING, w};
 
 const BUTTON_ID: usize = 1;
+const BACK_ID: usize = 2;
+const BACK_REFUSED: u32 = WM_APP + 1;
 /// Logical pixels.
 const PADDING: f32 = 16.0;
 const TEXT_WIDTH: f32 = 360.0;
@@ -30,10 +34,14 @@ const BUTTON: [f32; 2] = [140.0, 32.0];
 
 /// Localized chrome text, the key the platform localizer knows and its English fallback.
 pub(crate) type Text<'a> = &'a dyn Fn(&str, &str) -> String;
+/// Leave the failed page; false when it could not, which re-enables the button.
+pub(crate) type Back = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
 
 struct Panel {
     window: isize,
     button: isize,
+    back: isize,
+    leave: Option<Back>,
     message: Vec<u16>,
     covers: bool,
     dark: bool,
@@ -48,7 +56,13 @@ thread_local! {
 }
 
 /// Show `failure`'s chrome over `page`, or clear it with `None`.
-pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Text) {
+pub(crate) fn show(
+    page: isize,
+    failure: Option<&Failure>,
+    dark: bool,
+    leave: Option<Back>,
+    text: Text,
+) {
     clear(page);
     let Some(failure) = failure else { return };
     let message = match failure.message {
@@ -95,7 +109,8 @@ pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Tex
             WINDOW_EX_STYLE(0),
             class,
             None,
-            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+            // Shown once its buttons are in: a reader never meets the message alone.
+            WS_CHILD | WS_CLIPSIBLINGS,
             0,
             0,
             0,
@@ -124,24 +139,24 @@ pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Tex
             0,
             w!("Segoe UI"),
         );
-        let button = action
-            .and_then(|label| {
-                CreateWindowExW(
-                    WINDOW_EX_STYLE(0),
-                    w!("BUTTON"),
-                    &HSTRING::from(label),
-                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-                    0,
-                    0,
-                    0,
-                    0,
-                    Some(window),
-                    Some(HMENU(BUTTON_ID as *mut _)),
-                    Some(instance.into()),
-                    None,
-                )
-                .ok()
-            })
+        // The window's text is the message, so screen readers and automation read it.
+        let _ = SetWindowTextW(window, &HSTRING::from(message.as_str()));
+        let make = |label: String, id: usize| {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("BUTTON"),
+                &HSTRING::from(label),
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+                0,
+                0,
+                0,
+                0,
+                Some(window),
+                Some(HMENU(id as *mut _)),
+                Some(instance.into()),
+                None,
+            )
+            .ok()
             .map_or(0, |button| {
                 SendMessageW(
                     button,
@@ -150,13 +165,22 @@ pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Tex
                     Some(LPARAM(1)),
                 );
                 button.0 as isize
-            });
+            })
+        };
+        let back = if leave.is_some() {
+            make(text("gpu.back", "Go back"), BACK_ID)
+        } else {
+            0
+        };
+        let button = action.map_or(0, |label| make(label, BUTTON_ID));
         PANELS.with(|panels| {
             panels.borrow_mut().insert(
                 page,
                 Panel {
                     window: window.0 as isize,
                     button,
+                    back,
+                    leave,
                     message: message.encode_utf16().collect(),
                     covers: failure.covers_page(),
                     dark,
@@ -167,6 +191,12 @@ pub(crate) fn show(page: isize, failure: Option<&Failure>, dark: bool, text: Tex
         });
     }
     layout(page);
+    if let Some(window) = PANELS.with(|panels| panels.borrow().get(&page).map(|p| p.window)) {
+        // SAFETY: this thread's panel.
+        unsafe {
+            let _ = ShowWindow(HWND(window as *mut _), SW_SHOWNOACTIVATE);
+        }
+    }
     if failure.covers_page()
         && let Some(page) = view::page_for(page)
     {
@@ -210,11 +240,17 @@ fn scale(page: isize) -> f32 {
 
 /// Fit the panel to its page: the whole page when it covers it, else a bottom banner.
 pub(crate) fn layout(page: isize) {
-    let Some((window, button, covers, font, mut message)) = PANELS.with(|panels| {
-        panels
-            .borrow()
-            .get(&page)
-            .map(|p| (p.window, p.button, p.covers, p.font, p.message.clone()))
+    let Some((window, button, back, covers, font, mut message)) = PANELS.with(|panels| {
+        panels.borrow().get(&page).map(|p| {
+            (
+                p.window,
+                p.button,
+                p.back,
+                p.covers,
+                p.font,
+                p.message.clone(),
+            )
+        })
     }) else {
         return;
     };
@@ -243,7 +279,12 @@ pub(crate) fn layout(page: isize) {
     let text_height = measured.bottom;
     let gap = px(12.0);
     let [bw, bh] = BUTTON.map(px);
-    let stack = text_height + if button != 0 { gap + bh } else { 0 };
+    let stack = text_height
+        + if button != 0 || back != 0 {
+            gap + bh
+        } else {
+            0
+        };
     let panel_height = if covers {
         height
     } else {
@@ -266,11 +307,14 @@ pub(crate) fn layout(page: isize) {
             panel_height,
             SWP_NOACTIVATE,
         );
-        if button != 0 {
+        // One button centres; with two, Back sits on the leading side.
+        let row: Vec<isize> = [back, button].into_iter().filter(|b| *b != 0).collect();
+        let row_width = row.len() as i32 * bw + (row.len() as i32 - 1).max(0) * gap;
+        for (i, button) in row.into_iter().enumerate() {
             let _ = SetWindowPos(
                 HWND(button as *mut _),
                 None,
-                (width - bw) / 2,
+                (width - row_width) / 2 + i as i32 * (bw + gap),
                 top + text_height + gap,
                 bw,
                 bh,
@@ -306,6 +350,14 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPA
             retry(hwnd);
             LRESULT(0)
         }
+        WM_COMMAND if wparam.0 & 0xffff == BACK_ID => {
+            back(hwnd);
+            LRESULT(0)
+        }
+        BACK_REFUSED => {
+            back_refused(hwnd);
+            LRESULT(0)
+        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
@@ -335,15 +387,64 @@ fn retry(window: HWND) {
     }
 }
 
+fn back(window: HWND) {
+    let Some(page) = page_of_panel(window) else {
+        return;
+    };
+    let Some((button, leave)) = PANELS.with(|panels| {
+        panels
+            .borrow()
+            .get(&page)
+            .and_then(|panel| Some((panel.back, panel.leave.clone()?)))
+    }) else {
+        return;
+    };
+    // SAFETY: this thread's button.
+    let _ = unsafe { EnableWindow(HWND(button as *mut _), false) };
+    // Off this thread: leaving lays out and captures this page's window, which waits on
+    // this thread, so a call from its click handler would block until those time out.
+    let panel = window.0 as isize;
+    let _ = std::thread::Builder::new()
+        .name("lingxia-gpu-recovery-back".into())
+        .spawn(move || {
+            if !leave() {
+                // SAFETY: posting to a window that may be gone fails harmlessly.
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(panel as *mut _)),
+                        BACK_REFUSED,
+                        WPARAM(0),
+                        LPARAM(0),
+                    )
+                };
+            }
+        });
+}
+
+/// Leaving failed: the panel still shows, so its Back works again.
+fn back_refused(window: HWND) {
+    let Some(page) = page_of_panel(window) else {
+        return;
+    };
+    if let Some(button) = PANELS.with(|panels| panels.borrow().get(&page).map(|p| p.back)) {
+        // SAFETY: this thread's button.
+        let _ = unsafe { EnableWindow(HWND(button as *mut _), true) };
+    }
+}
+
 fn paint(hwnd: HWND) {
     let Some(page) = page_of_panel(hwnd) else {
         return;
     };
-    let Some((mut message, dark, font, button)) = PANELS.with(|panels| {
-        panels
-            .borrow()
-            .get(&page)
-            .map(|p| (p.message.clone(), p.dark, p.font, p.button))
+    let Some((mut message, dark, font, buttons)) = PANELS.with(|panels| {
+        panels.borrow().get(&page).map(|p| {
+            (
+                p.message.clone(),
+                p.dark,
+                p.font,
+                p.button != 0 || p.back != 0,
+            )
+        })
     }) else {
         return;
     };
@@ -379,7 +480,7 @@ fn paint(hwnd: HWND) {
             DT_CALCRECT | DT_CENTER | DT_WORDBREAK,
         );
         let gap = px(12.0);
-        let stack = measured.bottom + if button != 0 { gap + px(BUTTON[1]) } else { 0 };
+        let stack = measured.bottom + if buttons { gap + px(BUTTON[1]) } else { 0 };
         let top = (client.bottom - stack) / 2;
         let left = (width - text_width) / 2;
         let mut area = RECT {

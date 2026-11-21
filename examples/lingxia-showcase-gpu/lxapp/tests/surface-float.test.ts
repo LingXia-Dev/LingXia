@@ -24,9 +24,9 @@ test('a float outlives its opener navigating away and stays above a page dialog'
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
-    await app.nav.to({ page: 'motion-target' });
+    await app.nav.go({ page: 'motion-target' });
     await app.nav.back();
-    expect(await app.logic.eval(({ lx }, key) => lx.surface.getByKey(key)?.alive === true, key)).toBe(true);
+    expect(await app.logic.eval(({ lx }, key) => lx.surface.get(key)?.alive === true, key)).toBe(true);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
     const float = (await device.nodes()).filter(node => /:id\/surface-(query|show-count|hide-count|lifecycle)$/.test(node.resource));
@@ -49,7 +49,7 @@ test('a float outlives its opener navigating away and stays above a page dialog'
       expect(same(before[i], after[i]), `float pixel ${i} unchanged by the page dialog`).toBe(true);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.getByKey(key);
+      const surface = lx.surface.get(key);
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }
@@ -113,7 +113,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
-  const os = await app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'ios') t.skip('the iOS capture composites windows itself');
   const shot = async () => decodePng((await rawAutomation().lxapps.screenshot()).base64);
   const key = `surface-float-shot-${Date.now()}`;
@@ -139,7 +139,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
     expect(card.some(v => v > 60), `the card's GPU page is drawn: ${card}`).toBe(true);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.getByKey(key);
+      const surface = lx.surface.get(key);
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }

@@ -5,8 +5,11 @@ import type {
   CompressVideoOptions,
   DownloadProgressEvent,
   Lx,
+  PickedFile,
   UploadOptions,
   UploadProgressEvent,
+  DownloadTask,
+  DownloadsDownloadResult,
 } from "../src/index.js";
 
 type Assert<T extends true> = T;
@@ -15,15 +18,13 @@ type Extends<A, B> = A extends B ? true : false;
 declare const lx: Lx;
 
 const rawUpload: UploadOptions = {
-  url: "https://example.com/put",
-  filePath: "lx://temp/clip.mp4",
+  file: "lx://temp/clip.mp4",
   bodyMode: "raw",
   mimeType: "video/mp4",
 };
 
 const multipartUpload: UploadOptions = {
-  url: "https://example.com/post",
-  filePath: "lx://temp/clip.mp4",
+  file: "lx://temp/clip.mp4",
   name: "file",
   fileName: "clip.mp4",
   formData: { note: "spec" },
@@ -34,24 +35,21 @@ void multipartUpload;
 
 // @ts-expect-error raw upload cannot carry a multipart field name
 const rawWithName: UploadOptions = {
-  url: "https://example.com/put",
-  filePath: "lx://temp/clip.mp4",
+  file: "lx://temp/clip.mp4",
   bodyMode: "raw",
   name: "file",
 };
 
 // @ts-expect-error raw upload cannot carry formData
 const rawWithForm: UploadOptions = {
-  url: "https://example.com/put",
-  filePath: "lx://temp/clip.mp4",
+  file: "lx://temp/clip.mp4",
   bodyMode: "raw",
   formData: { note: "spec" },
 };
 
 // @ts-expect-error raw upload cannot carry fileName
 const rawWithFileName: UploadOptions = {
-  url: "https://example.com/put",
-  filePath: "lx://temp/clip.mp4",
+  file: "lx://temp/clip.mp4",
   bodyMode: "raw",
   fileName: "clip.mp4",
 };
@@ -77,9 +75,8 @@ void mixed;
 
 async function downloadCorrelation(): Promise<void> {
   const persisted = await lx
-    .downloadFile({
-      url: "https://example.com/a.bin",
-      filePath: "lx://userdata/a.bin",
+    .network.download("https://example.com/a.bin", {
+      to: "lx://userdata/a.bin",
     })
     .result;
   const filePath: AppDownloadFilePath = persisted.uri;
@@ -88,7 +85,7 @@ async function downloadCorrelation(): Promise<void> {
   void persistedResult;
   type PersistedIsDurable = Assert<typeof persisted extends { storage: 'userdata' } ? true : false>;
 
-  const temporary = await lx.downloadFile({ url: "https://example.com/a.bin" }).result;
+  const temporary = await lx.network.download("https://example.com/a.bin").result;
   const uri: string = temporary.uri;
   void uri;
   const tempResult: AppTempDownloadResult = temporary;
@@ -96,23 +93,40 @@ async function downloadCorrelation(): Promise<void> {
   type TemporaryIsEphemeral = Assert<typeof temporary extends { storage: 'temp' } ? true : false>;
 }
 
-async function pickFileResults(): Promise<void> {
-  const single = await lx.pickFile();
+function transferShapes(): void {
+  lx.network.upload("https://example.com/put", { file: "lx://temp/clip.mp4" });
+  const downloads: DownloadTask<DownloadsDownloadResult> = lx.network.download("https://example.com/a.bin", {
+    to: "downloads",
+    suggestedName: "a.bin",
+  });
+  void downloads;
+  // @ts-expect-error the URL is the positional subject
+  lx.network.download({ url: "https://example.com/a.bin" });
+  // @ts-expect-error suggestedName names a file in Downloads only
+  lx.network.download("https://example.com/a.bin", { to: "lx://userdata/a.bin", suggestedName: "a.bin" });
+  // @ts-expect-error upload needs the file
+  lx.network.upload("https://example.com/put", {});
+}
+
+async function pickFileShapes(): Promise<void> {
+  const single = await lx.pick.file();
   if (single.status !== 'canceled') {
-    const only: string = single.uri;
-    const name: string = single.name;
-    void name;
+    const only: [PickedFile] = single.files;
+    // @ts-expect-error pick.file returns exactly one file
+    single.files[1].path;
     void only;
   }
 
-  const many = await lx.pickFiles();
+  const many = await lx.pick.files();
   if (many.status !== 'canceled') {
-    const first: string = many.files[0].uri;
-    const names: string[] = many.files.map((file) => file.name);
-    const rest: string[] = names.slice(1);
+    const first: PickedFile = many.files[0];
+    const rest: PickedFile[] = many.files.slice(1);
     void first;
     void rest;
   }
+
+  // @ts-expect-error `multiple` is gone: pick.file is one, pick.files is many
+  await lx.pick.file({ multiple: true });
 }
 
 function progressEvents(
@@ -144,7 +158,7 @@ type CompletedHasResult = Assert<
 
 export type ExclusiveOptionsGate = [
   typeof downloadCorrelation,
-  typeof pickFileResults,
+  typeof pickFileShapes,
   typeof progressEvents,
   CompletedHasResult,
 ];

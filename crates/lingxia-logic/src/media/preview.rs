@@ -84,7 +84,7 @@ enum PreviewCompletion {
 impl AbortListener {
     fn attach(ctx: &JSContext, signal: JSObject) -> JSResult<(Self, oneshot::Receiver<()>)> {
         let add_event_listener = signal.get::<_, JSFunc>("addEventListener").map_err(|_| {
-            js_invalid_parameter_error("previewMedia signal must be an AbortSignal")
+            js_invalid_parameter_error("media.preview signal must be an AbortSignal")
         })?;
 
         let (abort_tx, abort_rx) = oneshot::channel();
@@ -112,8 +112,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn previewMedia(
+        namespace MediaApi = crate::media::media_namespace(ctx)?;
+        fn preview(
             ts_params = "options: PreviewMediaOptions",
             ts_return = "PreviewMediaHandle"
         ) = preview_media;
@@ -210,7 +210,7 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                     continue;
                 };
                 let Ok(payload) = serde_json::from_str::<RawChangePayload>(&data) else {
-                    log::warn!("previewMedia change payload is not valid JSON: {data}");
+                    log::warn!("media.preview change payload is not valid JSON: {data}");
                     continue;
                 };
                 if payload.index < 0
@@ -273,7 +273,7 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let aborted = matches!(&outcome, PreviewCompletion::Aborted);
         let result: JSResult<JSObject> = match outcome {
             PreviewCompletion::Native(cb) => cb
-                .map_err(|_| js_internal_error("previewMedia callback channel closed"))
+                .map_err(|_| js_internal_error("media.preview callback channel closed"))
                 .and_then(parse_preview_callback_result)
                 .and_then(|raw| {
                     let index = clamp_item_index(raw.last_index, completed_metas.len());
@@ -292,7 +292,7 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                     &*lxapp_for_cancel.runtime,
                     completed_cb_id,
                 );
-                Err(js_abort_error("previewMedia aborted"))
+                Err(js_abort_error("media.preview aborted"))
             }
         };
 
@@ -348,7 +348,7 @@ fn build_pre_aborted_handle(
         presentation_result(&presented_ctx, Some("canceled"))
     })?;
     let completed = Promise::from_future(ctx, None, async {
-        Err::<JSObject, RongJSError>(js_abort_error("previewMedia aborted"))
+        Err::<JSObject, RongJSError>(js_abort_error("media.preview aborted"))
     })?;
     let handle = JSObject::new(ctx);
     handle.set("current", build_change_obj(ctx, initial_index, metas)?)?;
@@ -420,7 +420,7 @@ fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPrev
         let path = options
             .clone()
             .to_rust::<String>()
-            .map_err(|_| js_invalid_parameter_error("previewMedia path must be a string"))?;
+            .map_err(|_| js_invalid_parameter_error("media.preview path must be a string"))?;
         let (item, meta) = parse_media_source(
             lxapp,
             RawPreviewMediaSource {
@@ -443,7 +443,7 @@ fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPrev
 
     let Some(obj) = options.into_object() else {
         return Err(js_invalid_parameter_error(
-            "previewMedia expects a string path or an options object",
+            "media.preview expects a string path or an options object",
         ));
     };
 
@@ -454,7 +454,7 @@ fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPrev
             let options = parse_sequence_options(obj.clone(), sources_value)?;
             if options.sources.is_empty() {
                 return Err(js_invalid_parameter_error(
-                    "previewMedia requires at least one item",
+                    "media.preview requires at least one item",
                 ));
             }
             (
@@ -496,7 +496,7 @@ fn parse_sequence_options(
     let source_values: Vec<JSValue> = sources_value
         .into_object()
         .and_then(JSArray::from_object)
-        .ok_or_else(|| js_invalid_parameter_error("previewMedia sources must be an array"))?
+        .ok_or_else(|| js_invalid_parameter_error("media.preview sources must be an array"))?
         .iter_values()?
         .collect::<JSResult<Vec<_>>>()?;
 
@@ -505,7 +505,7 @@ fn parse_sequence_options(
         let field = format!("sources[{}]", index);
         let Some(source_obj) = value.into_object() else {
             return Err(js_invalid_parameter_error(format!(
-                "previewMedia {} must be an object",
+                "media.preview {} must be an object",
                 field
             )));
         };
@@ -550,7 +550,7 @@ fn parse_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
     signal_value
         .into_object()
         .map(Some)
-        .ok_or_else(|| js_invalid_parameter_error("previewMedia signal must be an AbortSignal"))
+        .ok_or_else(|| js_invalid_parameter_error("media.preview signal must be an AbortSignal"))
 }
 
 fn get_present_property(obj: &JSObject, field: &str) -> Option<JSValue> {
@@ -632,7 +632,7 @@ fn read_optional_u16_field(
 
 fn invalid_preview_field(context: Option<&str>, field: &str, expected: &str) -> RongJSError {
     js_invalid_parameter_error(format!(
-        "previewMedia {} must be {}",
+        "media.preview {} must be {}",
         field_label(context, field),
         expected
     ))
@@ -652,10 +652,10 @@ fn parse_preview_callback_result(result: CallbackResult) -> JSResult<RawPreviewR
     };
 
     let parsed: RawPreviewResult = serde_json::from_str(&data)
-        .map_err(|e| js_internal_error(format!("previewMedia invalid payload: {}", e)))?;
+        .map_err(|e| js_internal_error(format!("media.preview invalid payload: {}", e)))?;
     if parsed.reason.trim().is_empty() {
         return Err(js_internal_error(
-            "previewMedia payload reason must be a non-empty string",
+            "media.preview payload reason must be a non-empty string",
         ));
     }
     Ok(parsed)
@@ -667,7 +667,7 @@ fn parse_media_source(
 ) -> JSResult<(PreviewMediaItem, SourceMeta)> {
     let raw_path = item
         .path
-        .ok_or_else(|| js_invalid_parameter_error("previewMedia item requires path"))?;
+        .ok_or_else(|| js_invalid_parameter_error("media.preview item requires path"))?;
     let normalized_path = resolve_preview_path(lxapp, raw_path.as_str())?;
     let media_type = parse_media_kind(item.kind, normalized_path.as_str())?;
 
@@ -676,7 +676,7 @@ fn parse_media_source(
         path: normalized_path,
         rotate: parse_rotation(item.rotate)?,
         object_fit: parse_object_fit(item.object_fit)?,
-        duration_ms: normalize_duration_ms(item.duration_ms, "previewMedia durationMs")?,
+        duration_ms: normalize_duration_ms(item.duration_ms, "media.preview durationMs")?,
     };
     let meta = SourceMeta {
         path: raw_path,
@@ -694,7 +694,7 @@ fn parse_advance(value: Option<String>) -> JSResult<PreviewMediaAdvance> {
         "next" => Ok(PreviewMediaAdvance::Next),
         "loop" => Ok(PreviewMediaAdvance::Loop),
         _ => Err(js_invalid_parameter_error(format!(
-            "previewMedia invalid advance: {}",
+            "media.preview invalid advance: {}",
             raw
         ))),
     }
@@ -722,7 +722,7 @@ fn normalize_start_index(value: Option<f64>) -> JSResult<i32> {
     };
     if !raw.is_finite() || raw.fract() != 0.0 {
         return Err(js_invalid_parameter_error(
-            "previewMedia startIndex must be a finite integer",
+            "media.preview startIndex must be a finite integer",
         ));
     }
     Ok(raw.clamp(i32::MIN as f64, i32::MAX as f64) as i32)
@@ -736,7 +736,7 @@ fn parse_media_kind(value: Option<String>, path: &str) -> JSResult<MediaKind> {
         "video" => Ok(MediaKind::Video),
         "image" => Ok(MediaKind::Image),
         _ => Err(js_invalid_parameter_error(format!(
-            "previewMedia invalid type: {}",
+            "media.preview invalid type: {}",
             raw
         ))),
     }
@@ -766,7 +766,7 @@ fn parse_rotation(value: Option<u16>) -> JSResult<Option<u16>> {
     match rotation {
         0 | 90 | 180 | 270 => Ok(Some(rotation)),
         _ => Err(js_invalid_parameter_error(format!(
-            "previewMedia invalid rotate: {}",
+            "media.preview invalid rotate: {}",
             rotation
         ))),
     }
@@ -782,7 +782,7 @@ fn parse_object_fit(value: Option<String>) -> JSResult<Option<MediaObjectFit>> {
         "fill" => Ok(Some(MediaObjectFit::Fill)),
         "fit" => Ok(Some(MediaObjectFit::Fit)),
         _ => Err(js_invalid_parameter_error(format!(
-            "previewMedia invalid objectFit: {}",
+            "media.preview invalid objectFit: {}",
             raw
         ))),
     }
@@ -800,11 +800,11 @@ enum PreviewPath {
 fn classify_preview_path(raw: &str) -> Result<PreviewPath, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err("previewMedia item path cannot be empty".to_string());
+        return Err("media.preview item path cannot be empty".to_string());
     }
     if trimmed.contains("[object Object]") {
         return Err(
-            "previewMedia item path must be a string path, got [object Object]".to_string(),
+            "media.preview item path must be a string path, got [object Object]".to_string(),
         );
     }
     if is_http_url(trimmed) {
@@ -821,7 +821,7 @@ fn classify_preview_path(raw: &str) -> Result<PreviewPath, String> {
 fn authorize_remote_preview_url(lxapp: &LxApp, url: String) -> JSResult<String> {
     let Some((_, host)) = split_url_scheme_host(&url) else {
         return Err(js_invalid_parameter_error(
-            "previewMedia item path must be an http(s) URL with a host",
+            "media.preview item path must be an http(s) URL with a host",
         ));
     };
     if !lxapp.is_domain_allowed(host) {

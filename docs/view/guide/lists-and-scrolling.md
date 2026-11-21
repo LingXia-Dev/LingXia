@@ -140,12 +140,15 @@ Pull to refresh belongs to the host. Enable it in the page config and handle it 
 ```
 
 ```ts
-Page({
+export default definePage({
   data: { items: [] as string[] },
-  async onPullDownRefresh() {
-    this.setData({ items: await load() });
-    lx.stopPullDownRefresh();
-  },
+  setup: page => ({
+    async onPullDownRefresh() {
+      const items = await load();
+      page.update(d => { d.items = items; });
+      lx.stopPullDownRefresh();
+    },
+  }),
 });
 ```
 

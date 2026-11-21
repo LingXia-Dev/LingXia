@@ -29,22 +29,22 @@ test('play a video page of a native media swiper to its end', {
   const { app, namespace, defer } = bindFixture(t, 'MEDIA-SWIPER-003');
 
   const current = await currentPageOrNull(app);
-  if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+  if (current?.name !== 'home') await app.nav.reset({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
     const active = await currentPageOrNull(app);
-    if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+    if (active?.name !== 'home') await app.nav.reset({ page: 'home' });
     await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   });
 
-  await app.nav.to({ page: 'swiper' });
+  await app.nav.go({ page: 'swiper' });
   await waitForCurrentPage(app, 'swiper');
   const view = (await app.page({ name: 'swiper' }, { timeout: 30_000 })).view;
 
-  await app.logic.eval(async ({ lx, getCurrentPages }, folder, red, clip) => {
-    const path = `${lx.env.USER_DATA_PATH}/${folder}/red.png`;
+  await app.logic.eval(async ({ lx, pageStack }, folder, red, clip) => {
+    const path = `${lx.fs.userData}/${folder}/red.png`;
     await lx.fs.write(path, red, { encoding: 'base64', overwrite: true });
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/swiper/'));
+    const page = pageStack().find((candidate) => candidate.route.includes('/swiper/'));
     page?.setData({
       items: [
         { id: 'red', type: 'image' as const, src: path },

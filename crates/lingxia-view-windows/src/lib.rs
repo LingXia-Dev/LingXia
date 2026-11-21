@@ -66,6 +66,16 @@ pub trait Shell: Send + Sync + 'static {
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, token: i64, connection: u64) -> bool;
     fn recovery(&self, token: i64, failure: Option<&Failure>);
+    /// Whether the recovery panel offers Back: the page has somewhere to go.
+    fn can_go_back(&self, token: i64) -> bool {
+        let _ = token;
+        false
+    }
+    /// The recovery panel's Back; false when the page could not leave.
+    fn go_back(&self, token: i64) -> bool {
+        let _ = token;
+        false
+    }
     /// Host chrome text for a localizer `key`, else `fallback`.
     fn text(&self, key: &str, fallback: &str) -> String {
         let _ = key;
@@ -198,6 +208,18 @@ static LEAVING: Mutex<Vec<(isize, Dispatcher)>> = Mutex::new(Vec::new());
 
 fn settling() -> MutexGuard<'static, Vec<isize>> {
     SETTLING.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Some page has come on screen but not yet shown a frame: it is clipped to one pixel, so
+/// whatever uncovers it shows the window behind.
+pub fn pages_settling() -> bool {
+    let mut queue = settling();
+    // SAFETY: IsWindow only reads; a page whose window is gone never settles.
+    queue.retain(|&page| {
+        unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(HWND(page as *mut _))) }
+            .as_bool()
+    });
+    !queue.is_empty()
 }
 
 fn leaving() -> MutexGuard<'static, Vec<(isize, Dispatcher)>> {

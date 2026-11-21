@@ -473,7 +473,7 @@ pub(super) fn on_video_timer(container: HWND) {
     );
 }
 
-/// Routes a video-context command (`lx.createVideoContext`) to the mounted
+/// Routes a video-context command (`page.video`) to the mounted
 /// `video.native` component with that id. Registered with the platform
 /// layer at [`install`]; called from logic threads.
 pub(super) fn dispatch_video_command(

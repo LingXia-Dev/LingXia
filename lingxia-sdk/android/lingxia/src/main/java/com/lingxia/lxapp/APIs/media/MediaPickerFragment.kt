@@ -824,6 +824,12 @@ internal class MediaPickerFragment : Fragment() {
 
     private enum class PermissionState { FULL, LIMITED, NONE }
 
+    private fun displayName(uri: Uri): String? = runCatching {
+        requireContext().contentResolver.query(
+            uri, arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null,
+        )?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null }
+    }.getOrNull()
+
     data class GridItem(
         val uri: Uri,
         val fileType: String,
@@ -978,6 +984,7 @@ internal class MediaPickerFragment : Fragment() {
                         put("uri", uri.toString())
                         put("fileType", typeStr)
                         put("isOriginal", isOriginal)
+                        displayName(uri)?.let { put("fileName", it) }
                     }
                     arr.put(obj)
                 }

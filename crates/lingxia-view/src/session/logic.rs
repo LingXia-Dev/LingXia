@@ -206,7 +206,7 @@ pub enum ToView {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ViewRequest {
     Ui(UiRequest),
-    /// `lx.createVideoContext(player)`: answered by the View's players, not its runtime.
+    /// `page.video(player)`: answered by the View's players, not its runtime.
     Video {
         player: String,
         command: VideoCommand,
@@ -229,7 +229,7 @@ pub enum VideoCommand {
     SetVolume(f64),
 }
 
-/// The feedback overlays a desktop page draws for `lx.showToast` and its siblings.
+/// The feedback overlays a desktop page draws for `lx.ui.toast` and its siblings.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UiRequest {
     ShowToast {

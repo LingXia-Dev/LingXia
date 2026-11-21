@@ -794,7 +794,7 @@ pub(crate) fn view_display_language_snapshot() -> (String, u64) {
 /// Re-resolve per-language tab labels and repaint the host chrome.
 ///
 /// Not a Page Chrome revision: bumping it would supersede a concurrent
-/// `lx.tabBar.update`. Spawned because the native updates block on the
+/// `lx.app.tabBar.update`. Spawned because the native updates block on the
 /// platform main queue, which a JS worker must never wait on.
 fn refresh_host_chrome(appid: &str, app: &LxApp) {
     let has_tabbar = app.with_tabbar_mut(|tabbar| tabbar.localize()).is_some();

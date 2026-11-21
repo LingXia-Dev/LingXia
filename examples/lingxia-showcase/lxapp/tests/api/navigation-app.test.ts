@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import type { ShowcaseAppInstance } from '../../shared/lib/app.js';
+import type { appState } from '../../shared/lib/app.js';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
@@ -20,12 +20,12 @@ const isOpen = (list: LxAppRuntimeInfo[], appid: string): boolean => (
  * is proven where it holds and the desktop gap is tracked as
  * PEND-NAVAPP-DESKTOP-001.
  */
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 test.configure({ skip: platform === 'android' ? undefined : 'Android only' });
 
 test('hop to the bundled chat lxapp and back', {
   id: 'NAV-APP-001',
-  covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.navigateToApp', 'lx.navigateBackApp', 'LxAppManager.list', 'LxAppManager.current'],
+  covers: ['App.onLaunch', 'App.onShow', 'App.onHide', 'lx.nav.go', 'lx.nav.leaveApp', 'LxAppManager.list', 'LxAppManager.current'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'navigateBackApp does not return to the caller on Windows, and the hop disturbs the chat lxapp the desktop workspace cases reuse',
@@ -33,10 +33,10 @@ test('hop to the bundled chat lxapp and back', {
   const { app, namespace, defer } = bindFixture(t, 'NAV-APP-001');
   const manager = t.automation.lxapps;
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
-  const lifecycle = () => app.logic.eval(({ getApp }) => {
-    const instance = getApp() as unknown as ShowcaseAppInstance | null;
+  const lifecycle = () => app.logic.eval(({ appInstance }) => {
+    const instance = appInstance() as unknown as { state: typeof appState } | null;
     if (!instance) throw new Error('App instance missing');
-    return instance.globalData.lifecycle;
+    return instance.state.lifecycle;
   });
 
   const currentApp = async (): Promise<string> => (await manager.current()).appId;
@@ -47,7 +47,7 @@ test('hop to the bundled chat lxapp and back', {
     async () => {
       const current = await app.nav.current().catch(() => null);
       if (current?.name === 'home' && current.current) return 'home';
-      await app.nav.relaunch({ page: 'home' }).catch(() => undefined);
+      await app.nav.reset({ page: 'home' }).catch(() => undefined);
       return current?.name ?? 'unknown';
     },
     (name) => name === 'home',
@@ -76,9 +76,9 @@ test('hop to the bundled chat lxapp and back', {
   // Recreating pages must not relaunch or hide/show the App instance.
   // The relaunch shows a new home page, so only App-level counts stay put.
   const appLevel = ({ launches, shows, hides }: typeof baseline) => ({ launches, shows, hides });
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   expect(appLevel(await lifecycle())).toEqual(appLevel(baseline));
-  await app.nav.to({ page: 'ui' });
+  await app.nav.go({ page: 'ui' });
 
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
@@ -95,7 +95,7 @@ test('hop to the bundled chat lxapp and back', {
       type Settled = { ok: boolean; code?: string; message?: string };
       const state: { settled: Settled | null } = { settled: null };
       (globalThis as Record<string, unknown>)[key] = state;
-      lx.navigateToApp({ appId })
+      lx.nav.go({ app: appId })
         .then(() => { state.settled = { ok: true }; })
         .catch((error: { code?: string; message?: string } | null) => {
           state.settled = { ok: false, code: error?.code ?? '', message: String(error?.message) };
@@ -123,14 +123,15 @@ test('hop to the bundled chat lxapp and back', {
     await expect.poll(lifecycle).toEqual({ ...baseline, hides: baseline.hides + 1, last: 'hide' });
   });
 
-  await t.step('guest cache APIs are absent', async () => {
+  await t.step('guest cache APIs are refused', async () => {
     const chat = t.automation.lxapp(CHAT_APP_ID);
     await eventually(() => chat.logic.eval(() => true), (ready) => ready === true, {
       describe: 'chat Logic runtime to answer for cache presence',
       retryIf: () => true,
     });
-    const present = await chat.logic.eval(({ lx }) => 'cache' in lx.host);
-    expect(present).toBe(false);
+    const refused = await chat.logic.eval(async ({ lx }) =>
+      lx.host.cache.size().then(() => 'ok', (error: { code?: string }) => error.code));
+    expect(refused).toBe('E_PERMISSION_DENIED');
   });
 
   await t.step('navigateBackApp from the target returns to the caller and closes the target', async () => {
@@ -141,7 +142,7 @@ test('hop to the bundled chat lxapp and back', {
       retryIf: () => true,
     });
     await chat.logic.eval(({ lx }) => {
-      void lx.navigateBackApp();
+      void lx.nav.leaveApp();
       return 'scheduled';
     });
     await eventually(currentApp, (appid) => appid === SHOWCASE_APP_ID, {
@@ -161,7 +162,7 @@ test('hop to the bundled chat lxapp and back', {
   await t.step('navigateToApp rejects an unknown page name without leaving the caller', async () => {
     const rejected = await app.logic.eval(async ({ lx }, appId) => {
       try {
-        await lx.navigateToApp({ appId, page: 'no-such-page' });
+        await lx.nav.go({ app: appId, page: 'no-such-page' });
         return { ok: true };
       } catch (error) {
         return { ok: false, code: (error as { code?: string } | null)?.code };

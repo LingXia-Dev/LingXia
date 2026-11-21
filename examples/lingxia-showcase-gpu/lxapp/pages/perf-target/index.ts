@@ -1,7 +1,12 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: { rows: 20 },
-  onLoad(options: { rows?: string } = {}) {
-    const rows = Number(options.rows);
-    if (Number.isFinite(rows) && rows > 0) this.setData({ rows: Math.min(rows, 400) });
+  setup(page) {
+    return {
+      onLoad(options: { rows?: string } = {}) {
+        const rows = Number(options.rows);
+        if (Number.isFinite(rows) && rows > 0) page.update(d => { d.rows = Math.min(rows, 400); });
+      },
+    };
   },
 });

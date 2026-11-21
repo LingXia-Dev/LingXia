@@ -668,6 +668,9 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
                 if type == "video", let ext = videoFileExtension(for: asset) {
                     item["fileExt"] = ext
                 }
+                if let asset, let name = PHAssetResource.assetResources(for: asset).first?.originalFilename {
+                    item["fileName"] = name
+                }
                 arr.append(item)
             }
             do {

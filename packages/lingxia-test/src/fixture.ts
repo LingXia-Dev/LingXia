@@ -63,7 +63,8 @@ import type {
   TestNav,
   NavBackOptions,
   NavButton,
-  NavOptions,
+  NavGoOptions,
+  NavTarget,
   NavWaitOptions,
   TestView,
   ViewEnvironment,
@@ -699,8 +700,8 @@ export class LiveFixture implements Fixture {
     this.visualSubject ??= (async () => ({
       app: await this.app.info().then((info) => info.appId, () => this.pinned.appid ?? null),
       device: await this.app.logic.eval(() => {
-        const lx = (globalThis as unknown as { lx: { getDeviceInfo(): Record<string, string>; host?: { displayLanguage?: { get(): string } } } }).lx;
-        const info = lx.getDeviceInfo();
+        const lx = (globalThis as unknown as { lx: { device: { info: Record<string, string> }; host?: { displayLanguage?: { get(): string } } } }).lx;
+        const info = lx.device.info;
         let language: string | null = null;
         try { language = lx.host?.displayLanguage?.get() ?? null; } catch { /* an older host */ }
         return { brand: info.brand, model: info.model, marketName: info.marketName ?? null, osName: info.osName, osVersion: info.osVersion, language };
@@ -1168,6 +1169,7 @@ export class LiveFixture implements Fixture {
             tap: (target, options) => typeof target === "string"
               ? gestures.chromeTap(target, undefined, options?.timeout)
               : gestures.chromeTap(target.label, target.scope ? [target.scope] : undefined, options?.timeout),
+            viewport: () => gestures.windowViewport(),
           },
           // A desktop shell shows the app's tabs as sidebar rows.
           tabBar: { tap: (label, options) => gestures.chromeTap(label, ["tabBar", "sidebar"], options?.timeout) },
@@ -1236,15 +1238,18 @@ export class LiveFixture implements Fixture {
    * reads retry a dropped transport.
    */
   private wrapNav(nav: () => NavDriver): TestNav {
-    const land = (verb: "to" | "redirect" | "switchTab" | "relaunch") => (options: NavOptions) =>
-      this.act(`nav.${verb}`, summarise(options), () => nav()[verb](this.navOptions(options, `t.app.nav.${verb}`)));
+    const land = (verb: "go" | "reset", target: NavTarget, options: NavGoOptions) => {
+      const { replace, ...wait } = options;
+      const driverOptions = this.navOptions(wait, `t.app.nav.${verb}`);
+      return this.act(`nav.${verb}`, summarise({ ...target, ...options }), () => verb === "go"
+        ? nav().go(target, { ...driverOptions, ...(replace === undefined ? {} : { replace }) })
+        : nav().reset(target, driverOptions));
+    };
     const read = <T,>(verb: string, op: () => Promise<T>, detail?: unknown) =>
       this.act(`nav.${verb}`, summarise(detail), () => this.readRetrying(op));
     return {
-      to: land("to"),
-      redirect: land("redirect"),
-      switchTab: land("switchTab"),
-      relaunch: land("relaunch"),
+      go: (target: NavTarget, options?: NavGoOptions) => land("go", target, options ?? {}),
+      reset: (target: NavTarget, options?: NavWaitOptions) => land("reset", target, options ?? {}),
       back: (options?: NavBackOptions) =>
         this.act("nav.back", summarise(options), () => nav().back(this.navOptions(options ?? {}, "t.app.nav.back"))),
       press: (button: NavButton, options?: NavWaitOptions) =>

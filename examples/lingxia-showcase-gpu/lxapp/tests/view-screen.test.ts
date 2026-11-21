@@ -43,7 +43,7 @@ test('a page reads its screen: safe area, insets, size class, contrast, appearan
 });
 
 test('a page without a nav bar knows where the capsule floats, inside the top band', {
-  covers: ['view:environment'], start: { page: 'view-screen', query: { lang: 'en' } },
+  covers: ['view:environment'], start: { page: 'view-screen', params: { lang: 'en' } },
 }, async (t) => {
   const { capsule, safeTop } = await wellFormed(t);
   const { width } = await t.app.view.testId('view-screen').boundingBox();
@@ -63,8 +63,9 @@ test('a pinned environment reaches the readout: still motion reads as reduced, t
   covers: ['view:environment'], start: openDemo('screen'),
 }, async (t) => {
   await t.app.view.environment({ theme: 'dark', still: true, contrast: 'high' });
-  await expect.poll(() => state(t, 'lab-env-reduced-motion')).toBe('reduce');
-  expect(await state(t, 'lab-env-theme')).toBe('dark');
+  // The run may already be still, so wait on the theme, which the pin does change.
+  await expect.poll(() => state(t, 'lab-env-theme')).toBe('dark');
+  expect(await state(t, 'lab-env-reduced-motion')).toBe('reduce');
   expect(await state(t, 'lab-env-contrast')).toBe('high');
   await t.app.view.environment({ theme: 'light', still: false, contrast: 'standard' });
   await expect.poll(() => state(t, 'lab-env-theme')).toBe('light');

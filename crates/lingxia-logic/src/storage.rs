@@ -24,8 +24,8 @@ fn storage_options() -> StorageOptions {
 #[derive(Clone)]
 struct LxStorageService {
     storage: RongStorage,
-    /// The JS object handed to `lx.getStorage()`. Cached so repeated calls
-    /// return the same object — `getStorage() === getStorage()` — and so the
+    /// The JS object handed to `lx.storage()`. Cached so repeated calls
+    /// return the same object — `storage() === storage()` — and so the
     /// shimmed `list` is installed exactly once per context.
     exposed: Rc<RefCell<Option<JSObject>>>,
 }
@@ -83,7 +83,7 @@ fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, inner: JSFunc) -
 /// `lx.fs` instead for path-based data.
 fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     // If a Storage instance has already been created for this JSContext,
-    // return a clone so getStorage() can be called multiple times safely.
+    // return a clone so storage() can be called multiple times safely.
     if let Some(existing) = ctx.get_service::<LxStorageService>() {
         return expose_storage(&ctx, existing);
     }
@@ -100,7 +100,7 @@ fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     let storage = RongStorage::new(lxapp.storage_file_path.clone(), options)?;
 
     // Cache Storage instance on JSContext so that:
-    // - Subsequent getStorage() calls reuse the same database handle.
+    // - Subsequent storage() calls reuse the same database handle.
     // - When JSContext is dropped, JSContextService::on_shutdown is invoked
     //   and LxStorageService is dropped, closing the database.
     ctx.set_service::<LxStorageService>(LxStorageService {
@@ -159,6 +159,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn getStorage(ts_return = "Storage") = get_storage;
+        fn storage(ts_return = "Storage") = get_storage;
     }
 }

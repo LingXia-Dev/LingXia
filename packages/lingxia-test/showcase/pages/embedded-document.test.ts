@@ -33,14 +33,14 @@ function probe<R>(host: TestView, route: string, input: Record<string, unknown>)
 async function openDocument(t: Fixture, id: string) {
   const { app, defer } = bindFixture(t, id);
   const current = await currentPageOrNull(app);
-  if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+  if (current?.name !== 'home') await app.nav.reset({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
     const active = await currentPageOrNull(app);
-    if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+    if (active?.name !== 'home') await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'spec-embedded' });
+  await app.nav.reset({ page: 'spec-embedded' });
   await waitForCurrentPage(app, 'spec-embedded');
   const host = (await app.page({ name: 'spec-embedded' }, { timeout: 30_000 })).view;
   await host.css('[data-testid="spec-embedded-page"]').first().waitFor({ state: 'attached', timeout: 30_000 });

@@ -4,7 +4,7 @@ import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 // A page pushed again loads a new instance onto the surface that still holds the old one's
 // frame; that frame is not the new page's, so the reveal must wait for a fresh present.
 test('a page pushed again is not revealed on its previous frame', {
-  id: 'CHROME-REPUSH-001', covers: ['lx.navigateTo', 'lx.navigateBack'],
+  id: 'CHROME-REPUSH-001', covers: ['lx.nav.go', 'lx.nav.back'],
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
@@ -14,7 +14,7 @@ test('a page pushed again is not revealed on its previous frame', {
   const hostReveal = ['harmony', 'android'].includes(platform);
   let reveals = -1;
   for (let round = 0; round < 3; round++) {
-    await app.nav.to({ page: 'motion-target' });
+    await app.nav.go({ page: 'motion-target' });
     // Reveal statistics outlive a reload: wait for this push's own reveal.
     const shown = await t.waitFor(() => app.metrics({ page: 'motion-target' }), {
       until: m => m.firstPresentAt !== null && m.reveal.count > reveals

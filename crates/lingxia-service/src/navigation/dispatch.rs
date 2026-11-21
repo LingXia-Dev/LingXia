@@ -29,7 +29,7 @@ pub enum NavigationSource {
     Menu,
     Tray,
     Devtool,
-    /// `lx.surface.bringToFront` after the person picked a banner action.
+    /// The target of the banner action the person picked.
     Banner,
 }
 

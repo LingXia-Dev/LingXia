@@ -494,7 +494,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
                 guard let self = self else { return }
                 if let changed, changed != self.appId { return }
                 self.updateTabBar()
-                // Applied: resolve any awaited lx.tabBar.update().
+                // Applied: resolve any awaited lx.app.tabBar.update().
                 LingxiaRunnerSPI.Tabs.updateApplied(appId: self.appId)
             }
         }

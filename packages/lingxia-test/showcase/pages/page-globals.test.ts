@@ -9,20 +9,20 @@ interface UiPage extends LogicPage<{ logicCounter: number; instanceTag: string; 
 
 test('keep App identity across pages and merge setData into the correct View', {
   id: 'PAGE-GLOBALS-001', app: SHOWCASE_APP_ID,
-  covers: ['getApp', 'getCurrentPages', 'Page.route', 'Page.setData', 'Page.flush', 'lx.navigateTo'],
+  covers: ['appInstance', 'pageStack', 'Page.route', 'Page.setData', 'Page.flush', 'lx.nav.go'],
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-001');
   defer(async () => {
     await app.logic.eval((_, key) => { delete (globalThis as Record<string, unknown>)[key]; }, namespace);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'navigation' } });
   const page = await app.page({ name: 'ui' });
-  const first = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
-    const instance = getApp();
+  const first = await app.logic.eval(({ appInstance, pageStack }, key) => {
+    const instance = appInstance();
     if (!instance) throw new Error('App instance missing');
     (globalThis as Record<string, unknown>)[key] = instance;
-    const pages = getCurrentPages<UiPage>();
+    const pages = pageStack<UiPage>();
     const current = pages[pages.length - 1];
     return { route: current.route, surfaceAbsent: current.surface === undefined, tag: current.data.instanceTag };
   }, namespace);
@@ -42,11 +42,11 @@ test('keep App identity across pages and merge setData into the correct View', {
   }, page.instanceId);
   expect(merged).toEqual({ counter: 8, tag: first.tag, type: 'navigation' });
   await expect(page.view.testId('lifecycle-logic-counter')).toHaveText('8');
-  await app.nav.to({ page: 'feedback' });
-  const next = await app.logic.eval(({ getApp, getCurrentPages }, key) => {
-    const pages = getCurrentPages();
+  await app.nav.go({ page: 'feedback' });
+  const next = await app.logic.eval(({ appInstance, pageStack }, key) => {
+    const pages = pageStack();
     return {
-      sameApp: getApp<LogicApp>() === (globalThis as Record<string, unknown>)[key],
+      sameApp: appInstance<LogicApp>() === (globalThis as Record<string, unknown>)[key],
       routes: pages.map(page => page.route),
     };
   }, namespace);
@@ -63,14 +63,14 @@ test('inject the owning surface into a page opened as a float', {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-002');
   defer(async () => {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.getByKey(key);
+      const surface = lx.surface.get(key);
       if (surface?.kind === 'page') await surface.close();
     }, namespace);
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
-    const surface = await lx.surface.openPage('surface', { as: 'float', key, query: { fixture: key } });
+    const surface = await lx.surface.openPage('surface', { as: 'float', key, params: { fixture: key } });
     return { key: surface.key ?? null };
   }, namespace);
   const page = await app.page({ name: 'surface' });
@@ -87,6 +87,6 @@ test('inject the owning surface into a page opened as a float', {
     if (!surface) throw new Error('Page surface missing');
     await surface.close();
   }, page.instanceId);
-  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.getByKey(key) == null, namespace)).toBe(true);
+  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.get(key) == null, namespace)).toBe(true);
   await expect((await app.page({ name: 'home' })).view.testId('home-page')).toBeVisible();
 });

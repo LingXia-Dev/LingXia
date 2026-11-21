@@ -31,7 +31,7 @@ test('cleanup has a hard deadline; cleanup that never settles is abandoned and t
   assert.equal(report.cases[1].status, 'skipped');
   const recovered = events.find(event => event.type === 'diagnostic' && event.phase === 'run_stopped');
   assert.match(recovered.message, /^"stalled cleanup" left its cleanup \(t\.defer \/ afterEach\) pending: .*The remaining tests are not run\.$/);
-  assert.ok(world.navCalls.some(([method]) => method === 'relaunch'));
+  assert.ok(world.navCalls.some(([method]) => method === 'reset'));
 });
 
 test('a timed-out body cannot regain access through cleanup', async () => {
@@ -221,10 +221,10 @@ test('page-scoped indexed locators preserve target on every read and input', asy
   installFakeHost(world);
   let editorId;
   lxTest('scoped input', async t => {
-    await t.app.nav.to({page:'editor'});
+    await t.app.nav.go({ page:'editor' });
     const editor = await t.app.page();
     editorId = editor.instanceId;
-    await t.app.nav.to({page:'other'});
+    await t.app.nav.go({ page:'other' });
     calls.length = 0;
     const input = editor.view.testId('field').nth(1);
     await input.fill('hello');
@@ -329,7 +329,7 @@ test('a spec that leaves the app under test closed does not fail the rest of the
   assert.match(recoveries[0].message,
     /\(demo-app\) was not running before "runs after it"; it stopped during or after "closes the app" \(failed\)\. Reopened it/);
   assert.equal(report.cases[1].steps[0].name, 'app.reopen');
-  assert.ok(world.navCalls.some(([method]) => method === 'relaunch'), 'waits for the home page');
+  assert.ok(world.navCalls.some(([method]) => method === 'reset'), 'waits for the home page');
 });
 
 test('the run hands the app under test back running', async () => {

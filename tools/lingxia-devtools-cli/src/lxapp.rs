@@ -139,17 +139,34 @@ pub struct NavOptions {
 
 #[derive(Subcommand, Clone)]
 pub enum NavCommand {
-    /// Push a configured page onto the page stack
-    To(PageNavOptions),
-    /// Replace the current page with a configured page
-    Redirect(PageNavOptions),
-    /// Switch to a configured tab page
-    #[command(name = "switch-tab")]
-    SwitchTab(PageNavOptions),
-    /// Clear the stack and relaunch at a configured page
-    Relaunch(PageNavOptions),
+    /// Push a configured page (`--replace` replaces the current one), or switch to `--tab`
+    Go(NavGoOptions),
+    /// Clear the stack and open a fresh instance of a configured page
+    Reset(PageNavOptions),
     /// Navigate back in the lxapp page stack
     Back(NavBackOptions),
+}
+
+#[derive(Args, Clone)]
+pub struct NavGoOptions {
+    /// Page name from lxapp.json
+    #[arg(required_unless_present = "tab", conflicts_with = "tab")]
+    page: Option<String>,
+    /// Switch to this tab page instead
+    #[arg(long, conflicts_with_all = ["replace", "params"])]
+    tab: Option<String>,
+    /// Replace the current page instead of pushing
+    #[arg(long)]
+    replace: bool,
+    /// LxApp context; defaults to current
+    #[arg(long, default_value = "current")]
+    app: String,
+    /// Page param pair; repeat for multiple keys
+    #[arg(long = "param", value_name = "KEY=VALUE")]
+    params: Vec<String>,
+    /// Print JSON output
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Args, Clone)]
@@ -159,9 +176,9 @@ pub struct PageNavOptions {
     /// LxApp context; defaults to current
     #[arg(long, default_value = "current")]
     app: String,
-    /// Query string pair; repeat for multiple keys
-    #[arg(long = "query", value_name = "KEY=VALUE")]
-    query: Vec<String>,
+    /// Page param pair; repeat for multiple keys
+    #[arg(long = "param", value_name = "KEY=VALUE")]
+    params: Vec<String>,
     /// Print JSON output
     #[arg(long)]
     json: bool,
@@ -706,14 +723,25 @@ fn execute_doctor(info: &SessionInfo, json: bool) -> Result<()> {
 
 fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
     match options.command {
-        NavCommand::To(options) => execute_page_nav(ws_url, methods::lxapp_nav::TO, options)?,
-        NavCommand::Redirect(options) => {
-            execute_page_nav(ws_url, methods::lxapp_nav::REDIRECT, options)?
+        NavCommand::Go(options) => {
+            let (handler, page) = match (options.tab, options.page) {
+                (Some(tab), _) => (methods::lxapp_nav::SWITCH_TAB, tab),
+                (None, Some(page)) if options.replace => (methods::lxapp_nav::REDIRECT, page),
+                (None, Some(page)) => (methods::lxapp_nav::TO, page),
+                (None, None) => unreachable!("clap requires a page or --tab"),
+            };
+            execute_page_nav(
+                ws_url,
+                handler,
+                PageNavOptions {
+                    page,
+                    app: options.app,
+                    params: options.params,
+                    json: options.json,
+                },
+            )?
         }
-        NavCommand::SwitchTab(options) => {
-            execute_page_nav(ws_url, methods::lxapp_nav::SWITCH_TAB, options)?
-        }
-        NavCommand::Relaunch(options) => {
+        NavCommand::Reset(options) => {
             execute_page_nav(ws_url, methods::lxapp_nav::RELAUNCH, options)?
         }
         NavCommand::Back(options) => {
@@ -729,7 +757,7 @@ fn execute_nav(ws_url: &str, options: NavOptions) -> Result<()> {
 }
 
 fn execute_page_nav(ws_url: &str, handler: &str, options: PageNavOptions) -> Result<()> {
-    let query = parse_query_pairs(&options.query)?;
+    let query = parse_query_pairs(&options.params)?;
     let data = client::execute_command(
         ws_url,
         handler,
@@ -1220,30 +1248,24 @@ mod tests {
     }
 
     #[test]
-    fn parses_nav_switch_tab_by_page_name() {
+    fn nav_go_takes_a_page_or_a_tab_but_not_both() {
         let cli = parse_lxapp_cli(args(&[
-            "nav",
-            "switch-tab",
-            "profile",
-            "--app",
-            "demo",
-            "--query",
-            "tab=account",
-            "--json",
+            "nav", "go", "--tab", "profile", "--app", "demo", "--json",
         ]))
         .unwrap();
-
         let LxAppCommand::Nav(options) = cli.command else {
             panic!("expected nav command");
         };
-        let NavCommand::SwitchTab(options) = options.command else {
-            panic!("expected switch-tab command");
+        let NavCommand::Go(options) = options.command else {
+            panic!("expected go command");
         };
-
-        assert_eq!(options.page, "profile");
+        assert_eq!(options.tab.as_deref(), Some("profile"));
         assert_eq!(options.app, "demo");
-        assert_eq!(options.query, vec!["tab=account"]);
         assert!(options.json);
+
+        assert!(parse_lxapp_cli(args(&["nav", "go", "home", "--tab", "profile"])).is_err());
+        assert!(parse_lxapp_cli(args(&["nav", "go", "--tab", "profile", "--replace"])).is_err());
+        assert!(parse_lxapp_cli(args(&["nav", "go"])).is_err());
     }
 
     #[test]

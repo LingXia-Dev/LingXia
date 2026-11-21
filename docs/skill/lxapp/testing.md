@@ -26,8 +26,8 @@ lxdev test tests/pages/notes.test.ts
 
 - `testId('x')` matches `[data-testid="x"]` on the current page and must match
   exactly one element (narrow with `.nth(i)`).
-- `test(title, { start: { page, query? } }, body)` relaunches the app on that
-  page before the body, like `t.app.nav.relaunch({ page })` mid-test: the stack
+- `test(title, { start: { page, params? } }, body)` relaunches the app on that
+  page before the body, like `t.app.nav.reset({ page })` mid-test: the stack
   is cleared and a fresh instance opens, ready after its `onReady`. Neither
   resets app or backend data.
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
@@ -97,8 +97,8 @@ everything once before pushing; CI runs it again.
 
 | Task | API |
 |---|---|
-| Relaunch mid-test | `t.app.nav.relaunch({ page, query? })` |
-| Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
+| Relaunch mid-test | `t.app.nav.reset({ page, params? })` |
+| Navigate | `t.app.nav.go({ page, params? } \| { tab }, { replace? })` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
@@ -185,6 +185,8 @@ test('pulling the list refreshes it once', { start: { page: 'feed' } }, async (t
 - iOS takes page gestures on GPU pages only (`delivered: 'view'`); a WebView
   app there reports no input, so `requires.input` skips. HarmonyOS behaves the same.
 - On HarmonyOS, `app.chrome` and window taps reach only the host's own toast, modal and action sheet (`delivered: 'view'`).
+- `app.chrome.elements()` bounds are in window points; measure them against `app.chrome.viewport()`, not
+  `app.view.viewport()`, which is in the page's own points (a desktop device frame scales those).
 - `requires: { chrome: true }` (likewise `refreshIndicator`, `hostInput`) skips where the host cannot
   read its bars, read pull to refresh, or reach either with input; an undeclared `E_UNSUPPORTED` fails.
 - `requires: { pointer: 'coarse' }` (or `'fine'`) runs only where GPU pages get that pointer: touch sheets
@@ -201,30 +203,22 @@ names, waiting up to `{ timeout }` (5 s) for it to open — and never follows
 navigation: once that instance is replaced or closed, every call on the handle
 rejects. Bind again after navigating.
 
-Keep a type-only `contract.ts` beside each page and type all three sides with
-it: Logic `Page<C['data'], C['actions']>`, View `useLxPage<C['data'], C['actions']>()`,
-tests `t.app.page<C>()`.
+Type the handle with the page itself: `t.app.page<typeof page>()` takes `data`
+and `actions` from `import type page from '../../pages/devices/index'`, the same
+type the View uses. A `PageContract<Data, Actions>` from `@lingxia/types/page`
+also works where the test cannot see the Logic file.
 
 ```ts
-// pages/devices/contract.ts
-import type { PageContract } from '@lingxia/types/page';
-export type DevicesPage = PageContract<
-  { devices: { id: string; name: string }[] },
-  { rename(payload: { id: string; name: string }): Promise<boolean> }
->;
-```
+import type devicesPage from '../../pages/devices/index';
 
-```ts
-import type { DevicesPage } from '../../pages/devices/contract';
-
-const devices = await t.app.page<DevicesPage>({ name: 'devices' });
+const devices = await t.app.page<typeof devicesPage>({ name: 'devices' });
 const { devices: list } = await t.waitFor(() => devices.data(), { until: (d) => d.devices.length > 0 });
 expect(await devices.actions.rename({ id: list[0].id, name: 'Office' })).toBe(true);
 await expect(devices.view.testId('device-name').first()).toHaveText('Office');
 ```
 
-- `data()` is the instance's Logic `data` as `setData` delivers it to the View
-  (undefined members omitted). Contract data must be JSON; a Date, Map or
+- `data()` is the instance's Logic `data` as `page.update` delivers it to the View
+  (undefined members omitted). Page data must be JSON; a Date, Map or
   function in it does not compile.
 - `actions.x(payload?)` calls a public page action through the page's own
   bridge, as the View does, and resolves when Logic settles it. Actions take at
@@ -239,14 +233,15 @@ await expect(devices.view.testId('device-name').first()).toHaveText('Office');
 ## Logic eval
 
 ```ts
-const path = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+const path = await t.app.logic.eval(({ lx }) => lx.fs.userData);
 const label = await t.app.view.eval(({ document }) => document.querySelector('#total')?.textContent);
-const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.getStorage().get(key), 'cache');
+const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: string) => lx.storage().get(key), 'cache');
 ```
 
-- `logic.eval(fn, ...args)` runs in Logic with `{ lx, getApp,
-  getCurrentPages, getPage }`; `view.eval` runs in the page with `{ document,
-  window }`. Reach for them when the UI cannot show what a test checks.
+- `logic.eval(fn, ...args)` runs in Logic with `{ lx, appInstance, pageStack,
+  getPage, currentPage }` (`appInstance()` is the object `App({...})`
+  registered; neither exists for app code); `view.eval` runs in the page with
+  `{ document, window }`. Reach for them when the UI cannot show what a test checks.
 - `fn` is sent as source: it cannot use test variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
   arguments and results must be JSON (interfaces work without an index signature).
@@ -353,7 +348,7 @@ import checkout from '../scenarios/checkout.json';
 
 test('an unknown payment result settles as paid', async (t) => {
   const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
-  await t.app.nav.relaunch({ page: 'checkout' });
+  await t.app.nav.reset({ page: 'checkout' });
   await t.app.view.testId('pay').click();
   await expect(t.app.view.testId('paid')).toBeVisible();
   const submit = await scenario.waitForCall({ function: 'orders.submit' });
@@ -434,7 +429,7 @@ lxdev test tests/ --tag routed --tag smoke   # routed and smoke
   `--covers-manifest tests/coverage.yaml` reports which requirement ids have a
   passing test and which have none.
 - `covers` lists the requirement ids a test proves (`AC-OPEN-01`,
-  `lx.getStorage`), not `tags`. `id` is the test's own unique stable id: never
+  `lx.storage`), not `tags`. `id` is the test's own unique stable id: never
   put a requirement or acceptance id in `id`.
 
 ## Test clock
@@ -445,7 +440,7 @@ lxdev test tests/ --tag routed --tag smoke   # routed and smoke
 test('status refreshes every 3 s', async (t) => {
   await t.app.network.route('**/v1/status', { json: { online: true } });
   await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
-  await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
+  await t.app.nav.reset({ page: 'status' });   // start the poll on test time
   const { fired } = await t.app.clock.tick(9_000);  // three polls, in order
   expect(fired).toBe(3);
   await expect(t.app.view.testId('status')).toHaveText('Online');
@@ -456,7 +451,7 @@ test('status refreshes every 3 s', async (t) => {
   it. Timers fire only from `tick(ms)` or `runAll()`; `setSystemTime(t)` moves
   `Date` alone.
 - Install before opening the page: timers started earlier stay real. The
-  WebView, native work, real requests, route delays, and `setData` delivery
+  WebView, native work, real requests, route delays, and state delivery
   keep real time. Wait for real I/O with `expect.poll`, then tick again.
 - A test's clock is removed when it ends. `install` twice rejects with
   `E_CLOCK_INSTALLED`; `tick` without one with `E_CLOCK_NOT_INSTALLED`.
@@ -477,8 +472,8 @@ test('deleting asks first', async (t) => {
 ```
 
 - Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
-  never stub `lx.showToast` in Logic.
-- Modals (`lx.showModal` / `alert` / `confirm`) and `lx.showActionSheet` are
+  never stub `lx.ui.toast` in Logic.
+- Dialogs (`lx.ui.alert` / `confirm`) and `lx.ui.actionSheet` are
   drawn unless the test queues an answer for the next one, so a test can tap them
   (`.lx-modal-btn-confirm`); `modals()` / `actionSheets()` record them with
   `drawn: true` and the user's choice as `answer`.
@@ -588,7 +583,7 @@ lxdev test args --preset ci                 # show the effective arguments
   complete and count in `t.app.metrics`, finite animations finish, looping ones park. With a
   WebView lxapp open, a run orders a minimized or fully covered window in front at its start,
   without taking focus, and logs why; keep it uncovered after that (`lxdev host focus`).
-- **A locked screen stops the run** on macOS: pages are hidden, so the rest
+- **A locked screen stops the run** on macOS and Windows (where the clipboard is refused): pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
 - **`fill` sets text without focusing**: no keyboard rises, so no keyboard avoidance runs. To exercise the keyboard, `click()` the field, then `type()`.

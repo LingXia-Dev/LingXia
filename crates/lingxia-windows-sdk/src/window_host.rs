@@ -2,6 +2,10 @@
 
 #[cfg(feature = "shell-chrome")]
 mod full_chrome_caption;
+#[cfg(feature = "components")]
+mod relaunch_cover;
+#[cfg(feature = "components")]
+pub(crate) use relaunch_cover::cover_relaunch;
 #[cfg(feature = "shell-chrome")]
 mod sidebar_peek;
 #[cfg(feature = "shell-chrome")]
@@ -139,10 +143,22 @@ static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelection
     OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
+/// True while the page a slide reveals cannot show yet; the slide holds still meanwhile.
+#[cfg(feature = "components")]
+static NAV_SLIDE_HOLD: OnceLock<fn() -> bool> = OnceLock::new();
+
+/// Hold navigation slides while `hold` says the destination has nothing on screen yet.
+#[cfg(feature = "components")]
+pub fn set_nav_slide_hold(hold: fn() -> bool) {
+    let _ = NAV_SLIDE_HOLD.set(hold);
+}
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
 /// Navigation slide duration, matching the iOS/Android 300ms page transition.
 #[cfg(feature = "components")]
 const NAV_SLIDE_DURATION_MS: f64 = 300.0;
+/// Longest a slide waits for the page it reveals before sliding anyway.
+#[cfg(feature = "components")]
+const NAV_SLIDE_MAX_HOLD_MS: u64 = 1000;
 fn overlay_margin() -> i32 {
     crate::dpi::px(24)
 }
@@ -1073,21 +1089,7 @@ fn present_webview_in_active_group_with_policy(
         // A re-present of the active page is still a present: surface the
         // host if something hid it and converge stray duplicates.
         if !is_window_visible(host) {
-            unsafe {
-                let _ = WindowsAndMessaging::SetWindowPos(
-                    host,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    WindowsAndMessaging::SWP_NOMOVE
-                        | WindowsAndMessaging::SWP_NOSIZE
-                        | WindowsAndMessaging::SWP_SHOWWINDOW,
-                );
-                let _ = WindowsAndMessaging::BringWindowToTop(host);
-                let _ = WindowsAndMessaging::SetForegroundWindow(host);
-            }
+            show_presented_host(host);
         }
         hide_other_workspace_windows(host);
         if presentation == GroupMainPresentation::Replace {
@@ -1178,21 +1180,7 @@ fn present_webview_in_active_group_with_policy(
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
-        unsafe {
-            let _ = WindowsAndMessaging::SetWindowPos(
-                host,
-                None,
-                0,
-                0,
-                0,
-                0,
-                WindowsAndMessaging::SWP_NOMOVE
-                    | WindowsAndMessaging::SWP_NOSIZE
-                    | WindowsAndMessaging::SWP_SHOWWINDOW,
-            );
-            let _ = WindowsAndMessaging::BringWindowToTop(host);
-            let _ = WindowsAndMessaging::SetForegroundWindow(host);
-        }
+        show_presented_host(host);
     }
     handler.set_content_visible(true)?;
 
@@ -1215,6 +1203,51 @@ fn present_webview_in_active_group_with_policy(
         clear_presented_group_main_for_host(host);
     }
     Ok(())
+}
+
+/// Shows a host a present needs on screen. Like the macOS shell, it takes the foreground only
+/// when the app has it already or no dev session drives it: a test run must not keep pulling
+/// the window over the user's (and flashing its taskbar button when Windows refuses).
+fn show_presented_host(host: HWND) {
+    #[cfg(feature = "components")]
+    let driven = lxapp::is_dev_session();
+    #[cfg(not(feature = "components"))]
+    let driven = false;
+    let forward = !driven || app_has_foreground();
+    let activate = if forward {
+        WindowsAndMessaging::SET_WINDOW_POS_FLAGS(0)
+    } else {
+        WindowsAndMessaging::SWP_NOACTIVATE
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            host,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_SHOWWINDOW
+                | activate,
+        );
+        if forward {
+            let _ = WindowsAndMessaging::BringWindowToTop(host);
+            let _ = WindowsAndMessaging::SetForegroundWindow(host);
+        }
+    }
+}
+
+fn app_has_foreground() -> bool {
+    let mut pid = 0;
+    unsafe {
+        WindowsAndMessaging::GetWindowThreadProcessId(
+            WindowsAndMessaging::GetForegroundWindow(),
+            Some(&mut pid),
+        );
+    }
+    pid == std::process::id()
 }
 
 fn clear_presented_group_main_for_host(host: HWND) {
@@ -7013,7 +7046,7 @@ pub fn restore_and_focus_host_window(window: isize) -> bool {
 
 /// `SetForegroundWindow` is ignored unless the calling thread owns the
 /// foreground, which it never does for a tray click, an update-helper launch,
-/// or `lx.shell.openApp`. Attaching to the foreground thread's input queue
+/// or `lx.surface.openApp`. Attaching to the foreground thread's input queue
 /// makes the call stick. Runs on the window's own UI thread.
 unsafe fn bring_to_foreground(hwnd: HWND) {
     unsafe {
@@ -10125,6 +10158,9 @@ fn mount_nav_snapshot_overlay(
                 | WindowsAndMessaging::SWP_NOACTIVATE
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
+        // The caller swaps pages next; a GPU page hides on its own thread at once, so the
+        // overlay must be composed first or a blank frame shows between them.
+        let _ = windows::Win32::Graphics::Dwm::DwmFlush();
     }
 
     let previous = lock_nav_snapshot_slides().insert(
@@ -10333,17 +10369,27 @@ unsafe extern "system" fn nav_overlay_proc(
 /// refresh. Without DWM (rare) the pacer degrades to an 8ms sleep.
 #[cfg(feature = "components")]
 fn start_nav_snapshot_slide(host: HWND) {
-    let mut slides = lock_nav_snapshot_slides();
-    let Some(slide) = slides.get_mut(&hwnd_handle(host)) else {
+    if !nav_snapshot_slide_active(hwnd_handle(host)) {
         return;
-    };
-    slide.started = Some(Instant::now());
-    drop(slides);
+    }
     let host_handle = hwnd_handle(host);
     let _ = std::thread::Builder::new()
         .name("lingxia-nav-slide".to_string())
         .spawn(move || {
             use windows::Win32::Graphics::Dwm::DwmFlush;
+            // The snapshot stays put until the page under it has a frame to show.
+            let held = Instant::now();
+            while NAV_SLIDE_HOLD.get().is_some_and(|hold| hold())
+                && held.elapsed() < std::time::Duration::from_millis(NAV_SLIDE_MAX_HOLD_MS)
+            {
+                if unsafe { DwmFlush() }.is_err() {
+                    std::thread::sleep(std::time::Duration::from_millis(8));
+                }
+            }
+            match lock_nav_snapshot_slides().get_mut(&host_handle) {
+                Some(slide) => slide.started = Some(Instant::now()),
+                None => return,
+            }
             let deadline = Instant::now()
                 + std::time::Duration::from_millis(NAV_SLIDE_DURATION_MS as u64 + 250);
             while nav_snapshot_slide_active(host_handle) {

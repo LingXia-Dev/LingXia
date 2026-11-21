@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.provider.OpenableColumns
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -274,6 +275,18 @@ internal object LxAppFile {
         return true
     }
 
+    // The core cannot stat a content URI; the provider knows its size.
+    private fun contentSize(context: Context, path: String): Long? {
+        val uri = Uri.parse(path)
+        if (uri.scheme != "content") return null
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (cursor.moveToFirst() && index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
+            }
+        }.getOrNull()
+    }
+
     private fun reportFileDialogResult(callbackId: Long, result: HostFileDialogResult) {
         when (result) {
             is HostFileDialogResult.Selected -> {
@@ -281,6 +294,10 @@ internal object LxAppFile {
                     put("canceled", false)
                     put("paths", JSONArray(result.paths))
                     put("names", JSONArray(result.names.map { it ?: JSONObject.NULL }))
+                    val context = Lingxia.applicationContext()
+                    put("sizes", JSONArray(result.paths.map { path ->
+                        context?.let { contentSize(it, path) } ?: JSONObject.NULL
+                    }))
                 }
                 NativeApi.onCallback(callbackId, true, payload.toString())
             }

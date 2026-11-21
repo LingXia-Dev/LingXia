@@ -105,7 +105,7 @@ export const LXAPP_UNAVAILABLE_REASONS = ['maintain', 'suspended'] as const;
  *
  * ```ts
  * try {
- *   await lx.navigateToApp({ appId })
+ *   await lx.nav.go({ app: appId })
  * } catch (error) {
  *   const reason = lxAppUnavailableReason(error)
  *   if (reason === 'maintain') showMaintenanceNotice()
@@ -136,7 +136,7 @@ export const LX_BIZ_CODE_HOST_UPGRADE_REQUIRED = 6002;
  *
  * ```ts
  * try {
- *   await lx.navigateToApp({ appId })
+ *   await lx.nav.go({ app: appId })
  * } catch (error) {
  *   if (hostUpgradeRequired(error)) showUpdateHostNotice()
  *   else throw error

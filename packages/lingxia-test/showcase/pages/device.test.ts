@@ -17,8 +17,8 @@ interface DevicePageState {
 }
 
 async function deviceState(app: TestApp): Promise<DevicePageState> {
-  return app.logic.eval(({ getCurrentPages }): DevicePageState => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/device/'));
+  return app.logic.eval(({ pageStack }): DevicePageState => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/device/'));
     const data = (page?.data ?? {}) as Partial<DevicePageState>;
     return {
       deviceInfo: data.deviceInfo ?? null,
@@ -39,10 +39,10 @@ async function waitForState(
   });
 }
 
-test("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.device.info', 'lx.device.screen'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-001");
 
-  await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
+  await app.nav.reset({ page: 'device', params: { type: 'device' } });
   let page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
   await page.testId('device-get-info').waitFor({ timeout: 30_000 });
   await page.testId("device-get-info").click();
@@ -50,7 +50,7 @@ test("render device and screen API results after real UI actions", { id: "DEVICE
   await expect(page.testId('device-info-result')).toContainText(device.deviceInfo!.osName!, { timeout: 30_000 });
 
   // A relaunch replaces the page instance: bind the new one.
-  await app.nav.relaunch({ page: 'device', query: { type: 'screen' } });
+  await app.nav.reset({ page: 'device', params: { type: 'screen' } });
   page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
   await page.testId('device-screen-get-info').waitFor({ timeout: 30_000 });
   await page.testId("device-screen-get-info").click();
@@ -65,11 +65,11 @@ test("render device and screen API results after real UI actions", { id: "DEVICE
   expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
-test("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+test("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.network.status'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-002");
 
   for (const type of ['networkType', 'localIP'] as const) {
-    await app.nav.relaunch({ page: 'device', query: { type } });
+    await app.nav.reset({ page: 'device', params: { type } });
     const network = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
     await network.testId('device-network-get-info').waitFor({ timeout: 30_000 });
     await network.testId("device-network-get-info").click();
@@ -83,7 +83,7 @@ test("keep network query and listener behavior equivalent across renderers", { i
     expect(await network.testId('device-network-result').textContent()).not.toBe('');
   }
 
-  await app.nav.relaunch({ page: 'device', query: { type: 'networkStatus' } });
+  await app.nav.reset({ page: 'device', params: { type: 'networkStatus' } });
   const page = (await app.page({ name: 'device' }, { timeout: 30_000 })).view;
   await page.testId('device-network-listen-start').waitFor({ timeout: 30_000 });
   await page.testId("device-network-listen-start").click();
@@ -112,7 +112,7 @@ test('publishes every device mode in the rendered API menu', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const app = t.app;
-  await app.nav.relaunch({ page: 'api' });
+  await app.nav.reset({ page: 'api' });
   const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
   await api.testId('api-device-section').waitFor({ state: 'visible', timeout: 30_000 });
   await api.testId("api-device-section").click();

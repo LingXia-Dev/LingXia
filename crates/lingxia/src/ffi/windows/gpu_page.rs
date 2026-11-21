@@ -365,6 +365,12 @@ impl Shell for Bridge {
     fn text(&self, key: &str, fallback: &str) -> String {
         lingxia_platform::i18n::text(key, fallback)
     }
+    fn can_go_back(&self, token: i64) -> bool {
+        gpu_page::can_go_back(token)
+    }
+    fn go_back(&self, token: i64) -> bool {
+        gpu_page::go_back(token)
+    }
     fn host_chrome(&self, _: i64, _: &lingxia_view_windows::lingxia_view::platform::HostChrome) {}
     fn top_layer(&self, token: i64, modal: bool) {
         if let Some(page) = gpu_page::page_of(token) {
@@ -440,7 +446,7 @@ mod embedded {
     use crate::gpu_page::webviews::child_webtag;
     use lingxia_view_windows::lingxia_view::WebViewInbound;
     use lingxia_webview::WebTag;
-    use lingxia_webview::platform::windows::find_webview_handler;
+    use lingxia_webview::platform::windows::{WindowsPreferredColorScheme, find_webview_handler};
     use std::collections::HashMap;
     use std::sync::mpsc::{Receiver, Sender, channel};
     use std::sync::{LazyLock, Mutex};
@@ -453,7 +459,8 @@ mod embedded {
     struct Placement {
         token: Token,
         window: isize,
-        views: Vec<(WebTag, [i32; 4], bool)>,
+        /// Each view's geometry, whether it shows, and whether the View page is dark.
+        views: Vec<(WebTag, [i32; 4], bool, bool)>,
     }
 
     /// Placing waits on each web view's own thread, so it runs off the page's.
@@ -468,16 +475,16 @@ mod embedded {
     pub(super) fn place(token: Token, mounts: &[WebViewMount]) {
         let mounts: Vec<_> = mounts
             .iter()
-            .map(|m| (m.web_id.clone(), m.bounds, !m.degraded))
+            .map(|m| (m.web_id.clone(), m.bounds, !m.degraded, m.dark))
             .collect();
         on_page(token, move |page| {
             let scale = page.window_scale();
             let px = |v: f32| (v * scale).round() as i32;
             let views = mounts
                 .into_iter()
-                .filter_map(|(web_id, [x, y, w, h], shown)| {
+                .filter_map(|(web_id, [x, y, w, h], shown, dark)| {
                     let webtag = child_webtag(token, &web_id)?;
-                    Some((webtag, [px(x), px(y), px(w), px(h)], shown))
+                    Some((webtag, [px(x), px(y), px(w), px(h)], shown, dark))
                 })
                 .collect();
             send(Placement {
@@ -507,6 +514,8 @@ mod embedded {
 
     fn run(receiver: Receiver<Placement>) {
         let mut placed: HashMap<Token, Vec<WebTag>> = HashMap::new();
+        // The scheme last posted to each view; placements repeat on every scroll.
+        let mut schemes: HashMap<WebTag, bool> = HashMap::new();
         while let Ok(first) = receiver.recv() {
             // Only each page's latest placement matters.
             let mut latest = vec![first];
@@ -517,12 +526,16 @@ mod embedded {
                 }
             }
             for placement in latest {
-                apply(&mut placed, placement);
+                apply(&mut placed, &mut schemes, placement);
             }
         }
     }
 
-    fn apply(placed: &mut HashMap<Token, Vec<WebTag>>, placement: Placement) {
+    fn apply(
+        placed: &mut HashMap<Token, Vec<WebTag>>,
+        schemes: &mut HashMap<WebTag, bool>,
+        placement: Placement,
+    ) {
         let Placement {
             token,
             window,
@@ -535,8 +548,9 @@ mod embedded {
             {
                 let _ = view.set_content_visible(false);
             }
+            schemes.remove(&gone);
         }
-        for (webtag, [x, y, width, height], shown) in &views {
+        for (webtag, [x, y, width, height], shown, dark) in &views {
             let Some(view) = find_webview_handler(webtag) else {
                 continue;
             };
@@ -548,6 +562,14 @@ mod embedded {
             }
             let _ = view.set_content_geometry(*x, *y, *width, *height, [0; 4], 0);
             let _ = view.set_content_visible(*shown);
+            // The web page's `prefers-color-scheme` follows the View page, live.
+            if schemes.insert(webtag.clone(), *dark) != Some(*dark) {
+                view.post_preferred_color_scheme(if *dark {
+                    WindowsPreferredColorScheme::Dark
+                } else {
+                    WindowsPreferredColorScheme::Light
+                });
+            }
         }
         lingxia_view_windows::adopt_web_surfaces(window);
         if !views.is_empty() {

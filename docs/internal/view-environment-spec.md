@@ -109,7 +109,7 @@ This specification does not define:
 
 | Term | Definition |
 |---|---|
-| **Logic** | The native JS runtime that owns `Page({})`, business state, navigation intent, and `lx.*` calls. |
+| **Logic** | The native JS runtime that owns page definitions, business state, navigation intent, and `lx.*` calls. |
 | **View** | The React or HTML document rendered by a page WebView. |
 | **host chrome** | Native host UI sharing the page surface, such as a capsule, tabbar, navigation bar, or future floating host control. |
 | **layout viewport** | The WebView coordinate space used by CSS layout and `getBoundingClientRect()`. |
@@ -492,8 +492,8 @@ hides the bar.
 
 View Environment data MUST NOT travel through:
 
-- `Page({ data })`;
-- `this.setData()`;
+- page `data`;
+- `page.update()`;
 - a page action;
 - `lx.*` Logic invocation; or
 - Logic-to-View RPC intended for application UI.
@@ -696,7 +696,7 @@ interactive foreground content, not necessarily to the page background.
 
 ### 8.2 Standard system modal UI
 
-Standard mobile APIs such as `lx.showModal()` and `lx.showActionSheet()` SHOULD
+Standard mobile APIs such as `lx.ui.confirm()` and `lx.ui.actionSheet()` SHOULD
 continue to use native platform presentation. Native presentation is above
 tabbar and capsule chrome and therefore does not depend on WebView z-index.
 

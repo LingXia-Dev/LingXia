@@ -95,7 +95,7 @@ surfaces:
   `productNames`.
 - `productNames` — optional locale → name map (`zh-CN: 我的应用`). The launcher
   follows the system language; window title, tray, and
-  `lx.getAppBaseInfo().productName` follow `lx.host.displayLanguage`.
+  `lx.host.info.productName` follow `lx.host.displayLanguage`.
 - `productVersion` — semver, stamped into every OS package. Do not edit
   version fields in platform projects.
 - `platforms` — `macos`, `windows`, `ios`, `android`, `harmony`.
@@ -420,7 +420,7 @@ runs once even with a URL/native main, without a hidden WebView. Icons follow
 tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 
 ```ts
-const { uri } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
+const { uri } = await lx.network.download(activeBrand.logoUrl).result;
 await lx.shell.sidebarActions.replace([
   {
     id: 'agent',
@@ -452,8 +452,9 @@ declaration; `replace([])` clears. `update(id, patch)` sets every key the patch
 carries: `update('brand', { value: brand?.shortName })` clears the value when
 there is no brand. Pins are the user's; there is no API to write them. Open a
 declared aside with `lx.surface.openDeclared(id)`. A live lxapp has one handle,
-its `AppSurface`: `openApp`, `getApp` and `openDeclared` / `getDeclared` of its
-declaration return the same object.
+its `AppSurface`: `lx.surface.openApp`, `lx.shell.getApp` and
+`lx.surface.openDeclared` / `lx.shell.getDeclared` of its declaration return the
+same object.
 
 ### App name and icon
 
@@ -484,13 +485,13 @@ surfaces:
       size: { width: 320, height: 480 }
 ```
 
-The runtime tray content (`lx.tray.*`) and badge (`lx.host.setBadge`) are
+The runtime tray content (`lx.host.tray.*`) and badge (`lx.host.setBadge`) are
 Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
 
 ### Terminal and browser mains
 
 A terminal main is the default workspace; open or reuse a named one with
-`lx.shell.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
+`lx.surface.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
 keys reuse one workspace; `lx.shell.getDeclared('terminal', 'project-a')`
 returns its live handle. `native: browser`
 opens an empty tab in the managed browser; use a `url:` main for a fixed target.

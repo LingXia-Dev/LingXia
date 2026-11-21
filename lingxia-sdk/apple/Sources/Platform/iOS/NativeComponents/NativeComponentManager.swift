@@ -408,7 +408,7 @@ final class NativeComponentManager {
         forwardEventToCallback(componentId: componentId, payload: payload)
     }
 
-    /// Forward playback events to the Rust callback backing `lx.createVideoContext`.
+    /// Forward playback events to the Rust callback backing `page.video`.
     private func forwardEventToCallback(componentId: String, payload: [String: Any]) {
         switch payload["event"] as? String {
         case "waiting", "playrequest", "playing", "pause", "stop", "ended", "error", "seeked", "seeking":

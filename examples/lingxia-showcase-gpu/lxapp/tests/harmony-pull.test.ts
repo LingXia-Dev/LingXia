@@ -8,7 +8,7 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
 // GPU page must give up the drag at its top so the host's refresh takes it.
 test('pull down from the screen to refresh, then refresh again', {
   id: 'HARMONY-PULL-GESTURE-001', app: SHOWCASE_APP_ID,
-  covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
+  covers: ['page.refresh', 'PageSetup.onPullDownRefresh'],
   requires: { args: ['harmonyDevice'] },
   reason: 'requires the Harmony device fixture',
   start: { page: 'pullToRefresh' },

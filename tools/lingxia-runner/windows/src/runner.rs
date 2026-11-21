@@ -795,7 +795,7 @@ fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDevic
 }
 
 /// Cold lxapp restart: recreate the JS app service (re-running `onLaunch`,
-/// so globalData/network state is rebuilt) and reload the page WebView in the
+/// so app module state is rebuilt) and reload the page WebView in the
 /// existing window. The device-frame window and its overlays stay put — no
 /// teardown or flash, unlike the full-lifecycle restart which recreates the
 /// host window and makes the whole app vanish and reappear.

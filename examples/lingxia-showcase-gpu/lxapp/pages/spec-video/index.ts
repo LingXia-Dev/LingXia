@@ -1,6 +1,11 @@
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: { packagedMedia: false },
-  onLoad(options: { media?: string } = {}) {
-    if (options.media === 'packaged') this.setData({ packagedMedia: true });
+  setup(page) {
+    return {
+      onLoad(options: { media?: string } = {}) {
+        if (options.media === 'packaged') page.update(d => { d.packagedMedia = true; });
+      },
+    };
   },
 });

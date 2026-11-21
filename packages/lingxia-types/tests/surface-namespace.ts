@@ -29,7 +29,7 @@ async function conditionalOpenTypeChecks(): Promise<string> {
 // Probe 3: a union of handles narrows on `kind`, with no runtime sniffing.
 function narrowsByKind(surface: AnySurface): string {
   if (surface.kind === "page") {
-    surface.postMessage({ hello: true });
+    surface.send({ hello: true });
     return surface.realized;
   }
   if (surface.kind === "tab") {
@@ -68,10 +68,11 @@ async function floatTakesPercentageSize(): Promise<void> {
   });
 }
 
-// Instance keys and placement overrides are shell composition.
-// @ts-expect-error lx.surface.openDeclared consumes the declaration as authored
-lx.surface.openDeclared("terminal", { key: "project-a" });
-const shellDeclared: Promise<unknown> = lx.shell.openDeclared("terminal", {
+// Instance keys and placement overrides are typed for everyone and refused at
+// run time unless the caller is the Control app.
+// @ts-expect-error a declared surface has no float/window size
+lx.surface.openDeclared("terminal", { size: { width: 480 } });
+const shellDeclared: Promise<unknown> = lx.surface.openDeclared("terminal", {
   key: "project-a",
   as: "main",
 });
@@ -110,7 +111,7 @@ async function orderedPreference(): Promise<"window" | "float"> {
 // Identity replaces caller-side bookkeeping.
 async function identityReplacesCaching(): Promise<boolean> {
   await lx.surface.openPage("inspector", { as: "float", key: "inspector" });
-  const live = lx.surface.getByKey("inspector");
+  const live = lx.surface.get("inspector");
   return live?.alive ?? false;
 }
 
@@ -120,8 +121,8 @@ async function edgeToEdgeWindow(): Promise<"window" | "float"> {
   const win = await lx.surface.openPage("editor", {
     as: "window",
     chrome: "full",
-    // `query` carries the same values every other navigation query carries.
-    query: { draft: "42", pinned: true },
+    // `params` carries the same values `lx.nav.go` takes.
+    params: { draft: "42", pinned: true },
   });
   return win.realized;
 }
@@ -138,25 +139,40 @@ lx.surface.can;
 // @ts-expect-error capability queries do not live on lx.surface
 lx.surface.capabilities;
 
-// Privilege is the namespace: composition lives on lx.shell only.
-// @ts-expect-error opening another lxapp is a shell operation
-lx.surface.openApp;
+// Another lxapp opens on lx.surface; params ride the page URL as on lx.nav.go.
+const openedApp: Promise<unknown> = lx.surface.openApp("com.example.agent", {
+  as: "aside",
+  page: "chat",
+  params: { thread: 7 },
+});
+// @ts-expect-error the startup query is params now
+lx.surface.openApp("com.example.agent", { query: { thread: "7" } });
 // @ts-expect-error opening a builtin page is a shell operation
 lx.surface.openBuiltin;
+// @ts-expect-error the lookup is lx.surface.get
+lx.surface.getByKey;
+// @ts-expect-error moved to lx.surface.openApp
+lx.shell.openApp;
+// @ts-expect-error a url opens as 'main' or 'aside'
+lx.surface.openUrl("https://example.com", { as: "tab" });
 
 // The retired API is gone.
 // @ts-expect-error openSurface no longer exists
 lx.openSurface;
-// @ts-expect-error onSurfaceContext moved to lx.surface.watchContext
+// @ts-expect-error onSurfaceContext is gone
 lx.onSurfaceContext;
-
-const unsubscribeContext: () => void = lx.surface.watchContext(() => {});
+// @ts-expect-error the size class is per page: page.env.watch
+lx.surface.watchContext;
+// @ts-expect-error a banner action's target brings the lxapp forward
+lx.surface.bringToFront;
+lx.shell.activate();
 
 export type SurfaceNamespaceGate = [
   typeof preferenceKeepsPerPlacementOptions,
   typeof floatTakesPercentageSize,
   typeof builtinReportsIdentityOnly,
   typeof shellDeclared,
+  typeof openedApp,
   typeof edgeToEdgeWindow,
   typeof fullChromeOffered,
   typeof conditionalOpenTypeChecks,
@@ -165,7 +181,6 @@ export type SurfaceNamespaceGate = [
   typeof orderedPreference,
   typeof identityReplacesCaching,
   typeof windowOffered,
-  typeof unsubscribeContext,
   SurfaceErrorCodesAreExhaustive,
 ];
 
@@ -179,14 +194,15 @@ lx.surface.openPage("settings", { as: "float", chrome: "full" });
 // An ordered preference cannot know which it will be, so both stay open.
 lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", position: "center" });
 
-// A query value is serialized into the page's URL, so a structured value is a
-// compile error here exactly as it is on `lx.navigateTo`.
-async function queryRejectsStructuredValues(): Promise<void> {
-  // @ts-expect-error query values are strings, numbers, booleans or nullish
-  await lx.surface.openPage("editor", { as: "float", query: { filter: { open: true } } });
+// Params keep their JSON type through the page URL, as on `lx.nav.go`;
+// only a non-JSON value is a compile error.
+async function queryTakesJson(): Promise<void> {
+  await lx.surface.openPage("editor", { as: "float", params: { filter: { open: true } } });
+  // @ts-expect-error a Date is not JSON
+  await lx.surface.openPage("editor", { as: "float", params: { at: new Date() } });
 }
 
-export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];
+export type SurfaceQueryGate = [typeof queryTakesJson];
 
 // `lx.shell` resolves to the global `ShellApi`, not the exported alias, so a
 // member declared on only one of the two is unreachable at the call site it

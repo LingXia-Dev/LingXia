@@ -52,6 +52,17 @@ function directLxPath(node) {
     : null;
 }
 
+// A handle factory is an `lx.*` call, or a member of the `page` a page's setup received.
+function factoryPath(node) {
+  const lxPath = directLxPath(node);
+  if (lxPath) return lxPath;
+  return ts.isPropertyAccessExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === 'page'
+    ? `page.${node.name.text}`
+    : null;
+}
+
 function scan() {
   const usages = new Map();
   for (const file of logicFiles()) {
@@ -131,6 +142,15 @@ function receiverKey(node, ast) {
   return null;
 }
 
+// A page's helpers are called as `helpers.load()` or `load()`: the method name
+// alone says which handle comes back.
+function methodName(node) {
+  const current = unwrapExpression(node);
+  if (ts.isPropertyAccessExpression(current)) return current.name.text;
+  if (ts.isIdentifier(current)) return current.text;
+  return null;
+}
+
 function scanReturnedObjects() {
   const usages = new Map();
   for (const file of logicFiles()) {
@@ -143,7 +163,7 @@ function scanReturnedObjects() {
     const factorySurfaces = (expression) => {
       const current = unwrapExpression(expression);
       if (!ts.isCallExpression(current)) return null;
-      const factory = directLxPath(current.expression);
+      const factory = factoryPath(current.expression);
       return factory ? surfacesByFactory.get(factory) ?? null : null;
     };
     const inferred = (expression) => {
@@ -153,7 +173,7 @@ function scanReturnedObjects() {
       const key = receiverKey(current, ast);
       if (key && aliases.has(key)) return aliases.get(key);
       if (ts.isCallExpression(current)) {
-        const method = receiverKey(current.expression, ast);
+        const method = methodName(current.expression);
         if (method && methodReturns.has(method)) return methodReturns.get(method);
       }
       return null;
@@ -171,7 +191,7 @@ function scanReturnedObjects() {
           assign(node.left, node.right);
         }
         if ((ts.isMethodDeclaration(node) || ts.isPropertyAssignment(node)) && node.name) {
-          const methodName = node.name.getText(ast).replaceAll(/["']/g, '');
+          const name = node.name.getText(ast).replaceAll(/["']/g, '');
           const body = ts.isMethodDeclaration(node)
             ? node.body
             : (ts.isFunctionExpression(node.initializer) || ts.isArrowFunction(node.initializer))
@@ -181,7 +201,7 @@ function scanReturnedObjects() {
             const inspectReturn = (candidate) => {
               if (ts.isReturnStatement(candidate) && candidate.expression) {
                 const surfaces = inferred(candidate.expression);
-                if (surfaces) methodReturns.set(`this.${methodName}`, surfaces);
+                if (surfaces) methodReturns.set(name, surfaces);
               }
               candidate.forEachChild(inspectReturn);
             };
@@ -190,14 +210,6 @@ function scanReturnedObjects() {
         }
         if (ts.isCallExpression(node)) {
           const direct = directLxPath(node.expression);
-          if (direct === 'lx.surface.watchContext') {
-            const callback = node.arguments[0];
-            if ((ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) && callback.parameters[0]) {
-              aliases.set(callback.parameters[0].name.getText(ast), [
-                objectSurfaces.find(({ name }) => name === 'PageSurface'),
-              ].filter(Boolean));
-            }
-          }
           const receiver = ts.isPropertyAccessExpression(node.expression)
             ? inferred(node.expression.expression)
             : null;

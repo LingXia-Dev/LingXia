@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn asking_for_the_draft_channel_does_not_waive_a_prod_build() {
         // The attack this closes: an App Link query or
-        // `lx.navigateToApp({channel:'draft'})` picks the channel an
+        // `lx.nav.go({ app, channel: 'draft' })` picks the channel an
         // lxapp is fetched on. Keying the waiver on that let anyone who could
         // hand a prod device a link be served an unsigned package.
         let sha256 = archive_sha256_hex(ARCHIVE);

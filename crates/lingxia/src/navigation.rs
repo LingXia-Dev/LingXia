@@ -23,9 +23,8 @@
 //! Handlers navigate and nothing else. A side effect the user has to approve
 //! belongs behind the screen the handler opens, not in the handler.
 //!
-//! This is not the lxapp-facing page router. `lx.navigateTo` and friends move
-//! between pages of the lxapp that called them, and `lx.navigateToApp` moves
-//! between lxapps — both are in-process calls from a live lxapp. A target
+//! This is not the lxapp-facing page router. `lx.nav` moves between pages of
+//! the lxapp that called it, and `lx.nav.go({ app })` moves between lxapps — both are in-process calls from a live lxapp. A target
 //! here comes from outside the product (an OS notification tap, a menu, the
 //! tray) and has to survive the process exiting. `{ kind: 'page' }` and
 //! `{ kind: 'app' }` use the same page-name + query contract as those APIs
@@ -54,7 +53,7 @@ pub fn open(target: NavigationTarget, source: NavigationSource) -> crate::Result
 ///
 /// The lxapp and the page are fixed here, at registration: a caller names the
 /// route, never a path. `page` is the configured page name from `lxapp.json`,
-/// resolved the same way `lx.navigateToApp` resolves it — internal paths are
+/// resolved the same way `lx.nav.go({ app })` resolves it — internal paths are
 /// not a public selector anywhere else, and a navigation target is no place to
 /// reintroduce them.
 ///
@@ -105,7 +104,7 @@ fn spawn_open_lxapp_page(
     Ok(())
 }
 
-/// Same steps `lx.navigateToApp` takes, minus the caller's lxapp.
+/// Same steps `lx.nav.go({ app })` takes, minus the caller's lxapp.
 async fn open_lxapp_page(
     appid: &str,
     page: Option<&str>,

@@ -15,16 +15,6 @@ pub(super) struct JSPickMediaOptions {
     pub(super) max_duration: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub(super) struct PickedMediaEntry {
-    #[serde(rename = "uri")]
-    pub(super) path: String,
-    #[serde(rename = "fileType")]
-    pub(super) kind: String,
-    #[serde(rename = "isOriginal")]
-    pub(super) is_original: bool,
-}
-
 #[derive(Deserialize, Serialize, Hash, Clone)]
 pub(super) struct MediaKey {
     pub(super) uri: String,
@@ -34,6 +24,9 @@ pub(super) struct MediaKey {
     pub(super) is_original: bool,
     #[serde(rename = "fileExt", default)]
     pub(super) file_ext: Option<String>,
+    /// The item's own file name, when the platform knows it.
+    #[serde(rename = "fileName", default)]
+    pub(super) file_name: Option<String>,
 }
 
 fn default_kind() -> String {

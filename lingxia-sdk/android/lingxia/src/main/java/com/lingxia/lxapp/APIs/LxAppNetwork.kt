@@ -88,7 +88,7 @@ object LxAppNetwork {
         statusListeners[id] = listener
 
         // Ensure the OS NetworkCallback is registered even when the only consumer
-        // is a Java/Kotlin listener (no JS-side `lx.onNetworkChange` subscriber).
+        // is a Java/Kotlin listener (no JS-side `lx.network.watch` subscriber).
         // Without this the listener would silently never receive updates.
         val context = Lingxia.applicationContext()
         val connMgr = getConnectivityManager(context)

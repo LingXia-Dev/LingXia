@@ -76,23 +76,23 @@ async function allowLocation(
   console.info('The macOS location permission dialog closed after the pointer click');
 }
 
-const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 test.configure({ skip: targetPlatform && targetPlatform !== 'macos' ? 'macOS only' : undefined });
 const promptAppearanceGraceMs = 5_000;
 
 test('handles the macOS location permission sheet when it appears', {
   id: 'MACOS-LOCATION-001',
-  covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
+  covers: ['lx.device.location', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
 }, async (t) => {
   const auto = t.automation;
   const app = auto.lxapp();
-  // This case claims lx.getLocation; a silent pass elsewhere would credit it falsely.
+  // This case claims lx.device.location; a silent pass elsewhere would credit it falsely.
   const platform = await runtimePlatform(app);
   if (platform !== 'macos') throw new Error(`macOS location case ran against ${platform || 'unknown'}`);
   const doctor = await auto.desktop.doctor();
   const { permissions } = doctor;
 
-  await app.nav.relaunch({ page: 'location' });
+  await app.nav.reset({ page: 'location' });
   const location = await app.page({ name: 'location' }, { timeout: 30_000 });
   const request = location.view.css('button').first();
   await request.waitFor({ state: 'visible', timeout: 30_000 });
@@ -120,8 +120,8 @@ test('handles the macOS location permission sheet when it appears', {
       promptHandled = true;
     }
 
-    const state = await app.logic.eval(({ getCurrentPages }) => {
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/location/'));
+    const state = await app.logic.eval(({ pageStack }) => {
+      const page = pageStack().find((candidate) => candidate.route.includes('/location/'));
       const data = (page?.data ?? {}) as { isLoading?: boolean; location?: unknown; locationError?: unknown };
       return {
         loading: !!data.isLoading,

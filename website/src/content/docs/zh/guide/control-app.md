@@ -32,10 +32,10 @@ await control.appearance.setPreference('dark')
 这些作用于产品本身，而不是调用方 lxapp：
 
 - `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
-- `lx.host.control.displayLanguage` / `lx.host.control.appearance`（写入）
+- `lx.host.displayLanguage` / `lx.host.appearance`（写入）
 - `lx.shell.*` —— `sidebarActions`、`setAppDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
 
-每个 lxapp 仍可**读取** `lx.host.displayLanguage.get()` 与 `lx.host.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.getUpdateManager()`。
+每个 lxapp 仍可**读取** `lx.host.displayLanguage.get()` 与 `lx.host.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。
 
 拒绝结果是 `E_PERMISSION_DENIED`，并会点名本该被允许的 class。把它当成设计信号：让 Control app 去做产品级工作，不要冒充它。这不是用户关掉对话框，也不是缺少 capability（那个由 `lx.supports()` 回答）。
 

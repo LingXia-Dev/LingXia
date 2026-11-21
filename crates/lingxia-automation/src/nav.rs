@@ -1,7 +1,6 @@
 //! `NavDriver` — page-stack navigation + runtime reads for one selected lxapp.
-//! Action verbs (`to` / `redirect` / `switchTab` / `relaunch`)
-//! take a configured page name (+ optional `query`); reads are `current` /
-//! `stack`; `back` pops; `press` is the user's navigation bar button. Semantics come from the shared `lxapp::automation`
+//! `go` / `reset` take an `lx.nav` target (`{ page, params? }` or `{ tab }`);
+//! reads are `current` / `stack`; `back` pops; `press` is the user's navigation bar button. Semantics come from the shared `lxapp::automation`
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.
 //!
 //! Actions resolve once the page stack changed (`waitUntil: 'commit'`, the
@@ -51,9 +50,15 @@ struct JSWaitOptions {
 }
 
 #[derive(FromJSObject)]
-struct JSNavOptions {
-    page: String,
-    query: Option<JSObject>,
+struct JSNavTarget {
+    page: Option<String>,
+    tab: Option<String>,
+    params: Option<JSObject>,
+}
+
+#[derive(FromJSObject)]
+struct JSGoOptions {
+    replace: Option<bool>,
     #[js_name = "waitUntil"]
     wait_until: Option<String>,
     #[js_name = "timeoutMs"]
@@ -149,16 +154,33 @@ impl From<auto::PageStatus> for JSPageInfo {
 }
 
 impl JSNavDriver {
+    /// `kind` applies to a `{ page }` target; a `{ tab }` target switches
+    /// unless the caller relaunches.
     async fn navigate(
         &self,
         ctx: &JSContext,
-        options: &JSNavOptions,
+        target: JSNavTarget,
         kind: NavigationType,
+        wait_until: Option<&str>,
+        timeout_ms: Option<f64>,
     ) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(ctx, &self.lxapp)?;
-        let wait = ready_wait(ctx, options.wait_until.as_deref(), options.timeout_ms)?;
-        let query = options.query.as_ref().map(js_object_to_json).transpose()?;
-        let (page, name) = auto::navigate(&app, &options.page, query.as_ref(), kind, false)
+        let wait = ready_wait(ctx, wait_until, timeout_ms)?;
+        let (name, kind) = match (target.page, target.tab) {
+            (Some(page), None) => (page, kind),
+            (None, Some(tab)) if target.params.is_none() => (
+                tab,
+                if kind == NavigationType::Launch {
+                    kind
+                } else {
+                    NavigationType::SwitchTab
+                },
+            ),
+            (None, Some(_)) => return Err(auto_err("a { tab } target takes no params")),
+            _ => return Err(auto_err("a target is { page, params? } or { tab }")),
+        };
+        let query = target.params.as_ref().map(js_object_to_json).transpose()?;
+        let (page, name) = auto::navigate(&app, &name, query.as_ref(), kind, false)
             .await
             .map_err(auto_err)?;
         landed(&app, page, name, wait).await
@@ -197,25 +219,50 @@ impl JSNavDriver {
         Err(HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into())
     }
 
+    /// Push `{ page }` (replace with `{ replace: true }`) or switch to `{ tab }`.
     #[js_method]
-    async fn to(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&ctx, &options, NavigationType::Forward).await
+    async fn go(
+        &self,
+        ctx: JSContext,
+        target: JSNavTarget,
+        options: Optional<JSGoOptions>,
+    ) -> JSResult<JSPageInfo> {
+        let options = options.0;
+        let replace = options.as_ref().and_then(|o| o.replace).unwrap_or(false);
+        if replace && target.tab.is_some() {
+            return Err(auto_err("a tab cannot replace a page"));
+        }
+        let kind = if replace {
+            NavigationType::Replace
+        } else {
+            NavigationType::Forward
+        };
+        self.navigate(
+            &ctx,
+            target,
+            kind,
+            options.as_ref().and_then(|o| o.wait_until.as_deref()),
+            options.as_ref().and_then(|o| o.timeout_ms),
+        )
+        .await
     }
 
     #[js_method]
-    async fn redirect(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&ctx, &options, NavigationType::Replace).await
-    }
-
-    #[js_method(rename = "switchTab")]
-    async fn switch_tab(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&ctx, &options, NavigationType::SwitchTab)
-            .await
-    }
-
-    #[js_method]
-    async fn relaunch(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&ctx, &options, NavigationType::Launch).await
+    async fn reset(
+        &self,
+        ctx: JSContext,
+        target: JSNavTarget,
+        options: Optional<JSWaitOptions>,
+    ) -> JSResult<JSPageInfo> {
+        let options = options.0;
+        self.navigate(
+            &ctx,
+            target,
+            NavigationType::Launch,
+            options.as_ref().and_then(|o| o.wait_until.as_deref()),
+            options.as_ref().and_then(|o| o.timeout_ms),
+        )
+        .await
     }
 
     #[js_method]

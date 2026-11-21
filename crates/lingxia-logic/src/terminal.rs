@@ -120,7 +120,7 @@ fn require_access(ctx: &JSContext, route: LogicRoute) -> JSResult<Arc<LxApp>> {
     {
         return Err(HostError::new(
             rong::error::E_PERMISSION_DENIED,
-            "lx.terminal requires native host terminal support",
+            "lx.host.terminal requires native host terminal support",
         )
         .into());
     }
@@ -128,15 +128,7 @@ fn require_access(ctx: &JSContext, route: LogicRoute) -> JSResult<Arc<LxApp>> {
 }
 
 fn terminal_namespace(ctx: &JSContext) -> JSResult<JSObject> {
-    let lx = ctx.global().get::<_, JSObject>("lx")?;
-    match lx.get::<_, JSObject>("terminal") {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let value = JSObject::new(ctx);
-            lx.set("terminal", value.clone())?;
-            Ok(value)
-        }
-    }
+    crate::namespace::child(ctx, &crate::app::app_namespace(ctx)?, "terminal")
 }
 
 fn child_namespace(parent: &JSObject, ctx: &JSContext, name: &str) -> JSResult<JSObject> {
@@ -439,7 +431,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
     let lease = lingxia_terminal_config::runtime::create_theme_preview_lease();
     let service = ctx
         .get_service::<TerminalContextService>()
-        .expect("terminal context service is installed with lx.terminal");
+        .expect("terminal context service is installed with lx.host.terminal");
     service.previews.borrow_mut().insert(lease);
     let leases = service.previews.clone();
     let closed = Rc::new(Cell::new(false));
@@ -560,7 +552,7 @@ fn install_on_change(
 fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
     let service = ctx
         .get_service::<TerminalContextService>()
-        .expect("terminal context service is installed with lx.terminal");
+        .expect("terminal context service is installed with lx.host.terminal");
     let active = service.active.clone();
     let listeners = service.listeners.clone();
     let ctx_for_pump = ctx.clone();
@@ -598,7 +590,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(ctx)?;
     let app = invocation.lxapp();
     if !crate::capability::exposes(ctx, "terminal") {
-        return Ok(());
+        return crate::app::unsupported_terminal(ctx);
     }
 
     let active = Rc::new(Cell::new(true));
@@ -656,7 +648,7 @@ mod tests {
     fn every_terminal_api_is_in_the_central_control_inventory() {
         for route in LogicRoute::ALL
             .iter()
-            .filter(|route| route.name().starts_with("lx.terminal."))
+            .filter(|route| route.name().starts_with("lx.host.terminal."))
         {
             assert_eq!(
                 authorization::logic_route_inventory()[route.name()]

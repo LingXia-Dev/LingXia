@@ -32,7 +32,7 @@ export function render({ data, actions }: View<Actions, { id: string }>) {
 ## Mental model
 
 - **View and Logic.** A page has a View (`index.tsx`, this language) and optionally Logic (`index.ts`,
-  `Page({ … })`). Logic owns data, network, storage and `lx.*`. The View renders `view.data` and calls
+  `definePage({ … })`). Logic owns data, network, storage and `lx.*`. The View renders `view.data` and calls
   Logic through `view.actions`. The View has no `lx`, `fetch`, timers or DOM.
 - **No DOM.** Elements are not HTML elements. There is no `document`, no CSS file at runtime, no
   selector engine, no event bubbling. A tag you do not find in [elements](reference/elements.md) does not exist.

@@ -99,7 +99,7 @@ test('a quality switch keeps the position and the frames moving', { start: { pag
   await expect(state).toContainText('360p · 360p', { timeout: 5_000 });
 });
 
-test('lx.createVideoContext pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
+test('page.video pauses and plays the page player from Logic', { start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
@@ -116,7 +116,7 @@ test('a page under another holds its videos still and plays the playing ones aga
   const state = view.testId('video-hero-state');
   const at = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
   const away = async () => {
-    await t.app.nav.to({ page: 'todo' });
+    await t.app.nav.go({ page: 'todo' });
     await new Promise<void>(resolve => setTimeout(resolve, 2_500));
     await t.app.nav.back();
     await expect(state).toBeVisible();

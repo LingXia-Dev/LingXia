@@ -11,8 +11,7 @@ use serde_json::Value;
 struct JSScanOptions {
     #[js_name = "onlyFromCamera"]
     only_from_camera: Option<bool>,
-    #[js_name = "scanType"]
-    scan_type: Option<Vec<String>>,
+    formats: Option<Vec<String>>,
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -21,23 +20,24 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn scanCode(
-            ts_params = "options?: ScanCodeOptions",
-            ts_return = "Promise<ScanCodeResult>"
+        namespace PickApi = crate::pick::pick_namespace(ctx)?;
+        fn code(
+            ts_params = "options?: PickCodeOptions",
+            ts_return = "Promise<PickCodeResult>"
         ) = scan;
     }
 }
 
-/// Opens the scanner.
+/// Scans a barcode or QR code with the camera.
 ///
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-/// completed scan resolves `{ status: 'ok', scanResult, scanType }`. Rejects
-/// when scanning fails or the host returns an invalid payload.
+/// completed scan resolves `{ status: 'ok', value, format }`. A value that is an
+/// `/lxapp/` app link also opens that lxapp; other URLs are only returned.
+/// Rejects when scanning fails or the host returns an invalid payload.
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
-    let scan_types = parse_scan_types(opts.scan_type)?;
+    let scan_types = parse_scan_types(opts.formats)?;
     let only_from_camera = opts.only_from_camera.unwrap_or(true);
 
     let request = ScanCodeRequest {
@@ -54,18 +54,18 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
     };
 
     let payload: Value = serde_json::from_str(&data)
-        .map_err(|e| js_internal_error(format!("scanCode invalid payload: {}", e)))?;
+        .map_err(|e| js_internal_error(format!("pick.code invalid payload: {}", e)))?;
 
     let scan_result = payload
         .get("scanResult")
         .and_then(Value::as_str)
-        .ok_or_else(|| js_internal_error("scanCode payload missing string `scanResult`"))?
+        .ok_or_else(|| js_internal_error("pick.code payload missing string `scanResult`"))?
         .to_string();
 
     let scan_type = payload
         .get("scanType")
         .and_then(Value::as_str)
-        .ok_or_else(|| js_internal_error("scanCode payload missing string `scanType`"))?
+        .ok_or_else(|| js_internal_error("pick.code payload missing string `scanType`"))?
         .to_string();
 
     // Only the `/lxapp/*` namespace auto-opens. A product URL that merely
@@ -73,8 +73,8 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
     let _ = lingxia_service::applink::deliver_lxapp_only(&scan_result);
 
     let result = completed(&ctx)?;
-    result.set("scanResult", scan_result)?;
-    result.set("scanType", scan_type)?;
+    result.set("value", scan_result)?;
+    result.set("format", scan_type)?;
     Ok(result)
 }
 
@@ -83,7 +83,7 @@ fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
     if let Some(list) = value {
         for token in list {
             let t = parse_scan_type_token(token.as_str())
-                .ok_or_else(|| js_invalid_parameter_error("invalid scanType token"))?;
+                .ok_or_else(|| js_invalid_parameter_error("invalid code format"))?;
             if !out.contains(&t) {
                 out.push(t);
             }

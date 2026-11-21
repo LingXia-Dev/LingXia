@@ -52,8 +52,8 @@ fn validate_navigation_stack(
                 nav_type,
                 target_path,
                 format!(
-                    "navigateTo target '{target_path}' is already on the page stack; \
-                     use lx.switchTab or lx.navigateBack to return to it."
+                    "'{target_path}' is already on the page stack; \
+                     use lx.nav.go({{ tab }}) or lx.nav.back() to return to it."
                 ),
             ))
         }
@@ -63,7 +63,7 @@ fn validate_navigation_stack(
                 nav_type,
                 target_path,
                 format!(
-                    "navigateTo cannot open '{target_path}': the page stack is full \
+                    "cannot push '{target_path}': the page stack is full \
                      (capacity: {PAGE_STACK_MAX})."
                 ),
             ))
@@ -215,7 +215,6 @@ impl LxApp {
         PageInstanceRuntimeRecord {
             owner: PageOwner::Host,
             surface: PresentationKind::Window,
-            dispose_ttl: None,
             page: ResolvedPage {
                 appid: self.appid.clone(),
                 path: path.clone(),
@@ -231,7 +230,6 @@ impl LxApp {
         page: &PageInstance,
         owner: PageOwner,
         surface: PresentationKind,
-        dispose_ttl: Option<std::time::Duration>,
         resolved: ResolvedPage,
     ) {
         if let Ok(state) = self.state.lock() {
@@ -240,7 +238,6 @@ impl LxApp {
                 PageInstanceRuntimeRecord {
                     owner,
                     surface,
-                    dispose_ttl,
                     page: resolved,
                     lifecycle: PageInstanceLifecycleState::Created,
                 },
@@ -273,7 +270,6 @@ impl LxApp {
         target: PageTarget,
         query: Option<PageQueryInput>,
         surface: PresentationKind,
-        dispose_ttl: Option<std::time::Duration>,
     ) -> Result<CreatedPageInstance, LxAppError> {
         let target_url = self.build_page_target_url(&target, query.as_ref())?;
         let resolved = self.resolve_page_target(&target, query.as_ref())?;
@@ -320,15 +316,7 @@ impl LxApp {
                 }
             }
         };
-        self.cancel_page_instance_dispose_timer(&page.instance_id());
-
-        self.upsert_page_instance_runtime_record(
-            &page,
-            owner,
-            surface,
-            dispose_ttl,
-            resolved.clone(),
-        );
+        self.upsert_page_instance_runtime_record(&page, owner, surface, resolved.clone());
 
         Ok(CreatedPageInstance {
             page_instance_id: page.instance_id(),
@@ -397,7 +385,6 @@ impl LxApp {
         let (
             owner_for_log,
             presentation_for_log,
-            dispose_ttl,
             resolved_path_for_log,
             query_for_log,
             definition_path_for_log,
@@ -411,7 +398,6 @@ impl LxApp {
             (
                 record.owner.clone(),
                 record.surface,
-                record.dispose_ttl,
                 record.page.path.clone(),
                 record.page.query.clone(),
                 record.page.definition.path.clone(),
@@ -432,11 +418,8 @@ impl LxApp {
         .with_path(page.path());
 
         match event {
-            PageInstanceEvent::Mounted => {
-                self.cancel_page_instance_dispose_timer(id);
-            }
+            PageInstanceEvent::Mounted => {}
             PageInstanceEvent::Visible => {
-                self.cancel_page_instance_dispose_timer(id);
                 page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnShow);
                 page.mark_active();
             }
@@ -450,20 +433,58 @@ impl LxApp {
                 page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
                 if matches!(reason, CloseReason::AppClosed) {
                     self.dispose_page_instance_internal(id, reason, false)?;
-                } else if let Some(dispose_ttl) = dispose_ttl {
-                    self.schedule_page_instance_dispose_timer(id, dispose_ttl)?;
-                } else {
-                    self.cancel_page_instance_dispose_timer(id);
                 }
             }
             PageInstanceEvent::Disposed { reason } => {
-                self.cancel_page_instance_dispose_timer(id);
                 self.dispose_page_instance(id, reason)?;
             }
             PageInstanceEvent::Resized { .. } => {}
         }
 
         Ok(())
+    }
+
+    /// Leave a stack page the way Back does: `this.close()` on a pushed page.
+    /// Only the top entry can leave; a root or a tab page never does.
+    pub(crate) fn leave_page_instance(&self, id: &str) -> Result<(), LxAppError> {
+        let (stack, pinned) = {
+            let state = self.state.lock().unwrap();
+            let stack: Vec<String> = state.page_stack.lock().unwrap().iter().cloned().collect();
+            let pinned = state
+                .path_pins
+                .lock()
+                .is_ok_and(|pins| pins.values().any(|pinned| pinned == id));
+            (stack, pinned)
+        };
+        let invalid = |detail: &str| LxAppError::UnsupportedOperation(detail.to_string());
+        if pinned {
+            return Err(invalid("a tab page cannot be closed; switch tabs instead"));
+        }
+        match stack.iter().position(|entry| entry == id) {
+            None => Err(invalid("this page is not on the page stack")),
+            Some(0) => Err(invalid("the root page cannot be closed")),
+            Some(index) if index + 1 != stack.len() => Err(invalid(
+                "only the top page can close itself; a page under it cannot yet",
+            )),
+            Some(_) => self.current_page()?.navigate_back(1),
+        }
+    }
+
+    /// On this app's stack or path-pinned, so not owned by a surface alone.
+    pub(crate) fn page_instance_is_retained(&self, id: &str) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return false;
+        };
+        state
+            .page_stack
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == id)
+            || state
+                .path_pins
+                .lock()
+                .is_ok_and(|pins| pins.values().any(|pinned| pinned == id))
     }
 
     pub fn dispose_page_instance(
@@ -480,7 +501,44 @@ impl LxApp {
         reason: CloseReason,
         dispatch_on_hide: bool,
     ) -> Result<(), LxAppError> {
-        self.cancel_page_instance_dispose_timer(id);
+        // Closing a hosting surface disposes its content page, and disposing a
+        // page closes the surfaces it hosts; the second entry must not unload twice.
+        let (first_entry, lifecycle) = {
+            let state = self.state.lock().unwrap();
+            let first = state
+                .disposing_page_instances
+                .lock()
+                .unwrap()
+                .insert(id.to_string());
+            let lifecycle = state
+                .page_instance_runtime
+                .lock()
+                .unwrap()
+                .get(id.as_str())
+                .map(|record| record.lifecycle);
+            (first, lifecycle)
+        };
+        if !first_entry {
+            return Ok(());
+        }
+        let result = self.dispose_page_instance_once(id, reason, dispatch_on_hide, lifecycle);
+        if let Ok(state) = self.state.lock() {
+            state
+                .disposing_page_instances
+                .lock()
+                .unwrap()
+                .remove(id.as_str());
+        }
+        result
+    }
+
+    fn dispose_page_instance_once(
+        &self,
+        id: &PageInstanceId,
+        reason: CloseReason,
+        dispatch_on_hide: bool,
+        lifecycle: Option<PageInstanceLifecycleState>,
+    ) -> Result<(), LxAppError> {
         self.cancel_page_reset(id.as_str());
         let child_reason = if matches!(reason, CloseReason::AppClosed) {
             CloseReason::AppClosed
@@ -502,9 +560,12 @@ impl LxApp {
         })?;
         let path = page.path();
 
-        if dispatch_on_hide {
+        // A page already reported hidden got its onHide then.
+        let hidden = matches!(lifecycle, Some(PageInstanceLifecycleState::Hidden));
+        if dispatch_on_hide && !hidden {
             page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
         }
+        page.set_leave_reason(reason);
         page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
         let webview = page.webview();
         page.detach_webview();
@@ -794,14 +855,6 @@ impl LxApp {
                         .with_appid(self.appid.clone())
                         .with_path(removed_page.path())
                 });
-            if let Some(cancel) = state
-                .page_instance_dispose_timers
-                .lock()
-                .unwrap()
-                .remove(id.as_str())
-            {
-                let _ = cancel.send(());
-            }
             crate::view_call::cancel_view_calls_for_page_instances(
                 std::slice::from_ref(&id),
                 "PageInstance evicted while waiting for view response",
@@ -885,14 +938,6 @@ impl LxApp {
                                 .with_appid(self.appid.clone())
                                 .with_path(page.path())
                         });
-                    if let Some(cancel) = state
-                        .page_instance_dispose_timers
-                        .lock()
-                        .unwrap()
-                        .remove(id.as_str())
-                    {
-                        let _ = cancel.send(());
-                    }
                     state
                         .page_instance_runtime
                         .lock()
@@ -941,7 +986,7 @@ impl LxApp {
     }
 
     /// Send every live page's View this lxapp's adaptive context — the JSON
-    /// Logic's `watchContext` was just sent — after it changed. A page whose
+    /// the Logic `page.env` event was just sent — after it changed. A page whose
     /// bridge is not up yet gets it once it is.
     pub fn push_surface_context_to_views(&self, context_json: &str, revision: u64) {
         for page in self.live_page_instances() {

@@ -1,7 +1,7 @@
 # Logic runtime
 
-The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `Page`,
-`App`, and the Web profile.
+The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `App`,
+and the Web profile; `definePage` is imported from `@lingxia/types/page`.
 
 **`@lingxia/types` is the API reference.** Its declarations and JSDoc are
 generated from the runtime and are authoritative for signatures, options,
@@ -39,9 +39,9 @@ library, and the root `tsconfig.json` references both.
   [grant](../native/permissions.md).
 - Navigation takes a configured **page name**, never a path. A name computed
   at runtime needs `page as ConfiguredPageName`; another lxapp's page
-  (`lx.navigateToApp`, `lx.shell.openApp`) is a plain string.
-- Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
-  `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`, `lx.tray`, `lx.shell`.
+  (`lx.nav.go({ app })`, `lx.surface.openApp`) is a plain string.
+- Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
+  `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.surface`, `lx.shell`.
 
 ## Web globals
 
@@ -72,8 +72,8 @@ No lxapp keeps its own copy or offers its own picker.
 lx.host.displayLanguage.get();        lx.host.displayLanguage.watch(cb);
 lx.host.appearance.get();             lx.host.appearance.watch(cb);
 
-lx.host.control?.displayLanguage.setPreference('zh-CN');
-lx.host.control?.appearance.setPreference('dark');
+lx.host.displayLanguage.setPreference('zh-CN');
+lx.host.appearance.setPreference('dark');
 ```
 
 - `get`/`watch` report what is in effect; `getPreference` / `setPreference` /
@@ -106,11 +106,13 @@ if (lx.supports('surface.window.fullChrome')) {
 - The set is frozen per Logic context. Unknown strings return false;
   non-strings throw `TypeError`.
 - `true` is not permission: grants and failures surface at the call.
-- Optional namespaces share it: `terminal`, `app.autostart`,
-  `app.notification`, `app.banner`.
+- Capability members are always present: `lx.host.terminal`, `autostart`,
+  `notification`, `banner`. Without the feature their calls fail
+  `E_NOT_SUPPORTED`; without the right (`lx.host.cache` outside the Control
+  app), `E_PERMISSION_DENIED`.
 - Required features need a matching `minRuntime`; optional ones need a
   fallback.
-- Use `lx.host.control?.…` for Control-app members, not a feature key
+- Ask `lx.app.info.role === 'control'` for Control-app members, not a feature key
   ([Control app](../app/control-app.md)).
 - Unsupported cosmetic calls (tray on mobile) are silent no-ops; calls with a
   result reject.
@@ -130,12 +132,12 @@ painted:
 - A badge never prompts, and a notification never sets one. Pass `null` to
   clear.
 
-`lx.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
+`lx.host.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
 the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner
 
-`lx.host.banner` (macOS/Windows; present exactly when
+`lx.host.banner` (macOS/Windows; elsewhere calls fail `E_NOT_SUPPORTED`, so ask
 `lx.supports('app.banner')`) draws a product card in the top-right corner. No
 yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 
@@ -158,8 +160,8 @@ yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 - `status: 'posted'` means the OS accepted it, nothing more.
 - `target` decides where a tap goes, resolved at tap time with no fallback:
   - omitted, or `{ kind: 'activate' }` — bring the product forward;
-  - `{ kind: 'page', page, query }` — a page of this app, as `lx.navigateTo`;
-  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.navigateToApp`;
+  - `{ kind: 'page', page, query }` — a page of this app, as `lx.nav.go({ page })`;
+  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.nav.go({ app })`;
     one already docked as an aside is brought back there, and the query
     reaches its App `onShow` (`switch_back`);
   - `{ kind: 'route', name, params }` — a host-registered location;
@@ -179,27 +181,30 @@ A guest (any lxapp but the Control app) may use `lx.host.notification` and
 - Per guest: 32 live notifications; 3 banners showing or queued, each up for
   60 s at most and queued behind the product's. Its banner shows its name and icon.
 - One permission prompt per launch, only while it is open: ask from a user action.
-- `lx.surface.bringToFront({ page?, query? })` comes forward the way a tap on
-  its notification would. A guest may call it once, within 10 s of the person
-  picking an action on its banner:
+- A banner action's `target` is where picking it goes, scoped like a
+  notification target; the product comes forward and the target opens:
 
 ```ts
-const r = await lx.host.banner.show({ title: 'Run finished', actions: [{ id: 'open', label: 'Open' }] })
-if (r.status === 'ok') await lx.surface.bringToFront({ query: { run: runId } })
+await lx.host.banner.show({
+  title: 'Run finished',
+  actions: [{ id: 'open', label: 'Open', target: { kind: 'app', query: { run: runId } } }],
+})
 ```
+
+- Only the Control app brings the product forward on its own: `lx.shell.activate()`.
 
 ## Errors
 
 A rejection means the operation failed, never that the user said no.
-Dismissable APIs (`showActionSheet`, `showModal`, `pickFile`,
-`pickFiles`, `pickDirectory`, `pickMedia`, `scanCode`, `lx.clipboard`
-reads) resolve a result discriminated on `status`. `lx.share` reports
+Dismissable APIs (`lx.ui.actionSheet`, every `lx.pick.*`, `lx.clipboard`
+reads) resolve a result discriminated on `status`; `lx.ui.confirm` resolves
+`false`. `lx.share` reports
 `outcome: 'completed' | 'dismissed' | 'unknown'`.
 
 ```ts
-const scan = await lx.scanCode()
+const scan = await lx.pick.code()
 if (scan.status === 'canceled') return                   // the user backed out
-lx.showToast({ title: scan.scanResult })    // narrowed: the payload is present
+lx.ui.toast(scan.value)                    // narrowed: the payload is present
 ```
 
 Branch on the numeric code through `@lingxia/types/error`, never on the
@@ -209,11 +214,11 @@ localized message:
 import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
 
 try {
-  await lx.saveImageToPhotosAlbum({ filePath })
+  await lx.media.saveToLibrary({ filePath })
 } catch (error) {
   const failure = parseLxApiError(error)
   if (!failure) throw error                 // not a runtime error; let it surface
-  lx.showToast({ title: formatLxApiError(failure), icon: 'none' })
+  lx.ui.toast(formatLxApiError(failure))
 }
 ```
 

@@ -286,7 +286,7 @@ object LxApp {
 
     /**
      * Async TabBar update for callers that await the real result
-     * (lx.tabBar.update). Runs on the UI thread and reports
+     * (lx.app.tabBar.update). Runs on the UI thread and reports
      * completion through NativeApi.onCallback — never blocks the caller.
      */
     @JvmStatic

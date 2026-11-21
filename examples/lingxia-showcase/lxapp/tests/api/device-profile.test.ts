@@ -8,14 +8,14 @@ import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
  * is a stable synchronous E_NOT_SUPPORTED — that rejection is the behaviour
  * this suite proves. On a phone they are real and belong to the device lab.
  */
-const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLowerCase();
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
 const DESKTOP = ['macos', 'windows'];
 const desktopSkip = platform && DESKTOP.includes(platform) ? undefined : 'desktop hosts only';
 
-test('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
+test('reject haptics with E_NOT_SUPPORTED on a desktop', {
   skip: desktopSkip,
   id: 'DEVICE-ABSENT-001',
-  covers: ['lx.vibrateShort', 'lx.vibrateLong', 'lx.makePhoneCall'],
+  covers: ['lx.device.haptics'],
   app: SHOWCASE_APP_ID,
   reason: 'absent-proven contract is desktop-only; PEND-DEVICE-FB-001 owns the mobile behaviour',
 }, async (t) => {
@@ -31,9 +31,8 @@ test('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
       }
     };
     return {
-      vibrateShort: attempt(() => lx.vibrateShort()),
-      vibrateLong: attempt(() => lx.vibrateLong()),
-      makePhoneCall: attempt(() => lx.makePhoneCall({ phoneNumber: '10086' })),
+      short: attempt(() => lx.device.haptics()),
+      long: attempt(() => lx.device.haptics('long')),
     };
   });
 
@@ -57,18 +56,22 @@ const ORIENTATION_SUPPORT: Record<string, boolean> = {
 
 test('accept both device orientations and reject an unknown one', {
   id: 'DEVICE-ORIENTATION-001',
-  covers: ['lx.setDeviceOrientation'],
+  covers: ['lx.device.orientation.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
-  const supported = ORIENTATION_SUPPORT[platform ?? ''] ?? true;
+  // The Runner reports its own target, not the OS it runs on; ask the host.
+  const os = platform === 'runner'
+    ? (await app.logic.eval(({ lx }) => lx.host.info.os)).toLowerCase()
+    : platform ?? '';
+  const supported = ORIENTATION_SUPPORT[os] ?? true;
   defer(async () => {
-    await app.logic.eval(({ lx }) => { lx.setDeviceOrientation('portrait'); return true; }).catch(() => undefined);
+    await app.logic.eval(({ lx }) => { lx.device.orientation.set('portrait'); return true; }).catch(() => undefined);
   });
 
   const result = await app.logic.eval(({ lx }) => {
     // 'sideways' is not an orientation: the probe passes it on purpose.
-    const setOrientation = lx.setDeviceOrientation as (value: string) => unknown;
+    const setOrientation = lx.device.orientation.set as (value: string) => unknown;
     const attempt = (value: string): { ok: boolean; value?: unknown; code?: string } => {
       try { return { ok: true, value: setOrientation(value) }; }
       catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }

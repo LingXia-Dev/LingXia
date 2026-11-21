@@ -8,7 +8,7 @@ import QuartzCore
 /// the gesture and the refresh it arms share one indicator.
 ///
 /// Most desktop refreshes have no pull behind them (the context menu, ⌘R,
-/// `lx.startPullDownRefresh()`), so the page never moves for one: the bar is
+/// `page.refresh()`), so the page never moves for one: the bar is
 /// laid over it, never takes focus or clicks, and is not an accessibility
 /// element; the controller announces the refresh instead. Every animation
 /// runs in Core Animation, so the bar keeps moving while the main thread is

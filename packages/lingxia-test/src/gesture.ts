@@ -215,6 +215,11 @@ export class Gestures {
     return this.scope.act("view.viewport", "", () => this.viewport());
   }
 
+  /** The host window's size, in the frame chrome bounds and window gestures use. */
+  windowViewport(): Promise<{ left: number; top: number; width: number; height: number }> {
+    return this.scope.act("chrome.viewport", "", () => this.scope.driver().viewport({ window: true }));
+  }
+
   refreshIndicator(): Promise<RefreshIndicator> {
     return this.scope.act("gesture.refreshIndicator", "", () => this.scope.driver().refreshIndicator(this.scope.target));
   }

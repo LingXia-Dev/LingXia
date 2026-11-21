@@ -22,39 +22,40 @@ separate from class: see [Permissions](../native/permissions.md).
 ## Am I the Control app?
 
 ```ts
-const control = lx.host.control;
-if (!control) return;          // a guest — offer nothing that needs it
-await control.appearance.setPreference('dark');
+if (lx.app.info.role !== 'control') return; // offer nothing that needs it
+await lx.host.appearance.setPreference('dark');
 ```
 
-Bind `lx.host.control` once at the top of a Settings screen rather than writing
-`lx.host.control!` at every call.
+`role` is `'control'`, `'control-surface'` or `'guest'`. Control-only members
+are present for every lxapp and refuse a guest at the call.
 
 ## Control-app-only calls
 
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`
-- `lx.host.setBadge(...)` and `lx.tray.*` ([Badges](../lxapp/lx-api.md#badges))
+- `lx.host.setBadge(...)` and `lx.host.tray.*` ([Badges](../lxapp/lx-api.md#badges))
 - `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
 - `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`
-  — the host app, not your bundle (that is `lx.getUpdateManager()`)
+  — the host app, not your bundle (that is `lx.app.onUpdateReady`)
 - `lx.host.autostart.*`
-- `lx.host.control.displayLanguage` / `.appearance` — the setting writers
+- `lx.host.displayLanguage` / `.appearance` `getPreference`, `setPreference`,
+  `watchPreference`
   ([Product settings](../lxapp/lx-api.md#product-settings))
-- `lx.shell.*`: sidebar actions, `setAppDisplay`, opening or moving apps and
-  declared surfaces, and `getApp` / `getDeclared` to find a live one
+- `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`, and `getApp` /
+  `getDeclared` to find a live app or declared surface
+- `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
+  `edge`: other lxapps are refused at run time
 
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.
 
-`lx.host.notification`, `lx.host.banner` and `lx.surface.bringToFront` are
-open to every lxapp, scoped to the caller for guests
+`lx.host.notification` and `lx.host.banner` are open to every lxapp, scoped to the caller for guests
 ([Guest lxapps](../lxapp/lx-api.md#guest-lxapps)).
 
 ## Control-surface-only calls
 
-`lx.terminal.settings`, `lx.terminal.colorSchemes`, `lx.terminal.fonts`, and
+`lx.host.terminal.settings`, `lx.host.terminal.colorSchemes`, `lx.host.terminal.fonts`, and
 the Windows terminal controls. The Control app cannot call them; it opens the
 Settings screen instead.
 

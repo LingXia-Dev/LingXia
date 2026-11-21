@@ -11,7 +11,7 @@ function moreFeedbackLabel(tag: string): string {
 }
 
 function applyMoreActions(tag = lx.host.displayLanguage.get()) {
-  lx.setMoreActions([
+  lx.app.setMoreActions([
     {
       icon: 'public/chat.png',
       label: moreFeedbackLabel(tag),
@@ -35,6 +35,9 @@ function applyMoreActions(tag = lx.host.displayLanguage.get()) {
   ]);
 }
 
+/** What a reopen delivered, for the showcase desktop specs. */
+const probe = { lastShow: undefined as AppLaunchOptions | undefined };
+
 App({
   onLaunch() {
     console.log('LingXia Chat launched');
@@ -42,35 +45,32 @@ App({
     lx.host.displayLanguage.watch((tag) => {
       applyMoreActions(tag);
     });
-    lx.host.control?.displayLanguage.watchPreference(() => {
+    lx.host.displayLanguage.watchPreference(() => {
       applyMoreActions();
     });
 
-    const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
-      const applyNow = await lx.showModal({
+    lx.app.onUpdateReady(async () => {
+      const applyNow = await lx.ui.confirm({
         title: 'Update Available',
-        content: 'A new version is ready. Apply now?',
-        showCancel: true,
+        message: 'A new version is ready. Apply now?',
         cancelText: 'Later',
         confirmText: 'Apply',
       });
-      if (applyNow.status !== 'canceled') {
-        um.applyUpdate();
+      if (applyNow) {
+        lx.app.applyUpdate();
       }
     });
-    um.onUpdateFailed((info) => {
+    lx.app.onUpdateFailed((info) => {
       console.warn('Update failed', info);
     });
   },
 
   onShow(options?: AppLaunchOptions) {
     // Showcase desktop specs read what a reopen delivered.
-    this.globalData.lastShow = options;
+    probe.lastShow = options;
     applyMoreActions();
   },
 
-  globalData: {
-    lastShow: undefined as AppLaunchOptions | undefined,
-  },
+  // For `lxdev test`, which reads it through `appInstance().state`.
+  state: probe,
 });

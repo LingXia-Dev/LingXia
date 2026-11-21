@@ -58,12 +58,12 @@ async function schemaKeepsUnionKeysCorrelated(): Promise<void> {
   await typed.set(unionKey, unionValue);
 }
 
-async function getStorageAcceptsASchema(): Promise<TypedStorage<TodoSchema>> {
-  return lx.getStorage<TodoSchema>();
+async function storageAcceptsASchema(): Promise<TypedStorage<TodoSchema>> {
+  return lx.storage<TodoSchema>();
 }
 
-async function getStorageWithoutASchemaStaysUntyped(): Promise<void> {
-  const untyped = lx.getStorage();
+async function storageWithoutASchemaStaysUntyped(): Promise<void> {
+  const untyped = lx.storage();
   await untyped.get<Draft>("draft");
   await untyped.set("outside:any-schema", 1);
 }
@@ -74,6 +74,6 @@ export type StorageTypingGate = [
   typeof listResolvesAnArray,
   typeof schemaPinsKeysAndValues,
   typeof schemaKeepsUnionKeysCorrelated,
-  typeof getStorageAcceptsASchema,
-  typeof getStorageWithoutASchemaStaysUntyped,
+  typeof storageAcceptsASchema,
+  typeof storageWithoutASchemaStaysUntyped,
 ];

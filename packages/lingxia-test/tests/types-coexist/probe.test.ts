@@ -5,7 +5,7 @@ import type { HostRunAutomation, LxAppDriver } from '@lingxia/types/automation';
 import { hasStorageKey, userDataPath } from './app-logic.js';
 
 test('app Logic and the test SDK type-check together', async (t) => {
-  const path: string = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+  const path: string = await t.app.logic.eval(({ lx }) => lx.fs.userData);
   path.toUpperCase();
   // The app's `lx` keeps its own meaning in the product modules a spec imports.
   const local: string = userDataPath();

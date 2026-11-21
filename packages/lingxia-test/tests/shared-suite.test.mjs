@@ -53,14 +53,15 @@ test("a skip naming a bundled file that registers no spec warns and is listed as
 });
 
 test("a root-relative skip matches a shared spec reached through a symlinked package", async () => {
-  // A checkout whose package dir is a symlink to another checkout's: the spec's source is the real path.
+  // A checkout whose package dir links to another checkout's, as npm links it (a junction on Windows,
+  // which needs no privilege; "junction" is a plain dir link elsewhere): the spec's source is the real path.
   const base = mkdtempSync(join(tmpdir(), "lx-shared-"));
   const real = join(base, "LingXia-gpu", "packages", "lingxia-test", "showcase", "pages");
   mkdirSync(real, { recursive: true });
   const dist = pathToFileURL(fileURLToPath(new URL("../dist/index.js", import.meta.url))).href;
   writeFileSync(join(real, "render.test.mjs"), `import { test } from ${JSON.stringify(dist)};\ntest("webview render", async () => { globalThis.__ranShared = true; });\n`);
   mkdirSync(join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia"), { recursive: true });
-  symlinkSync(join(base, "LingXia-gpu", "packages", "lingxia-test"), join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia", "test"), "dir");
+  symlinkSync(join(base, "LingXia-gpu", "packages", "lingxia-test"), join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia", "test"), "junction");
   try {
     await import(pathToFileURL(join(base, "LingXia-gpu-build", "packages", "node_modules", "@lingxia", "test", "showcase", "pages", "render.test.mjs")).href);
     skipTestFiles({ "pages/render.test.mjs": "reads the WebView DOM" }, { root: ["lingxia-test/showcase", "@lingxia/test/showcase"] });

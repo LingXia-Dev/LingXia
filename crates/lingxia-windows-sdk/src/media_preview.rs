@@ -1,4 +1,4 @@
-//! `lx.previewMedia` host for Windows: a fullscreen topmost viewer for
+//! `lx.media.preview` host for Windows: a fullscreen topmost viewer for
 //! image and video items, owned by the SDK layer like the other native
 //! components.
 //!

@@ -3,6 +3,8 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPage, waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, expectReject } from '@lingxia/test/showcase/helpers/poll.js';
 
+const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLowerCase();
+
 test('route a warm AppLink onto the query page once', {
   id: 'APPLINK-001',
   covers: ['LxAppManager.applink'],
@@ -11,10 +13,10 @@ test('route a warm AppLink onto the query page once', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'APPLINK-001');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   const result = await t.automation.lxapps.applink({
@@ -34,13 +36,16 @@ test('route a warm AppLink onto the query page once', {
   );
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'device']);
 
-  await expectReject(
-    () => t.automation.lxapps.applink({
-      url: 'https://evil.example/lxapp/open?page=todo',
-    }),
-    { message: 'host is not in appLinks.hosts' },
-  );
-  expect((await app.nav.current()).name).toBe('device');
+  // The Runner is not a product and has no appLinks.hosts: it takes any host.
+  if (platform !== 'runner') {
+    await expectReject(
+      () => t.automation.lxapps.applink({
+        url: 'https://evil.example/lxapp/open?page=todo',
+      }),
+      { message: 'host is not in appLinks.hosts' },
+    );
+    expect((await app.nav.current()).name).toBe('device');
+  }
 });
 
 test('route a warm AppLink from a product path', {
@@ -51,10 +56,10 @@ test('route a warm AppLink from a product path', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'APPLINK-002');
   defer(async () => {
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home');
 
   // No `/lxapp/` prefix: the host is the only gate, and Logic routes from the

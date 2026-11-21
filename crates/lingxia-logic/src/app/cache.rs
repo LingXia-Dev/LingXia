@@ -6,15 +6,9 @@ use crate::i18n::js_error_from_lxapp_error;
 /// `lx.host.cache` — the product-wide cache a settings screen reports and
 /// clears.
 ///
-/// Injected only into the Control app, same gate as `lx.host.control`: the
-/// figure a user is shown covers the whole product, so it spans every lxapp the
-/// host has run, not just the one asking. Guests do not get the member — an
-/// ordinary lxapp clearing every other lxapp's cache is not a capability it
-/// should have.
+/// Control app only, checked per call: the figure covers every lxapp the host
+/// has run, so another lxapp is refused with `E_PERMISSION_DENIED`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::is_control_app(ctx) {
-        return Ok(());
-    }
     let cache = JSObject::new(ctx);
     cache.set("size", JSFunc::new(ctx, cache_size)?.name("size")?)?;
     cache.set("clear", JSFunc::new(ctx, cache_clear)?.name("clear")?)?;

@@ -4,10 +4,10 @@ import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js'
 import { bindFixture, eventually, specNamespace, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
+test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.nav.go', 'lx.nav.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "UI-NAV-001");
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'navigation' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('ui-navigate-to').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -26,8 +26,8 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
-  const readCurrentUiLifecycle = () => app.logic.eval(({ getCurrentPages }) => {
-    const data = getCurrentPages<LogicPage<{ instanceTag?: string; events?: string[] }>>()
+  const readCurrentUiLifecycle = () => app.logic.eval(({ pageStack }) => {
+    const data = pageStack<LogicPage<{ instanceTag?: string; events?: string[] }>>()
       .find((page) => page.route.includes('/ui/'))?.data;
     return {
       instanceTag: data?.instanceTag ?? '',
@@ -39,8 +39,8 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     ({ onLoadCount }) => onLoadCount > 0,
     { describe: 'current UI page onLoad count before redirect' },
   );
-  await app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages<LogicPage<{ events?: string[] }>>()
+  await app.logic.eval(({ pageStack }) => {
+    const page = pageStack<LogicPage<{ events?: string[] }>>()
       .find((candidate) => candidate.route.includes('/ui/'));
     if (!page) throw new Error('current UI PageInstance is missing');
     page.data.events = [];
@@ -71,7 +71,7 @@ test("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
 
-test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
+test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.app.tabBar', 'lx.app.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-001");
 
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
@@ -86,7 +86,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      await lx.tabBar.update({
+      await lx.app.tabBar.update({
         visibility: 'auto',
         items: [{
           index: 1,
@@ -97,10 +97,10 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
         }],
       });
     });
-    await app.nav.relaunch({ page: 'home' });
+    await app.nav.reset({ page: 'home' });
   });
 
-  await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'tabbar' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('tabbar-show').waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -122,7 +122,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(forced.effectiveVisible).toBeTruthy();
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{
         index: 1,
         text: 'Automation',
@@ -146,7 +146,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   const invalid: Caught = await app.logic.eval(async ({ lx }) => {
     try {
-      await lx.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
+      await lx.app.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
         return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -158,7 +158,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(await tabBar()).toEqual(styled);
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{ index: 1, badge: null, redDot: true }],
     });
   });
@@ -174,7 +174,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   );
 
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({ visibility: 'auto' });
+    await lx.app.tabBar.update({ visibility: 'auto' });
   });
   await waitForTabBar(
     ({ visibility, effectiveVisible }) => (
@@ -183,7 +183,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'restored automatic visibility on a non-tab route',
   );
 
-  await app.nav.relaunch({ page: 'home' });
+  await app.nav.reset({ page: 'home' });
   const home = await app.page({ name: 'home' }, { timeout: 30_000 });
   await home.view.testId('home-page').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
@@ -199,7 +199,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     (height) => height > 0,
     { describe: 'home WebView to expose a non-zero viewport' });
   await app.logic.eval(async ({ lx }) => {
-    await lx.tabBar.update({
+    await lx.app.tabBar.update({
       items: [{ index: 1, badge: 'chrome' }],
     });
   });
@@ -215,7 +215,7 @@ test('rejects invalid native-surface dimensions before opening a host surface', 
   timeout: 60_000,
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
-  await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
+  await app.nav.reset({ page: 'ui', params: { type: 'surface' } });
   const ui = await app.page({ name: 'ui' }, { timeout: 30_000 });
   await ui.view.testId('open-surface').waitFor({ timeout: 30_000 });
 

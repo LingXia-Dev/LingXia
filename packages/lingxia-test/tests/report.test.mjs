@@ -584,7 +584,7 @@ test("attaches a CI-ingestible junit.xml alongside the HTML report", async () =>
   const world = createWorld();
   const { attachments } = installFakeHost(world, { control: { platform: "macos" } });
 
-  lxTest("passes", { id: "JUNIT-OK", covers: ["lx.getStorage"] }, async () => {
+  lxTest("passes", { id: "JUNIT-OK", covers: ["lx.storage"] }, async () => {
     expect(1).toBe(1);
   });
   lxTest("breaks", { id: "JUNIT-BAD" }, async () => {
@@ -600,7 +600,7 @@ test("attaches a CI-ingestible junit.xml alongside the HTML report", async () =>
   assert.match(xml, /<testcase name="passes"/);
   assert.match(xml, /<failure message="[^"]*" type="AssertionError">/);
   assert.match(xml, /<skipped message="OS dialog"\/>/);
-  assert.match(xml, /<property name="covers" value="lx.getStorage"\/>/);
+  assert.match(xml, /<property name="covers" value="lx.storage"\/>/);
   // A failure message spanning lines must not break the attribute.
   assert.doesNotMatch(xml, /message="[^"]*\n/);
 });
@@ -661,7 +661,7 @@ test("an app that declares no coverage gets no coverage panel", async () => {
   assert.doesNotMatch(html, /coverage/i);
   // A new app never claimed the rest of the platform; listing it would read
   // as failing to cover an API it has nothing to do with.
-  assert.doesNotMatch(html, /lx\.vibrateShort/);
+  assert.doesNotMatch(html, /lx.device.haptics/);
   assert.doesNotMatch(html, /Logic API/);
 });
 
@@ -669,7 +669,7 @@ test("declared tags are the default coverage scope", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
-  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
+  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.storage"] }, async () => {
     expect(1).toBe(1);
   });
   lxTest.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
@@ -679,22 +679,22 @@ test("declared tags are the default coverage scope", async () => {
 
   assert.match(html, /Capability coverage/);
   assert.match(html, /1\/2 declared capabilities proven/);
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.storage</);
   assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
   // Everything the suite never mentioned stays out of the report.
-  assert.doesNotMatch(html, /lx\.vibrateShort/);
+  assert.doesNotMatch(html, /lx.device.haptics/);
   assert.doesNotMatch(html, /lx API coverage/);
 });
 
 test("a passing spec that never reaches its tag is not credited with it", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  world.setCalls("probe", ["lx.getStorage"]);
+  world.setCalls("probe", ["lx.storage"]);
 
   // Declares two capabilities and only ever touches one of them.
   lxTest("claims more than it does", {
     id: "COV-CLAIM",
-    covers: ["lx.getStorage", "lx.tray"],
+    covers: ["lx.storage", "lx.host.tray"],
   }, async (t) => {
     await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
@@ -704,24 +704,24 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   const html = decodeAttachment(attachments, "report.html");
 
   // Reached, so proven.
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.storage</);
   // Declared by a passing spec, never called: the whole point is that this
   // does not read the same as the one above.
-  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.tray</);
+  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.host\.tray</);
   assert.match(html, /but no eval in those tests reached it/);
 });
 
 test("returned-object tags are not claimed against lx.* call records", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  world.setCalls("probe", ["lx.getStorage", "lx.downloadFile", "lx.fs.file"]);
+  world.setCalls("probe", ["lx.storage", "lx.network.download", "lx.fs.file"]);
 
   // The recorder never emits `Storage.set` / `DownloadTask.wait` / `LxFile.text`.
   // Matching those strings against `calls` would paint every eval-driven
   // object cover as claimed, including LOGIC-003 and TRANSFER-DOWNLOAD-001.
   lxTest("uses returned objects", {
     id: "COV-OBJ",
-    covers: ["lx.getStorage", "Storage.set", "DownloadTask.wait", "LxFile.text"],
+    covers: ["lx.storage", "Storage.set", "DownloadTask.wait", "LxFile.text"],
   }, async (t) => {
     await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
@@ -730,7 +730,7 @@ test("returned-object tags are not claimed against lx.* call records", async () 
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
 
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.storage</);
   assert.match(html, /class="cover cover-ok"[^>]*>Storage\.set</);
   assert.match(html, /class="cover cover-ok"[^>]*>DownloadTask\.wait</);
   assert.match(html, /class="cover cover-ok"[^>]*>LxFile\.text</);
@@ -742,11 +742,11 @@ test("returned-object tags are not claimed against lx.* call records", async () 
 test("a parent lx.* path does not prove a primitive member", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  world.setCalls("probe", ["lx.env"]);
+  world.setCalls("probe", ["lx.fs"]);
 
-  lxTest("reads env", {
+  lxTest("reads fs", {
     id: "COV-ENV-PARENT",
-    covers: ["lx.env", "lx.env.USER_DATA_PATH"],
+    covers: ["lx.fs", "lx.fs.userData"],
   }, async (t) => {
     await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
@@ -755,18 +755,18 @@ test("a parent lx.* path does not prove a primitive member", async () => {
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
 
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env</);
-  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.env\.USER_DATA_PATH</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.fs</);
+  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.fs\.userData</);
 });
 
 test("a primitive lx.* member path in calls is behaviour", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
-  world.setCalls("probe", ["lx.env", "lx.env.USER_DATA_PATH"]);
+  world.setCalls("probe", ["lx.fs", "lx.fs.userData"]);
 
   lxTest("reads the sandbox root", {
     id: "COV-ENV-MEMBER",
-    covers: ["lx.env", "lx.env.USER_DATA_PATH"],
+    covers: ["lx.fs", "lx.fs.userData"],
   }, async (t) => {
     await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
@@ -775,9 +775,9 @@ test("a primitive lx.* member path in calls is behaviour", async () => {
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
 
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env</);
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env\.USER_DATA_PATH</);
-  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.env\.USER_DATA_PATH</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.fs</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.fs\.userData</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.fs\.userData</);
 });
 
 test("an eval whose script returns undefined yields undefined, not the envelope", async () => {
@@ -787,11 +787,11 @@ test("an eval whose script returns undefined yields undefined, not the envelope"
   // undefined, so recognising it by shape handed the envelope back as the
   // result and every `result == null` assertion downstream flipped.
   world.setEval("returns undefined", undefined);
-  world.setCalls("returns undefined", ["lx.getStorage"]);
+  world.setCalls("returns undefined", ["lx.storage"]);
 
   let seen = "unset";
   let observed = null;
-  lxTest("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.getStorage"] }, async (t) => {
+  lxTest("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.storage"] }, async (t) => {
     seen = await t.app.logic.eval(() => "returns undefined");
     observed = [...t.observed];
   });
@@ -799,7 +799,7 @@ test("an eval whose script returns undefined yields undefined, not the envelope"
   await globalThis.__LINGXIA_TEST__.run();
   assert.strictEqual(seen, undefined);
   // The calls still land, so the value fix does not cost the measurement.
-  assert.deepStrictEqual(observed, ["lx.getStorage"]);
+  assert.deepStrictEqual(observed, ["lx.storage"]);
 });
 
 test("a spec that runs no eval keeps its declared coverage", async () => {
@@ -809,16 +809,16 @@ test("a spec that runs no eval keeps its declared coverage", async () => {
   // Driving through the page or native chrome is a legitimate way to exercise
   // an API, and it produces no eval to observe. Absence of observation must not
   // read as absence of coverage, or every DOM-driven spec regresses at once.
-  lxTest("drives without eval", { id: "COV-NOEVAL", covers: ["lx.getStorage"] }, async () => {
+  lxTest("drives without eval", { id: "COV-NOEVAL", covers: ["lx.storage"] }, async () => {
     expect(1).toBe(1);
   });
 
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.storage</);
   // The legend and stylesheet always mention the class; what must not appear is
   // this capability wearing it.
-  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.getStorage</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.storage</);
 });
 
 test("an expected failure is not coverage", async () => {
@@ -841,10 +841,10 @@ test("a conformance suite opts into the whole published surface", async () => {
   const { attachments } = installFakeHost(world);
   trackPublicSurface();
 
-  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
+  lxTest("proves storage behaviour", { id: "COV-1", covers: ["lx.storage"] }, async () => {
     expect(1).toBe(1);
   });
-  lxTest("only proves a member exists", { id: "COV-2", covers: ["shape:lx.getLocation"] }, async () => {
+  lxTest("only proves a member exists", { id: "COV-2", covers: ["shape:lx.device.location"] }, async () => {
     expect(1).toBe(1);
   });
   lxTest.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
@@ -855,9 +855,9 @@ test("a conformance suite opts into the whole published surface", async () => {
   assert.match(html, /lx API coverage/);
   assert.match(html, /Logic API \(lx\.\*\)/);
   // Now an untested capability is a hole worth showing.
-  assert.match(html, /class="cover cover-none"[^>]*>lx\.vibrateShort</);
-  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
-  assert.match(html, /class="cover cover-shape"[^>]*>lx\.getLocation</);
+  assert.match(html, /class="cover cover-none"[^>]*>lx.device.haptics</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.storage</);
+  assert.match(html, /class="cover cover-shape"[^>]*>lx.device.location</);
   assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
 });
 
@@ -914,7 +914,7 @@ test("a spec that never calls t.step still records what it did", async () => {
   const { attachments } = installFakeHost(world);
 
   lxTest("flat spec", { id: "TRACE-1" }, async (t) => {
-    await t.app.nav.relaunch({ page: "home" });
+    await t.app.nav.reset({ page: "home" });
     await t.app.view.testId("home-name").fill("Ada");
     await t.app.logic.eval(() => 1 + 1);
   });
@@ -925,12 +925,12 @@ test("a spec that never calls t.step still records what it did", async () => {
 
   assert.deepEqual(
     trace.map((entry) => `${entry.kind} ${entry.name} ${entry.detail}`),
-    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"] value="Ada"', "action logic.eval () => 1 + 1"],
+    ["action nav.reset home", 'action page.fill [data-testid="home-name"] value="Ada"', "action logic.eval () => 1 + 1"],
   );
   assert.ok(trace.every((entry) => entry.status === "passed"));
 
   const html = decodeAttachment(attachments, "report.html");
-  assert.match(html, /nav\.relaunch/);
+  assert.match(html, /nav\.reset/);
   assert.match(html, /logic\.eval/);
 });
 
@@ -1057,7 +1057,7 @@ test("a failed toMatchSchema points at its own line, and a unit spec names no pa
     expect(slot).toMatchSchema("Slot");
   });
   lxTest("on a page", async (t) => {
-    await t.app.nav.to({ page: "onboarding" });
+    await t.app.nav.go({ page: "onboarding" });
     expect({ "at:10:20": 1 }).toMatchSchema("Slot");
   });
 

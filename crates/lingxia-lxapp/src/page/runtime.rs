@@ -3,7 +3,6 @@ use crate::page::PageInstanceId;
 use crate::page::config::PageConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SceneId(pub String);
@@ -129,7 +128,6 @@ pub struct PageInstanceRuntimeInfo {
 pub(crate) struct PageInstanceRuntimeRecord {
     pub(crate) owner: PageOwner,
     pub(crate) surface: PresentationKind,
-    pub(crate) dispose_ttl: Option<Duration>,
     pub(crate) page: ResolvedPage,
     pub(crate) lifecycle: PageInstanceLifecycleState,
 }
@@ -148,6 +146,17 @@ impl PageQueryInput {
 }
 
 impl CloseReason {
+    pub(crate) fn from_reason_str(reason: &str) -> Self {
+        match reason.trim().to_ascii_lowercase().as_str() {
+            "user" => Self::User,
+            "programmatic" => Self::Programmatic,
+            "owner_closed" => Self::OwnerClosed,
+            "app_closed" => Self::AppClosed,
+            "reclaimed" => Self::Reclaimed,
+            _ => Self::Unknown,
+        }
+    }
+
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",

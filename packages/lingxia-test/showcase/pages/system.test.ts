@@ -5,10 +5,8 @@ import { waitForElementEnabled } from '../helpers/page.js';
 import { GPU_MIRROR, SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeElement } from '../helpers/view.js';
 
-const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
-  ?? {} as Record<string, string>;
 const bannerPageSkip = new Set(['macos', 'windows']).has(
-  testArgs.platform?.toLocaleLowerCase() ?? '',
+  globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '',
 )
   ? undefined
   : 'host banners are macOS and Windows only';
@@ -27,8 +25,8 @@ interface BannerPageState {
 }
 
 async function systemState(app: TestApp): Promise<SystemPageState> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     const data = page?.data as Partial<SystemPageState> | undefined;
     return {
       appBaseInfo: data?.appBaseInfo ?? null,
@@ -48,10 +46,10 @@ async function waitForSystemState(
   });
 }
 
-test("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
+test("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.info', 'lx.host.displayLanguage.get', 'lx.device.systemSettings'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
-  await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
+  await app.nav.reset({ page: 'system', params: { type: 'appBaseInfo' } });
   let system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
   await system.testId('system-base-info').waitFor({ timeout: 30_000 });
   await system.testId("system-base-info").click();
@@ -64,7 +62,7 @@ test("render host app and system information through page actions", { id: "SYSTE
     .toContainText(base.appBaseInfo!.productName!, { timeout: 30_000 });
 
   // A relaunch replaces the page instance: bind the new one.
-  await app.nav.relaunch({ page: 'system', query: { type: 'systemSetting' } });
+  await app.nav.reset({ page: 'system', params: { type: 'systemSetting' } });
   system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
   await system.testId('system-setting-info').waitFor({ timeout: 30_000 });
   await system.testId("system-setting-info").click();
@@ -82,7 +80,7 @@ test('opens the product cache panel from the rendered API menu', {
 }, async (t) => {
   const { app } = bindFixture(t, 'SYSTEM-CACHE-001');
 
-  await app.nav.relaunch({ page: 'api' });
+  await app.nav.reset({ page: 'api' });
   const api = (await app.page({ name: 'api' }, { timeout: 30_000 })).view;
   await api.testId('api-system-section').waitFor({ state: 'visible', timeout: 30_000 });
   await api.testId("api-system-section").click();
@@ -98,8 +96,8 @@ test('opens the product cache panel from the rendered API menu', {
 });
 
 async function bannerPageState(app: TestApp): Promise<BannerPageState> {
-  return app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  return app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     const data = page?.data as Partial<BannerPageState> | undefined;
     return {
       bannerLast: data?.bannerLast ?? '',
@@ -122,20 +120,20 @@ test('drive banner re-read, prompt, and dismiss from the system page', {
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       try {
-        await lx.host.banner?.dismiss('showcase-banner-toast');
-        await lx.host.banner?.dismiss('showcase-banner-prompt');
+        await lx.host.banner.dismiss('showcase-banner-toast');
+        await lx.host.banner.dismiss('showcase-banner-prompt');
       } catch {}
       return true;
     });
   });
 
-  await app.nav.relaunch({ page: 'system', query: { type: 'banner' } });
+  await app.nav.reset({ page: 'system', params: { type: 'banner' } });
   const system = (await app.page({ name: 'system' }, { timeout: 30_000 })).view;
   await system.testId('system-banner-panel').waitFor({ state: 'visible', timeout: 30_000 });
 
   // Re-read only refreshes support — seed a false so the click is proven.
-  await app.logic.eval(({ getCurrentPages }) => {
-    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+  await app.logic.eval(({ pageStack }) => {
+    const page = pageStack().find((candidate) => candidate.route.includes('/system/'));
     if (!page) throw new Error('system page missing');
     page.setData({ bannerLast: 'probe-cleared', bannerSupported: false, bannerBusy: false });
     return page.data.bannerLast;

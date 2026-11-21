@@ -1,5 +1,5 @@
 {
-  "greeting": "This is from App's globalData.data",
+  "greeting": "This is from the app's shared state",
   "imageUrl": "https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg",
   "ipAddr": "loading",
   "greetCount": 0,

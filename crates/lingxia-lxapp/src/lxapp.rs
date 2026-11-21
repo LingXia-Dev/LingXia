@@ -113,7 +113,7 @@ pub use runtime_ops::{
     notify_page_host_visibility, notify_page_host_visibility_by_webtag, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
     open_lxapp_in_region, refresh_auto_appearances, restart_lxapp, show_lxapp_in_region,
-    terminate_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    terminate_lxapp, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -1152,8 +1152,8 @@ pub(crate) struct LxAppState {
     /// Runtime metadata and lifecycle state keyed by page instance id.
     page_instance_runtime: Mutex<HashMap<String, PageInstanceRuntimeRecord>>,
 
-    /// Delayed dispose timers for hidden page instances.
-    page_instance_dispose_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    /// Page instances whose dispose is in progress.
+    disposing_page_instances: Mutex<HashSet<String>>,
     /// Pending in-place resets for pages that left the stack, keyed by page
     /// instance id. Cancelled when the page is navigated to again.
     page_reset_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
@@ -1202,7 +1202,7 @@ impl LxAppState {
             pages_by_id: Mutex::new(HashMap::new()),
             path_pins: Mutex::new(HashMap::new()),
             page_instance_runtime: Mutex::new(HashMap::new()),
-            page_instance_dispose_timers: Mutex::new(HashMap::new()),
+            disposing_page_instances: Mutex::new(HashSet::new()),
             page_reset_timers: Mutex::new(HashMap::new()),
             popped_gpu_pages: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
@@ -1999,22 +1999,6 @@ impl LxApp {
         session_id != 0 && self.restart_closing_session.load(Ordering::SeqCst) == session_id
     }
 
-    fn cancel_page_instance_dispose_timer(&self, id: &PageInstanceId) {
-        self.cancel_page_instance_dispose_timer_by_id(id.as_str());
-    }
-
-    fn cancel_page_instance_dispose_timer_by_id(&self, id: &str) {
-        if let Ok(state) = self.state.lock()
-            && let Some(cancel) = state
-                .page_instance_dispose_timers
-                .lock()
-                .unwrap()
-                .remove(id)
-        {
-            let _ = cancel.send(());
-        }
-    }
-
     /// How long to wait past a back/replace transition before tearing down the
     /// page that left. Long enough for the native container's pop animation to
     /// finish, so the outgoing page is never blanked while it is on screen.
@@ -2278,93 +2262,6 @@ impl LxApp {
         }
     }
 
-    fn cancel_all_page_instance_dispose_timers(&self) {
-        if let Ok(state) = self.state.lock() {
-            let mut timers = state.page_instance_dispose_timers.lock().unwrap();
-            for (_id, cancel) in timers.drain() {
-                let _ = cancel.send(());
-            }
-        }
-    }
-
-    fn schedule_page_instance_dispose_timer(
-        &self,
-        id: &PageInstanceId,
-        dispose_ttl: Duration,
-    ) -> Result<(), LxAppError> {
-        // When the TTL fires, the page is being reclaimed by the SDK because
-        // it stayed hidden too long — not because the consumer asked for it.
-        // Always carry `Reclaimed` so JS-side close listeners can distinguish
-        // SDK-initiated cleanup from a user/programmatic close.
-        let reclaim_reason = CloseReason::Reclaimed;
-        if dispose_ttl.is_zero() {
-            return self.dispose_page_instance_internal(id, reclaim_reason, false);
-        }
-
-        self.cancel_page_instance_dispose_timer(id);
-
-        let (tx, rx) = oneshot::channel();
-        if let Ok(state) = self.state.lock() {
-            state
-                .page_instance_dispose_timers
-                .lock()
-                .unwrap()
-                .insert(id.to_string(), tx);
-        }
-
-        let appid = self.appid.clone();
-        let page_instance_id = id.to_string();
-        std::mem::drop(crate::executor::spawn(async move {
-            let sleep = time::sleep(dispose_ttl);
-            tokio::pin!(sleep);
-            tokio::pin!(rx);
-            tokio::select! {
-                _ = &mut sleep => {}
-                _ = &mut rx => return,
-            }
-
-            let Some(app) = crate::lxapp::try_get(&appid) else {
-                return;
-            };
-            let Some(id) = PageInstanceId::parse(page_instance_id.clone()) else {
-                return;
-            };
-            if let Err(err) = app.dispose_page_instance_internal(&id, reclaim_reason, false) {
-                warn!(
-                    "Delayed dispose failed for page instance {}: {}",
-                    page_instance_id, err
-                )
-                .with_appid(appid);
-            }
-        }));
-
-        Ok(())
-    }
-
-    fn refresh_page_instance_dispose_ttl(&self, id: &PageInstanceId) -> Result<(), LxAppError> {
-        let (lifecycle, dispose_ttl) = {
-            let state = self.state.lock().unwrap();
-            let records = state.page_instance_runtime.lock().unwrap();
-            let record = records.get(id.as_str()).ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
-            })?;
-            (record.lifecycle, record.dispose_ttl)
-        };
-
-        if lifecycle != PageInstanceLifecycleState::Hidden {
-            self.cancel_page_instance_dispose_timer(id);
-            return Ok(());
-        }
-
-        if let Some(ttl) = dispose_ttl {
-            self.schedule_page_instance_dispose_timer(id, ttl)?;
-        } else {
-            self.cancel_page_instance_dispose_timer(id);
-        }
-
-        Ok(())
-    }
-
     /// Shutdown this LxApp completely. Idempotent.
     ///
     /// Order:
@@ -2384,7 +2281,6 @@ impl LxApp {
         self.set_status(LxAppSessionStatus::Closing);
         self.cancel_all_page_bridge_work();
         self.clear_transient_files();
-        self.cancel_all_page_instance_dispose_timers();
         self.cancel_all_page_resets();
         self.close_all_surfaces(CloseReason::AppClosed);
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
@@ -3155,7 +3051,7 @@ impl LxApp {
         if let Some(scheme) = uri::network_scheme(path) {
             return Err(LxAppError::InvalidParameter(format!(
                 "{scheme} URLs are not supported here: download the file first \
-                 (for example with lx.downloadFile) and pass the returned lx:// path"
+                 (for example with lx.network.download) and pass the returned lx:// path"
             )));
         }
 
@@ -3627,6 +3523,8 @@ impl LxApp {
             .launch_options_json();
         if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, Some(payload)) {
             self.app_launch_dispatched.store(false, Ordering::SeqCst);
+            // No onLaunch will settle; pages must not wait on it.
+            self.launch_settled.send_replace(true);
             return Err(error);
         }
         // Cold AppLink is delivered once via onLaunch. Clear so the following
@@ -3653,7 +3551,7 @@ impl LxApp {
         }
         self.executor.restart_app_svc(self.clone_arc())?;
         // Enqueued before the page reload, so the reloaded page's first
-        // globalData read observes the fresh state.
+        // read of app state observes the fresh state.
         self.relaunch_logic()
     }
 
@@ -3911,14 +3809,6 @@ impl LxApp {
                 .lock()
                 .unwrap()
                 .remove(id.as_str());
-            if let Some(cancel) = state
-                .page_instance_dispose_timers
-                .lock()
-                .unwrap()
-                .remove(id.as_str())
-            {
-                let _ = cancel.send(());
-            }
             removed
         } else {
             false
@@ -4109,7 +3999,6 @@ impl LxApp {
                     } else {
                         PresentationKind::Window
                     },
-                    None,
                 )?;
             }
             // Activate the main in the graph before the host shows it. Windows
@@ -4139,7 +4028,7 @@ impl LxApp {
     /// `reason: 'switch_back'` and the new `path` / `query`, as a link that
     /// re-enters it does. The page stack is kept; Logic routes from the
     /// query. For a surface the caller reused and revealed itself — an aside
-    /// that `lx.shell.openApp` or a notification tap brings back — where
+    /// that `lx.surface.openApp` or a notification tap brings back — where
     /// `open` would present it a second time (or refuse the other region).
     ///
     /// `options.page` names the page asked for; without it, `options.path`,
@@ -4282,7 +4171,6 @@ impl LxApp {
                 PageTarget::Path(startup_options.path.clone()),
                 query,
                 surface,
-                None,
             )?;
             if !is_panel {
                 self.set_active_main_in_graph();

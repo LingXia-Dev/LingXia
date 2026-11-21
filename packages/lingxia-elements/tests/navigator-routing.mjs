@@ -29,9 +29,10 @@ globalThis.window = {
 
 const { LxNavigatorElement } = await import("../dist/navigator.js");
 
-async function tap(attrs) {
+async function tap(to, attrs = {}) {
   calls.length = 0;
   const el = new LxNavigatorElement();
+  el.attrs.set("to", JSON.stringify(to));
   for (const [key, value] of Object.entries(attrs)) el.attrs.set(key, value);
   el.handleClick({ preventDefault() {} });
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -39,22 +40,31 @@ async function tap(attrs) {
   return { calls: [...calls], outcome };
 }
 
-// A url defaults to the system browser.
-let result = await tap({ url: "https://example.com" });
-assert.deepEqual(result.calls, [["host", "device.openUrl", { url: "https://example.com", target: "external" }]]);
+// A page pushes; `replace` and `reset` pick the other stack operations.
+let result = await tap({ page: "detail", params: { id: 1 } });
+assert.deepEqual(result.calls, [["host", "navigation.navigateTo", { page: "detail", query: { id: 1 } }]]);
+result = await tap({ page: "detail" }, { replace: "" });
+assert.deepEqual(result.calls, [["host", "navigation.redirectTo", { page: "detail" }]]);
+result = await tap({ tab: "home" }, { reset: "" });
+assert.deepEqual(result.calls, [["host", "navigation.reLaunch", { page: "home" }]]);
+result = await tap({ tab: "home" });
+assert.deepEqual(result.calls, [["host", "navigation.switchTab", { page: "home" }]]);
+result = await tap({ back: 2 });
+assert.deepEqual(result.calls, [["host", "navigation.navigateBack", { delta: 2 }]]);
 
-// In-app placements go through Logic's lx.surface.
-result = await tap({ url: "https://example.com", as: "aside", edge: "left", size: '{"width":"40%"}' });
+// A url opens in the in-app browser unless `as="external"`.
+result = await tap({ url: "https://example.com" });
+assert.deepEqual(result.calls, [["logic", "surface.openUrl", { url: "https://example.com", options: {} }]]);
+result = await tap({ url: "https://example.com" }, { as: "external" });
+assert.deepEqual(result.calls, [["host", "device.openUrl", { url: "https://example.com", target: "external" }]]);
+result = await tap({ url: "https://example.com" }, { as: "aside", edge: "left", size: '{"width":"40%"}' });
 assert.deepEqual(result.calls, [
   ["logic", "surface.openUrl", { url: "https://example.com", options: { as: "aside", edge: "left", size: { width: "40%" } } }],
 ]);
+result = await tap({ url: "tel:10086" });
+assert.deepEqual(result.calls, [["host", "device.makePhoneCall", { phoneNumber: "10086" }]]);
 
-result = await tap({ url: "https://example.com", as: "tab" });
-assert.deepEqual(result.calls, [["logic", "surface.openUrl", { url: "https://example.com", options: { as: "tab" } }]]);
-
-result = await tap({
-  page: "detail",
-  query: '{"id":1}',
+result = await tap({ page: "detail", params: { id: 1 } }, {
   as: "float",
   position: "bottom",
   interaction: '{"closeButton":true}',
@@ -63,27 +73,30 @@ assert.deepEqual(result.calls, [
   [
     "logic",
     "surface.openPage",
-    { page: "detail", options: { as: "float", query: { id: 1 }, position: "bottom", interaction: { closeButton: true } } },
+    { page: "detail", options: { as: "float", params: { id: 1 }, position: "bottom", interaction: { closeButton: true } } },
   ],
 ]);
 
-// Without `as`, a page follows open-type.
-result = await tap({ page: "detail", "open-type": "redirect" });
-assert.deepEqual(result.calls, [["host", "navigation.redirectTo", { page: "detail" }]]);
+result = await tap({ app: "other", page: "home", params: { id: "7" }, channel: "draft" });
+assert.deepEqual(result.calls, [
+  ["host", "navigator.navigateToApp", { appId: "other", page: "home", query: { id: "7" }, channel: "draft" }],
+]);
 
-// app-id infers the lxapp target; a placement is refused there.
-result = await tap({ "app-id": "other", page: "home" });
-assert.deepEqual(result.calls, [["host", "navigator.navigateToApp", { appId: "other", page: "home" }]]);
-result = await tap({ "app-id": "other", as: "float" });
-assert.equal(result.calls.length, 0);
-assert.equal(result.outcome.type, "fail");
-
-// Mismatched placements fail before reaching the bridge.
-result = await tap({ url: "https://example.com", as: "float" });
-assert.equal(result.calls.length, 0);
-assert.match(result.outcome.detail.errMsg, /external, tab, or aside/);
-result = await tap({ page: "detail", as: "aside" });
-assert.equal(result.calls.length, 0);
-assert.match(result.outcome.detail.errMsg, /float or window/);
+// Shapes that do not name one target, or combine options that do not apply,
+// fail before reaching the bridge.
+for (const [to, attrs, message] of [
+  [{ page: "a", tab: "b" }, {}, /exactly one/],
+  [{ app: "other" }, { as: "float" }, /as applies/],
+  [{ app: "other", page: "home" }, { as: "float" }, /as applies/],
+  [{ app: "other", page: "home" }, { replace: "" }, /replace applies/],
+  [{ tab: "home" }, { replace: "" }, /replace applies/],
+  [{ url: "https://example.com" }, { as: "float" }, /external, main, or aside/],
+  [{ page: "detail" }, { as: "aside" }, /float or window/],
+  [{ back: 0 }, {}, /positive integer/],
+]) {
+  result = await tap(to, attrs);
+  assert.equal(result.calls.length, 0, JSON.stringify(to));
+  assert.match(result.outcome.detail.errMsg, message);
+}
 
 console.log("navigator routing ok");

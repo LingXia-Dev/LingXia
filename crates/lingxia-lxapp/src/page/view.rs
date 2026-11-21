@@ -161,7 +161,7 @@ pub enum GpuViewRequest {
     Video(GpuVideoRequest),
 }
 
-/// `lx.createVideoContext(name)`: one command to the page's player `name`, which is a
+/// `page.video(name)`: one command to the page's player `name`, which is a
 /// `useVideo` name or a `<video id>`.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct GpuVideoRequest {
@@ -186,7 +186,7 @@ pub enum GpuVideoCommand {
     SetVolume { volume: f64 },
 }
 
-/// The feedback overlays a desktop GPU View draws for `lx.showToast` and its siblings.
+/// The feedback overlays a desktop GPU View draws for `lx.ui.toast` and its siblings.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuUiRequest {
     ShowToast(GpuToast),

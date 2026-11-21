@@ -69,7 +69,7 @@ interface PhotoAssetFdHandle extends FileDescriptorHandle {
   close?: () => Promise<void>;
 }
 
-interface ChooseMediaResult { uri: string; fileType: string; isOriginal: boolean }
+interface ChooseMediaResult { uri: string; fileType: string; isOriginal: boolean; fileName?: string }
 
 interface ChooseMediaOptions {
   callbackId: string;
@@ -322,7 +322,15 @@ export class LxAppMedia {
             // Enforce mode-specific filtering as safeguard
             if (normalized.mode === 'images' && fileType !== 'image') { continue; }
             if (normalized.mode === 'videos' && fileType !== 'video') { continue; }
-            results.push({ uri, fileType, isOriginal: isOriginalPick });
+            // A media library URI ends with the asset's display name.
+            const entry: ChooseMediaResult = { uri, fileType, isOriginal: isOriginalPick };
+            try {
+              const fileName = decodeURIComponent(uri.split('?')[0].split('/').pop() ?? '');
+              if (fileName.includes('.')) { entry.fileName = fileName; }
+            } catch (e) {
+              // A malformed escape leaves the name to the core's fallback.
+            }
+            results.push(entry);
           }
           if (results.length === 0) {
             LxAppMedia.logError('chooseMedia: picker returned entries but none were usable');

@@ -242,7 +242,7 @@ enum ManagedPathKind {
     UserData,
     UserCache,
     /// A transient grant to a file/directory the user explicitly picked
-    /// (pickFile / pickDirectory / pickMedia on desktop). Read-only:
+    /// (lx.pick on desktop). Read-only:
     /// the readable resolver accepts it, the writable resolver does not.
     Granted,
 }
@@ -308,36 +308,39 @@ fn resolve_dialog_default_path(lxapp: &LxApp, raw_path: &str) -> JSResult<String
     Ok(resolved.to_string_lossy().into_owned())
 }
 
-fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
+/// The picked path as the lxapp sees it, and the file on disk when the core
+/// can read it (not a platform reference).
+fn selected_file(lxapp: &LxApp, raw_path: &str) -> JSResult<(String, Option<PathBuf>)> {
     let path = raw_path.trim();
     if path.is_empty() {
-        return Err(js_internal_error("pickFile returned an empty path"));
+        return Err(js_internal_error("pick.file returned an empty path"));
     }
 
     if is_platform_file_reference(path) {
-        return lxapp.grant_transient_file_reference(path).map_err(|err| {
-            js_internal_error(format!("pickFile failed to grant file access: {err}"))
-        });
+        let uri = lxapp.grant_transient_file_reference(path).map_err(|err| {
+            js_internal_error(format!("pick.file failed to grant file access: {err}"))
+        })?;
+        return Ok((uri, None));
     }
 
     if let Ok(resolved) = lxapp.resolve_accessible_path(path)
         && let Some(uri) = lxapp.to_uri(&resolved)
     {
-        return Ok(uri.into_string());
+        return Ok((uri.into_string(), Some(resolved)));
     }
 
     let path_ref = Path::new(path);
     if path_ref.is_absolute() {
         // A file removed between the pick and the grant is not found, not an
         // internal failure.
-        return lxapp
+        let uri = lxapp
             .grant_transient_file_access(path_ref)
-            .map(|uri| uri.into_string())
-            .map_err(|err| js_error_from_lxapp_error(&err));
+            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        return Ok((uri.into_string(), Some(path_ref.to_path_buf())));
     }
 
     Err(js_internal_error(format!(
-        "pickFile returned an inaccessible path: {}",
+        "pick.file returned an inaccessible path: {}",
         path
     )))
 }
@@ -355,7 +358,7 @@ fn is_platform_file_reference(path: &str) -> bool {
 fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
     let path = raw_path.trim();
     if path.is_empty() {
-        return Err(js_internal_error("pickDirectory returned an empty path"));
+        return Err(js_internal_error("pick.directory returned an empty path"));
     }
 
     // Unlike a picked file, a directory reference has no consumer: nothing
@@ -363,7 +366,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     if is_platform_file_reference(path) {
         return Err(js_error_from_business_code_with_detail(
             6000,
-            "pickDirectory returned a platform directory reference, which no file API can read",
+            "pick.directory returned a platform directory reference, which no file API can read",
         ));
     }
 
@@ -382,51 +385,36 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     }
 
     Err(js_internal_error(format!(
-        "pickDirectory returned an inaccessible path: {}",
+        "pick.directory returned an inaccessible path: {}",
         path
     )))
 }
 
-/// Pick one file. A completed selection is `{ status: 'ok', uri, name }`.
+/// Picks one file. Resolves `{ status: 'canceled' }` only when the user
+/// dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
-    let picked = run_file_picker(&ctx, options.0.unwrap_or_default(), false).await?;
-    let Some(mut picked) = picked else {
-        return canceled(&ctx);
-    };
-    let (uri, name) = picked
-        .pop()
-        .ok_or_else(|| js_internal_error("pickFile invalid payload: no file"))?;
-    let result = completed(&ctx)?;
-    result.set("uri", uri)?;
-    result.set("name", name)?;
-    Ok(result)
+    match run_file_picker(&ctx, options.0.unwrap_or_default(), false).await? {
+        Some(files) => crate::pick::files_result(&ctx, &files),
+        None => canceled(&ctx),
+    }
 }
 
-/// Pick one or more files. A completed selection is
-/// `{ status: 'ok', files: [{ uri, name }, ...] }` with at least one file.
+/// Picks one or more files. Resolves `{ status: 'canceled' }` only when the
+/// user dismisses the picker, otherwise `{ status: 'ok', files }`.
 async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
-    let Some(picked) = run_file_picker(&ctx, options.0.unwrap_or_default(), true).await? else {
-        return canceled(&ctx);
-    };
-    let files = rong::JSArray::new(&ctx)?;
-    for (uri, name) in picked {
-        let file = JSObject::new(&ctx);
-        file.set("uri", uri)?;
-        file.set("name", name)?;
-        files.push(file)?;
+    match run_file_picker(&ctx, options.0.unwrap_or_default(), true).await? {
+        Some(files) => crate::pick::files_result(&ctx, &files),
+        None => canceled(&ctx),
     }
-    let result = completed(&ctx)?;
-    result.set("files", files)?;
-    Ok(result)
 }
 
 /// `None` only when the user dismisses the picker; otherwise at least one
-/// `(uri, name)`. Rejects when the picker fails or returns an invalid payload.
+/// file. Rejects when the picker fails or returns an invalid payload.
 async fn run_file_picker(
     ctx: &JSContext,
     opts: JSPickFileOptions,
     multiple: bool,
-) -> JSResult<Option<Vec<(String, String)>>> {
+) -> JSResult<Option<Vec<crate::pick::PickedFile>>> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let default_path = opts
         .default_path
@@ -470,12 +458,12 @@ async fn run_file_picker(
     }
     if result.entries.is_empty() {
         return Err(js_internal_error(
-            "pickFile invalid payload: non-canceled result must include at least one path",
+            "pick.file invalid payload: non-canceled result must include at least one path",
         ));
     }
     if !multiple && result.entries.len() != 1 {
         return Err(js_internal_error(
-            "pickFile invalid payload: single selection must include exactly one path",
+            "pick.file invalid payload: single selection must include exactly one path",
         ));
     }
 
@@ -485,25 +473,26 @@ async fn run_file_picker(
         .entries
         .iter()
         .map(|entry| {
-            Ok((
-                selected_file_path_to_uri(&lxapp, &entry.path)?,
-                picked_name(entry.name.as_deref(), &entry.path),
+            let (path, local) = selected_file(&lxapp, &entry.path)?;
+            Ok(crate::pick::PickedFile::new(
+                path,
+                local.as_deref(),
+                Some(picked_name(entry.name.as_deref(), &entry.path)),
+                entry.size,
             ))
         })
         .collect::<JSResult<Vec<_>>>()
         .map(Some)
 }
 
-/// Opens a directory picker.
-///
-/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-/// completed selection resolves `{ status: 'ok', uri, name }`. Rejects when the
+/// Picks a folder. Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+/// completed selection resolves `{ status: 'ok', directory: { path, name } }`. Rejects when the
 /// picker fails or returns an invalid payload, and with `E_NOT_SUPPORTED` when
 /// the host has no readable system folder picker (Android, HarmonyOS phones and
 /// tablets) and `defaultPath` is not in lxapp storage.
 ///
-/// The `uri` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
-/// source, also take `<uri>/<relative>` with each segment percent-encoded. A
+/// The `path` is a read-only root: `lx.fs` read APIs, and `lx.fs.copy` as a
+/// source, also take `<path>/<relative>` with each segment percent-encoded. A
 /// child outside the directory, including through a symlink, does not resolve.
 async fn pick_directory(
     ctx: JSContext,
@@ -536,13 +525,15 @@ async fn pick_directory(
     // Same tripwire as the file picker: the union removed the type, not the state.
     let [entry] = result.entries.as_slice() else {
         return Err(js_internal_error(
-            "pickDirectory invalid payload: non-canceled result must include exactly one path",
+            "pick.directory invalid payload: non-canceled result must include exactly one path",
         ));
     };
 
+    let directory = JSObject::new(&ctx);
+    directory.set("path", selected_directory_path_to_uri(&lxapp, &entry.path)?)?;
+    directory.set("name", picked_name(entry.name.as_deref(), &entry.path))?;
     let chosen = completed(&ctx)?;
-    chosen.set("uri", selected_directory_path_to_uri(&lxapp, &entry.path)?)?;
-    chosen.set("name", picked_name(entry.name.as_deref(), &entry.path))?;
+    chosen.set("directory", directory)?;
     Ok(chosen)
 }
 
@@ -720,7 +711,7 @@ fn resolve_managed_path(
             Some(kind) => kind,
             // The URI resolved (so the lxapp may access this path) but it is
             // not under managed storage: a transient grant to a file the
-            // user explicitly picked (pickFile / pickMedia on desktop).
+            // user explicitly picked (lx.pick on desktop).
             None if allow_granted => ManagedPathKind::Granted,
             None => {
                 return Err(js_invalid_parameter_error(format!(
@@ -1096,7 +1087,7 @@ impl JSLxFile {
 
     /// Read and parse the complete file as JSON. Stays `unknown`: a class
     /// method cannot carry a type parameter through the binding, so unlike
-    /// `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+    /// `lx.storage().get<T>()` the assertion is spelled `as` at the call
     /// site rather than passed in.
     #[js_method(ts_return = "Promise<unknown>")]
     async fn json(&self, ctx: JSContext) -> JSResult<JSValue> {
@@ -1181,7 +1172,7 @@ fn fs_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 
 /// Create a lazy reference to a LingXia-managed path.
 ///
-/// Relative paths resolve under `lx.env.USER_DATA_PATH`. Creating a reference
+/// Relative paths resolve under `lx.fs.userData`. Creating a reference
 /// does not require the path to exist.
 fn fs_file(ctx: JSContext, path: String) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -1446,6 +1437,7 @@ async fn fs_remove(
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSLxFile>()?;
     register_file_api(ctx)?;
+    register_pick_api(ctx)?;
     register_fs_property(ctx)?;
     register_fs_api(ctx)?;
     download::init(ctx)?;
@@ -1463,9 +1455,15 @@ rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
-        fn pickFile(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFileResult>") = pick_file;
-        fn pickFiles(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFilesResult>") = pick_files;
-        fn pickDirectory(
+    }
+}
+
+rong::js_api! {
+    fn register_pick_api(ctx) {
+        namespace PickApi = crate::pick::pick_namespace(ctx)?;
+        fn file(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFileResult>") = pick_file;
+        fn files(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFilesResult>") = pick_files;
+        fn directory(
             ts_params = "options?: PickDirectoryOptions",
             ts_return = "Promise<PickDirectoryResult>"
         ) = pick_directory;
@@ -1482,6 +1480,8 @@ rong::js_api! {
 rong::js_api! {
     fn register_fs_api(ctx) {
         namespace FileSystemApi = fs_namespace(ctx)?;
+        const userData: "'lx://userdata'" = "lx://userdata";
+        const userCache: "'lx://usercache'" = "lx://usercache";
         fn file(ts_params = "path: ManagedPath", ts_return = "LxFile") = fs_file;
         fn exists(ts_params = "path: ManagedPath") = fs_exists;
         fn stat(ts_params = "path: ManagedPath") = fs_stat;

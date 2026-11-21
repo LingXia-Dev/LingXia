@@ -509,6 +509,11 @@ impl PageSvc {
                 .open_surface_for_view(name, payload_arg(&ctx, params), &mut cancel_rx)
                 .await;
         }
+        if method == "nav.go" {
+            return self
+                .navigate_for_view(payload_arg(&ctx, params), &mut cancel_rx)
+                .await;
+        }
 
         let Some(js_func) = self.get_js_func(method) else {
             return Err(RpcError::new(
@@ -650,6 +655,30 @@ impl PageSvc {
                 .get::<_, JSObject>("surface")?
                 .get::<_, JSFunc>(name)?;
             open.call_async::<_, JSValue>(None, (target, options)).await
+        };
+        await_js_call_or_cancel(cancel_rx, call).await?;
+        Ok(Payload::Tree(serde_json::Value::Null))
+    }
+
+    /// A View `<link to>`: Logic navigates, so the GPU host allowlist stays
+    /// at the leave controls. Settles once the target is on screen.
+    async fn navigate_for_view(
+        &self,
+        target: Option<JSValue>,
+        cancel_rx: &mut oneshot::Receiver<()>,
+    ) -> Result<Payload, RpcError> {
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+        let target = target.filter(|value| value.is_object()).ok_or_else(|| {
+            RpcError::new(
+                BRIDGE_MALFORMED_MESSAGE,
+                Some("nav.go requires a target object".to_string()),
+            )
+        })?;
+        let call = async {
+            let navigate = ctx.global().get::<_, JSFunc>("__lxNavForView")?;
+            navigate.call_async::<_, JSValue>(None, (target,)).await
         };
         await_js_call_or_cancel(cancel_rx, call).await?;
         Ok(Payload::Tree(serde_json::Value::Null))
@@ -1257,6 +1286,17 @@ impl PageSvc {
         }
 
         Ok(instance)
+    }
+
+    /// `this.close()` for a page on the stack (a surface page closes its
+    /// surface instead). Synchronous: a misuse throws at the call.
+    #[js_method(rename = "_leave")]
+    fn leave(&self) -> JSResult<()> {
+        let id = self.page.instance_id_string();
+        self.page
+            .owning_lxapp()
+            .leave_page_instance(&id)
+            .map_err(|err| HostError::new(rong::error::E_INVALID_STATE, err.to_string()).into())
     }
 
     #[js_method(rename = "_setData")]
@@ -1957,12 +1997,22 @@ impl PageSvc {
                     page_svc.lifecycle_pump_running.set(false);
                     if page_svc.terminated.get() {
                         // The owed `onUnload` has run: nothing uses the
-                        // retired service's JS values any more.
+                        // retired service's JS values any more. Settling is
+                        // a no-op once that `onUnload` settled the result.
+                        page_svc.settle_result(&ctx);
                         page_svc.release_js();
                     }
                     break;
                 };
-                if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
+                if event == PageLifecycleEvent::OnLoad && !page_svc.wait_launch_settled(&ctx).await
+                {
+                    continue;
+                }
+                let outcome = page_svc.call_page_event(&ctx, event, args.as_deref()).await;
+                if event == PageLifecycleEvent::OnUnload {
+                    page_svc.settle_result(&ctx);
+                }
+                if let Err(e) = outcome {
                     let error = super::eval_error_from_rong(&ctx, e);
                     let page = page_svc.get_page();
                     if page.document_is_departing() {
@@ -1977,6 +2027,50 @@ impl PageSvc {
                 }
             }
         });
+    }
+
+    /// Settle the opener's `result` once the page has unloaded. Without a
+    /// result set it is canceled, for the reason the instance was disposed;
+    /// a page that left the stack by Back left by the user.
+    pub(crate) fn settle_result(&self, ctx: &JSContext) {
+        use crate::page::runtime::CloseReason;
+        let reason = match self.page.take_leave_reason() {
+            Some(CloseReason::OwnerClosed) => "opener",
+            Some(CloseReason::Reclaimed) => "reclaimed",
+            Some(CloseReason::AppClosed) => "app_closed",
+            Some(_) => "user",
+            None if LxApp::from_ctx(ctx).is_ok_and(|app| !app.is_opened()) => "app_closed",
+            None => "user",
+        };
+        self.settle_result_with(reason);
+    }
+
+    fn settle_result_with(&self, reason: &str) {
+        let Some(this) = self.this.get() else {
+            return;
+        };
+        if let Ok(settle) = this.get::<_, JSFunc>("_settleResult") {
+            let _ = settle.call::<_, ()>(Some(this), (reason.to_string(),));
+        }
+    }
+
+    /// `onLoad` runs after `App.onLaunch` has settled, so pages can rely on
+    /// what it set up. The first frame is not held. False if the page was torn
+    /// down meanwhile.
+    async fn wait_launch_settled(&self, ctx: &JSContext) -> bool {
+        let Ok(app) = LxApp::from_ctx(ctx) else {
+            return true;
+        };
+        let mut settled = app.launch_settled.subscribe();
+        while !*settled.borrow_and_update() {
+            if self.terminated.get() {
+                return false;
+            }
+            // `terminated` has no wake-up of its own.
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(100), settled.changed())
+                .await;
+        }
+        !self.terminated.get()
     }
 
     pub(crate) async fn call_page_event(
@@ -2089,9 +2183,31 @@ impl PageSvc {
         Ok(())
     }
 
+    /// A fresh promise for this page's result, settled once after it unloads.
+    /// A result promise handed out earlier settles as canceled by the opener.
+    pub fn bind_result(&self) -> JSResult<JSObject> {
+        let this = self.this.require()?;
+        let bind: JSFunc = this.get("_bindResult")?;
+        bind.call::<_, JSObject>(Some(this), ())
+    }
+
     pub fn clear_opener(&self) -> JSResult<()> {
         self.this.require()?.delete("opener")?;
         Ok(())
+    }
+
+    /// Move this page's opener and the result it is owed to `to`.
+    pub fn hand_over_opener(&self, to: &PageSvc) -> JSResult<()> {
+        let this = self.this.require()?;
+        let hand_over: JSFunc = this.get("_handOver")?;
+        hand_over.call::<_, ()>(Some(this), (to.this.require()?,))
+    }
+
+    /// Leave this page as if it closed itself.
+    pub fn leave_page(&self) -> Result<(), LxAppError> {
+        self.page
+            .owning_lxapp()
+            .leave_page_instance(&self.page.instance_id_string())
     }
 }
 
@@ -2106,6 +2222,14 @@ impl PageSvc {
         let definition_path =
             crate::resolve_page_path(&lxapp, path).unwrap_or_else(|| path.to_string());
         let gpu = lxapp.config().renderer == crate::PageRenderer::Gpu;
+        // `page.name` and `page.params`, which `setup` can read before onLoad.
+        let identity = serde_json::json!({
+            "name": lxapp.config().page_name_by_path(path),
+            "params": page_instance_id
+                .and_then(|id| lxapp.get_page_by_instance_id_str(id))
+                .map(|page| page.automation_state().query),
+        })
+        .to_string();
 
         let create_page = ctx
             .global()
@@ -2122,6 +2246,7 @@ impl PageSvc {
                     definition_path,
                     page_instance_id.unwrap_or_default().to_string(),
                     gpu,
+                    identity,
                 ),
             )
             .map_err(|e: RongJSError| e.into_host_in(ctx))
@@ -2146,6 +2271,14 @@ impl LxApp {
         url: &str,
     ) -> JSResult<PageSvc> {
         let page = self.create_page_for_entry(url);
+        self.ensure_page_svc_in_ctx(ctx, page).await
+    }
+
+    /// The service of the page on top of the stack.
+    pub async fn current_page_svc_in_ctx(&self, ctx: &JSContext) -> JSResult<PageSvc> {
+        let page = self.current_page().map_err(|e| {
+            RongJSError::from(HostError::new(rong::error::E_INVALID_STATE, e.to_string()))
+        })?;
         self.ensure_page_svc_in_ctx(ctx, page).await
     }
 
@@ -2287,7 +2420,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.eval::<()>(page_js)?;
 
     let get_current_pages = rong::JSFunc::new(ctx, get_current_pages)?;
-    ctx.global().set("getCurrentPages", get_current_pages)?;
+    // For `lxdev test` only; app code reaches a page through its closure.
+    ctx.global().set("__lxPageStack", get_current_pages)?;
     ctx.global().set(
         "__lxGetPage",
         rong::JSFunc::new(ctx, |ctx: JSContext, id: String| -> JSResult<JSObject> {

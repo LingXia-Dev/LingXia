@@ -167,7 +167,7 @@ function ImageTools({ data, actions }: Pane) {
   const source = data.imageInfoResult as Data | null;
   const result = data.compressResult as Data | null;
   return (
-    <Page intro="lx.getImageInfo and lx.compressImage: inspect an image and make a compressed copy">
+    <Page intro="lx.media.imageInfo and lx.media.compressImage: inspect an image and make a compressed copy">
       <Button testId="media-pickImageForInfo" disabled={!!data.imageInfoBusy} onClick={() => actions.pickImageForInfo()}>
         {data.imageInfoBusy ? 'Getting Info...' : 'Pick Image'}
       </Button>
@@ -226,7 +226,7 @@ function VideoTools({ data, actions }: Pane) {
   const progress = Math.max(0, Math.min(100, Number(data.videoCompressProgress) || 0));
   const ratio = thumb ? Number(thumb.width || 1) / Math.max(1, Number(thumb.height || 1)) : 1;
   return (
-    <Page intro="lx.getVideoInfo, lx.extractVideoThumbnail and lx.compressVideo">
+    <Page intro="lx.media.videoInfo, lx.media.videoThumbnail and lx.media.compressVideo">
       <Button testId="media-pickVideoForTools" disabled={!!data.thumbnailBusy || !!data.videoInfoBusy} onClick={() => actions.pickVideoForTools()}>
         {data.thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video'}
       </Button>
@@ -389,7 +389,7 @@ function Gallery({ data, actions }: Pane) {
     </button>
   );
   return (
-    <Page intro={String(data.headerSubtitle || 'lx.pickMedia / lx.previewMedia')}>
+    <Page intro={String(data.headerSubtitle || 'lx.pick.media / lx.media.preview')}>
       <Card className="divide-y divide-line">
         <Setting
           label={video ? 'Video Source' : 'Photo Source'}

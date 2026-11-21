@@ -49,7 +49,7 @@ enum LxAppLayoutReconciler {
     /// commits (resize, aside changes); only this intent may replace it.
     private static var requestedLxappMainActivation: String?
 
-    /// `raiseHost` is true only for the runtime's explicit `lx.shell.openApp`;
+    /// `raiseHost` is true only for the runtime's explicit `lx.surface.openApp`;
     /// a sidebar click already runs in the foreground, and an lxapp restart or
     /// self-close must never pull this host over another app.
     static func requestLxappMainActivation(appId: String, raiseHost: Bool) {
@@ -358,7 +358,7 @@ enum LxAppLayoutReconciler {
             // exception; unrelated commits must not evict the cover (mirrors
             // the Windows reconciler). An already-attached main still needs
             // the sidebar selection: that highlight is not in the graph, and
-            // `lx.shell.openApp` never went through a sidebar click.
+            // `lx.surface.openApp` never went through a sidebar click.
             let show = !shell.browserIsCoveringMain || explicitlyRequested
             let alreadyAttached = shell.attachedMainAppId == appId
             if show && !alreadyAttached {

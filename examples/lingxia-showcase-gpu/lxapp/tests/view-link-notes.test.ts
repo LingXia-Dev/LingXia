@@ -52,7 +52,7 @@ test('a hint on a link shows while keyboard focus rests on it, on a link that wr
 });
 
 test('a mouse resting on a link shows its hint, on either line of a link that wraps', { covers: ['view:link', 'view:pointer'], start: openDemo('linkNotes') }, async (t) => {
-  const os = await t.app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
+  const os = await t.app.logic.eval(({ lx }) => String(lx.host.info.os || '').toLowerCase());
   if (os !== 'macos' && os !== 'windows') t.skip('needs a mouse: desktop pointer input');
   const view = t.app.view;
   // The link does nothing on a press; this brings the demo on screen.

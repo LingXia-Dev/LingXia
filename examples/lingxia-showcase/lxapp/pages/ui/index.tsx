@@ -1,6 +1,5 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { PageStackCard } from '../../shared/components/page-stack';
 import '../../tailwind.css';
 
 // Parse a surface size input. Blank means "let the Host pick the default size";
@@ -62,7 +61,6 @@ export default function UIPage() {
   } = actions;
   const {
     currentType = 'navigation',
-    pageStack = [],
     instanceTag = '',
     previousInstanceTag = '',
     logicCounter = 0,
@@ -665,15 +663,9 @@ export default function UIPage() {
           </>
         )}
 
-        {/* Page stack + instance lifecycle - Only show for navigation */}
+        {/* Instance lifecycle - Only show for navigation */}
         {currentType === 'navigation' && (
           <div className="mb-5 space-y-4">
-            <PageStackCard
-              stack={pageStack}
-              badge={`${pageStack.length}/10`}
-              testId="ui-page-stack"
-            />
-
             {/* Instance identity */}
             <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
               <div className="px-4 py-3 border-b border-line-100">
@@ -696,7 +688,7 @@ export default function UIPage() {
                   </span>
                 </div>
                 <div className="text-[11px] text-gray-400 leading-relaxed pt-1">
-                  The previous tag is read back from <code>lx.getStorage()</code>, which is
+                  The previous tag is read back from <code>lx.storage()</code>, which is
                   app-scoped and survives the reset.
                 </div>
               </div>
@@ -969,7 +961,7 @@ export default function UIPage() {
               <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  <code className="text-xs">lx.host.control.appearance.setPreference()</code> sets the product&apos;s scheme
+                  <code className="text-xs">lx.host.appearance.setPreference()</code> sets the product&apos;s scheme
                   independently of the host shell; the preference persists per lxapp.
                 </p>
               </div>

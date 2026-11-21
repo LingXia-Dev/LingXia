@@ -1,8 +1,7 @@
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::device::Device;
 use lxapp::LxApp;
-use rong::{FromJSObject, JSContext, JSResult};
-use serde::Deserialize;
+use rong::{JSContext, JSResult, function::Optional};
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)
@@ -10,47 +9,26 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn vibrateShort = vibrate_short;
-        fn vibrateLong = vibrate_long;
-        fn makePhoneCall(ts_params = "options: MakePhoneCallOptions") = make_phone_call;
+        namespace DeviceApi = crate::namespace::device(ctx)?;
+        fn haptics(ts_params = "kind?: 'short' | 'long'", ts_return = "void") = haptics;
     }
 }
 
-/// Vibrate briefly, where the device has a vibrator.
-fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
+/// A vibration pulse, where the device has a vibrator: `short` (default) or
+/// `long`. Rejects `E_NOT_SUPPORTED` where it has none.
+fn haptics(ctx: JSContext, kind: Optional<String>) -> JSResult<()> {
+    let long = match kind.0.as_deref() {
+        None | Some("short") => false,
+        Some("long") => true,
+        Some(other) => {
+            return Err(js_invalid_parameter_error(format!(
+                "haptics takes 'short' or 'long', not '{other}'"
+            )));
+        }
+    };
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
         .runtime
-        .vibrate(false)
-        .map(|_| true)
-        .map_err(|e| js_error_from_platform_error(&e))
-}
-
-/// Vibrate for a longer pulse, where the device has a vibrator.
-fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp
-        .runtime
-        .vibrate(true)
-        .map(|_| true)
-        .map_err(|e| js_error_from_platform_error(&e))
-}
-
-#[derive(FromJSObject, Deserialize)]
-#[ts_skip]
-struct MakePhoneCallParams {
-    #[serde(rename = "phoneNumber")]
-    #[js_name = "phoneNumber"]
-    phone_number: String,
-}
-
-/// Hand a number to the system dialer; the user still places the call.
-fn make_phone_call(ctx: JSContext, params: MakePhoneCallParams) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp
-        .runtime
-        .make_phone_call(&params.phone_number)
-        .map(|_| true)
+        .vibrate(long)
         .map_err(|e| js_error_from_platform_error(&e))
 }

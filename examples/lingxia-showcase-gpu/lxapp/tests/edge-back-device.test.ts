@@ -6,7 +6,7 @@ test.configure({ requires: { args: ['harmonyDevice'] } });
 // Platform convention: a swipe from inside the system's edge zone is back, even across a
 // horizontal control; a drag that starts on the control past that zone moves the control.
 test('an edge swipe goes back across a pager; a drag starting on the pager pages it', {
-  id: 'EDGE-BACK-CLAIM-001', covers: ['view:scroll', 'lx.navigateBack'],
+  id: 'EDGE-BACK-CLAIM-001', covers: ['view:scroll', 'lx.nav.back'],
   reason: 'swipes through the system input path of the Harmony device fixture',
   start: { page: 'view' },
 }, async (t) => {
@@ -27,7 +27,7 @@ test('an edge swipe goes back across a pager; a drag starting on the pager pages
     await expect(view.testId('motion-pager-state')).toHaveAttribute('data-state', `page=${page}`);
   };
 
-  await app.nav.to({ page: 'view-scrolling' });
+  await app.nav.go({ page: 'view-scrolling' });
   await view.testId('motion-pager-next').click();
   await onPage(1);
 

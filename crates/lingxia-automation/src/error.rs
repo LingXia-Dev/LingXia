@@ -368,7 +368,7 @@ mod tests {
                 E_AUTOMATION,
             ),
             ("JavaScript error: boom", E_AUTOMATION),
-            ("redirectTo cannot navigate to a tabBar page", E_AUTOMATION),
+            ("a tab page cannot replace a page", E_AUTOMATION),
         ];
         for (message, code) in cases {
             assert_eq!(code_for(message), code, "{message}");

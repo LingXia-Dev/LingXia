@@ -1,4 +1,5 @@
-type TerminalApi = NonNullable<typeof lx.terminal>;
+import { definePage } from '@lingxia/types/page';
+type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
 type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;
 type WindowsInlineImageStatus = Awaited<ReturnType<WindowsTerminalApi['status']>>;
@@ -51,10 +52,10 @@ async function action<T>(operation: () => Promise<T>): Promise<ActionResult<T>> 
 }
 
 function terminal() {
-  if (!lx.terminal) {
+  if (!lx.supports('terminal')) {
     throw new Error('Terminal settings are unavailable in this host');
   }
-  return lx.terminal;
+  return lx.host.terminal;
 }
 
 function windowsTerminal(): WindowsTerminalApi {
@@ -72,7 +73,7 @@ function previewController(): ReturnType<TerminalApi['colorSchemes']['createPrev
   return preview;
 }
 
-Page({
+export default definePage({
   data: {
     terminalSettingsSnapshot: null as TerminalSnapshot | null,
     windowsInlineImageProgress: null as {
@@ -81,92 +82,90 @@ Page({
       progress?: number;
     } | null,
   },
+  setup(page) {
+    const actions = {
+      loadTerminalSettings() {
+        return action(async () => {
+          const api = terminal();
+          const isWindows = lx.host.info.os === 'Windows';
+          const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
+            api.settings.get(),
+            api.colorSchemes.list(),
+            api.fonts.list(),
+            isWindows ? windowsTerminal().status() : Promise.resolve(null),
+          ]);
+          return { snapshot, themes, fonts, isWindows, windowsInlineImages };
+        });
+      },
+      setWindowsInlineImages(input: { enabled: boolean }) {
+        return action(async (): Promise<WindowsInlineImageStatus> => {
+          const api = windowsTerminal();
+          if (!input.enabled) {
+            await conptyDownload?.cancel();
+            conptyDownload = null;
+            page.update(d => { d.windowsInlineImageProgress = null; });
+            return api.setEnabled({ enabled: false });
+          }
+          const current = await api.status();
+          if (current.installed) return api.setEnabled({ enabled: true });
 
-  onLoad() {
-    stopSettingsChanges?.();
-    stopSettingsChanges = terminal().settings.onChange((snapshot) => {
-      this.setData({ terminalSettingsSnapshot: snapshot });
-    });
-  },
-
-  loadTerminalSettings() {
-    return action(async () => {
-      const api = terminal();
-      const isWindows = lx.host.getBaseInfo().os === 'Windows';
-      const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
-        api.settings.get(),
-        api.colorSchemes.list(),
-        api.fonts.list(),
-        isWindows ? windowsTerminal().status() : Promise.resolve(null),
-      ]);
-      return { snapshot, themes, fonts, isWindows, windowsInlineImages };
-    });
-  },
-
-  setWindowsInlineImages(input: { enabled: boolean }) {
-    return action(async (): Promise<WindowsInlineImageStatus> => {
-      const api = windowsTerminal();
-      if (!input.enabled) {
+          const task = lx.downloadFile({ url: current.package.url });
+          conptyDownload = task;
+          try {
+            for await (const event of task.progress) {
+              if (event.kind === 'progress') {
+                page.update(d => {
+                  d.windowsInlineImageProgress = {
+                    downloadedBytes: event.downloadedBytes,
+                    totalBytes: event.totalBytes,
+                    progress: event.progress,
+                  };
+                });
+              }
+            }
+            const result = await task.result;
+            return await api.install({ path: result.uri });
+          } finally {
+            if (conptyDownload === task) conptyDownload = null;
+            page.update(d => { d.windowsInlineImageProgress = null; });
+          }
+        });
+      },
+      updateTerminalSettings(input: UpdateInput) {
+        return action(() =>
+          terminal().settings.update(input.patch, { ifRevision: input.ifRevision }),
+        );
+      },
+      resetTerminalSettings(input: ResetInput) {
+        return action(() => terminal().settings.reset(input));
+      },
+      importTerminalScheme(input: ImportInput) {
+        return action(() => terminal().colorSchemes.import(input));
+      },
+      previewTerminalScheme(input: PreviewInput) {
+        return action(() => previewController().show(input.scheme));
+      },
+      clearTerminalPreview() {
+        return action(() => preview?.clear() ?? Promise.resolve());
+      },
+    };
+    return {
+      onLoad() {
+        stopSettingsChanges?.();
+        stopSettingsChanges = terminal().settings.onChange((snapshot) => {
+          page.update(d => { d.terminalSettingsSnapshot = snapshot; });
+        });
+      },
+      async onUnload() {
+        stopSettingsChanges?.();
+        stopSettingsChanges = null;
+        const controller = preview;
+        preview = null;
+        await controller?.close();
         await conptyDownload?.cancel();
         conptyDownload = null;
-        this.setData({ windowsInlineImageProgress: null });
-        return api.setEnabled({ enabled: false });
-      }
-      const current = await api.status();
-      if (current.installed) return api.setEnabled({ enabled: true });
-
-      const task = lx.downloadFile({ url: current.package.url });
-      conptyDownload = task;
-      try {
-        for await (const event of task.progress) {
-          if (event.kind === 'progress') {
-            this.setData({
-              windowsInlineImageProgress: {
-                downloadedBytes: event.downloadedBytes,
-                totalBytes: event.totalBytes,
-                progress: event.progress,
-              },
-            });
-          }
-        }
-        const result = await task.result;
-        return await api.install({ path: result.uri });
-      } finally {
-        if (conptyDownload === task) conptyDownload = null;
-        this.setData({ windowsInlineImageProgress: null });
-      }
-    });
-  },
-
-  updateTerminalSettings(input: UpdateInput) {
-    return action(() =>
-      terminal().settings.update(input.patch, { ifRevision: input.ifRevision }),
-    );
-  },
-
-  resetTerminalSettings(input: ResetInput) {
-    return action(() => terminal().settings.reset(input));
-  },
-
-  importTerminalScheme(input: ImportInput) {
-    return action(() => terminal().colorSchemes.import(input));
-  },
-
-  previewTerminalScheme(input: PreviewInput) {
-    return action(() => previewController().show(input.scheme));
-  },
-
-  clearTerminalPreview() {
-    return action(() => preview?.clear() ?? Promise.resolve());
-  },
-
-  async onUnload() {
-    stopSettingsChanges?.();
-    stopSettingsChanges = null;
-    const controller = preview;
-    preview = null;
-    await controller?.close();
-    await conptyDownload?.cancel();
-    conptyDownload = null;
+      },
+      actions,
+    };
   },
 });

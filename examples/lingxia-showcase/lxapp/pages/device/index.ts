@@ -1,6 +1,7 @@
 import type { DeviceInfo, NetworkInfo, ScreenInfo } from "@lingxia/types";
 import { errorMessage } from "../../shared/lib/errors";
-Page({
+import { definePage } from '@lingxia/types/page';
+export default definePage({
   data: {
     currentType: "device",
     deviceInfo: null as DeviceInfo | null,
@@ -13,203 +14,183 @@ Page({
     orientationEvents: [] as string[],
     orientationLock: "",
   },
+  setup(page) {
+    // Unsubscribe handles live on the instance, not in `data`: they are not
+    // serializable and the View never sees them.
+    let offNetworkChange = null as (() => void) | null;
+    let offDeviceOrientationChange = null as (() => void) | null;
+    const helpers = {
+      appendOrientationEvent(value: string) {
+        const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
+        const timestamp = new Date().toISOString();
+        const eventText = `${timestamp}  ${orientationValue}`;
+        const currentEvents = Array.isArray(page.data.orientationEvents) ? page.data.orientationEvents : [];
+        const nextEvents = [eventText, ...currentEvents].slice(0, 20);
 
-  // Unsubscribe handles live on the instance, not in `data`: they are not
-  // serializable and the View never sees them.
-  _offNetworkChange: null as (() => void) | null,
-  _offDeviceOrientationChange: null as (() => void) | null,
+        page.update(d => {
+          d.orientationEvents = nextEvents;
+          d.deviceOrientationValue = orientationValue;
+        });
+      },
+    };
+    const actions = {
+      // Get device information
+      async getDeviceInfo() {
+        try {
+          const deviceInfo = lx.device.info;
+          console.log("Device info:", deviceInfo);
 
-  onLoad: async function (options = {}) {
-    console.log("Device page onLoad options:", options);
+          page.update(d => { d.deviceInfo = deviceInfo; });
+        } catch (error) {
+          console.error("Failed to get device info:", error);
+        }
+      },
+      // Get screen information
+      async getScreenInfo() {
+        try {
+          const screenInfo = lx.device.screen();
+          console.log("Screen info:", screenInfo);
 
-    const { type = "device" } = (options || {}) as { type?: string };
-    if (type !== this.data.currentType) {
-      this.setData({ currentType: type });
-    }
-  },
+          page.update(d => { d.screenInfo = screenInfo; });
+        } catch (error) {
+          console.error("Failed to get screen info:", error);
+        }
+      },
+      // Trigger short vibration
+      async vibrateShort() {
+        try {
+          await lx.device.haptics();
+          console.log("Triggered short vibration");
+        } catch (error) {
+          console.error("Failed to trigger short vibration:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      // Trigger long vibration
+      async vibrateLong() {
+        try {
+          await lx.device.haptics('long');
+          console.log("Triggered long vibration");
+        } catch (error) {
+          console.error("Failed to trigger long vibration:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      // Make a phone call
+      async makePhoneCall(options?: { phoneNumber?: string }) {
+        const rawPhoneNumber = typeof options?.phoneNumber === "string" ? options.phoneNumber : "";
+        const normalizedPhoneNumber = rawPhoneNumber.replace(/^tel:/i, "").trim();
+        if (!normalizedPhoneNumber) {
+          return;
+        }
 
-  onShow: function () {
-    console.log("Device page onShow");
-  },
+        try {
+          await lx.openExternal(`tel:${normalizedPhoneNumber}`);
+          console.log("Making phone call to:", normalizedPhoneNumber);
+        } catch (error) {
+          console.error("Failed to make phone call:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      async getNetworkInfo() {
+        try {
+          const result = await lx.network.status();
+          page.update(d => { d.networkInfo = result || null; });
+        } catch (error) {
+          console.error("Failed to get network info:", error);
+        }
+      },
+      startNetworkChangeListen() {
+        if (offNetworkChange) {
+          return;
+        }
+        offNetworkChange = lx.network.watch((info) => {
+          page.update(d => { d.networkChange = info || null; });
+        });
+        page.update(d => { d.networkListening = true; });
+      },
+      stopNetworkChangeListen() {
+        if (!offNetworkChange) {
+          return;
+        }
+        offNetworkChange();
+        offNetworkChange = null;
+        page.update(d => { d.networkListening = false; });
+      },
+      async setOrientationPortrait() {
+        try {
+          await lx.device.orientation.set("portrait");
+          page.update(d => { d.orientationLock = "portrait"; });
+        } catch (error) {
+          console.error("Failed to set portrait orientation:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      async setOrientationLandscape() {
+        try {
+          await lx.device.orientation.set("landscape");
+          page.update(d => { d.orientationLock = "landscape"; });
+        } catch (error) {
+          console.error("Failed to set landscape orientation:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      startDeviceOrientationListen() {
+        if (offDeviceOrientationChange) {
+          return;
+        }
 
-  onHide: function () {
-    console.log("Device page onHide");
-    this.stopNetworkChangeListen();
-    this.stopDeviceOrientationListen();
-  },
+        try {
+          offDeviceOrientationChange = lx.device.orientation.watch((event) => {
+            const value = typeof event === "string" ? event : event?.value;
+            helpers.appendOrientationEvent(value);
+          });
+          page.update(d => { d.orientationListening = true; });
+        } catch (error) {
+          console.error("Failed to start device orientation listener:", error);
+          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+        }
+      },
+      stopDeviceOrientationListen() {
+        if (!offDeviceOrientationChange) {
+          return;
+        }
 
-  onUnload: function () {
-    this.stopNetworkChangeListen();
-    this.stopDeviceOrientationListen();
-  },
+        try {
+          offDeviceOrientationChange();
+        } catch (error) {
+          console.error("Failed to stop device orientation listener:", error);
+        }
 
-  // Get device information
-  getDeviceInfo: async function () {
-    try {
-      const deviceInfo = lx.getDeviceInfo();
-      console.log("Device info:", deviceInfo);
+        offDeviceOrientationChange = null;
+        page.update(d => { d.orientationListening = false; });
+      },
+      clearOrientationEvents() {
+        page.update(d => { d.orientationEvents = []; });
+      },
+    };
+    return {
+      async onLoad(options = {}) {
+        console.log("Device page onLoad options:", options);
 
-      this.setData({
-        deviceInfo: deviceInfo,
-      });
-    } catch (error) {
-      console.error("Failed to get device info:", error);
-    }
-  },
-
-  // Get screen information
-  getScreenInfo: async function () {
-    try {
-      const screenInfo = lx.getScreenInfo();
-      console.log("Screen info:", screenInfo);
-
-      this.setData({
-        screenInfo: screenInfo,
-      });
-    } catch (error) {
-      console.error("Failed to get screen info:", error);
-    }
-  },
-
-  // Trigger short vibration
-  vibrateShort: async function () {
-    try {
-      await lx.vibrateShort();
-      console.log("Triggered short vibration");
-    } catch (error) {
-      console.error("Failed to trigger short vibration:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  // Trigger long vibration
-  vibrateLong: async function () {
-    try {
-      await lx.vibrateLong();
-      console.log("Triggered long vibration");
-    } catch (error) {
-      console.error("Failed to trigger long vibration:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  // Make a phone call
-  makePhoneCall: async function (options?: { phoneNumber?: string }) {
-    const rawPhoneNumber = typeof options?.phoneNumber === "string" ? options.phoneNumber : "";
-    const normalizedPhoneNumber = rawPhoneNumber.replace(/^tel:/i, "").trim();
-    if (!normalizedPhoneNumber) {
-      return;
-    }
-
-    try {
-      await lx.makePhoneCall({ phoneNumber: normalizedPhoneNumber });
-      console.log("Making phone call to:", normalizedPhoneNumber);
-    } catch (error) {
-      console.error("Failed to make phone call:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  getNetworkInfo: async function () {
-    try {
-      const result = await lx.getNetworkInfo();
-      this.setData({
-        networkInfo: result || null,
-      });
-    } catch (error) {
-      console.error("Failed to get network info:", error);
-    }
-  },
-
-  startNetworkChangeListen: function () {
-    if (this._offNetworkChange) {
-      return;
-    }
-    this._offNetworkChange = lx.onNetworkChange((info) => {
-      this.setData({
-        networkChange: info || null,
-      });
-    });
-    this.setData({ networkListening: true });
-  },
-
-  stopNetworkChangeListen: function () {
-    if (!this._offNetworkChange) {
-      return;
-    }
-    this._offNetworkChange();
-    this._offNetworkChange = null;
-    this.setData({ networkListening: false });
-  },
-
-  _appendOrientationEvent: function (value: string) {
-    const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
-    const timestamp = new Date().toISOString();
-    const eventText = `${timestamp}  ${orientationValue}`;
-    const currentEvents = Array.isArray(this.data.orientationEvents) ? this.data.orientationEvents : [];
-    const nextEvents = [eventText, ...currentEvents].slice(0, 20);
-
-    this.setData({
-      orientationEvents: nextEvents,
-      deviceOrientationValue: orientationValue,
-    });
-  },
-
-  setOrientationPortrait: async function () {
-    try {
-      await lx.setDeviceOrientation("portrait");
-      this.setData({ orientationLock: "portrait" });
-    } catch (error) {
-      console.error("Failed to set portrait orientation:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  setOrientationLandscape: async function () {
-    try {
-      await lx.setDeviceOrientation("landscape");
-      this.setData({ orientationLock: "landscape" });
-    } catch (error) {
-      console.error("Failed to set landscape orientation:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  startDeviceOrientationListen: function () {
-    if (this._offDeviceOrientationChange) {
-      return;
-    }
-
-    try {
-      this._offDeviceOrientationChange = lx.onDeviceOrientationChange((event) => {
-        const value = typeof event === "string" ? event : event?.value;
-        this._appendOrientationEvent(value);
-      });
-      this.setData({ orientationListening: true });
-    } catch (error) {
-      console.error("Failed to start device orientation listener:", error);
-      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
-    }
-  },
-
-  stopDeviceOrientationListen: function () {
-    if (!this._offDeviceOrientationChange) {
-      return;
-    }
-
-    try {
-      this._offDeviceOrientationChange();
-    } catch (error) {
-      console.error("Failed to stop device orientation listener:", error);
-    }
-
-    this._offDeviceOrientationChange = null;
-    this.setData({ orientationListening: false });
-  },
-
-  clearOrientationEvents: function () {
-    this.setData({
-      orientationEvents: [],
-    });
+        const { type = "device" } = (options || {}) as { type?: string };
+        if (type !== page.data.currentType) {
+          page.update(d => { d.currentType = type; });
+        }
+      },
+      onShow() {
+        console.log("Device page onShow");
+      },
+      onHide() {
+        console.log("Device page onHide");
+        actions.stopNetworkChangeListen();
+        actions.stopDeviceOrientationListen();
+      },
+      onUnload() {
+        actions.stopNetworkChangeListen();
+        actions.stopDeviceOrientationListen();
+      },
+      actions,
+    };
   },
 });

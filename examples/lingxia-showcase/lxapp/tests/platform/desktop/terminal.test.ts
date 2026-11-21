@@ -9,7 +9,7 @@ import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers
 
 const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 
-const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
+const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
 test.configure({
   skip: !targetPlatform || targetPlatform === 'macos' || targetPlatform === 'windows'
     ? undefined
@@ -67,12 +67,12 @@ async function closeHandles(app: TestApp, key: string): Promise<void> {
 test('publishes and mutates the native nested pane tree without deferred layout', {
   id: 'DESKTOP-TERMINAL-001',
   timeout: 90_000,
-  covers: ['lx.shell.openDeclared', 'lx.terminal'],
+  covers: ['lx.surface.openDeclared', 'lx.host.terminal'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
+    const handle = await lx.surface.openDeclared('terminal', { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalAutomationHandles = { terminal: handle };
   }, token);
   const surfaceId = await terminalSurfaceId(app, token);
@@ -121,14 +121,14 @@ test('publishes and mutates the native nested pane tree without deferred layout'
 test('keeps a maximized terminal maximized when a tab opens', {
   id: 'DESKTOP-TERMINAL-002',
   timeout: 90_000,
-  covers: ['lx.shell.openDeclared'],
+  covers: ['lx.surface.openDeclared'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'aside', edge: 'bottom' });
+    const handle = await lx.surface.openDeclared('terminal', { key: token, as: 'aside', edge: 'bottom' });
     (globalThis as unknown as Record<string, unknown>).__terminalTabAutomationHandles = { terminal: handle };
   }, token);
   const surfaceId = await terminalSurfaceId(app, token);
@@ -158,7 +158,7 @@ test('keeps a maximized terminal maximized when a tab opens', {
 test('applies a selected color scheme to native chrome before Apply', {
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
-  covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],
+  covers: ['lx.surface.openDeclared', 'lx.surface.openApp'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -166,14 +166,14 @@ test('applies a selected color scheme to native chrome before Apply', {
   // out, which says nothing about which surface never settled — and a native
   // surface and a bundled lxapp settle along different paths.
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const terminal = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
+    const terminal = await lx.surface.openDeclared('terminal', { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalThemeAutomationHandles = { terminal };
   }, token);
   const terminalId = await terminalSurfaceId(app, token);
   // Opening a bundled lxapp aside has to reach the host and come back, so it
   // is slower than the native surface above and pays a cold start on CI.
   await app.logic.eval({ timeout: 60_000 }, async ({ lx }, settingsAppId) => {
-    const settings = await lx.shell.openApp(settingsAppId, { as: 'aside', edge: 'right' });
+    const settings = await lx.surface.openApp(settingsAppId, { as: 'aside', edge: 'right' });
     const held = globalThis as unknown as Record<string, Record<string, unknown>>;
     held.__terminalThemeAutomationHandles.settings = settings;
   }, SETTINGS_APP_ID);
@@ -181,7 +181,7 @@ test('applies a selected color scheme to native chrome before Apply', {
   const terminal = t.automation.terminal;
   const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
+  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance.getPreference() ?? null);
 
   try {
     // The action bar is intentionally hidden until the draft becomes dirty;
@@ -191,9 +191,9 @@ test('applies a selected color scheme to native chrome before Apply', {
       .waitFor({ state: 'visible', timeout: 10_000 });
     await waitForSave(settingsApp, false);
     const runtime = await settingsApp.logic.eval(async ({ lx }) => {
-      const settings = await lx.terminal!.settings.get();
+      const settings = await lx.host.terminal.settings.get();
       return {
-        terminal: typeof lx.terminal?.settings?.get,
+        terminal: typeof lx.host.terminal.settings.get,
         fileSystem: typeof lx.fs,
         appearance: settings.effective.appearance,
       };
@@ -213,7 +213,7 @@ test('applies a selected color scheme to native chrome before Apply', {
     let cards = await themeCards();
     if (cards.length < 2) {
       await app.logic.eval(async ({ lx }) => {
-        await lx.host.control!.appearance.setPreference('dark');
+        await lx.host.appearance.setPreference('dark');
         return true;
       });
       cards = await waitFor(async () => {
@@ -238,7 +238,7 @@ test('applies a selected color scheme to native chrome before Apply', {
       } : null;
     }, initial.chrome.surface);
     if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
-    const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.terminal!.settings.get()).effective.appearance);
+    const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.host.terminal.settings.get()).effective.appearance);
 
     // Click through the settings document: an OS pointer click can miss the
     // aside WebView even when the card is in the page DOM.
@@ -290,13 +290,13 @@ test('applies a selected color scheme to native chrome before Apply', {
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
     await app.logic.eval(async ({ lx }, previous) => {
-      if (previous !== null) await lx.host.control?.appearance.setPreference(previous);
+      if (previous !== null) await lx.host.appearance.setPreference(previous);
       return true;
     }, previousAppearance).catch(() => undefined);
     if (initial) {
       // Restores the workspace snapshot's config as the settings patch it was.
       await settingsApp.logic.eval({ timeout: 20_000 }, async ({ lx }, config) => {
-        const settings = lx.terminal!.settings;
+        const settings = lx.host.terminal.settings;
         const current = await settings.get();
         await settings.update(config as Parameters<typeof settings.update>[0], { ifRevision: current.revision });
       }, initial.config as unknown as JsonValue);

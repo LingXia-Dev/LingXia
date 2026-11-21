@@ -274,7 +274,9 @@ window and drives sidebar and aside arbitration:
 | `expanded` | `> 840 dp/pt` |
 
 **Content size class** is computed per surface from its actual viewport width
-and is the only size class exposed on `lx.surface.watchContext`:
+and is the only size class content sees: the View's `env` (with the viewport
+in pixels) and Logic's `page.env` (size class and `canDock` only; Logic is
+called when one of them flips, never on a resize):
 
 `canDock` separately reports whether the window has a dock region right now:
 true when the shell size class is Medium or Expanded, false when it is Compact
@@ -664,9 +666,9 @@ Declaration model (owned by the single runtime writer, §7.2):
   authored.
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
-  `lx.shell.openDeclared(id, options?)`, a dynamic business app with
-  `lx.shell.openApp(appId, options?)`, or performs app navigation with
-  `lx.navigateToApp({ appId: ... })`.
+  `lx.surface.openDeclared(id, options?)`, a dynamic business app with
+  `lx.surface.openApp(appId, options?)`, or performs app navigation with
+  `lx.nav.go({ app: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
@@ -1090,10 +1092,12 @@ semantics every language surface MUST share.
 
 - The selector is the method, not a field: `openDeclared` takes a declaration
   id, `openApp` an appId, `openPage` a page name, `openUrl` a URL. Provider
-  kinds such as YAML `lxapp` and `native` are not JS selectors. Composition —
-  choosing `as`, or opening another lxapp — lives on `lx.shell`; an lxapp's own
-  presentations live on `lx.surface`.
-- `lx.shell.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
+  kinds such as YAML `lxapp` and `native` are not JS selectors. Every opener
+  lives on `lx.surface`, by subject. The calls that change shared composition —
+  `openApp`, and `openDeclared` with `key`, `as` or `edge` — are the Control
+  app's and are refused for other sessions at run time; the namespace is not
+  the privilege.
+- `lx.surface.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
   multiple instances; currently this is supported by instantiable native
@@ -1109,7 +1113,7 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.shell.openApp(appId, { as?, page?, query?, channel?, targetVersion?,
+- `lx.surface.openApp(appId, { as?, page?, params?, channel?, targetVersion?,
   edge? }?)` ensures a dynamic business-app Surface: it creates, focuses or
   migrates one and does not require a YAML declaration. `as` is `main` or
   `aside`; omitted, a live app keeps its role and a closed one opens in main.
@@ -1166,16 +1170,16 @@ semantics every language surface MUST share.
 
 #### 7.1.1 App navigation versus App Surfaces
 
-`navigateToApp` and `openSurface` solve different navigation levels:
+`lx.nav.go({ app })` and `openSurface` solve different navigation levels:
 
 | Operation | Changes | Main switcher item | Back behavior | Result |
 |---|---|---|---|---|
-| `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
-| `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
-| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
+| `lx.nav.go({ app, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.nav.leaveApp()` pops to the previous app | `Promise<void>` |
+| `lx.surface.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
+| `lx.surface.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
-`navigateToApp`: the former is a parallel shell workspace with its own runtime
+`lx.nav.go({ app })`: the former is a parallel shell workspace with its own runtime
 id, switcher lifecycle, role, and handle; the latter is sequential navigation
 inside the already-selected Surface and never creates or moves a shell item.
 The active app at the top of a navigation stack may change, but the owning
@@ -1194,7 +1198,7 @@ Surface, navigation fails with
   `realized` placement, visibility, and liveness, with show/hide/close and
   lifecycle events per §2.1 (`onShow`/`onHide` carry `source`, `onClose`
   `reason`). The runtime id is not exposed: `lx.shell.getApp(appId)`,
-  `lx.shell.getDeclared(id, key?)` and `lx.surface.getByKey(key)` (the caller's
+  `lx.shell.getDeclared(id, key?)` and `lx.surface.get(key)` (the caller's
   own pages and URLs) return the same handle object again. Automation reads
   each runtime id's owner from `surfaceLayout().identities`. URL mains return
   no handle. A medium/expanded URL aside uses
@@ -1204,13 +1208,13 @@ Surface, navigation fails with
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
-- Content can subscribe to its surface context (content size class
-  `compact` | `regular`, viewport dimensions, and `canDock` — whether the
-  window has a dock region right now, never where the content is shown;
-  content is not told its own role or edge); the subscription fires
-  once immediately with the current value, then only on actual change.
-  Crossing the shell's 840 boundary MUST NOT by itself change content
-  `sizeClass`.
+- Content reads its context: content size class `compact` | `regular` and
+  `canDock` — whether the window has a dock region right now, never where the
+  content is shown; content is not told its own role or edge. The View also
+  gets the viewport in pixels on every change. Logic reads it per page
+  (`page.env`) and `page.env.watch` fires only when the size class or `canDock`
+  flips, never on a resize. Crossing the shell's 840 boundary MUST NOT by
+  itself change content `sizeClass`.
 
 ### 7.3 Shell writer
 
@@ -1361,7 +1365,7 @@ lowercase keys). Synonyms are not allowed.
 | open selector | `surface / app_id / page / url` | `surface / appId / page / url` | typed open-spec variants | native, lxapp |
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
 | runtime id | `surface_id` | not exposed to Logic; automation `surfaceLayout().identities` keys | `SurfaceId` | — |
-| app navigation | `navigate_to_app / navigate_back_app` | `navigateToApp / navigateBackApp` | same roots | navigateToLxApp, openApp |
+| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app }) / nav.leaveApp` | same roots | navigateToLxApp, openApp |
 | session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | never conflated with runtime id |
 | role | `role` | `SurfaceRole` | `SurfaceRole` | mode, kind |
 | presentation | `presentation` | `SurfacePresentation` | `Presentation` | form, style |

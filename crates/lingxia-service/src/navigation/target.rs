@@ -14,8 +14,8 @@ pub const MAX_ROUTE_PARAM_DEPTH: usize = 2;
 
 /// Where a tap, menu item, or inbound link goes.
 ///
-/// `Page` and `App` are the same contract as `lx.navigateTo` /
-/// `lx.navigateToApp`: a configured page name and a query, ordinary scene.
+/// `Page` and `App` are the same contract as `lx.nav.go({ page })` /
+/// `lx.nav.go({ app })`: a configured page name and a query, ordinary scene.
 /// `Route` is a host-registered location that is not a page. `AppLink` is an
 /// HTTPS product URL on a configured host, delivered as `scene === 8003`.
 #[derive(Debug, Clone, PartialEq)]

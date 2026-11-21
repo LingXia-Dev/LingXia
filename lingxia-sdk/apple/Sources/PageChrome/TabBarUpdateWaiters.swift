@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pending completion callbacks for awaited `lx.tabBar.update()` calls, keyed by appid.
+/// Pending completion callbacks for awaited `lx.app.tabBar.update()` calls, keyed by appid.
 ///
 /// The `.tabBarStateChanged` observers all register with `queue: .main` and
 /// apply the change inside a `Task { @MainActor }`, so notification delivery
