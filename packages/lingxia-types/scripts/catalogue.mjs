@@ -140,7 +140,20 @@ export function catalogue({ entries = false } = {}) {
     }
   }
   walk(lx, checker.getTypeOfSymbolAtLocation(lx, at), "lx", 0);
+  const exportsByEntry = {};
   if (entries) {
+    // `lx.automation()` itself, without the test API behind it.
+    const automation = checker.getPropertyOfType(checker.getTypeOfSymbolAtLocation(lx, at), "automation");
+    if (automation) {
+      const [before, known] = [members.length, new Set([...types.keys(), ...aliases.keys()])];
+      walk(null, null, "lx", 1, [automation]);
+      members.splice(before + 1);
+      for (const map of [types, aliases, typeInfo]) for (const name of [...map.keys()]) if (!known.has(name)) map.delete(name);
+    }
+    for (const [file, entry] of [["src/index.ts", "@lingxia/types"], ["src/page.ts", "@lingxia/types/page"], ["src/error.ts", "@lingxia/types/error"]]) {
+      const module = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, file)));
+      exportsByEntry[entry] = checker.getExportsOfModule(module).map(s => s.name).sort();
+    }
     const start = members.length;
     const app = checker.resolveName("App", undefined, ts.SymbolFlags.Value, false);
     const logicModule = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, "src/generated/logic.ts")));
@@ -191,5 +204,5 @@ export function catalogue({ entries = false } = {}) {
     // Named arms of a union are recorded under their own names.
     if (declared.isUnion()) collectType(declared, undefined);
   }
-  return { members, types, typeInfo, aliases };
+  return { members, types, typeInfo, aliases, exports: exportsByEntry };
 }

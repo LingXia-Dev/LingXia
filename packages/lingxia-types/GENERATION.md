@@ -36,6 +36,10 @@ return types.
 `App`, `definePage` and `page.*`, the error helpers) and every named type, with
 signatures, docs, tags and a source line. `lingxia api` reads it; the build
 copies it to `dist/api.json`, and `check:quality` fails when it is stale.
+`check:quality` also fails when `docs/skill` or `docs/view` names a member that
+is not in it, or one doc names more than 25 members; `test:types` type-checks
+every code example in the doc comments. Names guessed from other runtimes
+(`showModal`) map to members in `typegen/api-aliases.json`.
 
 The same check also ties the generated Logic Web declarations (`fetch`, URL,
 encoding, abort, streams, timers, console, and related types) to the explicit

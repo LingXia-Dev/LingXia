@@ -69,7 +69,7 @@ function field(entry) {
 }
 
 export function apiCatalogue() {
-  const { members, types, typeInfo, aliases } = catalogue({ entries: true });
+  const { members, types, typeInfo, aliases, exports } = catalogue({ entries: true });
   const version = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")).version;
 
   const typeEntries = new Map();
@@ -129,11 +129,19 @@ export function apiCatalogue() {
   });
 
   const byString = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const paths = new Set(out.map(member => member.path));
+  const guessed = JSON.parse(readFileSync(resolve(packageDir, "typegen/api-aliases.json"), "utf8")).aliases;
+  const stale = Object.entries(guessed).flatMap(([name, targets]) => targets.filter(t => !paths.has(t)).map(t => `${name} -> ${t}`));
+  if (stale.length) throw Error(`typegen/api-aliases.json names members that do not exist:\n  ${stale.join("\n  ")}`);
   return {
     generated: "Generated from the declarations by scripts/emit-api-json.mjs; do not edit.",
     schema: SCHEMA,
     package: "@lingxia/types",
     version,
+    // Names each entry point exports, for import hints.
+    exports,
+    // Names from other runtimes, offered on a miss.
+    aliases: Object.fromEntries(Object.keys(guessed).sort(byString).map(name => [name, guessed[name]])),
     members: out.sort((a, b) => byString(a.path, b.path)),
     types: [...typeEntries.values()].sort((a, b) => byString(a.name, b.name)),
   };
