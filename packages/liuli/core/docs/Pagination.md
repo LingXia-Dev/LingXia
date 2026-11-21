@@ -8,7 +8,7 @@ Moves through a long set a page at a time. Status: preview.
 import { pagesShown, Pagination } from '@liulidesign/core/Pagination';
 ```
 
-Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, the current page and its neighbours. With a finger it is the two arrows around the position, "3 / 12", since a row of small numbers is hard to press. The app holds the page and loads its rows.
+Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, the current page and its neighbours. With a finger it is the two arrows around the position, "3 / 12", since a row of small numbers is hard to press. Without a count, as with a cursor, it is the arrows around the page number, and `hasMore` says whether Next goes anywhere. With `pageSizes` the reader chooses how many rows a page holds; a new size keeps the first row of the page in view rather than going back to page 1, so the reader keeps their place. The app holds the page and loads its rows.
 
 ## Examples
 
@@ -82,20 +82,84 @@ export function Narrow() {
 }
 ```
 
+### No count: a cursor
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Pagination } from '@liulidesign/core/Pagination';
+
+const words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };
+
+/** A feed read by cursor: no count, so the position and the arrows; Next stops where nothing follows. */
+export function Cursor() {
+  const page = useLocal('page', 1);
+  return (
+    <Pagination
+      label="Activity pages"
+      value={page.value}
+      hasMore={page.value < 3}
+      onChange={page.set}
+      positionLabel={at => `Page ${at}`}
+      {...words}
+      data-testid="cursor"
+    />
+  );
+}
+```
+
+### Choosing rows per page
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Pagination } from '@liulidesign/core/Pagination';
+
+const words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };
+
+/** The reader picks how many rows a page holds; a new size keeps the first row of this page in view. */
+export function PageSize() {
+  const page = useLocal('page', 3);
+  const size = useLocal('size', 20);
+  const first = (page.value - 1) * size.value + 1;
+  return (
+    <view className="gap-2">
+      <Pagination
+        label="Invoice pages"
+        value={page.value}
+        totalItems={240}
+        pageSize={size.value}
+        pageSizes={[10, 20, 50]}
+        pageSizeLabel="Rows per page"
+        onPageSizeChange={size.set}
+        onChange={page.set}
+        {...words}
+        data-testid="sized"
+      />
+      <text role="status" className="text-footnote text-muted tabular-nums" data-testid="sized-range">{`Showing ${first}–${Math.min(240, first + size.value - 1)} of 240`}</text>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | Names the control for assistive tech: "Pages", "Results pages". |
 | `value` (required) | `number` |  | The current page, from 1. |
-| `pageCount` (required) | `number` |  | How many pages there are. |
+| `pageCount` | `number` |  | How many pages there are. Without it or `totalItems` the count is unknown and `hasMore` says whether there is a next page. |
+| `totalItems` | `number` |  | How many items there are, when the pages are counted from it and `pageSize`. |
+| `hasMore` | `boolean` | `false` | With no count, as with a cursor: whether a page follows this one. |
 | `onChange` (required) | `(page: number) => void` |  | Runs with the page chosen. |
 | `pageLabel` (required) | `(page: number) => string` |  | A page button's accessible name: `page => \`Page ${page}\``. |
 | `previousLabel` (required) | `string` |  |  |
 | `nextLabel` (required) | `string` |  |  |
 | `siblings` | `number` | `1` | How many pages to show on each side of the current one. |
 | `variant` | `"auto" \| "compact" \| "pages"` | `'auto'` | `compact` shows the two arrows around "3 / 12"; `auto` uses it where the pointer is a finger. Page numbers that do not fit their row give way to it. |
-| `positionLabel` | `((page: number, pageCount: number) => string)` |  | With `compact`: the text between the arrows, read as the position. By default "3 / 12". |
+| `positionLabel` | `((page: number, pageCount: number \| undefined) => string)` |  | The text between the arrows, read as the position: with `compact`, and wherever the count is unknown. By default "3 / 12", or "3". |
+| `pageSize` | `number` | `20` | Items to a page, with `totalItems` and the page-size choice. |
+| `pageSizes` | `readonly number[]` |  | The page sizes to choose between; with them a choice shows before the arrows. |
+| `onPageSizeChange` | `((pageSize: number) => void)` |  | Runs with the size chosen, then `onChange` with the page that keeps the first item of this one in view. |
+| `pageSizeLabel` | `string` |  | The page-size choice's accessible name: "Rows per page". Needed with `pageSizes`. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`. |
 
@@ -107,7 +171,8 @@ export function Narrow() {
 | pages | `<view>` | no | The page numbers, with a mouse or `variant="pages"`. |
 | page | `<button>` | no | One page: a 40 px button, pressed when it is the current page. |
 | gap | `<view>` | no | An ellipsis where pages are left out; not read. |
-| position | `<text>` | no | The position between the arrows, with a finger or `variant="compact"`; announced as it changes. |
+| position | `<text>` | no | The position between the arrows, with a finger, `variant="compact"` or no count; announced as it changes. |
+| size | `<view>` | no | With `pageSizes`: a small Select at the start, the arrows at the end; below it when the row is narrow. |
 
 ## What an app may override
 
@@ -129,6 +194,7 @@ export function Narrow() {
 - The arrows are named by `previousLabel` and `nextLabel` and are disabled at the ends.
 - The compact position is a status: a screen reader hears it when the page changes. Give `positionLabel` words, "Page 3 of 12", where "3 / 12" would be read badly.
 - The current page is marked by its fill and a heavier weight as well as by its state.
+- The page-size choice is a Select named by `pageSizeLabel`, "Rows per page"; its label is not shown.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -151,6 +217,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Choosing how many rows a page holds, and jumping to a page by typing it. | nothing from the View | An app puts a Select or a NumberInput beside it. |
+| Jumping to a page by typing it. | nothing from the View | An app puts a NumberInput beside it. |
 
 Related: Table, Tabs, IconButton.

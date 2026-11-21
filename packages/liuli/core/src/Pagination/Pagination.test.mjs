@@ -54,3 +54,26 @@ test('Pages in a narrow row: fewer neighbours first, then the position', async (
   screen.layout(control(), { width: 240, height: 40 });
   assert.equal(control().children[1].text, '6 / 12', 'no room for numbers at all');
 });
+
+test('Cursor: no count, so the position alone between the arrows; Next stops where nothing follows', async () => {
+  const screen = await renderExample('Pagination/Pagination', 'Cursor', fine);
+  const position = () => screen.getByTestId('cursor').children[1];
+  assert.deepEqual([position().text, position().props.role], ['Page 1', 'status']);
+  screen.press(screen.getByTestId('cursor-next'));
+  screen.press(screen.getByTestId('cursor-next'));
+  assert.equal(position().text, 'Page 3');
+  assert.equal(screen.getByTestId('cursor-next').props.onClick, undefined, 'hasMore is false on the last page');
+  assert.ok(screen.getByTestId('cursor-previous').props.onClick);
+});
+
+test('PageSize: a size choice before the pages; a new size keeps the first row of the page in view', async () => {
+  const screen = await renderExample('Pagination/Pagination', 'PageSize', fine);
+  const size = screen.getByTestId('sized-size');
+  assert.deepEqual([size.tag, size.props.accessibilityLabel, size.props.inputValue], ['select', 'Rows per page', '20']);
+  assert.equal(textOf(screen.getByTestId('sized-12')), '12', 'twelve pages of twenty');
+  assert.equal(textOf(screen.getByTestId('sized-range')), 'Showing 41–60 of 240');
+  screen.select(size, '50');
+  assert.equal(textOf(screen.getByTestId('sized-range')), 'Showing 1–50 of 240', 'row 41 is on the first page of fifty');
+  assert.equal(textOf(screen.getByTestId('sized-5')), '5', 'five pages of fifty');
+  assert.equal(screen.queryAll(node => node.testId === 'sized-6').length, 0);
+});

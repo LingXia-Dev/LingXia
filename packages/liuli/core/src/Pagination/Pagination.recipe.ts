@@ -5,6 +5,9 @@ export const paginationParts = {
   pageLabel: 'text',
   gap: 'view',
   position: 'text',
+  sized: 'view',
+  size: 'view',
+  controls: 'view',
 } as const;
 
 /**
@@ -35,5 +38,15 @@ export const paginationRecipe = {
   },
   position: {
     base: 'min-w-16 px-2 text-center text-body text-text tabular-nums',
+  },
+  /** With a page-size choice: the choice at the start, the arrows at the end, wrapping under it when narrow. */
+  sized: {
+    base: 'flex-row flex-wrap items-center justify-between gap-x-4 gap-y-2 self-stretch',
+  },
+  size: {
+    base: 'w-24',
+  },
+  controls: {
+    base: 'flex-row items-center justify-end gap-1 grow',
   },
 } as const;

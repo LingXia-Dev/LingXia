@@ -12685,7 +12685,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "Moves through a long set a page at a time",
-      "description": "Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, the current page and its neighbours. With a finger it is the two arrows around the position, \"3 / 12\", since a row of small numbers is hard to press. The app holds the page and loads its rows.",
+      "description": "Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, the current page and its neighbours. With a finger it is the two arrows around the position, \"3 / 12\", since a row of small numbers is hard to press. Without a count, as with a cursor, it is the arrows around the page number, and `hasMore` says whether Next goes anywhere. With `pageSizes` the reader chooses how many rows a page holds; a new size keeps the first row of the page in view rather than going back to page 1, so the reader keeps their place. The app holds the page and loads its rows.",
       "keywords": [
         "pagination",
         "pager",
@@ -12711,8 +12711,21 @@
         {
           "name": "pageCount",
           "type": "number",
-          "required": true,
-          "description": "How many pages there are."
+          "required": false,
+          "description": "How many pages there are. Without it or `totalItems` the count is unknown and `hasMore` says whether there is a next page."
+        },
+        {
+          "name": "totalItems",
+          "type": "number",
+          "required": false,
+          "description": "How many items there are, when the pages are counted from it and `pageSize`."
+        },
+        {
+          "name": "hasMore",
+          "type": "boolean",
+          "required": false,
+          "description": "With no count, as with a cursor: whether a page follows this one.",
+          "default": "false"
         },
         {
           "name": "onChange",
@@ -12754,9 +12767,34 @@
         },
         {
           "name": "positionLabel",
-          "type": "((page: number, pageCount: number) => string)",
+          "type": "((page: number, pageCount: number | undefined) => string)",
           "required": false,
-          "description": "With `compact`: the text between the arrows, read as the position. By default \"3 / 12\"."
+          "description": "The text between the arrows, read as the position: with `compact`, and wherever the count is unknown. By default \"3 / 12\", or \"3\"."
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "required": false,
+          "description": "Items to a page, with `totalItems` and the page-size choice.",
+          "default": "20"
+        },
+        {
+          "name": "pageSizes",
+          "type": "readonly number[]",
+          "required": false,
+          "description": "The page sizes to choose between; with them a choice shows before the arrows."
+        },
+        {
+          "name": "onPageSizeChange",
+          "type": "((pageSize: number) => void)",
+          "required": false,
+          "description": "Runs with the size chosen, then `onChange` with the page that keeps the first item of this one in view."
+        },
+        {
+          "name": "pageSizeLabel",
+          "type": "string",
+          "required": false,
+          "description": "The page-size choice's accessible name: \"Rows per page\". Needed with `pageSizes`."
         },
         {
           "name": "className",
@@ -12778,7 +12816,10 @@
         "page": "button",
         "pageLabel": "text",
         "gap": "view",
-        "position": "text"
+        "position": "text",
+        "sized": "view",
+        "size": "view",
+        "controls": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -12837,7 +12878,8 @@
           "Each page button is named by `pageLabel`, \"Page 6\", and the current one reports pressed.",
           "The arrows are named by `previousLabel` and `nextLabel` and are disabled at the ends.",
           "The compact position is a status: a screen reader hears it when the page changes. Give `positionLabel` words, \"Page 3 of 12\", where \"3 / 12\" would be read badly.",
-          "The current page is marked by its fill and a heavier weight as well as by its state."
+          "The current page is marked by its fill and a heavier weight as well as by its state.",
+          "The page-size choice is a Select named by `pageSizeLabel`, \"Rows per page\"; its label is not shown."
         ]
       },
       "examples": [
@@ -12860,13 +12902,23 @@
           "name": "Narrow",
           "title": "Page numbers in a narrow row",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Page numbers in a row too narrow for them: the neighbours go first, then the numbers give way to the position. */\nexport function Narrow() {\n  const page = useLocal('page', 6);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"w-[280px]\"><Pagination label=\"Pages\" variant=\"pages\" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrow\" /></view>\n      <view className=\"w-[232px]\"><Pagination label=\"Pages\" variant=\"pages\" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrower\" /></view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Cursor",
+          "title": "No count: a cursor",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** A feed read by cursor: no count, so the position and the arrows; Next stops where nothing follows. */\nexport function Cursor() {\n  const page = useLocal('page', 1);\n  return (\n    <Pagination\n      label=\"Activity pages\"\n      value={page.value}\n      hasMore={page.value < 3}\n      onChange={page.set}\n      positionLabel={at => `Page ${at}`}\n      {...words}\n      data-testid=\"cursor\"\n    />\n  );\n}"
+        },
+        {
+          "name": "PageSize",
+          "title": "Choosing rows per page",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The reader picks how many rows a page holds; a new size keeps the first row of this page in view. */\nexport function PageSize() {\n  const page = useLocal('page', 3);\n  const size = useLocal('size', 20);\n  const first = (page.value - 1) * size.value + 1;\n  return (\n    <view className=\"gap-2\">\n      <Pagination\n        label=\"Invoice pages\"\n        value={page.value}\n        totalItems={240}\n        pageSize={size.value}\n        pageSizes={[10, 20, 50]}\n        pageSizeLabel=\"Rows per page\"\n        onPageSizeChange={size.set}\n        onChange={page.set}\n        {...words}\n        data-testid=\"sized\"\n      />\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\" data-testid=\"sized-range\">{`Showing ${first}–${Math.min(240, first + size.value - 1)} of 240`}</text>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "Choosing how many rows a page holds, and jumping to a page by typing it.",
+          "missing": "Jumping to a page by typing it.",
           "needs": "nothing from the View",
-          "today": "An app puts a Select or a NumberInput beside it."
+          "today": "An app puts a NumberInput beside it."
         }
       ],
       "playground": {
@@ -12924,6 +12976,14 @@
             {
               "name": "Narrow",
               "title": "Page numbers at 280 and 232 points: fewer neighbours, then the position"
+            },
+            {
+              "name": "Cursor",
+              "title": "A cursor: no count, Next stops where nothing follows"
+            },
+            {
+              "name": "PageSize",
+              "title": "Rows per page, keeping the first row in view"
             }
           ]
         }

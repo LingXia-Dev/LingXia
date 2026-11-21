@@ -1,5 +1,6 @@
 import { cx, useBox, useView } from '@lingxia/view';
 import { IconButton } from '../IconButton/IconButton';
+import { Select } from '../Select/Select';
 import { Glyph } from '../internal/Glyph';
 import { paginationRecipe as r } from './Pagination.recipe';
 
@@ -8,8 +9,12 @@ export interface PaginationProps {
   label: string;
   /** The current page, from 1. */
   value: number;
-  /** How many pages there are. */
-  pageCount: number;
+  /** How many pages there are. Without it or `totalItems` the count is unknown and `hasMore` says whether there is a next page. */
+  pageCount?: number;
+  /** How many items there are, when the pages are counted from it and `pageSize`. */
+  totalItems?: number;
+  /** With no count, as with a cursor: whether a page follows this one. @default false */
+  hasMore?: boolean;
   /** Runs with the page chosen. */
   onChange: (page: number) => void;
   /** A page button's accessible name: `page => \`Page ${page}\``. */
@@ -20,8 +25,16 @@ export interface PaginationProps {
   siblings?: number;
   /** `compact` shows the two arrows around "3 / 12"; `auto` uses it where the pointer is a finger. Page numbers that do not fit their row give way to it. @default 'auto' */
   variant?: 'auto' | 'pages' | 'compact';
-  /** With `compact`: the text between the arrows, read as the position. By default "3 / 12". */
-  positionLabel?: (page: number, pageCount: number) => string;
+  /** The text between the arrows, read as the position: with `compact`, and wherever the count is unknown. By default "3 / 12", or "3". */
+  positionLabel?: (page: number, pageCount: number | undefined) => string;
+  /** Items to a page, with `totalItems` and the page-size choice. @default 20 */
+  pageSize?: number;
+  /** The page sizes to choose between; with them a choice shows before the arrows. */
+  pageSizes?: readonly number[];
+  /** Runs with the size chosen, then `onChange` with the page that keeps the first item of this one in view. */
+  onPageSizeChange?: (pageSize: number) => void;
+  /** The page-size choice's accessible name: "Rows per page". Needed with `pageSizes`. */
+  pageSizeLabel?: string;
   className?: string;
   /** On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`. */
   'data-testid'?: string;
@@ -42,16 +55,20 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 
 /** Moves through a long set a page at a time. */
 export function Pagination({
-  label, value: page, pageCount, onChange, pageLabel, previousLabel, nextLabel, siblings = 1, variant = 'auto', positionLabel, className, 'data-testid': testId,
+  label, value: page, pageCount: counted, totalItems, hasMore = false, onChange, pageLabel, previousLabel, nextLabel, siblings = 1, variant = 'auto', positionLabel,
+  pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId,
 }: PaginationProps) {
+  const pageCount = counted ?? (totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))));
   const { env } = useView();
   // A row of page numbers needs a pointer's precision and room; a finger gets the arrows and the position.
-  const wantsCompact = variant === 'compact' || (variant === 'auto' && env.pointer === 'coarse');
-  const current = Math.min(Math.max(1, page), Math.max(1, pageCount));
+  // With no count there are no page numbers to show, only where the reader is.
+  const wantsCompact = pageCount === undefined || variant === 'compact' || (variant === 'auto' && env.pointer === 'coarse');
+  const current = pageCount === undefined ? Math.max(1, page) : Math.min(Math.max(1, page), Math.max(1, pageCount));
+  const last = pageCount ?? current;
   // The numbers are shown only where they fit: first with fewer neighbours, then as the position.
   const box = useBox('pager');
   const room = box.value?.width ?? Infinity;
-  const fits = (around: number) => arrows + pagesShown(current, pageCount, around).reduce<number>((sum, each) => sum + (each === null ? gapWidth : pageWidth) + between, 0) <= room;
+  const fits = (around: number) => arrows + pagesShown(current, last, around).reduce<number>((sum, each) => sum + (each === null ? gapWidth : pageWidth) + between, 0) <= room;
   const around = fits(siblings) ? siblings : 0;
   const isCompact = wantsCompact || !fits(around);
   const arrow = (direction: -1 | 1) => (
@@ -59,19 +76,20 @@ export function Pagination({
       label={direction < 0 ? previousLabel : nextLabel}
       icon={direction < 0 ? 'chevron-start' : 'chevron-end'}
       variant="ghost"
-      isDisabled={direction < 0 ? current <= 1 : current >= pageCount}
+      isDisabled={direction < 0 ? current <= 1 : pageCount === undefined ? !hasMore : current >= pageCount}
       onClick={() => onChange(current + direction)}
       data-testid={testId && `${testId}-${direction < 0 ? 'previous' : 'next'}`}
     />
   );
-  return (
-    <view box={box} role="group" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+  const position = positionLabel ? positionLabel(current, pageCount) : pageCount === undefined ? `${current}` : `${current} / ${pageCount}`;
+  const controls = (
+    <>
       {arrow(-1)}
       {isCompact
-        ? <text role="status" className={r.position.base}>{positionLabel ? positionLabel(current, pageCount) : `${current} / ${pageCount}`}</text>
+        ? <text role="status" className={r.position.base}>{position}</text>
         : (
           <view className={r.pages.base}>
-            {pagesShown(current, pageCount, around).map((each, index) => (each === null
+            {pagesShown(current, last, around).map((each, index) => (each === null
               ? <view key={`gap-${index}`} aria-hidden className={r.gap.base}><Glyph name="more" className={r.gap.icon} /></view>
               : (
                 <button
@@ -88,6 +106,31 @@ export function Pagination({
           </view>
         )}
       {arrow(1)}
+    </>
+  );
+  if (!pageSizes?.length) {
+    return <view box={box} role="group" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>{controls}</view>;
+  }
+  // A new size keeps the first item of this page in view.
+  const resize = (next: string | null) => {
+    const size = Number(next);
+    if (!size || size === pageSize) return;
+    onPageSizeChange?.(size);
+    onChange(Math.floor(((current - 1) * pageSize) / size) + 1);
+  };
+  return (
+    <view role="group" aria-label={label} data-testid={testId} className={cx(r.sized.base, className)}>
+      <Select
+        label={pageSizeLabel ?? ''}
+        isLabelHidden
+        size="sm"
+        items={pageSizes.map(size => ({ value: String(size), label: String(size) }))}
+        value={String(pageSize)}
+        onChange={resize}
+        className={r.size.base}
+        data-testid={testId && `${testId}-size`}
+      />
+      <view box={box} className={r.controls.base}>{controls}</view>
     </view>
   );
 }

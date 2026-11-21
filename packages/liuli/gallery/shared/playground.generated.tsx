@@ -3314,8 +3314,18 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "pageCount",
-        "required": true,
+        "required": false,
         "kind": "number"
+      },
+      {
+        "name": "totalItems",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "hasMore",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "previousLabel",
@@ -3341,6 +3351,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "compact",
           "pages"
         ]
+      },
+      {
+        "name": "pageSize",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "pageSizeLabel",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [

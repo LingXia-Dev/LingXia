@@ -9,7 +9,8 @@ export const doc: ComponentDoc = {
   description:
     'Pagination sits under a table or a list that is shown a page at a time. With a mouse it is a row of page numbers between two arrows: the first, the last, ' +
     'the current page and its neighbours. With a finger it is the two arrows around the position, "3 / 12", since a row of small numbers is hard to press. ' +
-    'The app holds the page and loads its rows.',
+    'Without a count, as with a cursor, it is the arrows around the page number, and `hasMore` says whether Next goes anywhere. ' +
+    'With `pageSizes` the reader chooses how many rows a page holds; a new size keeps the first row of the page in view rather than going back to page 1, so the reader keeps their place. The app holds the page and loads its rows.',
   keywords: ['pagination', 'pager', 'pages', 'page numbers', 'next page', 'previous page', 'paging'],
   propsType: 'PaginationProps',
   recipe: { map: 'paginationRecipe', parts: 'paginationParts' },
@@ -18,7 +19,8 @@ export const doc: ComponentDoc = {
     { part: 'pages', required: false, description: 'The page numbers, with a mouse or `variant="pages"`.' },
     { part: 'page', required: false, description: 'One page: a 40 px button, pressed when it is the current page.' },
     { part: 'gap', required: false, description: 'An ellipsis where pages are left out; not read.' },
-    { part: 'position', required: false, description: 'The position between the arrows, with a finger or `variant="compact"`; announced as it changes.' },
+    { part: 'position', required: false, description: 'The position between the arrows, with a finger, `variant="compact"` or no count; announced as it changes.' },
+    { part: 'size', required: false, description: 'With `pageSizes`: a small Select at the start, the arrows at the end; below it when the row is narrow.' },
   ],
   accessibility: {
     pattern: null,
@@ -40,6 +42,7 @@ export const doc: ComponentDoc = {
       'The arrows are named by `previousLabel` and `nextLabel` and are disabled at the ends.',
       'The compact position is a status: a screen reader hears it when the page changes. Give `positionLabel` words, "Page 3 of 12", where "3 / 12" would be read badly.',
       'The current page is marked by its fill and a heavier weight as well as by its state.',
+      'The page-size choice is a Select named by `pageSizeLabel`, "Rows per page"; its label is not shown.',
     ],
   },
   guidance: {
@@ -59,9 +62,11 @@ export const doc: ComponentDoc = {
     { name: 'Pages', title: 'Page numbers' },
     { name: 'Compact', title: 'Arrows and the position' },
     { name: 'Narrow', title: 'Page numbers in a narrow row' },
+    { name: 'Cursor', title: 'No count: a cursor' },
+    { name: 'PageSize', title: 'Choosing rows per page' },
   ],
   gaps: [
-    { missing: 'Choosing how many rows a page holds, and jumping to a page by typing it.', needs: 'nothing from the View', today: 'An app puts a Select or a NumberInput beside it.' },
+    { missing: 'Jumping to a page by typing it.', needs: 'nothing from the View', today: 'An app puts a NumberInput beside it.' },
   ],
   playground: { props: { label: 'Results pages', value: 3, pageCount: 12, previousLabel: 'Previous page', nextLabel: 'Next page' }, fixture: true },
   related: ['Table', 'Tabs', 'IconButton'],
@@ -76,6 +81,8 @@ export const doc: ComponentDoc = {
         { name: 'Pages', title: 'Page numbers: first, last, the current page and its neighbours' },
         { name: 'Compact', title: 'The arrows and the position' },
         { name: 'Narrow', title: 'Page numbers at 280 and 232 points: fewer neighbours, then the position' },
+        { name: 'Cursor', title: 'A cursor: no count, Next stops where nothing follows' },
+        { name: 'PageSize', title: 'Rows per page, keeping the first row in view' },
       ],
     },
   },

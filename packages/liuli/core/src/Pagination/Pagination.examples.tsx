@@ -38,6 +38,46 @@ export function Narrow() {
   );
 }
 
+/** A feed read by cursor: no count, so the position and the arrows; Next stops where nothing follows. */
+export function Cursor() {
+  const page = useLocal('page', 1);
+  return (
+    <Pagination
+      label="Activity pages"
+      value={page.value}
+      hasMore={page.value < 3}
+      onChange={page.set}
+      positionLabel={at => `Page ${at}`}
+      {...words}
+      data-testid="cursor"
+    />
+  );
+}
+
+/** The reader picks how many rows a page holds; a new size keeps the first row of this page in view. */
+export function PageSize() {
+  const page = useLocal('page', 3);
+  const size = useLocal('size', 20);
+  const first = (page.value - 1) * size.value + 1;
+  return (
+    <view className="gap-2">
+      <Pagination
+        label="Invoice pages"
+        value={page.value}
+        totalItems={240}
+        pageSize={size.value}
+        pageSizes={[10, 20, 50]}
+        pageSizeLabel="Rows per page"
+        onPageSizeChange={size.set}
+        onChange={page.set}
+        {...words}
+        data-testid="sized"
+      />
+      <text role="status" className="text-footnote text-muted tabular-nums" data-testid="sized-range">{`Showing ${first}–${Math.min(240, first + size.value - 1)} of 240`}</text>
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return <Pagination label="Pages" variant="compact" value={3} pageCount={12} onChange={unused} {...words} />;
