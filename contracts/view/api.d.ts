@@ -233,11 +233,29 @@ export declare function useVideo(name: string): Video;
 /** A request for an element's menu: a long press, a secondary click, or the Menu key. */
 /** Where a `<link to>` goes: a target of `lx.nav.go`, or `{ back: n }`. Logic navigates. */
 export type LinkTarget =
-  | { readonly page: string; readonly params?: Readonly<Record<string, unknown>> }
-  | { readonly tab: string }
-  | { readonly app: string; readonly page?: string; readonly params?: Readonly<Record<string, unknown>>; readonly channel?: "release" | "draft"; readonly version?: string }
-  | { readonly url: string }
-  | { readonly back: number };
+  | LinkPageTarget
+  | { readonly tab: LinkTabName; readonly replace?: never }
+  | { readonly app: string; readonly page?: string; readonly params?: Readonly<Record<string, unknown>>; readonly channel?: "release" | "draft"; readonly version?: string; readonly replace?: never }
+  | { readonly url: string; readonly replace?: never }
+  | { readonly back: number; readonly replace?: never };
+
+/** A page of this lxapp that is not a tab root; `params` is required when the page requires one. `replace` swaps the current page instead of pushing. */
+export type LinkPageTarget<N extends LinkPageName = LinkPageName> = N extends unknown
+  ? { readonly page: N; readonly replace?: true } & ({} extends LinkParams<N> ? { readonly params?: LinkParams<N> } : { readonly params: LinkParams<N> })
+  : never;
+/** This lxapp's page names, tab roots excepted; any string before the project's registry is generated. */
+export type LinkPageName = keyof LxAppPages extends never ? string : Exclude<keyof LxAppPages, keyof LxAppTabs> & string;
+export type LinkTabName = keyof LxAppPages extends never ? string : keyof LxAppTabs & string;
+export type LinkParams<N> = N extends keyof LxAppPageTypes
+  ? LxAppPageTypes[N] extends { readonly __lxPage: { readonly params: infer T } } ? Readonly<T> : Readonly<Record<string, unknown>>
+  : Readonly<Record<string, unknown>>;
+
+declare global {
+  /** The project's page registry, generated into `.lingxia/types/`; empty until then. */
+  interface LxAppPages {}
+  interface LxAppTabs {}
+  interface LxAppPageTypes {}
+}
 
 export interface ContextMenuEvent {
   /** The point in page coordinates; the element's centre from the keyboard. */

@@ -150,7 +150,7 @@ assert.equal(run('orderPage.data.meta.a'), 10, 'update after unload is ignored')
 run(`globalThis.navs = [];
 globalThis.lx = { nav: {
   back(n) { navs.push(['back', n]); return Promise.resolve(); },
-  go(target) { navs.push(['go', target.page ?? target.tab]); return target.page ? { opened: Promise.resolve() } : Promise.resolve(); },
+  go(target, options) { navs.push(options ? ['go', target.page, options, 'replace' in target] : ['go', target.page ?? target.tab]); return target.page ? { opened: Promise.resolve() } : Promise.resolve(); },
 } };`);
 await run(`__lxNavForView({ back: 2 })`);
 await run(`__lxNavForView({ page: 'detail' })`);
@@ -163,6 +163,10 @@ await run(`__lxNavForView({ tab: 'detail' }, herePage)`);
 await run(`__lxNavForView({ page: 'detail', params: { id: '8' } }, herePage)`);
 await run(`__lxNavForView({ app: 'other', page: 'detail', params: { id: '7' } }, herePage)`);
 assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail'], ['go', 'detail']]));
+// `replace` reaches lx.nav.go as its option, not as part of the target.
+run('navs.length = 0');
+await run(`__lxNavForView({ page: 'detail', params: { id: '9' }, replace: true }, herePage)`);
+assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail', { replace: true }, false]]));
 
 // Actions are dispatched from their own map: no name is reserved, and `this` is undefined.
 run(`globalThis.closed = 0;

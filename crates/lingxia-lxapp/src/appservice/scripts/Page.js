@@ -22,7 +22,8 @@
       if (here && target.app === undefined && (target.tab !== undefined
         ? target.tab === here.name
         : target.page === here.name && isDeepEqual(target.params || {}, here.params || {}))) return;
-      const went = lx.nav.go(target);
+      const { replace, ...to } = target;
+      const went = replace === true ? lx.nav.go(to, { replace: true }) : lx.nav.go(to);
       await (went && went.opened ? went.opened : went);
     },
     configurable: true,

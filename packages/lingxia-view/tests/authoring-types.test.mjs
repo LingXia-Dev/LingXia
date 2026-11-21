@@ -44,3 +44,16 @@ test('authoring types preserve binding ownership, page contracts and children', 
   const typed = checker.getTypeOfSymbolAtLocation(role, props).types.filter(type => type.isStringLiteral()).map(type => type.value);
   assert.deepEqual(typed.sort(), [...fieldOptions.role].sort());
 });
+
+test("a link's target is checked against the project's page registry", () => {
+  const filename = fileURLToPath(new URL('./fixtures/link-target.tsx', import.meta.url));
+  const program = ts.createProgram([filename], {
+    strict: true, noEmit: true, types: [], target: ts.ScriptTarget.ES2020,
+    module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    jsx: ts.JsxEmit.Preserve,
+  });
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  assert.equal(diagnostics.length, 0, ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+    getCurrentDirectory: () => '', getCanonicalFileName: value => value, getNewLine: () => '\n',
+  }));
+});

@@ -4,5 +4,5 @@
     "jsx": "preserve", "strict": true, "noEmit": true, "allowImportingTsExtensions": true, "types": [],
     "paths": { "@lingxia/view": ["../../../packages/lingxia-view/src/index.d.ts"] }
   },
-  "include": ["pages/**/*.tsx", "../../../packages/lingxia-view/src/index.d.ts"]
+  "include": ["pages/**/*.tsx", "../../../packages/lingxia-view/src/index.d.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"]
 }
