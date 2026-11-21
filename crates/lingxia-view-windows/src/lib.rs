@@ -210,6 +210,12 @@ fn settling() -> MutexGuard<'static, Vec<isize>> {
     SETTLING.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Some page has come on screen but not yet shown a frame: it is clipped to one pixel, so
+/// whatever uncovers it shows the window behind.
+pub fn pages_settling() -> bool {
+    !settling().is_empty()
+}
+
 fn leaving() -> MutexGuard<'static, Vec<(isize, Dispatcher)>> {
     LEAVING.lock().unwrap_or_else(|p| p.into_inner())
 }

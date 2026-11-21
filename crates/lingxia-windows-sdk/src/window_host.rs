@@ -139,10 +139,22 @@ static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelection
     OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
+/// True while the page a slide reveals cannot show yet; the slide holds still meanwhile.
+#[cfg(feature = "components")]
+static NAV_SLIDE_HOLD: OnceLock<fn() -> bool> = OnceLock::new();
+
+/// Hold navigation slides while `hold` says the destination has nothing on screen yet.
+#[cfg(feature = "components")]
+pub fn set_nav_slide_hold(hold: fn() -> bool) {
+    let _ = NAV_SLIDE_HOLD.set(hold);
+}
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
 /// Navigation slide duration, matching the iOS/Android 300ms page transition.
 #[cfg(feature = "components")]
 const NAV_SLIDE_DURATION_MS: f64 = 300.0;
+/// Longest a slide waits for the page it reveals before sliding anyway.
+#[cfg(feature = "components")]
+const NAV_SLIDE_MAX_HOLD_MS: u64 = 1000;
 fn overlay_margin() -> i32 {
     crate::dpi::px(24)
 }
@@ -10311,17 +10323,27 @@ unsafe extern "system" fn nav_overlay_proc(
 /// refresh. Without DWM (rare) the pacer degrades to an 8ms sleep.
 #[cfg(feature = "components")]
 fn start_nav_snapshot_slide(host: HWND) {
-    let mut slides = lock_nav_snapshot_slides();
-    let Some(slide) = slides.get_mut(&hwnd_handle(host)) else {
+    if !nav_snapshot_slide_active(hwnd_handle(host)) {
         return;
-    };
-    slide.started = Some(Instant::now());
-    drop(slides);
+    }
     let host_handle = hwnd_handle(host);
     let _ = std::thread::Builder::new()
         .name("lingxia-nav-slide".to_string())
         .spawn(move || {
             use windows::Win32::Graphics::Dwm::DwmFlush;
+            // The snapshot stays put until the page under it has a frame to show.
+            let held = Instant::now();
+            while NAV_SLIDE_HOLD.get().is_some_and(|hold| hold())
+                && held.elapsed() < std::time::Duration::from_millis(NAV_SLIDE_MAX_HOLD_MS)
+            {
+                if unsafe { DwmFlush() }.is_err() {
+                    std::thread::sleep(std::time::Duration::from_millis(8));
+                }
+            }
+            match lock_nav_snapshot_slides().get_mut(&host_handle) {
+                Some(slide) => slide.started = Some(Instant::now()),
+                None => return,
+            }
             let deadline = Instant::now()
                 + std::time::Duration::from_millis(NAV_SLIDE_DURATION_MS as u64 + 250);
             while nav_snapshot_slide_active(host_handle) {

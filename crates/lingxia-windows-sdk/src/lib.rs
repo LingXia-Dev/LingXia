@@ -365,6 +365,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<RuntimeInfo> {
     if let Some((width, height)) = app.window_size {
         lingxia::windows::set_default_window_size(width, height);
     }
+    window_host::set_nav_slide_hold(lingxia::windows::gpu_page_settling);
     let platform = app.platform()?;
     // Before any window exists: stamp the process's per-app taskbar identity
     // (AppUserModelID) so two apps hosted by the same exe — e.g. two dev
