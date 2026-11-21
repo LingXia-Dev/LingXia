@@ -12,11 +12,11 @@ export const iconParts = {
 export const iconRecipe = {
   box: {
     base: 'shrink-0',
-    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<IconSize, string>,
+    size: { sm: 'size-4', md: 'size-5', lg: 'size-6', inline: 'size-[1.33em]' } satisfies Record<IconSize, string>,
   },
   glyph: {
     base: 'shrink-0',
-    size: { sm: 'size-4', md: 'size-5', lg: 'size-6' } satisfies Record<IconSize, string>,
+    size: { sm: 'size-4', md: 'size-5', lg: 'size-6', inline: 'size-[1.33em]' } satisfies Record<IconSize, string>,
     mirrored: 'rtl:-scale-x-100',
   },
 } as const;

@@ -8511,7 +8511,7 @@
           "name": "size",
           "type": "IconSize",
           "required": false,
-          "description": "16, 20 or 24 points.",
+          "description": "16, 20 or 24 points; `inline` follows the text around it, 20 beside body text and growing with a heading.",
           "default": "'md'"
         },
         {
@@ -8596,6 +8596,11 @@
           "source": "import { Icon } from '@liulidesign/core/Icon';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row items-center gap-5 text-text\">\n      <Icon name=\"calendar\" size=\"sm\" data-testid=\"small\" />\n      <Icon name=\"calendar\" data-testid=\"medium\" />\n      <Icon name=\"calendar\" size=\"lg\" data-testid=\"large\" />\n    </view>\n  );\n}"
         },
         {
+          "name": "Inline",
+          "title": "The size of the text around it",
+          "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** `inline` takes its size from the text around it: larger in a title, smaller in a footnote. */\nexport function Inline() {\n  return (\n    <view className=\"gap-3 text-text\">\n      <view className=\"flex-row items-center gap-2 text-title\">\n        <Icon name=\"calendar\" size=\"inline\" data-testid=\"in-title\" />\n        <text className=\"text-title font-semibold\">Planning</text>\n      </view>\n      <view className=\"flex-row items-center gap-1.5 text-footnote text-muted\">\n        <Icon name=\"clock\" size=\"inline\" data-testid=\"in-footnote\" />\n        <text className=\"text-footnote text-muted\">Updated an hour ago</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
           "name": "Colours",
           "title": "Colour from the text around it",
           "source": "import { Icon } from '@liulidesign/core/Icon';\n\n/** An icon takes the colour of the text around it. */\nexport function Colours() {\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center gap-2 text-text\">\n        <Icon name=\"document\" />\n        <text className=\"text-body\">Quarterly report</text>\n      </view>\n      <view className=\"flex-row items-center gap-2 text-muted\">\n        <Icon name=\"clock\" size=\"sm\" />\n        <text className=\"text-footnote\">Edited 2 hours ago</text>\n      </view>\n      <view className=\"flex-row items-center gap-2 text-danger\">\n        <Icon name=\"error\" size=\"sm\" data-testid=\"tinted\" />\n        <text className=\"text-footnote\">Upload failed</text>\n      </view>\n    </view>\n  );\n}"
@@ -8677,6 +8682,10 @@
             {
               "name": "Sizes",
               "title": "16, 20 and 24"
+            },
+            {
+              "name": "Inline",
+              "title": "Inline: the size of the text around it, in a title and in a footnote"
             }
           ],
           "inContext": [

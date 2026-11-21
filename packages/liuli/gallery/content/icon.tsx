@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Common, Colours, Labelled, Mirrored, Custom, Sizes, Everything } from '../../core/src/Icon/Icon.examples';
+import { Common, Colours, Labelled, Mirrored, Custom, Sizes, Inline, Everything } from '../../core/src/Icon/Icon.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -25,6 +25,9 @@ export function Content() {
       <PageSection title={"Sizes"}>
         <Stage caption={"16, 20 and 24"}>
           <Sizes />
+        </Stage>
+        <Stage caption={"Inline: the size of the text around it, in a title and in a footnote"}>
+          <Inline />
         </Stage>
       </PageSection>
       <PageSection title={"In context"}>

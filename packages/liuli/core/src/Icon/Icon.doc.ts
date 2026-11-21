@@ -40,6 +40,7 @@ export const doc: ComponentDoc = {
       'Ask by meaning: `name="delete"`, not the shape. A theme may draw it differently.',
       'Set the colour on the icon or its container with a text colour class; the icon follows it.',
       'Use `sm` beside footnote text, `md` beside body text and in controls, `lg` on its own.',
+      'Use `inline` in a heading or a line of another size; the icon grows with that text and with the reader\'s text size.',
       'Draw an icon the set lacks with `icon`, on a 24-unit grid with a stroke of the same weight.',
       'Give a component\'s icon prop (`startIcon`, `icon`) a name; to change how a name draws inside components, replace it with `IconSetProvider`.',
     ],
@@ -53,6 +54,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Common', title: 'Icons by name' },
     { name: 'Sizes', title: 'Sizes' },
+    { name: 'Inline', title: 'The size of the text around it' },
     { name: 'Colours', title: 'Colour from the text around it' },
     { name: 'Labelled', title: 'Read, or silent' },
     { name: 'Mirrored', title: 'Right to left' },
@@ -85,7 +87,10 @@ export const doc: ComponentDoc = {
         { name: 'Mirrored', title: 'Left to right above, right to left below: the first three turn round, the search glass does not' },
         { name: 'Custom', title: 'An icon of your own, the default close, then a set that redraws close and keeps the rest' },
       ],
-      sizes: [{ name: 'Sizes', title: '16, 20 and 24' }],
+      sizes: [
+        { name: 'Sizes', title: '16, 20 and 24' },
+        { name: 'Inline', title: 'Inline: the size of the text around it, in a title and in a footnote' },
+      ],
       inContext: [{ name: 'Everything', title: 'The whole set, by name' }],
     },
   },

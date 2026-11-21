@@ -24,6 +24,15 @@ test('Sizes: 16, 20 and 24', async () => {
   assert.deepEqual(['small', 'medium', 'large'].map(id => screen.getByTestId(id).props.width), [16, 20, 24]);
 });
 
+test('Inline: an inline icon is a square in em of the text around it, 20 pt beside body text', async () => {
+  const screen = await renderExample('Icon/Icon', 'Inline');
+  for (const id of ['in-title', 'in-footnote']) {
+    const { width, height } = screen.getByTestId(id).props;
+    assert.ok(Array.isArray(width) && String(width) === String(height), `${id}: a square in em`);
+    assert.equal(Math.round(width[1] * 15), 20, `${id}: 1.33 em, 20 pt at the body's 15`);
+  }
+});
+
 test('Labelled: with a label the icon is an image named by it; without one it is not read', async () => {
   const screen = await renderExample('Icon/Icon', 'Labelled');
   const named = screen.getByTestId('private');

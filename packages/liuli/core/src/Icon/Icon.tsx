@@ -7,7 +7,7 @@ import { lucide } from './set';
 export type { IconDefinition, IconSet } from './definition';
 export { iconNames, type IconName } from './names';
 
-export type IconSize = 'sm' | 'md' | 'lg';
+export type IconSize = 'sm' | 'md' | 'lg' | 'inline';
 
 export type IconSource =
   | {
@@ -22,7 +22,7 @@ export type IconSource =
     };
 
 export type IconProps = IconSource & {
-  /** 16, 20 or 24 points. @default 'md' */
+  /** 16, 20 or 24 points; `inline` follows the text around it, 20 beside body text and growing with a heading. @default 'md' */
   size?: IconSize;
   /** What the icon says, when nothing beside it does. Without it the icon is decoration and is not read. */
   label?: string;

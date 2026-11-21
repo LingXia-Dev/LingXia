@@ -25,6 +25,22 @@ export function Sizes() {
   );
 }
 
+/** `inline` takes its size from the text around it: larger in a title, smaller in a footnote. */
+export function Inline() {
+  return (
+    <view className="gap-3 text-text">
+      <view className="flex-row items-center gap-2 text-title">
+        <Icon name="calendar" size="inline" data-testid="in-title" />
+        <text className="text-title font-semibold">Planning</text>
+      </view>
+      <view className="flex-row items-center gap-1.5 text-footnote text-muted">
+        <Icon name="clock" size="inline" data-testid="in-footnote" />
+        <text className="text-footnote text-muted">Updated an hour ago</text>
+      </view>
+    </view>
+  );
+}
+
 /** An icon takes the colour of the text around it. */
 export function Colours() {
   return (

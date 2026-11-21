@@ -49,6 +49,28 @@ export function Sizes() {
 }
 ```
 
+### The size of the text around it
+
+```tsx
+import { Icon } from '@liulidesign/core/Icon';
+
+/** `inline` takes its size from the text around it: larger in a title, smaller in a footnote. */
+export function Inline() {
+  return (
+    <view className="gap-3 text-text">
+      <view className="flex-row items-center gap-2 text-title">
+        <Icon name="calendar" size="inline" data-testid="in-title" />
+        <text className="text-title font-semibold">Planning</text>
+      </view>
+      <view className="flex-row items-center gap-1.5 text-footnote text-muted">
+        <Icon name="clock" size="inline" data-testid="in-footnote" />
+        <text className="text-footnote text-muted">Updated an hour ago</text>
+      </view>
+    </view>
+  );
+}
+```
+
 ### Colour from the text around it
 
 ```tsx
@@ -177,7 +199,7 @@ export function Everything() {
 | --- | --- | --- | --- |
 | `name` | `"add" \| "add-circle" \| "arrow-down" \| "arrow-end" \| "arrow-start" \| "arrow-up" \| "attach" \| "blocked" \| "bookmark" \| "calendar" \| "camera" \| "cancel" \| "cart" \| "chart" \| "check" \| "checklist" \| "chevron-down" \| "chevron-end" \| "chevron-start" \| "chevron-up" \| "click" \| "clock" \| "close" \| "cloud" \| "collapse" \| "compass" \| "copy" \| "dark" \| "delete" \| "document" \| "download" \| "edit" \| "error" \| "expand" \| "external-link" \| "file" \| "filter" \| "flag" \| "folder" \| "globe" \| "grid" \| "heart" \| "help" \| "hidden" \| "home" \| "image" \| "info" \| "layers" \| "light" \| "like" \| "link" \| "list" \| "location" \| "lock" \| "mail" \| "menu" \| "message" \| "microphone" \| "more" \| "more-vertical" \| "mute" \| "notifications" \| "notifications-off" \| "palette" \| "pause" \| "payment" \| "phone" \| "play" \| "print" \| "redo" \| "refresh" \| "remove" \| "rows" \| "save" \| "search" \| "send" \| "settings" \| "share" \| "sign-in" \| "sign-out" \| "sort" \| "star" \| "stop" \| "success" \| "tag" \| "template" \| "text-input" \| "undo" \| "unlock" \| "upload" \| "user" \| "users" \| "video" \| "visible" \| "volume" \| "warning" \| "wifi"` |  | The icon by what it means: `close`, `search`, `chevron-end`. The set in use decides how it is drawn. |
 | `icon` | `IconDefinition` |  | An icon of the app's own, or one module from a set, drawn as given whatever set is in use. |
-| `size` | `IconSize` | `'md'` | 16, 20 or 24 points. |
+| `size` | `IconSize` | `'md'` | 16, 20 or 24 points; `inline` follows the text around it, 20 beside body text and growing with a heading. |
 | `label` | `string` |  | What the icon says, when nothing beside it does. Without it the icon is decoration and is not read. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -225,6 +247,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Ask by meaning: `name="delete"`, not the shape. A theme may draw it differently.
 - Do: Set the colour on the icon or its container with a text colour class; the icon follows it.
 - Do: Use `sm` beside footnote text, `md` beside body text and in controls, `lg` on its own.
+- Do: Use `inline` in a heading or a line of another size; the icon grows with that text and with the reader's text size.
 - Do: Draw an icon the set lacks with `icon`, on a 24-unit grid with a stroke of the same weight.
 - Do: Give a component's icon prop (`startIcon`, `icon`) a name; to change how a name draws inside components, replace it with `IconSetProvider`.
 - Don't: Give an icon a label when text beside it says the same; it would be read twice.
