@@ -85,7 +85,8 @@ test('a focused editor scrolled off screen keeps focus and the keyboard, and typ
   await expect(notes).toBeFocused();
   expect(Number(await page.getAttribute('data-keyboard'))).toBeGreaterThan(0);
   // Injected key events bypass the system keyboard's editor binding, so a finger taps its Q key
-  // (left end of the top letter row on the Huawei keyboard).
+  // (left end of the top letter row on the Huawei keyboard). In pinyin mode the tap only starts a
+  // composition, so the keyboard must be in Latin mode.
   const keyboard = Number(await page.getAttribute('data-keyboard'));
   const bottom = Math.max(...(await device.nodes()).map(node => node.bounds[3]));
   await device.click(Math.round(surface.bounds[0] + (surface.bounds[2] - surface.bounds[0]) * 0.06), Math.round(bottom - keyboard * scale * 0.75));

@@ -39,12 +39,12 @@ test('round-trip text, empty clipboard, and typed image items', {
       const emptyString = await lx.clipboard.readText();
 
       await files.write(fixture, { data: png, encoding: 'base64' });
-      await lx.clipboard.write({ type: 'image', filePath: fixture });
+      await lx.clipboard.write({ type: 'image', path: fixture });
       const imageTypes = await lx.clipboard.types();
       const imageRead = await lx.clipboard.read({ type: 'image' });
       const imageItem = imageRead.status === 'ok' ? imageRead.items.find((item) => item.type === 'image') : null;
       const imageInfo = imageItem?.type === 'image'
-        ? await lx.media.imageInfo(imageItem.filePath)
+        ? await lx.media.imageInfo(imageItem.path)
         : null;
 
       await lx.clipboard.clear();
@@ -54,21 +54,21 @@ test('round-trip text, empty clipboard, and typed image items', {
 
       return {
         writtenCanceled: (written.status === 'canceled'),
-        writtenEmpty: (written.status === 'canceled') ? null : (written.status === 'empty'),
-        writtenText: written.status !== 'canceled' && !(written.status === 'empty') ? written.text : null,
+        writtenEmpty: (written.status === 'canceled') ? null : written.text === undefined,
+        writtenText: written.status !== 'canceled' ? written.text ?? null : null,
         afterWriteTypes: afterWrite,
-        typedEmpty: (typed.status === 'canceled') ? true : (typed.status === 'empty'),
-        typedText: typed.status !== 'canceled' && !(typed.status === 'empty')
+        typedEmpty: (typed.status === 'canceled') ? true : typed.items.length === 0,
+        typedText: typed.status !== 'canceled'
           ? typed.items.find((item) => item.type === 'text')?.text ?? null
           : null,
-        emptyStringEmpty: (emptyString.status === 'canceled') ? null : (emptyString.status === 'empty'),
-        emptyStringText: emptyString.status !== 'canceled' && !(emptyString.status === 'empty') ? emptyString.text : null,
+        emptyStringEmpty: (emptyString.status === 'canceled') ? null : emptyString.text === undefined,
+        emptyStringText: emptyString.status !== 'canceled' ? emptyString.text ?? null : null,
         imageTypes,
-        imageEmpty: (imageRead.status === 'canceled') ? true : (imageRead.status === 'empty'),
+        imageEmpty: (imageRead.status === 'canceled') ? true : imageRead.items.length === 0,
         imageWidth: imageInfo && imageInfo.width,
         imageHeight: imageInfo && imageInfo.height,
-        afterClearEmpty: (afterClear.status === 'canceled') ? null : (afterClear.status === 'empty'),
-        emptyRead: (emptyRead.status === 'canceled') ? false : (emptyRead.status === 'empty'),
+        afterClearEmpty: (afterClear.status === 'canceled') ? null : afterClear.text === undefined,
+        emptyRead: (emptyRead.status === 'canceled') ? false : emptyRead.items.length === 0,
         emptyTypes,
       };
     } finally {
@@ -126,7 +126,7 @@ async function expectHarmonyReadsDenied(
       const read = await rejection(() => lx.clipboard.read({ type: 'text' }));
 
       await files.write(fixture, { data: png, encoding: 'base64' });
-      await lx.clipboard.write({ type: 'image', filePath: fixture });
+      await lx.clipboard.write({ type: 'image', path: fixture });
       const imageTypes = await lx.clipboard.types();
       const readImage = await rejection(() => lx.clipboard.read({ type: 'image' }));
 
@@ -139,7 +139,7 @@ async function expectHarmonyReadsDenied(
         read,
         imageTypes,
         readImage,
-        afterClearEmpty: (afterClear.status === 'canceled') ? null : (afterClear.status === 'empty'),
+        afterClearEmpty: (afterClear.status === 'canceled') ? null : afterClear.text === undefined,
         emptyTypes,
       };
     } finally {

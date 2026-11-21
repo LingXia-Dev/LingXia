@@ -51,7 +51,7 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
         media_type: None,
         source_type: None,
         camera: None,
-        max_duration: None,
+        max_duration_ms: None,
     });
 
     let mode = parse_pick_mode(opts.media_type)?;
@@ -91,10 +91,11 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
         ));
     }
 
+    // The platform pickers take whole seconds; round up so a limit never shrinks.
     let max_duration_seconds = opts
-        .max_duration
+        .max_duration_ms
         .filter(|v| !v.is_sign_negative())
-        .map(|v| v.min(u32::MAX as f64).round() as u32);
+        .map(|v| (v / 1000.0).ceil().min(u32::MAX as f64) as u32);
     let source_types = vec![selected_source];
 
     let request = PickMediaRequest {

@@ -1,6 +1,6 @@
 import {
   lx,
-  type AppLaunchOptions,
+  type AppLifecycleEventArgs,
   type ConfiguredPageName,
   type NavTarget,
   type OpenLink,
@@ -111,7 +111,7 @@ async function applyHostChrome(os: string, tag: string) {
 App({
   // For `lxdev test`, which reads it through `appInstance().state`.
   state: appState,
-  onLaunch(_options?: AppLaunchOptions) {
+  onLaunch() {
     appState.lifecycle.launches++;
     appState.lifecycle.last = 'launch';
     const { os } = lx.host.info;
@@ -140,7 +140,7 @@ App({
     // Not awaited: the first page's onLoad waits for onLaunch.
     void loadIpAddr();
   },
-  onShow(options?: AppLaunchOptions) {
+  onShow(options?: AppLifecycleEventArgs) {
     appState.lifecycle.shows++;
     appState.lifecycle.last = 'show';
     appState.lifecycle.lastShow = options;

@@ -117,13 +117,13 @@ test('a guest lxapp gets attention for itself only', {
       const shown = await n.show({
         id: 'guest-own',
         title: 'Run finished',
-        body: 'DESKTOP-GUEST-ATTENTION-001',
+        message: 'DESKTOP-GUEST-ATTENTION-001',
         target: { app: 'lingxia-showcase-web', params: { run: 'probe' } },
         silent: true,
       });
       await n.cancel('guest-own');
       await n.cancelAll();
-      return { permission, id: shown.id, status: shown.status as string, error: null };
+      return { permission, id: shown.id, status: shown.delivery as string, error: null };
     } catch (error) {
       return { permission, id: null, status: null, error: (error as { code?: string }).code ?? String(error) };
     }
@@ -145,8 +145,8 @@ test('a guest lxapp gets attention for itself only', {
     void lx.host.banner.show({
       id,
       title: 'Run finished',
-      body: 'DESKTOP-GUEST-ATTENTION-001',
-      actions: [{ id: 'open', label: 'Open run', style: 'primary', target: { app: 'lingxia-showcase-web', params: { run: 'probe' } } }],
+      message: 'DESKTOP-GUEST-ATTENTION-001',
+      actions: [{ id: 'open', label: 'Open run', tone: 'primary', target: { app: 'lingxia-showcase-web', params: { run: 'probe' } } }],
       timeoutMs: 0,
     }).then(
       (result) => { probe.result = result; },

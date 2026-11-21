@@ -14,8 +14,8 @@ const write = process.argv.includes("--write");
 const rules = {
   "no-get-read": "a read is named for what it returns, without a `get` prefix",
   "subscription-shape": "`watch*` and `on<Event>` return their unsubscribe and take `options?: SignalOptions` last",
-  "field-name": "no `filePath`, `uri`, `sizeBytes`, `mimeType` or `…Seconds` fields: use `path`, `size`, `type`, `…Ms`",
-  "status-values": "a `status` field is only `ok` or `canceled`",
+  "field-name": "one name per concept: `path` (not `uri`, `filePath`, `tempFilePath`, `outputPath`), `icon` (not `iconPath`), `size` (not `fileSize`, `sizeBytes`, `currentSize`), `…Ms` / `…At` (not `…Seconds`, `…Time`, a bare `duration`, `timeout`, `delay` or `interval`), `type` for MIME (not `mimeType`, `fileType`), `message` (not `body`, `content`), `tone` (not a `style` literal), `appId` (not `appid`), `version` (not `targetVersion`), and none of the mini-program names (`count`, `redDot`, `formData`, `statusCode`, `scene`, `referrerInfo`, `isHighAccuracy`, `coordinateSystem`, `rotate`, `showMenu`, `mask`)",
+  "status-values": "a string `status` field is only `ok` or `canceled`; an HTTP `status` number is exempt",
   "readonly-array-param": "an array parameter is `readonly`",
   "required-member": "an API member is never optional; a missing capability rejects `E_NOT_SUPPORTED`",
   "summary": "every member and every option or result field has a one-sentence summary",
@@ -53,6 +53,13 @@ function shapeOf(signature) {
 }
 const shapeText = member => [...new Set(member.signatures.map(shapeOf).filter(Boolean).map(shape => shape.text))].join("<br>");
 
+const staleFieldName = new RegExp("^(" + [
+  "uri", "filePath", "tempFilePath", "outputPath", "iconPath", "fileSize", "sizeBytes", "currentSize", "limitSize",
+  "duration", "timeout", "delay", "interval", "mimeType", "fileType", "body", "content", "appid", "targetVersion",
+  "count", "redDot", "formData", "statusCode", "scene", "referrerInfo", "isHighAccuracy", "coordinateSystem",
+  "rotate", "showMenu", "mask",
+].join("|") + ")$|Seconds$|[a-z]Time$");
+
 // Brands and exclusivity guards (`page?: never`) are not fields a person reads.
 const isGuard = field => field.name.startsWith("__@") || field.type === "undefined" || field.type === "never";
 
@@ -83,8 +90,8 @@ for (const [type, fields] of types) {
     const path = `${type}.${field.name}`;
     if (!field.summary) find("summary", path);
     checkDoc(path, field);
-    if (/^(filePath|uri|sizeBytes|mimeType)$|Seconds$/.test(field.name)) find("field-name", path);
-    if (field.name === "status") {
+    if (staleFieldName.test(field.name) || (field.name === "style" && /^"/.test(field.type))) find("field-name", path);
+    if (field.name === "status" && field.type !== "number") {
       const values = [...field.type.matchAll(/"([^"]+)"/g)].map(([, value]) => value);
       if (values.some(value => value !== "ok" && value !== "canceled")) find("status-values", path);
     }

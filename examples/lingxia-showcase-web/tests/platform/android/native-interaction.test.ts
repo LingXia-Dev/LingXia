@@ -9,7 +9,7 @@ test.configure({ skip: args.platform === 'android' ? undefined : 'Android only' 
 
 test('pull down from the screen to refresh, then refresh again', {
   id: 'ANDROID-PULL-GESTURE-001', app: APP_ID,
-  covers: ['page.refresh', 'PageSetup.onPullDownRefresh'],
+  covers: ['page.refresh', 'PageSetup.onRefresh'],
   requires: { args: ['androidDevice'] },
   reason: 'requires Android OS input fixture',
   start: { page: 'pullToRefresh' },

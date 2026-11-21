@@ -575,7 +575,7 @@ impl LxApp {
 
     /// The desktop navbar's refresh button: runs the same refresh as the pull
     /// gesture and `page.refresh()`, so the host indicator shows
-    /// and `onPullDownRefresh` fires. Only pages that opted in get the button.
+    /// and `onRefresh` fires. Only pages that opted in get the button.
     fn start_current_page_refresh(self: &Arc<Self>) -> bool {
         let Ok(page) = self.current_page() else {
             return false;

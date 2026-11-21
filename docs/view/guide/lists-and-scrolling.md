@@ -159,7 +159,7 @@ Pull to refresh belongs to the host. Enable it in the page config and handle it 
 export default definePage({
   data: { items: [] as string[] },
   setup: page => ({
-    async onPullDownRefresh() {
+    async onRefresh() {
       const items = await load();
       page.update(d => { d.items = items; });
     },

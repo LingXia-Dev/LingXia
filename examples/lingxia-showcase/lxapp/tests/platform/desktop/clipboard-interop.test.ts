@@ -53,8 +53,8 @@ test('lx.clipboard reads and writes the same clipboard the OS sees', {
     const types = await lx.clipboard.types();
     return {
       status: read.status,
-      empty: (read.status === 'canceled') ? null : (read.status === 'empty'),
-      text: read.status !== 'canceled' && !(read.status === 'empty') ? read.text : null,
+      empty: (read.status === 'canceled') ? null : read.text === undefined,
+      text: read.status !== 'canceled' ? read.text ?? null : null,
       types,
     };
   });

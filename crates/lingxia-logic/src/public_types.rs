@@ -37,7 +37,7 @@ rong::js_api! {
 
         type AppConfig = r###"{
     /** Runs once when the lxapp starts, before its first page. */
-    onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
+    onLaunch?: () => void | Promise<void>;
     /**
      * An App Link from outside, cold (after `onLaunch` settles) or warm
      * (before `onShow`). Turn its untrusted strings into a target here; the
@@ -50,7 +50,7 @@ rong::js_api! {
     /** Runs each time the lxapp leaves the front. */
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     /** Runs after the person takes a screenshot while the lxapp is in front. */
-    onUserCaptureScreen?: () => void | Promise<void>;
+    onScreenshot?: () => void | Promise<void>;
 }"###;
 
         /// Runtime-managed app download path, usually under `lx://userdata`.
@@ -69,15 +69,15 @@ rong::js_api! {
 }"###;
 
         type AppDownloadResult = r###"{
-    uri: AppDownloadFilePath;
+    path: AppDownloadFilePath;
     storage: 'temp';
-    mimeType?: string;
-    sizeBytes: number;
+    type?: string;
+    size: number;
 } | {
-    uri: AppDownloadFilePath;
+    path: AppDownloadFilePath;
     storage: 'userdata';
-    mimeType?: string;
-    sizeBytes: number;
+    type?: string;
+    size: number;
 }"###;
 
         /// Canonical platform-family label shared by `lx.host.info.os`
@@ -99,31 +99,6 @@ rong::js_api! {
         /// target runtime rejects a name it does not have.
         type ExternalPageName = r###"string"###;
 
-        /// Launch scene. `8003` is AppLink (cold: `onLaunch`; warm: `onShow`).
-        /// Other numeric scenes stay valid; completion offers `8003`.
-        type AppLaunchScene = r###"8003 | (number & {})"###;
-
-        type AppLaunchOptions = r###"{
-    /** The page the lxapp opens at. */
-    path?: string;
-    /** That page's query. */
-    query?: Record<string, string>;
-    /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
-    scene?: AppLaunchScene;
-    /**
-     * Inbound link exactly as the OS delivered it, fragment included. Present
-     * only with `scene: 8003`. Untrusted: route from an allowlist of paths.
-     */
-    url?: string;
-    /** The lxapp that opened this one, when one did. */
-    referrerInfo?: {
-        /** Its id. */
-        appId?: string;
-        /** What it passed along. */
-        extraData?: Record<string, unknown>;
-    };
-}"###;
-
         /// An inbound App Link, as `App.onOpen` receives it.
         type OpenLink = r###"{
     /** The link exactly as the OS delivered it. Untrusted. */
@@ -143,10 +118,6 @@ rong::js_api! {
     path?: string;
     /** That page's query. */
     query?: Record<string, string>;
-    /** `8003` = AppLink. */
-    scene?: AppLaunchScene;
-    /** Inbound link, present only with `scene: 8003`. */
-    url?: string;
 }"###;
 
         type AppScreenshotOptions = r###"{
@@ -158,8 +129,8 @@ rong::js_api! {
 }"###;
 
         type AppScreenshotResult = r###"{
-    /** `lx://` URI of the captured PNG in the lxapp temp directory. */
-    uri: string;
+    /** `lx://` path of the captured PNG in the lxapp temp directory. */
+    path: string;
     /** Image width in pixels, when the runtime could read it from the PNG. */
     width?: number;
     /** Image height in pixels, when the runtime could read it from the PNG. */
@@ -204,7 +175,7 @@ rong::js_api! {
 }"###;
 
         type AppLinkTarget = r###"{
-    /** An `https://` URL that is also an inbound App Link (`scene === 8003`). */
+    /** An `https://` URL that is also an inbound App Link. */
     appLink: string;
     page?: never;
     tab?: never;
@@ -251,7 +222,7 @@ rong::js_api! {
         /** First line. */
         title: string;
         /** Text below the title. */
-        body?: string;
+        message?: string;
         /**
          * Where a tap goes; absent brings the product forward, nothing else.
          * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
@@ -276,7 +247,7 @@ rong::js_api! {
          * `suppressed`: an immediate post while the product is frontmost; nothing
          * posted, no permission needed.
          */
-        status: 'posted' | 'scheduled' | 'suppressed';
+        delivery: 'posted' | 'scheduled' | 'suppressed';
     }>;
     /**
      * Remove what is pending or delivered under `id`, and retire its tap
@@ -311,15 +282,15 @@ rong::js_api! {
         /** First line. */
         title: string;
         /** Text below the title. */
-        body?: string;
+        message?: string;
         /** Buttons; with any, the banner waits for a choice instead of closing by itself. */
         actions?: Array<{
             /** What `action` reports when this button is picked. */
             id: string;
             /** Button text. */
             label: string;
-            /** Emphasis: `primary` for the expected choice, `destructive` for a dangerous one. */
-            style?: 'default' | 'primary' | 'destructive';
+            /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
+            tone?: 'default' | 'primary' | 'danger';
             /**
              * Where picking this action goes, as a notification target, checked
              * before the banner shows; absent, picking it only resolves `show`.
@@ -733,10 +704,8 @@ rong::js_api! {
 }"###;
 
         type TabBarItemPatch = r###"{
-    /** Position of the item to change, from 0. */
-    index: number;
-    /** Label text. */
-    text?: string | null;
+    /** Label text; `null` restores the declared one. */
+    label?: string | null;
     /**
      * Package-relative path, or an `lx://temp` / `lx://usercache` /
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
@@ -746,23 +715,26 @@ rong::js_api! {
      * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
      * colour so a brand mark is not flattened into a solid square.
      */
-    iconPath?: string | null;
-    /** Text in a badge on the item; `null` removes it. */
-    badge?: string | null;
-    /** Show a dot without text. */
-    redDot?: boolean;
+    icon?: string | null;
+    /** Text in a badge, `true` for a dot without text, `null` to remove either. */
+    badge?: string | true | null;
 }"###;
 
-        /// Patch for `lx.app.tabBar.update()`. Items, badges, red dots, and
+        /// Patch for `lx.app.tabBar.update()`. Items, badges, and
         /// visibility only — a `style` field is rejected. Colors stay in
         /// static `lxapp.json` `tabBar.style`. `backgroundColor` is
         /// mobile-only; the desktop sidebar follows the host
         /// `lingxia.yaml` theme.
+        ///
+        /// @example
+        /// ```ts
+        /// await lx.app.tabBar.update({ items: { home: { badge: '3' } } });
+        /// ```
         type TabBarPatch = r###"{
     /** Show or hide the bar. */
     visibility?: TabBarVisibilityPreference;
-    /** Per-item changes. */
-    items?: readonly TabBarItemPatch[];
+    /** Changes per tab, keyed by the tab's page name. */
+    items?: { readonly [K in TabName]?: TabBarItemPatch };
 }"###;
 
         /// One app-declared action shown in the host-provided More affordance.
@@ -863,7 +835,7 @@ rong::js_api! {
      * (desktop), files beyond it are dropped from the result.
      * @default 9
      */
-    count?: number;
+    limit?: number;
     /**
      * Kinds to offer. The camera captures one kind, so with `sourceType`
      * camera name a single entry (macOS excepted).
@@ -881,8 +853,8 @@ rong::js_api! {
      * @default 'back'
      */
     camera?: 'back' | 'front';
-    /** Longest video the camera records, in seconds. */
-    maxDurationSeconds?: number;
+    /** Longest video the camera records, in milliseconds; rounded up to whole seconds. */
+    maxDurationMs?: number;
 }"###;
 
         /// Representations the runtime can round-trip. Closed union.
@@ -903,7 +875,7 @@ rong::js_api! {
      * rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
-    filePath: string;
+    path: string;
 }"###;
 
         type ClipboardReadOptions = r###"{
@@ -913,27 +885,21 @@ rong::js_api! {
 
         /// Result of `lx.clipboard.readText`. Branch on `status`.
         /// A copied empty string is `{ status: 'ok', text: '' }`;
-        /// an image-only clipboard is `{ status: 'empty' }`.
+        /// an image-only clipboard has no `text`.
         type ClipboardTextResult = r###"{
-    /** The clipboard holds no text. */
-    status: 'empty';
-} | {
-    /** Text was read. */
+    /** The clipboard was read. */
     status: 'ok';
-    /** The text. */
-    text: string;
+    /** The text; absent when the clipboard holds none. */
+    text?: string;
 } | CanceledResult"###;
 
         /// Result of `lx.clipboard.read`. Omit `type` to receive every
         /// representation this host can surface. A requested type that is
-        /// absent is `{ status: 'empty' }`, not an error.
+        /// absent leaves `items` empty, not an error.
         type ClipboardReadResult = r###"{
-    /** The clipboard holds nothing of the requested type. */
-    status: 'empty';
-} | {
-    /** Something was read. */
+    /** The clipboard was read. */
     status: 'ok';
-    /** One entry per representation. */
+    /** One entry per representation; empty when nothing matched. */
     items: ClipboardItem[];
 } | CanceledResult"###;
 
@@ -949,7 +915,7 @@ rong::js_api! {
      * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
      * copy it with `lx.fs` if you need to keep it.
      */
-    filePath: string;
+    path: string;
 }"###;
 
 
@@ -1078,13 +1044,13 @@ rong::js_api! {
 
         type DownloadsDownloadResult = r###"{
     /** Where the file landed in the user's Downloads folder. */
-    uri: SystemDownloadsPath;
+    path: SystemDownloadsPath;
     /** The Downloads folder. */
     storage: 'downloads';
     /** MIME type from the response, when it named one. */
-    mimeType?: string;
+    type?: string;
     /** File size in bytes. */
-    sizeBytes: number;
+    size: number;
 }"###;
 
         /// Which frame `lx.media.videoThumbnail` takes and where it writes it.
@@ -1137,11 +1103,12 @@ rong::js_api! {
      * Coordinate system of the result.
      * @default 'wgs84'
      */
-    coordinateSystem?: 'wgs84' | 'gcj02';
-    /** Include `altitude` in the result. */
-    altitude?: boolean;
-    /** Ask for a precise fix; slower and costs more power. */
-    isHighAccuracy?: boolean;
+    coordinates?: 'wgs84' | 'gcj02';
+    /**
+     * `high` asks for a precise fix; slower and costs more power.
+     * @default 'balanced'
+     */
+    accuracy?: 'balanced' | 'high';
     /**
      * How long to wait for a fix before failing, in milliseconds.
      * @default 10000
@@ -1167,27 +1134,21 @@ rong::js_api! {
 
         type HostAppUpdateApplyStage = r###"'download' | 'install'"###;
 
-        type HostAppUpdateCheckResult = r###"{
-    /** No newer version is published. */
-    hasUpdate: false;
-    update?: never;
-} | {
-    /** A newer version is published. */
-    hasUpdate: true;
-    /** The newer version. */
-    update: HostAppUpdateInfo;
-}"###;
-
+        /// A newer published host app version.
         type HostAppUpdateInfo = r###"{
+    /** The newer version. */
     version: string;
+    /** Package size in bytes, when the feed names it. */
     size?: number;
+    /** Release notes, one entry per line. */
     releaseNotes?: string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
-     * `direct` downloads and self-installs. `lx.supports('app.selfUpdate')`
-     * is true only for `direct`.
+     * `direct` downloads and self-installs, the only case where
+     * self-update is supported.
+     * @supports app.selfUpdate
      */
-    channel: 'direct' | 'store';
+    via: 'direct' | 'store';
     /**
      * Apply this checked update.
      *
@@ -1206,7 +1167,7 @@ rong::js_api! {
 }"###;
 
         type HostAppUpdateResult = r###"{
-    /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
+    /** `storeOpened` via `store`: the listing opened, nothing was installed. */
     state: 'installRequested' | 'storeOpened';
 }"###;
 
@@ -1400,20 +1361,12 @@ rong::js_api! {
 
         type PreviewMediaCloseReason = r###"'manual' | 'completed' | 'interrupted' | 'error'"###;
 
-        /// A media session. `presented` distinguishes a rendered first frame from
-        /// an early close, cancellation, or failure. `completed` reports closure;
+        /// A media session. `presented` tells a rendered first frame from a
+        /// session that ended before one. `completed` reports closure;
         /// native playback errors may report reason `error`, while request failures reject.
         type PreviewMediaHandle = r###"{
-    /** Settles once the first item is on screen, or with why it never was. */
-    readonly presented: Promise<{
-        /** The first item is on screen. */
-        status: 'presented';
-    } | {
-        /** It never showed. */
-        status: 'notPresented';
-        /** Dismissed first, failed to load, or closed by `close()`. */
-        reason: 'canceled' | 'failed' | 'closed';
-    }>;
+    /** `true` once the first item is on screen; `false` when the session ended first. */
+    readonly presented: Promise<boolean>;
     /** The item on screen now. */
     readonly current: PreviewMediaChange;
     /** Fires when the shown item changes; `current` holds the latest. Returns a function that removes the listener. */
@@ -1771,15 +1724,19 @@ true
         /// Current persistent-storage usage and configured limits.
         ///
         type StorageInfo = r###"{
-    currentSize: number;
-    limitSize: number;
+    /** Stored data, in bytes. */
+    usedBytes: number;
+    /** The configured ceiling, in bytes. */
+    limitBytes: number;
+    /** Number of stored keys; `list()` names them. */
     keyCount: number;
 }"###;
 
         type StreamSourceOptions = r###"{
     provider: string;
     isLive: boolean;
-    durationSeconds?: number;
+    /** Length in milliseconds; ignored when `isLive`. */
+    durationMs?: number;
     params?: Record<string, unknown>;
 }"###;
 
@@ -2087,7 +2044,7 @@ true
      */
     channel?: LxAppReleaseType;
     /** Install this version first if it is newer than the installed one; older versions are refused. */
-    targetVersion?: string;
+    version?: string;
 }"###;
 
         /// Surfaces beside or above the page stack, each with a handle.
@@ -2180,6 +2137,13 @@ true
     surface?: 'auto' | 'appIcon' | 'tray';
 }"###;
 
+        type SetBadgeResult = r###"{
+    /** Whether any surface now shows the badge. */
+    painted: boolean;
+    /** The platform has no surface of the requested kind. Absent when one exists but declined, such as a hidden tray item. */
+    reason?: 'no_surface';
+}"###;
+
         type TrayMenuItem = r###"{
     /** Text shown. */
     label: string;
@@ -2215,13 +2179,13 @@ true
         /// fields apply:
         ///
         /// - `multipart` (default) wraps the file in a `multipart/form-data`
-        ///   envelope beside the `formData` text fields — what an ordinary form
-        ///   endpoint parses. `name`, `fileName`, and `formData` describe that
-        ///   envelope. `formData`, when present, must contain at least one field.
+        ///   envelope beside the `fields` text fields — what an ordinary form
+        ///   endpoint parses. `field`, `fileName`, and `fields` describe that
+        ///   envelope. `fields`, when present, must contain at least one entry.
         /// - `raw` sends the file bytes as the entire body. Presigned
         ///   object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
         ///   envelope would be stored verbatim as the object's contents,
-        ///   boundary lines and all. `name`, `formData`, and `fileName` are
+        ///   boundary lines and all. `field`, `fields`, and `fileName` are
         ///   then rejected rather than silently dropped.
         ///
         /// @example
@@ -2229,10 +2193,10 @@ true
         /// // A presigned URL is signed for one method and one Content-Type,
         /// // so both have to match whatever the signer used.
         /// const task = lx.network.upload(presignedUrl, {
-        ///   file: 'lx://media/clip.mp4',
+        ///   path: 'lx://media/clip.mp4',
         ///   method: 'PUT',
         ///   bodyMode: 'raw',
-        ///   mimeType: 'video/mp4',
+        ///   type: 'video/mp4',
         /// });
         /// for await (const { fraction } of task) render(fraction);
         /// const { ok, status } = await task.result;
@@ -2240,7 +2204,7 @@ true
         ///
         type UploadOptions = r###"{
     /** The file to send: an `lx://` path from a LingXia API, or a path relative to `lx://userdata`. */
-    file: string;
+    path: string;
     /**
      * HTTP method.
      * A presigned URL is signed for exactly one method, usually `PUT`.
@@ -2251,7 +2215,7 @@ true
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
      * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
-     * wins over `mimeType`; a multipart body owns the header, because it
+     * wins over `type`; a multipart body owns the header, because it
      * carries the part boundary.
      */
     headers?: Record<string, string>;
@@ -2262,7 +2226,7 @@ true
      * request's `Content-Type` under `raw`.
      * @default 'application/octet-stream' under `raw`
      */
-    mimeType?: string;
+    type?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
 } & (
@@ -2276,17 +2240,17 @@ true
      * Name of the multipart part carrying the file.
      * @default 'file'
      */
-    name?: string;
+    field?: string;
     /** Text fields sent alongside the file. Must be non-empty when set. */
-    formData?: Record<string, string>;
+    fields?: Record<string, string>;
     /** Filename announced for the file part. Defaults to the file's own name. */
     fileName?: string;
 }
     | {
     /** Send the file bytes as the whole body. Multipart fields are rejected. */
     bodyMode: 'raw';
-    name?: never;
-    formData?: never;
+    field?: never;
+    fields?: never;
     fileName?: never;
 }
 )"###;
@@ -2310,13 +2274,16 @@ true
 
         type VideoCompressQuality = r###"'low' | 'medium' | 'high'"###;
 
-        type VideoContext = r###"{
+        /// A page `<video>`'s controller, from `page.video(name)`.
+        type PagePlayer = r###"{
     play(): Promise<void>;
     pause(): Promise<void>;
+    /** Pauses and returns to the start. */
     stop(): Promise<void>;
-    seek(positionSeconds: number): Promise<void>;
-    requestFullScreen(): Promise<void>;
-    exitFullScreen(): Promise<void>;
+    /** Jump to a position, in milliseconds from the start. */
+    seek(positionMs: number): Promise<void>;
+    requestFullscreen(): Promise<void>;
+    exitFullscreen(): Promise<void>;
     setStreamSource(options: StreamSourceOptions): Promise<void>;
     /** A GPU page player's quality: `"auto"` or one of its source labels. */
     setQuality(quality: string): Promise<void>;

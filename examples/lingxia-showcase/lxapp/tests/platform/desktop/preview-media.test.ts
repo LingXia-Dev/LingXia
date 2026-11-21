@@ -117,18 +117,18 @@ test('present a local image and report it through the handle', {
   const started = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, base) => {
     const png = await lx.network.download(base + '/media/sample.png').result;
     const controller = new AbortController();
-    const handle = lx.media.preview({ path: png.uri, type: 'image', signal: controller.signal });
+    const handle = lx.media.preview({ path: png.path, type: 'image', signal: controller.signal });
     const state: PreviewSession = {
       handle, controller, presented: false, changes: 0, completed: null, off: null,
     };
     (globalThis as unknown as Sessions)[key] = state;
     state.off = handle.onChange(() => { state.changes = (state.changes ?? 0) + 1; });
-    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.presented.then((shown) => { state.presented = shown; });
     handle.completed.then(
       (result) => { state.completed = { reason: result.reason, index: result.index }; },
       () => { state.completed = { reason: 'aborted', index: -1 }; },
     );
-    return { path: png.uri, index: handle.current.index, sourcePath: handle.current.source.path };
+    return { path: png.path, index: handle.current.index, sourcePath: handle.current.source.path };
   }, stateKey, httpBase ?? '');
   // `current` is synchronous and already describes the first source.
   expect(started.index).toBe(0);
@@ -195,7 +195,7 @@ test('skip an unreachable https item and keep request indexes', {
     });
     const state: PreviewSession = { handle, controller, presented: false, completed: null };
     (globalThis as unknown as Sessions)[key] = state;
-    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.presented.then((shown) => { state.presented = shown; });
     handle.completed.then(
       (result) => { state.completed = result.reason; },
       () => { state.completed = 'rejected'; },

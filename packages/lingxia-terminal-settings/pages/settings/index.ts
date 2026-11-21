@@ -112,7 +112,7 @@ export default definePage({
               page.update(d => { d.windowsInlineImageProgress = progress; });
             }
             const result = await task.result;
-            return await api.install({ path: result.uri });
+            return await api.install({ path: result.path });
           } finally {
             if (conptyDownload === task) conptyDownload = null;
             page.update(d => { d.windowsInlineImageProgress = null; });

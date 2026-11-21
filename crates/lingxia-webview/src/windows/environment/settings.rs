@@ -216,7 +216,7 @@ pub(crate) fn configure_context_menu(
 }
 
 /// On a pull-down-refresh page, prepend an app-level "Refresh" item (plus a
-/// separator) that fires `onPullDownRefresh`, mirroring the macOS lxapp menu.
+/// separator) that fires `onRefresh`, mirroring the macOS lxapp menu.
 /// We deliberately do NOT keep WebView2's native Reload: a real reload re-fetches
 /// the lxapp bundle and drops runtime state.
 fn insert_refresh_item(

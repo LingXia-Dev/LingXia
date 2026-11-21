@@ -48,5 +48,17 @@ __registerApp({ onShow() { shows += 1; }, onOpen(link) { return link.query.id ==
   assert.equal(run('shows'), 3, 'the app hook still runs');
 }
 
+// The hooks see no link plumbing: onLaunch takes nothing, onShow keeps where it lands.
+{
+  const run = world();
+  const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
+  run(`globalThis.seen = [];
+__registerApp({ onLaunch(...args) { seen.push(args.length); }, onShow(args) { seen.push(args); }, onOpen() {} }, '[]');`);
+  run(`app.onLaunch(${link})`);
+  run(`app.onShow(${link})`);
+  await settle();
+  assert.deepEqual(json('seen'), [0, { path: 'pages/home/index', query: { id: '7' } }]);
+}
+
 // globalData is gone.
 assert.throws(() => world()(`__registerApp({ globalData: {} }, '[]')`), /globalData is gone/);

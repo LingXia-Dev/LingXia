@@ -69,7 +69,7 @@ import type {
   TrayApi,
   LxAppApi,
   UploadTask,
-  VideoContext,
+  PagePlayer,
 } from '../generated/logic.js';
 
 export const LX_API_NAMES = [
@@ -185,11 +185,11 @@ const LX_FILE_API = [
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
 const APP_API = ['applyUpdate', 'info', 'onUpdateFailed', 'onUpdateReady', 'setMoreActions', 'tabBar'] as const;
-const VIDEO_CONTEXT_API = [
-  'exitFullScreen',
+const PAGE_PLAYER_API = [
+  'exitFullscreen',
   'pause',
   'play',
-  'requestFullScreen',
+  'requestFullscreen',
   'seek',
   'setMuted',
   'setPlaybackRate',
@@ -661,7 +661,7 @@ export const LX_RUNTIME_SHAPE_NAMES = LX_RUNTIME_CAPABILITY_NAMES.map((name) => 
 const DOWNLOAD_TASK_API = ["result", "pause", "resume", "cancel"] as const;
 const UPLOAD_TASK_API = ["result", "cancel"] as const;
 const COMPRESS_VIDEO_TASK_API = ["result", "cancel"] as const;
-const HOST_UPDATE_INFO_API = ['apply', 'channel', 'releaseNotes', 'size', 'version'] as const;
+const HOST_UPDATE_INFO_API = ['apply', 'releaseNotes', 'size', 'version', 'via'] as const;
 const HOST_UPDATE_TASK_API = ["result"] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
 const PAGE_SURFACE_API = [
@@ -704,8 +704,8 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     factory: 'lx.fs.file',
   },
   {
-    name: 'VideoContext',
-    members: VIDEO_CONTEXT_API,
+    name: 'PagePlayer',
+    members: PAGE_PLAYER_API,
     properties: [],
     optionalProperties: [],
     fixture: 'native-component',
@@ -855,7 +855,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
   AssertTrue<Exact<LxAppApi, typeof APP_API>>,
-  AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
+  AssertTrue<Exact<PagePlayer, typeof PAGE_PLAYER_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
   AssertTrue<Exact<TerminalDriver, typeof TERMINAL_DRIVER_API>>,

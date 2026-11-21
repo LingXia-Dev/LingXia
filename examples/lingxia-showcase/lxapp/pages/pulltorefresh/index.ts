@@ -6,7 +6,7 @@ export default definePage({
     isRefreshing: false,
   },
   setup(page) {
-    // The indicator stays until onPullDownRefresh settles; the stop button
+    // The indicator stays until onRefresh settles; the stop button
     // settles it here, standing in for a fetch.
     let finishRefresh: (() => void) | null = null;
     const actions = {
@@ -29,7 +29,7 @@ export default definePage({
         console.log("PullDownRefresh page onHide");
       },
       // Page lifecycle: Called when user pulls down to refresh
-      onPullDownRefresh() {
+      onRefresh() {
         const timeString = new Date().toLocaleTimeString();
         page.update(d => {
           d.isRefreshing = true;

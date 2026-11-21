@@ -49,10 +49,10 @@ async function taskBoundary() {
   // @ts-expect-error iterator methods belong to the progress iterator
   task.next();
   const result = await task.result;
-  result.uri.toUpperCase();
-  const preview = lx.media.preview(result.uri);
-  const presented = await preview.presented;
-  if (presented.status === 'notPresented') presented.reason;
+  result.path.toUpperCase();
+  const preview = lx.media.preview(result.path);
+  const presented: boolean = await preview.presented;
+  void presented;
 }
 void tracedEval;
 void reader;

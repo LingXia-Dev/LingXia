@@ -131,13 +131,11 @@ if (lx.supports('surface.window.fullChrome')) {
 
 ## Badges
 
-`lx.host.setBadge(value, options?)` (Control app) resolves whether anything was
-painted:
+`lx.host.setBadge(value, options?)` (Control app) resolves `{ painted, reason? }`:
 
 - `surface: 'auto'` (default) covers dock and menu bar on macOS, taskbar and
   tray on Windows, the home-screen icon on iOS and HarmonyOS.
-- Nothing to paint on resolves `false`, never rejects. **Android** always
-  resolves `false`.
+- No such surface resolves `reason: 'no_surface'`, never rejects. **Android** always does.
 - **Apple**: request notification permission first
   (`lx.host.notification.requestPermission()`); a denied macOS app gets no Dock
   badge, and iOS accepts only numbers.
@@ -167,14 +165,14 @@ yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 [Guest lxapps](#guest-lxapps)):
 
 - An immediate `show` while the product is frontmost resolves
-  `status: 'suppressed'` and posts nothing; scheduled ones always present.
+  `delivery: 'suppressed'` and posts nothing; scheduled ones always present.
 - `id` replaces on every path; the replaced tap target stops resolving.
-- `status: 'posted'` means the OS accepted it, nothing more.
+- `delivery: 'posted'` means the OS accepted it, nothing more.
 - `target` decides where a tap goes, resolved at tap time with no fallback.
   It takes what `lx.nav.go` takes (`{ page, params }`, `{ tab }`, `{ app, page }`),
   plus `{ activate: true }` (the default: bring the product forward),
   `{ route, params }` (a host-registered location) and `{ appLink }` (a URL on a
-  configured [App Link](../app/applinks.md) host, delivered as `scene === 8003`).
+  configured [App Link](../app/applinks.md) host, delivered to `App.onOpen`).
   A tab root given as `{ page }` is refused; name it with `{ tab }`.
 - Android may fire schedules late and drops them on reboot; on HarmonyOS
   `silent` does nothing and `schedule` needs the agent-reminder privilege.

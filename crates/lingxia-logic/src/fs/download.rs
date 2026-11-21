@@ -35,11 +35,10 @@ struct ParsedDownloadOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSDownloadResult {
-    uri: String,
+    path: String,
     storage: String,
-    #[js_name = "mimeType"]
+    #[js_name = "type"]
     mime_type: Option<String>,
-    #[js_name = "sizeBytes"]
     size: u64,
 }
 
@@ -400,7 +399,7 @@ fn to_js_download_result(
         DownloadPathKind::Downloads => "downloads",
     };
     Ok(JSDownloadResult {
-        uri: path,
+        path,
         storage: storage.to_string(),
         mime_type: result.mime_type.clone(),
         size: result.size,

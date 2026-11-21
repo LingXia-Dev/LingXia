@@ -140,12 +140,35 @@ fn install_decoder(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
+/// Rename the module's byte fields to the house names; see `install_list_array_shim` on `this`.
+fn install_info_shim(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
+    let inner: JSFunc = storage.get("info")?;
+    storage.set(
+        "info",
+        JSFunc::new(ctx, move |ctx: JSContext, this: This<JSObject>| {
+            let inner = inner.clone();
+            let target = (*this).clone();
+            async move {
+                let pending: Promise = inner.call(Some(target), ())?;
+                let raw: JSObject = pending.into_future().await?;
+                let info = JSObject::new(&ctx);
+                info.set("usedBytes", raw.get::<_, f64>("currentSize")?)?;
+                info.set("limitBytes", raw.get::<_, f64>("limitSize")?)?;
+                info.set("keyCount", raw.get::<_, f64>("keyCount")?)?;
+                JSResult::Ok(info)
+            }
+        })?,
+    )?;
+    Ok(())
+}
+
 fn expose_storage(ctx: &JSContext, service: &LxStorageService) -> JSResult<JSObject> {
     if let Some(existing) = service.exposed.borrow().as_ref() {
         return Ok(existing.clone());
     }
     let object = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
     install_decoder(ctx, &object)?;
+    install_info_shim(ctx, &object)?;
     let native_list: JSFunc = object.get("list")?;
     install_list_array_shim(ctx, &object, native_list)?;
     *service.exposed.borrow_mut() = Some(object.clone());

@@ -54,7 +54,7 @@ export default definePage({
       async chooseImage() {
         try {
           const result = await lx.pick.media({
-            count: 1,
+            limit: 1,
             mediaType: ["image"],
             sourceType: ["album", "camera"],
           });

@@ -4,15 +4,15 @@ use serde::{Deserialize, Serialize};
 #[derive(FromJSObject, Clone)]
 #[ts_skip]
 pub(super) struct JSPickMediaOptions {
-    #[js_name = "count"]
+    #[js_name = "limit"]
     pub(super) count: Option<u32>,
     #[js_name = "mediaType"]
     pub(super) media_type: Option<Vec<String>>,
     #[js_name = "sourceType"]
     pub(super) source_type: Option<Vec<String>>,
     pub(super) camera: Option<String>,
-    #[js_name = "maxDurationSeconds"]
-    pub(super) max_duration: Option<f64>,
+    #[js_name = "maxDurationMs"]
+    pub(super) max_duration_ms: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize, Hash, Clone)]

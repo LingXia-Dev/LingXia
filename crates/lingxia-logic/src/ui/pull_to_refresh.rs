@@ -3,7 +3,7 @@ use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use lxapp::{LxApp, PageInstance};
 use rong::JSResult;
 
-/// Show `page`'s refresh indicator and run its `onPullDownRefresh`, as a
+/// Show `page`'s refresh indicator and run its `onRefresh`, as a
 /// pull would. Throws `E_INVALID_STATE` (`data.bizCode === 4004`) unless the
 /// page config sets `enablePullDownRefresh: true`.
 pub(super) fn start(app: &LxApp, page: &PageInstance) -> JSResult<()> {

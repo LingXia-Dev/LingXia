@@ -284,7 +284,7 @@
   }
 
   const PAGE_BRAND = Symbol.for("lingxia.page");
-  const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onPullDownRefresh"];
+  const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onRefresh"];
   const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "actions", "opens"]);
 
   // `definePage({ data, setup(page) { return { onLoad, actions } } })`, or
@@ -461,8 +461,8 @@
     }
     // The indicator goes away when the hook settles; a page without one
     // still gets it put away.
-    const userRefresh = config.onPullDownRefresh;
-    config.onPullDownRefresh = function () {
+    const userRefresh = config.onRefresh;
+    config.onRefresh = function () {
       const stop = () => {
         try {
           native().stopRefresh(pageInstanceId);

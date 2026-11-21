@@ -24,7 +24,7 @@ struct ParsedUploadOptions {
     file_path: String,
     method: UploadMethod,
     body_mode: UploadBodyMode,
-    /// `None` when the lxapp left `name` unset, so a raw body can reject an
+    /// `None` when the lxapp left `field` unset, so a raw body can reject an
     /// explicit multipart field name instead of silently dropping it.
     field_name: Option<String>,
     headers: Vec<(String, String)>,
@@ -291,21 +291,21 @@ fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUpload
         ));
     };
     let body_mode = read_upload_body_mode_field(&obj)?;
-    let field_name = read_optional_string_field(&obj, "name", "network.upload")?;
-    let form_data = read_string_map(&obj, "formData", "network.upload")?;
+    let field_name = read_optional_string_field(&obj, "field", "network.upload")?;
+    let form_data = read_string_map(&obj, "fields", "network.upload")?;
     let file_name = read_optional_string_field(&obj, "fileName", "network.upload")?;
     // A raw body has nowhere to carry multipart framing, so reject it rather
-    // than dropping fields the lxapp believes it sent. An empty formData
+    // than dropping fields the lxapp believes it sent. An empty fields
     // object is still an explicit multipart field and is rejected too.
     if body_mode == UploadBodyMode::Raw {
-        if get_present_property(&obj, "formData").is_some() {
+        if get_present_property(&obj, "fields").is_some() {
             return Err(js_invalid_parameter_error(
-                "network.upload formData requires bodyMode \"multipart\"",
+                "network.upload fields requires bodyMode \"multipart\"",
             ));
         }
         if field_name.is_some() {
             return Err(js_invalid_parameter_error(
-                "network.upload name requires bodyMode \"multipart\"",
+                "network.upload field requires bodyMode \"multipart\"",
             ));
         }
         if file_name.is_some() {
@@ -314,9 +314,9 @@ fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUpload
             ));
         }
     } else {
-        if get_present_property(&obj, "formData").is_some() && form_data.is_empty() {
+        if get_present_property(&obj, "fields").is_some() && form_data.is_empty() {
             return Err(js_invalid_parameter_error(
-                "network.upload formData must include at least one field",
+                "network.upload fields must include at least one field",
             ));
         }
         if file_name
@@ -330,7 +330,7 @@ fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUpload
     }
     Ok(ParsedUploadOptions {
         url,
-        file_path: read_required_string_field(&obj, "file", "network.upload")?,
+        file_path: read_required_string_field(&obj, "path", "network.upload")?,
         method: read_upload_method_field(&obj)?,
         body_mode,
         field_name,
@@ -338,7 +338,7 @@ fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUpload
         form_data,
         timeout_ms: read_optional_timeout_field(&obj)?,
         file_name,
-        mime_type: read_optional_string_field(&obj, "mimeType", "network.upload")?,
+        mime_type: read_optional_string_field(&obj, "type", "network.upload")?,
         signal: read_optional_signal(&obj)?,
     })
 }
@@ -387,7 +387,7 @@ fn resolve_upload_path(
     let resolved = if trimmed.starts_with("lx://") || path.is_absolute() || trimmed.contains(':') {
         resolve_accessible_path(trimmed)?
     } else {
-        let relative = normalize_relative_path(trimmed, "network.upload", "file")?;
+        let relative = normalize_relative_path(trimmed, "network.upload", "path")?;
         user_data_dir.join(relative)
     };
 
@@ -826,7 +826,7 @@ mod tests {
     /// Options carrying the file every upload needs, plus `extra`.
     fn options(ctx: &rong::JSContext, extra: &[(&str, JSValue)]) -> JSValue {
         let obj = JSObject::new(ctx);
-        obj.set("file", "clip.mp4").unwrap();
+        obj.set("path", "clip.mp4").unwrap();
         for (key, value) in extra {
             obj.set(*key, value.clone()).unwrap();
         }
@@ -915,28 +915,25 @@ mod tests {
         assert!(
             parse_upload_options(
                 url(&ctx),
-                options(
-                    &ctx,
-                    &[("bodyMode", raw()), ("formData", form_data.clone())]
-                )
+                options(&ctx, &[("bodyMode", raw()), ("fields", form_data.clone())])
             )
             .is_err(),
-            "formData has nowhere to go in an unframed body"
+            "fields has nowhere to go in an unframed body"
         );
 
         let name = string(&ctx, "asset");
         assert!(
             parse_upload_options(
                 url(&ctx),
-                options(&ctx, &[("bodyMode", raw()), ("name", name)])
+                options(&ctx, &[("bodyMode", raw()), ("field", name)])
             )
             .is_err(),
             "a field name has nowhere to go in an unframed body"
         );
 
-        // Populated formData stays legal under the multipart default, and raw
+        // Populated fields stays legal under the multipart default, and raw
         // alone is fine.
-        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("formData", form_data)])).is_ok());
+        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("fields", form_data)])).is_ok());
         let parsed =
             parse_upload_options(url(&ctx), options(&ctx, &[("bodyMode", raw())])).unwrap();
         assert_eq!(parsed.body_mode, UploadBodyMode::Raw);
@@ -948,7 +945,7 @@ mod tests {
         let (_runtime, ctx) = js_context();
 
         // `{}` and a map of nulls both mean "no fields". Passing the key is
-        // still an explicit formData value, so both modes reject it.
+        // still an explicit fields value, so both modes reject it.
         let empty = JSObject::new(&ctx);
         let empty = JSValue::from_raw(&ctx, empty.into_value());
         let nulls = JSObject::new(&ctx);
@@ -960,12 +957,12 @@ mod tests {
             assert!(
                 parse_upload_options(
                     url(&ctx),
-                    options(&ctx, &[("bodyMode", raw), ("formData", form_data.clone())])
+                    options(&ctx, &[("bodyMode", raw), ("fields", form_data.clone())])
                 )
                 .is_err()
             );
             assert!(
-                parse_upload_options(url(&ctx), options(&ctx, &[("formData", form_data)])).is_err()
+                parse_upload_options(url(&ctx), options(&ctx, &[("fields", form_data)])).is_err()
             );
         }
     }

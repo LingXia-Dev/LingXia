@@ -104,9 +104,9 @@ test('save an image and a video into the photo library', {
   const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
     const png = await lx.network.download(base + '/media/sample.png').result;
     const mp4 = await lx.network.download(base + '/media/sample.mp4').result;
-    await lx.media.saveToLibrary(png.uri);
-    await lx.media.saveToLibrary(mp4.uri);
-    return { image: png.sizeBytes, video: mp4.sizeBytes };
+    await lx.media.saveToLibrary(png.path);
+    await lx.media.saveToLibrary(mp4.path);
+    return { image: png.size, video: mp4.size };
   }, httpBase ?? '');
   expect(saved.image).toBeGreaterThan(0);
   expect(saved.video).toBeGreaterThan(0);

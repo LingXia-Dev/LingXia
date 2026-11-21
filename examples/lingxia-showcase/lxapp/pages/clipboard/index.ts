@@ -64,7 +64,8 @@ export default definePage({
             await helpers.showTypesAfterRead();
             return;
           }
-          if (result.status === 'empty') {
+          const { text } = result;
+          if (text === undefined) {
             page.update(d => {
               d.statusText = "No text on clipboard";
               d.readTextValue = "";
@@ -73,8 +74,8 @@ export default definePage({
             return;
           }
           page.update(d => {
-            d.statusText = result.text === "" ? "Found empty string" : "Read text";
-            d.readTextValue = result.text;
+            d.statusText = text === "" ? "Found empty string" : "Read text";
+            d.readTextValue = text;
           });
           await helpers.peekTypes();
         } catch (error) {
@@ -98,7 +99,7 @@ export default definePage({
           const fixture = `${root}/sample.png`;
           await lx.fs.mkdir(root, { recursive: true });
           await lx.fs.write(fixture, { data: SAMPLE_PNG, encoding: "base64", overwrite: true });
-          await lx.clipboard.write({ type: "image", filePath: fixture });
+          await lx.clipboard.write({ type: "image", path: fixture });
           await helpers.peekTypes();
           page.update(d => { d.statusText = "Wrote sample PNG"; });
         } catch (error) {
@@ -108,7 +109,7 @@ export default definePage({
       async chooseAndWriteImage() {
         try {
           const picked = await lx.pick.media({
-            count: 1,
+            limit: 1,
             mediaType: ["image"],
             sourceType: ["album", "camera"],
           });
@@ -116,8 +117,7 @@ export default definePage({
             page.update(d => { d.statusText = "Image picker canceled"; });
             return;
           }
-          const filePath = mediaPath(picked.files[0]);
-          await lx.clipboard.write({ type: "image", filePath });
+          await lx.clipboard.write({ type: "image", path: mediaPath(picked.files[0]) });
           await helpers.peekTypes();
           page.update(d => { d.statusText = "Wrote chosen image"; });
         } catch (error) {
@@ -132,7 +132,7 @@ export default definePage({
             await helpers.showTypesAfterRead();
             return;
           }
-          if (result.status === 'empty') {
+          if (result.items.length === 0) {
             page.update(d => {
               d.statusText = "Clipboard empty";
               d.readTextValue = "";
@@ -146,7 +146,7 @@ export default definePage({
           page.update(d => {
             d.statusText = `Read ${result.items.map((item) => item.type).join(", ")}`;
             d.readTextValue = textItem?.type === "text" ? textItem.text : "";
-            d.imagePath = imageItem?.type === "image" ? imageItem.filePath : "";
+            d.imagePath = imageItem?.type === "image" ? imageItem.path : "";
           });
           await helpers.peekTypes();
         } catch (error) {

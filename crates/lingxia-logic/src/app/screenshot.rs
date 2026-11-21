@@ -24,7 +24,7 @@ struct JSAppScreenshotOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSAppScreenshotResult {
-    #[js_name = "uri"]
+    #[js_name = "path"]
     temp_file_path: String,
     width: Option<u32>,
     height: Option<u32>,

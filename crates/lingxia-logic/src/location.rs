@@ -78,11 +78,9 @@ fn transform_lng(lng: f64, lat: f64) -> f64 {
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSLocationOptions {
-    #[js_name = "coordinateSystem"]
+    #[js_name = "coordinates"]
     coordinate_type: Option<String>,
-    altitude: Option<bool>,
-    #[js_name = "isHighAccuracy"]
-    is_high_accuracy: Option<bool>,
+    accuracy: Option<String>,
     #[js_name = "timeoutMs"]
     high_accuracy_expire_time: Option<u32>,
 }
@@ -137,7 +135,7 @@ fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
     })
 }
 
-/// The device's position, in WGS-84 unless `coordinateSystem` says otherwise.
+/// The device's position, in WGS-84 unless `coordinates` says otherwise.
 /// Rejects when permission is denied, location is off, or no fix arrives
 /// within `timeoutMs`.
 ///
@@ -153,20 +151,26 @@ async fn get_location(
         .unwrap_or("wgs84");
     if requested_type != "wgs84" && requested_type != "gcj02" {
         return Err(js_invalid_parameter_error(format!(
-            "device.location invalid coordinateSystem: {}",
+            "device.location invalid coordinates: {}",
             requested_type
         )));
     }
 
-    // Create location request config from options
-    let config = if let Some(opts) = options.as_ref() {
-        LocationRequestConfig {
-            is_high_accuracy: opts.is_high_accuracy.unwrap_or(false),
-            high_accuracy_expire_time: opts.high_accuracy_expire_time,
-            include_altitude: opts.altitude.unwrap_or(false),
-        }
-    } else {
-        LocationRequestConfig::default()
+    let accuracy = options
+        .as_ref()
+        .and_then(|opts| opts.accuracy.as_deref())
+        .unwrap_or("balanced");
+    if accuracy != "balanced" && accuracy != "high" {
+        return Err(js_invalid_parameter_error(format!(
+            "device.location accuracy must be 'balanced' or 'high': {accuracy}"
+        )));
+    }
+    let config = LocationRequestConfig {
+        is_high_accuracy: accuracy == "high",
+        high_accuracy_expire_time: options
+            .as_ref()
+            .and_then(|opts| opts.high_accuracy_expire_time),
+        include_altitude: true,
     };
 
     match lxapp.runtime.request_location(config).await {

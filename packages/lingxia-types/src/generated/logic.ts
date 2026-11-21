@@ -542,7 +542,7 @@ export type AppCacheApi = {
 
 export type AppConfig = {
     /** Runs once when the lxapp starts, before its first page. */
-    onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
+    onLaunch?: () => void | Promise<void>;
     /**
      * An App Link from outside, cold (after `onLaunch` settles) or warm
      * (before `onShow`). Turn its untrusted strings into a target here; the
@@ -555,7 +555,7 @@ export type AppConfig = {
     /** Runs each time the lxapp leaves the front. */
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     /** Runs after the person takes a screenshot while the lxapp is in front. */
-    onUserCaptureScreen?: () => void | Promise<void>;
+    onScreenshot?: () => void | Promise<void>;
 };
 
 /**
@@ -590,43 +590,16 @@ export type AppDownloadOptions = DownloadOptionsBase & {
 };
 
 export type AppDownloadResult = {
-    uri: AppDownloadFilePath;
+    path: AppDownloadFilePath;
     storage: 'temp';
-    mimeType?: string;
-    sizeBytes: number;
+    type?: string;
+    size: number;
 } | {
-    uri: AppDownloadFilePath;
+    path: AppDownloadFilePath;
     storage: 'userdata';
-    mimeType?: string;
-    sizeBytes: number;
+    type?: string;
+    size: number;
 };
-
-export type AppLaunchOptions = {
-    /** The page the lxapp opens at. */
-    path?: string;
-    /** That page's query. */
-    query?: Record<string, string>;
-    /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
-    scene?: AppLaunchScene;
-    /**
-     * Inbound link exactly as the OS delivered it, fragment included. Present
-     * only with `scene: 8003`. Untrusted: route from an allowlist of paths.
-     */
-    url?: string;
-    /** The lxapp that opened this one, when one did. */
-    referrerInfo?: {
-        /** Its id. */
-        appId?: string;
-        /** What it passed along. */
-        extraData?: Record<string, unknown>;
-    };
-};
-
-/**
- * Launch scene. `8003` is AppLink (cold: `onLaunch`; warm: `onShow`).
- * Other numeric scenes stay valid; completion offers `8003`.
- */
-export type AppLaunchScene = 8003 | (number & {});
 
 export type AppLifecycleEventArgs = {
     /** `host` when the whole app moved; `lxapp` when only this lxapp did. */
@@ -637,14 +610,10 @@ export type AppLifecycleEventArgs = {
     path?: string;
     /** That page's query. */
     query?: Record<string, string>;
-    /** `8003` = AppLink. */
-    scene?: AppLaunchScene;
-    /** Inbound link, present only with `scene: 8003`. */
-    url?: string;
 };
 
 export type AppLinkTarget = {
-    /** An `https://` URL that is also an inbound App Link (`scene === 8003`). */
+    /** An `https://` URL that is also an inbound App Link. */
     appLink: string;
     page?: never;
     tab?: never;
@@ -661,8 +630,8 @@ export type AppScreenshotOptions = {
 };
 
 export type AppScreenshotResult = {
-    /** `lx://` URI of the captured PNG in the lxapp temp directory. */
-    uri: string;
+    /** `lx://` path of the captured PNG in the lxapp temp directory. */
+    path: string;
     /** Image width in pixels, when the runtime could read it from the PNG. */
     width?: number;
     /** Image height in pixels, when the runtime could read it from the PNG. */
@@ -787,15 +756,15 @@ export type BannerApi = {
         /** First line. */
         title: string;
         /** Text below the title. */
-        body?: string;
+        message?: string;
         /** Buttons; with any, the banner waits for a choice instead of closing by itself. */
         actions?: Array<{
             /** What `action` reports when this button is picked. */
             id: string;
             /** Button text. */
             label: string;
-            /** Emphasis: `primary` for the expected choice, `destructive` for a dangerous one. */
-            style?: 'default' | 'primary' | 'destructive';
+            /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
+            tone?: 'default' | 'primary' | 'danger';
             /**
              * Where picking this action goes, as a notification target, checked
              * before the banner shows; absent, picking it only resolves `show`.
@@ -869,7 +838,7 @@ export type ClipboardItem = {
      * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
      * copy it with `lx.fs` if you need to keep it.
      */
-    filePath: string;
+    path: string;
 };
 
 export type ClipboardReadOptions = {
@@ -880,31 +849,25 @@ export type ClipboardReadOptions = {
 /**
  * Result of `lx.clipboard.read`. Omit `type` to receive every
  * representation this host can surface. A requested type that is
- * absent is `{ status: 'empty' }`, not an error.
+ * absent leaves `items` empty, not an error.
  */
 export type ClipboardReadResult = {
-    /** The clipboard holds nothing of the requested type. */
-    status: 'empty';
-} | {
-    /** Something was read. */
+    /** The clipboard was read. */
     status: 'ok';
-    /** One entry per representation. */
+    /** One entry per representation; empty when nothing matched. */
     items: ClipboardItem[];
 } | CanceledResult;
 
 /**
  * Result of `lx.clipboard.readText`. Branch on `status`.
  * A copied empty string is `{ status: 'ok', text: '' }`;
- * an image-only clipboard is `{ status: 'empty' }`.
+ * an image-only clipboard has no `text`.
  */
 export type ClipboardTextResult = {
-    /** The clipboard holds no text. */
-    status: 'empty';
-} | {
-    /** Text was read. */
+    /** The clipboard was read. */
     status: 'ok';
-    /** The text. */
-    text: string;
+    /** The text; absent when the clipboard holds none. */
+    text?: string;
 } | CanceledResult;
 
 /** Representations the runtime can round-trip. Closed union. */
@@ -927,7 +890,7 @@ export type ClipboardWriteItem = {
      * rules as `lx.share`. Rejects
      * `E_INVALID_ARG` when the file is not a decodable image.
      */
-    filePath: string;
+    path: string;
 };
 
 /** How `lx.media.compressImage` re-encodes the image. */
@@ -1125,13 +1088,13 @@ export type DownloadsDownloadOptions = DownloadOptionsBase & {
 
 export type DownloadsDownloadResult = {
     /** Where the file landed in the user's Downloads folder. */
-    uri: SystemDownloadsPath;
+    path: SystemDownloadsPath;
     /** The Downloads folder. */
     storage: 'downloads';
     /** MIME type from the response, when it named one. */
-    mimeType?: string;
+    type?: string;
     /** File size in bytes. */
-    sizeBytes: number;
+    size: number;
 };
 
 /**
@@ -1225,11 +1188,12 @@ export type GetLocationOptions = {
      * Coordinate system of the result.
      * @default 'wgs84'
      */
-    coordinateSystem?: 'wgs84' | 'gcj02';
-    /** Include `altitude` in the result. */
-    altitude?: boolean;
-    /** Ask for a precise fix; slower and costs more power. */
-    isHighAccuracy?: boolean;
+    coordinates?: 'wgs84' | 'gcj02';
+    /**
+     * `high` asks for a precise fix; slower and costs more power.
+     * @default 'balanced'
+     */
+    accuracy?: 'balanced' | 'high';
     /**
      * How long to wait for a fix before failing, in milliseconds.
      * @default 10000
@@ -1256,27 +1220,21 @@ export type HostAppEnv = 'dev' | 'prod';
 
 export type HostAppUpdateApplyStage = 'download' | 'install';
 
-export type HostAppUpdateCheckResult = {
-    /** No newer version is published. */
-    hasUpdate: false;
-    update?: never;
-} | {
-    /** A newer version is published. */
-    hasUpdate: true;
-    /** The newer version. */
-    update: HostAppUpdateInfo;
-};
-
+/** A newer published host app version. */
 export type HostAppUpdateInfo = {
+    /** The newer version. */
     version: string;
+    /** Package size in bytes, when the feed names it. */
     size?: number;
+    /** Release notes, one entry per line. */
     releaseNotes?: string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
-     * `direct` downloads and self-installs. `lx.supports('app.selfUpdate')`
-     * is true only for `direct`.
+     * `direct` downloads and self-installs, the only case where
+     * self-update is supported.
+     * @supports app.selfUpdate
      */
-    channel: 'direct' | 'store';
+    via: 'direct' | 'store';
     /**
      * Apply this checked update.
      *
@@ -1295,7 +1253,7 @@ export type HostAppUpdateInfo = {
 };
 
 export type HostAppUpdateResult = {
-    /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
+    /** `storeOpened` via `store`: the listing opened, nothing was installed. */
     state: 'installRequested' | 'storeOpened';
 };
 
@@ -1453,7 +1411,7 @@ export type NotificationApi = {
         /** First line. */
         title: string;
         /** Text below the title. */
-        body?: string;
+        message?: string;
         /**
          * Where a tap goes; absent brings the product forward, nothing else.
          * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
@@ -1478,7 +1436,7 @@ export type NotificationApi = {
          * `suppressed`: an immediate post while the product is frontmost; nothing
          * posted, no permission needed.
          */
-        status: 'posted' | 'scheduled' | 'suppressed';
+        delivery: 'posted' | 'scheduled' | 'suppressed';
     }>;
     /**
      * Remove what is pending or delivered under `id`, and retire its tap
@@ -1519,7 +1477,7 @@ export type OpenAppOptions = {
      */
     channel?: LxAppReleaseType;
     /** Install this version first if it is newer than the installed one; older versions are refused. */
-    targetVersion?: string;
+    version?: string;
 };
 
 /**
@@ -1673,6 +1631,27 @@ export type PageMessagePort = {
     onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 };
 
+/** A page `<video>`'s controller, from `page.video(name)`. */
+export type PagePlayer = {
+    play(): Promise<void>;
+    pause(): Promise<void>;
+    /** Pauses and returns to the start. */
+    stop(): Promise<void>;
+    /** Jump to a position, in milliseconds from the start. */
+    seek(positionMs: number): Promise<void>;
+    requestFullscreen(): Promise<void>;
+    exitFullscreen(): Promise<void>;
+    setStreamSource(options: StreamSourceOptions): Promise<void>;
+    /** A GPU page player's quality: `"auto"` or one of its source labels. */
+    setQuality(quality: string): Promise<void>;
+    /** A GPU page player's playback rate. */
+    setPlaybackRate(rate: number): Promise<void>;
+    /** Mutes or unmutes a GPU page player. */
+    setMuted(muted: boolean): Promise<void>;
+    /** A GPU page player's volume. */
+    setVolume(volume: number): Promise<void>;
+};
+
 export type PageQuery = Record<string, PageQueryValue>;
 
 /**
@@ -1777,7 +1756,7 @@ export type PickMediaOptions = {
      * (desktop), files beyond it are dropped from the result.
      * @default 9
      */
-    count?: number;
+    limit?: number;
     /**
      * Kinds to offer. The camera captures one kind, so with `sourceType`
      * camera name a single entry (macOS excepted).
@@ -1795,8 +1774,8 @@ export type PickMediaOptions = {
      * @default 'back'
      */
     camera?: 'back' | 'front';
-    /** Longest video the camera records, in seconds. */
-    maxDurationSeconds?: number;
+    /** Longest video the camera records, in milliseconds; rounded up to whole seconds. */
+    maxDurationMs?: number;
 };
 
 /**
@@ -1848,21 +1827,13 @@ export type PreviewMediaChange = {
 export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | 'error';
 
 /**
- * A media session. `presented` distinguishes a rendered first frame from
- * an early close, cancellation, or failure. `completed` reports closure;
+ * A media session. `presented` tells a rendered first frame from a
+ * session that ended before one. `completed` reports closure;
  * native playback errors may report reason `error`, while request failures reject.
  */
 export type PreviewMediaHandle = {
-    /** Settles once the first item is on screen, or with why it never was. */
-    readonly presented: Promise<{
-        /** The first item is on screen. */
-        status: 'presented';
-    } | {
-        /** It never showed. */
-        status: 'notPresented';
-        /** Dismissed first, failed to load, or closed by `close()`. */
-        reason: 'canceled' | 'failed' | 'closed';
-    }>;
+    /** `true` once the first item is on screen; `false` when the session ended first. */
+    readonly presented: Promise<boolean>;
     /** The item on screen now. */
     readonly current: PreviewMediaChange;
     /** Fires when the shown item changes; `current` holds the latest. Returns a function that removes the listener. */
@@ -2011,6 +1982,13 @@ export type SetBadgeOptions = {
      * @default 'auto'
      */
     surface?: 'auto' | 'appIcon' | 'tray';
+};
+
+export type SetBadgeResult = {
+    /** Whether any surface now shows the badge. */
+    painted: boolean;
+    /** The platform has no surface of the requested kind. Absent when one exists but declined, such as a hidden tray item. */
+    reason?: 'no_surface';
 };
 
 /** Share images, PDFs, or other files. */
@@ -2247,15 +2225,19 @@ export type Storage = {
 
 /** Current persistent-storage usage and configured limits. */
 export type StorageInfo = {
-    currentSize: number;
-    limitSize: number;
+    /** Stored data, in bytes. */
+    usedBytes: number;
+    /** The configured ceiling, in bytes. */
+    limitBytes: number;
+    /** Number of stored keys; `list()` names them. */
     keyCount: number;
 };
 
 export type StreamSourceOptions = {
     provider: string;
     isLive: boolean;
-    durationSeconds?: number;
+    /** Length in milliseconds; ignored when `isLive`. */
+    durationMs?: number;
     params?: Record<string, unknown>;
 };
 
@@ -2472,10 +2454,8 @@ export type SystemDownloadsPath = string & {
 export type TabBarApi = globalThis.TabBarApi;
 
 export type TabBarItemPatch = {
-    /** Position of the item to change, from 0. */
-    index: number;
-    /** Label text. */
-    text?: string | null;
+    /** Label text; `null` restores the declared one. */
+    label?: string | null;
     /**
      * Package-relative path, or an `lx://temp` / `lx://usercache` /
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
@@ -2485,25 +2465,27 @@ export type TabBarItemPatch = {
      * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
      * colour so a brand mark is not flattened into a solid square.
      */
-    iconPath?: string | null;
-    /** Text in a badge on the item; `null` removes it. */
-    badge?: string | null;
-    /** Show a dot without text. */
-    redDot?: boolean;
+    icon?: string | null;
+    /** Text in a badge, `true` for a dot without text, `null` to remove either. */
+    badge?: string | true | null;
 };
 
 /**
- * Patch for `lx.app.tabBar.update()`. Items, badges, red dots, and
+ * Patch for `lx.app.tabBar.update()`. Items, badges, and
  * visibility only — a `style` field is rejected. Colors stay in
  * static `lxapp.json` `tabBar.style`. `backgroundColor` is
  * mobile-only; the desktop sidebar follows the host
  * `lingxia.yaml` theme.
+ * @example
+ * ```ts
+ * await lx.app.tabBar.update({ items: { home: { badge: '3' } } });
+ * ```
  */
 export type TabBarPatch = {
     /** Show or hide the bar. */
     visibility?: TabBarVisibilityPreference;
-    /** Per-item changes. */
-    items?: readonly TabBarItemPatch[];
+    /** Changes per tab, keyed by the tab's page name. */
+    items?: { readonly [K in TabName]?: TabBarItemPatch };
 };
 
 export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';
@@ -2806,23 +2788,23 @@ export type UpdateReadyInfo = {
  * `bodyMode` picks the body shape, and with it which of the other
  * fields apply:
  * - `multipart` (default) wraps the file in a `multipart/form-data`
- * envelope beside the `formData` text fields — what an ordinary form
- * endpoint parses. `name`, `fileName`, and `formData` describe that
- * envelope. `formData`, when present, must contain at least one field.
+ * envelope beside the `fields` text fields — what an ordinary form
+ * endpoint parses. `field`, `fileName`, and `fields` describe that
+ * envelope. `fields`, when present, must contain at least one entry.
  * - `raw` sends the file bytes as the entire body. Presigned
  * object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
  * envelope would be stored verbatim as the object's contents,
- * boundary lines and all. `name`, `formData`, and `fileName` are
+ * boundary lines and all. `field`, `fields`, and `fileName` are
  * then rejected rather than silently dropped.
  * @example
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
  * // so both have to match whatever the signer used.
  * const task = lx.network.upload(presignedUrl, {
- * file: 'lx://media/clip.mp4',
+ * path: 'lx://media/clip.mp4',
  * method: 'PUT',
  * bodyMode: 'raw',
- * mimeType: 'video/mp4',
+ * type: 'video/mp4',
  * });
  * for await (const { fraction } of task) render(fraction);
  * const { ok, status } = await task.result;
@@ -2830,7 +2812,7 @@ export type UpdateReadyInfo = {
  */
 export type UploadOptions = {
     /** The file to send: an `lx://` path from a LingXia API, or a path relative to `lx://userdata`. */
-    file: string;
+    path: string;
     /**
      * HTTP method.
      * A presigned URL is signed for exactly one method, usually `PUT`.
@@ -2841,7 +2823,7 @@ export type UploadOptions = {
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
      * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
-     * wins over `mimeType`; a multipart body owns the header, because it
+     * wins over `type`; a multipart body owns the header, because it
      * carries the part boundary.
      */
     headers?: Record<string, string>;
@@ -2852,7 +2834,7 @@ export type UploadOptions = {
      * request's `Content-Type` under `raw`.
      * @default 'application/octet-stream' under `raw`
      */
-    mimeType?: string;
+    type?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
 } & (
@@ -2866,17 +2848,17 @@ export type UploadOptions = {
      * Name of the multipart part carrying the file.
      * @default 'file'
      */
-    name?: string;
+    field?: string;
     /** Text fields sent alongside the file. Must be non-empty when set. */
-    formData?: Record<string, string>;
+    fields?: Record<string, string>;
     /** Filename announced for the file part. Defaults to the file's own name. */
     fileName?: string;
 }
     | {
     /** Send the file bytes as the whole body. Multipart fields are rejected. */
     bodyMode: 'raw';
-    name?: never;
-    formData?: never;
+    field?: never;
+    fields?: never;
     fileName?: never;
 }
 );
@@ -2909,24 +2891,6 @@ export type UrlTarget = {
 };
 
 export type VideoCompressQuality = 'low' | 'medium' | 'high';
-
-export type VideoContext = {
-    play(): Promise<void>;
-    pause(): Promise<void>;
-    stop(): Promise<void>;
-    seek(positionSeconds: number): Promise<void>;
-    requestFullScreen(): Promise<void>;
-    exitFullScreen(): Promise<void>;
-    setStreamSource(options: StreamSourceOptions): Promise<void>;
-    /** A GPU page player's quality: `"auto"` or one of its source labels. */
-    setQuality(quality: string): Promise<void>;
-    /** A GPU page player's playback rate. */
-    setPlaybackRate(rate: number): Promise<void>;
-    /** Mutes or unmutes a GPU page player. */
-    setMuted(muted: boolean): Promise<void>;
-    /** A GPU page player's volume. */
-    setVolume(volume: number): Promise<void>;
-};
 
 /**
  * Local video metadata for client-side upload preflight and presentation.
@@ -3121,11 +3085,11 @@ export interface FileStats {
   /** Size in bytes. */
   size: number;
   /** Epoch milliseconds; absent where the file system does not record it. */
-  lastModifiedTime?: number;
+  modifiedAt?: number;
   /** Epoch milliseconds; absent where the file system does not record it. */
-  lastAccessedTime?: number;
+  accessedAt?: number;
   /** Epoch milliseconds; absent where the file system does not record it. */
-  createTime?: number;
+  createdAt?: number;
 }
 
 /**
@@ -3262,9 +3226,9 @@ declare global {
      */
     writeText(text: string): Promise<void>;
     /**
-     * Read the clipboard's text: `empty` when it holds none, `canceled` when the
+     * Read the clipboard's text: `text` is absent when it holds none; `canceled` when the
      * person dismisses the OS paste prompt (iOS 16+, macOS 15.4+).
-     * @platform Android: an unfocused app reads `empty`, so read in response to a person's action.
+     * @platform Android: an unfocused app reads no text, so read in response to a person's action.
      * @throws {E_PERMISSION_DENIED} macOS set to never allow, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
      */
     readText(): Promise<ClipboardTextResult>;
@@ -3276,8 +3240,8 @@ declare global {
     /**
      * Read the clipboard.
      * Omit `type` to receive every representation this host can surface.
-     * Pass `type` to request one; if that representation is absent, the
-     * completed result is `{ status: 'empty' }` rather than a mismatch error.
+     * Pass `type` to request one; if that representation is absent, `items`
+     * is empty rather than a mismatch error.
      * Images arrive as a temporary PNG under `lx://temp`. Dismissal and
      * permission behave as in `readText`.
      */
@@ -3313,7 +3277,7 @@ declare global {
     /** Subscribes to key-up events and returns the unsubscribe fn. */
     onKeyUp(callback: KeyEventCallback, options?: SignalOptions): () => void;
     /**
-     * The device's position, in WGS-84 unless `coordinateSystem` says otherwise.
+     * The device's position, in WGS-84 unless `coordinates` says otherwise.
      * Rejects when permission is denied, location is off, or no fix arrives
      * within `timeoutMs`.
      * @permission location, asked the first time.
@@ -3392,15 +3356,15 @@ declare global {
      */
     toggleServiceEnv(): HostServiceEnvSwitchResult;
     /**
-     * Query whether the host app has an update.
+     * The newer published host app version, or `null` when there is none.
      * This host-level capability is restricted to the Control app. A successful
      * check does **not** take over the built-in auto-flow — that is
      * `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
      * check claims nothing. Incompatible updates are hidden as
-     * `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
+     * `null`. Store-channel hosts still surface a newer feed version;
      * `apply()` opens the store listing instead of downloading.
      */
-    checkUpdate(): Promise<HostAppUpdateCheckResult>;
+    checkUpdate(): Promise<HostAppUpdateInfo | null>;
     /**
      * Claim the process-lifetime custom host-update flow.
      * Irreversible: the built-in auto-flow will not prompt or download again,
@@ -3420,17 +3384,17 @@ declare global {
     exit(): void;
     /**
      * Mark the product in system chrome, such as with an unread count; `null` or
-     * `''` clears it. Control app only. Resolves whether anything was painted, and
-     * `false` where there is no such chrome, so portable code calls it unconditionally.
-     * @platform macOS: the dock and the menu-bar item; `false` while the tray item is hidden or notifications are denied.
+     * `''` clears it. Control app only. Resolves whether anything was painted;
+     * `reason: 'no_surface'` where there is no such chrome, so portable code calls it unconditionally.
+     * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
      * @platform Windows: the taskbar and the notification-area item.
      * @platform iOS: the home-screen icon, numbers only; needs notification permission.
      * @platform HarmonyOS: the home-screen icon.
-     * @platform Android: resolves `false`.
+     * @platform Android: resolves `{ painted: false, reason: 'no_surface' }`.
      * @throws {E_INVALID_ARG} Text where the platform paints numbers only.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
-    setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
+    setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<SetBadgeResult>;
     readonly tray: TrayApi;
   }
 }
@@ -3728,10 +3692,10 @@ declare global {
 declare global {
   interface TabBarApi {
     /**
-     * Patch this lxapp's tab bar: items, badges, red dots and visibility. Unset
+     * Patch this lxapp's tab bar: items by tab name, badges and visibility. Unset
      * fields stay; colors stay in `lxapp.json` `tabBar.style`.
      * @platform macOS, Windows: the bar is the sidebar, which follows the host theme; `backgroundColor` does not paint it, and a dark host ignores every style key.
-     * @throws {E_INVALID_ARG} A `style` field, or an unknown one.
+     * @throws {E_INVALID_ARG} A `style` field, an unknown one, or a name that is not a tab.
      */
     update(patch: TabBarPatch): Promise<void>;
   }

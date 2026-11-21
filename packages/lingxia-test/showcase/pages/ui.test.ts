@@ -88,13 +88,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     await app.logic.eval(async ({ lx }) => {
       await lx.app.tabBar.update({
         visibility: 'auto',
-        items: [{
-          index: 1,
-          text: null,
-          iconPath: null,
-          badge: null,
-          redDot: false,
-        }],
+        items: { api: { label: null, icon: null, badge: null } },
       });
     });
     await app.nav.reset({ page: 'home' });
@@ -123,12 +117,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   await app.logic.eval(async ({ lx }) => {
     await lx.app.tabBar.update({
-      items: [{
-        index: 1,
-        text: 'Automation',
-        iconPath: 'public/home.png',
-        badge: '7',
-      }],
+      items: { api: { label: 'Automation', icon: 'public/home.png', badge: '7' } },
     });
   });
   // The runtime resolves relative icon paths against the package directory
@@ -146,7 +135,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   const invalid: Caught = await app.logic.eval(async ({ lx }) => {
     try {
-      await lx.app.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });
+      await lx.app.tabBar.update({ visibility: 'hidden', items: { 'no-such-tab': { label: 'Invalid' } } });
         return { ok: true };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -159,7 +148,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
   await app.logic.eval(async ({ lx }) => {
     await lx.app.tabBar.update({
-      items: [{ index: 1, badge: null, redDot: true }],
+      items: { api: { badge: true } },
     });
   });
   await waitForTabBar(
@@ -200,7 +189,7 @@ test("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     { describe: 'home WebView to expose a non-zero viewport' });
   await app.logic.eval(async ({ lx }) => {
     await lx.app.tabBar.update({
-      items: [{ index: 1, badge: 'chrome' }],
+      items: { api: { badge: 'chrome' } },
     });
   });
   await waitForTabBar(

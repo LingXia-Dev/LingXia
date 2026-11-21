@@ -332,24 +332,22 @@ export const session = { userId: '', theme: 'light' as 'light' | 'dark' };
 import { session } from './shared/session';
 
 App({
-  async onLaunch(options) {
-    // Once per worker. AppLaunchOptions: path?, query?, scene?, url?, referrerInfo?
-    // Cold AppLink: scene 8003 + the original `url` here. referrerInfo when
-    // opened by another lxapp.
+  async onLaunch() {
+    // Once per worker. An App Link goes to `onOpen`, not here.
     const stored = await lx.storage().get<string>('userId');
     if (stored) session.userId = stored;
   },
 
   onShow(args) {
     // Foreground. source: host|lxapp. reason: foreground|background|screenshot|open|close|switch_back|switch_away.
-    // Warm AppLink: scene 8003 + url + query. Cold onShow is visibility only (8003 already went to onLaunch).
+    // A switch-back also carries the landing `path` and `query`.
   },
 
   onHide(args) {
     // The lxapp is being backgrounded. Same AppLifecycleEventArgs shape.
   },
 
-  onUserCaptureScreen() {
+  onScreenshot() {
     // The user took a screenshot while this lxapp was active.
   },
 });
@@ -439,13 +437,13 @@ URLs, `file:` URLs, `..`, and absolute paths are rejected. Download remote art
 first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
-const { uri } = await lx.network.download(brand.logoUrl).result;
+const { path } = await lx.network.download(brand.logoUrl).result;
 await lx.app.tabBar.update({
-  items: [{ index: 0, text: brand.shortName, iconPath: uri }],
+  items: { home: { label: brand.shortName, icon: path } },
 });
 ```
 
-`iconPath: null` restores the declared icon.
+Items are keyed by tab page name; `icon: null` restores the declared icon, `badge: true` is a dot.
 
 ### Navigating
 

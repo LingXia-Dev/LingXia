@@ -21,16 +21,16 @@ type Extends<A, B> = A extends B ? true : false;
 declare const lx: Lx;
 
 const rawUpload: UploadOptions = {
-  file: "lx://temp/clip.mp4",
+  path: "lx://temp/clip.mp4",
   bodyMode: "raw",
-  mimeType: "video/mp4",
+  type: "video/mp4",
 };
 
 const multipartUpload: UploadOptions = {
-  file: "lx://temp/clip.mp4",
-  name: "file",
+  path: "lx://temp/clip.mp4",
+  field: "file",
   fileName: "clip.mp4",
-  formData: { note: "spec" },
+  fields: { note: "spec" },
 };
 
 void rawUpload;
@@ -38,21 +38,21 @@ void multipartUpload;
 
 // @ts-expect-error raw upload cannot carry a multipart field name
 const rawWithName: UploadOptions = {
-  file: "lx://temp/clip.mp4",
+  path: "lx://temp/clip.mp4",
   bodyMode: "raw",
-  name: "file",
+  field: "file",
 };
 
-// @ts-expect-error raw upload cannot carry formData
+// @ts-expect-error raw upload cannot carry fields
 const rawWithForm: UploadOptions = {
-  file: "lx://temp/clip.mp4",
+  path: "lx://temp/clip.mp4",
   bodyMode: "raw",
-  formData: { note: "spec" },
+  fields: { note: "spec" },
 };
 
 // @ts-expect-error raw upload cannot carry fileName
 const rawWithFileName: UploadOptions = {
-  file: "lx://temp/clip.mp4",
+  path: "lx://temp/clip.mp4",
   bodyMode: "raw",
   fileName: "clip.mp4",
 };
@@ -81,22 +81,22 @@ async function downloadCorrelation(): Promise<void> {
       to: "lx://userdata/a.bin",
     })
     .result;
-  const filePath: AppDownloadFilePath = persisted.uri;
+  const filePath: AppDownloadFilePath = persisted.path;
   void filePath;
   const persistedResult: AppPersistedDownloadResult = persisted;
   void persistedResult;
   type PersistedIsDurable = Assert<typeof persisted extends { storage: 'userdata' } ? true : false>;
 
   const temporary = await lx.network.download("https://example.com/a.bin").result;
-  const uri: string = temporary.uri;
-  void uri;
+  const path: string = temporary.path;
+  void path;
   const tempResult: AppTempDownloadResult = temporary;
   void tempResult;
   type TemporaryIsEphemeral = Assert<typeof temporary extends { storage: 'temp' } ? true : false>;
 }
 
 function transferShapes(): void {
-  lx.network.upload("https://example.com/put", { file: "lx://temp/clip.mp4" });
+  lx.network.upload("https://example.com/put", { path: "lx://temp/clip.mp4" });
   const downloads: DownloadTask<DownloadsDownloadResult> = lx.network.download("https://example.com/a.bin", {
     to: "downloads",
     suggestedName: "a.bin",
@@ -145,8 +145,8 @@ async function taskShape(task: DownloadTask<AppTempDownloadResult>): Promise<voi
   void task.progress;
   const step = await task[Symbol.asyncIterator]().next();
   if (step.done) {
-    const uri: string = step.value.uri;
-    void uri;
+    const path: string = step.value.path;
+    void path;
   }
 }
 

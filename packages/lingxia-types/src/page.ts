@@ -35,7 +35,7 @@ import type {
   MessageOut,
   PageSurface,
   SignalOptions,
-  VideoContext,
+  PagePlayer,
 } from './generated/logic.js';
 
 declare const typeTag: unique symbol;
@@ -51,7 +51,7 @@ export function type<T>(): Declared<T> {
 }
 
 /** Lifecycle hook names a page's `setup` may return. */
-export type PageHookName = 'onLoad' | 'onShow' | 'onReady' | 'onHide' | 'onUnload' | 'onPullDownRefresh';
+export type PageHookName = 'onLoad' | 'onShow' | 'onReady' | 'onHide' | 'onUnload' | 'onRefresh';
 
 type Hook = () => void | Promise<void>;
 
@@ -63,7 +63,7 @@ export interface PageSetup<Params, Actions> {
   onHide?: Hook;
   onUnload?: Hook;
   /** A pull, or `page.refresh()`. The indicator stays until the returned promise settles. */
-  onPullDownRefresh?: Hook;
+  onRefresh?: Hook;
   /** The page's whole View-callable surface. Actions are called with `this` undefined. */
   actions?: Actions & ThisType<void>;
 }
@@ -142,12 +142,12 @@ export interface PageApi<Data, Params, Result, Messages = never> {
     update(patch: NavigationBarPatch): Promise<void>;
   };
   /**
-   * Show the refresh indicator and run `onPullDownRefresh`, as a pull would.
+   * Show the refresh indicator and run `onRefresh`, as a pull would.
    * Throws `E_INVALID_STATE` unless the page config sets `enablePullDownRefresh`.
    */
   refresh(): void;
   /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */
-  video(name: string): VideoContext;
+  video(name: string): PagePlayer;
   /**
    * The size class this page lays out for. `watch` delivers it at once, then
    * when `sizeClass` or `canDock` changes (not on every resize), and stops

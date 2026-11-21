@@ -737,7 +737,7 @@ async fn open_app(
         })?;
     reject_unknown_options(
         &options,
-        &["as", "edge", "page", "params", "channel", "targetVersion"],
+        &["as", "edge", "page", "params", "channel", "version"],
         "lx.surface.openApp",
     )?;
     let spec = JSObject::new(&ctx);
@@ -745,7 +745,7 @@ async fn open_app(
     copy_options(
         &options,
         &spec,
-        &["as", "edge", "page", "channel", "targetVersion"],
+        &["as", "edge", "page", "channel", "version"],
     )?;
     if let Some(params) = get_property(&options, "params") {
         spec.set("query", params)?;
@@ -1369,7 +1369,7 @@ async fn open_app_spec(
         page: read_optional_string(spec, "page")?,
         query,
         channel: read_optional_string(spec, "channel")?,
-        target_version: read_optional_string(spec, "targetVersion")?,
+        target_version: read_optional_string(spec, "version")?,
     };
     let requested_channel = lxapp::resolve_open_channel(
         &app_id,

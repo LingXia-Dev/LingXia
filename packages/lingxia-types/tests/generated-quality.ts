@@ -3,8 +3,7 @@ import type {
   AppDownloadFilePath,
   AppDownloadOptions,
   AppDownloadResult,
-  AppLaunchOptions,
-  AppLaunchScene,
+  AppLifecycleEventArgs,
   AppScreenshotResult,
   AppearancePreference,
   ResolvedAppearance,
@@ -87,8 +86,9 @@ const cacheSize: Promise<number> = lx.host.cache.size();
 const notifyPermission = lx.host.notification.getPermission();
 const hostOs: HostOs = lx.host.info.os;
 const deviceOs: HostOs = lx.device.info.osName;
-const applinkScene: AppLaunchScene = 8003;
-const launchOptions: AppLaunchOptions = { scene: applinkScene };
+const showArgs: AppLifecycleEventArgs = { source: "lxapp", reason: "switch_back", path: "pages/home/index" };
+// @ts-expect-error an App Link reaches `onOpen`; `onShow` carries no scene
+const sceneArgs: AppLifecycleEventArgs = { source: "host", reason: "foreground", scene: 8003 };
 // @ts-expect-error binding-layer class names are not part of the public contract
 type _NoJsVideoContext = import("../src/index.js").JSVideoContext;
 const videoSize: number = videoInfo.size;
@@ -127,7 +127,8 @@ export type GeneratedQualityGate = [
   typeof cacheSize,
   typeof hostOs,
   typeof deviceOs,
-  typeof launchOptions,
+  typeof showArgs,
+  typeof sceneArgs,
   _NoJsVideoContext,
   typeof videoSize,
   typeof videoPath,

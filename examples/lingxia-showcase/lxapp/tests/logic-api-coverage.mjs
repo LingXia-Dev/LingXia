@@ -103,8 +103,8 @@ export default {
     { "api": "PageSurface.opened", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.send", "mode": "automated", "owner": "DESKTOP-SURFACE-POST-001", "targets": ["windows", "macos"] },
     { "api": "lx.device.info.osName", "mode": "automated", "owner": "LOGIC-001" },
-    { "api": "VideoContext.pause", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
-    { "api": "VideoContext.play", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
-    { "api": "VideoContext.setQuality", "mode": "automated", "owner": "VIDEO-QUALITY-001" }
+    { "api": "PagePlayer.pause", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
+    { "api": "PagePlayer.play", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
+    { "api": "PagePlayer.setQuality", "mode": "automated", "owner": "VIDEO-QUALITY-001" }
   ]
 };

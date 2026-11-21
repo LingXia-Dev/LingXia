@@ -1086,7 +1086,7 @@ fn page_registration_path(project: &Project, page_path: &str) -> Result<String> 
 }
 
 fn collect_app_handler_names(object: &oxc_ast::ast::ObjectExpression<'_>) -> Vec<String> {
-    let allowed: HashSet<&str> = ["onLaunch", "onShow", "onHide", "onUserCaptureScreen"]
+    let allowed: HashSet<&str> = ["onLaunch", "onShow", "onHide", "onScreenshot"]
         .into_iter()
         .collect();
     collect_object_handler_names(object, |name| allowed.contains(name))

@@ -12,6 +12,7 @@ import {
   type ToastOptions,
   type NavigationBarPatch,
   type TabBarItemPatch,
+  type TabName,
 } from '@lingxia/logic';
 
 /** What the modal demo shows: whether the dialog was confirmed. */
@@ -544,24 +545,24 @@ export default definePage({
         );
       },
       // TabBar API functions
-      enableTabBarRedDot(options: { index: number }) {
+      enableTabBarRedDot(options: { tab: TabName }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
+          lx.app.tabBar.update({ items: { [options.tab]: { badge: true } } }),
         );
       },
-      disableTabBarRedDot(options: { index: number }) {
+      disableTabBarRedDot(options: { tab: TabName }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
+          lx.app.tabBar.update({ items: { [options.tab]: { badge: null } } }),
         );
       },
-      updateTabBarBadge(options: { index: number; text: string }) {
+      updateTabBarBadge(options: { tab: TabName; text: string }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
+          lx.app.tabBar.update({ items: { [options.tab]: { badge: options.text } } }),
         );
       },
-      clearTabBarBadge(options: { index: number }) {
+      clearTabBarBadge(options: { tab: TabName }) {
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ items: [{ index: options.index, badge: null }] }),
+          lx.app.tabBar.update({ items: { [options.tab]: { badge: null } } }),
         );
       },
       revealTabBar() {
@@ -578,10 +579,10 @@ export default definePage({
           return result;
         });
       },
-      updateTabBarItem(options: TabBarItemPatch) {
-        console.log("updateTabBarItem called with:", options);
+      updateTabBarItem(options: { tab: TabName } & TabBarItemPatch) {
+        const { tab, ...patch } = options;
         return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ items: [options] }),
+          lx.app.tabBar.update({ items: { [tab]: patch } }),
         );
       },
     };

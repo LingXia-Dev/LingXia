@@ -483,8 +483,8 @@ export default definePage({
           // Telemetry: log first-paint latency. The showcase doesn't have an
           // underlying overlay to hide, so we just observe and log.
           const startedAt = Date.now();
-          handle.presented.then((outcome) => {
-            if (outcome.status !== "presented") return;
+          handle.presented.then((shown) => {
+            if (!shown) return;
             const ms = Date.now() - startedAt;
             console.log("[media-demo] presented:", { latencyMs: ms });
           }).catch(() => {});
@@ -533,7 +533,7 @@ export default definePage({
       async pickSingleMedia(type: string) {
         try {
           const result = await lx.pick.media({
-            count: 1,
+            limit: 1,
             mediaType: [type === "video" ? "video" : "image"],
             sourceType: ["album", "camera"],
             camera: "back",
@@ -677,13 +677,13 @@ export default definePage({
           sourceType: (sourceOption?.request as PickMediaOptions["sourceType"]) || ["album"],
         };
         if (cameraOnly) {
-          request.count = 1;
+          request.limit = 1;
         } else if (typeof countLimit === "number" && countLimit > 0) {
-          request.count = countLimit;
+          request.limit = countLimit;
         }
         if (page.data.mediaType === "video") {
           const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
-          if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
+          if (maxDurationSeconds) request.maxDurationMs = maxDurationSeconds * 1000;
           if (page.data.cameraKey) request.camera = page.data.cameraKey as PickMediaOptions["camera"];
         }
 
@@ -1125,7 +1125,7 @@ export default definePage({
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
           const result = await lx.pick.media({
-            count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
+            limit: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);
@@ -1141,7 +1141,7 @@ export default definePage({
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
           const result = await lx.pick.media({
-            count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
+            limit: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationMs: 60_000,
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);

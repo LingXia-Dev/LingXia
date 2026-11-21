@@ -213,13 +213,13 @@ struct FileStats {
     /// Size in bytes.
     size: u64,
     /// Epoch milliseconds; absent where the file system does not record it.
-    #[js_name = "lastModifiedTime"]
+    #[js_name = "modifiedAt"]
     last_modified_time: Option<u64>,
     /// Epoch milliseconds; absent where the file system does not record it.
-    #[js_name = "lastAccessedTime"]
+    #[js_name = "accessedAt"]
     last_accessed_time: Option<u64>,
     /// Epoch milliseconds; absent where the file system does not record it.
-    #[js_name = "createTime"]
+    #[js_name = "createdAt"]
     create_time: Option<u64>,
 }
 

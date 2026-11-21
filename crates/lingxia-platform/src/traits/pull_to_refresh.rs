@@ -5,7 +5,7 @@ use crate::error::PlatformError;
 /// `webtag` is the page instance's full webview tag: two instances of one
 /// route each have their own indicator.
 pub trait PullToRefresh: Send + Sync {
-    /// Show the refresh indicator and run the page's `onPullDownRefresh`.
+    /// Show the refresh indicator and run the page's `onRefresh`.
     fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError>;
 
     /// Hide the refresh indicator once the refresh is done.

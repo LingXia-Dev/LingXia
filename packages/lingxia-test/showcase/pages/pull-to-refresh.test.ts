@@ -37,7 +37,7 @@ async function waitForStatus(t: Fixture, view: TestView, expected: string): Prom
   );
 }
 
-test("page.refresh runs onPullDownRefresh, and the indicator stays until it settles", { id: "PULL-001", covers: ['page.refresh', 'PageSetup.onPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+test("page.refresh runs onRefresh, and the indicator stays until it settles", { id: "PULL-001", covers: ['page.refresh', 'PageSetup.onRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.reset({ page: 'pullToRefresh' });
@@ -63,7 +63,7 @@ test("page.refresh runs onPullDownRefresh, and the indicator stays until it sett
     await waitForRefreshState(app, (state) => state.refreshing && state.count === idle.count + 1);
     // Finish and start again in one Logic turn: the native indicator stays up
     // for a minimum time after a stop, and a start that lands in that window
-    // must still reach onPullDownRefresh.
+    // must still reach onRefresh.
     await app.logic.eval(async ({ pageStack, currentPage }) => {
       const pages = pageStack();
       const top = pages[pages.length - 1];
@@ -147,7 +147,7 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
     await expect(view.testId('pull-refresh-stop')).toBeInViewport();
   });
 
-  // onPullDownRefresh fired once, not once per move or on release and again on settle.
+  // onRefresh fired once, not once per move or on release and again on settle.
   await new Promise<void>((resolve) => setTimeout(resolve, 800));
   expect((await refreshState(app)).count).toBe(before.count + 1);
 

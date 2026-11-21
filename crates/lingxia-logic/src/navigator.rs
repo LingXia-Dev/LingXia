@@ -22,7 +22,7 @@ pub(crate) struct NavigateToAppOptions {
     pub(crate) page: Option<String>,
     pub(crate) query: Option<JSObject>,
     pub(crate) channel: Option<String>,
-    #[js_name = "targetVersion"]
+    #[js_name = "version"]
     pub(crate) target_version: Option<String>,
 }
 
@@ -144,7 +144,7 @@ pub(crate) async fn prepare_app_open(
 
     if host_terminal_settings && target_version.is_some() {
         return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
-            "the host-bundled Terminal Settings app does not support targetVersion".to_string(),
+            "the host-bundled Terminal Settings app does not support version".to_string(),
         )));
     }
 

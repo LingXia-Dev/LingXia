@@ -1,4 +1,4 @@
-import { lx, type AppLaunchOptions } from '@lingxia/logic';
+import { lx, type AppLifecycleEventArgs } from '@lingxia/logic';
 
 const moreFeedbackByLanguage = {
   "en-US": "Feedback",
@@ -36,7 +36,7 @@ function applyMoreActions(tag = lx.host.displayLanguage.get()) {
 }
 
 /** What a reopen delivered, for the showcase desktop specs. */
-const probe = { lastShow: undefined as AppLaunchOptions | undefined };
+const probe = { lastShow: undefined as AppLifecycleEventArgs | undefined };
 
 App({
   onLaunch() {
@@ -63,7 +63,7 @@ App({
     });
   },
 
-  onShow(options?: AppLaunchOptions) {
+  onShow(options?: AppLifecycleEventArgs) {
     // Showcase desktop specs read what a reopen delivered.
     probe.lastShow = options;
     applyMoreActions();

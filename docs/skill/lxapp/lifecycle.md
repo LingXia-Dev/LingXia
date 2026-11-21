@@ -41,7 +41,7 @@ page instance. They advance independently.
   settles before that page's `onShow` starts. Different pages do not wait on
   each other.
 - **`page.signal` aborts before `onUnload`.**
-- **`onPullDownRefresh` holds the indicator until it settles.** A pull and
+- **`onRefresh` holds the indicator until it settles.** A pull and
   `page.refresh()` both run it; return the fetch's promise. There is no stop call.
 
 ## App hooks
@@ -50,12 +50,12 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
-| First open of this session | `onLaunch(options)`, then `onShow` | `lxapp` | `open` |
+| First open of this session | `onLaunch()`, then `onShow` | `lxapp` | `open` |
 | Reopened while alive (link, notification tap, `lx.nav.go({ app })`, `openApp`, a banner action) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
-| Screenshot, where the platform reports it | `onUserCaptureScreen` | — | — |
+| Screenshot, where the platform reports it | `onScreenshot` | — | — |
 
 - **An aside does not hide the main.** `lx.surface.openApp(id, { as: 'aside' })`
   opens beside the main, which gets no `onHide`. Collapsing a docked aside is
@@ -69,8 +69,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`.
 - **AppLink arrives once.** Route it in `App.onOpen(link)` and return a
   target: cold, it runs after `onLaunch` settles; warm, before `onShow`
-  (`reason: 'switch_back'`). The hooks still carry `scene: 8003` and `url`;
-  the cold `onShow` carries no link.
+  (`reason: 'switch_back'`). No other hook sees the link.
 - **`onLaunch` runs once per Logic start.** Restarts start Logic again:
   - `lx.app.applyUpdate()` closes the session (`onHide`, `close`) and opens
     a new one: `onLaunch`, `onShow` (`open`), then the initial page's `onLoad`.

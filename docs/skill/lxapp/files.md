@@ -22,12 +22,12 @@ host downloads center, not to these classes.
 
 ```ts
 const result = await lx.network.download(url, { headers, timeoutMs, signal }).result;
-result.uri; // lx://temp/<opaque_id>
+result.path; // lx://temp/<opaque_id>
 ```
 
 ```ts
 const result = await lx.network.download(url, { to: "videos/video.mp4" }).result;
-result.uri; // lx://userdata/videos/video.mp4
+result.path; // lx://userdata/videos/video.mp4
 ```
 
 ```ts
@@ -80,11 +80,11 @@ const encoded = await file.base64();        // string
 ### Copy and move
 
 ```ts
-await lx.fs.copy(result.uri, {
+await lx.fs.copy(result.path, {
   to: "media/video.mp4",                // relative → lx://userdata/media/video.mp4
 });
 
-await lx.fs.rename(result.uri, {
+await lx.fs.rename(result.path, {
   to: `${lx.fs.userCache}/previews/video.mp4`,
 });
 ```
@@ -98,20 +98,20 @@ await lx.fs.rename(result.uri, {
 
 ## `lx.network.upload`
 
-`upload(url, { file, ... })`, from Logic; the file streams without entering
+`upload(url, { path, ... })`, from Logic; the file streams without entering
 JavaScript memory.
 
-- Form endpoint: default `bodyMode: 'multipart'`, method `POST`; `name`,
-  `fileName`, `formData` build the envelope.
+- Form endpoint: default `bodyMode: 'multipart'`, method `POST`; `field`,
+  `fileName`, `fields` build the envelope.
 - Raw or presigned URL: `bodyMode: 'raw'` with the signed method, headers, and
   MIME type, and no form fields.
 
 ```ts
 const task = lx.network.upload(presignedUrl, {
-  file: filePath,
+  path: filePath,
   method: 'PUT',
   bodyMode: 'raw',
-  mimeType: contentType,
+  type: contentType,
 });
 for await (const { fraction } of task) updateProgress(fraction ?? 0);
 const response = await task.result; // { status, ok, headers, text, json() }

@@ -8,20 +8,8 @@
     "lx.shell.getDeclared"
   ],
   "subscription-shape": [],
-  "field-name": [
-    "AppScreenshotResult.uri",
-    "DownloadsDownloadResult.mimeType",
-    "DownloadsDownloadResult.sizeBytes",
-    "DownloadsDownloadResult.uri",
-    "PickMediaOptions.maxDurationSeconds",
-    "lx.network.upload(options).mimeType"
-  ],
-  "status-values": [
-    "PreviewMediaHandle.presented.status",
-    "lx.clipboard.read().status",
-    "lx.clipboard.readText().status",
-    "lx.host.notification.show().status"
-  ],
+  "field-name": [],
+  "status-values": [],
   "readonly-array-param": [
     "lx.app.setMoreActions(items)",
     "lx.host.banner.show(options)",

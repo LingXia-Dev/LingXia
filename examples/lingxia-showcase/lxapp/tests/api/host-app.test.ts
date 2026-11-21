@@ -45,9 +45,9 @@ test('capture a host app screenshot into the lxapp sandbox', {
 
   const shot = await app.logic.eval(async ({ lx }) => {
     const result = await lx.host.screenshot();
-    const stat = await lx.fs.stat(result.uri);
+    const stat = await lx.fs.stat(result.path);
     return {
-      path: result.uri,
+      path: result.path,
       width: result.width ?? null,
       height: result.height ?? null,
       bytes: stat.size,
@@ -88,9 +88,9 @@ test('set and clear the host app badge without leaving one behind', {
   });
 
   // Support does not guarantee painting: permission and visible chrome vary.
-  expect((painted as unknown[]).length).toBe(4);
-  for (const result of painted as unknown[]) {
-    expect(typeof result).toBe('boolean');
+  expect(painted.length).toBe(4);
+  for (const result of painted) {
+    expect(typeof result.painted).toBe('boolean');
   }
 });
 
@@ -109,10 +109,10 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
   // A declared tray has a status item from the start but stays hidden until
   // `show()`, so "the item took the value" is not "the user can see it".
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.hide(); } catch {} return (await lx.host.setBadge(4, { surface: 'tray' })).painted;
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });
+    try { lx.host.tray.show(); } catch {} return (await lx.host.setBadge(4, { surface: 'tray' })).painted;
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -134,24 +134,24 @@ test('report a surface this platform does not have instead of failing', {
     });
   });
 
-  // A named surface that is absent resolves false; it never rejects, so
+  // A named surface that is absent resolves `no_surface`; it never rejects, so
   // portable code can ask for one without guarding the call.
   const outcome = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
       const value = await lx.host.setBadge(2, { surface: 'tray' });
-      return { ok: true, value };
+      return { ok: true, value: value.painted ? 'painted' : value.reason ?? 'declined' };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
       return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
   expect(outcome.ok).toBeTruthy();
-  expect(typeof outcome.value).toBe('boolean');
+  expect(['painted', 'no_surface', 'declined']).toContain(outcome.value);
 
   const bad = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
       // `dock` is not a surface the typings offer; the probe asks for it on purpose.
-      const value = await (lx.host.setBadge as (value: number, options: { surface: string }) => Promise<boolean>)(2, { surface: 'dock' });
+      const value = await (lx.host.setBadge as unknown as (value: number, options: { surface: string }) => Promise<unknown>)(2, { surface: 'dock' });
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -186,7 +186,7 @@ test('reject a badge value that is neither a string, a number, nor null', {
           '() => {}': () => {},
         };
         try {
-          await (lx.host.setBadge as (value: unknown) => Promise<boolean>)(values[literal]);
+          await (lx.host.setBadge as unknown as (value: unknown) => Promise<unknown>)(values[literal]);
           return { ok: true };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -199,7 +199,7 @@ test('reject a badge value that is neither a string, a number, nor null', {
   }
 });
 
-test('answer checkUpdate with a decision instead of throwing', {
+test('answer checkUpdate with an update or null instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
   covers: ['lx.host.checkUpdate', 'lx.app.onUpdateReady', 'lx.app.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
@@ -216,8 +216,8 @@ test('answer checkUpdate with a decision instead of throwing', {
     // Unsubscribing twice must stay inert.
     ready();
     return {
-      hasUpdate: decision.hasUpdate,
-      version: decision.hasUpdate ? decision.update.version : null,
+      hasUpdate: decision !== null,
+      version: decision ? decision.version : null,
       subscriptions: [typeof ready, typeof failed],
     };
   });
@@ -301,7 +301,7 @@ test('request permission and replace local notifications by id', {
       immediate = await n.show({
         id: 'automation-local',
         title: 'LingXia automation',
-        body: 'suppressed while frontmost',
+        message: 'suppressed while frontmost',
         silent: true,
       });
     } catch (error) {
@@ -325,14 +325,14 @@ test('request permission and replace local notifications by id', {
       scheduled = await orUnsupported(() => n.show({
         id: 'automation-local',
         title: 'LingXia automation',
-        body: 'scheduled',
+        message: 'scheduled',
         schedule: { delayMs: 60_000 },
         silent: true,
       }));
       replaced = await orUnsupported(() => n.show({
         id: 'automation-local',
         title: 'LingXia automation',
-        body: 'replaces the schedule',
+        message: 'replaces the schedule',
         schedule: { at: Date.now() + 120_000 },
         silent: true,
       }));
@@ -355,7 +355,7 @@ test('request permission and replace local notifications by id', {
       rejected: {
         http: await rejects({ title: 'bad', applink: 'http://example.com/x' }),
         page: await rejects({ title: 'bad', target: { kind: 'page', page: '/pages/system/index' } }),
-        title: await rejects({ body: 'no title' }),
+        title: await rejects({ message: 'no title' }),
         both: await rejects({ title: 'bad', schedule: { at: Date.now() + 1000, delayMs: 5 } }),
         emptyId: await rejects({ id: '', title: 'bad' }),
       },
@@ -368,11 +368,11 @@ test('request permission and replace local notifications by id', {
   }
   if (result.immediate) {
     expect(result.immediate.id).toBe('automation-local');
-    expect(['posted', 'suppressed']).toContain(result.immediate.status);
+    expect(['posted', 'suppressed']).toContain(result.immediate.delivery);
   }
   if (result.permission === 'granted' && !result.scheduleUnsupported) {
-    expect(result.scheduled).toEqual({ id: 'automation-local', status: 'scheduled' });
-    expect(result.replaced).toEqual({ id: 'automation-local', status: 'scheduled' });
+    expect(result.scheduled).toEqual({ id: 'automation-local', delivery: 'scheduled' });
+    expect(result.replaced).toEqual({ id: 'automation-local', delivery: 'scheduled' });
   }
   expect(result.rejected).toEqual({ http: true, page: true, title: true, both: true, emptyId: true });
 });
@@ -409,16 +409,16 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
     const toast = await banner.show({
       id: 'automation-banner-toast',
       title: 'LingXia automation',
-      body: 'desktop card',
+      message: 'desktop card',
       timeoutMs: 800,
     });
     const prompt = banner.show({
       id: 'automation-banner-prompt',
       title: 'Allow this action?',
-      body: 'agent consent',
+      message: 'agent consent',
       actions: [
         { id: 'deny', label: 'Deny' },
-        { id: 'allow', label: 'Allow', style: 'primary' },
+        { id: 'allow', label: 'Allow', tone: 'primary' },
       ],
       timeoutMs: 0,
     });
@@ -434,7 +434,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
       toast,
       prompt: promptResult,
       rejected: {
-        title: await rejects({ body: 'no title' }),
+        title: await rejects({ message: 'no title' }),
         emptyId: await rejects({ id: '', title: 'bad' }),
         tooMany: await rejects({
           title: 'bad',
@@ -642,9 +642,9 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
         const shot = await lx.host.screenshot();
-        (globalThis as { __sidebarProbeIcon?: string }).__sidebarProbeIcon = shot.uri;
-        await lx.shell.sidebarActions.update('probe-footer', { icon: shot.uri });
-        const value = shot.uri;
+        (globalThis as { __sidebarProbeIcon?: string }).__sidebarProbeIcon = shot.path;
+        await lx.shell.sidebarActions.update('probe-footer', { icon: shot.path });
+        const value = shot.path;
         return { ok: true, value };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

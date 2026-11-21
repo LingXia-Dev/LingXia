@@ -31,8 +31,8 @@ struct JSStreamSourceOptions {
     provider: String,
     #[js_name = "isLive"]
     is_live: bool,
-    #[js_name = "durationSeconds"]
-    duration: Option<f64>,
+    #[js_name = "durationMs"]
+    duration_ms: Option<f64>,
     params: Option<JSObject>,
 }
 
@@ -209,7 +209,10 @@ impl JSVideoContext {
         let duration_seconds = if is_live {
             None
         } else {
-            options.duration.filter(|v| v.is_finite() && *v > 0.0)
+            options
+                .duration_ms
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .map(|v| v / 1000.0)
         };
         self.shared.stream_live.store(is_live, Ordering::Relaxed);
         info!(
@@ -487,7 +490,8 @@ impl JSVideoContext {
     }
 
     #[js_method(ts_return = "Promise<void>")]
-    fn seek(&self, ctx: JSContext, position_seconds: f64) -> JSResult<Promise> {
+    fn seek(&self, ctx: JSContext, position_ms: f64) -> JSResult<Promise> {
+        let position_seconds = position_ms / 1000.0;
         self.send(
             &ctx,
             json!({"op": "seek", "seconds": position_seconds}),
@@ -495,14 +499,14 @@ impl JSVideoContext {
         )
     }
 
-    #[js_method(rename = "requestFullScreen", ts_return = "Promise<void>")]
+    #[js_method(rename = "requestFullscreen", ts_return = "Promise<void>")]
     fn request_full_screen(&self, ctx: JSContext) -> JSResult<Promise> {
         self.send(&ctx, json!({"op": "requestFullScreen"}), |this| {
             this.dispatch(VideoPlayerCommand::EnterFullscreen)
         })
     }
 
-    #[js_method(rename = "exitFullScreen", ts_return = "Promise<void>")]
+    #[js_method(rename = "exitFullscreen", ts_return = "Promise<void>")]
     fn exit_full_screen(&self, ctx: JSContext) -> JSResult<Promise> {
         self.send(&ctx, json!({"op": "exitFullScreen"}), |this| {
             this.dispatch(VideoPlayerCommand::ExitFullscreen)

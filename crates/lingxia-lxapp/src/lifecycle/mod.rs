@@ -51,7 +51,7 @@ impl AppServiceEvent {
             AppServiceEvent::OnLaunch => "onLaunch",
             AppServiceEvent::OnShow => "onShow",
             AppServiceEvent::OnHide => "onHide",
-            AppServiceEvent::OnUserCaptureScreen => "onUserCaptureScreen",
+            AppServiceEvent::OnUserCaptureScreen => "onScreenshot",
         }
     }
 
@@ -60,7 +60,7 @@ impl AppServiceEvent {
             "onLaunch" => Some(AppServiceEvent::OnLaunch),
             "onShow" => Some(AppServiceEvent::OnShow),
             "onHide" => Some(AppServiceEvent::OnHide),
-            "onUserCaptureScreen" => Some(AppServiceEvent::OnUserCaptureScreen),
+            "onScreenshot" => Some(AppServiceEvent::OnUserCaptureScreen),
             _ => None,
         }
     }
@@ -101,7 +101,7 @@ impl PageLifecycleEvent {
             PageLifecycleEvent::OnShow => "onShow",
             PageLifecycleEvent::OnHide => "onHide",
             PageLifecycleEvent::OnUnload => "onUnload",
-            PageLifecycleEvent::OnPullDownRefresh => "onPullDownRefresh",
+            PageLifecycleEvent::OnPullDownRefresh => "onRefresh",
         }
     }
 }

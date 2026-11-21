@@ -9,7 +9,7 @@ use lingxia_service::update::{
     UpdatePackageInfo,
 };
 use lxapp::LxApp;
-use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tokio::sync::{Mutex, watch};
@@ -70,20 +70,20 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("host")?;
-        fn checkUpdate(ts_return = "Promise<HostAppUpdateCheckResult>") = check_app_update;
+        fn checkUpdate(ts_return = "Promise<HostAppUpdateInfo | null>") = check_app_update;
         fn claimCustomUpdate(ts_return = "void") = claim_custom_update;
     }
 }
 
-/// Query whether the host app has an update.
+/// The newer published host app version, or `null` when there is none.
 ///
 /// This host-level capability is restricted to the Control app. A successful
 /// check does **not** take over the built-in auto-flow — that is
 /// `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
 /// check claims nothing. Incompatible updates are hidden as
-/// `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
+/// `null`. Store-channel hosts still surface a newer feed version;
 /// `apply()` opens the store listing instead of downloading.
-async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
+async fn check_app_update(ctx: JSContext) -> JSResult<JSValue> {
     let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
     let lxapp = invocation.lxapp();
 
@@ -92,15 +92,15 @@ async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
         .await
         .map_err(js_error_from_update_error)?;
     let Some(update) = update else {
-        return create_check_result(&ctx, None, false);
+        return Ok(JSValue::null(&ctx));
     };
     if let Err(error) = update.ensure_runtime_compatible(lxapp::SDK_RUNTIME_VERSION, "host app") {
         log::warn!("Host app update is hidden from JS because runtime is incompatible: {error}");
-        return create_check_result(&ctx, None, false);
+        return Ok(JSValue::null(&ctx));
     }
 
     let store_channel = !host_update_service_from(&lxapp).self_update_supported();
-    create_check_result(&ctx, Some(update), store_channel)
+    Ok(create_update_object(&ctx, update, store_channel)?.into_js_value())
 }
 
 /// Claim the process-lifetime custom host-update flow.
@@ -114,24 +114,6 @@ fn claim_custom_update(ctx: JSContext) -> JSResult<()> {
     Ok(())
 }
 
-fn create_check_result(
-    ctx: &JSContext,
-    update: Option<UpdatePackageInfo>,
-    store_channel: bool,
-) -> JSResult<JSObject> {
-    let result = JSObject::new(ctx);
-    match update {
-        Some(update) => {
-            result.set("hasUpdate", true)?;
-            result.set("update", create_update_object(ctx, update, store_channel)?)?;
-        }
-        None => {
-            result.set("hasUpdate", false)?;
-        }
-    }
-    Ok(result)
-}
-
 fn create_update_object(
     ctx: &JSContext,
     update: UpdatePackageInfo,
@@ -141,7 +123,7 @@ fn create_update_object(
     obj.set("version", update.version.clone())?;
     obj.set("size", update.size)?;
     obj.set("releaseNotes", update.release_notes.clone())?;
-    obj.set("channel", if store_channel { "store" } else { "direct" })?;
+    obj.set("via", if store_channel { "store" } else { "direct" })?;
 
     let package = Arc::new(StdMutex::new(Some(update)));
     obj.set(

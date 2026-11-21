@@ -103,9 +103,9 @@ export default definePage({
         const task = lx.network.download(url.trim());
         pdfTask = task;
         try {
-          const { uri } = yield* task;
-          await lx.openFile(uri, { mode: "auto" });
-          return { path: uri };
+          const { path } = yield* task;
+          await lx.openFile(path, { mode: "auto" });
+          return { path };
         } finally {
           if (pdfTask === task) pdfTask = null;
         }

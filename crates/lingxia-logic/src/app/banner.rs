@@ -15,7 +15,7 @@ const MAX_ACTIONS: usize = 2;
 struct JSAction {
     id: Option<String>,
     label: Option<String>,
-    style: Option<String>,
+    tone: Option<String>,
     target: Option<JSObject>,
 }
 
@@ -24,6 +24,7 @@ struct JSAction {
 struct JSShowOptions {
     id: Option<String>,
     title: Option<String>,
+    #[js_name = "message"]
     body: Option<String>,
     actions: Option<Vec<JSAction>>,
     #[js_name = "timeoutMs"]
@@ -273,13 +274,13 @@ fn decode_actions(
                 .label
                 .filter(|label| !label.is_empty())
                 .ok_or_else(|| js_invalid_parameter_error("banner action label is required"))?;
-            let style = match action.style.as_deref() {
+            let style = match action.tone.as_deref() {
                 None | Some("default") => DesktopBannerActionStyle::Default,
                 Some("primary") => DesktopBannerActionStyle::Primary,
-                Some("destructive") => DesktopBannerActionStyle::Destructive,
+                Some("danger") => DesktopBannerActionStyle::Destructive,
                 Some(other) => {
                     return Err(js_invalid_parameter_error(format!(
-                        "banner action style must be default, primary, or destructive (got {other})"
+                        "banner action tone must be default, primary, or danger (got {other})"
                     )));
                 }
             };

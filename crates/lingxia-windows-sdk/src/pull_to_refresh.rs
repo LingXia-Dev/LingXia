@@ -74,7 +74,7 @@ fn indicator(webtag: &str) -> Option<PullRefreshIndicator> {
 }
 
 /// Start a pull-down refresh on the page a webtag names — e.g. from the lxapp
-/// right-click "Refresh" entry. Fires `onPullDownRefresh` like the gesture.
+/// right-click "Refresh" entry. Fires `onRefresh` like the gesture.
 /// The shell's lxapp context-menu provider calls this, so it is gated to
 /// shell-chrome to stay dead-code-clean in a `runtime`-only (no-shell) build.
 #[cfg(feature = "shell-chrome")]

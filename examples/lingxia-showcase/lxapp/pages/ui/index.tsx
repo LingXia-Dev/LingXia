@@ -269,16 +269,16 @@ function Tabbar({ data, actions }: Pane) {
           </Button>,
         )}
         <Field testId="tabbar-item-text" label="Update Tab 1 Text" bind={itemText} placeholder="Enter new text" />
-        <Button testId="tabbar-item-update" onClick={() => actions.updateTabBarItem({ index: 1, text: itemText.value })}>
+        <Button testId="tabbar-item-update" onClick={() => actions.updateTabBarItem({ tab: 'api', label: itemText.value })}>
           Update
         </Button>
       </Section>
       <Section title="Red Dot Controls" description="Show or hide the red dot on tab 1">
         {pair(
-          <Button variant="destructive" testId="tabbar-reddot-show" onClick={() => actions.enableTabBarRedDot({ index: 1 })}>
+          <Button variant="destructive" testId="tabbar-reddot-show" onClick={() => actions.enableTabBarRedDot({ tab: 'api' })}>
             Show Red Dot
           </Button>,
-          <Button variant="secondary" testId="tabbar-reddot-hide" onClick={() => actions.disableTabBarRedDot({ index: 1 })}>
+          <Button variant="secondary" testId="tabbar-reddot-hide" onClick={() => actions.disableTabBarRedDot({ tab: 'api' })}>
             Hide Red Dot
           </Button>,
         )}
@@ -286,10 +286,10 @@ function Tabbar({ data, actions }: Pane) {
       <Section title="Badge Controls" description="Set or remove the badge on tab 1">
         <Field testId="tabbar-badge-input" label="Badge Text" bind={badge} placeholder="Enter badge text" />
         {pair(
-          <Button testId="tabbar-badge-set" onClick={() => actions.updateTabBarBadge({ index: 1, text: badge.value })}>
+          <Button testId="tabbar-badge-set" onClick={() => actions.updateTabBarBadge({ tab: 'api', text: badge.value })}>
             Set Badge
           </Button>,
-          <Button variant="secondary" testId="tabbar-badge-clear" onClick={() => actions.clearTabBarBadge({ index: 1 })}>
+          <Button variant="secondary" testId="tabbar-badge-clear" onClick={() => actions.clearTabBarBadge({ tab: 'api' })}>
             Remove Badge
           </Button>,
         )}

@@ -72,7 +72,7 @@ The wrapper props (`LxPickerProps`) are the contract. Column mode comes from
 
 Drive a GPU page's video from Logic with `page.video(name)` (the `page`
 `setup` received), by its `useVideo` name or `<video id>`:
-`play`, `pause`, `stop`, `seek(seconds)`, `setQuality`, `setPlaybackRate`,
+`play`, `pause`, `stop`, `seek(ms)`, `setQuality`, `setPlaybackRate`,
 `setMuted`, `setVolume`. Each returns a `Promise<void>` that rejects with a
 `VIDEO_*` code; fullscreen and `setStreamSource` reject `VIDEO_UNSUPPORTED`.
 

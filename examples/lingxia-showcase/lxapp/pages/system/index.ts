@@ -218,7 +218,7 @@ export default definePage({
           const { id } = await notification.show({
             id: 'showcase-local',
             title: 'LingXia showcase',
-            body: notificationBody(page.data.notificationTarget),
+            message: notificationBody(page.data.notificationTarget),
             target: notificationTargetFor(page.data.notificationTarget),
             schedule: { delayMs: 5000 },
           });
@@ -281,7 +281,7 @@ export default definePage({
           const result = await banner.show({
             id: 'showcase-banner-toast',
             title: 'LingXia showcase',
-            body: 'Desktop card — auto-dismisses',
+            message: 'Desktop card — auto-dismisses',
             timeoutMs: 5000,
             background: page.data.bannerBackground,
           });
@@ -318,10 +318,10 @@ export default definePage({
           const result = await banner.show({
             id: 'showcase-banner-prompt',
             title: 'Allow this action?',
-            body: 'Agent wants to call sendEmail',
+            message: 'Agent wants to call sendEmail',
             actions: [
               { id: 'deny', label: 'Deny' },
-              { id: 'allow', label: 'Allow', style: 'primary' },
+              { id: 'allow', label: 'Allow', tone: 'primary' },
             ],
             timeoutMs: 60_000,
             background: page.data.bannerBackground,

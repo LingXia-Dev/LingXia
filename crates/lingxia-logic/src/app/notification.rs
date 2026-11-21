@@ -26,6 +26,7 @@ struct JSSchedule {
 struct JSShowOptions {
     id: Option<String>,
     title: Option<String>,
+    #[js_name = "message"]
     body: Option<String>,
     target: Option<JSObject>,
     /// Removed in favour of `target`. Decoded only so the old call reports a
@@ -191,7 +192,7 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             }
             let result = JSObject::new(&ctx);
             result.set("id", id)?;
-            result.set("status", status.as_str())?;
+            result.set("delivery", status.as_str())?;
             Ok(result)
         }
         Err(error) => {

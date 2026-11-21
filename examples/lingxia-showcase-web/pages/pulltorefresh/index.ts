@@ -6,11 +6,11 @@ const initialData: PullToRefreshPage['data'] = { refreshCount: 0, lastRefreshTim
 export default definePage({
   data: initialData,
   setup(page) {
-    // The indicator stays until onPullDownRefresh settles; "Finish refresh"
+    // The indicator stays until onRefresh settles; "Finish refresh"
     // settles it here, standing in for a fetch.
     let finishRefresh: (() => void) | null = null;
     return {
-      onPullDownRefresh() {
+      onRefresh() {
         const time = new Date().toLocaleTimeString();
         page.update(d => {
           d.isRefreshing = true;

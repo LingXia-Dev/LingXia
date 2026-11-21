@@ -68,21 +68,21 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 }
 
 /// Mark the product in system chrome, such as with an unread count; `null` or
-/// `''` clears it. Control app only. Resolves whether anything was painted, and
-/// `false` where there is no such chrome, so portable code calls it unconditionally.
+/// `''` clears it. Control app only. Resolves whether anything was painted;
+/// `reason: 'no_surface'` where there is no such chrome, so portable code calls it unconditionally.
 ///
-/// @platform macOS: the dock and the menu-bar item; `false` while the tray item is hidden or notifications are denied.
+/// @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
 /// @platform Windows: the taskbar and the notification-area item.
 /// @platform iOS: the home-screen icon, numbers only; needs notification permission.
 /// @platform HarmonyOS: the home-screen icon.
-/// @platform Android: resolves `false`.
+/// @platform Android: resolves `{ painted: false, reason: 'no_surface' }`.
 /// @throws {E_INVALID_ARG} Text where the platform paints numbers only.
 /// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
 async fn set_app_badge(
     ctx: JSContext,
     value: JSValue,
     options: Optional<JSObject>,
-) -> JSResult<bool> {
+) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
     let lxapp = invocation.lxapp();
     let surface = badge_surface(options.0)?;
@@ -103,19 +103,27 @@ async fn set_app_badge(
     // reported, not raised. Only a malfunction rejects, and it does so whether
     // the caller named a surface or took `auto`.
     let mut painted = false;
+    let mut reachable = false;
     // Off the JS thread: a platform may block, and HarmonyOS answers through a
     // callback it can only wait for inside the async runtime.
     if surface != BadgeSurface::Tray && available.app_icon {
+        reachable = true;
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
         painted |= blocking(move || runtime.set_app_badge(&text)).await?;
     }
     if surface != BadgeSurface::AppIcon && available.tray {
+        reachable = true;
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
         painted |= blocking(move || runtime.set_tray_badge(&text)).await?;
     }
-    Ok(painted)
+    let result = JSObject::new(&ctx);
+    result.set("painted", painted)?;
+    if !reachable {
+        result.set("reason", "no_surface")?;
+    }
+    Ok(result)
 }
 
 async fn blocking<F>(work: F) -> JSResult<bool>
@@ -243,7 +251,7 @@ rong::js_api! {
         fn exit = exit_app;
         fn setBadge(
             ts_params = "value: string | number | null, options?: SetBadgeOptions",
-            ts_return = "Promise<boolean>"
+            ts_return = "Promise<SetBadgeResult>"
         ) = set_app_badge;
     }
 }

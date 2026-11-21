@@ -75,7 +75,7 @@ test('useVideo reports playback and pauses on command', { start: { page: 'video'
 
 const seconds = (text: string) => Number(/([\d.]+)s\s*$/.exec(text)?.[1] ?? NaN);
 
-test('a quality switch keeps the position and the frames moving', { id: 'VIDEO-QUALITY-001', covers: ['VideoContext.setQuality'], start: { page: 'video' } }, async (t) => {
+test('a quality switch keeps the position and the frames moving', { id: 'VIDEO-QUALITY-001', covers: ['PagePlayer.setQuality'], start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-quality-state');
@@ -99,7 +99,7 @@ test('a quality switch keeps the position and the frames moving', { id: 'VIDEO-Q
   await expect(state).toContainText('360p · 360p', { timeout: 5_000 });
 });
 
-test('page.video pauses and plays the page player from Logic', { id: 'VIDEO-LOGIC-001', covers: ['VideoContext.pause', 'VideoContext.play'], start: { page: 'video' } }, async (t) => {
+test('page.video pauses and plays the page player from Logic', { id: 'VIDEO-LOGIC-001', covers: ['PagePlayer.pause', 'PagePlayer.play'], start: { page: 'video' } }, async (t) => {
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');

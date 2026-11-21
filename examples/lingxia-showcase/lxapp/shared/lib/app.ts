@@ -1,4 +1,4 @@
-import type { AppLaunchOptions } from '@lingxia/logic';
+import type { AppLifecycleEventArgs } from '@lingxia/logic';
 
 /** State the App and its pages share. A module, so every importer sees this one object. */
 export const appState = {
@@ -11,7 +11,7 @@ export const appState = {
     pageHides: 0,
     pageShows: 0,
     /** The last App `onShow` options, for reopen probes in specs. */
-    lastShow: undefined as AppLaunchOptions | undefined,
+    lastShow: undefined as AppLifecycleEventArgs | undefined,
   },
   greeting: "This is from the app's shared state",
   ipAddr: "loading",

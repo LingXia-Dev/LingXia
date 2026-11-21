@@ -2,8 +2,8 @@
 
 Verified HTTPS URLs that open the host app. The host declares which domains it
 accepts. Only `https://` is accepted, and every path on a
-configured host reaches the home lxapp's Logic as `scene: 8003` with the
-original URL. Logic decides what it means.
+configured host reaches the home lxapp's `App.onOpen` with the original URL.
+Logic decides what it means.
 
 Links arrive from OS App Links / Universal Links, browser handoff, push links,
 and local notifications posted with
@@ -20,13 +20,13 @@ association files or a live webpage at that path.
 https://app.example.com/app/auth/reset-password?code=…&email=…
 ```
 
-reaches the home lxapp as:
+reaches `App.onOpen` as:
 
 ```json
 {
   "url": "https://app.example.com/app/auth/reset-password?code=…&email=…",
-  "query": { "code": "…", "email": "…" },
-  "scene": 8003
+  "path": "",
+  "query": { "code": "…", "email": "…" }
 }
 ```
 
@@ -50,7 +50,7 @@ App({
 
 The framework navigates to the target `onOpen` returns. On a cold start the
 landing page loads first and the target opens over it. `onLaunch` / `onShow`
-still see `scene: 8003` and `url`.
+do not see the link.
 Never feed a query value straight into `lx.nav.go` as a page name.
 
 ## The `/lxapp/` namespace

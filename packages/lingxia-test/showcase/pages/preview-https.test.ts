@@ -73,7 +73,7 @@ async function presentHttpsPreview(
     const handle = lx.media.preview({ path: url, type, signal: controller.signal });
     const state: HttpsPreviewSession = { handle, controller, presented: false, completed: null, completedError: null };
     (globalThis as unknown as Sessions)[key] = state;
-    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.presented.then((shown) => { state.presented = shown; });
     handle.completed.then(
       (result) => { state.completed = { reason: result.reason, index: result.index }; },
       (error: { name?: string; message?: string } | null) => {

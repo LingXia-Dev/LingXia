@@ -43,9 +43,9 @@ export default definePage({
           const result = await lx.pick.media({
             mediaType,
             sourceType: ["album", "camera"],
-            count,
+            limit: count,
             camera: "back",
-            maxDurationSeconds: 60,
+            maxDurationMs: 60_000,
           });
           if (result.status === 'canceled') {
             page.update(d => { d.busy = false; });

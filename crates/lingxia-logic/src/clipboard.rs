@@ -40,10 +40,10 @@ async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
     write_item(&ctx, ClipboardWrite::Text(validate_text(&text)?)).await
 }
 
-/// Read the clipboard's text: `empty` when it holds none, `canceled` when the
+/// Read the clipboard's text: `text` is absent when it holds none; `canceled` when the
 /// person dismisses the OS paste prompt (iOS 16+, macOS 15.4+).
 ///
-/// @platform Android: an unfocused app reads `empty`, so read in response to a person's action.
+/// @platform Android: an unfocused app reads no text, so read in response to a person's action.
 /// @throws {E_PERMISSION_DENIED} macOS set to never allow, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
 async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
     let contents = read_contents(&ctx, Some(ClipboardKind::Text)).await?;
@@ -51,13 +51,8 @@ async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
         return canceled(&ctx);
     }
     let result = completed(&ctx)?;
-    match contents.text {
-        Some(text) => {
-            result.set("text", text)?;
-        }
-        None => {
-            result.set("status", "empty")?;
-        }
+    if let Some(text) = contents.text {
+        result.set("text", text)?;
     }
     Ok(result)
 }
@@ -74,8 +69,8 @@ async fn write(ctx: JSContext, item: JSValue) -> JSResult<()> {
 /// Read the clipboard.
 ///
 /// Omit `type` to receive every representation this host can surface.
-/// Pass `type` to request one; if that representation is absent, the
-/// completed result is `{ status: 'empty' }` rather than a mismatch error.
+/// Pass `type` to request one; if that representation is absent, `items`
+/// is empty rather than a mismatch error.
 /// Images arrive as a temporary PNG under `lx://temp`. Dismissal and
 /// permission behave as in `readText`.
 async fn read(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObject> {
@@ -160,11 +155,6 @@ fn contents_to_read_result(ctx: &JSContext, contents: ClipboardContents) -> JSRe
         return canceled(ctx);
     }
     let result = completed(ctx)?;
-    if contents.is_empty() {
-        result.set("status", "empty")?;
-        return Ok(result);
-    }
-
     let items = rong::JSArray::new(ctx)?;
     if let Some(text) = contents.text {
         let item = JSObject::new(ctx);
@@ -177,7 +167,7 @@ fn contents_to_read_result(ctx: &JSContext, contents: ClipboardContents) -> JSRe
         let uri = to_managed_uri(&lxapp, Path::new(&image_path))?;
         let item = JSObject::new(ctx);
         item.set("type", "image")?;
-        item.set("filePath", uri)?;
+        item.set("path", uri)?;
         items.push(item)?;
     }
     result.set("items", items)?;
@@ -201,8 +191,8 @@ fn parse_write_item(lxapp: &LxApp, value: JSValue) -> JSResult<ClipboardWrite> {
             Ok(ClipboardWrite::Text(validate_text(&text)?))
         }
         "image" => {
-            let file_path = obj.get::<_, String>("filePath").map_err(|_| {
-                js_invalid_parameter_error("clipboard.write image item requires string `filePath`")
+            let file_path = obj.get::<_, String>("path").map_err(|_| {
+                js_invalid_parameter_error("clipboard.write image item requires string `path`")
             })?;
             Ok(ClipboardWrite::Image {
                 path: resolve_share_like_file(lxapp, &file_path)?,
@@ -248,7 +238,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
     let path = file.trim();
     if path.is_empty() {
         return Err(js_invalid_parameter_error(
-            "clipboard image filePath is required",
+            "clipboard image path is required",
         ));
     }
     if is_platform_file_reference(path) && lxapp.has_transient_file_reference(path) {
@@ -256,7 +246,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
     }
     if is_platform_file_reference(path) || !path.starts_with("lx://") {
         return Err(js_invalid_parameter_error(
-            "clipboard image filePath must be an lx:// path or a file returned by lx.pick",
+            "clipboard image path must be an lx:// path or a file returned by lx.pick",
         ));
     }
     let resolved = lxapp
@@ -266,7 +256,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
         fs::metadata(&resolved).map_err(|e| js_invalid_parameter_error(e.to_string()))?;
     if !metadata.is_file() {
         return Err(js_invalid_parameter_error(format!(
-            "clipboard image filePath is not a file: {}",
+            "clipboard image path is not a file: {}",
             resolved.display()
         )));
     }

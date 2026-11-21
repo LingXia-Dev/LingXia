@@ -28,13 +28,13 @@ test('download a body and read the bytes back out of the sandbox', {
     // task.result settles once, so a second await observes that same
     // transfer rather than starting or re-reporting another one.
     const reawaited = await task.result;
-    const stat = await lx.fs.stat(awaited.uri);
+    const stat = await lx.fs.stat(awaited.path);
     return {
-      awaitedSize: awaited.sizeBytes,
-      reawaitedSize: reawaited.sizeBytes,
-      sameUri: reawaited.uri === awaited.uri,
+      awaitedSize: awaited.size,
+      reawaitedSize: reawaited.size,
+      sameUri: reawaited.path === awaited.path,
       onDisk: stat.size,
-      managed: awaited.uri.startsWith('lx://'),
+      managed: awaited.path.startsWith('lx://'),
     };
   }, `${httpBase}/file/a.bin?size=4096`);
 
@@ -88,7 +88,7 @@ test('stream monotonic download progress across pause and resume', {
         const step = await iterator.next();
         if (step.done) {
           const waited = await task.result;
-          return { ok: true, value: { events, pausedAt, returnedSize: step.value.sizeBytes, waitedSize: waited.sizeBytes } };
+          return { ok: true, value: { events, pausedAt, returnedSize: step.value.size, waitedSize: waited.size } };
         }
         events.push({ loaded: step.value.loaded, total: step.value.total ?? null, fraction: step.value.fraction ?? null });
         if (pausedAt < 0) {
@@ -221,10 +221,10 @@ test('upload a managed file as multipart and read the server echo', {
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
     const source = await lx.network.download(sourceUrl).result;
     const response = await lx.network.upload(uploadUrl, {
-      file: source.uri,
-      name: 'asset',
+      path: source.path,
+      field: 'asset',
       fileName: 'up.bin',
-      formData: { note: 'spec' },
+      fields: { note: 'spec' },
       headers: { 'x-lx-test': 'echo' },
     }).result;
     return { status: response.status, ok: response.ok, echo: response.json<Record<string, any>>() };
@@ -255,7 +255,7 @@ test('keep the multipart envelope intact whatever the caller heads', {
     // header must not reach it -- unlike bodyMode 'raw', where it must.
     // user-agent is the runtime's to state, and content-length is derived.
     const response = await lx.network.upload(uploadUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       headers: {
         'Content-Type': 'text/plain',
@@ -296,14 +296,14 @@ test('stream upload progress that ends at the full body', {
     };
     const source = await lx.network.download(sourceUrl).result;
     const raw = await collect(uploadRawUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       bodyMode: 'raw',
     });
     const multipart = await collect(uploadUrl, {
-      file: source.uri,
+      path: source.path,
     });
-    return { raw, multipart, size: source.sizeBytes };
+    return { raw, multipart, size: source.size };
   }, `${httpBase}/file/prog.bin?size=1500000`, `${httpBase}/upload-raw`, `${httpBase}/upload`);
 
   // One shape per mode, so a failure names the property that moved rather than
@@ -335,7 +335,7 @@ test('leaving upload iteration cancels it, and a refusal resolves with its statu
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadUrl, uploadRawUrl) => {
     const source = await lx.network.download(sourceUrl).result;
 
-    const leaving = lx.network.upload(uploadUrl, { file: source.uri });
+    const leaving = lx.network.upload(uploadUrl, { path: source.path });
     const iterator = leaving[Symbol.asyncIterator]();
     const first = await iterator.next();
     const returned = await iterator.return!();
@@ -345,7 +345,7 @@ test('leaving upload iteration cancels it, and a refusal resolves with its statu
     );
 
     const refused = await lx.network.upload(uploadRawUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       bodyMode: 'raw',
     }).result;
@@ -376,19 +376,19 @@ test('upload a raw body with PUT for presigned endpoints', {
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
     const source = await lx.network.download(sourceUrl).result;
     const response = await lx.network.upload(uploadRawUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       bodyMode: 'raw',
-      mimeType: 'application/x-lingxia-test',
+      type: 'application/x-lingxia-test',
       headers: { 'x-lx-test': 'echo' },
     }).result;
     // A presigned signature covers Content-Type, so an explicit header has
-    // to win over mimeType rather than be rewritten by the runtime.
+    // to win over type rather than be rewritten by the runtime.
     const overridden = await lx.network.upload(uploadRawUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       bodyMode: 'raw',
-      mimeType: 'application/x-lingxia-test',
+      type: 'application/x-lingxia-test',
       headers: { 'Content-Type': 'image/avif' },
     }).result;
     return {
@@ -425,10 +425,10 @@ test('reject multipart-only options when the body is raw', {
       const source = await lx.network.download(sourceUrl).result;
       // Multipart-only options under a raw body: the typings refuse them on purpose.
       const value = await (lx.network.upload as (url: string, options: object) => ReturnType<typeof lx.network.upload>)(uploadRawUrl, {
-        file: source.uri,
+        path: source.path,
         method: 'PUT',
         bodyMode: 'raw',
-        formData: { note: 'spec' },
+        fields: { note: 'spec' },
       }).result;
       return { ok: true, value };
     } catch (error) {
@@ -441,10 +441,10 @@ test('reject multipart-only options when the body is raw', {
       const source = await lx.network.download(sourceUrl).result;
       // Multipart-only options under a raw body: the typings refuse them on purpose.
       const value = await (lx.network.upload as (url: string, options: object) => ReturnType<typeof lx.network.upload>)(uploadRawUrl, {
-        file: source.uri,
+        path: source.path,
         method: 'PUT',
         bodyMode: 'raw',
-        name: 'asset',
+        field: 'asset',
       }).result;
       return { ok: true, value };
     } catch (error) {
@@ -473,7 +473,7 @@ test('resolve with the refusing status when a raw upload is rejected mid-body', 
   const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl) => {
     const source = await lx.network.download(sourceUrl).result;
     const response = await lx.network.upload(uploadRawUrl, {
-      file: source.uri,
+      path: source.path,
       method: 'PUT',
       bodyMode: 'raw',
     }).result;
@@ -496,7 +496,7 @@ test('accept PATCH and an empty file as a raw body', {
     // envelope -- and it must still be a well-formed request, not a hang.
     const empty = await lx.network.download(sourceUrl).result;
     const response = await lx.network.upload(uploadRawUrl, {
-      file: empty.uri,
+      path: empty.path,
       method: 'PATCH',
       bodyMode: 'raw',
     }).result;
@@ -507,7 +507,7 @@ test('accept PATCH and an empty file as a raw body', {
   expect(result.echo.method).toBe('PATCH');
   expect(result.echo.received).toBe(0);
   expect(result.echo.contentLength).toBe(0);
-  // No mimeType was given, so the runtime states the neutral default.
+  // No type was given, so the runtime states the neutral default.
   expect(result.echo.contentType).toBe('application/octet-stream');
 });
 
@@ -525,7 +525,7 @@ test('deny an upload to a host the lxapp never trusted', {
     try {
       const source = await lx.network.download(sourceUrl).result;
       const value = await lx.network.upload('https://not-trusted.example/upload', {
-        file: source.uri,
+        path: source.path,
         method: 'PUT',
         bodyMode: 'raw',
       }).result;
@@ -553,7 +553,7 @@ test('cancel an upload and reject rather than resolve', {
       const source = await lx.network.download(sourceUrl).result;
       // holdMs keeps the request open long enough for a cancel to be meaningful.
       const task = lx.network.upload(uploadUrl, {
-        file: source.uri,
+        path: source.path,
       });
       setTimeout(() => task.cancel(), 200);
       const value = await task.result;

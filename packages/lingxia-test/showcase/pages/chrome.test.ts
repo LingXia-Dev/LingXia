@@ -384,19 +384,10 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
     await app.logic.eval(async ({ lx }) => {
       await lx.app.tabBar.update({
         visibility: 'auto',
-        items: [{
-          index: 0,
-          text: null,
-          iconPath: null,
-          badge: null,
-          redDot: false,
-        }, {
-          index: 1,
-          text: null,
-          iconPath: null,
-          badge: null,
-          redDot: false,
-        }],
+        items: {
+          home: { label: null, icon: null, badge: null },
+          api: { label: null, icon: null, badge: null },
+        },
       });
     }).catch(() => undefined);
     await app.nav.reset({ page: 'home' }).catch(() => undefined);
@@ -422,10 +413,10 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
   await t.step('patch the selected tab and a second item together', async () => {
     await app.logic.eval(async ({ lx }) => {
       await lx.app.tabBar.update({
-        items: [
-          { index: 0, badge: '1' },
-          { index: 1, badge: '2', redDot: false },
-        ],
+        items: {
+          home: { badge: '1' },
+          api: { badge: '2' },
+        },
       });
     });
     await waitForTabBar(
@@ -446,10 +437,10 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
   await t.step('reject invalid updates with E_INVALID_ARG', async () => {
     const before = await tabBar(app);
     const invalid: JsonValue[] = [
-      { items: [{ index: 99, text: 'Invalid' }] },
-      { items: [{ index: -1, text: 'Invalid' }] },
+      { items: { 'no-such-tab': { label: 'Invalid' } } },
+      { items: [{ index: 1, label: 'Invalid' }] },
       { style: { foregroundColor: 'not-a-color' } },
-      { items: [{ index: 1, iconPath: '../secret.png' }] },
+      { items: { api: { icon: '../secret.png' } } },
     ];
     for (const patch of invalid) {
       const rejected = await caughtChromeUpdate(app, 'tabBar', patch);
@@ -462,8 +453,8 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
   await t.step('last concurrent update wins without a torn item', async () => {
     await app.logic.eval(async ({ lx }) => {
       await Promise.all([
-        lx.app.tabBar.update({ items: [{ index: 1, text: 'First', badge: 'A' }] }),
-        lx.app.tabBar.update({ items: [{ index: 1, text: 'Second', badge: 'B' }] }),
+        lx.app.tabBar.update({ items: { api: { label: 'First', badge: 'A' } } }),
+        lx.app.tabBar.update({ items: { api: { label: 'Second', badge: 'B' } } }),
       ]);
     });
     const after = await waitForTabBar(

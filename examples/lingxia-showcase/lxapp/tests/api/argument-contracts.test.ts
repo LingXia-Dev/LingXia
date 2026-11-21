@@ -101,14 +101,14 @@ test('reject malformed transfer arguments before touching the network', {
     // no fixture and no source file -- they hold on every platform.
     { label: 'upload no url', api: 'network.upload', args: [], code: 'E_INVALID_ARG' },
     { label: 'upload no file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', {}], code: 'E_INVALID_ARG' },
-    { label: 'upload empty url', api: 'network.upload', args: ['', { file: 'a.bin' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown method', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
-    { label: 'upload unknown bodyMode', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
+    { label: 'upload empty url', api: 'network.upload', args: ['', { path: 'a.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown method', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', method: 'DELETE' }], code: 'E_INVALID_ARG' },
+    { label: 'upload unknown bodyMode', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', bodyMode: 'binary' }], code: 'E_INVALID_ARG' },
     // Multipart-only options under a raw body are rejected, never dropped.
-    { label: 'upload raw with formData', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } }], code: 'E_INVALID_ARG' },
-    { label: 'upload raw with name', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'a.bin', bodyMode: 'raw', name: 'asset' }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with fields', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', bodyMode: 'raw', fields: { note: 'x' } }], code: 'E_INVALID_ARG' },
+    { label: 'upload raw with field', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', bodyMode: 'raw', field: 'asset' }], code: 'E_INVALID_ARG' },
     // Shape is fine here; the file simply is not there.
-    { label: 'upload missing file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { file: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload missing file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
   ]);
 });
 
@@ -149,8 +149,8 @@ test('reject malformed clipboard arguments without touching the OS clipboard', {
     { label: 'write not object', api: 'clipboard.write', args: ['text'], code: 'E_INVALID_ARG' },
     { label: 'write unknown type', api: 'clipboard.write', args: [{ type: 'html', text: 'x' }], code: 'E_INVALID_ARG' },
     { label: 'write text missing', api: 'clipboard.write', args: [{ type: 'text' }], code: 'E_INVALID_ARG' },
-    { label: 'write image empty path', api: 'clipboard.write', args: [{ type: 'image', filePath: '' }], code: 'E_INVALID_ARG' },
-    { label: 'write image absolute', api: 'clipboard.write', args: [{ type: 'image', filePath: '/tmp/a.png' }], code: 'E_INVALID_ARG' },
+    { label: 'write image empty path', api: 'clipboard.write', args: [{ type: 'image', path: '' }], code: 'E_INVALID_ARG' },
+    { label: 'write image absolute', api: 'clipboard.write', args: [{ type: 'image', path: '/tmp/a.png' }], code: 'E_INVALID_ARG' },
     { label: 'read unknown type', api: 'clipboard.read', args: [{ type: 'html' }], code: 'E_INVALID_ARG' },
     { label: 'read not object', api: 'clipboard.read', args: ['text'], code: 'E_INVALID_ARG' },
     {
