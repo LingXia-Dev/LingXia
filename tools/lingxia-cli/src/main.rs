@@ -209,8 +209,12 @@ enum DevAction {
 #[derive(Subcommand)]
 enum SkillAction {
     /// Write the skill to ~/.agents/skills/lingxia (linked from
-    /// ~/.claude/skills/lingxia for Claude Code)
-    Install,
+    /// ~/.claude/skills/lingxia for Claude Code). A copy you linked or edited is kept.
+    Install {
+        /// Replace the installed copy even if you linked, edited or copied it in yourself
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1008,8 +1012,8 @@ fn run() -> Result<()> {
             )?;
         }
         Commands::Skill {
-            action: SkillAction::Install,
-        } => commands::skill::install(&std::env::current_dir()?)?,
+            action: SkillAction::Install { force },
+        } => commands::skill::install(&std::env::current_dir()?, force)?,
         Commands::Template { action } => match action {
             TemplateAction::Add { source } => {
                 commands::template_provider::execute_add(&source)?;

@@ -213,6 +213,8 @@ a stale `AGENTS.md` pointer is reported with its replacement block (only
 `lingxia new` writes the pointer). `lingxia new` and `lingxia upgrade` do
 this themselves; afterwards every `lingxia` command keeps an existing copy in
 step. A machine without `~/.agents/skills` (CI) is never written to.
+A copy you linked, copied in by hand, or edited is kept and reported;
+`--force` replaces it.
 
 ## `lingxia upgrade`
 

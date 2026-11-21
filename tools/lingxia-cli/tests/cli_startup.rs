@@ -56,8 +56,11 @@ fn skill_install_links_claude_to_the_shared_copy_and_leaves_the_project_alone() 
             && std::fs::canonicalize(&claude).unwrap() == std::fs::canonicalize(&canonical).unwrap()
     };
 
-    std::fs::create_dir_all(&claude).unwrap();
-    std::fs::write(claude.join("SKILL.md"), "old").unwrap();
+    // An untouched copy an older CLI wrote straight into Claude's skills root.
+    std::fs::create_dir_all(claude.parent().unwrap()).unwrap();
+    assert!(install(&["skill", "install"]).status.success());
+    std::fs::remove_file(&claude).unwrap();
+    std::fs::rename(&canonical, &claude).unwrap();
     let output = install(&["skill", "install"]);
     assert!(
         output.status.success(),

@@ -112,7 +112,11 @@ pub fn sync_installed_skill(create: bool) {
 
 /// The reconcile every command runs; a no-op outside release builds.
 pub fn sync_installed_skill_automatically() {
-    report_skill_sync(crate::commands::skill::sync_home_skill_automatically());
+    // A kept copy is said once, by the command that asked for the skill, not on every run.
+    let result = crate::commands::skill::sync_home_skill_automatically();
+    if !matches!(result, Ok(crate::commands::skill::Sync::Kept { .. })) {
+        report_skill_sync(result);
+    }
 }
 
 fn report_skill_sync(result: anyhow::Result<crate::commands::skill::Sync>) {
@@ -120,6 +124,11 @@ fn report_skill_sync(result: anyhow::Result<crate::commands::skill::Sync>) {
 
     match result {
         Ok(Sync::Skipped | Sync::Current | Sync::Newer { .. }) => {}
+        Ok(Sync::Kept { why }) => eprintln!(
+            "Kept the installed LingXia agent skill ({}); `lingxia skill install --force` replaces it with {}.",
+            why.describe(),
+            env!("CARGO_PKG_VERSION")
+        ),
         Ok(Sync::Created) => eprintln!(
             "Installed the LingXia agent skill ({}).",
             env!("CARGO_PKG_VERSION")

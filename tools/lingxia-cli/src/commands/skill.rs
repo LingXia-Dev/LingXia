@@ -42,6 +42,31 @@ pub enum Sync {
     Newer {
         installed: String,
     },
+    /// Left alone: not a copy this CLI wrote and nobody changed since.
+    Kept {
+        why: Kept,
+    },
+}
+
+/// Why an installed copy was left as it is. `lingxia skill install --force` replaces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kept {
+    /// The skill directory is a link the user made.
+    Linked,
+    /// No manifest: copied in by hand or by another tool.
+    Unmanaged,
+    /// Its files differ from what the manifest records.
+    Edited,
+}
+
+impl Kept {
+    pub(crate) fn describe(self) -> &'static str {
+        match self {
+            Kept::Linked => "a link you made",
+            Kept::Unmanaged => "not written by the CLI",
+            Kept::Edited => "edited",
+        }
+    }
 }
 
 /// Reconcile the copy under the home directory with the embedded skill.
@@ -52,7 +77,7 @@ pub enum Sync {
 /// a skills root is already there to receive it: a machine that has never run
 /// an agent does not grow a `~/.agents` because a build ran.
 pub fn sync_home_skill(create_if_missing: bool) -> Result<Sync> {
-    sync_for_home(&home_dir()?, create_if_missing)
+    sync_for_home(&home_dir()?, create_if_missing, false)
 }
 
 /// The reconcile every command runs. Only a release build takes part: a dev
@@ -65,7 +90,7 @@ fn auto_sync_for_home(home: &Path, release: bool) -> Result<Sync> {
     if !release {
         return Ok(Sync::Skipped);
     }
-    sync_for_home(home, false)
+    sync_for_home(home, false, false)
 }
 
 pub(crate) fn skills_root(home: &Path) -> PathBuf {
@@ -77,18 +102,20 @@ pub(crate) fn claude_skills_root(home: &Path) -> PathBuf {
     home.join(".claude").join("skills")
 }
 
-fn sync_for_home(home: &Path, create_if_missing: bool) -> Result<Sync> {
+fn sync_for_home(home: &Path, create_if_missing: bool, force: bool) -> Result<Sync> {
     let dest = skills_root(home).join(SKILL_DIR_NAME);
     let claude = claude_skills_root(home).join(SKILL_DIR_NAME);
-    let result = sync(
+    let result = sync_with(
         &dest,
         create_if_missing || claude.join("SKILL.md").is_file(),
+        force,
     )?;
-    if !matches!(result, Sync::Skipped) {
-        // A real directory there is a copy an older CLI wrote; a live link
-        // elsewhere is the user's own choice.
+    if !matches!(result, Sync::Skipped | Sync::Kept { .. }) {
+        // A real directory there is replaced only as a copy an older CLI wrote and nobody
+        // edited; a live link elsewhere is the user's own choice.
         link_for_claude(home, &dest, |path| {
             !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+                && (force || unchanged_copy(path))
         })?;
     }
     Ok(result)
@@ -265,10 +292,20 @@ fn tree_digest(root: &Path) -> Result<String> {
     Ok(digest_of(&files))
 }
 
+#[cfg(test)]
 fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
+    sync_with(dest, create_if_missing, false)
+}
+
+/// Write this binary's skill to `dest`. An existing copy is replaced only when this CLI
+/// wrote it and nobody changed it since, unless `force`.
+fn sync_with(dest: &Path, create_if_missing: bool, force: bool) -> Result<Sync> {
     let installed = dest.join("SKILL.md").is_file();
     if !installed && !create_if_missing && !skills_root_exists(dest) {
         return Ok(Sync::Skipped);
+    }
+    if !force && fs::symlink_metadata(dest).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Ok(Sync::Kept { why: Kept::Linked });
     }
 
     let manifest = read_manifest(dest);
@@ -279,7 +316,17 @@ fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
-    if installed && field("digest").as_deref() == Some(embedded_digest()) {
+    if installed && !force {
+        let Some(recorded) = field("digest") else {
+            return Ok(Sync::Kept {
+                why: Kept::Unmanaged,
+            });
+        };
+        if disk_digest(dest)? != recorded {
+            return Ok(Sync::Kept { why: Kept::Edited });
+        }
+    }
+    if installed && !force && field("digest").as_deref() == Some(embedded_digest()) {
         return Ok(Sync::Current);
     }
     if installed && let Some(version) = field("version").filter(|version| is_newer(version)) {
@@ -294,6 +341,24 @@ fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
     } else {
         Sync::Created
     })
+}
+
+/// A copy this CLI wrote whose files still match its manifest.
+fn unchanged_copy(dir: &Path) -> bool {
+    read_manifest(dir)
+        .and_then(|manifest| manifest.get("digest")?.as_str().map(str::to_string))
+        .is_some_and(|recorded| disk_digest(dir).is_ok_and(|digest| digest == recorded))
+}
+
+/// The digest of the files on disk, the manifest left out: what the manifest's digest
+/// recorded when this CLI wrote them.
+fn disk_digest(dest: &Path) -> Result<String> {
+    let mut files = Vec::new();
+    collect_disk_files(dest, dest, &mut files)
+        .with_context(|| format!("Failed to read {}", dest.display()))?;
+    files.retain(|(path, _)| path != Path::new(MANIFEST_NAME));
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(digest_of(&files))
 }
 
 /// Whether `version` is a release later than this binary's. An unreadable one
@@ -315,20 +380,12 @@ fn skills_root_exists(dest: &Path) -> bool {
 /// `lingxia skill install`: write the skill where the agent looks for it. It is
 /// a user-level install and never edits the project the shell is in; a stale
 /// pointer block in the nearest `AGENTS.md` is reported with its replacement.
-pub fn install(cwd: &Path) -> Result<()> {
+pub fn install(cwd: &Path, force: bool) -> Result<()> {
     let dest = user_destination()?;
-    match sync_for_home(&home_dir()?, true)? {
-        Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
-        Sync::Rewritten { .. } => println!("Updated the LingXia skill at {}", dest.display()),
-        Sync::Newer { installed } => println!(
-            "Kept the LingXia skill at {}: it is {installed}, newer than this CLI ({})",
-            dest.display(),
-            env!("CARGO_PKG_VERSION")
-        ),
-        Sync::Created | Sync::Skipped => {
-            println!("Installed the LingXia skill to {}", dest.display())
-        }
-    }
+    println!(
+        "{}",
+        outcome(&dest, sync_for_home(&home_dir()?, true, force)?)
+    );
     if let Some(suggestion) = stale_pointer(cwd, &dest) {
         println!("{suggestion}");
     }
@@ -364,15 +421,33 @@ fn pointer_project(cwd: &Path) -> Option<PathBuf> {
 /// directory, a committable pointer in the project.
 pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
     let dest = user_destination()?;
-    match sync_for_home(&home_dir()?, true)? {
-        Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
-        Sync::Newer { installed } => println!(
-            "Kept the newer LingXia skill ({installed}) at {}",
-            dest.display()
-        ),
-        _ => println!("Installed the LingXia skill to {}", dest.display()),
-    }
+    println!(
+        "{}",
+        outcome(&dest, sync_for_home(&home_dir()?, true, false)?)
+    );
     write_agents_pointer(project_dir, &dest)
+}
+
+/// One line saying what an install did to the copy at `dest`.
+fn outcome(dest: &Path, sync: Sync) -> String {
+    let dest = dest.display();
+    let version = env!("CARGO_PKG_VERSION");
+    match sync {
+        Sync::Current => format!("The LingXia skill at {dest} is current ({version})"),
+        Sync::Created | Sync::Skipped => {
+            format!("Installed the LingXia skill ({version}) to {dest}")
+        }
+        Sync::Rewritten { previous } => {
+            format!("Updated the LingXia skill at {dest} from {previous} to {version}")
+        }
+        Sync::Newer { installed } => format!(
+            "Kept the LingXia skill at {dest}: it is {installed}, newer than this CLI ({version})"
+        ),
+        Sync::Kept { why } => format!(
+            "Kept the LingXia skill at {dest} ({}); `lingxia skill install --force` replaces it",
+            why.describe()
+        ),
+    }
 }
 
 /// The home-directory skill, shared by every project.
@@ -745,8 +820,9 @@ mod tests {
         fs::create_dir_all(&old).unwrap();
         fs::create_dir_all(&other).unwrap();
         fs::write(old.join("SKILL.md"), "old").unwrap();
+        record(&old, "0.0.1");
         assert!(matches!(
-            sync_for_home(home.path(), false).unwrap(),
+            sync_for_home(home.path(), false, false).unwrap(),
             Sync::Created
         ));
         let canonical = fs::canonicalize(skill_dir(home.path())).unwrap();
@@ -755,7 +831,7 @@ mod tests {
         assert!(other.is_dir());
         assert!(skill_dir(home.path()).join("SKILL.md").is_file());
         assert!(matches!(
-            sync_for_home(home.path(), false).unwrap(),
+            sync_for_home(home.path(), false, false).unwrap(),
             Sync::Current
         ));
         assert_eq!(fs::canonicalize(&old).unwrap(), canonical);
@@ -770,12 +846,12 @@ mod tests {
         std::os::unix::fs::symlink(skills_root(home.path()), claude_skills_root(home.path()))
             .unwrap();
         for _ in 0..2 {
-            sync_for_home(home.path(), true).unwrap();
+            sync_for_home(home.path(), true, false).unwrap();
             assert!(skill_dir(home.path()).join("SKILL.md").is_file());
         }
         // A stale copy is rewritten, never deleted through the linked root.
         fs::write(skill_dir(home.path()).join(MANIFEST_NAME), "{}").unwrap();
-        sync_for_home(home.path(), false).unwrap();
+        sync_for_home(home.path(), false, false).unwrap();
         assert!(skill_dir(home.path()).join("SKILL.md").is_file());
     }
 
@@ -783,7 +859,7 @@ mod tests {
     #[test]
     fn a_users_own_link_elsewhere_is_kept_and_no_claude_means_no_link() {
         let home = TempDir::new().unwrap();
-        sync_for_home(home.path(), true).unwrap();
+        sync_for_home(home.path(), true, false).unwrap();
         assert!(!home.path().join(".claude").exists());
 
         let checkout = TempDir::new().unwrap();
@@ -792,7 +868,7 @@ mod tests {
         let link = claude_skills_root(home.path()).join(SKILL_DIR_NAME);
         std::os::unix::fs::symlink(checkout.path(), &link).unwrap();
         fs::write(skill_dir(home.path()).join(MANIFEST_NAME), "{}").unwrap();
-        sync_for_home(home.path(), false).unwrap();
+        sync_for_home(home.path(), false, false).unwrap();
         assert_eq!(fs::read_to_string(link.join("SKILL.md")).unwrap(), "dev");
     }
 
@@ -821,7 +897,7 @@ mod tests {
         fs::create_dir_all(&old).unwrap();
         fs::write(old.join("SKILL.md"), "old").unwrap();
         fs::write(home.path().join(".agents"), "not a directory").unwrap();
-        assert!(sync_for_home(home.path(), true).is_err());
+        assert!(sync_for_home(home.path(), true, false).is_err());
         assert_eq!(fs::read_to_string(old.join("SKILL.md")).unwrap(), "old");
     }
 
@@ -832,12 +908,7 @@ mod tests {
         sync(&dest, true).unwrap();
         // Same version, different content: a version comparison cannot see this.
         fs::write(dest.join("SKILL.md"), "stale").unwrap();
-        fs::write(
-            dest.join(MANIFEST_NAME),
-            serde_json::json!({ "version": env!("CARGO_PKG_VERSION"), "digest": "stale" })
-                .to_string(),
-        )
-        .unwrap();
+        record(&dest, env!("CARGO_PKG_VERSION"));
         assert!(matches!(
             sync(&dest, false).unwrap(),
             Sync::Rewritten { .. }
@@ -845,13 +916,125 @@ mod tests {
         assert_ne!(fs::read_to_string(dest.join("SKILL.md")).unwrap(), "stale");
     }
 
+    /// A copy another build wrote and nobody touched since: the manifest records its files.
     fn claim(dest: &Path, version: &str) {
         fs::write(dest.join("SKILL.md"), "claimed").unwrap();
+        record(dest, version);
+    }
+
+    fn record(dest: &Path, version: &str) {
+        let digest = disk_digest(dest).unwrap();
         fs::write(
             dest.join(MANIFEST_NAME),
-            serde_json::json!({ "version": version, "digest": "other" }).to_string(),
+            serde_json::json!({ "version": version, "digest": digest }).to_string(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn an_edited_old_claude_copy_is_kept() {
+        let home = TempDir::new().unwrap();
+        let old = home.path().join(".claude/skills/lingxia");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("SKILL.md"), "old").unwrap();
+        record(&old, "0.0.1");
+        fs::write(old.join("SKILL.md"), "my notes").unwrap();
+        sync_for_home(home.path(), false, false).unwrap();
+        assert!(!fs::symlink_metadata(&old).unwrap().file_type().is_symlink());
+        assert_eq!(
+            fs::read_to_string(old.join("SKILL.md")).unwrap(),
+            "my notes"
+        );
+    }
+
+    #[test]
+    fn an_edited_copy_is_kept_until_forced() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        claim(&dest, "0.0.1");
+        fs::write(dest.join("SKILL.md"), "my notes").unwrap();
+        assert!(matches!(
+            sync_for_home(home.path(), true, false).unwrap(),
+            Sync::Kept { why: Kept::Edited }
+        ));
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "my notes"
+        );
+        assert!(matches!(
+            sync_for_home(home.path(), true, true).unwrap(),
+            Sync::Rewritten { previous } if previous == "0.0.1"
+        ));
+        assert_ne!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "my notes"
+        );
+    }
+
+    #[test]
+    fn an_edited_current_copy_is_kept_not_reported_current() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        fs::write(dest.join("SKILL.md"), "my notes").unwrap();
+        assert!(matches!(
+            sync(&dest, false).unwrap(),
+            Sync::Kept { why: Kept::Edited }
+        ));
+    }
+
+    #[test]
+    fn a_copy_without_a_manifest_is_kept() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(dest.join("SKILL.md"), "copied by hand").unwrap();
+        assert!(matches!(
+            sync_for_home(home.path(), true, false).unwrap(),
+            Sync::Kept {
+                why: Kept::Unmanaged
+            }
+        ));
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "copied by hand"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_skill_is_kept() {
+        let home = TempDir::new().unwrap();
+        let mine = home.path().join("my-skill");
+        fs::create_dir_all(&mine).unwrap();
+        fs::write(mine.join("SKILL.md"), "mine").unwrap();
+        let dest = skill_dir(home.path());
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&mine, &dest).unwrap();
+        assert!(matches!(
+            sync_for_home(home.path(), true, false).unwrap(),
+            Sync::Kept { why: Kept::Linked }
+        ));
+        assert_eq!(fs::read_to_string(mine.join("SKILL.md")).unwrap(), "mine");
+    }
+
+    #[test]
+    fn an_install_over_an_old_copy_says_updated_never_installed() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        claim(&dest, "0.0.1");
+        let line = outcome(&dest, sync_for_home(home.path(), true, false).unwrap());
+        assert!(line.contains("Updated the LingXia skill"), "{line}");
+        assert!(line.contains("from 0.0.1"), "{line}");
+        fs::write(dest.join("SKILL.md"), "edited").unwrap();
+        let line = outcome(&dest, sync_for_home(home.path(), true, false).unwrap());
+        assert!(
+            line.contains("(edited)") && line.contains("--force"),
+            "{line}"
+        );
+        assert!(!line.contains("Installed"), "{line}");
     }
 
     #[test]
@@ -861,7 +1044,7 @@ mod tests {
         sync(&dest, true).unwrap();
         claim(&dest, "999.0.0");
         assert!(matches!(
-            sync_for_home(home.path(), true).unwrap(),
+            sync_for_home(home.path(), true, false).unwrap(),
             Sync::Newer { installed } if installed == "999.0.0"
         ));
         assert_eq!(
@@ -877,7 +1060,7 @@ mod tests {
         sync(&dest, true).unwrap();
         claim(&dest, "0.0.1");
         assert!(matches!(
-            sync_for_home(home.path(), true).unwrap(),
+            sync_for_home(home.path(), true, false).unwrap(),
             Sync::Rewritten { previous } if previous == "0.0.1"
         ));
         assert_ne!(
@@ -913,7 +1096,7 @@ mod tests {
         sync(&dest, true).unwrap();
         let orphan = dest.join("orphan.md");
         fs::write(&orphan, "gone next time").unwrap();
-        fs::write(dest.join(MANIFEST_NAME), r#"{"digest":"stale"}"#).unwrap();
+        record(&dest, "0.0.1");
         sync(&dest, false).unwrap();
         assert!(!orphan.exists());
     }
