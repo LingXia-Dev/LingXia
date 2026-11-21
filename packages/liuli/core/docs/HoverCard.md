@@ -115,7 +115,7 @@ export function InSentence() {
 - Tab: Moves to the trigger and shows the card.
 - Escape: Hides the card.
 - Press target: .
-- Words as the trigger are wrapped in one button named by them; the card is named by `label`.
+- Words as the trigger are wrapped in one button named by them; the card is a non-modal dialog named by `label`.
 - The card shows on keyboard focus as well as on hover, and on a tap on touch screens.
 - Focus does not move into the card, so put nothing in it that needs focus.
 

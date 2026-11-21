@@ -33,6 +33,7 @@ export function HoverCard({ children, content, label, placement = 'bottom', 'dat
         <view
           id={id}
           popover="hint"
+          role="dialog"
           aria-label={label}
           data-testid={testId && `${testId}-card`}
           style={{ positionArea: areas[placement] }}

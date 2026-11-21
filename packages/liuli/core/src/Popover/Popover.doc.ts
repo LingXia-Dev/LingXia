@@ -8,8 +8,8 @@ export const doc: ComponentDoc = {
   summary: 'A panel of content that opens beside its trigger, closed by a tap outside',
   description:
     'Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, ' +
-    'a Button or IconButton, or any element, which is wrapped in a plain button. It is not ' +
-    'modal; a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use ' +
+    'a Button or IconButton, or any element, which is wrapped in a plain button. The panel is a ' +
+    'non-modal dialog: Tab can leave it, and a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use ' +
     'DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.',
   keywords: ['popover', 'popup', 'panel', 'flyout', 'options', 'share', 'overlay', 'anchored'],
   propsType: 'PopoverProps',
@@ -25,6 +25,7 @@ export const doc: ComponentDoc = {
     states: [{ state: 'expanded', from: 'whether the panel is open' }],
     keyboard: [
       { keys: 'Enter, Space', effect: 'On the trigger, opens or closes the panel.' },
+      { keys: 'Tab', effect: 'Moves through the panel\'s controls and on past it; the panel stays open.' },
       { keys: 'Escape', effect: 'Closes the panel; focus returns to the trigger.' },
     ],
     target: { sm: 32, md: 40, lg: 48 },
@@ -33,6 +34,7 @@ export const doc: ComponentDoc = {
       { what: 'panel edge', pair: ['line-strong', 'surface'], minimum: '3:1' },
     ],
     notes: [
+      'The panel is a dialog named by `title`, else `label`; it is not modal, so the page stays readable around it.',
       'The trigger reports expanded while the panel is open.',
       'A tap outside closes the panel and reaches nothing else, as with any light-dismiss popover.',
       'It opens below the trigger or above it only; near the bottom of the screen open it above, as it stays under the tab bar.',

@@ -8,7 +8,7 @@ A panel of content that opens beside its trigger, closed by a tap outside. Statu
 import { Popover } from '@liulidesign/core/Popover';
 ```
 
-Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, a Button or IconButton, or any element, which is wrapped in a plain button. It is not modal; a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.
+Popover shows a small panel, its `content`, beside the trigger that opened it: view options, a share link, a short form. Its children are the trigger, a Button or IconButton, or any element, which is wrapped in a plain button. The panel is a non-modal dialog: Tab can leave it, and a tap outside, Escape or back closes it and focus goes back to the trigger. For a list of actions use DropdownMenu; for a note about something use InfoTip; for a decision use Dialog.
 
 ## Examples
 
@@ -149,8 +149,10 @@ export function InSentence() {
 - Description: none.
 - States: expanded (from whether the panel is open).
 - Enter, Space: On the trigger, opens or closes the panel..
+- Tab: Moves through the panel's controls and on past it; the panel stays open..
 - Escape: Closes the panel; focus returns to the trigger..
 - Press target: sm 32 px, md 40 px, lg 48 px.
+- The panel is a dialog named by `title`, else `label`; it is not modal, so the page stays readable around it.
 - The trigger reports expanded while the panel is open.
 - A tap outside closes the panel and reaches nothing else, as with any light-dismiss popover.
 - It opens below the trigger or above it only; near the bottom of the screen open it above, as it stays under the tab bar.

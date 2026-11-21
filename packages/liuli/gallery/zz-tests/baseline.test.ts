@@ -33,8 +33,9 @@ async function settled(view: { settled(): Promise<void>; screenshot(): Promise<{
   return shot;
 }
 
-// A dialog, viewer, menu, sheet or tooltip open over a page at rest was opened by something the
-// capture did not do; its picture would be recorded as the page's. Named, so the refusal says which.
+// A dialog, viewer, menu, sheet, tooltip, popover or hover card (both panels are non-modal dialogs)
+// open over a page at rest was opened by something the capture did not do; its picture would be
+// recorded as the page's. Named, so the refusal says which.
 const overlayRoles = ['dialog', 'alertdialog', 'menu', 'tooltip'] as const;
 async function openOverlay(view: { getByRole(role: (typeof overlayRoles)[number]): { count(): Promise<number>; nth(index: number): { isVisible(): Promise<boolean>; getAttribute(name: string): Promise<string | null> } } }) {
   for (const role of overlayRoles) {

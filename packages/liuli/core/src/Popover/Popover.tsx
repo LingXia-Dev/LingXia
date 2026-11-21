@@ -61,6 +61,7 @@ export function Popover({
         <view
           id={id}
           popover
+          role="dialog"
           aria-label={title ?? label}
           open={isOpen}
           onToggle={onOpenChange}

@@ -11,7 +11,10 @@ test('Person: words as the trigger are wrapped in one button that shows a hint c
   assert.ok(trigger.props.interestFor, 'shown while a pointer or focus rests on it');
   assert.ok(trigger.props.onClick, 'and by a press');
   screen.press(trigger);
-  assert.equal(screen.getByTestId('ana-card').props.accessibilityLabel, 'About Ana Lima');
+  const card = screen.getByTestId('ana-card');
+  assert.equal(card.props.accessibilityLabel, 'About Ana Lima');
+  assert.equal(card.props.role, 'dialog', 'named, so a dialog');
+  assert.equal(card.props.modal, undefined);
 });
 
 test('Term: the card opens at the side of its trigger', async () => {

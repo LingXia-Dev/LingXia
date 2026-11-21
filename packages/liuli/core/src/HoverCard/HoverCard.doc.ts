@@ -31,7 +31,7 @@ export const doc: ComponentDoc = {
       { what: 'card text', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
-      'Words as the trigger are wrapped in one button named by them; the card is named by `label`.',
+      'Words as the trigger are wrapped in one button named by them; the card is a non-modal dialog named by `label`.',
       'The card shows on keyboard focus as well as on hover, and on a tap on touch screens.',
       'Focus does not move into the card, so put nothing in it that needs focus.',
     ],

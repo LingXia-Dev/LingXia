@@ -14,6 +14,8 @@ test('ViewOptions: a named trigger opens a panel named by its title, with live c
   assert.equal(screen.getByTestId('options').props.stateExpanded, 1);
   const panel = screen.getByTestId('options-panel');
   assert.equal(panel.props.accessibilityLabel, 'Show in the list');
+  assert.equal(panel.props.role, 'dialog');
+  assert.equal(panel.props.modal, undefined, 'a non-modal dialog: Tab can leave it');
   assert.equal(screen.queryAll(node => node.props.role === 'heading').map(textOf).includes('Show in the list'), true);
   screen.toggle(screen.getByTestId('dates'));
   assert.equal(textOf(screen.getByTestId('summary')), 'Previews and Dates');
