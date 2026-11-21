@@ -51,6 +51,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   related: ['EmptyState', 'ProgressBar'],
+  playground: { props: { shape: 'text', lines: 3 } },
   gallery: {
     specimen: 'Specimen',
     tagline: 'Content on its way',

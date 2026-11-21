@@ -6,6 +6,7 @@ import { Button } from '@liulidesign/core/Button';
 import { CircularProgress } from '@liulidesign/core/CircularProgress';
 import { EmptyState } from '@liulidesign/core/EmptyState';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
+import { Skeleton } from '@liulidesign/core/Skeleton';
 import { StatusDot } from '@liulidesign/core/StatusDot';
 import { Timer } from '@liulidesign/core/Timer';
 import { Token } from '@liulidesign/core/Token';
@@ -414,6 +415,30 @@ export const playgroundEntries: PlaygroundEntry[] = [
     ]
   },
   {
+    "name": "Skeleton",
+    "defaults": {
+      "shape": "text",
+      "lines": 3
+    },
+    "controls": [
+      {
+        "name": "shape",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "block",
+          "circle",
+          "text"
+        ]
+      },
+      {
+        "name": "lines",
+        "required": false,
+        "kind": "number"
+      }
+    ]
+  },
+  {
     "name": "StatusDot",
     "defaults": {
       "label": "Running",
@@ -542,6 +567,7 @@ export function PlaygroundSubject({ name, props }: { name: string; props: Playgr
   if (name === "CircularProgress") return <CircularProgress {...(props as any)} />;
   if (name === "EmptyState") return <EmptyState {...(props as any)} />;
   if (name === "ProgressBar") return <ProgressBar {...(props as any)} />;
+  if (name === "Skeleton") return <Skeleton {...(props as any)} />;
   if (name === "StatusDot") return <StatusDot {...(props as any)} />;
   if (name === "Timer") return <Timer {...(props as any)} />;
   if (name === "Token") return <Token {...(props as any)} />;
