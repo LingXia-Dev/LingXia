@@ -55,6 +55,7 @@ export const demos = {
   },
   text: {
     paragraphs: { testId: 'lab-text', title: { en: 'Paragraphs', zh: '段落' }, try: { en: 'Numbers line up in columns, line breaks are kept where asked, and a long address breaks anywhere.', zh: '数字按列对齐，换行按要求保留，长网址可在任意处断开。' } },
+    addresses: { testId: 'lab-addresses', title: { en: 'Long addresses in a narrow box', zh: '窄框里的长地址' }, try: { en: 'The email and the link wrap at their separators: after "@" and "/", before ".", never mid-word, and never leave two letters alone.', zh: '邮箱和链接在分隔处换行：“@”和“/”之后、“.”之前，不会断在词中间，也不会让两个字母单独成行。' } },
     runs: { testId: 'lab-rich-text', title: { en: 'Mixed runs and links', zh: '混排与链接' }, try: { en: 'Tap the link inside the sentence: the count goes up.', zh: '点按句中的链接，计数加一。' } },
     document: { testId: 'lab-document', title: { en: 'A long document', zh: '长文档' }, try: { en: 'Scroll the box: headings, clamped previews and a two-column list of terms, all from one set of data.', zh: '滚动这个方框：同一份数据排出标题、截断的摘要和两列的术语表。' } },
     selecting: { testId: 'lab-selection', title: { en: 'Selecting text', zh: '选择文字' }, try: { en: 'Long-press or double-click a word, then drag to extend and copy.', zh: '长按或双击一个词，再拖动扩展选区并复制。' } },
@@ -368,6 +369,8 @@ export const labels = {
   sideStart: { en: 'At the start', zh: '靠起始侧' },
   sideEnd: { en: 'At the end', zh: '靠末尾侧' },
   sideWide: { en: 'A wide button', zh: '一个很宽的按钮' },
+  addressEmail: { en: 'Write to ana.maria.lopez@example-mail.com for a copy.', zh: '如需副本，请写信至 ana.maria.lopez@example-mail.com。' },
+  addressLink: { en: 'Read https://docs.example.com/guides/getting-started/install first.', zh: '请先阅读 https://docs.example.com/guides/getting-started/install。' },
   sideNote: { en: 'A note beside its button.', zh: '按钮旁边的提示。' },
   gapTarget: { en: 'Point here', zh: '指向这里' },
   gapBelow: { en: 'Below', zh: '下方' },

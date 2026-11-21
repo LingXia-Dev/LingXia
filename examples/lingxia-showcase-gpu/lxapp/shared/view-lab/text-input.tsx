@@ -20,6 +20,17 @@ export function TextLayoutDemo() {
   );
 }
 
+// An email and a URL in a box too narrow for either: they break at their separators.
+export function AddressesDemo() {
+  const t = useSay();
+  return (
+    <view data-testid="lab-addresses-box" className="w-40 gap-2 p-3 rounded-lg border border-line">
+      <text data-testid="lab-addresses-email" className="text-base">{t(labels.addressEmail)}</text>
+      <text data-testid="lab-addresses-link" className="text-base">{t(labels.addressLink)}</text>
+    </view>
+  );
+}
+
 export function RichTextDemo() {
   const presses = useLocal('presses', 0);
   const t = useSay();
@@ -331,6 +342,7 @@ export function KeyboardsDemo() {
 /** The Text and the Input groups: every demo the text table names, drawn by its body. */
 export const textDemos = {
   paragraphs: TextLayoutDemo,
+  addresses: AddressesDemo,
   runs: RichTextDemo,
   document: DocumentDemo,
   selecting: SelectionDemo,

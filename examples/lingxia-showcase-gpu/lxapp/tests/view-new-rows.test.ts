@@ -82,6 +82,17 @@ test('a parent checkbox reads mixed while some of its boxes are checked, and a t
   await expect(state).toHaveAttribute('data-state', 'checked=0 of=3');
 });
 
+// An email and a URL wider than their box wrap inside it, over several lines.
+test('a long email and URL wrap inside a narrow box', { covers: ['view:text'], start: openDemo('addresses') }, async (t) => {
+  const view = t.app.view;
+  const box = await view.testId('lab-addresses-box').boundingBox();
+  for (const id of ['lab-addresses-email', 'lab-addresses-link']) {
+    const text = await view.testId(id).boundingBox();
+    expect(text.x + text.width).toBeLessThanOrEqual(box.x + box.width + 0.5);
+    expect(text.height).toBeGreaterThan(40);
+  }
+});
+
 test('a page with a disabled link becomes ready; the link takes no press and its neighbour does', { covers: ['view:link'], start: openDemo('linkOff') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-link-state');
