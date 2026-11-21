@@ -268,7 +268,7 @@ test('a drag inside a scrollable web page scrolls it to its edge, then the scree
 });
 
 // A web view in a fading box draws its picture, which fades with the box; solid again, it is the
-// live page. The page is one solid orange, so the box's centre tells solid, faint and empty apart.
+// live page. The page is solid orange, so one pixel of it tells solid, faint and empty apart.
 test('a web page in a fading box keeps showing while it fades and returns', { covers: ['view:webview'], start: openDemo('webMotion') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-web-motion-state');
@@ -282,9 +282,10 @@ test('a web page in a fading box keeps showing while it fades and returns', { co
   const probe = async () => {
     const raw = await view.screenshot();
     const scale = raw.width / vp.width;
-    const centre = [Math.round((box.x + box.width / 2) * scale), Math.round((box.y + box.height / 2) * scale)];
-    const shot = await decodePng(raw.base64, () => centre[1] + 2);
-    return look(shot.at(centre[0], centre[1]));
+    // A quarter down, clear of the page's centred label.
+    const at = [Math.round((box.x + box.width / 2) * scale), Math.round((box.y + box.height / 4) * scale)];
+    const shot = await decodePng(raw.base64, () => at[1] + 2);
+    return look(shot.at(at[0], at[1]));
   };
   await expect.poll(probe, { timeout: 5_000 }).toBe('solid');
   await view.testId('lab-web-motion-toggle').click();
