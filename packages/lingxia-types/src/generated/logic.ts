@@ -180,11 +180,17 @@ export type PageTarget<N = ConfiguredPageName> = {
 }
     & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
 
-/** What `lx.nav.go` returns for a pushed page. */
+/**
+ * A page's handle, returned at once by `lx.nav.go` and `lx.surface.openPage`.
+ * It is not a promise: await `.opened` to wait for the page.
+ */
 export type PageHandle<R = JsonValue, M = never> = {
-    /** Settles when the page is on screen; rejects when it could not open. */
+    /**
+     * Settles when the page is on screen; rejects when it could not open.
+     * @throws {E_ABORT} `close()` was called first.
+     */
     readonly opened: Promise<void>;
-    /** Settles once, after the page's `onUnload`. */
+    /** Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`. */
     readonly result: Promise<{
         /** The page gave a result. */
         status: 'ok';
@@ -198,9 +204,25 @@ export type PageHandle<R = JsonValue, M = never> = {
     send(message: MessageIn<M>): void;
     /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
     onMessage(handler: (message: MessageOut<M>) => void, options?: SignalOptions): () => void;
-    /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
-    close(): void;
+    /**
+     * Leave the page; rejects for a pushed page that is not on top. Called
+     * before `opened` settles, it stops the open instead.
+     */
+    close(): Promise<void>;
 };
+
+/** A page opened as a float or a window: its handle plus the surface's controls. */
+export type PageSurface<R = JsonValue, M = never> = PageHandle<R, M> & Omit<SurfaceBase, 'close'> & SurfaceShowable & {
+    /** One of this lxapp's pages. */
+    readonly kind: 'page';
+    /** Where it is shown. */
+    readonly realized: 'float' | 'window';
+};
+
+/** `openPage`'s options with the page's params, required when the page declares a required param. */
+export type OpenPageArgs<N> = {} extends NavParams<N>
+    ? [options?: OpenPageOptions & { params?: NavParams<N> }]
+    : [options: OpenPageOptions & { params: NavParams<N> }];
 
 declare global {
   /**
@@ -219,6 +241,17 @@ declare global {
   interface LxAppPageTypes {}
 
   /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  interface SurfaceApi {
+    /**
+     * Open one of this lxapp's pages as a float or a window. Returns at once;
+     * await `.opened` to wait for the page.
+     * @throws {E_INVALID_ARG} Malformed options.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_FOUND} A page the app does not declare.
+     */
+    openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
+  }
+
   interface NavApi {
     /**
      * Push a page. The handle is returned at once: `opened` settles when the
@@ -1595,8 +1628,6 @@ export type OpenPageShared = {
     size?: OverlaySurfaceSize;
     /** Whether the content behind a float still takes input. */
     interaction?: SurfaceInteraction;
-    /** The page's params, as `lx.nav.go` takes them. */
-    params?: PageQuery;
     /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 };
@@ -1694,20 +1725,6 @@ export type PageResult =
         /** Who ended it: the person, the opener, memory pressure, or the app closing. */
         reason: 'user' | 'opener' | 'reclaimed' | 'app_closed';
     };
-
-/** One of this lxapp's own pages, opened as a float or a window. */
-export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
-    /** One of this lxapp's pages. */
-    readonly kind: 'page';
-    /** Where it is shown. */
-    readonly realized: 'float' | 'window';
-    /**
-     * The page's result, settled once after the page unloads with its surface:
-     * `ok` with what it set by `setResult` or `close(value)`, otherwise
-     * `canceled`. On the opener's handle only.
-     */
-    readonly result?: Promise<PageResult>;
-};
 
 export type PickApi = globalThis.PickApi;
 
@@ -2262,8 +2279,14 @@ export type StreamSourceOptions = {
  * other lxapps get a typed refusal.
  */
 export type SurfaceApi = {
-    /** Open one of this lxapp's own pages as a float or a window. */
-    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
+    /**
+     * Open one of this lxapp's pages as a float or a window. Returns at once;
+     * await `.opened` to wait for the page.
+     * @throws {E_INVALID_ARG} Malformed options.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_FOUND} A page the app does not declare.
+     */
+    openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
@@ -3685,11 +3708,6 @@ declare global {
 
 declare global {
   interface SurfaceApi {
-    /**
-     * Open one of this lxapp's pages as a float or a window. A page is never an
-     * aside: asides carry external content only.
-     */
-    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
     /** Open a URL in the in-app browser, as a main tab or docked as an aside. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /** Show another lxapp in a shell slot. Control app only. */

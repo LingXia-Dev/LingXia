@@ -1966,20 +1966,6 @@ true
     onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 }"###;
 
-        /// One of this lxapp's own pages, opened as a float or a window.
-        ///
-        type PageSurface = r###"SurfaceBase & SurfaceShowable & SurfaceMessaging & {
-    /** One of this lxapp's pages. */
-    readonly kind: 'page';
-    /** Where it is shown. */
-    readonly realized: 'float' | 'window';
-    /**
-     * The page's result, settled once after the page unloads with its surface:
-     * `ok` with what it set by `setResult` or `close(value)`, otherwise
-     * `canceled`. On the opener's handle only.
-     */
-    readonly result?: Promise<PageResult>;
-}"###;
 
         /// A surface declared by the host in `lingxia.yaml`. A declaration that
         /// shows an lxapp is that app's `AppSurface` instead.
@@ -2040,8 +2026,6 @@ true
     size?: OverlaySurfaceSize;
     /** Whether the content behind a float still takes input. */
     interaction?: SurfaceInteraction;
-    /** The page's params, as `lx.nav.go` takes them. */
-    params?: PageQuery;
     /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 }"###;
@@ -2158,8 +2142,14 @@ true
         /// other lxapps get a typed refusal.
         ///
         type SurfaceApi = r###"{
-    /** Open one of this lxapp's own pages as a float or a window. */
-    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
+    /**
+     * Open one of this lxapp's pages as a float or a window. Returns at once;
+     * await `.opened` to wait for the page.
+     * @throws {E_INVALID_ARG} Malformed options.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_FOUND} A page the app does not declare.
+     */
+    openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**

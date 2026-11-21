@@ -641,7 +641,18 @@ impl PageSvc {
                 .get::<_, JSObject>("lx")?
                 .get::<_, JSObject>("surface")?
                 .get::<_, JSFunc>(name)?;
-            open.call_async::<_, JSValue>(None, (target, options)).await
+            let opened = open
+                .call_async::<_, JSValue>(None, (target, options))
+                .await?;
+            // `openPage` returns its handle at once; the View waits for the page.
+            match opened.into_object() {
+                Some(handle) if name == "openPage" => {
+                    let wait: rong::Promise = handle.get("opened")?;
+                    wait.into_future::<JSValue>().await
+                }
+                Some(handle) => Ok(handle.into_js_value()),
+                None => Ok(JSValue::undefined(&ctx)),
+            }
         };
         await_js_call_or_cancel(cancel_rx, call).await?;
         Ok(Payload::Tree(serde_json::Value::Null))

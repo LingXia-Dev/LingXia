@@ -7,7 +7,7 @@ mod navbar;
 mod page;
 mod page_chrome_patch;
 mod pull_to_refresh;
-mod router;
+pub(crate) mod router;
 mod shell;
 mod tabbar;
 mod toast;

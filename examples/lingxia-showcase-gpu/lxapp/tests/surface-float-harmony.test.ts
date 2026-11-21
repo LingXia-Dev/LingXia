@@ -23,7 +23,7 @@ test('a modal float draws its GPU page in its own window', {
   const before = await device.pixels(card);
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } });
+      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeAttached();
     await new Promise<void>(resolve => setTimeout(() => resolve(), 600));

@@ -1,5 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_lxapp_error;
+use crate::open_gate::{OpenGate, canceled_open_error, canceled_result};
 use crate::url::{is_http_url, split_url_scheme_host};
 use futures::{
     StreamExt,
@@ -119,7 +120,8 @@ struct JSSurfaceVisibility {
 
 #[js_class(clone)]
 struct JSSurface {
-    id: String,
+    /// Empty while a page handle's open is pending.
+    id: RefCell<String>,
     message_port: JSObject,
     /// Bus for surface lifecycle events: "show", "hide", "close". Single
     /// emitter shared across event names — EventKey discriminates listeners.
@@ -153,7 +155,7 @@ impl JSSurface {
     #[js_method(rename = "close", ts_return = "Promise<void>")]
     fn close(&self, ctx: JSContext) -> JSResult<Promise> {
         let lxapp = LxApp::from_ctx(&ctx)?;
-        let id = self.id.clone();
+        let id = self.id.borrow().clone();
         Promise::from_future(&ctx, None, async move {
             lxapp
                 .close_surface(&id, "programmatic")
@@ -243,10 +245,6 @@ rong::js_api! {
 rong::js_api! {
     fn register_surface_namespace(ctx) {
         namespace SurfaceApi = surface_namespace(ctx)?;
-        fn openPage(
-            ts_params = "page: ConfiguredPageName, options?: OpenPageOptions",
-            ts_return = "Promise<PageSurface>"
-        ) = open_page;
         fn openUrl(
             ts_params = "url: string, options?: OpenUrlOptions",
             ts_return = "Promise<TabSurface>"
@@ -291,6 +289,8 @@ fn surface_namespace(ctx: &JSContext) -> JSResult<JSObject> {
         Ok(obj) => Ok(obj),
         Err(_) => {
             let obj = JSObject::new(ctx);
+            // Generic over the page name, which `js_api` cannot declare; typed in the prelude.
+            obj.set("openPage", JSFunc::new(ctx, open_page)?.name("openPage")?)?;
             lx.set("surface", obj.clone())?;
             Ok(obj)
         }
@@ -416,11 +416,7 @@ struct WebSurfaceOptions {
 
 /// Open one of this lxapp's pages as a float or a window. A page is never an
 /// aside: asides carry external content only.
-async fn open_page(
-    ctx: JSContext,
-    page: String,
-    options: Optional<JSObject>,
-) -> JSResult<JSObject> {
+fn open_page(ctx: JSContext, page: String, options: Optional<JSObject>) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
     reject_unknown_options(
         &options,
@@ -464,7 +460,7 @@ async fn open_page(
     }
 
     let spec = JSObject::new(&ctx);
-    spec.set("page", page)?;
+    spec.set("page", page.as_str())?;
     spec.set("as", realized.as_str())?;
     if let Some(params) = get_property(&options, "params") {
         spec.set("query", params)?;
@@ -488,8 +484,159 @@ async fn open_page(
     }
 
     let key = read_surface_key(&options)?;
-    let handle = open_page_spec(ctx.clone(), &spec).await?;
-    finish_handle(&ctx, &handle, "page", Some(&realized), key, None)
+    let host_options = page_surface_options(&ctx, &spec)?;
+    prepared_page_handle(&ctx, host_options, &page, &realized, key)
+}
+
+/// The handle `openPage` returns at once. `send` and the subscriptions work
+/// immediately; `show`, `hide` and `close` wait for the open, and a `close()`
+/// before the page is on screen stops it.
+fn prepared_page_handle(
+    ctx: &JSContext,
+    host_options: JSValue,
+    page: &str,
+    realized: &str,
+    key: Option<String>,
+) -> JSResult<JSObject> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let (opener_port, page_port) = crate::message_port::pair(ctx)?;
+    let surface = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
+        id: RefCell::default(),
+        message_port: opener_port,
+        event_emitter: EventEmitter::default(),
+        peer: RefCell::new(None),
+        visible: Cell::new(false),
+        alive: Cell::new(true),
+    });
+    surface.set("alive", true)?;
+    surface.set("visible", false)?;
+    attach_surface_listeners(ctx, &surface)?;
+    let gate = Rc::new(OpenGate::new());
+    attach_pending_controls(ctx, &surface, gate.clone())?;
+
+    let (result_tx, result_rx) = oneshot::channel::<JSResult<JSObject>>();
+    let open_ctx = ctx.clone();
+    let open_surface_obj = surface.clone();
+    let registered_key = key.clone();
+    let opened = Promise::from_future(ctx, None, async move {
+        let forget = |ctx: &JSContext| {
+            if let Some(key) = registered_key.as_deref() {
+                let _ = surface_registry(ctx).and_then(|registry| registry.delete(key));
+            }
+        };
+        if gate.canceled() {
+            forget(&open_ctx);
+            let _ = result_tx.send(canceled_result(&open_ctx));
+            gate.settle(false);
+            return Err(canceled_open_error());
+        }
+        let prepared = PreparedPage {
+            surface: open_surface_obj.clone(),
+            page_port,
+        };
+        match open_surface(open_ctx.clone(), host_options, Some(prepared)).await {
+            Ok(opened) => {
+                let result = match opened.result {
+                    Some(result) => Ok(result),
+                    None => canceled_result(&open_ctx),
+                };
+                let _ = result_tx.send(result);
+                if gate.canceled() {
+                    // close() arrived while the surface was opening.
+                    let id = open_surface_obj.borrow::<JSSurface>()?.id.borrow().clone();
+                    let _ = lxapp.close_surface(&id, "programmatic");
+                    gate.settle(false);
+                    return Err(canceled_open_error());
+                }
+                gate.settle(true);
+                Ok(())
+            }
+            Err(error) => {
+                forget(&open_ctx);
+                let _ = result_tx.send(Err(error.clone()));
+                {
+                    let inner = open_surface_obj.borrow::<JSSurface>()?;
+                    inner.alive.set(false);
+                }
+                let _ = open_surface_obj.set("alive", false);
+                gate.settle(false);
+                Err(error)
+            }
+        }
+    })?;
+    let result = Promise::from_future(ctx, None, async move {
+        match result_rx.await {
+            Ok(result) => result,
+            Err(_) => Err(rong::HostError::new(
+                rong::error::E_INTERNAL,
+                "the page was never opened",
+            )
+            .into()),
+        }
+    })?;
+    surface.set("opened", opened)?;
+    surface.set("result", result)?;
+    let appid = LxApp::from_ctx(ctx)?.appid.clone();
+    let name = page.to_string();
+    crate::ui::router::report_failed_open(ctx, &surface, move |reason| {
+        lxapp::error!("lx.surface.openPage('{name}') did not open: {reason}")
+            .with_appid(appid.clone());
+    })?;
+    finish_handle(ctx, &surface, "page", Some(realized), key, None)
+}
+
+/// `close`, `show` and `hide` for a handle whose open is pending. Once the page
+/// opens, the real controls replace these; a call made before then is applied
+/// after it, and a `close()` stops the open instead.
+fn attach_pending_controls(
+    ctx: &JSContext,
+    surface: &JSObject,
+    gate: Rc<OpenGate>,
+) -> JSResult<()> {
+    let close_gate = gate.clone();
+    let close_surface = surface.clone();
+    surface.set(
+        "close",
+        JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
+            close_gate.cancel();
+            let ended = close_gate.wait();
+            let surface = close_surface.clone();
+            Promise::from_future(&ctx, None, async move {
+                // The open won before close() ran: close the open surface.
+                if ended.await.unwrap_or(false) {
+                    call_control(&surface, "close").await?;
+                }
+                Ok(())
+            })
+        })?,
+    )?;
+    for name in ["show", "hide"] {
+        let gate = gate.clone();
+        let target = surface.clone();
+        surface.set(
+            name,
+            JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
+                let ended = gate.wait();
+                let surface = target.clone();
+                Promise::from_future(&ctx, None, async move {
+                    if !ended.await.unwrap_or(false) {
+                        return Err(closed_surface_error());
+                    }
+                    call_control(&surface, name).await
+                })
+            })?,
+        )?;
+    }
+    Ok(())
+}
+
+/// Calls the handle's own `close` / `show` / `hide`, as replaced once it opened.
+async fn call_control(surface: &JSObject, name: &str) -> JSResult<()> {
+    let control: JSFunc = surface.get(name)?;
+    control
+        .call_async::<_, JSValue>(Some(surface.clone()), ())
+        .await?;
+    Ok(())
 }
 
 /// Open a URL in the in-app browser, as a main tab or docked as an aside.
@@ -1485,11 +1632,10 @@ fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
     Ok(edge.map(|edge| edge.trim().to_string()))
 }
 
-/// Backs `lx.surface.openPage`.
-/// Resolves the page name to a path, maps `as` to the underlying open path
-/// (overlay aside/float, or a standalone window on desktop), and returns the
-/// surface handle.
-async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
+/// Backs `lx.surface.openPage`: resolves the page name to a path and maps `as`
+/// to the host's open options (an overlay float, or a desktop window).
+fn page_surface_options(ctx: &JSContext, spec: &JSObject) -> JSResult<JSValue> {
+    let ctx = ctx.clone();
     let page = read_required_string(spec, "page")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp.find_page_path_by_name(page.trim()).ok_or_else(|| {
@@ -1568,7 +1714,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     {
         opts.set("interaction", interaction)?;
     }
-    open_surface(ctx, options).await
+    Ok(options)
 }
 
 /// Backs `lx.surface.openUrl`. Without `as`, the url opens
@@ -1636,9 +1782,9 @@ async fn open_url_spec(
                 },
             );
             attach_size(&options, size.as_ref())?;
-            open_surface(ctx, options)
+            open_surface(ctx, options, None)
                 .await
-                .map(JSObject::into_js_value)
+                .map(|opened| opened.surface.into_js_value())
         }
         None => open_url_in_browser(&ctx, &lxapp, trimmed_url, false),
         Some(other) => Err(surface_error(
@@ -1760,7 +1906,7 @@ fn lxapp_surface_handle(
     }
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
-        id: app_id.clone(),
+        id: RefCell::new(app_id.clone()),
         message_port,
         event_emitter: EventEmitter::default(),
         peer: RefCell::new(None),
@@ -2006,7 +2152,7 @@ fn managed_surface_handle(
     }
     let (message_port, _) = crate::message_port::pair(ctx)?;
     let handle = Class::lookup::<JSSurface>(ctx)?.instance(JSSurface {
-        id: id.clone(),
+        id: RefCell::new(id.clone()),
         message_port,
         event_emitter: EventEmitter::default(),
         peer: RefCell::new(None),
@@ -2416,7 +2562,24 @@ fn open_url_in_browser(
     Ok(JSValue::null(ctx))
 }
 
-async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
+/// A page handle created before its surface opens: the opener side, and the
+/// page's end of their message channel.
+struct PreparedPage {
+    surface: JSObject,
+    page_port: JSObject,
+}
+
+struct OpenedSurface {
+    surface: JSObject,
+    /// The page's result, for a surface that hosts one of this lxapp's pages.
+    result: Option<JSObject>,
+}
+
+async fn open_surface(
+    ctx: JSContext,
+    options: JSValue,
+    prepared: Option<PreparedPage>,
+) -> JSResult<OpenedSurface> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let (mut request, chrome) = parse_surface_options(&lxapp, &options)?;
     request.id = format!("surface-{}", Uuid::new_v4().simple());
@@ -2497,18 +2660,29 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let _ =
             lxapp::notify_page_instance_by_id(page_instance_id, lxapp::PageInstanceEvent::Visible);
     }
-    let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
-    let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
-        id: opened_surface.id.clone(),
-        message_port: opener_port,
-        event_emitter: EventEmitter::default(),
-        peer: RefCell::new(None),
-        visible: Cell::new(true),
-        alive: Cell::new(true),
-    });
+    let (surface, page_port) = match prepared {
+        Some(PreparedPage { surface, page_port }) => {
+            *surface.borrow::<JSSurface>()?.id.borrow_mut() = surface_id.clone();
+            surface.borrow::<JSSurface>()?.visible.set(true);
+            (surface, page_port)
+        }
+        None => {
+            let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
+            let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
+                id: RefCell::new(surface_id.clone()),
+                message_port: opener_port,
+                event_emitter: EventEmitter::default(),
+                peer: RefCell::new(None),
+                visible: Cell::new(true),
+                alive: Cell::new(true),
+            });
+            surface.set("alive", true)?;
+            attach_surface_listeners(&ctx, &surface)?;
+            (surface, page_port)
+        }
+    };
     surface.set("visible", true)?;
-    surface.set("alive", true)?;
-    attach_surface_methods(
+    attach_surface_controls(
         &ctx,
         &surface,
         lxapp.clone(),
@@ -2517,9 +2691,10 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         "opener",
     )?;
     let mut page_surface_for_close = None;
+    let mut result = None;
     if let Some(page_svc) = page_svc.as_ref() {
         let page_surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
-            id: surface_id.clone(),
+            id: RefCell::new(surface_id.clone()),
             message_port: page_port,
             event_emitter: EventEmitter::default(),
             peer: RefCell::new(None),
@@ -2528,7 +2703,8 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         });
         page_surface.set("visible", true)?;
         page_surface.set("alive", true)?;
-        attach_surface_methods(
+        attach_surface_listeners(&ctx, &page_surface)?;
+        attach_surface_controls(
             &ctx,
             &page_surface,
             lxapp.clone(),
@@ -2536,9 +2712,14 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             page_surface.clone(),
             "page",
         )?;
+        // A floated page reaches its opener as a pushed page does.
         page_svc
             .bind_surface(page_surface.clone())
-            .and_then(|()| surface.set("result", page_svc.bind_result()?))
+            .and_then(|()| page_svc.bind_opener(page_surface.clone()))
+            .and_then(|()| {
+                result = Some(page_svc.bind_result()?);
+                Ok(())
+            })
             .map_err(|err| {
                 unregister_closed_sender(&surface_id);
                 let _ = lxapp.close_surface(&surface_id, "failed");
@@ -2574,10 +2755,10 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             let _ = emit_close(&page_surface, &event);
         }
     })?;
-    Ok(surface)
+    Ok(OpenedSurface { surface, result })
 }
 
-fn attach_surface_methods(
+fn attach_surface_controls(
     ctx: &JSContext,
     surface: &JSObject,
     lxapp: Arc<LxApp>,
@@ -2644,6 +2825,13 @@ fn attach_surface_methods(
         })?,
     )?;
 
+    Ok(())
+}
+
+/// `send`, `onMessage` and the lifecycle subscriptions; they work while a
+/// page handle's open is still pending.
+fn attach_surface_listeners(ctx: &JSContext, surface: &JSObject) -> JSResult<()> {
+    let surface_ref = surface.clone();
     let post_surface = surface_ref.clone();
     surface.set(
         "send",
@@ -2798,7 +2986,7 @@ fn mark_visible(surface: &JSObject, visible: bool, source: &str) -> JSResult<()>
             inner.visible.set(visible);
         }
         let peer = inner.peer.borrow().clone();
-        (inner.id.clone(), peer, changed)
+        (inner.id.borrow().clone(), peer, changed)
     };
     if !changed {
         return Ok(());

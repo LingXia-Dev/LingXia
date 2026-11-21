@@ -124,8 +124,9 @@ export interface PageApi<Data, Params, Result, Messages = never> {
   /** What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs. */
   setResult(value: Result): void;
   /**
-   * The page that opened this one by navigation; absent for a root, a tab,
-   * after a restart, and while `setup` runs (read it in a hook or an action).
+   * The page that opened this one, by `lx.nav.go` or `lx.surface.openPage`;
+   * absent for a root, a tab, after a restart, and while `setup` runs (read
+   * it in a hook or an action).
    */
   readonly opener?: {
     /** Delivers to the opener's `onMessage` handlers; until it first subscribes, messages wait. */
@@ -134,7 +135,7 @@ export interface PageApi<Data, Params, Result, Messages = never> {
     onMessage(handler: (message: MessageIn<Messages>) => void, options?: SignalOptions): () => void;
   };
   /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
-  readonly surface?: PageSurface;
+  readonly surface?: Omit<PageSurface, 'opened' | 'result' | 'send' | 'onMessage'>;
   /** This page's navigation bar, reached even while another page is on top. */
   readonly navigationBar: {
     /** Patch it; unset fields stay as they are. */

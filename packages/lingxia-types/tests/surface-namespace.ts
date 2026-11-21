@@ -1,4 +1,4 @@
-import type { AnySurface, Lx, SurfaceErrorCode } from "../src/index.js";
+import type { AnySurface, Lx, PageHandle, SurfaceErrorCode } from "../src/index.js";
 import { SURFACE_ERROR_CODES } from "../src/error.js";
 
 declare const lx: Lx;
@@ -19,7 +19,7 @@ void lx.surface.openPage("inspector", { as: "aside" });
 // Probe 2: a conditionally built call type-checks with no cast and no untyped
 // intermediate variable.
 async function conditionalOpenTypeChecks(): Promise<string> {
-  const surface = await lx.surface.openPage("inspector", {
+  const surface = lx.surface.openPage("inspector", {
     as: wide ? "window" : "float",
     size: { width: 480 },
   });
@@ -50,7 +50,7 @@ async function urlResultCloses(): Promise<void> {
 // An ordered preference must not be defeated by an option that applies to only
 // one candidate — this is the one portable call the feature exists for.
 async function preferenceKeepsPerPlacementOptions(): Promise<"window" | "float"> {
-  const surface = await lx.surface.openPage("editor", {
+  const surface = lx.surface.openPage("editor", {
     as: ["window", "float"],
     chrome: "full",
     position: "bottom",
@@ -65,7 +65,7 @@ async function floatTakesPercentageSize(): Promise<void> {
   await lx.surface.openPage("feedback", {
     as: "float",
     size: { width: "100%", height: "80%" },
-  });
+  }).opened;
 }
 
 // Instance keys and placement overrides are typed for everyone and refused at
@@ -104,13 +104,13 @@ lx.shell.openBuiltin("settings");
 
 // An ordered preference degrades, and `realized` reports the outcome.
 async function orderedPreference(): Promise<"window" | "float"> {
-  const surface = await lx.surface.openPage("inspector", { as: ["window", "float"] });
+  const surface = lx.surface.openPage("inspector", { as: ["window", "float"] });
   return surface.realized;
 }
 
 // Identity replaces caller-side bookkeeping.
 async function identityReplacesCaching(): Promise<boolean> {
-  await lx.surface.openPage("inspector", { as: "float", key: "inspector" });
+  await lx.surface.openPage("inspector", { as: "float", key: "inspector" }).opened;
   const live = lx.surface.get("inspector");
   return live?.alive ?? false;
 }
@@ -118,7 +118,7 @@ async function identityReplacesCaching(): Promise<boolean> {
 // `chrome: 'full'` is a window option, and the capability query can be asked
 // about it before the affordance is offered.
 async function edgeToEdgeWindow(): Promise<"window" | "float"> {
-  const win = await lx.surface.openPage("editor", {
+  const win = lx.surface.openPage("editor", {
     as: "window",
     chrome: "full",
     // `params` carries the same values `lx.nav.go` takes.
@@ -197,9 +197,9 @@ lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", posit
 // Params keep their JSON type through the page URL, as on `lx.nav.go`;
 // only a non-JSON value is a compile error.
 async function queryTakesJson(): Promise<void> {
-  await lx.surface.openPage("editor", { as: "float", params: { filter: { open: true } } });
+  await lx.surface.openPage("editor", { as: "float", params: { filter: { open: true } } }).opened;
   // @ts-expect-error a Date is not JSON
-  await lx.surface.openPage("editor", { as: "float", params: { at: new Date() } });
+  await lx.surface.openPage("editor", { as: "float", params: { at: new Date() } }).opened;
 }
 
 export type SurfaceQueryGate = [typeof queryTakesJson];
@@ -251,3 +251,22 @@ async function appDisplayPatchClears(): Promise<void> {
 }
 
 export type AppDisplayGate = [typeof appDisplayPatchClears];
+
+// A handle is not a promise and has no `then`: awaiting it gives back the
+// handle itself, so waiting for the page is always `.opened`.
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Handle = ReturnType<typeof lx.surface.openPage<"inspector">>;
+const awaitingTheHandleWaitsForNothing: Equal<Awaited<Handle>, Handle> = true;
+const navHandleIsNotThenable: Equal<Awaited<PageHandle>, PageHandle> = true;
+// @ts-expect-error a page handle has no `then`
+void lx.surface.openPage("inspector").then;
+async function handleBeforeOpened(): Promise<void> {
+  const surface = lx.surface.openPage("inspector");
+  surface.send("ready");
+  void surface.hide();
+  await surface.opened;
+  const outcome = await surface.result;
+  if (outcome.status === "canceled") void outcome.reason;
+}
+
+export type SurfaceHandleGate = [typeof handleBeforeOpened, typeof awaitingTheHandleWaitsForNothing, typeof navHandleIsNotThenable];

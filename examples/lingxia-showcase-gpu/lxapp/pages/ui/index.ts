@@ -203,19 +203,23 @@ export default definePage({
           const wantsFull = cfg.chrome !== "system"
             && lx.supports('surface.window.fullChrome');
           const chrome = wantsFull ? ("full" as const) : ("system" as const);
-          return lx.surface.openPage("surface", {
+          const window = lx.surface.openPage("surface", {
             as: "window",
             chrome,
             key: DEMO_PAGE_SURFACE_KEY,
             size,
           });
+          await window.opened;
+          return window;
         }
-        return lx.surface.openPage("surface", {
+        const float = lx.surface.openPage("surface", {
           as: "float",
           position: cfg.position ?? "center",
           key: DEMO_PAGE_SURFACE_KEY,
           size,
         });
+        await float.opened;
+        return float;
       },
       observeDemoPageSurface(surface: PageSurface) {
         surfaceOffs.push(surface.onMessage((payload) => {

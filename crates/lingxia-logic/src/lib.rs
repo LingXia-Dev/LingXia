@@ -18,6 +18,7 @@ mod media;
 mod message_port;
 mod namespace;
 mod navigator;
+mod open_gate;
 mod pick;
 mod public_types;
 mod share;

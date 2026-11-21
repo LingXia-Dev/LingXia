@@ -70,7 +70,8 @@ test('inject the owning surface into a page opened as a float', {
   });
   await app.nav.reset({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
-    const surface = await lx.surface.openPage('surface', { as: 'float', key, params: { fixture: key } });
+    const surface = lx.surface.openPage('surface', { as: 'float', key, params: { fixture: key } });
+    await surface.opened;
     return { key: surface.key ?? null };
   }, namespace);
   const page = await app.page({ name: 'surface' });

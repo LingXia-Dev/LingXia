@@ -674,6 +674,7 @@ const PAGE_SURFACE_API = [
   'onHide',
   'onMessage',
   'onShow',
+  'opened',
   'realized',
   'result',
   'send',
@@ -761,8 +762,8 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'PageSurface',
     members: PAGE_SURFACE_API,
-    properties: ['alive', 'key', 'kind', 'realized', 'result', 'visible'],
-    optionalProperties: ['key', 'result'],
+    properties: ['alive', 'key', 'kind', 'opened', 'realized', 'result', 'visible'],
+    optionalProperties: ['key'],
     fixture: 'surface',
     factory: 'lx.surface.openPage',
   },

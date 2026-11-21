@@ -20,7 +20,7 @@ test('a float outlives its opener navigating away and stays above a page dialog'
   const key = `surface-float-stack-${Date.now()}`;
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key });
+      await lx.surface.openPage('surface', { as: 'float', key }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
@@ -125,7 +125,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
   expect(lit.length, 'the GPU page is in the screenshot, not black').toBeGreaterThan(4);
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } });
+      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeAttached();
     await new Promise<void>(resolve => setTimeout(() => resolve(), 600));

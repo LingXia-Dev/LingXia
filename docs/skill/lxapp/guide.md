@@ -468,6 +468,12 @@ await lx.nav.leaveApp();                     // back to the lxapp that opened th
 A tab page cannot replace another page. `{ url }` opens the in-app browser and
 does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
+`lx.surface.openPage('detail', { as: 'float', params })` returns the same
+handle, plus `show`/`hide`; the floated page reaches it through `page.opener`.
+A handle is not a promise: await `.opened`. Its methods can be called at once;
+`close()` before `opened` settles stops the open (`opened` rejects `E_ABORT`,
+`result` is `canceled`).
+
 ### Navigation bar
 
 Each page's `index.json`:

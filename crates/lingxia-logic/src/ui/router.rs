@@ -3,6 +3,7 @@ use crate::i18n::{
 };
 use crate::message_port;
 use crate::navigator::{self, NavigateToAppOptions};
+use crate::open_gate::{OpenGate, canceled_open_error, canceled_result};
 use futures::channel::oneshot;
 use lxapp::{LxApp, LxAppError, NavigationType, PageSvc, startup};
 use rong::{
@@ -212,8 +213,9 @@ fn tab_url(lxapp: &LxApp, name: &str) -> JSResult<String> {
 }
 
 /// Push a page and return its handle at once. `opened` settles when the page
-/// is on screen and `result` when it leaves; a failed open rejects both. A tab
-/// root pushes its one instance, refused while that instance is on the stack.
+/// is on screen and `result` when it leaves; a failed open rejects both. A
+/// `close()` before the page is on screen stops the open. A tab root pushes its
+/// one instance, refused while that instance is on the stack.
 fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let appid = lxapp.appid.clone();
@@ -226,11 +228,18 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
 
     let (handle, page_port) = message_port::pair(ctx)?;
     let pushed: Rc<RefCell<Option<PageSvc>>> = Rc::default();
+    let gate = Rc::new(OpenGate::new());
     let (result_tx, result_rx) = oneshot::channel::<JSResult<JSObject>>();
 
     let open_ctx = ctx.clone();
     let open_slot = pushed.clone();
+    let open_gate = gate.clone();
     let opened = Promise::from_future(ctx, None, async move {
+        if open_gate.canceled() {
+            open_gate.settle(false);
+            let _ = result_tx.send(canceled_result(&open_ctx));
+            return Err(canceled_open_error());
+        }
         let opened = async {
             let page_svc = lxapp
                 .create_page_for_entry_in_ctx(&open_ctx, &target_url)
@@ -238,20 +247,29 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
                 .map_err(|e| js_internal_error(format!("Failed to create the page: {e}")))?;
             page_svc.bind_opener(page_port)?;
             let result = page_svc.bind_result()?;
-            *open_slot.borrow_mut() = Some(page_svc);
+            *open_slot.borrow_mut() = Some(page_svc.clone());
             navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, true)
                 .await
                 .map_err(|e| js_error_from_lxapp_error(&e))?;
-            Ok::<_, rong::RongJSError>(result)
+            Ok::<_, rong::RongJSError>((page_svc, result))
         }
         .await;
         match opened {
-            Ok(result) => {
+            // A close() that arrived while the page was being shown leaves it at once.
+            Ok((page_svc, result)) if open_gate.canceled() => {
                 let _ = result_tx.send(Ok(result));
+                let _ = page_svc.leave_page();
+                open_gate.settle(false);
+                Err(canceled_open_error())
+            }
+            Ok((_, result)) => {
+                let _ = result_tx.send(Ok(result));
+                open_gate.settle(true);
                 Ok(())
             }
             Err(error) => {
                 let _ = result_tx.send(Err(error.clone()));
+                open_gate.settle(false);
                 Err(error)
             }
         }
@@ -263,15 +281,20 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
         }
     })?;
 
-    let close = JSFunc::new(ctx, move || -> JSResult<()> {
-        let page_svc = pushed.borrow().clone().ok_or_else(|| {
-            js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
-                "the page has not opened yet; await handle.opened first".to_string(),
-            ))
-        })?;
-        page_svc
-            .leave_page()
-            .map_err(|e| js_error_from_lxapp_error(&e))
+    let close = JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
+        let open = pushed.borrow().clone();
+        if let Some(page_svc) = open {
+            let left = page_svc
+                .leave_page()
+                .map_err(|e| js_error_from_lxapp_error(&e));
+            return Promise::from_future(&ctx, None, async move { left });
+        }
+        gate.cancel();
+        let ended = gate.wait();
+        Promise::from_future(&ctx, None, async move {
+            let _ = ended.await;
+            Ok(())
+        })
     })?
     .name("close")?;
 
@@ -287,13 +310,23 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
 
 /// A failed open is reported once, and neither promise of the handle goes
 /// unhandled when the caller awaits one of them or neither.
-fn report_failed_open(
+pub(crate) fn report_failed_open(
     ctx: &JSContext,
     handle: &JSObject,
     report: impl Fn(String) + 'static,
 ) -> JSResult<()> {
     let opened = handle.get::<_, JSObject>("opened")?;
-    let on_failure = JSFunc::new(ctx, move |error: JSValue| report(describe_error(&error)))?;
+    // A close() before the page opened is the caller's choice, not a failure.
+    let on_failure = JSFunc::new(ctx, move |error: JSValue| {
+        let code = error
+            .clone()
+            .to_rust::<JSObject>()
+            .ok()
+            .and_then(|object| object.get::<_, String>("code").ok());
+        if code.as_deref() != Some(rong::error::E_ABORT) {
+            report(describe_error(&error));
+        }
+    })?;
     opened
         .get::<_, JSFunc>("catch")?
         .call::<_, JSValue>(Some(opened.clone()), (on_failure,))?;
