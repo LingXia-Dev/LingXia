@@ -227,6 +227,12 @@ impl AppGesture for Platform {
     }
 
     async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+        // Reading a size injects nothing: a phone's window is the display, in the vp overlay
+        // bounds use.
+        if matches!(target, GestureTarget::Window { .. }) {
+            let screen = crate::traits::device::Device::screen_info(self);
+            return Ok([0.0, 0.0, screen.width, screen.height]);
+        }
         let driver = driver()?;
         let (app_id, webtag) = page(target)?;
         tokio::task::spawn_blocking(move || driver.viewport(&app_id, &webtag))
