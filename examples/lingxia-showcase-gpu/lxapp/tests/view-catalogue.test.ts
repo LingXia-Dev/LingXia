@@ -59,7 +59,8 @@ test('a finger on an index row opens its group', { covers: ['view:catalogue'], s
     const box = await view.testId(`view-index-${id}`).boundingBox();
     const at = [box.x + box.width / 2, box.y + box.height / 2] as const;
     await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });
-    await expect(view.testId(`view-group-${id}`)).toBeVisible({ timeout: 3_000 });
+    // A group with web views opens only once they start, which on Windows takes seconds.
+    await expect(view.testId(`view-group-${id}`)).toBeVisible({ timeout: 10_000 });
     await t.app.nav.back();
     await expect(view.testId('view-index')).toBeVisible();
   }
