@@ -393,4 +393,11 @@ pub trait UserFeedback: Send + Sync + 'static {
         cancel_text: String,
         item_color: String,
     ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+
+    /// Close the modal or action sheet on screen, settling its pending `show_*`
+    /// as dismissed; nothing on screen is a no-op. Logic offers `signal` on
+    /// these calls only once every host implements this.
+    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("dismiss_dialog".to_string()))
+    }
 }
