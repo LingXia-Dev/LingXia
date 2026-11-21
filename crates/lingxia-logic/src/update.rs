@@ -1,8 +1,8 @@
 use crate::i18n::{err_code_message, js_error_from_lxapp_error};
 use lxapp::{Channel, LxApp, register_app_handler, try_get, warn};
 use rong::{
-    Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, js_class,
-    js_method,
+    Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
+    function::Optional, js_class, js_method,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -197,47 +197,63 @@ impl JSUpdateManager {
 
     /// Subscribes to a ready update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateReady")]
-    fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
-        let token = claim_slot_token(&ctx);
-        self.on_ready.push((token, cb.clone()));
-        with_update_state(&ctx, |state| {
-            state.on_ready.push(UpdateListener {
-                token,
-                callback: cb.clone(),
+    fn on_update_ready(
+        &mut self,
+        ctx: JSContext,
+        cb: JSFunc,
+        options: Optional<JSValue>,
+    ) -> JSResult<JSFunc> {
+        let scope = ctx.clone();
+        lxapp::lx::subscribe(&scope, options.0, move || {
+            let token = claim_slot_token(&ctx);
+            self.on_ready.push((token, cb.clone()));
+            with_update_state(&ctx, |state| {
+                state.on_ready.push(UpdateListener {
+                    token,
+                    callback: cb.clone(),
+                });
             });
-        });
-        if let Some(payload) = pending_ready(&ctx)
-            && cb.call::<_, ()>(None, (payload,)).is_err()
-        {
-            warn!("Flushing pending UpdateReady failed; keeping event pending");
-        }
-        let slot = update_registry(&ctx).state.clone();
-        JSFunc::new(&ctx, move || {
-            let mut state = slot.borrow_mut();
-            state.on_ready.retain(|listener| listener.token != token);
+            if let Some(payload) = pending_ready(&ctx)
+                && cb.call::<_, ()>(None, (payload,)).is_err()
+            {
+                warn!("Flushing pending UpdateReady failed; keeping event pending");
+            }
+            let slot = update_registry(&ctx).state.clone();
+            JSFunc::new(&ctx, move || {
+                let mut state = slot.borrow_mut();
+                state.on_ready.retain(|listener| listener.token != token);
+            })
         })
     }
 
     /// Subscribes to a failed update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateFailed")]
-    fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
-        let token = claim_slot_token(&ctx);
-        self.on_failed.push((token, cb.clone()));
-        with_update_state(&ctx, |state| {
-            state.on_failed.push(UpdateListener {
-                token,
-                callback: cb.clone(),
+    fn on_update_failed(
+        &mut self,
+        ctx: JSContext,
+        cb: JSFunc,
+        options: Optional<JSValue>,
+    ) -> JSResult<JSFunc> {
+        let scope = ctx.clone();
+        lxapp::lx::subscribe(&scope, options.0, move || {
+            let token = claim_slot_token(&ctx);
+            self.on_failed.push((token, cb.clone()));
+            with_update_state(&ctx, |state| {
+                state.on_failed.push(UpdateListener {
+                    token,
+                    callback: cb.clone(),
+                });
             });
-        });
-        if let Some(payload) = pending_failed(&ctx)
-            && cb.call::<_, ()>(None, (payload,)).is_err()
-        {
-            warn!("Flushing pending UpdateFailed failed; keeping event pending");
-        }
-        let slot = update_registry(&ctx).state.clone();
-        JSFunc::new(&ctx, move || {
-            let mut state = slot.borrow_mut();
-            state.on_failed.retain(|listener| listener.token != token);
+            if let Some(payload) = pending_failed(&ctx)
+                && cb.call::<_, ()>(None, (payload,)).is_err()
+            {
+                warn!("Flushing pending UpdateFailed failed; keeping event pending");
+            }
+            let slot = update_registry(&ctx).state.clone();
+            JSFunc::new(&ctx, move || {
+                let mut state = slot.borrow_mut();
+                state.on_failed.retain(|listener| listener.token != token);
+            })
         })
     }
 
@@ -303,11 +319,11 @@ rong::js_api! {
         namespace LxAppApi = crate::namespace::app(ctx)?;
         fn applyUpdate(ts_return = "void") = apply_update;
         fn onUpdateReady(
-            ts_params = "callback: (info: UpdateReadyInfo) => void",
+            ts_params = "callback: (info: UpdateReadyInfo) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_update_ready;
         fn onUpdateFailed(
-            ts_params = "callback: (info: UpdateFailedInfo) => void",
+            ts_params = "callback: (info: UpdateFailedInfo) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_update_failed;
     }
@@ -322,19 +338,27 @@ fn apply_update(ctx: JSContext) -> JSResult<()> {
 /// Calls `callback` when a newer bundle is downloaded and ready. Each
 /// subscription adds a listener; the last event that arrived before it is
 /// delivered at once. Returns the unsubscribe fn.
-fn on_update_ready(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+fn on_update_ready(
+    ctx: JSContext,
+    callback: JSFunc,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
     let manager = get_update_manager(ctx.clone())?;
     manager
         .borrow_mut::<JSUpdateManager>()?
-        .on_update_ready(ctx, callback)
+        .on_update_ready(ctx, callback, options)
 }
 
 /// Calls `callback` when downloading an update fails. Returns the unsubscribe fn.
-fn on_update_failed(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+fn on_update_failed(
+    ctx: JSContext,
+    callback: JSFunc,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
     let manager = get_update_manager(ctx.clone())?;
     manager
         .borrow_mut::<JSUpdateManager>()?
-        .on_update_failed(ctx, callback)
+        .on_update_failed(ctx, callback, options)
 }
 
 /// Ensure the target app is installed at least once (first-launch preparation).

@@ -68,6 +68,24 @@ if (missingDocs.length > 0) {
   process.exit(1);
 }
 
+// Every subscription is `watch` (state: the current value, then changes) or
+// `on<Event>` (events), returns its unsubscribe, and takes `{ signal }`.
+const subscriptions = [...generatedSource.matchAll(/^\s+(watch\w*|on[A-Z]\w*)\((.*)\): \(\) => void;$/gm)];
+const noSignal = subscriptions
+  .filter(([, , params]) => !params.endsWith("options?: SignalOptions"))
+  .map(([line]) => line.trim());
+if (subscriptions.length === 0 || noSignal.length > 0) {
+  console.error(`Subscriptions without { signal } options:\n  ${noSignal.join("\n  ") || "(none found)"}`);
+  process.exit(1);
+}
+const watchNamed = [...generatedSource.matchAll(/^\s+(\w+)\((?:callback|listener|handler)[^)]*\): \(\) => void;$/gm)]
+  .map(([, name]) => name)
+  .filter((name) => !/^(watch\w*|on[A-Z]\w*)$/.test(name));
+if (watchNamed.length > 0) {
+  console.error(`Subscriptions must be named watch or on<Event>: ${watchNamed.join(", ")}`);
+  process.exit(1);
+}
+
 const profile = readFileSync(resolve(packageDir, "src/generated/logic-web.d.ts"), "utf8");
 const runtime = readFileSync(
   resolve(packageDir, "../../crates/lingxia-lxapp/src/appservice/js_runtime.rs"),
@@ -122,4 +140,5 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 console.log(
   `Generated declarations cover all ${contract.types.length} legacy public type names and critical documentation.`,
 );
+console.log(`${subscriptions.length} subscriptions are watch or on<Event> and take { signal }.`);
 console.log(`Rong Logic Web profile and runtime modules cover ${webStandards.length} standard APIs.`);

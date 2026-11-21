@@ -5,11 +5,14 @@ use lingxia_platform::traits::network::Network;
 use lxapp::{
     LxApp, info, publish_app_event, register_app_handler, unregister_app_handler_token, warn,
 };
-use rong::{IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{
+    IntoJSObject, JSContext, JSFunc, JSResult, JSValue, Promise, RongJSError, function::Optional,
+};
 use serde_json::{Value, json};
 use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::rc::Rc;
 
 const NETWORK_CHANGE_EVENT: &str = "NetworkChange";
 
@@ -212,27 +215,63 @@ fn clear_network_change_callback(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-/// Subscribes to network changes and returns the unsubscribe fn.
-fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let token = register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback)?;
-    if let Err(err) = ensure_network_change_callback(&ctx) {
-        let _ = unregister_app_handler_token(&ctx, NETWORK_CHANGE_EVENT, token);
-        return Err(err);
-    }
-    let off_ctx = ctx.clone();
-    let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.get() {
-            return;
+/// Delivers the current connectivity, then each change; returns the unsubscribe fn.
+/// The current value is read asynchronously and skipped if a change lands first.
+fn on_network_change(
+    ctx: JSContext,
+    callback: JSFunc,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let delivered = Rc::new(Cell::new(false));
+        let unsubscribed = Rc::new(Cell::new(false));
+        let on_change = {
+            let delivered = delivered.clone();
+            let callback = callback.clone();
+            JSFunc::new(&ctx, move |info: JSValue| {
+                delivered.set(true);
+                let _ = callback.call::<_, ()>(None, (info,));
+            })?
+        };
+        let token = register_app_handler(&ctx, NETWORK_CHANGE_EVENT, on_change)?;
+        if let Err(err) = ensure_network_change_callback(&ctx) {
+            let _ = unregister_app_handler_token(&ctx, NETWORK_CHANGE_EVENT, token);
+            return Err(err);
         }
-        let remaining = unregister_app_handler_token(&off_ctx, NETWORK_CHANGE_EVENT, token);
-        if remaining == 0
-            && let Err(err) = clear_network_change_callback(&off_ctx)
         {
-            warn!("NetworkChange callback cleanup failed: {}", err);
-            return;
+            let ctx = ctx.clone();
+            let delivered = delivered.clone();
+            let unsubscribed = unsubscribed.clone();
+            let read_ctx = ctx.clone();
+            Promise::from_future(&ctx, None, async move {
+                match get_network_info(read_ctx).await {
+                    Ok(info) if !delivered.get() && !unsubscribed.get() => {
+                        delivered.set(true);
+                        let _ = callback.call::<_, ()>(None, (info,));
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        warn!("lx.network.watch could not read the current status: {err}");
+                    }
+                }
+                Ok::<(), rong::RongJSError>(())
+            })?;
         }
-        unsubscribed.set(true);
+        let off_ctx = ctx.clone();
+        JSFunc::new(&ctx, move || {
+            if unsubscribed.get() {
+                return;
+            }
+            let remaining = unregister_app_handler_token(&off_ctx, NETWORK_CHANGE_EVENT, token);
+            if remaining == 0
+                && let Err(err) = clear_network_change_callback(&off_ctx)
+            {
+                warn!("NetworkChange callback cleanup failed: {}", err);
+                return;
+            }
+            unsubscribed.set(true);
+        })
     })
 }
 
@@ -254,7 +293,7 @@ rong::js_api! {
         const wifi: "WifiApi" = crate::namespace::wifi(ctx)?;
         fn status(ts_return = "Promise<NetworkInfo>") = get_network_info;
         fn watch(
-            ts_params = "callback: NetworkChangeCallback",
+            ts_params = "callback: NetworkChangeCallback, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_network_change;
     }

@@ -284,34 +284,24 @@ component reports, and an `actions.*` handler forwards it to Logic as its
 payload. Native component callbacks and their payload shapes:
 [Components](./components.md#callback-shapes).
 
-### `lx.on*` subscriptions
+### Subscriptions
 
-Every `lx.on*` call returns its unsubscribe function, the only way to cancel
-it. Keep it in `setup`'s closure (never in `data`) and call it in `onUnload`:
+Pass `{ signal: page.signal }` to every `watch` and `on<Event>` a page makes;
+it ends with the page. A route can be open more than once, so a subscription
+without it leaks once per instance.
 
 ```ts
 export default definePage({
   data: { online: true },
-  setup(page) {
-    let offNetwork: (() => void) | undefined;
-    return {
-      onLoad() {
-        offNetwork = lx.network.watch((info) => {
-          page.update(d => { d.online = info.isConnected; });
-        });
-      },
-      onUnload() { offNetwork?.(); },
-    };
-  },
+  setup: page => ({
+    onLoad() {
+      lx.network.watch(info => page.update(d => { d.online = info.isConnected; }), { signal: page.signal });
+    },
+  }),
 });
 ```
 
-The same applies to `lx.network.wifi.onConnected`, `lx.device.orientation.watch`,
-`onKeyDown`, `onKeyUp`, `onUpdateReady`,
-`onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
-`onClose`. A route can be open more than once, so a leak multiplies per
-instance. Work started with `page.signal` needs no teardown; ignore its
-`AbortError`.
+Work started with `page.signal` needs no teardown; ignore its `AbortError`.
 
 ## Action shapes
 
@@ -625,5 +615,5 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Expecting `_`-prefixed helpers or hooks to be actions.
 - Expecting changes to shared module state to re-render.
 - Pushing a tab page instead of `lx.nav.go({ tab })`.
-- Dropping the function an `lx.on*` call returns.
+- A page subscription without `{ signal: page.signal }`.
 - Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).

@@ -186,7 +186,7 @@ export interface StreamHandle<T = unknown> {
    * The generator form still observes cancel in `finally`; use this for the
    * callback-based handle.
    */
-  onCancel(handler: () => void): () => void;
+  onCancel(handler: () => void, options?: SignalOptions): () => void;
 }
 
 /**
@@ -298,7 +298,7 @@ export type PageHandle<R = JsonValue, M = never> = {
      */
     send(message: MessageIn<M>): void;
     /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
-    onMessage(handler: (message: MessageOut<M>) => void): () => void;
+    onMessage(handler: (message: MessageOut<M>) => void, options?: SignalOptions): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
 };
@@ -675,7 +675,7 @@ export type AppearanceApi = {
      * The first callback runs synchronously, before `watch` returns, so the
      * unsubscribe is not yet bound inside it.
      */
-    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+    watch(callback: (resolved: ResolvedAppearance) => void, options?: SignalOptions): () => void;
     /** What the user chose for the whole product. Control app only. */
     getPreference(): AppearancePreference;
     /**
@@ -690,7 +690,7 @@ export type AppearanceApi = {
      * current value; that first callback runs synchronously, before
      * `watchPreference` returns. Control app only.
      */
-    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
+    watchPreference(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
 };
 
 /**
@@ -1003,7 +1003,7 @@ export type DisplayLanguageApi = {
      * The first callback runs synchronously, before `watch` returns, so the
      * unsubscribe is not yet bound inside it.
      */
-    watch(callback: (language: string) => void): () => void;
+    watch(callback: (language: string) => void, options?: SignalOptions): () => void;
     /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
     getPreference(): DisplayLanguagePreference;
     /**
@@ -1017,7 +1017,7 @@ export type DisplayLanguageApi = {
      * the current value and returns an unsubscribe; that first callback runs
      * synchronously, before `watchPreference` returns. Control app only.
      */
-    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
 };
 
 /**
@@ -1559,13 +1559,13 @@ export type PageLoadOptions = {
 /** A pushed page's line to the page that opened it (`page.opener`). */
 export type PageMessagePort = {
     /**
-     * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
+     * Delivers `message` to the other side's `onMessage` handlers, at once and
      * as the same value (both sides share this Logic context; nothing is
      * copied). Until the other side first subscribes, messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */
-    onMessage(handler: (message: unknown) => void): () => void;
+    onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 };
 
 export type PageQuery = Record<string, PageQueryValue>;
@@ -1723,8 +1723,8 @@ export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | '
 export type PreviewMediaHandle = {
     readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
-    /** Fires when the shown item changes; \`current\` holds the latest. Returns a function that removes the listener. */
-    onChange(listener: (change: PreviewMediaChange) => void): () => void;
+    /** Fires when the shown item changes; `current` holds the latest. Returns a function that removes the listener. */
+    onChange(listener: (change: PreviewMediaChange) => void, options?: SignalOptions): () => void;
     readonly completed: Promise<PreviewMediaResult>;
 };
 
@@ -2102,6 +2102,14 @@ export type ShellSidebarActionUpdate = {
 };
 
 /**
+ * The `{ signal }` every subscription (`watch`, `on<Event>`) takes. Aborting
+ * it unsubscribes; `{ signal: page.signal }` ends it with the page.
+ */
+export type SignalOptions = {
+    signal?: AbortSignal;
+};
+
+/**
  * Asynchronous persistent key-value storage backed by the lxapp
  * database. Use `lx.fs` for path-based data.
  * `get<T>()` is an unchecked assertion at the call site. Pin every
@@ -2198,7 +2206,7 @@ export type SurfaceBase = {
      */
     close(): Promise<void>;
     /** Fires once when the surface closes, whoever closed it. Returns a function that removes the handler. */
-    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void, options?: SignalOptions): () => void;
 };
 
 /**
@@ -2291,13 +2299,13 @@ export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab' | 'builtin';
 export type SurfaceMessaging = {
     /**
      * Sends to the other side: from the opener to the opened page, from the
-     * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
-     * the other side's \`onMessage\` handlers; until it first subscribes,
+     * page (`page.surface`) to its opener. Delivered at once and uncopied to
+     * the other side's `onMessage` handlers; until it first subscribes,
      * messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */
-    onMessage(handler: (message: unknown) => void): () => void;
+    onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 };
 
 /**
@@ -2323,9 +2331,9 @@ export type SurfaceShowable = {
      */
     hide(): Promise<void>;
     /** Fires on a real transition to visible, whichever side drove it. */
-    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void, options?: SignalOptions): () => void;
     /** Fires on a real transition to hidden, whichever side drove it. */
-    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void, options?: SignalOptions): () => void;
 };
 
 /**
@@ -2480,7 +2488,7 @@ export type TerminalSettingsApi = {
         scope?: 'font' | 'theme';
     }): Promise<TerminalSettingsSnapshot>;
     /** Fires after saved settings, effective appearance, or fonts change. */
-    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void): () => void;
+    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void, options?: SignalOptions): () => void;
 };
 
 export type TerminalSettingsPatch = {
@@ -3086,9 +3094,9 @@ declare global {
     /** Read the screen geometry and pixel ratio this host reports. */
     screen(): ScreenInfo;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
-    onKeyDown(callback: KeyEventCallback): () => void;
+    onKeyDown(callback: KeyEventCallback, options?: SignalOptions): () => void;
     /** Subscribes to key-up events and returns the unsubscribe fn. */
-    onKeyUp(callback: KeyEventCallback): () => void;
+    onKeyUp(callback: KeyEventCallback, options?: SignalOptions): () => void;
     /** Get location function */
     location(options?: GetLocationOptions): Promise<LocationInfo>;
     /** Read system switches the lxapp may branch on, such as location and WiFi. */
@@ -3250,9 +3258,9 @@ declare global {
      * subscription adds a listener; the last event that arrived before it is
      * delivered at once. Returns the unsubscribe fn.
      */
-    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
+    onUpdateReady(callback: (info: UpdateReadyInfo) => void, options?: SignalOptions): () => void;
     /** Calls `callback` when downloading an update fails. Returns the unsubscribe fn. */
-    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
+    onUpdateFailed(callback: (info: UpdateFailedInfo) => void, options?: SignalOptions): () => void;
   }
 }
 
@@ -3308,8 +3316,11 @@ declare global {
     readonly wifi: WifiApi;
     /** Read connectivity right now: whether it is connected, its type, and addresses. */
     status(): Promise<NetworkInfo>;
-    /** Subscribes to network changes and returns the unsubscribe fn. */
-    watch(callback: NetworkChangeCallback): () => void;
+    /**
+     * Delivers the current connectivity, then each change; returns the unsubscribe fn.
+     * The current value is read asynchronously and skipped if a change lands first.
+     */
+    watch(callback: NetworkChangeCallback, options?: SignalOptions): () => void;
     download(url: never): never;
     /**
      * Upload a file over HTTP, streamed from disk.
@@ -3333,7 +3344,7 @@ declare global {
      */
     set(orientation: DeviceOrientation): boolean;
     /** Subscribes to orientation changes and returns the unsubscribe fn. */
-    watch(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
+    watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void;
   }
 }
 
@@ -3504,7 +3515,7 @@ declare global {
      * handler is registered, the left-click runs only the handler(s); the tray's
      * configured surface action is suppressed. Returns an unsubscribe function.
      */
-    onClick(handler: () => void): () => void;
+    onClick(handler: () => void, options?: SignalOptions): () => void;
     /** lx.host.tray.show() — show the tray status item. */
     show(): void;
     /** lx.host.tray.hide() — hide the tray status item. */
@@ -3553,7 +3564,7 @@ declare global {
     /** The network the device is on now. */
     current(): Promise<WifiInfo>;
     /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
-    onConnected(callback: WifiConnectedCallback): () => void;
+    onConnected(callback: WifiConnectedCallback, options?: SignalOptions): () => void;
   }
 }
 

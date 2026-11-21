@@ -43,6 +43,14 @@ library, and the root `tsconfig.json` references both.
 - Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
   `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.surface`, `lx.shell`.
 
+## Subscriptions
+
+- `watch(cb)` delivers the current value, then each change; `on<Event>(cb)`
+  delivers events and never replays one. The first `watch` callback can run
+  before `watch` returns its unsubscribe.
+- Every subscription returns its unsubscribe and takes `{ signal }`:
+  `lx.network.watch(cb, { signal: page.signal })` ends with the page.
+
 ## Web globals
 
 Logic runs in Rong, not a browser. `@lingxia/types/logic-globals` declares what

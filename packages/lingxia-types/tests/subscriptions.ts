@@ -37,3 +37,11 @@ export type SubscriptionGate = [
   typeof unsubscribeUpdateReady,
   typeof unsubscribeUpdateFailed,
 ];
+
+// Every subscription takes `{ signal }`.
+const lifetime = new AbortController();
+lx.network.watch(() => {}, { signal: lifetime.signal });
+lx.host.appearance.watch(() => {}, { signal: lifetime.signal });
+lx.device.orientation.watch(() => {}, { signal: lifetime.signal });
+// @ts-expect-error options carry only a signal
+lx.network.watch(() => {}, { once: true });

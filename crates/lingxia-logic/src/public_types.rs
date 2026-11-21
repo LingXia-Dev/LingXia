@@ -12,6 +12,12 @@ rong::js_api! {
     fn register_public_types(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
+        /// The `{ signal }` every subscription (`watch`, `on<Event>`) takes. Aborting
+        /// it unsubscribes; `{ signal: page.signal }` ends it with the page.
+        type SignalOptions = r###"{
+    signal?: AbortSignal;
+}"###;
+
         /// The user dismissed the operation. Never an error.
         ///
         type CanceledResult = r###"{
@@ -466,7 +472,7 @@ rong::js_api! {
         scope?: 'font' | 'theme';
     }): Promise<TerminalSettingsSnapshot>;
     /** Fires after saved settings, effective appearance, or fonts change. */
-    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void): () => void;
+    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void, options?: SignalOptions): () => void;
 }"###;
 
         type TerminalColorSchemesApi = r###"{
@@ -533,7 +539,7 @@ rong::js_api! {
      * The first callback runs synchronously, before `watch` returns, so the
      * unsubscribe is not yet bound inside it.
      */
-    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+    watch(callback: (resolved: ResolvedAppearance) => void, options?: SignalOptions): () => void;
     /** What the user chose for the whole product. Control app only. */
     getPreference(): AppearancePreference;
     /**
@@ -548,7 +554,7 @@ rong::js_api! {
      * current value; that first callback runs synchronously, before
      * `watchPreference` returns. Control app only.
      */
-    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
+    watchPreference(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
 }"###;
         /// What the product's language is set to: `'auto'` follows the system,
         /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
@@ -574,7 +580,7 @@ rong::js_api! {
      * The first callback runs synchronously, before `watch` returns, so the
      * unsubscribe is not yet bound inside it.
      */
-    watch(callback: (language: string) => void): () => void;
+    watch(callback: (language: string) => void, options?: SignalOptions): () => void;
     /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
     getPreference(): DisplayLanguagePreference;
     /**
@@ -588,7 +594,7 @@ rong::js_api! {
      * the current value and returns an unsubscribe; that first callback runs
      * synchronously, before `watchPreference` returns. Control app only.
      */
-    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
 }"###;
 
         type ResolvedAppearance = r###"'light' | 'dark'"###;
@@ -1191,13 +1197,13 @@ rong::js_api! {
         /// A pushed page's line to the page that opened it (`page.opener`).
         type PageMessagePort = r###"{
     /**
-     * Delivers \`message\` to the other side's \`onMessage\` handlers, at once and
+     * Delivers `message` to the other side's `onMessage` handlers, at once and
      * as the same value (both sides share this Logic context; nothing is
      * copied). Until the other side first subscribes, messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */
-    onMessage(handler: (message: unknown) => void): () => void;
+    onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 }"###;
 
         /// A pushed or surface page's outcome. `canceled` means it left without a
@@ -1230,8 +1236,8 @@ rong::js_api! {
         type PreviewMediaHandle = r###"{
     readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
-    /** Fires when the shown item changes; \`current\` holds the latest. Returns a function that removes the listener. */
-    onChange(listener: (change: PreviewMediaChange) => void): () => void;
+    /** Fires when the shown item changes; `current` holds the latest. Returns a function that removes the listener. */
+    onChange(listener: (change: PreviewMediaChange) => void, options?: SignalOptions): () => void;
     readonly completed: Promise<PreviewMediaResult>;
 }"###;
 
@@ -1647,7 +1653,7 @@ true
      */
     close(): Promise<void>;
     /** Fires once when the surface closes, whoever closed it. Returns a function that removes the handler. */
-    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
+    onClose(handler: (event: SurfaceClosedEvent) => void, options?: SignalOptions): () => void;
 }"###;
 
         /// Surfaces the host can hide and restore without losing page state.
@@ -1664,9 +1670,9 @@ true
      */
     hide(): Promise<void>;
     /** Fires on a real transition to visible, whichever side drove it. */
-    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onShow(handler: (event: SurfaceVisibilityEvent) => void, options?: SignalOptions): () => void;
     /** Fires on a real transition to hidden, whichever side drove it. */
-    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    onHide(handler: (event: SurfaceVisibilityEvent) => void, options?: SignalOptions): () => void;
 }"###;
 
         /// Two-way messaging, available when both sides are lxapp pages.
@@ -1674,13 +1680,13 @@ true
         type SurfaceMessaging = r###"{
     /**
      * Sends to the other side: from the opener to the opened page, from the
-     * page (\`page.surface\`) to its opener. Delivered at once and uncopied to
-     * the other side's \`onMessage\` handlers; until it first subscribes,
+     * page (`page.surface`) to its opener. Delivered at once and uncopied to
+     * the other side's `onMessage` handlers; until it first subscribes,
      * messages wait for it.
      */
     send(message: unknown): void;
     /** Receives what the other side sends. Returns a function that removes the handler. */
-    onMessage(handler: (message: unknown) => void): () => void;
+    onMessage(handler: (message: unknown) => void, options?: SignalOptions): () => void;
 }"###;
 
         /// One of this lxapp's own pages, opened as a float or a window.

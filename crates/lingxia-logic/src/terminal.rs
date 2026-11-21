@@ -7,7 +7,7 @@ use lingxia_terminal_config::{ConfigError, SETTINGS_APP_ID, ThemeStore};
 use lxapp::LxApp;
 use rong::{
     FromJSObject, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
-    JsonToJSValue, Promise, RongJSError,
+    JsonToJSValue, Optional, Promise, RongJSError,
 };
 use serde::Serialize;
 use std::cell::{Cell, RefCell};
@@ -527,20 +527,22 @@ fn install_on_change(
     let listeners = listeners.clone();
     let on_change = JSFunc::new(
         ctx,
-        move |ctx: JSContext, listener: JSValue| -> JSResult<JSFunc> {
-            require_access(&ctx, LogicRoute::TerminalSettingsOnChange)?;
-            let listener = listener.to_rust::<JSFunc>()?;
-            let slot = {
-                let mut slots = listeners.borrow_mut();
-                slots.push(Some(listener));
-                slots.len() - 1
-            };
-            let listeners = listeners.clone();
-            JSFunc::new(&ctx, move || -> JSResult<()> {
-                if let Some(entry) = listeners.borrow_mut().get_mut(slot) {
-                    *entry = None;
-                }
-                Ok(())
+        move |ctx: JSContext, listener: JSValue, options: Optional<JSValue>| -> JSResult<JSFunc> {
+            lxapp::lx::subscribe(&ctx, options.0, || {
+                require_access(&ctx, LogicRoute::TerminalSettingsOnChange)?;
+                let listener = listener.to_rust::<JSFunc>()?;
+                let slot = {
+                    let mut slots = listeners.borrow_mut();
+                    slots.push(Some(listener));
+                    slots.len() - 1
+                };
+                let listeners = listeners.clone();
+                JSFunc::new(&ctx, move || -> JSResult<()> {
+                    if let Some(entry) = listeners.borrow_mut().get_mut(slot) {
+                        *entry = None;
+                    }
+                    Ok(())
+                })
             })
         },
     )?

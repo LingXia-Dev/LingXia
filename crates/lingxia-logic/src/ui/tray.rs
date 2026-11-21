@@ -2,7 +2,7 @@ use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult};
+use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -66,26 +66,29 @@ fn hide(ctx: JSContext) -> JSResult<()> {
 /// lx.host.tray.onClick(handler) — left-click on the tray icon. While at least one
 /// handler is registered, the left-click runs only the handler(s); the tray's
 /// configured surface action is suppressed. Returns an unsubscribe function.
-fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
-    let invocation = authorization::require(&ctx, LogicRoute::TrayOnClick)?;
-    let lxapp = invocation.lxapp();
-    let token = register_app_handler(&ctx, "lx.host.tray.click", handler)?;
-    if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
-        let _ = lxapp.runtime.set_tray_click_intercept(true);
-    }
-    let off = app_handler_unsub(&ctx, "lx.host.tray.click", token);
-    let runtime = lxapp.runtime.clone();
-    // Guard against a double `off()`: a second call must not decrement the count
-    // again (which would underflow and break future interception).
-    let unsubscribed = std::sync::atomic::AtomicBool::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.swap(true, Ordering::SeqCst) {
-            return;
+fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let invocation = authorization::require(&ctx, LogicRoute::TrayOnClick)?;
+        let lxapp = invocation.lxapp();
+        let token = register_app_handler(&ctx, "lx.host.tray.click", handler)?;
+        if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
+            let _ = lxapp.runtime.set_tray_click_intercept(true);
         }
-        off.unsubscribe();
-        if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1 {
-            let _ = runtime.set_tray_click_intercept(false);
-        }
+        let off = app_handler_unsub(&ctx, "lx.host.tray.click", token);
+        let runtime = lxapp.runtime.clone();
+        // Guard against a double `off()`: a second call must not decrement the count
+        // again (which would underflow and break future interception).
+        let unsubscribed = std::sync::atomic::AtomicBool::new(false);
+        JSFunc::new(&ctx, move || {
+            if unsubscribed.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            off.unsubscribe();
+            if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1 {
+                let _ = runtime.set_tray_click_intercept(false);
+            }
+        })
     })
 }
 
@@ -151,7 +154,7 @@ rong::js_api! {
         fn setTitle(ts_params = "text: string | null") = set_title;
         fn setMenu(ts_params = "items: Array<TrayMenuItem | TrayMenuSeparator>") = set_menu;
         fn onClick(
-            ts_params = "handler: () => void",
+            ts_params = "handler: () => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_click;
         fn show = show;

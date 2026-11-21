@@ -168,28 +168,41 @@ impl JSSurface {
     }
 
     #[js_method(rename = "onMessage")]
-    fn on_message(&self, handler: JSFunc) -> JSResult<JSFunc> {
-        crate::message_port::add_message_listener(&self.message_port, handler)
+    fn on_message(
+        &self,
+        ctx: JSContext,
+        handler: JSFunc,
+        options: Optional<JSValue>,
+    ) -> JSResult<JSFunc> {
+        lxapp::lx::subscribe(&ctx, options.0, || {
+            crate::message_port::add_message_listener(&self.message_port, handler)
+        })
     }
 
     #[js_method(rename = "onClose")]
-    fn on_close(this: This<JSObject>, handler: JSFunc) -> JSResult<JSFunc> {
+    fn on_close(
+        this: This<JSObject>,
+        handler: JSFunc,
+        options: Optional<JSValue>,
+    ) -> JSResult<JSFunc> {
         let target = (*this).clone();
         let ctx = target.context();
-        let handler_for_off = handler.clone();
-        <Self as EmitterExt>::add_event_listener(
-            this,
-            EventKey::String("close".to_string()),
-            handler,
-            false,
-            false,
-        )?;
-        JSFunc::new(&ctx, move || {
-            <JSSurface as EmitterExt>::remove_event_listener(
-                This(target.clone()),
+        lxapp::lx::subscribe(&ctx, options.0, || {
+            let handler_for_off = handler.clone();
+            <Self as EmitterExt>::add_event_listener(
+                this,
                 EventKey::String("close".to_string()),
-                handler_for_off.clone(),
-            )
+                handler,
+                false,
+                false,
+            )?;
+            JSFunc::new(&ctx, move || {
+                <JSSurface as EmitterExt>::remove_event_listener(
+                    This(target.clone()),
+                    EventKey::String("close".to_string()),
+                    handler_for_off.clone(),
+                )
+            })
         })
     }
 
@@ -1071,19 +1084,24 @@ fn owned_browser_tab_handle(
     let close_handlers_for_on_close = close_handlers.clone();
     handle.set(
         "onClose",
-        JSFunc::new(ctx, move |ctx: JSContext, handler: JSFunc| {
-            close_handlers_for_on_close
-                .borrow_mut()
-                .push(handler.clone());
-            let handlers = close_handlers_for_on_close.clone();
-            let unsubscribed = Cell::new(false);
-            JSFunc::new(&ctx, move || {
-                if unsubscribed.replace(true) {
-                    return;
-                }
-                handlers.borrow_mut().retain(|entry| *entry != handler);
-            })
-        })?,
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                lxapp::lx::subscribe(&ctx, options.0, || {
+                    close_handlers_for_on_close
+                        .borrow_mut()
+                        .push(handler.clone());
+                    let handlers = close_handlers_for_on_close.clone();
+                    let unsubscribed = Cell::new(false);
+                    JSFunc::new(&ctx, move || {
+                        if unsubscribed.replace(true) {
+                            return;
+                        }
+                        handlers.borrow_mut().retain(|entry| *entry != handler);
+                    })
+                })
+            },
+        )?,
     )?;
     let watched_id = tab_id;
     let watched_handle = handle.clone();
@@ -1852,9 +1870,14 @@ fn lxapp_surface_handle(
         let listen_handle = handle.clone();
         handle.set(
             method,
-            JSFunc::new(ctx, move |handler: JSFunc| {
-                add_event_listener_for(&listen_handle, event, handler)
-            })?,
+            JSFunc::new(
+                ctx,
+                move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                    lxapp::lx::subscribe(&ctx, options.0, || {
+                        add_event_listener_for(&listen_handle, event, handler)
+                    })
+                },
+            )?,
         )?;
     }
 
@@ -2090,9 +2113,14 @@ fn managed_surface_handle(
         let listen_handle = handle.clone();
         handle.set(
             method,
-            JSFunc::new(ctx, move |handler: JSFunc| {
-                add_event_listener_for(&listen_handle, event, handler)
-            })?,
+            JSFunc::new(
+                ctx,
+                move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                    lxapp::lx::subscribe(&ctx, options.0, || {
+                        add_event_listener_for(&listen_handle, event, handler)
+                    })
+                },
+            )?,
         )?;
     }
 
@@ -2630,34 +2658,54 @@ fn attach_surface_methods(
     let listen_surface = surface_ref.clone();
     surface.set(
         "onMessage",
-        JSFunc::new(ctx, move |handler: JSFunc| {
-            let surface = listen_surface.borrow::<JSSurface>()?;
-            crate::message_port::add_message_listener(&surface.message_port, handler)
-        })?,
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                lxapp::lx::subscribe(&ctx, options.0, || {
+                    let surface = listen_surface.borrow::<JSSurface>()?;
+                    crate::message_port::add_message_listener(&surface.message_port, handler)
+                })
+            },
+        )?,
     )?;
 
     let on_close_surface = surface_ref.clone();
     surface.set(
         "onClose",
-        JSFunc::new(ctx, move |handler: JSFunc| {
-            add_event_listener_for(&on_close_surface, "close", handler)
-        })?,
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                lxapp::lx::subscribe(&ctx, options.0, || {
+                    add_event_listener_for(&on_close_surface, "close", handler)
+                })
+            },
+        )?,
     )?;
 
     let on_show_surface = surface_ref.clone();
     surface.set(
         "onShow",
-        JSFunc::new(ctx, move |handler: JSFunc| {
-            add_event_listener_for(&on_show_surface, "show", handler)
-        })?,
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                lxapp::lx::subscribe(&ctx, options.0, || {
+                    add_event_listener_for(&on_show_surface, "show", handler)
+                })
+            },
+        )?,
     )?;
 
     let on_hide_surface = surface_ref;
     surface.set(
         "onHide",
-        JSFunc::new(ctx, move |handler: JSFunc| {
-            add_event_listener_for(&on_hide_surface, "hide", handler)
-        })?,
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, handler: JSFunc, options: Optional<JSValue>| {
+                lxapp::lx::subscribe(&ctx, options.0, || {
+                    add_event_listener_for(&on_hide_surface, "hide", handler)
+                })
+            },
+        )?,
     )?;
 
     Ok(())

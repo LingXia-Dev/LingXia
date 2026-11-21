@@ -183,7 +183,7 @@ export interface StreamHandle<T = unknown> {
    * The generator form still observes cancel in `finally`; use this for the
    * callback-based handle.
    */
-  onCancel(handler: () => void): () => void;
+  onCancel(handler: () => void, options?: SignalOptions): () => void;
 }
 
 /**
@@ -295,7 +295,7 @@ export type PageHandle<R = JsonValue, M = never> = {
      */
     send(message: MessageIn<M>): void;
     /** Receives what the page sends with `page.opener.send`. Returns a function that removes the handler. */
-    onMessage(handler: (message: MessageOut<M>) => void): () => void;
+    onMessage(handler: (message: MessageOut<M>) => void, options?: SignalOptions): () => void;
     /** Leave the page. Throws before `opened` settles, and for a page that is not on top. */
     close(): void;
 };

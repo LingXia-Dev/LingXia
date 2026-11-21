@@ -13,6 +13,7 @@ use lingxia_service::media::{
 use lxapp::LxApp;
 use rong::{
     HostError, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise, RongJSError,
+    function::Optional,
 };
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -395,18 +396,20 @@ fn install_on_change(
     let listeners = listeners.clone();
     let on_change = JSFunc::new(
         ctx,
-        move |ctx: JSContext, listener: JSFunc| -> JSResult<JSFunc> {
-            let slot = {
-                let mut slots = listeners.borrow_mut();
-                slots.push(Some(listener));
-                slots.len() - 1
-            };
-            let listeners = listeners.clone();
-            JSFunc::new(&ctx, move || -> JSResult<()> {
-                if let Some(entry) = listeners.borrow_mut().get_mut(slot) {
-                    *entry = None;
-                }
-                Ok(())
+        move |ctx: JSContext, listener: JSFunc, options: Optional<JSValue>| -> JSResult<JSFunc> {
+            lxapp::lx::subscribe(&ctx, options.0, || {
+                let slot = {
+                    let mut slots = listeners.borrow_mut();
+                    slots.push(Some(listener));
+                    slots.len() - 1
+                };
+                let listeners = listeners.clone();
+                JSFunc::new(&ctx, move || -> JSResult<()> {
+                    if let Some(entry) = listeners.borrow_mut().get_mut(slot) {
+                        *entry = None;
+                    }
+                    Ok(())
+                })
             })
         },
     )?

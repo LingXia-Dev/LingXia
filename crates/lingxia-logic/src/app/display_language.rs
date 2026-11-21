@@ -4,7 +4,7 @@ use lxapp::{
     DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HandlerToken,
     register_app_handler, unregister_app_handler_token,
 };
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -62,30 +62,33 @@ fn get(_ctx: JSContext) -> JSResult<String> {
 /// bar titles, tab bar labels, modal and action-sheet text — are the app's own,
 /// and nothing re-renders them on its behalf. The callback is invoked once with
 /// the current value, then on every change.
-fn watch(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let last_revision = Rc::new(Cell::new(0));
-    let delivered = Rc::new(Cell::new(false));
-    let event_revision = last_revision.clone();
-    let event_delivered = delivered.clone();
-    let event_callback = callback.clone();
-    let handler = JSFunc::new(&ctx, move |event: EffectiveEvent| {
-        if event.revision <= event_revision.get() {
-            return;
+fn watch(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let last_revision = Rc::new(Cell::new(0));
+        let delivered = Rc::new(Cell::new(false));
+        let event_revision = last_revision.clone();
+        let event_delivered = delivered.clone();
+        let event_callback = callback.clone();
+        let handler = JSFunc::new(&ctx, move |event: EffectiveEvent| {
+            if event.revision <= event_revision.get() {
+                return;
+            }
+            event_revision.set(event.revision);
+            event_delivered.set(true);
+            let _ = event_callback.call::<_, ()>(None, (event.effective,));
+        })?;
+        // Register first, then snapshot. Events queued across this boundary carry
+        // revisions and are discarded when the snapshot already includes them.
+        let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, handler)?;
+        let snapshot = lxapp::display_language_state_update();
+        if !delivered.get() || snapshot.revision > last_revision.get() {
+            last_revision.set(snapshot.revision);
+            delivered.set(true);
+            let _ = callback.call::<_, ()>(None, (snapshot.state.effective.to_string(),));
         }
-        event_revision.set(event.revision);
-        event_delivered.set(true);
-        let _ = event_callback.call::<_, ()>(None, (event.effective,));
-    })?;
-    // Register first, then snapshot. Events queued across this boundary carry
-    // revisions and are discarded when the snapshot already includes them.
-    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, handler)?;
-    let snapshot = lxapp::display_language_state_update();
-    if !delivered.get() || snapshot.revision > last_revision.get() {
-        last_revision.set(snapshot.revision);
-        delivered.set(true);
-        let _ = callback.call::<_, ()>(None, (snapshot.state.effective.to_string(),));
-    }
-    unsubscribe(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, token)
+        unsubscribe(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, token)
+    })
 }
 
 fn get_preference(ctx: JSContext) -> JSResult<String> {
@@ -110,40 +113,47 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
 /// Follow what the user chose, not what it resolves to. A system locale change
 /// under `'auto'` moves the language without moving the preference, so this
 /// stays quiet where `watch` fires.
-fn watch_preference(ctx: JSContext, callback: JSValue) -> JSResult<JSFunc> {
-    let (_, callback) = authorization::require_before_decode(
-        &ctx,
-        LogicRoute::AppWatchDisplayLanguagePreference,
-        || callback.to_rust::<JSFunc>(),
-    )?;
-    let last_revision = Rc::new(Cell::new(0));
-    let last_preference: Rc<std::cell::RefCell<Option<String>>> = Rc::default();
-    let event_revision = last_revision.clone();
-    let event_preference = last_preference.clone();
-    let event_callback = callback.clone();
-    let handler = JSFunc::new(&ctx, move |event: StateEvent| {
-        if event.revision <= event_revision.get() {
-            return;
+fn watch_preference(
+    ctx: JSContext,
+    callback: JSValue,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let (_, callback) = authorization::require_before_decode(
+            &ctx,
+            LogicRoute::AppWatchDisplayLanguagePreference,
+            || callback.to_rust::<JSFunc>(),
+        )?;
+        let last_revision = Rc::new(Cell::new(0));
+        let last_preference: Rc<std::cell::RefCell<Option<String>>> = Rc::default();
+        let event_revision = last_revision.clone();
+        let event_preference = last_preference.clone();
+        let event_callback = callback.clone();
+        let handler = JSFunc::new(&ctx, move |event: StateEvent| {
+            if event.revision <= event_revision.get() {
+                return;
+            }
+            event_revision.set(event.revision);
+            if event_preference.borrow().as_deref() == Some(event.state.preference.as_str()) {
+                return;
+            }
+            *event_preference.borrow_mut() = Some(event.state.preference.clone());
+            let _ = event_callback.call::<_, ()>(None, (event.state.preference,));
+        })?;
+        let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, handler)?;
+        let snapshot = lxapp::display_language_state_update();
+        if last_preference.borrow().is_none() || snapshot.revision > last_revision.get() {
+            let preference = snapshot.state.preference.to_string();
+            last_revision.set(snapshot.revision);
+            let changed = last_preference.borrow().as_deref() != Some(preference.as_str());
+            *last_preference.borrow_mut() = Some(preference.clone());
+            if changed {
+                let _ = callback.call::<_, ()>(None, (preference,));
+            }
         }
-        event_revision.set(event.revision);
-        if event_preference.borrow().as_deref() == Some(event.state.preference.as_str()) {
-            return;
-        }
-        *event_preference.borrow_mut() = Some(event.state.preference.clone());
-        let _ = event_callback.call::<_, ()>(None, (event.state.preference,));
-    })?;
-    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, handler)?;
-    let snapshot = lxapp::display_language_state_update();
-    if last_preference.borrow().is_none() || snapshot.revision > last_revision.get() {
-        let preference = snapshot.state.preference.to_string();
-        last_revision.set(snapshot.revision);
-        let changed = last_preference.borrow().as_deref() != Some(preference.as_str());
-        *last_preference.borrow_mut() = Some(preference.clone());
-        if changed {
-            let _ = callback.call::<_, ()>(None, (preference,));
-        }
-    }
-    unsubscribe(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, token)
+        unsubscribe(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, token)
+    })
 }
 
 fn unsubscribe(ctx: &JSContext, event: &'static str, token: HandlerToken) -> JSResult<JSFunc> {

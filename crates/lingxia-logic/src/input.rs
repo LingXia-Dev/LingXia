@@ -1,46 +1,52 @@
 use lxapp::lifecycle::key_events;
 use lxapp::{LxApp, register_app_handler, unregister_app_handler_token};
-use rong::{JSContext, JSFunc, JSResult};
+use rong::{JSContext, JSFunc, JSResult, JSValue, function::Optional};
 use std::cell::Cell;
 
 const KEY_DOWN_EVENT: &str = "KeyDown";
 const KEY_UP_EVENT: &str = "KeyUp";
 
 /// Subscribes to key-down events and returns the unsubscribe fn.
-fn on_key_down(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let token = register_app_handler(&ctx, KEY_DOWN_EVENT, callback)?;
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    key_events::inc_key_down(&lxapp.appid, lxapp.session_id());
+fn on_key_down(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let token = register_app_handler(&ctx, KEY_DOWN_EVENT, callback)?;
+        let lxapp = LxApp::from_ctx(&ctx)?;
+        key_events::inc_key_down(&lxapp.appid, lxapp.session_id());
 
-    let off_ctx = ctx.clone();
-    let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.replace(true) {
-            return;
-        }
-        let remaining = unregister_app_handler_token(&off_ctx, KEY_DOWN_EVENT, token);
-        if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
-            key_events::set_key_down(&lxapp.appid, lxapp.session_id(), remaining);
-        }
+        let off_ctx = ctx.clone();
+        let unsubscribed = Cell::new(false);
+        JSFunc::new(&ctx, move || {
+            if unsubscribed.replace(true) {
+                return;
+            }
+            let remaining = unregister_app_handler_token(&off_ctx, KEY_DOWN_EVENT, token);
+            if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
+                key_events::set_key_down(&lxapp.appid, lxapp.session_id(), remaining);
+            }
+        })
     })
 }
 
 /// Subscribes to key-up events and returns the unsubscribe fn.
-fn on_key_up(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let token = register_app_handler(&ctx, KEY_UP_EVENT, callback)?;
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    key_events::inc_key_up(&lxapp.appid, lxapp.session_id());
+fn on_key_up(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let token = register_app_handler(&ctx, KEY_UP_EVENT, callback)?;
+        let lxapp = LxApp::from_ctx(&ctx)?;
+        key_events::inc_key_up(&lxapp.appid, lxapp.session_id());
 
-    let off_ctx = ctx.clone();
-    let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.replace(true) {
-            return;
-        }
-        let remaining = unregister_app_handler_token(&off_ctx, KEY_UP_EVENT, token);
-        if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
-            key_events::set_key_up(&lxapp.appid, lxapp.session_id(), remaining);
-        }
+        let off_ctx = ctx.clone();
+        let unsubscribed = Cell::new(false);
+        JSFunc::new(&ctx, move || {
+            if unsubscribed.replace(true) {
+                return;
+            }
+            let remaining = unregister_app_handler_token(&off_ctx, KEY_UP_EVENT, token);
+            if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
+                key_events::set_key_up(&lxapp.appid, lxapp.session_id(), remaining);
+            }
+        })
     })
 }
 
@@ -52,11 +58,11 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace DeviceApi = crate::namespace::device(ctx)?;
         fn onKeyDown(
-            ts_params = "callback: KeyEventCallback",
+            ts_params = "callback: KeyEventCallback, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_key_down;
         fn onKeyUp(
-            ts_params = "callback: KeyEventCallback",
+            ts_params = "callback: KeyEventCallback, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_key_up;
     }

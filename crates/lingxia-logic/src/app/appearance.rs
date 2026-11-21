@@ -5,7 +5,7 @@ use lxapp::{
     APPEARANCE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, HandlerToken, register_app_handler,
     unregister_app_handler_token,
 };
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -55,31 +55,34 @@ fn get(ctx: JSContext) -> JSResult<String> {
 
 /// Follow the scheme this lxapp renders in, starting with the current value.
 /// Returns an unsubscribe.
-fn watch(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let last_revision = Rc::new(Cell::new(0));
-    let delivered = Rc::new(Cell::new(false));
-    let event_revision = last_revision.clone();
-    let event_delivered = delivered.clone();
-    let event_callback = callback.clone();
-    let handler = JSFunc::new(&ctx, move |event: ResolvedEvent| {
-        if event.revision <= event_revision.get() {
-            return;
+fn watch(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let last_revision = Rc::new(Cell::new(0));
+        let delivered = Rc::new(Cell::new(false));
+        let event_revision = last_revision.clone();
+        let event_delivered = delivered.clone();
+        let event_callback = callback.clone();
+        let handler = JSFunc::new(&ctx, move |event: ResolvedEvent| {
+            if event.revision <= event_revision.get() {
+                return;
+            }
+            event_revision.set(event.revision);
+            event_delivered.set(true);
+            let _ = event_callback.call::<_, ()>(None, (event.resolved,));
+        })?;
+        // Register first, then snapshot: an event queued across this boundary
+        // carries a revision and is discarded if the snapshot already covers it.
+        let token = register_app_handler(&ctx, APPEARANCE_CHANGE_EVENT, handler)?;
+        let state = lxapp::LxApp::from_ctx(&ctx)?.appearance_state();
+        if !delivered.get() || state.revision > last_revision.get() {
+            last_revision.set(state.revision);
+            delivered.set(true);
+            let _ = callback.call::<_, ()>(None, (state.resolved.as_str().to_string(),));
         }
-        event_revision.set(event.revision);
-        event_delivered.set(true);
-        let _ = event_callback.call::<_, ()>(None, (event.resolved,));
-    })?;
-    // Register first, then snapshot: an event queued across this boundary
-    // carries a revision and is discarded if the snapshot already covers it.
-    let token = register_app_handler(&ctx, APPEARANCE_CHANGE_EVENT, handler)?;
-    let state = lxapp::LxApp::from_ctx(&ctx)?.appearance_state();
-    if !delivered.get() || state.revision > last_revision.get() {
-        last_revision.set(state.revision);
-        delivered.set(true);
-        let _ = callback.call::<_, ()>(None, (state.resolved.as_str().to_string(),));
-    }
-    let off_ctx = ctx.clone();
-    unsubscribe(&off_ctx, APPEARANCE_CHANGE_EVENT, token)
+        let off_ctx = ctx.clone();
+        unsubscribe(&off_ctx, APPEARANCE_CHANGE_EVENT, token)
+    })
 }
 
 fn get_preference(ctx: JSContext) -> JSResult<String> {
@@ -114,37 +117,44 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
 
 /// Follow the choice, not what it resolves to: a system flip under `'auto'`
 /// moves `lx.host.appearance.watch` and leaves this quiet.
-fn watch_preference(ctx: JSContext, callback: JSValue) -> JSResult<JSFunc> {
-    let (_, callback) = authorization::require_before_decode(
-        &ctx,
-        LogicRoute::AppWatchAppearancePreference,
-        || callback.to_rust::<JSFunc>(),
-    )?;
-    let last_revision = Rc::new(Cell::new(0));
-    let last: Rc<std::cell::RefCell<Option<String>>> = Rc::default();
-    let event_revision = last_revision.clone();
-    let event_last = last.clone();
-    let event_callback = callback.clone();
-    let handler = JSFunc::new(&ctx, move |event: PreferenceEvent| {
-        if event.revision <= event_revision.get() {
-            return;
-        }
-        event_revision.set(event.revision);
-        if event_last.borrow().as_deref() == Some(event.preference.as_str()) {
-            return;
-        }
-        *event_last.borrow_mut() = Some(event.preference.clone());
-        let _ = event_callback.call::<_, ()>(None, (event.preference,));
-    })?;
-    let token = register_app_handler(&ctx, HOST_APPEARANCE_CHANGE_EVENT, handler)?;
-    let preference = lxapp::host_appearance_state()
-        .preference
-        .as_str()
-        .to_string();
-    *last.borrow_mut() = Some(preference.clone());
-    let _ = callback.call::<_, ()>(None, (preference,));
-    let off_ctx = ctx.clone();
-    unsubscribe(&off_ctx, HOST_APPEARANCE_CHANGE_EVENT, token)
+fn watch_preference(
+    ctx: JSContext,
+    callback: JSValue,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let (_, callback) = authorization::require_before_decode(
+            &ctx,
+            LogicRoute::AppWatchAppearancePreference,
+            || callback.to_rust::<JSFunc>(),
+        )?;
+        let last_revision = Rc::new(Cell::new(0));
+        let last: Rc<std::cell::RefCell<Option<String>>> = Rc::default();
+        let event_revision = last_revision.clone();
+        let event_last = last.clone();
+        let event_callback = callback.clone();
+        let handler = JSFunc::new(&ctx, move |event: PreferenceEvent| {
+            if event.revision <= event_revision.get() {
+                return;
+            }
+            event_revision.set(event.revision);
+            if event_last.borrow().as_deref() == Some(event.preference.as_str()) {
+                return;
+            }
+            *event_last.borrow_mut() = Some(event.preference.clone());
+            let _ = event_callback.call::<_, ()>(None, (event.preference,));
+        })?;
+        let token = register_app_handler(&ctx, HOST_APPEARANCE_CHANGE_EVENT, handler)?;
+        let preference = lxapp::host_appearance_state()
+            .preference
+            .as_str()
+            .to_string();
+        *last.borrow_mut() = Some(preference.clone());
+        let _ = callback.call::<_, ()>(None, (preference,));
+        let off_ctx = ctx.clone();
+        unsubscribe(&off_ctx, HOST_APPEARANCE_CHANGE_EVENT, token)
+    })
 }
 
 fn unsubscribe(ctx: &JSContext, event: &'static str, token: HandlerToken) -> JSResult<JSFunc> {

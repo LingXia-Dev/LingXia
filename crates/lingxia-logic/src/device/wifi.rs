@@ -4,7 +4,10 @@ use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_c
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler_token};
 use lxapp::{info, warn};
-use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{
+    FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, JSValue, RongJSError,
+    function::Optional,
+};
 use serde_json::{Value, json};
 use std::cell::Cell;
 
@@ -342,28 +345,35 @@ async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
 }
 
 /// Subscribes to WiFi connection events and returns the unsubscribe fn.
-fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    info!("wifi.onConnected called");
-    let token = register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback)?;
-    if let Err(err) = ensure_wifi_connected_callback(&ctx) {
-        let _ = unregister_app_handler_token(&ctx, WIFI_CONNECTED_EVENT, token);
-        return Err(err);
-    }
-    let off_ctx = ctx.clone();
-    let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.get() {
-            return;
+fn on_wifi_connected(
+    ctx: JSContext,
+    callback: JSFunc,
+    options: Optional<JSValue>,
+) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        info!("wifi.onConnected called");
+        let token = register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback)?;
+        if let Err(err) = ensure_wifi_connected_callback(&ctx) {
+            let _ = unregister_app_handler_token(&ctx, WIFI_CONNECTED_EVENT, token);
+            return Err(err);
         }
-        info!("wifi.onConnected unsubscribe called");
-        let remaining = unregister_app_handler_token(&off_ctx, WIFI_CONNECTED_EVENT, token);
-        if remaining == 0
-            && let Err(err) = clear_wifi_connected_callback(&off_ctx)
-        {
-            warn!("WifiConnected callback cleanup failed: {}", err);
-            return;
-        }
-        unsubscribed.set(true);
+        let off_ctx = ctx.clone();
+        let unsubscribed = Cell::new(false);
+        JSFunc::new(&ctx, move || {
+            if unsubscribed.get() {
+                return;
+            }
+            info!("wifi.onConnected unsubscribe called");
+            let remaining = unregister_app_handler_token(&off_ctx, WIFI_CONNECTED_EVENT, token);
+            if remaining == 0
+                && let Err(err) = clear_wifi_connected_callback(&off_ctx)
+            {
+                warn!("WifiConnected callback cleanup failed: {}", err);
+                return;
+            }
+            unsubscribed.set(true);
+        })
     })
 }
 
@@ -381,7 +391,7 @@ rong::js_api! {
         fn list(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
         fn current(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
         fn onConnected(
-            ts_params = "callback: WifiConnectedCallback",
+            ts_params = "callback: WifiConnectedCallback, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_wifi_connected;
     }
