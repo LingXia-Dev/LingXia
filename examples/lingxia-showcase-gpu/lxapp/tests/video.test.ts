@@ -28,7 +28,7 @@ test('a video plays in a 16:9 box and under its overlay', { start: { page: 'vide
   await expect.poll(time, { timeout: 5_000 }).toBeGreaterThan(0.3);
   await expectPicture(t, hero);
   await reveal(view, 'video-row-1');
-  await expect(view.testId('video-row-1')).toContainText('overlay above video');
+  await expect(view.testId('video-row-1')).toContainText(/overlay above video|覆盖在视频上方/);
 });
 
 type Fixture = Parameters<Parameters<typeof test>[2]>[0];
@@ -73,16 +73,16 @@ test('useVideo reports playback and pauses on command', { start: { page: 'video'
   const view = t.app.view;
   const state = view.testId('video-hero-state');
   const seconds = async () => Number(/([\d.]+)s \//.exec(await state.textContent())?.[1] ?? NaN);
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
   const start = await seconds();
   await expect.poll(seconds, { timeout: 5_000 }).toBeGreaterThan(start);
   await view.testId('video-hero-toggle').click();
-  await expect(state).toContainText('paused');
+  await expect(state).toHaveAttribute('data-state', 'paused');
   const stopped = await seconds();
   await new Promise<void>(resolve => setTimeout(resolve, 600));
   expect(await seconds()).toBe(stopped);
   await view.testId('video-hero-toggle').click();
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
 });
 
 const seconds = (text: string) => Number(/([\d.]+)s\s*$/.exec(text)?.[1] ?? NaN);
@@ -116,11 +116,11 @@ test('page.video pauses and plays the page player from Logic', { start: { page: 
   await skipWhenCovered(t, 'video');
   const view = t.app.view;
   const state = view.testId('video-hero-state');
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
   await view.testId('video-hero-logic-pause').click();
-  await expect(state).toContainText('paused');
+  await expect(state).toHaveAttribute('data-state', 'paused');
   await view.testId('video-hero-logic-play').click();
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
 });
 
 test('a page under another holds its videos still and plays the playing ones again on return', { start: { page: 'video' } }, async (t) => {
@@ -134,7 +134,7 @@ test('a page under another holds its videos still and plays the playing ones aga
     await t.app.nav.back();
     await expect(state).toBeVisible();
   };
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
   // Early in the 6 s loop, so 2.5 s of hidden playback could not wrap back near the start.
   await expect.poll(at, { timeout: 8_000 }).toBeLessThan(2.5);
   const before = await at();
@@ -142,16 +142,16 @@ test('a page under another holds its videos still and plays the playing ones aga
   const back = await at();
   expect(back - before).toBeGreaterThan(-0.1);
   expect(back - before).toBeLessThan(0.8);
-  await expect(state).toContainText('playing');
+  await expect(state).toHaveAttribute('data-state', 'playing');
   await expect.poll(at, { timeout: 5_000 }).toBeGreaterThan(back);
   // One the user paused stays paused.
   await view.testId('video-hero-toggle').click();
-  await expect(state).toContainText('paused');
+  await expect(state).toHaveAttribute('data-state', 'paused');
   // The player stops within a frame or two of the state flipping; read where it settled.
   await new Promise<void>(resolve => setTimeout(resolve, 600));
   const paused = await at();
   await away();
-  await expect(state).toContainText('paused');
+  await expect(state).toHaveAttribute('data-state', 'paused');
   expect(await at()).toBe(paused);
 });
 

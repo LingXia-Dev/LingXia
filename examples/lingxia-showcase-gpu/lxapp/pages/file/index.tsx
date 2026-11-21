@@ -1,5 +1,6 @@
-import { type View } from '@lingxia/view';
+import { t, type View } from '@lingxia/view';
 import '../../theme/index.css';
+import { said } from '../../shared/lib/said';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
 type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
@@ -44,15 +45,15 @@ export function render({ data, actions: raw }: View) {
   const transferEnabled = !!data.pdfSupportsTransferControl && (!!data.isPdfDownloading || paused);
   const progress = Math.max(0, Math.min(100, Number(data.pdfDownloadProgress) || 0));
   const pdfLabel = paused
-    ? 'Download Paused'
+    ? t('file.downloadPaused')
     : state === 'opening'
-      ? 'Opening File...'
+      ? t('file.openingFile')
       : data.isPdfDownloading
-        ? 'Downloading...'
-        : 'Download and Preview PDF';
+        ? t('file.downloading')
+        : t('file.downloadPdf');
   return (
     <Page>
-      <Section title="Options">
+      <Section title={t('file.options')}>
         <checkbox
           data-testid="file-show-menu"
           value={!!data.showMenu}
@@ -60,39 +61,39 @@ export function render({ data, actions: raw }: View) {
           className="bg-transparent text-text"
         >
           <view className="gap-1">
-            <text className="text-sm font-medium">Show Share Button</text>
+            <text className="text-sm font-medium">{t('file.showShareButton')}</text>
             <text className="text-xs text-muted">
-              Only applies to PDF documents. Office documents always open with the system default viewer.
+              {t('file.onlyAppliesToPdf')}
             </text>
           </view>
         </checkbox>
       </Section>
       {data.activeDemo === 'chooseFile' ? (
-        <Section title="Choose File" description="Open the host chooser in a predefined folder instead of the recent-files picker.">
-          <InfoRow label="Default folder" value={data.chooseFileDefaultPath} testId="file-default-path" />
+        <Section title={t('file.chooseFile')} description={t('file.openTheHostChooser')}>
+          <InfoRow label={t('file.defaultFolder')} value={data.chooseFileDefaultPath} testId="file-default-path" />
           <Button testId="file-choose" onClick={() => actions.chooseFileFromUserCache()}>
-            Open File Chooser
+            {t('file.openFileChooser')}
           </Button>
           <InfoList>
-            <InfoRow label="Status" value={data.chooseFileStatusText || 'Choose a file'} testId="file-choose-status" />
-            <InfoRow label="Selected Path" value={data.chooseFileSelectedPath || 'None'} testId="file-selected-path" />
-            <InfoRow label="Detected Type" value={data.chooseFileSelectedType || 'Unknown'} testId="file-selected-type" />
+            <InfoRow label={t('file.status')} value={said(String(data.chooseFileStatusText || 'file.state.choose'))} testId="file-choose-status" />
+            <InfoRow label={t('file.selectedPath')} value={data.chooseFileSelectedPath || 'None'} testId="file-selected-path" />
+            <InfoRow label={t('file.detectedType')} value={data.chooseFileSelectedType || 'Unknown'} testId="file-selected-type" />
           </InfoList>
           <Button variant="secondary" testId="file-open-selected" disabled={!data.chooseFileSelectedPath} onClick={() => actions.openChosenFile()}>
-            Open Selected File
+            {t('file.openSelectedFile')}
           </Button>
         </Section>
       ) : (
         <view className="gap-4">
           <Section
-            title="PDF via lx.network.download()"
-            description="Download to a temporary file with progress and pause/continue, then open the native PDF viewer."
+            title={t('file.pdfViaLxNetwork')}
+            description={t('file.downloadToATemporary')}
           >
             <UrlField
               testId="file-pdf-url"
-              label="PDF URL"
+              label={t('file.pdfUrl')}
               value={data.pdfUrl}
-              placeholder="Enter PDF URL"
+              placeholder={t('file.enterPdfUrl')}
               disabled={!!data.isPdfDownloading}
               onInput={value => actions.onPdfUrlInput({ detail: { value } })}
             />
@@ -106,9 +107,9 @@ export function render({ data, actions: raw }: View) {
             {(state !== 'idle' || !!data.pdfProgressText) && (
               <view className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
                 <view className="flex-row items-center justify-between">
-                  <text className="text-xs text-accent">PDF Transfer</text>
+                  <text className="text-xs text-accent">{t('file.pdfTransfer')}</text>
                   <text data-testid="file-pdf-progress" className="text-xs text-accent">
-                    {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
+                    {data.pdfProgressKnown ? `${Math.round(progress)}%` : t('file.streaming')}
                   </text>
                 </view>
                 {data.pdfProgressKnown ? (
@@ -116,44 +117,44 @@ export function render({ data, actions: raw }: View) {
                     <view data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
                   </view>
                 ) : (
-                  <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
+                  <text className="text-[11px] text-accent">{t('file.waitingForPreciseProgress')}</text>
                 )}
                 <text data-testid="file-pdf-status" className="text-xs">
                   {String(data.pdfProgressText || '')}
                 </text>
                 <Button size="sm" testId="file-pdf-transfer" disabled={!transferEnabled} onClick={() => actions.togglePdfTransfer()}>
-                  {String(data.pdfTransferButtonText || 'Pause Download')}
+                  {t(String(data.pdfTransferButtonText || 'file.pauseDownload'))}
                 </Button>
               </view>
             )}
           </Section>
           <Section
-            title="Office via fetch()"
-            description="Use web-standard fetch in page logic, save into usercache, then open with the native file API."
+            title={t('file.officeViaFetch')}
+            description={t('file.useWebStandardFetch')}
           >
             <UrlField
               testId="file-office-url"
-              label="File URL"
+              label={t('file.fileUrl')}
               value={data.officeUrl}
-              placeholder="Enter file URL"
+              placeholder={t('file.enterFileUrl')}
               disabled={!!data.isOfficeFetching}
               onInput={value => actions.onOfficeUrlInput({ detail: { value } })}
             />
             <UrlField
               testId="file-office-type"
-              label="File Type"
+              label={t('file.fileType')}
               value={data.officeFileType}
-              placeholder="e.g., docx, xlsx, pptx"
+              placeholder={t('file.eGDocxXlsx')}
               disabled={!!data.isOfficeFetching}
               onInput={value => actions.onOfficeFileTypeInput({ detail: { value } })}
             />
-            <text className="text-xs text-muted">Auto-detected from URL or enter manually</text>
+            <text className="text-xs text-muted">{t('file.autoDetectedFromUrl')}</text>
             <Button
               testId="file-office-open"
               disabled={!!data.isOfficeFetching || !String(data.officeUrl || '').trim() || !String(data.officeFileType || '').trim()}
               onClick={() => actions.openOffice()}
             >
-              {data.isOfficeFetching ? 'Fetching and Opening File...' : 'Fetch and Open File'}
+              {data.isOfficeFetching ? t('file.fetching') : t('file.fetchOpen')}
             </Button>
             {!!data.officeStatusText && (
               <text data-testid="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">

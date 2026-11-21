@@ -1,8 +1,8 @@
-import { List, useVideo, type View } from '@lingxia/view';
+import { t, List, useVideo, type View } from '@lingxia/view';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
-import { VIDEO_LABELS } from '../../shared/video-labels';
+import { videoLabels } from '../../shared/video-labels';
 
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
@@ -16,10 +16,10 @@ function Portrait() {
   return (
     <view className="gap-2">
       <view className="items-center">
-        <video data-testid="video-portrait" player={video} src="public/video/portrait.mp4" muted loop aria-label="Portrait clip" className="w-36 rounded-xl" />
+        <video data-testid="video-portrait" player={video} src="public/video/portrait.mp4" muted loop aria-label={t('video.portraitClip')} className="w-36 rounded-xl" />
       </view>
       {/* Under the clip at full width: beside it the bar ran out of room for full screen. */}
-      <VideoControls player={video} labels={VIDEO_LABELS} variant="bar" data-testid="video-portrait-controls" />
+      <VideoControls player={video} labels={videoLabels()} variant="bar" data-testid="video-portrait-controls" />
     </view>
   );
 }
@@ -29,26 +29,26 @@ function Hero({ actions }: { actions: View['actions'] }) {
   return (
     <view className="gap-2">
       {/* Unsized: a full-width 16:9 box. */}
-      <video data-testid="video-hero" player={hero} src={clips[0]} autoPlay muted loop aria-label="Test pattern" className="rounded-2xl" />
+      <video data-testid="video-hero" player={hero} src={clips[0]} autoPlay muted loop aria-label={t('video.testPattern')} className="rounded-2xl" />
       <view className="flex-row items-center justify-between gap-3">
-        <text data-testid="video-hero-state" className="text-muted">
-          {hero.paused ? 'paused' : 'playing'} · {hero.currentTime.toFixed(1)}s / {(hero.duration ?? 0).toFixed(1)}s
+        <text data-testid="video-hero-state" data-state={hero.paused ? 'paused' : 'playing'} className="text-muted">
+          {hero.paused ? t('video.paused') : t('video.playing')} · {hero.currentTime.toFixed(1)}s / {(hero.duration ?? 0).toFixed(1)}s
         </text>
         <button
           data-testid="video-hero-toggle"
-          aria-label={hero.paused ? 'Play' : 'Pause'}
+          aria-label={hero.paused ? t('video.play') : t('video.pause')}
           onClick={() => (hero.paused ? hero.play() : hero.pause())}
           className="px-4 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken"
         >
-          <text>{hero.paused ? 'Play' : 'Pause'}</text>
+          <text>{hero.paused ? t('video.play') : t('video.pause')}</text>
         </button>
       </view>
       <view className="flex-row gap-2">
         <button data-testid="video-hero-logic-pause" onClick={() => actions.pauseHero()} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
-          <text>Pause from Logic</text>
+          <text>{t('video.pauseFromLogic')}</text>
         </button>
         <button data-testid="video-hero-logic-play" onClick={() => actions.playHero()} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
-          <text>Play from Logic</text>
+          <text>{t('video.playFromLogic')}</text>
         </button>
       </view>
     </view>
@@ -60,7 +60,7 @@ function Quality({ actions }: { actions: View['actions'] }) {
   const video = useVideo('quality');
   return (
     <view className="gap-2">
-      <video data-testid="video-quality" player={video} sources={sources} autoPlay muted loop aria-label="Quality test" className="rounded-2xl" />
+      <video data-testid="video-quality" player={video} sources={sources} autoPlay muted loop aria-label={t('video.qualityTest')} className="rounded-2xl" />
       <view className="flex-row items-center justify-between gap-2">
         <text data-testid="video-quality-state" className="text-muted">
           {video.quality} · {video.videoHeight}p · {video.currentTime.toFixed(1)}s
@@ -80,7 +80,7 @@ function Quality({ actions }: { actions: View['actions'] }) {
         </view>
       </view>
       <button data-testid="video-quality-logic-360p" onClick={() => actions.qualityFromLogic({ quality: '360p' })} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
-        <text>360p from Logic</text>
+        <text>{t('video.npFromLogic')}</text>
       </button>
     </view>
   );
@@ -90,7 +90,7 @@ function PublicQuality() {
   const video = useVideo('public');
   return (
     <view className="gap-2">
-      <video data-testid="video-public" player={video} sources={PUBLIC_VIDEO} autoPlay muted loop aria-label="Big Buck Bunny" className="rounded-2xl" />
+      <video data-testid="video-public" player={video} sources={PUBLIC_VIDEO} autoPlay muted loop aria-label={t('video.bigBuckBunny')} className="rounded-2xl" />
       <text data-testid="video-public-state" className="text-muted">
         {video.quality} · {video.videoHeight}p · {video.qualities.join('/')}{video.error ? ` · ${video.error.code}` : ''}
       </text>
@@ -115,7 +115,7 @@ function Stream() {
   const video = useVideo('stream');
   return (
     <view className="gap-2">
-      <video data-testid="video-stream" player={video} src={PUBLIC_STREAM} autoPlay muted loop aria-label="HLS test" className="rounded-2xl" />
+      <video data-testid="video-stream" player={video} src={PUBLIC_STREAM} autoPlay muted loop aria-label={t('video.hlsTest')} className="rounded-2xl" />
       <text data-testid="video-stream-state" className="text-muted">
         {video.quality} · {video.videoHeight}p · {video.qualities.join('/')} · {video.currentTime.toFixed(1)}s{video.error ? ` · ${video.error.code}` : ''}
       </text>
@@ -151,10 +151,10 @@ export function render({ actions }: View) {
           ) : row.clip ? (
             <view data-testid={`video-row-${row.id}`} className="grid *:col-start-1 *:row-start-1 w-full aspect-video rounded-2xl overflow-hidden bg-surface-sunken">
               <video src={row.clip} autoPlay muted loop className="w-full h-full object-cover" />
-              <text className="self-end p-3 text-text font-semibold">Row {row.id} · overlay above video</text>
+              <text className="self-end p-3 text-text font-semibold">{t('video.overlayRow', { id: row.id })}</text>
             </view>
           ) : (
-            <view className="flex-row h-16 items-center px-4 rounded-xl bg-surface"><text>Row {row.id}</text></view>
+            <view className="flex-row h-16 items-center px-4 rounded-xl bg-surface"><text>{t('video.row', { id: row.id })}</text></view>
           )
         }
       />

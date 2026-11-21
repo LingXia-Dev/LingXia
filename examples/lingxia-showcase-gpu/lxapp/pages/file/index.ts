@@ -59,7 +59,7 @@ function formatProgressText(
   if (totalBytes && totalBytes > 0) {
     return `${downloaded} / ${formatBytes(totalBytes)}`;
   }
-  return `Streaming · ${downloaded} downloaded`;
+  return lx.app.t('file.streamed', { downloaded });
 }
 
 function isCancelError(error: unknown) {
@@ -137,7 +137,7 @@ async function observePdfTask(task: DownloadTask) {
           event.totalBytes > 0;
         updatePdfPage({
           pdfDownloadState: "running",
-          pdfTransferButtonText: "Pause Download",
+          pdfTransferButtonText: "file.pauseDownload",
           pdfProgressKnown: hasPreciseProgress,
           pdfDownloadProgress: hasPreciseProgress
             ? Number(((event.progress ?? 0) * 100).toFixed(1))
@@ -154,7 +154,7 @@ async function observePdfTask(task: DownloadTask) {
       if (event.kind === "paused") {
         updatePdfPage({
           pdfDownloadState: "paused",
-          pdfTransferButtonText: "Continue Download",
+          pdfTransferButtonText: "file.continueDownload",
         });
         continue;
       }
@@ -162,8 +162,8 @@ async function observePdfTask(task: DownloadTask) {
       if (event.kind === "resumed") {
         updatePdfPage({
           pdfDownloadState: "running",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressText: pdfDownloadPage?.data.pdfProgressText || "Resuming transfer...",
+          pdfTransferButtonText: "file.pauseDownload",
+          pdfProgressText: pdfDownloadPage?.data.pdfProgressText || lx.app.t('file.resumingTransfer'),
         });
         continue;
       }
@@ -171,8 +171,8 @@ async function observePdfTask(task: DownloadTask) {
       if (event.kind === "canceled") {
         updatePdfPage({
           pdfDownloadState: "idle",
-          pdfTransferButtonText: "Pause Download",
-          pdfProgressText: "Download canceled",
+          pdfTransferButtonText: "file.pauseDownload",
+          pdfProgressText: lx.app.t('file.downloadCanceled'),
         });
         continue;
       }
@@ -181,20 +181,20 @@ async function observePdfTask(task: DownloadTask) {
         const resultPath = downloadResultPath(event.result);
         updatePdfPage({
           pdfDownloadState: "opening",
-          pdfTransferButtonText: "Pause Download",
+          pdfTransferButtonText: "file.pauseDownload",
           pdfProgressKnown: true,
           pdfDownloadProgress: 95,
           pdfProgressText: resultPath
-            ? `Downloaded to ${resultPath}, opening...`
-            : "Download complete, opening...",
+            ? lx.app.t('file.downloadedOpening', { path: resultPath })
+            : lx.app.t('file.downloadCompleteOpening'),
         });
       }
     }
   } catch (error) {
     updatePdfPage({
       pdfDownloadState: "idle",
-      pdfTransferButtonText: "Pause Download",
-      pdfProgressText: errorMessage(error, "Download failed"),
+      pdfTransferButtonText: "file.pauseDownload",
+      pdfProgressText: errorMessage(error, lx.app.t('file.downloadFailed')),
     });
   } finally {
     pdfDownloadObserver = null;
@@ -209,7 +209,7 @@ export default definePage({
     officeFileType: "docx",
     showMenu: true,
     chooseFileDefaultPath: "",
-    chooseFileStatusText: "Choose a file",
+    chooseFileStatusText: "file.state.choose",
     chooseFileSelectedPath: "",
     chooseFileSelectedType: "",
     isPdfDownloading: false,
@@ -218,7 +218,7 @@ export default definePage({
     pdfDownloadProgress: 0,
     pdfProgressText: "",
     pdfSupportsTransferControl: false,
-    pdfTransferButtonText: "Pause Download",
+    pdfTransferButtonText: "file.pauseDownload",
     isOfficeFetching: false,
     officeStatusText: "",
   },
@@ -250,7 +250,7 @@ export default definePage({
       async openPdf() {
         const url = page.data.pdfUrl?.trim();
         if (!url) {
-          lx.ui.toast({ title: "Please enter PDF URL", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('file.enterPdfUrlFirst'), icon: "none" });
           return;
         }
         if (page.data.isPdfDownloading) return;
@@ -261,9 +261,9 @@ export default definePage({
           d.pdfDownloadState = "running";
           d.pdfProgressKnown = false;
           d.pdfDownloadProgress = 0;
-          d.pdfProgressText = shouldResumeExisting ? "Resuming transfer..." : "Starting transfer...";
+          d.pdfProgressText = shouldResumeExisting ? lx.app.t('file.resumingTransfer') : lx.app.t('file.startingTransfer');
           d.pdfSupportsTransferControl = false;
-          d.pdfTransferButtonText = "Pause Download";
+          d.pdfTransferButtonText = "file.pauseDownload";
         });
         try {
           if (!shouldResumeExisting) {
@@ -281,11 +281,11 @@ export default definePage({
           page.update(d => {
             d.pdfSupportsTransferControl = canControlTransfer;
             d.pdfTransferButtonText = canControlTransfer
-              ? "Pause Download"
-              : "Pause/Continue Unavailable";
+              ? "file.pauseDownload"
+              : "file.pauseUnavailable";
             d.pdfProgressText = canObserveProgress
-              ? "Starting transfer..."
-              : "Downloading with promise-style result only...";
+              ? lx.app.t('file.startingTransfer')
+              : lx.app.t('file.promiseOnly');
           });
           if (!task) {
             throw new Error("network.download did not return a task");
@@ -308,7 +308,7 @@ export default definePage({
             d.pdfDownloadState = "opening";
             d.pdfProgressKnown = true;
             d.pdfDownloadProgress = 95;
-            d.pdfProgressText = `Downloaded to ${resultPath}, opening...`;
+            d.pdfProgressText = lx.app.t('file.downloadedOpening', { path: resultPath });
           });
           await lx.openFile({
             filePath: resultPath,
@@ -323,7 +323,7 @@ export default definePage({
             d.pdfDownloadState = "completed";
             d.pdfProgressKnown = true;
             d.pdfDownloadProgress = 100;
-            d.pdfProgressText = `Opened ${resultPath}`;
+            d.pdfProgressText = lx.app.t('file.opened', { path: resultPath });
           });
         } catch (error) {
           if (pdfDownloadPage !== page) {
@@ -332,12 +332,12 @@ export default definePage({
           page.update(d => {
             d.pdfDownloadState = "idle";
             d.pdfSupportsTransferControl = false;
-            d.pdfTransferButtonText = "Pause Download";
+            d.pdfTransferButtonText = "file.pauseDownload";
             d.pdfProgressText = isCancelError(error)
-              ? "Download canceled"
-              : errorMessage(error, "Open PDF failed");
+              ? lx.app.t('file.downloadCanceled')
+              : errorMessage(error, lx.app.t('file.openPdfFailed'));
           });
-          lx.ui.toast({ title: errorMessage(error, "Open PDF failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('file.openPdfFailed')), icon: "none" });
         } finally {
           if (pdfDownloadPage === page) {
             if (pdfDownloadTask === task && page.data.pdfDownloadState !== "paused") {
@@ -354,7 +354,7 @@ export default definePage({
       async togglePdfTransfer() {
         const task = pdfDownloadTask;
         if (!task || !supportsTransferControl(task)) {
-          lx.ui.toast({ title: "Current runtime does not support pause/resume yet", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('file.noPause'), icon: "none" });
           return;
         }
 
@@ -366,19 +366,19 @@ export default definePage({
               return;
             }
             page.update(d => {
-              d.pdfTransferButtonText = "Resuming...";
-              d.pdfProgressText = page.data.pdfProgressText || "Resuming transfer...";
+              d.pdfTransferButtonText = "file.resuming";
+              d.pdfProgressText = page.data.pdfProgressText || lx.app.t('file.resumingTransfer');
             });
             await task.resume();
             return;
           }
 
           if (page.data.pdfDownloadState === "running") {
-            page.update(d => { d.pdfTransferButtonText = "Pausing..."; });
+            page.update(d => { d.pdfTransferButtonText = "file.pausing"; });
             await task.pause();
           }
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Transfer action failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('file.transferFailed')), icon: "none" });
         }
       },
       async chooseFileFromUserCache() {
@@ -388,7 +388,7 @@ export default definePage({
           });
           if (result.status === 'canceled') {
             page.update(d => {
-              d.chooseFileStatusText = "File selection canceled";
+              d.chooseFileStatusText = "file.state.canceled";
               d.chooseFileSelectedPath = "";
               d.chooseFileSelectedType = "";
             });
@@ -398,19 +398,19 @@ export default definePage({
           const selectedPath = result.files[0].path;
           const fileType = detectFileTypeFromPath(result.files[0].name);
           page.update(d => {
-            d.chooseFileStatusText = "File selected";
+            d.chooseFileStatusText = "file.state.selected";
             d.chooseFileSelectedPath = selectedPath;
             d.chooseFileSelectedType = fileType || "unknown";
           });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "pick.file failed"), icon: "none" });
-          page.update(d => { d.chooseFileStatusText = errorMessage(error, "pick.file failed"); });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('file.pickFailed')), icon: "none" });
+          page.update(d => { d.chooseFileStatusText = errorMessage(error, lx.app.t('file.pickFailed')); });
         }
       },
       async openChosenFile() {
         const filePath = page.data.chooseFileSelectedPath;
         if (!filePath) {
-          lx.ui.toast({ title: "Choose a file first", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('file.chooseFirst'), icon: "none" });
           return;
         }
 
@@ -429,17 +429,17 @@ export default definePage({
         const url = page.data.officeUrl?.trim();
         const fileType = page.data.officeFileType?.trim();
         if (!url) {
-          lx.ui.toast({ title: "Please enter document URL", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('file.enterDocUrl'), icon: "none" });
           return;
         }
         if (!fileType) {
-          lx.ui.toast({ title: "Please enter file type", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('file.enterType'), icon: "none" });
           return;
         }
         if (page.data.isOfficeFetching) return;
         page.update(d => {
           d.isOfficeFetching = true;
-          d.officeStatusText = "Fetching document...";
+          d.officeStatusText = lx.app.t('file.fetchingDocument');
         });
         try {
           const response = await fetch(url);
@@ -455,17 +455,17 @@ export default definePage({
           await lx.fs.write(filePath, buffer, {
             overwrite: true,
           });
-          page.update(d => { d.officeStatusText = `Fetched ${formatBytes(buffer.byteLength)}, opening...`; });
+          page.update(d => { d.officeStatusText = lx.app.t('file.fetchedOpening', { size: formatBytes(buffer.byteLength) }); });
           await lx.openFile({
             filePath,
             fileType,
             mode: "auto",
             showMenu: page.data.showMenu,
           });
-          page.update(d => { d.officeStatusText = `Opened ${filePath}`; });
+          page.update(d => { d.officeStatusText = lx.app.t('file.opened', { path: filePath }); });
         } catch (error) {
-          page.update(d => { d.officeStatusText = errorMessage(error, "Fetch failed"); });
-          lx.ui.toast({ title: errorMessage(error, "Fetch failed"), icon: "none" });
+          page.update(d => { d.officeStatusText = errorMessage(error, lx.app.t('file.fetchFailed')); });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('file.fetchFailed')), icon: "none" });
         } finally {
           page.update(d => { d.isOfficeFetching = false; });
         }
@@ -487,7 +487,7 @@ export default definePage({
           d.pdfDownloadProgress = 0;
           d.pdfProgressText = hasPausedPdf ? "Download paused, tap to continue" : "";
           d.pdfSupportsTransferControl = Boolean(hasPausedPdf);
-          d.pdfTransferButtonText = hasPausedPdf ? "Continue Download" : "Pause Download";
+          d.pdfTransferButtonText = hasPausedPdf ? "file.continueDownload" : "file.pauseDownload";
           d.isOfficeFetching = false;
           d.officeStatusText = "";
         });

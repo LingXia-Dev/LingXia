@@ -38,9 +38,9 @@ type MediaTypeToken = "image" | "video";
 const DEFAULT_MODE = "Pictures";
 
 const SOURCE_OPTIONS = [
-  { key: "album", label: "Album", request: ["album"] },
-  { key: "camera", label: "Camera", request: ["camera"] },
-  { key: "either", label: "Album or Camera", request: ["album", "camera"] },
+  { key: "album", label: "media.album", request: ["album"] },
+  { key: "camera", label: "media.camera", request: ["camera"] },
+  { key: "either", label: "media.albumOrCamera", request: ["album", "camera"] },
 ];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
@@ -53,18 +53,18 @@ const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
 });
 
 const CAMERA_OPTIONS = [
-  { key: "back", label: "Rear Camera" },
-  { key: "front", label: "Front Camera" },
+  { key: "back", label: "media.rearCamera" },
+  { key: "front", label: "media.frontCamera" },
 ];
 
 const DURATION_OPTIONS = [
-  { key: "15", label: "15 seconds", value: 15 },
-  { key: "30", label: "30 seconds", value: 30 },
-  { key: "60", label: "60 seconds", value: 60 },
+  { key: "15", label: "media.s15", value: 15 },
+  { key: "30", label: "media.s30", value: 30 },
+  { key: "60", label: "media.s60", value: 60 },
 ];
 
 const ROTATE_OPTIONS = [
-  { key: "meta", label: "Meta (Default)", value: undefined },
+  { key: "meta", label: "media.metaDefault", value: undefined },
   { key: "0", label: "0°", value: 0 },
   { key: "90", label: "90°", value: 90 },
   { key: "180", label: "180°", value: 180 },
@@ -72,7 +72,7 @@ const ROTATE_OPTIONS = [
 ];
 
 const OBJECT_FIT_OPTIONS = [
-  { key: "default", label: "Default (Optional)", value: undefined },
+  { key: "default", label: "media.fitDefault", value: undefined },
   { key: "contain", label: "contain", value: "contain" },
   { key: "cover", label: "cover", value: "cover" },
   { key: "fill", label: "fill", value: "fill" },
@@ -80,9 +80,9 @@ const OBJECT_FIT_OPTIONS = [
 ];
 
 const PREVIEW_BEHAVIOR_OPTIONS = [
-  { key: "manual", label: "Manual Only" },
-  { key: "next", label: "Auto Next" },
-  { key: "loop", label: "Loop" },
+  { key: "manual", label: "media.manual" },
+  { key: "next", label: "media.autoNext" },
+  { key: "loop", label: "media.loop" },
 ];
 
 function extractInputValue(event: NativeEvent<{ value: string }>) {
@@ -177,37 +177,37 @@ function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
       headerSubtitle: "lx.pick.media / lx.media.preview",
-      emptyHint: "Tap + to pick videos.",
-      previewHint: "Tap Preview to open the full selection.",
-      galleryHint: "Tap Preview to open the full selection.",
-      addLabel: "Add Videos",
+      emptyHint: "media.state.pickVideos",
+      previewHint: "media.state.tapPreview",
+      galleryHint: "media.state.tapPreview",
+      addLabel: "media.state.addVideos",
     };
   }
   if (mediaType === "imageInfo") {
     return {
       headerSubtitle: "lx.media.imageInfo / lx.media.compressImage",
-      emptyHint: "Get image info and create compressed copy.",
+      emptyHint: "media.state.imageHint",
       previewHint: "",
       galleryHint: "",
-      addLabel: "Image Info",
+      addLabel: "media.state.imageInfo",
     };
   }
   if (mediaType === "videoTools") {
     return {
       headerSubtitle: "lx.media.videoInfo / lx.media.videoThumbnail / lx.media.compressVideo",
-      emptyHint: "Pick one video, inspect upload metadata, generate a thumbnail, and compress.",
+      emptyHint: "media.state.videoHint",
       previewHint: "",
       galleryHint: "",
-      addLabel: "Video Tools",
+      addLabel: "media.state.videoTools",
     };
   }
   if (mediaType === "saveToAlbum") {
     return {
       headerSubtitle: "lx.media.saveToLibrary",
-      emptyHint: "Capture or select media to save to album.",
+      emptyHint: "media.state.saveHint",
       previewHint: "",
       galleryHint: "",
-      addLabel: "Save to Album",
+      addLabel: "media.state.saveToAlbum",
     };
   }
   if (mediaType === "scanCode") {
@@ -216,15 +216,15 @@ function getModeCopy(mediaType: string) {
       emptyHint: "",
       previewHint: "",
       galleryHint: "",
-      addLabel: "ScanCode",
+      addLabel: "media.state.scanCode",
     };
   }
   return {
     headerSubtitle: "lx.pick.media / lx.media.preview",
-    emptyHint: "Tap + to pick photos.",
-    previewHint: "Tap Preview to open the full selection.",
-    galleryHint: "Tap Preview to open the full selection.",
-    addLabel: "Add Photo",
+    emptyHint: "media.state.pickPhotos",
+    previewHint: "media.state.tapPreview",
+    galleryHint: "media.state.tapPreview",
+    addLabel: "media.state.addPhoto",
   };
 }
 
@@ -235,11 +235,11 @@ function getModeTitle(mediaType: string) {
     case "scanCode":
       return "Scan";
     case "imageInfo":
-      return "Image Info";
+      return "media.state.imageInfo";
     case "videoTools":
-      return "Video Tools";
+      return "media.state.videoTools";
     case "saveToAlbum":
-      return "Save to Album";
+      return "media.state.saveToAlbum";
     default:
       return "Photos";
   }
@@ -315,7 +315,7 @@ async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<Chose
 
 async function pickOption(options: MediaOption[], currentKey?: string) {
   const result = await lx.ui.actionSheet({
-    items: options.map((option, index) => ({ id: String(index), label: option.label })),
+    items: options.map((option, index) => ({ id: String(index), label: option.label.startsWith('media.') ? lx.app.t(option.label) : option.label })),
   });
   return (result.status === 'canceled') ? null : options[Number(result.id)] || null;
 }
@@ -502,11 +502,11 @@ export default definePage({
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
           page.update(d => {
             d.previewSessionBusy = false;
-            d.previewSessionError = isAbort ? "" : (errorMessage(error, "Preview failed"));
+            d.previewSessionError = isAbort ? "" : (errorMessage(error, lx.app.t('media.previewFailed')));
           });
           if (!isAbort) {
             console.error("[media-demo] media.preview failed:", error);
-            lx.ui.toast({ title: errorMessage(error, "Preview failed"), icon: "none" });
+            lx.ui.toast({ title: errorMessage(error, lx.app.t('media.previewFailed')), icon: "none" });
           }
           return null;
         } finally {
@@ -536,7 +536,7 @@ export default definePage({
           return (result.status === 'canceled') ? null : result.files[0].path;
         } catch (error) {
           console.error("[media-demo] pickSingleMedia failed:", error);
-          lx.ui.toast({ title: errorMessage(error, "pick.media failed"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('media.pickFailed')), icon: "none" });
           return null;
         }
       },
@@ -701,7 +701,7 @@ export default definePage({
         } catch (error) {
           console.error("[media-demo] pick.media failed:", error);
           lx.ui.toast({
-            title: errorMessage(error, "Operation failed"),
+            title: errorMessage(error, lx.app.t('media.operationFailed')),
             icon: "none",
           });
         } finally {
@@ -738,15 +738,15 @@ export default definePage({
           console.error("pick.code failed:", error);
           page.update(d => { d.scanBusy = false; });
           lx.ui.toast({
-            title: errorMessage(error, "pick.code failed"),
+            title: errorMessage(error, lx.app.t('media.pickCodeFailed')),
             icon: "none",
           });
         }
       },
       async openScanSourcePicker() {
         const OPTIONS = [
-          { key: "camera", label: "Camera Only", value: true },
-          { key: "cameraOrPhoto", label: "Camera & Photo", value: false },
+          { key: "camera", label: "media.cameraOnly", value: true },
+          { key: "cameraOrPhoto", label: "media.cameraPhoto", value: false },
         ];
         const currentKey = page.data.scanOnlyCamera ? "camera" : "cameraOrPhoto";
         const choice = await pickOption(OPTIONS, currentKey);
@@ -755,7 +755,7 @@ export default definePage({
       },
       async openScanTypePicker() {
         const OPTIONS = [
-          { key: "all", label: "All" },
+          { key: "all", label: "media.all" },
           { key: "barCode", label: "barCode (1D)" },
           { key: "qrCode", label: "qrCode" },
           { key: "datamatrix", label: "datamatrix" },
@@ -769,7 +769,7 @@ export default definePage({
         const selected = page.data.selectedMedia || [];
         if (!selected.length) {
           lx.ui.toast({
-            title: "Nothing to preview",
+            title: lx.app.t('media.nothingToPreview'),
             icon: "none",
           });
           return;
@@ -819,7 +819,7 @@ export default definePage({
             d.imageInfoBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, "media.imageInfo failed");
+          const message = errorMessage(error, lx.app.t('media.imageInfoFailed'));
           page.update(d => {
             d.imageInfoError = message;
             d.imageInfoResult = null;
@@ -858,7 +858,7 @@ export default definePage({
             d.thumbnailSourceInfo = info;
           });
         } catch (error) {
-          const message = errorMessage(error, "media.videoInfo failed");
+          const message = errorMessage(error, lx.app.t('media.videoInfoFailed'));
           page.update(d => {
             d.videoInfoBusy = false;
             d.videoInfoError = message;
@@ -892,7 +892,7 @@ export default definePage({
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
           lx.ui.toast({
-            title: "Please pick a video first",
+            title: lx.app.t('media.pickVideoFirst'),
             icon: "none",
           });
           return;
@@ -929,7 +929,7 @@ export default definePage({
             d.thumbnailBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, "media.videoThumbnail failed");
+          const message = errorMessage(error, lx.app.t('media.thumbnailFailed'));
           page.update(d => {
             d.thumbnailError = message;
             d.thumbnailResult = null;
@@ -945,7 +945,7 @@ export default definePage({
         const path = page.data.thumbnailResult?.uri;
         if (!path) {
           lx.ui.toast({
-            title: "No thumbnail to preview",
+            title: lx.app.t('media.noThumbnail'),
             icon: "none",
           });
           return;
@@ -980,7 +980,7 @@ export default definePage({
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
           lx.ui.toast({
-            title: "Please pick a video first",
+            title: lx.app.t('media.pickVideoFirst'),
             icon: "none",
           });
           return;
@@ -1027,7 +1027,7 @@ export default definePage({
           if (disposed || epoch !== compressionEpoch) return;
           const abortLike = error as { name?: string; code?: string } | null;
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
-          const message = errorMessage(error, "compressVideo failed");
+          const message = errorMessage(error, lx.app.t('media.compressVideoFailed'));
           page.update(d => {
             d.videoCompressError = isAbort ? "" : message;
             d.videoCompressResult = null;
@@ -1035,7 +1035,7 @@ export default definePage({
             d.videoCompressProgress = null;
           });
           lx.ui.toast({
-            title: isAbort ? "Compression cancelled" : message,
+            title: isAbort ? lx.app.t('media.compressionCancelled') : message,
             icon: "none",
           });
         } finally {
@@ -1050,13 +1050,13 @@ export default definePage({
             d.videoCompressProgress = null;
             d.videoCompressError = "";
           });
-          lx.ui.toast({ title: "Compression cancelled", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('media.compressionCancelled'), icon: "none" });
         }
       },
       async previewCompressedVideo() {
         const path = page.data.videoCompressResult?.uri;
         if (!path) {
-          lx.ui.toast({ title: "No compressed video to preview", icon: "none" });
+          lx.ui.toast({ title: lx.app.t('media.noCompressedVideo'), icon: "none" });
           return;
         }
         const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
@@ -1092,7 +1092,7 @@ export default definePage({
         const path = page.data.imageInfoResult?.path;
         if (!path) {
           lx.ui.toast({
-            title: "Please select an image first",
+            title: lx.app.t('media.selectImageFirst'),
             icon: "none",
           });
           return;
@@ -1129,7 +1129,7 @@ export default definePage({
           });
         } catch (error) {
           if (disposed || epoch !== compressionEpoch) return;
-          const message = errorMessage(error, "compressImage failed");
+          const message = errorMessage(error, lx.app.t('media.compressImageFailed'));
           page.update(d => {
             d.compressError = message;
             d.compressResult = null;
@@ -1146,7 +1146,7 @@ export default definePage({
         const path = page.data.compressResult?.path;
         if (!path) {
           lx.ui.toast({
-            title: "No compressed image to preview",
+            title: lx.app.t('media.noCompressedImage'),
             icon: "none",
           });
           return;
@@ -1167,9 +1167,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);
-          lx.ui.toast({ title: "Image saved to album", icon: "success" });
+          lx.ui.toast({ title: lx.app.t('media.imageSaved'), icon: "success" });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('media.saveImageFailed')), icon: "none" });
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }
@@ -1183,9 +1183,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);
-          lx.ui.toast({ title: "Video saved to album", icon: "success" });
+          lx.ui.toast({ title: lx.app.t('media.videoSaved'), icon: "success" });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
+          lx.ui.toast({ title: errorMessage(error, lx.app.t('media.saveVideoFailed')), icon: "none" });
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }

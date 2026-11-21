@@ -1,4 +1,4 @@
-import { useView, type Child } from '@lingxia/view';
+import { t, useView, type Child } from '@lingxia/view';
 
 /** Authored `data-*` props: page state automation reads as attributes. */
 export type DataAttributes = Record<`data-${string}`, string>;
@@ -127,7 +127,7 @@ export function Details({ value, testId }: { value: unknown; testId: string }) {
       </text>
     );
   const entries: [string, unknown][] =
-    typeof value === 'object' && !Array.isArray(value) ? Object.entries(value as Record<string, unknown>) : [['Result', value]];
+    typeof value === 'object' && !Array.isArray(value) ? Object.entries(value as Record<string, unknown>) : [[t('common.result'), value]];
   return (
     <InfoList testId={testId}>
       {entries.map(([name, item]) => (

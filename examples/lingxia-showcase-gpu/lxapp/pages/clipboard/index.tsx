@@ -1,9 +1,10 @@
-import { useLocal, type View } from '@lingxia/view';
+import { t, useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
+import { said } from '../../shared/lib/said';
 import { Button, Page, Section } from '../../shared/ui';
 
 export function render({ data, actions }: View) {
-  const draft = useLocal('clipboard-draft', 'Hello from lx.clipboard');
+  const draft = useLocal('clipboard-draft', t('clipboard.draft'));
   const busy = useLocal('clipboard-busy', false);
   const failure = useLocal('clipboard-error', '');
   const run = async (action: () => Promise<unknown>) => {
@@ -13,34 +14,34 @@ export function render({ data, actions }: View) {
     try {
       await action();
     } catch {
-      failure.set('The action failed. Please try again.');
+      failure.set('clipboard.failed');
     } finally {
       busy.set(false);
     }
   };
-  const status = failure.value || (busy.value ? 'Working...' : String(data.statusText || 'Ready'));
+  const status = failure.value ? t(failure.value) : busy.value ? t('clipboard.working') : said(String(data.statusText || 'clipboard.state.ready'), data.statusArgs as Record<string, unknown>);
   return (
-    <Page intro="lx.clipboard reads and writes the system clipboard. Write never toasts.">
-      <Section title="Status">
+    <Page intro={t('clipboard.lxClipboardReadsAnd')}>
+      <Section title={t('clipboard.status')}>
         <text data-testid="clipboard-status" className={failure.value ? 'text-sm text-danger' : 'text-sm'}>
           {status}
         </text>
-        <text data-testid="clipboard-types-value" className="text-xs text-muted">{`types: ${String(data.typesText || 'Not peeked')}`}</text>
+        <text data-testid="clipboard-types-value" className="text-xs text-muted">{t('clipboard.typesLine', { types: said(String(data.typesText || 'clipboard.state.notPeeked')) })}</text>
       </Section>
-      <Section title="Text" description="writeText / readText. An empty string is a valid write, not clear().">
+      <Section title={t('clipboard.text')} description={t('clipboard.writetextReadtextAnEmpty')}>
         <textarea
           data-testid="clipboard-draft"
-          aria-label="Text to copy"
+          aria-label={t('clipboard.textToCopy')}
           bind={draft}
-          placeholder="Text to copy"
+          placeholder={t('clipboard.textToCopy')}
           className="h-20 px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
         />
         <view className="grid gap-3 grid-cols-2">
           <Button testId="clipboard-write-text" disabled={busy.value} onClick={() => run(() => actions.writeText({ text: draft.value }))}>
-            Write text
+            {t('clipboard.writeText')}
           </Button>
           <Button variant="secondary" testId="clipboard-read-text" disabled={busy.value} onClick={() => run(() => actions.readText())}>
-            Read text
+            {t('clipboard.readText')}
           </Button>
         </view>
         <Button
@@ -49,7 +50,7 @@ export function render({ data, actions }: View) {
           disabled={busy.value}
           onClick={() => run(() => actions.writeTypedText({ text: draft.value }))}
         >
-          Write typed item
+          {t('clipboard.writeTypedItem')}
         </Button>
         {!!data.readTextValue && (
           <text data-testid="clipboard-read-value" className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">
@@ -57,13 +58,13 @@ export function render({ data, actions }: View) {
           </text>
         )}
       </Section>
-      <Section title="Image" description="Write a 1×1 sample PNG, or pick one with lx.pick.media.">
+      <Section title={t('clipboard.image')} description={t('clipboard.writeA11')}>
         <view className="grid gap-3 grid-cols-2">
           <Button testId="clipboard-write-sample-image" disabled={busy.value} onClick={() => run(() => actions.writeSampleImage())}>
-            Write sample PNG
+            {t('clipboard.writeSamplePng')}
           </Button>
           <Button variant="secondary" testId="clipboard-choose-image" disabled={busy.value} onClick={() => run(() => actions.chooseAndWriteImage())}>
-            Choose image
+            {t('clipboard.chooseImage')}
           </Button>
         </view>
         {!!data.imagePath && (
@@ -71,23 +72,23 @@ export function render({ data, actions }: View) {
             <image
               data-testid="clipboard-image"
               src={String(data.imagePath)}
-              alt="Image from clipboard"
+              alt={t('clipboard.imageAlt')}
               className="w-40 h-40 rounded border border-line object-contain"
             />
             <text className="text-xs text-muted break-all">{String(data.imagePath)}</text>
           </view>
         )}
       </Section>
-      <Section title="Inspect" description="Peek types without the payload, read every representation, or clear.">
+      <Section title={t('clipboard.inspect')} description={t('clipboard.peekTypesWithoutThe')}>
         <view className="grid gap-3 grid-cols-3">
           <Button variant="secondary" testId="clipboard-types" disabled={busy.value} onClick={() => run(() => actions.peekTypes())}>
-            Types
+            {t('clipboard.types')}
           </Button>
           <Button testId="clipboard-read-all" disabled={busy.value} onClick={() => run(() => actions.readAll())}>
-            Read
+            {t('clipboard.read')}
           </Button>
           <Button variant="destructive" testId="clipboard-clear" disabled={busy.value} onClick={() => run(() => actions.clearClipboard())}>
-            Clear
+            {t('clipboard.clear')}
           </Button>
         </view>
       </Section>

@@ -85,7 +85,7 @@ export default definePage({
         } catch {
           if (!disposed) page.update(d => {
             d.loading = false;
-            d.loadError = 'Could not load saved tasks. Retry before making changes.';
+            d.loadError = lx.app.t('todo.loadFailed');
           });
         } finally {
           _loading = false;

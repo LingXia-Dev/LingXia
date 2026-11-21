@@ -1,0 +1,2435 @@
+{
+  "api.bridge": {
+    "defaultMessage": "桥接韧性"
+  },
+  "api.bridgeDetail": {
+    "defaultMessage": "启动、流式、重连与销毁"
+  },
+  "api.channel": {
+    "defaultMessage": "通道"
+  },
+  "api.channelDetail": {
+    "defaultMessage": "双向会话，附实时行情"
+  },
+  "api.chooseFile": {
+    "defaultMessage": "选择文件"
+  },
+  "api.clipboard": {
+    "defaultMessage": "剪贴板"
+  },
+  "api.clipboardDetail": {
+    "defaultMessage": "复制和粘贴文本与图片"
+  },
+  "api.cloudAuth": {
+    "defaultMessage": "云端认证"
+  },
+  "api.cloudFunctions": {
+    "defaultMessage": "云函数"
+  },
+  "api.cloudMqtt": {
+    "defaultMessage": "云端 MQTT"
+  },
+  "api.deepseek": {
+    "defaultMessage": "打开 DeepSeek"
+  },
+  "api.deviceDevice": {
+    "defaultMessage": "设备信息"
+  },
+  "api.deviceLocalIP": {
+    "defaultMessage": "本机 IP 地址"
+  },
+  "api.deviceNetwork": {
+    "defaultMessage": "网络类型"
+  },
+  "api.deviceNetworkStatus": {
+    "defaultMessage": "网络状态监听"
+  },
+  "api.deviceOrientation": {
+    "defaultMessage": "设备方向"
+  },
+  "api.devicePhone": {
+    "defaultMessage": "拨打电话"
+  },
+  "api.deviceScreen": {
+    "defaultMessage": "屏幕信息"
+  },
+  "api.deviceVibrate": {
+    "defaultMessage": "振动"
+  },
+  "api.exit": {
+    "defaultMessage": "退出应用"
+  },
+  "api.exitAction": {
+    "defaultMessage": "退出"
+  },
+  "api.exitConfirm": {
+    "defaultMessage": "现在关闭应用吗？"
+  },
+  "api.exitDetail": {
+    "defaultMessage": "关闭应用前确认"
+  },
+  "api.file": {
+    "defaultMessage": "打开文件"
+  },
+  "api.group.bridge": {
+    "defaultMessage": "桥接"
+  },
+  "api.group.cloud": {
+    "defaultMessage": "云服务"
+  },
+  "api.group.device": {
+    "defaultMessage": "设备"
+  },
+  "api.group.file": {
+    "defaultMessage": "文件"
+  },
+  "api.group.interface": {
+    "defaultMessage": "用户界面"
+  },
+  "api.group.media": {
+    "defaultMessage": "媒体与相机"
+  },
+  "api.group.navigation": {
+    "defaultMessage": "导航"
+  },
+  "api.group.system": {
+    "defaultMessage": "系统"
+  },
+  "api.intro": {
+    "defaultMessage": "探索 LingXia 能做什么。"
+  },
+  "api.leaveguard": {
+    "defaultMessage": "离开确认"
+  },
+  "api.leaveguardDetail": {
+    "defaultMessage": "放弃未保存的更改前询问"
+  },
+  "api.location": {
+    "defaultMessage": "位置"
+  },
+  "api.mediaImageInfo": {
+    "defaultMessage": "图片工具"
+  },
+  "api.mediaPictures": {
+    "defaultMessage": "图片"
+  },
+  "api.mediaSaveToAlbum": {
+    "defaultMessage": "保存到相册"
+  },
+  "api.mediaScanCode": {
+    "defaultMessage": "扫码"
+  },
+  "api.mediaVideoTools": {
+    "defaultMessage": "视频工具"
+  },
+  "api.mediaVideos": {
+    "defaultMessage": "视频"
+  },
+  "api.openAppFailed": {
+    "defaultMessage": "无法打开该应用，请重试。"
+  },
+  "api.openIn.aside": {
+    "defaultMessage": "侧边面板"
+  },
+  "api.openIn.external": {
+    "defaultMessage": "默认浏览器"
+  },
+  "api.openIn.self": {
+    "defaultMessage": "当前窗口"
+  },
+  "api.openPageFailed": {
+    "defaultMessage": "无法打开该页面，请重试。"
+  },
+  "api.otherApp": {
+    "defaultMessage": "打开另一个应用"
+  },
+  "api.refresh": {
+    "defaultMessage": "下拉刷新"
+  },
+  "api.sectionState": {
+    "defaultMessage": "{name}，{state, select, expanded {已展开} other {已收起}}"
+  },
+  "api.share": {
+    "defaultMessage": "分享"
+  },
+  "api.shareDetail": {
+    "defaultMessage": "分享文本、页面、图片和文件"
+  },
+  "api.stream": {
+    "defaultMessage": "流"
+  },
+  "api.streamDetail": {
+    "defaultMessage": "异步生成器流式输出，附聊天示例"
+  },
+  "api.surface": {
+    "defaultMessage": "界面面板"
+  },
+  "api.systemAppBaseInfo": {
+    "defaultMessage": "应用信息"
+  },
+  "api.systemAutostart": {
+    "defaultMessage": "登录时启动"
+  },
+  "api.systemAutostartDetail": {
+    "defaultMessage": "在 macOS 或 Windows 上自动启动"
+  },
+  "api.systemBanner": {
+    "defaultMessage": "桌面横幅"
+  },
+  "api.systemBannerDetail": {
+    "defaultMessage": "屏幕角落的通知，可带操作"
+  },
+  "api.systemCache": {
+    "defaultMessage": "产品缓存"
+  },
+  "api.systemCacheDetail": {
+    "defaultMessage": "在主应用中查看和清除缓存"
+  },
+  "api.systemNotification": {
+    "defaultMessage": "本地通知"
+  },
+  "api.systemNotificationDetail": {
+    "defaultMessage": "从控制应用发送和取消通知"
+  },
+  "api.systemSystemSetting": {
+    "defaultMessage": "系统设置"
+  },
+  "api.uiActionsheet": {
+    "defaultMessage": "操作菜单"
+  },
+  "api.uiAppearance": {
+    "defaultMessage": "外观"
+  },
+  "api.uiModal": {
+    "defaultMessage": "对话框"
+  },
+  "api.uiNavbar": {
+    "defaultMessage": "导航栏"
+  },
+  "api.uiNavigation": {
+    "defaultMessage": "页面导航"
+  },
+  "api.uiTabbar": {
+    "defaultMessage": "标签栏"
+  },
+  "api.uiToast": {
+    "defaultMessage": "轻提示"
+  },
+  "api.wifi": {
+    "defaultMessage": "Wi-Fi"
+  },
+  "channel.connected": {
+    "defaultMessage": "已连接"
+  },
+  "channel.connecting": {
+    "defaultMessage": "正在连接…"
+  },
+  "channel.disconnect": {
+    "defaultMessage": "断开"
+  },
+  "channel.disconnected": {
+    "defaultMessage": "已断开"
+  },
+  "channel.recentTicks": {
+    "defaultMessage": "最近行情"
+  },
+  "channel.reconnect": {
+    "defaultMessage": "重新连接"
+  },
+  "channel.waitingForData": {
+    "defaultMessage": "正在等待数据…"
+  },
+  "clipboard.chooseImage": {
+    "defaultMessage": "选择图片"
+  },
+  "clipboard.clear": {
+    "defaultMessage": "清除"
+  },
+  "clipboard.draft": {
+    "defaultMessage": "来自 lx.clipboard 的问候"
+  },
+  "clipboard.failed": {
+    "defaultMessage": "操作失败，请重试。"
+  },
+  "clipboard.image": {
+    "defaultMessage": "图片"
+  },
+  "clipboard.imageAlt": {
+    "defaultMessage": "来自剪贴板的图片"
+  },
+  "clipboard.inspect": {
+    "defaultMessage": "检查"
+  },
+  "clipboard.lxClipboardReadsAnd": {
+    "defaultMessage": "lx.clipboard 读写系统剪贴板，写入时不会弹出提示。"
+  },
+  "clipboard.peekTypesWithoutThe": {
+    "defaultMessage": "不读内容只查看类型、读取全部表示形式，或清除。"
+  },
+  "clipboard.read": {
+    "defaultMessage": "读取"
+  },
+  "clipboard.readText": {
+    "defaultMessage": "读取文本"
+  },
+  "clipboard.state.cleared": {
+    "defaultMessage": "已清除"
+  },
+  "clipboard.state.clipboardEmpty": {
+    "defaultMessage": "剪贴板为空"
+  },
+  "clipboard.state.empty": {
+    "defaultMessage": "空"
+  },
+  "clipboard.state.foundEmptyString": {
+    "defaultMessage": "读到空字符串"
+  },
+  "clipboard.state.imagePickerCanceled": {
+    "defaultMessage": "已取消选择图片"
+  },
+  "clipboard.state.noTextOnClipboard": {
+    "defaultMessage": "剪贴板中没有文本"
+  },
+  "clipboard.state.notPeeked": {
+    "defaultMessage": "尚未查看"
+  },
+  "clipboard.state.peekedTypes": {
+    "defaultMessage": "已查看类型"
+  },
+  "clipboard.state.readCanceled": {
+    "defaultMessage": "已取消读取"
+  },
+  "clipboard.state.readText": {
+    "defaultMessage": "已读取文本"
+  },
+  "clipboard.state.readTypes": {
+    "defaultMessage": "已读取 {types}"
+  },
+  "clipboard.state.ready": {
+    "defaultMessage": "就绪"
+  },
+  "clipboard.state.wroteChosenImage": {
+    "defaultMessage": "已写入所选图片"
+  },
+  "clipboard.state.wroteEmptyString": {
+    "defaultMessage": "已写入空字符串"
+  },
+  "clipboard.state.wroteSamplePng": {
+    "defaultMessage": "已写入示例 PNG"
+  },
+  "clipboard.state.wroteText": {
+    "defaultMessage": "已写入文本"
+  },
+  "clipboard.state.wroteTypedTextItem": {
+    "defaultMessage": "已写入带类型的文本项"
+  },
+  "clipboard.status": {
+    "defaultMessage": "状态"
+  },
+  "clipboard.text": {
+    "defaultMessage": "文本"
+  },
+  "clipboard.textToCopy": {
+    "defaultMessage": "要复制的文本"
+  },
+  "clipboard.types": {
+    "defaultMessage": "类型"
+  },
+  "clipboard.typesLine": {
+    "defaultMessage": "类型：{types}"
+  },
+  "clipboard.working": {
+    "defaultMessage": "处理中…"
+  },
+  "clipboard.writeA11": {
+    "defaultMessage": "写入一张 1×1 示例 PNG，或用 lx.pick.media 选择一张。"
+  },
+  "clipboard.writeSamplePng": {
+    "defaultMessage": "写入示例 PNG"
+  },
+  "clipboard.writeText": {
+    "defaultMessage": "写入文本"
+  },
+  "clipboard.writeTypedItem": {
+    "defaultMessage": "写入带类型的项"
+  },
+  "clipboard.writetextReadtextAnEmpty": {
+    "defaultMessage": "writeText / readText。写入空字符串是合法写入，不等于 clear()。"
+  },
+  "cloud.activateOrRemoveIdentities": {
+    "defaultMessage": "激活或移除 lx.auth.list() 返回的身份"
+  },
+  "cloud.activeTenant": {
+    "defaultMessage": "当前租户"
+  },
+  "cloud.activeUser": {
+    "defaultMessage": "当前用户"
+  },
+  "cloud.addIdentity": {
+    "defaultMessage": "添加身份"
+  },
+  "cloud.connectionState": {
+    "defaultMessage": "连接状态"
+  },
+  "cloud.currentLxappFunctions": {
+    "defaultMessage": "当前 LxApp 的函数"
+  },
+  "cloud.currentState": {
+    "defaultMessage": "当前状态"
+  },
+  "cloud.function": {
+    "defaultMessage": "函数"
+  },
+  "cloud.incomingMessageDataIs": {
+    "defaultMessage": "收到的消息数据会通过 setData 写回。"
+  },
+  "cloud.interactiveLogin": {
+    "defaultMessage": "交互式登录"
+  },
+  "cloud.lastError": {
+    "defaultMessage": "最近错误"
+  },
+  "cloud.latestCloudAuthSnapshot": {
+    "defaultMessage": "运行时最新的云端认证快照"
+  },
+  "cloud.latestMessage": {
+    "defaultMessage": "最新消息"
+  },
+  "cloud.loginReturnsTheActive": {
+    "defaultMessage": "登录会返回当前身份；身份列表、激活与退出由主 lxapp 管理。"
+  },
+  "cloud.logoutCurrentTenant": {
+    "defaultMessage": "退出当前租户"
+  },
+  "cloud.manageTheDemoTopic": {
+    "defaultMessage": "管理演示主题的订阅，并查看本页收到了多少消息。"
+  },
+  "cloud.messagesReceived": {
+    "defaultMessage": "已收到消息"
+  },
+  "cloud.mqttRuntimeStatusFor": {
+    "defaultMessage": "共享云会话的 MQTT 运行时状态。"
+  },
+  "cloud.noActiveTenant": {
+    "defaultMessage": "没有当前租户"
+  },
+  "cloud.noDemoFunctions": {
+    "defaultMessage": "没有演示函数"
+  },
+  "cloud.noMessageYet": {
+    "defaultMessage": "还没有消息"
+  },
+  "cloud.noProvider": {
+    "defaultMessage": "此构建未包含云服务"
+  },
+  "cloud.noTenantsYet": {
+    "defaultMessage": "还没有租户"
+  },
+  "cloud.noneAreConfiguredFor": {
+    "defaultMessage": "本页没有配置任何函数。"
+  },
+  "cloud.notSignedIn": {
+    "defaultMessage": "未登录"
+  },
+  "cloud.publishOneToThe": {
+    "defaultMessage": "向上方主题发布一条吧。"
+  },
+  "cloud.receivedAt": {
+    "defaultMessage": "接收时间"
+  },
+  "cloud.runInteractiveLoginFirst": {
+    "defaultMessage": "请先进行交互式登录。"
+  },
+  "cloud.runtimeConnection": {
+    "defaultMessage": "运行时连接"
+  },
+  "cloud.status": {
+    "defaultMessage": "状态"
+  },
+  "cloud.subscribe": {
+    "defaultMessage": "订阅"
+  },
+  "cloud.subscriptionState": {
+    "defaultMessage": "订阅状态"
+  },
+  "cloud.tenantActive": {
+    "defaultMessage": "当前"
+  },
+  "cloud.tenantSwitch": {
+    "defaultMessage": "切换"
+  },
+  "cloud.tenantUnavailable": {
+    "defaultMessage": "不可用"
+  },
+  "cloud.tenants": {
+    "defaultMessage": "租户"
+  },
+  "cloud.theseSampleCallsUse": {
+    "defaultMessage": "这些示例调用通过 lx.cloud.invoke(...) 调用当前 lxapp 的函数。它们是演示操作，而不是运行时发现的清单。"
+  },
+  "cloud.topic": {
+    "defaultMessage": "主题"
+  },
+  "cloud.topicSubscription": {
+    "defaultMessage": "主题订阅"
+  },
+  "cloud.unknownTenant": {
+    "defaultMessage": "未知租户"
+  },
+  "cloud.unsubscribe": {
+    "defaultMessage": "取消订阅"
+  },
+  "common.cancel": {
+    "defaultMessage": "取消"
+  },
+  "common.no": {
+    "defaultMessage": "否"
+  },
+  "common.ok": {
+    "defaultMessage": "确定"
+  },
+  "common.requestFailed": {
+    "defaultMessage": "请求失败"
+  },
+  "common.result": {
+    "defaultMessage": "结果"
+  },
+  "common.yes": {
+    "defaultMessage": "是"
+  },
+  "device.brand": {
+    "defaultMessage": "品牌"
+  },
+  "device.brandModelAndOs": {
+    "defaultMessage": "品牌、型号与系统版本"
+  },
+  "device.call": {
+    "defaultMessage": "拨打"
+  },
+  "device.chooseAnOrientationAnd": {
+    "defaultMessage": "选择方向并监听变化"
+  },
+  "device.clearLogs": {
+    "defaultMessage": "清除日志"
+  },
+  "device.connected": {
+    "defaultMessage": "已连接"
+  },
+  "device.currentValue": {
+    "defaultMessage": "当前值"
+  },
+  "device.dialAPhoneNumber": {
+    "defaultMessage": "拨打电话号码"
+  },
+  "device.enterPhoneNumber": {
+    "defaultMessage": "输入电话号码"
+  },
+  "device.getDeviceInformation": {
+    "defaultMessage": "获取设备信息"
+  },
+  "device.getInfo": {
+    "defaultMessage": "获取信息"
+  },
+  "device.getIp": {
+    "defaultMessage": "获取 IP"
+  },
+  "device.getLocalIpAddresses": {
+    "defaultMessage": "获取本机 IP 地址"
+  },
+  "device.getNetworkType": {
+    "defaultMessage": "获取网络类型"
+  },
+  "device.getScreenInformation": {
+    "defaultMessage": "获取屏幕信息"
+  },
+  "device.height": {
+    "defaultMessage": "高度"
+  },
+  "device.ipv4AndIpv6On": {
+    "defaultMessage": "当前网络的 IPv4 与 IPv6"
+  },
+  "device.listening": {
+    "defaultMessage": "监听中"
+  },
+  "device.lockAndFollowOrientation": {
+    "defaultMessage": "锁定并跟随方向"
+  },
+  "device.lockLandscape": {
+    "defaultMessage": "锁定横屏"
+  },
+  "device.lockPortrait": {
+    "defaultMessage": "锁定竖屏"
+  },
+  "device.lockTarget": {
+    "defaultMessage": "锁定目标"
+  },
+  "device.long": {
+    "defaultMessage": "长"
+  },
+  "device.marketName": {
+    "defaultMessage": "上市名称"
+  },
+  "device.model": {
+    "defaultMessage": "型号"
+  },
+  "device.networkStatusListener": {
+    "defaultMessage": "网络状态监听"
+  },
+  "device.networkType": {
+    "defaultMessage": "网络类型"
+  },
+  "device.openTheNativePhone": {
+    "defaultMessage": "打开系统拨号界面"
+  },
+  "device.orientationEvents": {
+    "defaultMessage": "方向事件"
+  },
+  "device.osName": {
+    "defaultMessage": "系统名称"
+  },
+  "device.osVersion": {
+    "defaultMessage": "系统版本"
+  },
+  "device.phoneNumber": {
+    "defaultMessage": "电话号码"
+  },
+  "device.reportConnectivityChangesAs": {
+    "defaultMessage": "连接变化时立即报告"
+  },
+  "device.scale": {
+    "defaultMessage": "缩放"
+  },
+  "device.screenDimensionsAndScale": {
+    "defaultMessage": "屏幕尺寸与缩放"
+  },
+  "device.short": {
+    "defaultMessage": "短"
+  },
+  "device.startListening": {
+    "defaultMessage": "开始监听"
+  },
+  "device.stopListening": {
+    "defaultMessage": "停止监听"
+  },
+  "device.title.device": {
+    "defaultMessage": "设备信息"
+  },
+  "device.title.dial": {
+    "defaultMessage": "拨打电话"
+  },
+  "device.title.localIP": {
+    "defaultMessage": "本机 IP 地址"
+  },
+  "device.title.networkStatus": {
+    "defaultMessage": "网络状态监听"
+  },
+  "device.title.networkType": {
+    "defaultMessage": "网络类型"
+  },
+  "device.title.orientation": {
+    "defaultMessage": "设备方向"
+  },
+  "device.title.screen": {
+    "defaultMessage": "屏幕信息"
+  },
+  "device.title.vibrate": {
+    "defaultMessage": "设备振动"
+  },
+  "device.triggerVibration": {
+    "defaultMessage": "触发振动"
+  },
+  "device.tryAShortOr": {
+    "defaultMessage": "试试短振动或长振动"
+  },
+  "device.wiFiMobileData": {
+    "defaultMessage": "Wi-Fi、移动数据、以太网或离线"
+  },
+  "device.width": {
+    "defaultMessage": "宽度"
+  },
+  "feedback.about": {
+    "defaultMessage": "反馈类型"
+  },
+  "feedback.category.bug": {
+    "defaultMessage": "问题"
+  },
+  "feedback.category.idea": {
+    "defaultMessage": "建议"
+  },
+  "feedback.category.product": {
+    "defaultMessage": "产品"
+  },
+  "feedback.demoOnly": {
+    "defaultMessage": "仅为演示——提交内容会写入 Logic 日志。"
+  },
+  "feedback.email": {
+    "defaultMessage": "邮箱（选填）"
+  },
+  "feedback.empty": {
+    "defaultMessage": "请描述发生了什么"
+  },
+  "feedback.message": {
+    "defaultMessage": "你的反馈"
+  },
+  "feedback.messagePlaceholder": {
+    "defaultMessage": "发生了什么？你希望怎样？"
+  },
+  "feedback.send": {
+    "defaultMessage": "发送反馈"
+  },
+  "feedback.sending": {
+    "defaultMessage": "正在发送…"
+  },
+  "feedback.subtitle": {
+    "defaultMessage": "告诉我们问题、想法，或在示例中让你困惑的地方。"
+  },
+  "feedback.thanks": {
+    "defaultMessage": "感谢你的反馈"
+  },
+  "feedback.title": {
+    "defaultMessage": "帮助我们改进"
+  },
+  "file.autoDetectedFromUrl": {
+    "defaultMessage": "从 URL 自动识别，或手动输入"
+  },
+  "file.chooseFile": {
+    "defaultMessage": "选择文件"
+  },
+  "file.chooseFirst": {
+    "defaultMessage": "请先选择文件"
+  },
+  "file.continueDownload": {
+    "defaultMessage": "继续下载"
+  },
+  "file.defaultFolder": {
+    "defaultMessage": "默认文件夹"
+  },
+  "file.detectedType": {
+    "defaultMessage": "识别的类型"
+  },
+  "file.downloadCanceled": {
+    "defaultMessage": "已取消下载"
+  },
+  "file.downloadCompleteOpening": {
+    "defaultMessage": "下载完成，正在打开…"
+  },
+  "file.downloadFailed": {
+    "defaultMessage": "下载失败"
+  },
+  "file.downloadPaused": {
+    "defaultMessage": "下载已暂停"
+  },
+  "file.downloadPdf": {
+    "defaultMessage": "下载并预览 PDF"
+  },
+  "file.downloadToATemporary": {
+    "defaultMessage": "下载到临时文件（带进度、可暂停/继续），然后用原生 PDF 查看器打开。"
+  },
+  "file.downloadedOpening": {
+    "defaultMessage": "已下载到 {path}，正在打开…"
+  },
+  "file.downloading": {
+    "defaultMessage": "正在下载…"
+  },
+  "file.eGDocxXlsx": {
+    "defaultMessage": "例如 docx、xlsx、pptx"
+  },
+  "file.enterDocUrl": {
+    "defaultMessage": "请输入文档 URL"
+  },
+  "file.enterFileUrl": {
+    "defaultMessage": "输入文件 URL"
+  },
+  "file.enterPdfUrl": {
+    "defaultMessage": "输入 PDF URL"
+  },
+  "file.enterPdfUrlFirst": {
+    "defaultMessage": "请输入 PDF URL"
+  },
+  "file.enterType": {
+    "defaultMessage": "请输入文件类型"
+  },
+  "file.fetchFailed": {
+    "defaultMessage": "获取失败"
+  },
+  "file.fetchOpen": {
+    "defaultMessage": "获取并打开文件"
+  },
+  "file.fetchedOpening": {
+    "defaultMessage": "已获取 {size}，正在打开…"
+  },
+  "file.fetching": {
+    "defaultMessage": "正在获取并打开文件…"
+  },
+  "file.fetchingDocument": {
+    "defaultMessage": "正在获取文档…"
+  },
+  "file.fileType": {
+    "defaultMessage": "文件类型"
+  },
+  "file.fileUrl": {
+    "defaultMessage": "文件 URL"
+  },
+  "file.noPause": {
+    "defaultMessage": "当前运行时暂不支持暂停/继续"
+  },
+  "file.officeViaFetch": {
+    "defaultMessage": "通过 fetch() 获取 Office 文档"
+  },
+  "file.onlyAppliesToPdf": {
+    "defaultMessage": "仅适用于 PDF。Office 文档总是用系统默认查看器打开。"
+  },
+  "file.openFileChooser": {
+    "defaultMessage": "打开文件选择器"
+  },
+  "file.openPdfFailed": {
+    "defaultMessage": "打开 PDF 失败"
+  },
+  "file.openSelectedFile": {
+    "defaultMessage": "打开所选文件"
+  },
+  "file.openTheHostChooser": {
+    "defaultMessage": "在预设文件夹中打开宿主文件选择器，而不是最近文件选择器。"
+  },
+  "file.opened": {
+    "defaultMessage": "已打开 {path}"
+  },
+  "file.openingFile": {
+    "defaultMessage": "正在打开文件…"
+  },
+  "file.options": {
+    "defaultMessage": "选项"
+  },
+  "file.pauseDownload": {
+    "defaultMessage": "暂停下载"
+  },
+  "file.pauseUnavailable": {
+    "defaultMessage": "无法暂停/继续"
+  },
+  "file.pausing": {
+    "defaultMessage": "正在暂停…"
+  },
+  "file.pdfTransfer": {
+    "defaultMessage": "PDF 传输"
+  },
+  "file.pdfUrl": {
+    "defaultMessage": "PDF URL"
+  },
+  "file.pdfViaLxNetwork": {
+    "defaultMessage": "通过 lx.network.download() 获取 PDF"
+  },
+  "file.pickFailed": {
+    "defaultMessage": "pick.file 调用失败"
+  },
+  "file.promiseOnly": {
+    "defaultMessage": "仅以 Promise 结果下载中…"
+  },
+  "file.resuming": {
+    "defaultMessage": "正在继续…"
+  },
+  "file.resumingTransfer": {
+    "defaultMessage": "正在继续传输…"
+  },
+  "file.selectedPath": {
+    "defaultMessage": "已选路径"
+  },
+  "file.showShareButton": {
+    "defaultMessage": "显示分享按钮"
+  },
+  "file.startingTransfer": {
+    "defaultMessage": "正在开始传输…"
+  },
+  "file.state.canceled": {
+    "defaultMessage": "已取消选择文件"
+  },
+  "file.state.choose": {
+    "defaultMessage": "请选择文件"
+  },
+  "file.state.selected": {
+    "defaultMessage": "已选择文件"
+  },
+  "file.status": {
+    "defaultMessage": "状态"
+  },
+  "file.streamed": {
+    "defaultMessage": "传输中 · 已下载 {downloaded}"
+  },
+  "file.streaming": {
+    "defaultMessage": "传输中"
+  },
+  "file.transferFailed": {
+    "defaultMessage": "传输操作失败"
+  },
+  "file.useWebStandardFetch": {
+    "defaultMessage": "在页面逻辑中用标准 fetch 下载，保存到 usercache，再用原生文件 API 打开。"
+  },
+  "file.waitingForPreciseProgress": {
+    "defaultMessage": "正在等待运行时的精确进度…"
+  },
+  "leave.confirmBody": {
+    "defaultMessage": "现在离开将丢弃草稿。"
+  },
+  "leave.confirmTitle": {
+    "defaultMessage": "放弃未保存的更改？"
+  },
+  "leave.discard": {
+    "defaultMessage": "放弃"
+  },
+  "leave.draft": {
+    "defaultMessage": "草稿"
+  },
+  "leave.intro": {
+    "defaultMessage": "编辑草稿后返回或回到首页：页面会留下并询问。保存后则立即离开。"
+  },
+  "leave.keep": {
+    "defaultMessage": "继续编辑"
+  },
+  "leave.placeholder": {
+    "defaultMessage": "输入一些内容"
+  },
+  "leave.requests": {
+    "defaultMessage": "离开请求：{count}"
+  },
+  "leave.save": {
+    "defaultMessage": "保存"
+  },
+  "leave.saved": {
+    "defaultMessage": "已保存"
+  },
+  "leave.unsaved": {
+    "defaultMessage": "有未保存的更改"
+  },
+  "location.clear": {
+    "defaultMessage": "清除"
+  },
+  "location.currentLocation": {
+    "defaultMessage": "当前位置"
+  },
+  "location.get": {
+    "defaultMessage": "获取位置"
+  },
+  "location.getting": {
+    "defaultMessage": "正在获取位置…"
+  },
+  "location.gettingLocation": {
+    "defaultMessage": "正在获取位置…"
+  },
+  "location.none": {
+    "defaultMessage": "暂无位置数据"
+  },
+  "media.album": {
+    "defaultMessage": "相册"
+  },
+  "media.albumOrCamera": {
+    "defaultMessage": "相册或相机"
+  },
+  "media.all": {
+    "defaultMessage": "全部"
+  },
+  "media.audioCodec": {
+    "defaultMessage": "音频编码"
+  },
+  "media.auto": {
+    "defaultMessage": "自动"
+  },
+  "media.autoNext": {
+    "defaultMessage": "自动下一项"
+  },
+  "media.bitrate": {
+    "defaultMessage": "码率"
+  },
+  "media.bitrateKbps": {
+    "defaultMessage": "码率（kbps）"
+  },
+  "media.camera": {
+    "defaultMessage": "相机"
+  },
+  "media.cameraAlbum": {
+    "defaultMessage": "相机和相册"
+  },
+  "media.cameraOnly": {
+    "defaultMessage": "仅相机"
+  },
+  "media.cameraPhoto": {
+    "defaultMessage": "相机和照片"
+  },
+  "media.cancel": {
+    "defaultMessage": "取消"
+  },
+  "media.cancelActivePreview": {
+    "defaultMessage": "取消当前预览"
+  },
+  "media.capture": {
+    "defaultMessage": "拍摄"
+  },
+  "media.captureImage": {
+    "defaultMessage": "拍摄图片"
+  },
+  "media.captureIntro": {
+    "defaultMessage": "拍摄照片或视频并保存到设备相册"
+  },
+  "media.capturePhotoOrVideo": {
+    "defaultMessage": "拍摄照片或视频，然后保存到相册。可在设备相册中查看已保存的媒体。"
+  },
+  "media.captureVideo": {
+    "defaultMessage": "拍摄视频"
+  },
+  "media.compress": {
+    "defaultMessage": "压缩"
+  },
+  "media.compressImage": {
+    "defaultMessage": "压缩图片"
+  },
+  "media.compressImageFailed": {
+    "defaultMessage": "compressImage 调用失败"
+  },
+  "media.compressVideo": {
+    "defaultMessage": "压缩视频"
+  },
+  "media.compressVideoFailed": {
+    "defaultMessage": "compressVideo 调用失败"
+  },
+  "media.compressedImage": {
+    "defaultMessage": "压缩后的图片"
+  },
+  "media.compressedVideo": {
+    "defaultMessage": "压缩后的视频"
+  },
+  "media.compressing": {
+    "defaultMessage": "正在压缩…"
+  },
+  "media.compressingPercent": {
+    "defaultMessage": "正在压缩… {progress}%"
+  },
+  "media.compressionCancelled": {
+    "defaultMessage": "已取消压缩"
+  },
+  "media.container": {
+    "defaultMessage": "容器 MIME"
+  },
+  "media.countLimit": {
+    "defaultMessage": "数量上限"
+  },
+  "media.duration": {
+    "defaultMessage": "时长"
+  },
+  "media.example": {
+    "defaultMessage": "例如 {value}"
+  },
+  "media.fileSize": {
+    "defaultMessage": "文件大小"
+  },
+  "media.fitDefault": {
+    "defaultMessage": "默认（可选）"
+  },
+  "media.frontCamera": {
+    "defaultMessage": "前置摄像头"
+  },
+  "media.generateThumbnail": {
+    "defaultMessage": "生成缩略图"
+  },
+  "media.generating": {
+    "defaultMessage": "正在生成…"
+  },
+  "media.gettingInfo": {
+    "defaultMessage": "正在获取信息…"
+  },
+  "media.hasAudio": {
+    "defaultMessage": "含音频"
+  },
+  "media.height": {
+    "defaultMessage": "高度"
+  },
+  "media.hidden": {
+    "defaultMessage": "隐藏"
+  },
+  "media.imageDurationMs": {
+    "defaultMessage": "图片停留时长（毫秒）"
+  },
+  "media.imageInfoFailed": {
+    "defaultMessage": "media.imageInfo 调用失败"
+  },
+  "media.imageSaved": {
+    "defaultMessage": "图片已保存到相册"
+  },
+  "media.index": {
+    "defaultMessage": "序号"
+  },
+  "media.indexIndicator": {
+    "defaultMessage": "序号指示：{value}"
+  },
+  "media.leaveEmpty": {
+    "defaultMessage": "留空"
+  },
+  "media.loop": {
+    "defaultMessage": "循环"
+  },
+  "media.lxMediaImageinfoAnd": {
+    "defaultMessage": "lx.media.imageInfo 与 lx.media.compressImage：查看图片并生成压缩副本"
+  },
+  "media.lxMediaVideoinfoLx": {
+    "defaultMessage": "lx.media.videoInfo、lx.media.videoThumbnail 与 lx.media.compressVideo"
+  },
+  "media.manual": {
+    "defaultMessage": "仅手动"
+  },
+  "media.maxHeight": {
+    "defaultMessage": "最大高度（px）"
+  },
+  "media.maxWidth": {
+    "defaultMessage": "最大宽度（px）"
+  },
+  "media.metaDefault": {
+    "defaultMessage": "元数据（默认）"
+  },
+  "media.nextAdvancesAndFinishes": {
+    "defaultMessage": "`next` 逐项前进并在最后一项结束；`loop` 会回到第一项。"
+  },
+  "media.noCompressedImage": {
+    "defaultMessage": "没有可预览的压缩图片"
+  },
+  "media.noCompressedVideo": {
+    "defaultMessage": "没有可预览的压缩视频"
+  },
+  "media.noResult": {
+    "defaultMessage": "暂无结果"
+  },
+  "media.noThumbnail": {
+    "defaultMessage": "没有可预览的缩略图"
+  },
+  "media.notReported": {
+    "defaultMessage": "未提供"
+  },
+  "media.nothingToPreview": {
+    "defaultMessage": "没有可预览的内容"
+  },
+  "media.opening": {
+    "defaultMessage": "正在打开…"
+  },
+  "media.operationFailed": {
+    "defaultMessage": "操作失败"
+  },
+  "media.photoSource": {
+    "defaultMessage": "照片来源"
+  },
+  "media.pickAnother": {
+    "defaultMessage": "选择其他视频"
+  },
+  "media.pickCodeFailed": {
+    "defaultMessage": "pick.code 调用失败"
+  },
+  "media.pickFailed": {
+    "defaultMessage": "pick.media 调用失败"
+  },
+  "media.pickImage": {
+    "defaultMessage": "选择图片"
+  },
+  "media.pickVideo": {
+    "defaultMessage": "选择视频"
+  },
+  "media.pickVideoFirst": {
+    "defaultMessage": "请先选择视频"
+  },
+  "media.previewCompressedVideo": {
+    "defaultMessage": "预览压缩后的视频"
+  },
+  "media.previewFailed": {
+    "defaultMessage": "预览失败"
+  },
+  "media.previewFit": {
+    "defaultMessage": "预览适配：{value}"
+  },
+  "media.previewFlow": {
+    "defaultMessage": "预览流程：{value}"
+  },
+  "media.previewImage": {
+    "defaultMessage": "预览图片"
+  },
+  "media.previewRotate": {
+    "defaultMessage": "预览旋转：{value}"
+  },
+  "media.previewSelection": {
+    "defaultMessage": "预览所选内容"
+  },
+  "media.previewThumbnail": {
+    "defaultMessage": "预览缩略图"
+  },
+  "media.quality": {
+    "defaultMessage": "质量"
+  },
+  "media.qualityLowMediumOr": {
+    "defaultMessage": "质量 low、medium 或 high 会覆盖码率（kbps）、帧率和分辨率比例 (0, 1]。"
+  },
+  "media.rearCamera": {
+    "defaultMessage": "后置摄像头"
+  },
+  "media.reason": {
+    "defaultMessage": "原因"
+  },
+  "media.resolution": {
+    "defaultMessage": "分辨率"
+  },
+  "media.resolutionRatio": {
+    "defaultMessage": "分辨率比例"
+  },
+  "media.rotation": {
+    "defaultMessage": "旋转"
+  },
+  "media.s15": {
+    "defaultMessage": "15 秒"
+  },
+  "media.s30": {
+    "defaultMessage": "30 秒"
+  },
+  "media.s60": {
+    "defaultMessage": "60 秒"
+  },
+  "media.saveImageFailed": {
+    "defaultMessage": "保存图片失败"
+  },
+  "media.saveVideoFailed": {
+    "defaultMessage": "保存视频失败"
+  },
+  "media.saving": {
+    "defaultMessage": "正在保存…"
+  },
+  "media.scanIntro": {
+    "defaultMessage": "使用相机或相册扫描二维码和条形码"
+  },
+  "media.scanResult": {
+    "defaultMessage": "扫描结果"
+  },
+  "media.scanType": {
+    "defaultMessage": "扫描类型"
+  },
+  "media.scanning": {
+    "defaultMessage": "正在扫描…"
+  },
+  "media.selectImageFirst": {
+    "defaultMessage": "请先选择图片"
+  },
+  "media.selectedImage": {
+    "defaultMessage": "所选图片 {n}"
+  },
+  "media.selection": {
+    "defaultMessage": "选择结果"
+  },
+  "media.source": {
+    "defaultMessage": "来源"
+  },
+  "media.sourceImage": {
+    "defaultMessage": "原图"
+  },
+  "media.sourceVideo": {
+    "defaultMessage": "原视频"
+  },
+  "media.startScan": {
+    "defaultMessage": "开始扫描"
+  },
+  "media.state.addPhoto": {
+    "defaultMessage": "添加照片"
+  },
+  "media.state.addVideos": {
+    "defaultMessage": "添加视频"
+  },
+  "media.state.imageHint": {
+    "defaultMessage": "获取图片信息并生成压缩副本。"
+  },
+  "media.state.imageInfo": {
+    "defaultMessage": "图片信息"
+  },
+  "media.state.pickPhotos": {
+    "defaultMessage": "点按 + 选择照片"
+  },
+  "media.state.pickVideos": {
+    "defaultMessage": "点按 + 选择视频"
+  },
+  "media.state.saveHint": {
+    "defaultMessage": "拍摄或选择媒体以保存到相册。"
+  },
+  "media.state.saveToAlbum": {
+    "defaultMessage": "保存到相册"
+  },
+  "media.state.scanCode": {
+    "defaultMessage": "扫码"
+  },
+  "media.state.tapPreview": {
+    "defaultMessage": "点按预览以打开全部所选内容"
+  },
+  "media.state.videoHint": {
+    "defaultMessage": "选择一个视频，查看上传元数据、生成缩略图并压缩。"
+  },
+  "media.state.videoTools": {
+    "defaultMessage": "视频工具"
+  },
+  "media.tapPreviewForFullscreen": {
+    "defaultMessage": "点按预览以全屏播放"
+  },
+  "media.thumbnail": {
+    "defaultMessage": "缩略图"
+  },
+  "media.thumbnailAlt": {
+    "defaultMessage": "所选视频的缩略图"
+  },
+  "media.thumbnailFailed": {
+    "defaultMessage": "media.videoThumbnail 调用失败"
+  },
+  "media.thumbnailResult": {
+    "defaultMessage": "缩略图结果"
+  },
+  "media.time0IsThe": {
+    "defaultMessage": "时间 0 即第一帧。尺寸留空则保持原尺寸；缩略图按比例缩放，不会裁剪。"
+  },
+  "media.timeMs": {
+    "defaultMessage": "时间（毫秒）"
+  },
+  "media.trackMetadataIsBest": {
+    "defaultMessage": "轨道元数据仅供参考，接收服务必须校验上传的内容。"
+  },
+  "media.type": {
+    "defaultMessage": "类型"
+  },
+  "media.uploadPreflightMetadata": {
+    "defaultMessage": "上传前元数据"
+  },
+  "media.videoCodec": {
+    "defaultMessage": "视频编码"
+  },
+  "media.videoInfoFailed": {
+    "defaultMessage": "media.videoInfo 调用失败"
+  },
+  "media.videoSaved": {
+    "defaultMessage": "视频已保存到相册"
+  },
+  "media.videoSource": {
+    "defaultMessage": "视频来源"
+  },
+  "media.width": {
+    "defaultMessage": "宽度"
+  },
+  "perfLab.aSecondLineOf": {
+    "defaultMessage": "每一行都要排版的第二行文字"
+  },
+  "perfLab.box": {
+    "defaultMessage": "方块"
+  },
+  "perfLab.dragTheBoxAcross": {
+    "defaultMessage": "拖动方块穿过。开启 HUD（lxdev lxapp page hud on）后，红点跟随手指，绿点标出显示它的帧。"
+  },
+  "perfLab.knob.boxPx": {
+    "defaultMessage": "方块像素"
+  },
+  "perfLab.knob.imagePx": {
+    "defaultMessage": "图片像素"
+  },
+  "perfLab.knob.layers": {
+    "defaultMessage": "图层数"
+  },
+  "perfLab.knob.nodes": {
+    "defaultMessage": "节点数"
+  },
+  "perfLab.knob.paragraphs": {
+    "defaultMessage": "段落数"
+  },
+  "perfLab.knob.records": {
+    "defaultMessage": "记录数"
+  },
+  "perfLab.knob.rows": {
+    "defaultMessage": "行数"
+  },
+  "perfLab.measuring": {
+    "defaultMessage": "正在测量 5 秒…"
+  },
+  "perfLab.notRun": {
+    "defaultMessage": "尚未运行"
+  },
+  "perfLab.runBudget": {
+    "defaultMessage": "运行预算测试"
+  },
+  "perfLab.running": {
+    "defaultMessage": "运行中…"
+  },
+  "perfLab.runsViewCodePast": {
+    "defaultMessage": "让 View 代码超出时间预算：宿主会用恢复界面替换该页面。"
+  },
+  "perfLab.scene.animation": {
+    "defaultMessage": "弹簧动画"
+  },
+  "perfLab.scene.data": {
+    "defaultMessage": "数据"
+  },
+  "perfLab.scene.fill": {
+    "defaultMessage": "填充"
+  },
+  "perfLab.scene.images": {
+    "defaultMessage": "图片"
+  },
+  "perfLab.scene.list": {
+    "defaultMessage": "列表"
+  },
+  "perfLab.scene.state": {
+    "defaultMessage": "状态"
+  },
+  "perfLab.scene.text": {
+    "defaultMessage": "文字"
+  },
+  "perfLab.scene.touch": {
+    "defaultMessage": "触控"
+  },
+  "perfLab.scene.transition": {
+    "defaultMessage": "入栈/出栈"
+  },
+  "perfLab.stall": {
+    "defaultMessage": "卡顿"
+  },
+  "perfLab.stallTheView": {
+    "defaultMessage": "让 View 卡住"
+  },
+  "perfLab.stateHint": {
+    "defaultMessage": "运行预算测试会把 {count} 条记录载入 Logic 数据，并每个节拍改动一条。"
+  },
+  "perfLab.ticks": {
+    "defaultMessage": "收到的 Logic 节拍：{n}"
+  },
+  "pulltorefresh.apiControls": {
+    "defaultMessage": "API 控制"
+  },
+  "pulltorefresh.controlRefreshProgrammatically": {
+    "defaultMessage": "以编程方式控制刷新"
+  },
+  "pulltorefresh.finishRefresh": {
+    "defaultMessage": "结束刷新"
+  },
+  "pulltorefresh.lastRefresh": {
+    "defaultMessage": "上次刷新"
+  },
+  "pulltorefresh.never": {
+    "defaultMessage": "从未"
+  },
+  "pulltorefresh.pullDownOnThis": {
+    "defaultMessage": "在本页下拉以触发刷新，或用下方按钮以编程方式控制。"
+  },
+  "pulltorefresh.pullDownToRefresh": {
+    "defaultMessage": "下拉刷新"
+  },
+  "pulltorefresh.refreshCount": {
+    "defaultMessage": "刷新次数"
+  },
+  "pulltorefresh.refreshStatus": {
+    "defaultMessage": "刷新状态"
+  },
+  "pulltorefresh.sampleRows": {
+    "defaultMessage": "示例行"
+  },
+  "pulltorefresh.scrollThePageA": {
+    "defaultMessage": "滚动页面：只有在顶部下拉才会刷新"
+  },
+  "pulltorefresh.status": {
+    "defaultMessage": "状态"
+  },
+  "refresh.idle": {
+    "defaultMessage": "空闲"
+  },
+  "refresh.refreshing": {
+    "defaultMessage": "正在刷新…"
+  },
+  "share.chooseFile": {
+    "defaultMessage": "选择文件"
+  },
+  "share.chooseFileFirst": {
+    "defaultMessage": "请先选择文件"
+  },
+  "share.chooseImage": {
+    "defaultMessage": "选择图片"
+  },
+  "share.chooseImageFirst": {
+    "defaultMessage": "请先选择图片"
+  },
+  "share.chooseOrCaptureAn": {
+    "defaultMessage": "选择或拍摄一张图片，然后作为附件分享。"
+  },
+  "share.failed": {
+    "defaultMessage": "无法打开分享，请重试。"
+  },
+  "share.file": {
+    "defaultMessage": "文件"
+  },
+  "share.fileTitle": {
+    "defaultMessage": "LingXia 文件"
+  },
+  "share.image": {
+    "defaultMessage": "图片"
+  },
+  "share.imageTitle": {
+    "defaultMessage": "LingXia 图片"
+  },
+  "share.lxShareOpensThe": {
+    "defaultMessage": "lx.share 会打开系统原生分享面板。"
+  },
+  "share.noSelection": {
+    "defaultMessage": "未选择"
+  },
+  "share.page": {
+    "defaultMessage": "页面"
+  },
+  "share.pickAnImagePdf": {
+    "defaultMessage": "先选择图片、PDF 或其他文档再分享。"
+  },
+  "share.plainText": {
+    "defaultMessage": "纯文本分享；部分接收方不接受纯文本内容。"
+  },
+  "share.shareCurrentPage": {
+    "defaultMessage": "分享当前页面"
+  },
+  "share.shareFile": {
+    "defaultMessage": "分享文件"
+  },
+  "share.shareImage": {
+    "defaultMessage": "分享图片"
+  },
+  "share.shareText": {
+    "defaultMessage": "分享文本"
+  },
+  "share.shareTheCurrentPage": {
+    "defaultMessage": "以 AppLink URL 分享当前页面。"
+  },
+  "share.someReceiversRejectText": {
+    "defaultMessage": "部分接收方不接受纯文本分享。"
+  },
+  "share.state.canceled": {
+    "defaultMessage": "已取消分享"
+  },
+  "share.state.file": {
+    "defaultMessage": "已选择文件"
+  },
+  "share.state.fileCanceled": {
+    "defaultMessage": "已取消选择文件"
+  },
+  "share.state.image": {
+    "defaultMessage": "已选择图片"
+  },
+  "share.state.noImage": {
+    "defaultMessage": "未选择图片"
+  },
+  "share.state.opened": {
+    "defaultMessage": "已打开分享面板"
+  },
+  "share.state.opening": {
+    "defaultMessage": "正在打开系统分享面板…"
+  },
+  "share.state.ready": {
+    "defaultMessage": "就绪"
+  },
+  "share.state.shared": {
+    "defaultMessage": "已分享"
+  },
+  "share.text": {
+    "defaultMessage": "文本"
+  },
+  "share.title": {
+    "defaultMessage": "LingXia 示例"
+  },
+  "stream.asyncGeneratorStreamingText": {
+    "defaultMessage": "异步生成器流式输出——经由 LingXia 桥接传输文本与图表产物。"
+  },
+  "stream.clear": {
+    "defaultMessage": "清除"
+  },
+  "stream.hint.bridge": {
+    "defaultMessage": "桥接协议是怎么工作的？"
+  },
+  "stream.hint.data": {
+    "defaultMessage": "给我看一些数据"
+  },
+  "stream.hint.streaming": {
+    "defaultMessage": "介绍一下 LingXia 的流式输出"
+  },
+  "stream.message": {
+    "defaultMessage": "消息"
+  },
+  "stream.message2": {
+    "defaultMessage": "输入消息…"
+  },
+  "stream.sendMessage": {
+    "defaultMessage": "发送消息"
+  },
+  "stream.stopResponse": {
+    "defaultMessage": "停止回复"
+  },
+  "stream.streamDemo": {
+    "defaultMessage": "流式演示"
+  },
+  "surface.fromOpener": {
+    "defaultMessage": "来自打开者"
+  },
+  "surface.hidePreservesThisCounter": {
+    "defaultMessage": "隐藏会保留计数；关闭后重新打开会重置。"
+  },
+  "surface.inPageCounter": {
+    "defaultMessage": "页内计数器"
+  },
+  "surface.increment": {
+    "defaultMessage": "加一"
+  },
+  "surface.inspectTheQueryString": {
+    "defaultMessage": "查看查询字符串，并向打开者发送消息。"
+  },
+  "surface.lastEvent": {
+    "defaultMessage": "最近事件"
+  },
+  "surface.message": {
+    "defaultMessage": "消息"
+  },
+  "surface.messageToParentPage": {
+    "defaultMessage": "发给父页面的消息"
+  },
+  "surface.onhide": {
+    "defaultMessage": "onHide"
+  },
+  "surface.onshow": {
+    "defaultMessage": "onShow"
+  },
+  "surface.pageLifecycle": {
+    "defaultMessage": "页面生命周期"
+  },
+  "surface.queryString": {
+    "defaultMessage": "查询字符串"
+  },
+  "surface.received": {
+    "defaultMessage": "已收到"
+  },
+  "surface.selfActions": {
+    "defaultMessage": "自身操作"
+  },
+  "surface.sendThenClose": {
+    "defaultMessage": "发送并关闭"
+  },
+  "system.allow": {
+    "defaultMessage": "允许"
+  },
+  "system.appIdentityOsProduct": {
+    "defaultMessage": "应用标识（系统、产品、版本）及其显示语言"
+  },
+  "system.autostartDetail": {
+    "defaultMessage": "将此应用注册为登录/开机启动项"
+  },
+  "system.bannerControlOnly": {
+    "defaultMessage": "桌面横幅仅限控制应用和桌面端"
+  },
+  "system.bannerDetail": {
+    "defaultMessage": "提示与询问会在窗口右上角显示原生卡片"
+  },
+  "system.bannerPromptBody": {
+    "defaultMessage": "智能体想要调用 sendEmail"
+  },
+  "system.bannerPromptTitle": {
+    "defaultMessage": "允许此操作吗？"
+  },
+  "system.bannerToastBody": {
+    "defaultMessage": "桌面卡片——会自动消失"
+  },
+  "system.bluetoothEnabled": {
+    "defaultMessage": "蓝牙已开启"
+  },
+  "system.cacheControlOnly": {
+    "defaultMessage": "缓存 API 仅限控制应用"
+  },
+  "system.cancel": {
+    "defaultMessage": "取消"
+  },
+  "system.clear": {
+    "defaultMessage": "清除"
+  },
+  "system.clearing": {
+    "defaultMessage": "正在清除…"
+  },
+  "system.deny": {
+    "defaultMessage": "拒绝"
+  },
+  "system.desktopBanner": {
+    "defaultMessage": "桌面横幅"
+  },
+  "system.dismiss": {
+    "defaultMessage": "关闭"
+  },
+  "system.displayLanguage": {
+    "defaultMessage": "显示语言"
+  },
+  "system.enabledOs": {
+    "defaultMessage": "已启用（系统）"
+  },
+  "system.fetchAppBaseInfo": {
+    "defaultMessage": "获取应用基础信息"
+  },
+  "system.fetchSystemSetting": {
+    "defaultMessage": "获取系统设置"
+  },
+  "system.getInfo": {
+    "defaultMessage": "获取信息"
+  },
+  "system.lastFreedEstimate": {
+    "defaultMessage": "上次释放（估算）"
+  },
+  "system.lastId": {
+    "defaultMessage": "最近 ID"
+  },
+  "system.lastResult": {
+    "defaultMessage": "最近结果"
+  },
+  "system.launchAtStartup": {
+    "defaultMessage": "开机启动"
+  },
+  "system.launchAtStartup2": {
+    "defaultMessage": "开机启动"
+  },
+  "system.localNotifications": {
+    "defaultMessage": "本地通知"
+  },
+  "system.locationEnabled": {
+    "defaultMessage": "定位已开启"
+  },
+  "system.noBanner": {
+    "defaultMessage": "此宿主不支持桌面横幅"
+  },
+  "system.noNotifications": {
+    "defaultMessage": "此宿主不支持通知"
+  },
+  "system.notOnHost": {
+    "defaultMessage": "此宿主不可用"
+  },
+  "system.notOnPlatform": {
+    "defaultMessage": "此平台不可用"
+  },
+  "system.notificationDetail": {
+    "defaultMessage": "发送和取消本地横幅——仅限控制应用"
+  },
+  "system.notifyActivate": {
+    "defaultMessage": "点按会将示例应用带到前台"
+  },
+  "system.notifyNative": {
+    "defaultMessage": "点按会打开原生路由——无需 lxapp 或 URL"
+  },
+  "system.notifyPage": {
+    "defaultMessage": "点按会像 navigateTo 一样打开本页"
+  },
+  "system.pageIsNavigatetoRoute": {
+    "defaultMessage": "page 即 navigateTo；route 是宿主注册的原生位置。两者都不需要产品 URL。"
+  },
+  "system.permission": {
+    "defaultMessage": "权限"
+  },
+  "system.productCache": {
+    "defaultMessage": "产品缓存"
+  },
+  "system.productName": {
+    "defaultMessage": "产品名称"
+  },
+  "system.productVersion": {
+    "defaultMessage": "产品版本"
+  },
+  "system.prompt": {
+    "defaultMessage": "询问"
+  },
+  "system.reReadOsState": {
+    "defaultMessage": "重新读取系统状态"
+  },
+  "system.reReadPermission": {
+    "defaultMessage": "重新读取权限"
+  },
+  "system.reReadSize": {
+    "defaultMessage": "重新读取大小"
+  },
+  "system.reReadSupport": {
+    "defaultMessage": "重新读取支持情况"
+  },
+  "system.reclaimableEstimate": {
+    "defaultMessage": "可回收（估算）"
+  },
+  "system.reclaimableProductCacheHome": {
+    "defaultMessage": "可回收的产品缓存——仅限主 lxapp"
+  },
+  "system.result": {
+    "defaultMessage": "结果"
+  },
+  "system.runningAppsKeepTheir": {
+    "defaultMessage": "运行中的应用会保留私有缓存；估算不含 WebView 缓存。"
+  },
+  "system.sdkVersion": {
+    "defaultMessage": "SDK 版本"
+  },
+  "system.show": {
+    "defaultMessage": "显示"
+  },
+  "system.showcaseTitle": {
+    "defaultMessage": "LingXia 示例"
+  },
+  "system.supported": {
+    "defaultMessage": "是否支持"
+  },
+  "system.thisPage": {
+    "defaultMessage": "本页"
+  },
+  "system.toast": {
+    "defaultMessage": "提示"
+  },
+  "system.toastAutoDismissesPrompt": {
+    "defaultMessage": "提示会自动消失；询问会等待在卡片上选择允许或拒绝。"
+  },
+  "system.wifiEnabled": {
+    "defaultMessage": "Wi-Fi 已开启"
+  },
+  "system.wifiLocationAndBluetooth": {
+    "defaultMessage": "Wi-Fi、定位与蓝牙开关"
+  },
+  "todo.addATaskAbove": {
+    "defaultMessage": "在上方添加一个任务开始吧"
+  },
+  "todo.clearCompleted": {
+    "defaultMessage": "清除已完成"
+  },
+  "todo.filter.active": {
+    "defaultMessage": "未完成"
+  },
+  "todo.filter.all": {
+    "defaultMessage": "全部"
+  },
+  "todo.filter.completed": {
+    "defaultMessage": "已完成"
+  },
+  "todo.loadFailed": {
+    "defaultMessage": "无法加载已保存的任务，请先重试再修改。"
+  },
+  "todo.loadingSavedTasks": {
+    "defaultMessage": "正在加载已保存的任务…"
+  },
+  "todo.markAllActive": {
+    "defaultMessage": "全部标为未完成"
+  },
+  "todo.markAllComplete": {
+    "defaultMessage": "全部标为已完成"
+  },
+  "todo.newTask": {
+    "defaultMessage": "新任务"
+  },
+  "todo.noTasksYet": {
+    "defaultMessage": "还没有任务"
+  },
+  "todo.todos": {
+    "defaultMessage": "待办"
+  },
+  "todo.whatNeedsToBe": {
+    "defaultMessage": "需要做什么？"
+  },
+  "ui.actionSheet": {
+    "defaultMessage": "操作菜单"
+  },
+  "ui.alert": {
+    "defaultMessage": "提示"
+  },
+  "ui.autoFollowsTheHost": {
+    "defaultMessage": "自动会跟随宿主外观；浅色和深色会保持你选择的主题。偏好会为此应用保存。"
+  },
+  "ui.autoHome": {
+    "defaultMessage": "自动主页按钮"
+  },
+  "ui.backToPreviousPage": {
+    "defaultMessage": "返回上一页"
+  },
+  "ui.background": {
+    "defaultMessage": "背景"
+  },
+  "ui.backgroundingFiresOnhideOnshow": {
+    "defaultMessage": "切到后台会在同一实例上触发 onHide / onShow；离开页面会触发 onUnload。"
+  },
+  "ui.badgeControls": {
+    "defaultMessage": "角标控制"
+  },
+  "ui.badgeText": {
+    "defaultMessage": "角标文字"
+  },
+  "ui.cancelButtonText": {
+    "defaultMessage": "取消按钮文字"
+  },
+  "ui.cancelButtonText2": {
+    "defaultMessage": "取消按钮文字"
+  },
+  "ui.change": {
+    "defaultMessage": "变化"
+  },
+  "ui.chrome": {
+    "defaultMessage": "外框"
+  },
+  "ui.clearResult": {
+    "defaultMessage": "清除结果"
+  },
+  "ui.close": {
+    "defaultMessage": "关闭"
+  },
+  "ui.closePopup": {
+    "defaultMessage": "关闭弹窗"
+  },
+  "ui.confirmButtonText": {
+    "defaultMessage": "确认按钮文字"
+  },
+  "ui.confirmButtonText2": {
+    "defaultMessage": "确认按钮文字"
+  },
+  "ui.content": {
+    "defaultMessage": "内容"
+  },
+  "ui.dismissed": {
+    "defaultMessage": "已关闭"
+  },
+  "ui.durationMs": {
+    "defaultMessage": "时长（毫秒）"
+  },
+  "ui.eachEntryCreatesA": {
+    "defaultMessage": "每次进入都会创建新实例，留意页面栈的增长。"
+  },
+  "ui.edge": {
+    "defaultMessage": "边缘"
+  },
+  "ui.enterBadgeText": {
+    "defaultMessage": "输入角标文字"
+  },
+  "ui.enterModalContent": {
+    "defaultMessage": "输入对话框内容"
+  },
+  "ui.enterNewText": {
+    "defaultMessage": "输入新文字"
+  },
+  "ui.enterTitle": {
+    "defaultMessage": "输入标题"
+  },
+  "ui.enterToastTitle": {
+    "defaultMessage": "输入提示标题"
+  },
+  "ui.ffffff": {
+    "defaultMessage": "#ffffff"
+  },
+  "ui.height": {
+    "defaultMessage": "高度"
+  },
+  "ui.heightPxOr": {
+    "defaultMessage": "高度（px 或 %）"
+  },
+  "ui.heightPxOr2": {
+    "defaultMessage": "高度（px 或 %）"
+  },
+  "ui.helloToast": {
+    "defaultMessage": "你好，提示！"
+  },
+  "ui.hidden": {
+    "defaultMessage": "已隐藏"
+  },
+  "ui.hide": {
+    "defaultMessage": "隐藏"
+  },
+  "ui.hideFailed": {
+    "defaultMessage": "隐藏失败：{reason}"
+  },
+  "ui.hideHome": {
+    "defaultMessage": "隐藏主页按钮"
+  },
+  "ui.hideRedDot": {
+    "defaultMessage": "隐藏红点"
+  },
+  "ui.hideTabbar": {
+    "defaultMessage": "隐藏标签栏"
+  },
+  "ui.hideToast": {
+    "defaultMessage": "隐藏提示"
+  },
+  "ui.icon": {
+    "defaultMessage": "图标"
+  },
+  "ui.jumpToTabPage": {
+    "defaultMessage": "跳转到标签页"
+  },
+  "ui.kind": {
+    "defaultMessage": "类型"
+  },
+  "ui.kind.aside": {
+    "defaultMessage": "侧栏"
+  },
+  "ui.kind.float": {
+    "defaultMessage": "浮层"
+  },
+  "ui.kind.lxapp": {
+    "defaultMessage": "Lxapp"
+  },
+  "ui.kind.window": {
+    "defaultMessage": "窗口"
+  },
+  "ui.kindHint.aside": {
+    "defaultMessage": "停靠在主页面旁。在小屏上可切换标签查看。"
+  },
+  "ui.kindHint.float": {
+    "defaultMessage": "浮在主页面上方的弹窗，类似对话框，不占布局空间。"
+  },
+  "ui.kindHint.lxapp": {
+    "defaultMessage": "以侧栏打开聊天应用，需要主应用权限。"
+  },
+  "ui.kindHint.window": {
+    "defaultMessage": "没有侧栏和外壳的独立窗口，仅限桌面端。"
+  },
+  "ui.leaveEmptyForNo": {
+    "defaultMessage": "留空则不显示标题"
+  },
+  "ui.leaveThisPageWith": {
+    "defaultMessage": "在弹窗打开时离开本页。重新进入时弹窗是关闭的，因为 View 状态属于各自的页面实例。"
+  },
+  "ui.lifecycleOfThisInstance": {
+    "defaultMessage": "本实例的生命周期"
+  },
+  "ui.lightDark": {
+    "defaultMessage": "浅色 / 深色"
+  },
+  "ui.logic1": {
+    "defaultMessage": "Logic +1"
+  },
+  "ui.logicAndViewReset": {
+    "defaultMessage": "Logic 和 View 每次进入都会重置；模块计数器由所有实例共享。"
+  },
+  "ui.logicInstance": {
+    "defaultMessage": "Logic 实例"
+  },
+  "ui.modalContent": {
+    "defaultMessage": "这是一个对话框"
+  },
+  "ui.modalParameters": {
+    "defaultMessage": "对话框参数"
+  },
+  "ui.modalResult": {
+    "defaultMessage": "对话框结果"
+  },
+  "ui.module1": {
+    "defaultMessage": "模块 +1"
+  },
+  "ui.moduleScope": {
+    "defaultMessage": "模块作用域"
+  },
+  "ui.navigationbarApis": {
+    "defaultMessage": "导航栏 API"
+  },
+  "ui.newTab": {
+    "defaultMessage": "新标签"
+  },
+  "ui.noEventsYet": {
+    "defaultMessage": "暂无事件"
+  },
+  "ui.noMessage": {
+    "defaultMessage": "尚未收到消息。"
+  },
+  "ui.notSupported": {
+    "defaultMessage": "不支持"
+  },
+  "ui.openASurface": {
+    "defaultMessage": "打开一个界面"
+  },
+  "ui.openViewPopup": {
+    "defaultMessage": "打开 View 弹窗"
+  },
+  "ui.option.bottom": {
+    "defaultMessage": "下"
+  },
+  "ui.option.center": {
+    "defaultMessage": "居中"
+  },
+  "ui.option.full": {
+    "defaultMessage": "全屏"
+  },
+  "ui.option.left": {
+    "defaultMessage": "左"
+  },
+  "ui.option.right": {
+    "defaultMessage": "右"
+  },
+  "ui.option.system": {
+    "defaultMessage": "系统"
+  },
+  "ui.option.top": {
+    "defaultMessage": "上"
+  },
+  "ui.position": {
+    "defaultMessage": "位置"
+  },
+  "ui.preference": {
+    "defaultMessage": "偏好"
+  },
+  "ui.previousInstance": {
+    "defaultMessage": "上一个实例"
+  },
+  "ui.pushThisPageAgain": {
+    "defaultMessage": "再次打开本页"
+  },
+  "ui.pushThisPageAgain2": {
+    "defaultMessage": "再次打开本页，会创建一个带新标记的页面实例。"
+  },
+  "ui.redDotControls": {
+    "defaultMessage": "红点控制"
+  },
+  "ui.removeBadge": {
+    "defaultMessage": "移除角标"
+  },
+  "ui.replaceThisPageRedirectto": {
+    "defaultMessage": "替换本页（redirectTo）"
+  },
+  "ui.reset": {
+    "defaultMessage": "重置"
+  },
+  "ui.resolved": {
+    "defaultMessage": "实际生效"
+  },
+  "ui.setBadge": {
+    "defaultMessage": "设置角标"
+  },
+  "ui.setColors": {
+    "defaultMessage": "设置颜色"
+  },
+  "ui.setOrRemoveThe": {
+    "defaultMessage": "设置或移除标签 1 上的角标"
+  },
+  "ui.setTitle": {
+    "defaultMessage": "设置标题"
+  },
+  "ui.show": {
+    "defaultMessage": "显示"
+  },
+  "ui.showActionSheet": {
+    "defaultMessage": "显示操作菜单"
+  },
+  "ui.showCancelButton": {
+    "defaultMessage": "显示取消按钮"
+  },
+  "ui.showFailed": {
+    "defaultMessage": "显示失败：{reason}"
+  },
+  "ui.showModal": {
+    "defaultMessage": "显示对话框"
+  },
+  "ui.showOrHideThe": {
+    "defaultMessage": "显示或隐藏标签栏，并更新项目文字"
+  },
+  "ui.showOrHideThe2": {
+    "defaultMessage": "显示或隐藏标签 1 上的红点"
+  },
+  "ui.showRedDot": {
+    "defaultMessage": "显示红点"
+  },
+  "ui.showTabbar": {
+    "defaultMessage": "显示标签栏"
+  },
+  "ui.showToast": {
+    "defaultMessage": "显示提示"
+  },
+  "ui.shown": {
+    "defaultMessage": "已显示"
+  },
+  "ui.sizePercent": {
+    "defaultMessage": "{label}必须是大于 0% 且不超过 100% 的百分比。"
+  },
+  "ui.sizePx": {
+    "defaultMessage": "{label}必须是正的 px 数值，或像 80% 这样的百分比。"
+  },
+  "ui.stackFull": {
+    "defaultMessage": "页面栈已满（10）"
+  },
+  "ui.stateThatResetsAnd": {
+    "defaultMessage": "会重置的状态与会保留的状态"
+  },
+  "ui.storedInPageData": {
+    "defaultMessage": "保存在页面数据中，因此每次进入都会重新开始。"
+  },
+  "ui.text": {
+    "defaultMessage": "文字"
+  },
+  "ui.thePreviousTagIs": {
+    "defaultMessage": "上一个标记保存在应用存储中，页面重置后仍会保留。"
+  },
+  "ui.theResolvedThemeIs": {
+    "defaultMessage": "当前使用的是实际生效的主题。所有页面共用一套配色，颜色会一起更新。"
+  },
+  "ui.theme.auto": {
+    "defaultMessage": "自动"
+  },
+  "ui.theme.dark": {
+    "defaultMessage": "深色"
+  },
+  "ui.theme.light": {
+    "defaultMessage": "浅色"
+  },
+  "ui.thisInstance": {
+    "defaultMessage": "本实例"
+  },
+  "ui.thisSetdata": {
+    "defaultMessage": "this.setData"
+  },
+  "ui.title": {
+    "defaultMessage": "标题"
+  },
+  "ui.titleOptional": {
+    "defaultMessage": "标题（选填）"
+  },
+  "ui.toast.bottom": {
+    "defaultMessage": "底部"
+  },
+  "ui.toast.center": {
+    "defaultMessage": "居中"
+  },
+  "ui.toast.error": {
+    "defaultMessage": "错误"
+  },
+  "ui.toast.loading": {
+    "defaultMessage": "加载中"
+  },
+  "ui.toast.none": {
+    "defaultMessage": "无"
+  },
+  "ui.toast.success": {
+    "defaultMessage": "成功"
+  },
+  "ui.toast.top": {
+    "defaultMessage": "顶部"
+  },
+  "ui.toastParameters": {
+    "defaultMessage": "提示参数"
+  },
+  "ui.update": {
+    "defaultMessage": "更新"
+  },
+  "ui.updateTab1Text": {
+    "defaultMessage": "更新标签 1 的文字"
+  },
+  "ui.uselocal": {
+    "defaultMessage": "useLocal"
+  },
+  "ui.view1": {
+    "defaultMessage": "View +1"
+  },
+  "ui.viewPopup": {
+    "defaultMessage": "View 弹窗"
+  },
+  "ui.visibilityControls": {
+    "defaultMessage": "显示控制"
+  },
+  "ui.width": {
+    "defaultMessage": "宽度"
+  },
+  "ui.widthPxOr": {
+    "defaultMessage": "宽度（px 或 %）"
+  },
+  "ui.widthPxOr2": {
+    "defaultMessage": "宽度（px 或 %）"
+  },
+  "video.bigBuckBunny": {
+    "defaultMessage": "Big Buck Bunny"
+  },
+  "video.controls.auto": {
+    "defaultMessage": "自动"
+  },
+  "video.controls.exitFullscreen": {
+    "defaultMessage": "退出全屏"
+  },
+  "video.controls.failed": {
+    "defaultMessage": "此视频暂时无法播放"
+  },
+  "video.controls.fullscreen": {
+    "defaultMessage": "全屏"
+  },
+  "video.controls.live": {
+    "defaultMessage": "直播"
+  },
+  "video.controls.loading": {
+    "defaultMessage": "加载中"
+  },
+  "video.controls.mute": {
+    "defaultMessage": "静音"
+  },
+  "video.controls.pause": {
+    "defaultMessage": "暂停"
+  },
+  "video.controls.play": {
+    "defaultMessage": "播放"
+  },
+  "video.controls.quality": {
+    "defaultMessage": "清晰度"
+  },
+  "video.controls.rate": {
+    "defaultMessage": "播放速度"
+  },
+  "video.controls.replay": {
+    "defaultMessage": "重播"
+  },
+  "video.controls.retry": {
+    "defaultMessage": "重试"
+  },
+  "video.controls.seek": {
+    "defaultMessage": "进度"
+  },
+  "video.controls.settings": {
+    "defaultMessage": "播放设置"
+  },
+  "video.controls.unmute": {
+    "defaultMessage": "取消静音"
+  },
+  "video.hlsTest": {
+    "defaultMessage": "HLS 测试"
+  },
+  "video.npFromLogic": {
+    "defaultMessage": "从 Logic 切到 360p"
+  },
+  "video.overlayRow": {
+    "defaultMessage": "第 {id} 行 · 覆盖在视频上方"
+  },
+  "video.pause": {
+    "defaultMessage": "暂停"
+  },
+  "video.pauseFromLogic": {
+    "defaultMessage": "从 Logic 暂停"
+  },
+  "video.paused": {
+    "defaultMessage": "已暂停"
+  },
+  "video.play": {
+    "defaultMessage": "播放"
+  },
+  "video.playFromLogic": {
+    "defaultMessage": "从 Logic 播放"
+  },
+  "video.playing": {
+    "defaultMessage": "播放中"
+  },
+  "video.portraitClip": {
+    "defaultMessage": "竖屏片段"
+  },
+  "video.qualityTest": {
+    "defaultMessage": "清晰度测试"
+  },
+  "video.row": {
+    "defaultMessage": "第 {id} 行"
+  },
+  "video.testPattern": {
+    "defaultMessage": "测试图案"
+  },
+  "wifi.clear": {
+    "defaultMessage": "清除"
+  },
+  "wifi.connect": {
+    "defaultMessage": "连接"
+  },
+  "wifi.connectFailed": {
+    "defaultMessage": "连接请求失败"
+  },
+  "wifi.connectManual": {
+    "defaultMessage": "请提供 SSID 和密码"
+  },
+  "wifi.connectPick": {
+    "defaultMessage": "在上方选择网络，或手动输入 SSID"
+  },
+  "wifi.connectToWifi": {
+    "defaultMessage": "连接 Wi-Fi"
+  },
+  "wifi.connected": {
+    "defaultMessage": "已连接"
+  },
+  "wifi.connectedWifi": {
+    "defaultMessage": "已连接的 Wi-Fi"
+  },
+  "wifi.disconnected": {
+    "defaultMessage": "已断开"
+  },
+  "wifi.eventState": {
+    "defaultMessage": "状态：{state}"
+  },
+  "wifi.frequency": {
+    "defaultMessage": "频率"
+  },
+  "wifi.getCurrentWifiConnection": {
+    "defaultMessage": "获取当前 Wi-Fi 连接信息"
+  },
+  "wifi.getInfo": {
+    "defaultMessage": "获取信息"
+  },
+  "wifi.getListOfAvailable": {
+    "defaultMessage": "获取可用网络列表"
+  },
+  "wifi.initializeOrStopWifi": {
+    "defaultMessage": "初始化或停止 Wi-Fi 模块"
+  },
+  "wifi.listenToWifiConnection": {
+    "defaultMessage": "监听 Wi-Fi 连接变化"
+  },
+  "wifi.noEventsYet": {
+    "defaultMessage": "暂无事件。"
+  },
+  "wifi.noNetworksFound": {
+    "defaultMessage": "未找到网络"
+  },
+  "wifi.off": {
+    "defaultMessage": "关"
+  },
+  "wifi.on": {
+    "defaultMessage": "开"
+  },
+  "wifi.password": {
+    "defaultMessage": "密码"
+  },
+  "wifi.passwordOptional": {
+    "defaultMessage": "密码（选填）"
+  },
+  "wifi.readFailed": {
+    "defaultMessage": "无法读取已连接的网络"
+  },
+  "wifi.requestFailed": {
+    "defaultMessage": "Wi-Fi 请求失败"
+  },
+  "wifi.scan": {
+    "defaultMessage": "扫描"
+  },
+  "wifi.scanFailed": {
+    "defaultMessage": "Wi-Fi 扫描失败"
+  },
+  "wifi.scanWifiNetworks": {
+    "defaultMessage": "扫描 Wi-Fi 网络"
+  },
+  "wifi.scanning": {
+    "defaultMessage": "正在扫描…"
+  },
+  "wifi.secure": {
+    "defaultMessage": "加密"
+  },
+  "wifi.signal": {
+    "defaultMessage": "信号"
+  },
+  "wifi.startWifi": {
+    "defaultMessage": "启动 Wi-Fi"
+  },
+  "wifi.state.found": {
+    "defaultMessage": "找到 {count} 个网络"
+  },
+  "wifi.state.ready": {
+    "defaultMessage": "就绪"
+  },
+  "wifi.state.requested": {
+    "defaultMessage": "已发起连接"
+  },
+  "wifi.state.scanning": {
+    "defaultMessage": "正在扫描附近的网络…"
+  },
+  "wifi.state.started": {
+    "defaultMessage": "模块已启动"
+  },
+  "wifi.state.stopped": {
+    "defaultMessage": "模块已停止"
+  },
+  "wifi.stopWifi": {
+    "defaultMessage": "停止 Wi-Fi"
+  },
+  "wifi.wifiConnectedEvents": {
+    "defaultMessage": "Wi-Fi 连接事件"
+  },
+  "wifi.wifiModule": {
+    "defaultMessage": "Wi-Fi 模块"
+  }
+}

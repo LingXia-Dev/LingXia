@@ -4,6 +4,7 @@
   "appName": "LingXia Showcase GPU",
   "version": "1.0.59",
   "minRuntime": "0.30.0",
+  "languages": ["en-US", "zh-CN"],
   "pages": [
     {
       "name": "home",

@@ -1,0 +1,3246 @@
+{
+  "api.bridge": {
+    "defaultMessage": "Bridge resilience",
+    "description": "API list entry (api-bridge)."
+  },
+  "api.bridgeDetail": {
+    "defaultMessage": "Startup, streaming, reconnect and teardown",
+    "description": "Under the Bridge resilience entry."
+  },
+  "api.channel": {
+    "defaultMessage": "Channel",
+    "description": "API list entry (api-channel)."
+  },
+  "api.channelDetail": {
+    "defaultMessage": "Bidirectional sessions with a live ticker",
+    "description": "Under the Channel entry."
+  },
+  "api.chooseFile": {
+    "defaultMessage": "Choose file",
+    "description": "API list entry (api-choose-file)."
+  },
+  "api.clipboard": {
+    "defaultMessage": "Clipboard",
+    "description": "API list entry (api-clipboard)."
+  },
+  "api.clipboardDetail": {
+    "defaultMessage": "Copy and paste text and images",
+    "description": "Under the Clipboard entry."
+  },
+  "api.cloudAuth": {
+    "defaultMessage": "Cloud authentication",
+    "description": "API list entry (api-cloud-auth)."
+  },
+  "api.cloudFunctions": {
+    "defaultMessage": "Cloud functions",
+    "description": "API list entry (api-cloud-functions)."
+  },
+  "api.cloudMqtt": {
+    "defaultMessage": "Cloud MQTT",
+    "description": "API list entry (api-cloud-mqtt)."
+  },
+  "api.deepseek": {
+    "defaultMessage": "Open DeepSeek",
+    "description": "API list entry (api-deepseek)."
+  },
+  "api.deviceDevice": {
+    "defaultMessage": "Device Info",
+    "description": "API list entry (api-device-device)."
+  },
+  "api.deviceLocalIP": {
+    "defaultMessage": "Local IP Address",
+    "description": "API list entry (api-device-localIP)."
+  },
+  "api.deviceNetwork": {
+    "defaultMessage": "Network Type",
+    "description": "API list entry (api-device-network)."
+  },
+  "api.deviceNetworkStatus": {
+    "defaultMessage": "Network Status Listener",
+    "description": "API list entry (api-device-networkStatus)."
+  },
+  "api.deviceOrientation": {
+    "defaultMessage": "Device Orientation",
+    "description": "API list entry (api-device-orientation)."
+  },
+  "api.devicePhone": {
+    "defaultMessage": "Phone Call",
+    "description": "API list entry (api-device-phone)."
+  },
+  "api.deviceScreen": {
+    "defaultMessage": "Screen Info",
+    "description": "API list entry (api-device-screen)."
+  },
+  "api.deviceVibrate": {
+    "defaultMessage": "Vibration",
+    "description": "API list entry (api-device-vibrate)."
+  },
+  "api.exit": {
+    "defaultMessage": "Exit app",
+    "description": "API list entry (api-exit)."
+  },
+  "api.exitAction": {
+    "defaultMessage": "Exit",
+    "description": "Confirm button that closes the app."
+  },
+  "api.exitConfirm": {
+    "defaultMessage": "Close the app now?",
+    "description": "Body of the exit confirmation."
+  },
+  "api.exitDetail": {
+    "defaultMessage": "Confirm before closing the app",
+    "description": "Under the Exit app entry."
+  },
+  "api.file": {
+    "defaultMessage": "Open file",
+    "description": "API list entry (api-file)."
+  },
+  "api.group.bridge": {
+    "defaultMessage": "Bridge",
+    "description": "API list section."
+  },
+  "api.group.cloud": {
+    "defaultMessage": "Cloud",
+    "description": "API list section."
+  },
+  "api.group.device": {
+    "defaultMessage": "Device",
+    "description": "API list section."
+  },
+  "api.group.file": {
+    "defaultMessage": "File",
+    "description": "API list section."
+  },
+  "api.group.interface": {
+    "defaultMessage": "User Interface",
+    "description": "API list section."
+  },
+  "api.group.media": {
+    "defaultMessage": "Media & Camera",
+    "description": "API list section."
+  },
+  "api.group.navigation": {
+    "defaultMessage": "Navigation",
+    "description": "API list section."
+  },
+  "api.group.system": {
+    "defaultMessage": "System",
+    "description": "API list section."
+  },
+  "api.intro": {
+    "defaultMessage": "Explore what you can do with LingXia.",
+    "description": "Top card of the API list."
+  },
+  "api.leaveguard": {
+    "defaultMessage": "Leave confirmation",
+    "description": "API list entry (api-leaveguard)."
+  },
+  "api.leaveguardDetail": {
+    "defaultMessage": "Ask before discarding unsaved changes",
+    "description": "Under the Leave confirmation entry."
+  },
+  "api.location": {
+    "defaultMessage": "Location",
+    "description": "API list entry for the location page."
+  },
+  "api.mediaImageInfo": {
+    "defaultMessage": "Image tools",
+    "description": "API list entry (api-media-ImageInfo)."
+  },
+  "api.mediaPictures": {
+    "defaultMessage": "Pictures",
+    "description": "API list entry (api-media-Pictures)."
+  },
+  "api.mediaSaveToAlbum": {
+    "defaultMessage": "Save to album",
+    "description": "API list entry (api-media-SaveToAlbum)."
+  },
+  "api.mediaScanCode": {
+    "defaultMessage": "Scan code",
+    "description": "API list entry (api-media-ScanCode)."
+  },
+  "api.mediaVideoTools": {
+    "defaultMessage": "Video tools",
+    "description": "API list entry (api-media-VideoTools)."
+  },
+  "api.mediaVideos": {
+    "defaultMessage": "Videos",
+    "description": "API list entry (api-media-Videos)."
+  },
+  "api.openAppFailed": {
+    "defaultMessage": "Unable to open the app. Please try again.",
+    "description": "Toast when opening another lxapp fails."
+  },
+  "api.openIn.aside": {
+    "defaultMessage": "Side panel",
+    "description": "Where to open a website: a side panel."
+  },
+  "api.openIn.external": {
+    "defaultMessage": "Default browser",
+    "description": "Where to open a website: the system browser."
+  },
+  "api.openIn.self": {
+    "defaultMessage": "This window",
+    "description": "Where to open a website: here."
+  },
+  "api.openPageFailed": {
+    "defaultMessage": "Unable to open the page. Please try again.",
+    "description": "Toast when opening a website fails."
+  },
+  "api.otherApp": {
+    "defaultMessage": "Open another app",
+    "description": "API list entry (api-other-app)."
+  },
+  "api.refresh": {
+    "defaultMessage": "Pull to refresh",
+    "description": "API list entry (api-refresh)."
+  },
+  "api.sectionState": {
+    "defaultMessage": "{name}, {state, select, expanded {expanded} other {collapsed}}",
+    "description": "Spoken label of a section header; state is expanded or collapsed."
+  },
+  "api.share": {
+    "defaultMessage": "Share",
+    "description": "API list entry (api-share)."
+  },
+  "api.shareDetail": {
+    "defaultMessage": "Share text, pages, images and files",
+    "description": "Under the Share entry."
+  },
+  "api.stream": {
+    "defaultMessage": "Stream",
+    "description": "API list entry (api-stream)."
+  },
+  "api.streamDetail": {
+    "defaultMessage": "Async generator streaming with a chat demo",
+    "description": "Under the Stream entry."
+  },
+  "api.surface": {
+    "defaultMessage": "Surface",
+    "description": "API list entry (api-surface)."
+  },
+  "api.systemAppBaseInfo": {
+    "defaultMessage": "App information",
+    "description": "API list entry (api-system-appBaseInfo)."
+  },
+  "api.systemAutostart": {
+    "defaultMessage": "Launch at login",
+    "description": "API list entry (api-system-autostart)."
+  },
+  "api.systemAutostartDetail": {
+    "defaultMessage": "Start automatically on macOS or Windows",
+    "description": "Under the Launch at login entry."
+  },
+  "api.systemBanner": {
+    "defaultMessage": "Desktop banner",
+    "description": "API list entry (api-system-banner)."
+  },
+  "api.systemBannerDetail": {
+    "defaultMessage": "A corner notification with optional actions",
+    "description": "Under the Desktop banner entry."
+  },
+  "api.systemCache": {
+    "defaultMessage": "Product cache",
+    "description": "API list entry (api-system-cache)."
+  },
+  "api.systemCacheDetail": {
+    "defaultMessage": "View and clear app caches from the home app",
+    "description": "Under the Product cache entry."
+  },
+  "api.systemNotification": {
+    "defaultMessage": "Local notifications",
+    "description": "API list entry (api-system-notification)."
+  },
+  "api.systemNotificationDetail": {
+    "defaultMessage": "Post and cancel notifications from the Control app",
+    "description": "Under the Local notifications entry."
+  },
+  "api.systemSystemSetting": {
+    "defaultMessage": "System settings",
+    "description": "API list entry (api-system-systemSetting)."
+  },
+  "api.uiActionsheet": {
+    "defaultMessage": "Action sheet",
+    "description": "API list entry (api-ui-actionsheet)."
+  },
+  "api.uiAppearance": {
+    "defaultMessage": "Appearance",
+    "description": "API list entry (api-ui-appearance)."
+  },
+  "api.uiModal": {
+    "defaultMessage": "Modal",
+    "description": "API list entry (api-ui-modal)."
+  },
+  "api.uiNavbar": {
+    "defaultMessage": "Navigation bar",
+    "description": "API list entry (api-ui-navbar)."
+  },
+  "api.uiNavigation": {
+    "defaultMessage": "Page navigation",
+    "description": "API list entry (api-ui-navigation)."
+  },
+  "api.uiTabbar": {
+    "defaultMessage": "Tab bar",
+    "description": "API list entry (api-ui-tabbar)."
+  },
+  "api.uiToast": {
+    "defaultMessage": "Toast",
+    "description": "API list entry (api-ui-toast)."
+  },
+  "api.wifi": {
+    "defaultMessage": "WiFi",
+    "description": "API list entry (api-wifi)."
+  },
+  "channel.connected": {
+    "defaultMessage": "Connected",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "channel.connecting": {
+    "defaultMessage": "Connecting...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "channel.disconnect": {
+    "defaultMessage": "Disconnect",
+    "description": "Text on the channel page."
+  },
+  "channel.disconnected": {
+    "defaultMessage": "Disconnected",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "channel.recentTicks": {
+    "defaultMessage": "Recent ticks",
+    "description": "Text on the channel page."
+  },
+  "channel.reconnect": {
+    "defaultMessage": "Reconnect",
+    "description": "Text on the channel page."
+  },
+  "channel.waitingForData": {
+    "defaultMessage": "Waiting for data...",
+    "description": "Text on the channel page."
+  },
+  "clipboard.chooseImage": {
+    "defaultMessage": "Choose image",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.clear": {
+    "defaultMessage": "Clear",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.draft": {
+    "defaultMessage": "Hello from lx.clipboard",
+    "description": "Default text to copy."
+  },
+  "clipboard.failed": {
+    "defaultMessage": "The action failed. Please try again.",
+    "description": "Clipboard status when an action throws."
+  },
+  "clipboard.image": {
+    "defaultMessage": "Image",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.imageAlt": {
+    "defaultMessage": "Image from clipboard",
+    "description": "Spoken label of the pasted image."
+  },
+  "clipboard.inspect": {
+    "defaultMessage": "Inspect",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.lxClipboardReadsAnd": {
+    "defaultMessage": "lx.clipboard reads and writes the system clipboard. Write never toasts.",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.peekTypesWithoutThe": {
+    "defaultMessage": "Peek types without the payload, read every representation, or clear.",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.read": {
+    "defaultMessage": "Read",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.readText": {
+    "defaultMessage": "Read text",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.state.cleared": {
+    "defaultMessage": "Cleared",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.clipboardEmpty": {
+    "defaultMessage": "Clipboard empty",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.empty": {
+    "defaultMessage": "empty",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.foundEmptyString": {
+    "defaultMessage": "Found empty string",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.imagePickerCanceled": {
+    "defaultMessage": "Image picker canceled",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.noTextOnClipboard": {
+    "defaultMessage": "No text on clipboard",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.notPeeked": {
+    "defaultMessage": "Not peeked",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.peekedTypes": {
+    "defaultMessage": "Peeked types",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.readCanceled": {
+    "defaultMessage": "Read canceled",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.readText": {
+    "defaultMessage": "Read text",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.readTypes": {
+    "defaultMessage": "Read {types}",
+    "description": "Clipboard status after reading every representation; types = their MIME types."
+  },
+  "clipboard.state.ready": {
+    "defaultMessage": "Ready",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.wroteChosenImage": {
+    "defaultMessage": "Wrote chosen image",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.wroteEmptyString": {
+    "defaultMessage": "Wrote empty string",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.wroteSamplePng": {
+    "defaultMessage": "Wrote sample PNG",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.wroteText": {
+    "defaultMessage": "Wrote text",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.state.wroteTypedTextItem": {
+    "defaultMessage": "Wrote typed text item",
+    "description": "Clipboard status line, set by Logic."
+  },
+  "clipboard.status": {
+    "defaultMessage": "Status",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.text": {
+    "defaultMessage": "Text",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.textToCopy": {
+    "defaultMessage": "Text to copy",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.types": {
+    "defaultMessage": "Types",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.typesLine": {
+    "defaultMessage": "types: {types}",
+    "description": "Line listing the clipboard's types."
+  },
+  "clipboard.working": {
+    "defaultMessage": "Working...",
+    "description": "Clipboard status while an action runs."
+  },
+  "clipboard.writeA11": {
+    "defaultMessage": "Write a 1×1 sample PNG, or pick one with lx.pick.media.",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.writeSamplePng": {
+    "defaultMessage": "Write sample PNG",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.writeText": {
+    "defaultMessage": "Write text",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.writeTypedItem": {
+    "defaultMessage": "Write typed item",
+    "description": "Text on the clipboard page."
+  },
+  "clipboard.writetextReadtextAnEmpty": {
+    "defaultMessage": "writeText / readText. An empty string is a valid write, not clear().",
+    "description": "Text on the clipboard page."
+  },
+  "cloud.activateOrRemoveIdentities": {
+    "defaultMessage": "Activate or remove identities returned by lx.auth.list()",
+    "description": "Text on the cloud page."
+  },
+  "cloud.activeTenant": {
+    "defaultMessage": "Active Tenant",
+    "description": "Text on the cloud page."
+  },
+  "cloud.activeUser": {
+    "defaultMessage": "Active User",
+    "description": "Text on the cloud page."
+  },
+  "cloud.addIdentity": {
+    "defaultMessage": "Add Identity",
+    "description": "Text on the cloud page."
+  },
+  "cloud.connectionState": {
+    "defaultMessage": "Connection state",
+    "description": "Text on the cloud page."
+  },
+  "cloud.currentLxappFunctions": {
+    "defaultMessage": "Current LxApp Functions",
+    "description": "Text on the cloud page."
+  },
+  "cloud.currentState": {
+    "defaultMessage": "Current State",
+    "description": "Text on the cloud page."
+  },
+  "cloud.function": {
+    "defaultMessage": "Function",
+    "description": "Text on the cloud page."
+  },
+  "cloud.incomingMessageDataIs": {
+    "defaultMessage": "Incoming message data is written back through setData.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.interactiveLogin": {
+    "defaultMessage": "Interactive Login",
+    "description": "Text on the cloud page."
+  },
+  "cloud.lastError": {
+    "defaultMessage": "Last error",
+    "description": "Text on the cloud page."
+  },
+  "cloud.latestCloudAuthSnapshot": {
+    "defaultMessage": "Latest cloud auth snapshot from the runtime",
+    "description": "Text on the cloud page."
+  },
+  "cloud.latestMessage": {
+    "defaultMessage": "Latest Message",
+    "description": "Text on the cloud page."
+  },
+  "cloud.loginReturnsTheActive": {
+    "defaultMessage": "Login returns the active identity; the home lxapp manages identity list, activation and logout.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.logoutCurrentTenant": {
+    "defaultMessage": "Logout Current Tenant",
+    "description": "Text on the cloud page."
+  },
+  "cloud.manageTheDemoTopic": {
+    "defaultMessage": "Manage the demo topic subscription and inspect how many messages this page has received.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.messagesReceived": {
+    "defaultMessage": "Messages received",
+    "description": "Text on the cloud page."
+  },
+  "cloud.mqttRuntimeStatusFor": {
+    "defaultMessage": "MQTT runtime status for the shared cloud session.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.noActiveTenant": {
+    "defaultMessage": "No active tenant",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.noDemoFunctions": {
+    "defaultMessage": "No demo functions",
+    "description": "Text on the cloud page."
+  },
+  "cloud.noMessageYet": {
+    "defaultMessage": "No message yet",
+    "description": "Text on the cloud page."
+  },
+  "cloud.noProvider": {
+    "defaultMessage": "This build does not include the cloud provider",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.noTenantsYet": {
+    "defaultMessage": "No tenants yet",
+    "description": "Text on the cloud page."
+  },
+  "cloud.noneAreConfiguredFor": {
+    "defaultMessage": "None are configured for this page.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.notSignedIn": {
+    "defaultMessage": "Not signed in",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.publishOneToThe": {
+    "defaultMessage": "Publish one to the topic above.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.receivedAt": {
+    "defaultMessage": "Received at",
+    "description": "Text on the cloud page."
+  },
+  "cloud.runInteractiveLoginFirst": {
+    "defaultMessage": "Run interactive login first.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.runtimeConnection": {
+    "defaultMessage": "Runtime Connection",
+    "description": "Text on the cloud page."
+  },
+  "cloud.status": {
+    "defaultMessage": "Status",
+    "description": "Text on the cloud page."
+  },
+  "cloud.subscribe": {
+    "defaultMessage": "Subscribe",
+    "description": "Text on the cloud page."
+  },
+  "cloud.subscriptionState": {
+    "defaultMessage": "Subscription state",
+    "description": "Text on the cloud page."
+  },
+  "cloud.tenantActive": {
+    "defaultMessage": "Active",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.tenantSwitch": {
+    "defaultMessage": "Switch",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.tenantUnavailable": {
+    "defaultMessage": "Unavailable",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.tenants": {
+    "defaultMessage": "Tenants",
+    "description": "Text on the cloud page."
+  },
+  "cloud.theseSampleCallsUse": {
+    "defaultMessage": "These sample calls use lx.cloud.invoke(...) for the current lxapp. They are demo actions, not a runtime-discovered manifest list.",
+    "description": "Text on the cloud page."
+  },
+  "cloud.topic": {
+    "defaultMessage": "Topic",
+    "description": "Text on the cloud page."
+  },
+  "cloud.topicSubscription": {
+    "defaultMessage": "Topic Subscription",
+    "description": "Text on the cloud page."
+  },
+  "cloud.unknownTenant": {
+    "defaultMessage": "Unknown tenant",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "cloud.unsubscribe": {
+    "defaultMessage": "Unsubscribe",
+    "description": "Text on the cloud page."
+  },
+  "common.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Dismisses a dialog without acting."
+  },
+  "common.no": {
+    "defaultMessage": "No",
+    "description": "A yes/no value."
+  },
+  "common.ok": {
+    "defaultMessage": "OK",
+    "description": "Confirms a dialog."
+  },
+  "common.requestFailed": {
+    "defaultMessage": "Request failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "common.result": {
+    "defaultMessage": "Result",
+    "description": "Label of a single result value."
+  },
+  "common.yes": {
+    "defaultMessage": "Yes",
+    "description": "A yes/no value."
+  },
+  "device.brand": {
+    "defaultMessage": "Brand",
+    "description": "Text on the device page."
+  },
+  "device.brandModelAndOs": {
+    "defaultMessage": "Brand, model and OS version",
+    "description": "Text on the device page."
+  },
+  "device.call": {
+    "defaultMessage": "Call",
+    "description": "Text on the device page."
+  },
+  "device.chooseAnOrientationAnd": {
+    "defaultMessage": "Choose an orientation and listen for changes",
+    "description": "Text on the device page."
+  },
+  "device.clearLogs": {
+    "defaultMessage": "Clear logs",
+    "description": "Text on the device page."
+  },
+  "device.connected": {
+    "defaultMessage": "Connected",
+    "description": "Text on the device page."
+  },
+  "device.currentValue": {
+    "defaultMessage": "Current value",
+    "description": "Text on the device page."
+  },
+  "device.dialAPhoneNumber": {
+    "defaultMessage": "Dial a phone number",
+    "description": "Text on the device page."
+  },
+  "device.enterPhoneNumber": {
+    "defaultMessage": "Enter phone number",
+    "description": "Text on the device page."
+  },
+  "device.getDeviceInformation": {
+    "defaultMessage": "Get device information",
+    "description": "Text on the device page."
+  },
+  "device.getInfo": {
+    "defaultMessage": "Get info",
+    "description": "Text on the device page."
+  },
+  "device.getIp": {
+    "defaultMessage": "Get IP",
+    "description": "Text on the device page."
+  },
+  "device.getLocalIpAddresses": {
+    "defaultMessage": "Get local IP addresses",
+    "description": "Text on the device page."
+  },
+  "device.getNetworkType": {
+    "defaultMessage": "Get network type",
+    "description": "Text on the device page."
+  },
+  "device.getScreenInformation": {
+    "defaultMessage": "Get screen information",
+    "description": "Text on the device page."
+  },
+  "device.height": {
+    "defaultMessage": "Height",
+    "description": "Text on the device page."
+  },
+  "device.ipv4AndIpv6On": {
+    "defaultMessage": "IPv4 and IPv6 on the active network",
+    "description": "Text on the device page."
+  },
+  "device.listening": {
+    "defaultMessage": "Listening",
+    "description": "Text on the device page."
+  },
+  "device.lockAndFollowOrientation": {
+    "defaultMessage": "Lock and follow orientation",
+    "description": "Text on the device page."
+  },
+  "device.lockLandscape": {
+    "defaultMessage": "Lock landscape",
+    "description": "Text on the device page."
+  },
+  "device.lockPortrait": {
+    "defaultMessage": "Lock portrait",
+    "description": "Text on the device page."
+  },
+  "device.lockTarget": {
+    "defaultMessage": "Lock target",
+    "description": "Text on the device page."
+  },
+  "device.long": {
+    "defaultMessage": "Long",
+    "description": "Text on the device page."
+  },
+  "device.marketName": {
+    "defaultMessage": "Market name",
+    "description": "Text on the device page."
+  },
+  "device.model": {
+    "defaultMessage": "Model",
+    "description": "Text on the device page."
+  },
+  "device.networkStatusListener": {
+    "defaultMessage": "Network status listener",
+    "description": "Text on the device page."
+  },
+  "device.networkType": {
+    "defaultMessage": "Network type",
+    "description": "Text on the device page."
+  },
+  "device.openTheNativePhone": {
+    "defaultMessage": "Open the native phone dialer",
+    "description": "Text on the device page."
+  },
+  "device.orientationEvents": {
+    "defaultMessage": "Orientation events",
+    "description": "Text on the device page."
+  },
+  "device.osName": {
+    "defaultMessage": "OS name",
+    "description": "Text on the device page."
+  },
+  "device.osVersion": {
+    "defaultMessage": "OS version",
+    "description": "Text on the device page."
+  },
+  "device.phoneNumber": {
+    "defaultMessage": "Phone number",
+    "description": "Text on the device page."
+  },
+  "device.reportConnectivityChangesAs": {
+    "defaultMessage": "Report connectivity changes as they happen",
+    "description": "Text on the device page."
+  },
+  "device.scale": {
+    "defaultMessage": "Scale",
+    "description": "Text on the device page."
+  },
+  "device.screenDimensionsAndScale": {
+    "defaultMessage": "Screen dimensions and scale",
+    "description": "Text on the device page."
+  },
+  "device.short": {
+    "defaultMessage": "Short",
+    "description": "Text on the device page."
+  },
+  "device.startListening": {
+    "defaultMessage": "Start listening",
+    "description": "Text on the device page."
+  },
+  "device.stopListening": {
+    "defaultMessage": "Stop listening",
+    "description": "Text on the device page."
+  },
+  "device.title.device": {
+    "defaultMessage": "Device information",
+    "description": "Device page heading."
+  },
+  "device.title.dial": {
+    "defaultMessage": "Phone call",
+    "description": "Device page heading."
+  },
+  "device.title.localIP": {
+    "defaultMessage": "Local IP addresses",
+    "description": "Device page heading."
+  },
+  "device.title.networkStatus": {
+    "defaultMessage": "Network status listener",
+    "description": "Device page heading."
+  },
+  "device.title.networkType": {
+    "defaultMessage": "Network type",
+    "description": "Device page heading."
+  },
+  "device.title.orientation": {
+    "defaultMessage": "Device orientation",
+    "description": "Device page heading."
+  },
+  "device.title.screen": {
+    "defaultMessage": "Screen information",
+    "description": "Device page heading."
+  },
+  "device.title.vibrate": {
+    "defaultMessage": "Device vibration",
+    "description": "Device page heading."
+  },
+  "device.triggerVibration": {
+    "defaultMessage": "Trigger vibration",
+    "description": "Text on the device page."
+  },
+  "device.tryAShortOr": {
+    "defaultMessage": "Try a short or long vibration",
+    "description": "Text on the device page."
+  },
+  "device.wiFiMobileData": {
+    "defaultMessage": "Wi-Fi, mobile data, Ethernet or offline",
+    "description": "Text on the device page."
+  },
+  "device.width": {
+    "defaultMessage": "Width",
+    "description": "Text on the device page."
+  },
+  "feedback.about": {
+    "defaultMessage": "What is this about?",
+    "description": "Label over the category choice."
+  },
+  "feedback.category.bug": {
+    "defaultMessage": "Bug",
+    "description": "Feedback category: a bug report."
+  },
+  "feedback.category.idea": {
+    "defaultMessage": "Idea",
+    "description": "Feedback category: a suggestion."
+  },
+  "feedback.category.product": {
+    "defaultMessage": "Product",
+    "description": "Feedback category: about the product."
+  },
+  "feedback.demoOnly": {
+    "defaultMessage": "Demo only — submissions are written to the Logic log.",
+    "description": "Footnote under the form."
+  },
+  "feedback.email": {
+    "defaultMessage": "Email (optional)",
+    "description": "Label of the optional email field."
+  },
+  "feedback.empty": {
+    "defaultMessage": "Tell us what happened",
+    "description": "Toast when feedback is sent empty."
+  },
+  "feedback.message": {
+    "defaultMessage": "Your feedback",
+    "description": "Label of the feedback text box."
+  },
+  "feedback.messagePlaceholder": {
+    "defaultMessage": "What happened, and what would you prefer?",
+    "description": "Placeholder in the feedback text box."
+  },
+  "feedback.send": {
+    "defaultMessage": "Send feedback",
+    "description": "Submit button."
+  },
+  "feedback.sending": {
+    "defaultMessage": "Sending…",
+    "description": "Submit button while sending."
+  },
+  "feedback.subtitle": {
+    "defaultMessage": "Share a bug, an idea, or anything that felt confusing in the showcase.",
+    "description": "Under the feedback heading."
+  },
+  "feedback.thanks": {
+    "defaultMessage": "Thanks for the feedback",
+    "description": "Toast after feedback is sent."
+  },
+  "feedback.title": {
+    "defaultMessage": "Help us improve",
+    "description": "Feedback page heading."
+  },
+  "file.autoDetectedFromUrl": {
+    "defaultMessage": "Auto-detected from URL or enter manually",
+    "description": "Text on the file page."
+  },
+  "file.chooseFile": {
+    "defaultMessage": "Choose File",
+    "description": "Text on the file page."
+  },
+  "file.chooseFirst": {
+    "defaultMessage": "Choose a file first",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.continueDownload": {
+    "defaultMessage": "Continue Download",
+    "description": "PDF transfer button."
+  },
+  "file.defaultFolder": {
+    "defaultMessage": "Default folder",
+    "description": "Text on the file page."
+  },
+  "file.detectedType": {
+    "defaultMessage": "Detected Type",
+    "description": "Text on the file page."
+  },
+  "file.downloadCanceled": {
+    "defaultMessage": "Download canceled",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.downloadCompleteOpening": {
+    "defaultMessage": "Download complete, opening...",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.downloadFailed": {
+    "defaultMessage": "Download failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.downloadPaused": {
+    "defaultMessage": "Download Paused",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.downloadPdf": {
+    "defaultMessage": "Download and Preview PDF",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.downloadToATemporary": {
+    "defaultMessage": "Download to a temporary file with progress and pause/continue, then open the native PDF viewer.",
+    "description": "Text on the file page."
+  },
+  "file.downloadedOpening": {
+    "defaultMessage": "Downloaded to {path}, opening...",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.downloading": {
+    "defaultMessage": "Downloading...",
+    "description": "PDF button while downloading."
+  },
+  "file.eGDocxXlsx": {
+    "defaultMessage": "e.g., docx, xlsx, pptx",
+    "description": "Text on the file page."
+  },
+  "file.enterDocUrl": {
+    "defaultMessage": "Please enter document URL",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.enterFileUrl": {
+    "defaultMessage": "Enter file URL",
+    "description": "Text on the file page."
+  },
+  "file.enterPdfUrl": {
+    "defaultMessage": "Enter PDF URL",
+    "description": "Text on the file page."
+  },
+  "file.enterPdfUrlFirst": {
+    "defaultMessage": "Please enter PDF URL",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.enterType": {
+    "defaultMessage": "Please enter file type",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.fetchFailed": {
+    "defaultMessage": "Fetch failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.fetchOpen": {
+    "defaultMessage": "Fetch and Open File",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.fetchedOpening": {
+    "defaultMessage": "Fetched {size}, opening...",
+    "description": "Office fetch status; size is formatted bytes."
+  },
+  "file.fetching": {
+    "defaultMessage": "Fetching and Opening File...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.fetchingDocument": {
+    "defaultMessage": "Fetching document...",
+    "description": "Office fetch status."
+  },
+  "file.fileType": {
+    "defaultMessage": "File Type",
+    "description": "Text on the file page."
+  },
+  "file.fileUrl": {
+    "defaultMessage": "File URL",
+    "description": "Text on the file page."
+  },
+  "file.noPause": {
+    "defaultMessage": "Current runtime does not support pause/resume yet",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.officeViaFetch": {
+    "defaultMessage": "Office via fetch()",
+    "description": "Text on the file page."
+  },
+  "file.onlyAppliesToPdf": {
+    "defaultMessage": "Only applies to PDF documents. Office documents always open with the system default viewer.",
+    "description": "Text on the file page."
+  },
+  "file.openFileChooser": {
+    "defaultMessage": "Open File Chooser",
+    "description": "Text on the file page."
+  },
+  "file.openPdfFailed": {
+    "defaultMessage": "Open PDF failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.openSelectedFile": {
+    "defaultMessage": "Open Selected File",
+    "description": "Text on the file page."
+  },
+  "file.openTheHostChooser": {
+    "defaultMessage": "Open the host chooser in a predefined folder instead of the recent-files picker.",
+    "description": "Text on the file page."
+  },
+  "file.opened": {
+    "defaultMessage": "Opened {path}",
+    "description": "File status after opening it."
+  },
+  "file.openingFile": {
+    "defaultMessage": "Opening File...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.options": {
+    "defaultMessage": "Options",
+    "description": "Text on the file page."
+  },
+  "file.pauseDownload": {
+    "defaultMessage": "Pause Download",
+    "description": "PDF transfer button."
+  },
+  "file.pauseUnavailable": {
+    "defaultMessage": "Pause/Continue Unavailable",
+    "description": "PDF transfer button when the runtime cannot pause."
+  },
+  "file.pausing": {
+    "defaultMessage": "Pausing...",
+    "description": "PDF transfer button while pausing."
+  },
+  "file.pdfTransfer": {
+    "defaultMessage": "PDF Transfer",
+    "description": "Text on the file page."
+  },
+  "file.pdfUrl": {
+    "defaultMessage": "PDF URL",
+    "description": "Text on the file page."
+  },
+  "file.pdfViaLxNetwork": {
+    "defaultMessage": "PDF via lx.network.download()",
+    "description": "Text on the file page."
+  },
+  "file.pickFailed": {
+    "defaultMessage": "pick.file failed",
+    "description": "Toast when the file picker fails."
+  },
+  "file.promiseOnly": {
+    "defaultMessage": "Downloading with promise-style result only...",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.resuming": {
+    "defaultMessage": "Resuming...",
+    "description": "PDF transfer button while resuming."
+  },
+  "file.resumingTransfer": {
+    "defaultMessage": "Resuming transfer...",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.selectedPath": {
+    "defaultMessage": "Selected Path",
+    "description": "Text on the file page."
+  },
+  "file.showShareButton": {
+    "defaultMessage": "Show Share Button",
+    "description": "Text on the file page."
+  },
+  "file.startingTransfer": {
+    "defaultMessage": "Starting transfer...",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.state.canceled": {
+    "defaultMessage": "File selection canceled",
+    "description": "File chooser status."
+  },
+  "file.state.choose": {
+    "defaultMessage": "Choose a file",
+    "description": "File chooser status before a choice."
+  },
+  "file.state.selected": {
+    "defaultMessage": "File selected",
+    "description": "File chooser status."
+  },
+  "file.status": {
+    "defaultMessage": "Status",
+    "description": "Text on the file page."
+  },
+  "file.streamed": {
+    "defaultMessage": "Streaming · {downloaded} downloaded",
+    "description": "PDF transfer progress line, set by Logic."
+  },
+  "file.streaming": {
+    "defaultMessage": "Streaming",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.transferFailed": {
+    "defaultMessage": "Transfer action failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "file.useWebStandardFetch": {
+    "defaultMessage": "Use web-standard fetch in page logic, save into usercache, then open with the native file API.",
+    "description": "Text on the file page."
+  },
+  "file.waitingForPreciseProgress": {
+    "defaultMessage": "Waiting for precise progress from runtime...",
+    "description": "Text on the file page."
+  },
+  "leave.confirmBody": {
+    "defaultMessage": "Leaving now drops the draft.",
+    "description": "Body of the leave confirmation."
+  },
+  "leave.confirmTitle": {
+    "defaultMessage": "Discard unsaved changes?",
+    "description": "Title of the in-page leave confirmation."
+  },
+  "leave.discard": {
+    "defaultMessage": "Discard",
+    "description": "Leaves and drops the draft."
+  },
+  "leave.draft": {
+    "defaultMessage": "Draft",
+    "description": "Section title and field label for the draft."
+  },
+  "leave.intro": {
+    "defaultMessage": "Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.",
+    "description": "Intro of the leave-confirmation demo."
+  },
+  "leave.keep": {
+    "defaultMessage": "Keep editing",
+    "description": "Stays on the page."
+  },
+  "leave.placeholder": {
+    "defaultMessage": "Type something",
+    "description": "Placeholder of the draft field."
+  },
+  "leave.requests": {
+    "defaultMessage": "leave requests: {count}",
+    "description": "How many times leaving was asked for."
+  },
+  "leave.save": {
+    "defaultMessage": "Save",
+    "description": "Saves the draft."
+  },
+  "leave.saved": {
+    "defaultMessage": "Saved",
+    "description": "Status when the draft is saved."
+  },
+  "leave.unsaved": {
+    "defaultMessage": "Unsaved changes",
+    "description": "Status while the draft differs from the saved text."
+  },
+  "location.clear": {
+    "defaultMessage": "Clear",
+    "description": "Text on the location page."
+  },
+  "location.currentLocation": {
+    "defaultMessage": "Current Location",
+    "description": "Text on the location page."
+  },
+  "location.get": {
+    "defaultMessage": "Get Location",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "location.getting": {
+    "defaultMessage": "Getting Location...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "location.gettingLocation": {
+    "defaultMessage": "Getting location...",
+    "description": "Text on the location page."
+  },
+  "location.none": {
+    "defaultMessage": "No location data available",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.album": {
+    "defaultMessage": "Album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.albumOrCamera": {
+    "defaultMessage": "Album or Camera",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.all": {
+    "defaultMessage": "All",
+    "description": "A media picker option."
+  },
+  "media.audioCodec": {
+    "defaultMessage": "Audio Codec",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.auto": {
+    "defaultMessage": "Auto",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.autoNext": {
+    "defaultMessage": "Auto Next",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.bitrate": {
+    "defaultMessage": "Bitrate",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.bitrateKbps": {
+    "defaultMessage": "Bitrate (kbps)",
+    "description": "A media tool field."
+  },
+  "media.camera": {
+    "defaultMessage": "Camera",
+    "description": "Text on the media page."
+  },
+  "media.cameraAlbum": {
+    "defaultMessage": "Camera & Album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.cameraOnly": {
+    "defaultMessage": "Camera Only",
+    "description": "A media picker option."
+  },
+  "media.cameraPhoto": {
+    "defaultMessage": "Camera & Photo",
+    "description": "A media picker option."
+  },
+  "media.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Text on the media page."
+  },
+  "media.cancelActivePreview": {
+    "defaultMessage": "Cancel Active Preview",
+    "description": "Text on the media page."
+  },
+  "media.capture": {
+    "defaultMessage": "Capture",
+    "description": "Text on the media page."
+  },
+  "media.captureImage": {
+    "defaultMessage": "Capture Image",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.captureIntro": {
+    "defaultMessage": "Capture photo or video and save to device album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.capturePhotoOrVideo": {
+    "defaultMessage": "Capture photo or video, then save to album. Check your device album to view saved media.",
+    "description": "Text on the media page."
+  },
+  "media.captureVideo": {
+    "defaultMessage": "Capture Video",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.compress": {
+    "defaultMessage": "Compress",
+    "description": "Text on the media page."
+  },
+  "media.compressImage": {
+    "defaultMessage": "Compress Image",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.compressImageFailed": {
+    "defaultMessage": "compressImage failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.compressVideo": {
+    "defaultMessage": "Compress Video",
+    "description": "Text on the media page."
+  },
+  "media.compressVideoFailed": {
+    "defaultMessage": "compressVideo failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.compressedImage": {
+    "defaultMessage": "Compressed Image",
+    "description": "Text on the media page."
+  },
+  "media.compressedVideo": {
+    "defaultMessage": "Compressed Video",
+    "description": "Text on the media page."
+  },
+  "media.compressing": {
+    "defaultMessage": "Compressing...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.compressingPercent": {
+    "defaultMessage": "Compressing... {progress}%",
+    "description": "Text on the media page."
+  },
+  "media.compressionCancelled": {
+    "defaultMessage": "Compression cancelled",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.container": {
+    "defaultMessage": "Container MIME",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.countLimit": {
+    "defaultMessage": "Count Limit",
+    "description": "Text on the media page."
+  },
+  "media.duration": {
+    "defaultMessage": "Duration",
+    "description": "Text on the media page."
+  },
+  "media.example": {
+    "defaultMessage": "e.g. {value}",
+    "description": "Text on the media page."
+  },
+  "media.fileSize": {
+    "defaultMessage": "File Size",
+    "description": "Text on the media page."
+  },
+  "media.fitDefault": {
+    "defaultMessage": "Default (Optional)",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.frontCamera": {
+    "defaultMessage": "Front Camera",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.generateThumbnail": {
+    "defaultMessage": "Generate Thumbnail",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.generating": {
+    "defaultMessage": "Generating...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.gettingInfo": {
+    "defaultMessage": "Getting Info...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.hasAudio": {
+    "defaultMessage": "Has Audio",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.height": {
+    "defaultMessage": "Height",
+    "description": "Text on the media page."
+  },
+  "media.hidden": {
+    "defaultMessage": "Hidden",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.imageDurationMs": {
+    "defaultMessage": "Image Duration (ms)",
+    "description": "Text on the media page."
+  },
+  "media.imageInfoFailed": {
+    "defaultMessage": "media.imageInfo failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.imageSaved": {
+    "defaultMessage": "Image saved to album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.index": {
+    "defaultMessage": "Index",
+    "description": "Text on the media page."
+  },
+  "media.indexIndicator": {
+    "defaultMessage": "Index Indicator: {value}",
+    "description": "Text on the media page."
+  },
+  "media.leaveEmpty": {
+    "defaultMessage": "leave empty",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.loop": {
+    "defaultMessage": "Loop",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.lxMediaImageinfoAnd": {
+    "defaultMessage": "lx.media.imageInfo and lx.media.compressImage: inspect an image and make a compressed copy",
+    "description": "Text on the media page."
+  },
+  "media.lxMediaVideoinfoLx": {
+    "defaultMessage": "lx.media.videoInfo, lx.media.videoThumbnail and lx.media.compressVideo",
+    "description": "Text on the media page."
+  },
+  "media.manual": {
+    "defaultMessage": "Manual Only",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.maxHeight": {
+    "defaultMessage": "Max Height (px)",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.maxWidth": {
+    "defaultMessage": "Max Width (px)",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.metaDefault": {
+    "defaultMessage": "Meta (Default)",
+    "description": "A media picker option."
+  },
+  "media.nextAdvancesAndFinishes": {
+    "defaultMessage": "`next` advances and finishes on the last item; `loop` wraps back to the first.",
+    "description": "Text on the media page."
+  },
+  "media.noCompressedImage": {
+    "defaultMessage": "No compressed image to preview",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.noCompressedVideo": {
+    "defaultMessage": "No compressed video to preview",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.noResult": {
+    "defaultMessage": "No result yet",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.noThumbnail": {
+    "defaultMessage": "No thumbnail to preview",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.notReported": {
+    "defaultMessage": "Not reported",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.nothingToPreview": {
+    "defaultMessage": "Nothing to preview",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.opening": {
+    "defaultMessage": "Opening...",
+    "description": "Add button while the picker opens."
+  },
+  "media.operationFailed": {
+    "defaultMessage": "Operation failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.photoSource": {
+    "defaultMessage": "Photo Source",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickAnother": {
+    "defaultMessage": "Pick Another Video",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickCodeFailed": {
+    "defaultMessage": "pick.code failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickFailed": {
+    "defaultMessage": "pick.media failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickImage": {
+    "defaultMessage": "Pick Image",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickVideo": {
+    "defaultMessage": "Pick Video",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.pickVideoFirst": {
+    "defaultMessage": "Please pick a video first",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.previewCompressedVideo": {
+    "defaultMessage": "Preview Compressed Video",
+    "description": "Text on the media page."
+  },
+  "media.previewFailed": {
+    "defaultMessage": "Preview failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.previewFit": {
+    "defaultMessage": "Preview Fit: {value}",
+    "description": "Text on the media page."
+  },
+  "media.previewFlow": {
+    "defaultMessage": "Preview Flow: {value}",
+    "description": "Text on the media page."
+  },
+  "media.previewImage": {
+    "defaultMessage": "Preview Image",
+    "description": "Text on the media page."
+  },
+  "media.previewRotate": {
+    "defaultMessage": "Preview Rotate: {value}",
+    "description": "Text on the media page."
+  },
+  "media.previewSelection": {
+    "defaultMessage": "Preview Selection",
+    "description": "Text on the media page."
+  },
+  "media.previewThumbnail": {
+    "defaultMessage": "Preview Thumbnail",
+    "description": "Text on the media page."
+  },
+  "media.quality": {
+    "defaultMessage": "Quality",
+    "description": "A media tool field."
+  },
+  "media.qualityLowMediumOr": {
+    "defaultMessage": "Quality low, medium or high overrides bitrate (kbps), FPS and resolution ratio (0, 1].",
+    "description": "Text on the media page."
+  },
+  "media.rearCamera": {
+    "defaultMessage": "Rear Camera",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.reason": {
+    "defaultMessage": "Reason",
+    "description": "Text on the media page."
+  },
+  "media.resolution": {
+    "defaultMessage": "Resolution",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.resolutionRatio": {
+    "defaultMessage": "Resolution Ratio",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.rotation": {
+    "defaultMessage": "Rotation",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.s15": {
+    "defaultMessage": "15 seconds",
+    "description": "A media picker option."
+  },
+  "media.s30": {
+    "defaultMessage": "30 seconds",
+    "description": "A media picker option."
+  },
+  "media.s60": {
+    "defaultMessage": "60 seconds",
+    "description": "A media picker option."
+  },
+  "media.saveImageFailed": {
+    "defaultMessage": "Failed to save image",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.saveVideoFailed": {
+    "defaultMessage": "Failed to save video",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.saving": {
+    "defaultMessage": "Saving...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.scanIntro": {
+    "defaultMessage": "Scan QR codes and barcodes using camera or album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.scanResult": {
+    "defaultMessage": "Scan Result",
+    "description": "Text on the media page."
+  },
+  "media.scanType": {
+    "defaultMessage": "Scan Type",
+    "description": "Text on the media page."
+  },
+  "media.scanning": {
+    "defaultMessage": "Scanning...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.selectImageFirst": {
+    "defaultMessage": "Please select an image first",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.selectedImage": {
+    "defaultMessage": "Selected image {n}",
+    "description": "Spoken label of a picked image."
+  },
+  "media.selection": {
+    "defaultMessage": "Selection",
+    "description": "Text on the media page."
+  },
+  "media.source": {
+    "defaultMessage": "Source",
+    "description": "Text on the media page."
+  },
+  "media.sourceImage": {
+    "defaultMessage": "Source Image",
+    "description": "Text on the media page."
+  },
+  "media.sourceVideo": {
+    "defaultMessage": "Source Video",
+    "description": "Text on the media page."
+  },
+  "media.startScan": {
+    "defaultMessage": "Start Scan",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.state.addPhoto": {
+    "defaultMessage": "Add Photo",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.addVideos": {
+    "defaultMessage": "Add Videos",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.imageHint": {
+    "defaultMessage": "Get image info and create compressed copy.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.imageInfo": {
+    "defaultMessage": "Image Info",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.pickPhotos": {
+    "defaultMessage": "Tap + to pick photos.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.pickVideos": {
+    "defaultMessage": "Tap + to pick videos.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.saveHint": {
+    "defaultMessage": "Capture or select media to save to album.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.saveToAlbum": {
+    "defaultMessage": "Save to Album",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.scanCode": {
+    "defaultMessage": "ScanCode",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.tapPreview": {
+    "defaultMessage": "Tap Preview to open the full selection.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.videoHint": {
+    "defaultMessage": "Pick one video, inspect upload metadata, generate a thumbnail, and compress.",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.state.videoTools": {
+    "defaultMessage": "Video Tools",
+    "description": "Media page hint, set by Logic."
+  },
+  "media.tapPreviewForFullscreen": {
+    "defaultMessage": "Tap Preview for fullscreen playback",
+    "description": "Text on the media page."
+  },
+  "media.thumbnail": {
+    "defaultMessage": "Thumbnail",
+    "description": "Text on the media page."
+  },
+  "media.thumbnailAlt": {
+    "defaultMessage": "Thumbnail of the selected video",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.thumbnailFailed": {
+    "defaultMessage": "media.videoThumbnail failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.thumbnailResult": {
+    "defaultMessage": "Thumbnail Result",
+    "description": "Text on the media page."
+  },
+  "media.time0IsThe": {
+    "defaultMessage": "Time 0 is the first frame. Empty sizes keep the source size; thumbnails scale proportionally and never crop.",
+    "description": "Text on the media page."
+  },
+  "media.timeMs": {
+    "defaultMessage": "Time (ms)",
+    "description": "A media tool field."
+  },
+  "media.trackMetadataIsBest": {
+    "defaultMessage": "Track metadata is best-effort. The receiving service must validate uploaded bytes.",
+    "description": "Text on the media page."
+  },
+  "media.type": {
+    "defaultMessage": "Type",
+    "description": "Text on the media page."
+  },
+  "media.uploadPreflightMetadata": {
+    "defaultMessage": "Upload Preflight Metadata",
+    "description": "Text on the media page."
+  },
+  "media.videoCodec": {
+    "defaultMessage": "Video Codec",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.videoInfoFailed": {
+    "defaultMessage": "media.videoInfo failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.videoSaved": {
+    "defaultMessage": "Video saved to album",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.videoSource": {
+    "defaultMessage": "Video Source",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "media.width": {
+    "defaultMessage": "Width",
+    "description": "Text on the media page."
+  },
+  "perfLab.aSecondLineOf": {
+    "defaultMessage": "A second line of text to lay out in every row",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.box": {
+    "defaultMessage": "Box",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.dragTheBoxAcross": {
+    "defaultMessage": "Drag the box across. With the HUD on (lxdev lxapp page hud on), red dots trail the finger and green dots the frames that showed it.",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.knob.boxPx": {
+    "defaultMessage": "box px",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.imagePx": {
+    "defaultMessage": "image px",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.layers": {
+    "defaultMessage": "layers",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.nodes": {
+    "defaultMessage": "nodes",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.paragraphs": {
+    "defaultMessage": "paragraphs",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.records": {
+    "defaultMessage": "records",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.knob.rows": {
+    "defaultMessage": "rows",
+    "description": "What a perf scene's count measures."
+  },
+  "perfLab.measuring": {
+    "defaultMessage": "Measuring 5 s…",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "perfLab.notRun": {
+    "defaultMessage": "Not run",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "perfLab.runBudget": {
+    "defaultMessage": "Run budget",
+    "description": "Runs the 5 s scene budget."
+  },
+  "perfLab.running": {
+    "defaultMessage": "Running…",
+    "description": "Run button while measuring."
+  },
+  "perfLab.runsViewCodePast": {
+    "defaultMessage": "Runs View code past its time budget: the host replaces the page with recovery chrome.",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.scene.animation": {
+    "defaultMessage": "Springs",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.data": {
+    "defaultMessage": "Data",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.fill": {
+    "defaultMessage": "Fill",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.images": {
+    "defaultMessage": "Images",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.list": {
+    "defaultMessage": "List",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.state": {
+    "defaultMessage": "State",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.text": {
+    "defaultMessage": "Text",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.touch": {
+    "defaultMessage": "Touch",
+    "description": "A perf scene."
+  },
+  "perfLab.scene.transition": {
+    "defaultMessage": "Push/pop",
+    "description": "A perf scene."
+  },
+  "perfLab.stall": {
+    "defaultMessage": "Stall",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.stallTheView": {
+    "defaultMessage": "Stall the View",
+    "description": "Text on the perf-lab page."
+  },
+  "perfLab.stateHint": {
+    "defaultMessage": "Run budget loads {count} records into Logic data and changes one per tick.",
+    "description": "State scene hint."
+  },
+  "perfLab.ticks": {
+    "defaultMessage": "Logic ticks seen: {n}",
+    "description": "Count of Logic ticks the View saw."
+  },
+  "pulltorefresh.apiControls": {
+    "defaultMessage": "API Controls",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.controlRefreshProgrammatically": {
+    "defaultMessage": "Control refresh programmatically",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.finishRefresh": {
+    "defaultMessage": "Finish refresh",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.lastRefresh": {
+    "defaultMessage": "Last Refresh",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.never": {
+    "defaultMessage": "Never",
+    "description": "Last refresh before any."
+  },
+  "pulltorefresh.pullDownOnThis": {
+    "defaultMessage": "Pull down on this page to trigger refresh, or use the buttons below to control it programmatically.",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.pullDownToRefresh": {
+    "defaultMessage": "Pull down to refresh",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.refreshCount": {
+    "defaultMessage": "Refresh Count",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.refreshStatus": {
+    "defaultMessage": "Refresh Status",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.sampleRows": {
+    "defaultMessage": "Sample Rows",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.scrollThePageA": {
+    "defaultMessage": "Scroll the page: a pull refreshes only from the top",
+    "description": "Text on the pulltorefresh page."
+  },
+  "pulltorefresh.status": {
+    "defaultMessage": "Status",
+    "description": "Text on the pulltorefresh page."
+  },
+  "refresh.idle": {
+    "defaultMessage": "Idle",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "refresh.refreshing": {
+    "defaultMessage": "Refreshing...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "share.chooseFile": {
+    "defaultMessage": "Choose File",
+    "description": "Text on the share page."
+  },
+  "share.chooseFileFirst": {
+    "defaultMessage": "Choose a file first",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "share.chooseImage": {
+    "defaultMessage": "Choose Image",
+    "description": "Text on the share page."
+  },
+  "share.chooseImageFirst": {
+    "defaultMessage": "Choose an image first",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "share.chooseOrCaptureAn": {
+    "defaultMessage": "Choose or capture an image, then share it as an attachment.",
+    "description": "Text on the share page."
+  },
+  "share.failed": {
+    "defaultMessage": "Unable to open sharing. Please try again.",
+    "description": "Share status when an action throws."
+  },
+  "share.file": {
+    "defaultMessage": "File",
+    "description": "Text on the share page."
+  },
+  "share.fileTitle": {
+    "defaultMessage": "LingXia file",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "share.image": {
+    "defaultMessage": "Image",
+    "description": "Text on the share page."
+  },
+  "share.imageTitle": {
+    "defaultMessage": "LingXia image",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "share.lxShareOpensThe": {
+    "defaultMessage": "lx.share opens the native system share sheet.",
+    "description": "Text on the share page."
+  },
+  "share.noSelection": {
+    "defaultMessage": "No selection",
+    "description": "Placeholder where the chosen file path shows."
+  },
+  "share.page": {
+    "defaultMessage": "Page",
+    "description": "Text on the share page."
+  },
+  "share.pickAnImagePdf": {
+    "defaultMessage": "Pick an image, PDF, or other document before sharing it.",
+    "description": "Text on the share page."
+  },
+  "share.plainText": {
+    "defaultMessage": "Plain text share; some receivers reject text-only content.",
+    "description": "The text the showcase shares."
+  },
+  "share.shareCurrentPage": {
+    "defaultMessage": "Share Current Page",
+    "description": "Text on the share page."
+  },
+  "share.shareFile": {
+    "defaultMessage": "Share File",
+    "description": "Text on the share page."
+  },
+  "share.shareImage": {
+    "defaultMessage": "Share Image",
+    "description": "Text on the share page."
+  },
+  "share.shareText": {
+    "defaultMessage": "Share Text",
+    "description": "Text on the share page."
+  },
+  "share.shareTheCurrentPage": {
+    "defaultMessage": "Share the current page as an AppLink URL.",
+    "description": "Text on the share page."
+  },
+  "share.someReceiversRejectText": {
+    "defaultMessage": "Some receivers reject text-only shares.",
+    "description": "Text on the share page."
+  },
+  "share.state.canceled": {
+    "defaultMessage": "Share canceled",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.file": {
+    "defaultMessage": "File selected",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.fileCanceled": {
+    "defaultMessage": "File selection canceled",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.image": {
+    "defaultMessage": "Image selected",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.noImage": {
+    "defaultMessage": "No image selected",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.opened": {
+    "defaultMessage": "Share opened",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.opening": {
+    "defaultMessage": "Opening system share sheet...",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.ready": {
+    "defaultMessage": "Ready",
+    "description": "Share status line, set by Logic."
+  },
+  "share.state.shared": {
+    "defaultMessage": "Shared",
+    "description": "Share status line, set by Logic."
+  },
+  "share.text": {
+    "defaultMessage": "Text",
+    "description": "Text on the share page."
+  },
+  "share.title": {
+    "defaultMessage": "LingXia Showcase",
+    "description": "Title of shared text and pages."
+  },
+  "stream.asyncGeneratorStreamingText": {
+    "defaultMessage": "Async generator streaming — text & chart artifacts via LingXia bridge.",
+    "description": "Text on the stream page."
+  },
+  "stream.clear": {
+    "defaultMessage": "Clear",
+    "description": "Text on the stream page."
+  },
+  "stream.hint.bridge": {
+    "defaultMessage": "How does the bridge protocol work?",
+    "description": "A suggested message."
+  },
+  "stream.hint.data": {
+    "defaultMessage": "Show me some data",
+    "description": "A suggested message."
+  },
+  "stream.hint.streaming": {
+    "defaultMessage": "Tell me about LingXia streaming",
+    "description": "A suggested message."
+  },
+  "stream.message": {
+    "defaultMessage": "Message",
+    "description": "Text on the stream page."
+  },
+  "stream.message2": {
+    "defaultMessage": "Message...",
+    "description": "Text on the stream page."
+  },
+  "stream.sendMessage": {
+    "defaultMessage": "Send message",
+    "description": "Text on the stream page."
+  },
+  "stream.stopResponse": {
+    "defaultMessage": "Stop response",
+    "description": "Text on the stream page."
+  },
+  "stream.streamDemo": {
+    "defaultMessage": "Stream Demo",
+    "description": "Text on the stream page."
+  },
+  "surface.fromOpener": {
+    "defaultMessage": "From opener",
+    "description": "Text on the surface page."
+  },
+  "surface.hidePreservesThisCounter": {
+    "defaultMessage": "Hide preserves this counter; close resets it on re-open.",
+    "description": "Text on the surface page."
+  },
+  "surface.inPageCounter": {
+    "defaultMessage": "In-page counter",
+    "description": "Text on the surface page."
+  },
+  "surface.increment": {
+    "defaultMessage": "Increment",
+    "description": "Text on the surface page."
+  },
+  "surface.inspectTheQueryString": {
+    "defaultMessage": "Inspect the query string and send a message to the opener.",
+    "description": "Text on the surface page."
+  },
+  "surface.lastEvent": {
+    "defaultMessage": "Last event",
+    "description": "Text on the surface page."
+  },
+  "surface.message": {
+    "defaultMessage": "Message",
+    "description": "Text on the surface page."
+  },
+  "surface.messageToParentPage": {
+    "defaultMessage": "Message to parent page",
+    "description": "Text on the surface page."
+  },
+  "surface.onhide": {
+    "defaultMessage": "onHide",
+    "description": "Text on the surface page."
+  },
+  "surface.onshow": {
+    "defaultMessage": "onShow",
+    "description": "Text on the surface page."
+  },
+  "surface.pageLifecycle": {
+    "defaultMessage": "Page lifecycle",
+    "description": "Text on the surface page."
+  },
+  "surface.queryString": {
+    "defaultMessage": "Query string",
+    "description": "Text on the surface page."
+  },
+  "surface.received": {
+    "defaultMessage": "Received",
+    "description": "Text on the surface page."
+  },
+  "surface.selfActions": {
+    "defaultMessage": "Self actions",
+    "description": "Text on the surface page."
+  },
+  "surface.sendThenClose": {
+    "defaultMessage": "Send then close",
+    "description": "Text on the surface page."
+  },
+  "system.allow": {
+    "defaultMessage": "Allow",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.appIdentityOsProduct": {
+    "defaultMessage": "App identity (OS, product, versions) plus the language it renders in",
+    "description": "Text on the system page."
+  },
+  "system.autostartDetail": {
+    "defaultMessage": "Register this app as a login / startup item",
+    "description": "Launch-at-startup description."
+  },
+  "system.bannerControlOnly": {
+    "defaultMessage": "Desktop banner is Control-app / desktop only",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.bannerDetail": {
+    "defaultMessage": "Toast and Prompt show a native card at the window top-right",
+    "description": "Desktop banner description."
+  },
+  "system.bannerPromptBody": {
+    "defaultMessage": "Agent wants to call sendEmail",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.bannerPromptTitle": {
+    "defaultMessage": "Allow this action?",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.bannerToastBody": {
+    "defaultMessage": "Desktop card — auto-dismisses",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.bluetoothEnabled": {
+    "defaultMessage": "Bluetooth Enabled",
+    "description": "Text on the system page."
+  },
+  "system.cacheControlOnly": {
+    "defaultMessage": "Cache APIs are Control-app only",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Text on the system page."
+  },
+  "system.clear": {
+    "defaultMessage": "Clear",
+    "description": "Clears the product cache."
+  },
+  "system.clearing": {
+    "defaultMessage": "Clearing...",
+    "description": "Clear button while clearing."
+  },
+  "system.deny": {
+    "defaultMessage": "Deny",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.desktopBanner": {
+    "defaultMessage": "Desktop Banner",
+    "description": "Text on the system page."
+  },
+  "system.dismiss": {
+    "defaultMessage": "Dismiss",
+    "description": "Text on the system page."
+  },
+  "system.displayLanguage": {
+    "defaultMessage": "Display Language",
+    "description": "Text on the system page."
+  },
+  "system.enabledOs": {
+    "defaultMessage": "Enabled (OS)",
+    "description": "Text on the system page."
+  },
+  "system.fetchAppBaseInfo": {
+    "defaultMessage": "Fetch App Base Info",
+    "description": "Text on the system page."
+  },
+  "system.fetchSystemSetting": {
+    "defaultMessage": "Fetch System Setting",
+    "description": "Text on the system page."
+  },
+  "system.getInfo": {
+    "defaultMessage": "Get Info",
+    "description": "Text on the system page."
+  },
+  "system.lastFreedEstimate": {
+    "defaultMessage": "Last Freed (estimate)",
+    "description": "Text on the system page."
+  },
+  "system.lastId": {
+    "defaultMessage": "Last id",
+    "description": "Text on the system page."
+  },
+  "system.lastResult": {
+    "defaultMessage": "Last result",
+    "description": "Text on the system page."
+  },
+  "system.launchAtStartup": {
+    "defaultMessage": "Launch at Startup",
+    "description": "Text on the system page."
+  },
+  "system.launchAtStartup2": {
+    "defaultMessage": "Launch at startup",
+    "description": "Text on the system page."
+  },
+  "system.localNotifications": {
+    "defaultMessage": "Local Notifications",
+    "description": "Text on the system page."
+  },
+  "system.locationEnabled": {
+    "defaultMessage": "Location Enabled",
+    "description": "Text on the system page."
+  },
+  "system.noBanner": {
+    "defaultMessage": "Desktop banner is not supported on this host",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.noNotifications": {
+    "defaultMessage": "Notifications are not supported on this host",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.notOnHost": {
+    "defaultMessage": "Not available on this host",
+    "description": "A feature this host lacks."
+  },
+  "system.notOnPlatform": {
+    "defaultMessage": "Not available on this platform",
+    "description": "A feature this platform lacks."
+  },
+  "system.notificationDetail": {
+    "defaultMessage": "Post and cancel a local banner - Control app only",
+    "description": "Local notifications description."
+  },
+  "system.notifyActivate": {
+    "defaultMessage": "Tap brings the showcase forward",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.notifyNative": {
+    "defaultMessage": "Tap opens a native route — no lxapp, no URL",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.notifyPage": {
+    "defaultMessage": "Tap opens this page the way navigateTo does",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "system.pageIsNavigatetoRoute": {
+    "defaultMessage": "page is navigateTo. route is a host-registered native location. Neither needs a product URL.",
+    "description": "Text on the system page."
+  },
+  "system.permission": {
+    "defaultMessage": "Permission",
+    "description": "Text on the system page."
+  },
+  "system.productCache": {
+    "defaultMessage": "Product Cache",
+    "description": "Text on the system page."
+  },
+  "system.productName": {
+    "defaultMessage": "Product Name",
+    "description": "Text on the system page."
+  },
+  "system.productVersion": {
+    "defaultMessage": "Product Version",
+    "description": "Text on the system page."
+  },
+  "system.prompt": {
+    "defaultMessage": "Prompt",
+    "description": "Text on the system page."
+  },
+  "system.reReadOsState": {
+    "defaultMessage": "Re-read OS State",
+    "description": "Text on the system page."
+  },
+  "system.reReadPermission": {
+    "defaultMessage": "Re-read Permission",
+    "description": "Text on the system page."
+  },
+  "system.reReadSize": {
+    "defaultMessage": "Re-read Size",
+    "description": "Text on the system page."
+  },
+  "system.reReadSupport": {
+    "defaultMessage": "Re-read support",
+    "description": "Text on the system page."
+  },
+  "system.reclaimableEstimate": {
+    "defaultMessage": "Reclaimable (estimate)",
+    "description": "Text on the system page."
+  },
+  "system.reclaimableProductCacheHome": {
+    "defaultMessage": "Reclaimable product cache - home lxapp only",
+    "description": "Text on the system page."
+  },
+  "system.result": {
+    "defaultMessage": "Result",
+    "description": "Text on the system page."
+  },
+  "system.runningAppsKeepTheir": {
+    "defaultMessage": "Running apps keep their private caches; estimates exclude WebView cache.",
+    "description": "Text on the system page."
+  },
+  "system.sdkVersion": {
+    "defaultMessage": "SDK Version",
+    "description": "Text on the system page."
+  },
+  "system.show": {
+    "defaultMessage": "Show",
+    "description": "Text on the system page."
+  },
+  "system.showcaseTitle": {
+    "defaultMessage": "LingXia showcase",
+    "description": "Title of the notification and banner the showcase posts."
+  },
+  "system.supported": {
+    "defaultMessage": "Supported",
+    "description": "Text on the system page."
+  },
+  "system.thisPage": {
+    "defaultMessage": "this page",
+    "description": "Notification target: open this page."
+  },
+  "system.toast": {
+    "defaultMessage": "Toast",
+    "description": "Text on the system page."
+  },
+  "system.toastAutoDismissesPrompt": {
+    "defaultMessage": "Toast auto-dismisses. Prompt waits for Allow / Deny on the card.",
+    "description": "Text on the system page."
+  },
+  "system.wifiEnabled": {
+    "defaultMessage": "WiFi Enabled",
+    "description": "Text on the system page."
+  },
+  "system.wifiLocationAndBluetooth": {
+    "defaultMessage": "WiFi, location, and Bluetooth toggles",
+    "description": "Text on the system page."
+  },
+  "todo.addATaskAbove": {
+    "defaultMessage": "Add a task above to get started",
+    "description": "Text on the todo page."
+  },
+  "todo.clearCompleted": {
+    "defaultMessage": "Clear completed",
+    "description": "Text on the todo page."
+  },
+  "todo.filter.active": {
+    "defaultMessage": "Active",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.filter.all": {
+    "defaultMessage": "All",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.filter.completed": {
+    "defaultMessage": "Completed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.loadFailed": {
+    "defaultMessage": "Could not load saved tasks. Retry before making changes.",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.loadingSavedTasks": {
+    "defaultMessage": "Loading saved tasks...",
+    "description": "Text on the todo page."
+  },
+  "todo.markAllActive": {
+    "defaultMessage": "Mark all as active",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.markAllComplete": {
+    "defaultMessage": "Mark all as complete",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "todo.newTask": {
+    "defaultMessage": "New task",
+    "description": "Text on the todo page."
+  },
+  "todo.noTasksYet": {
+    "defaultMessage": "No tasks yet",
+    "description": "Text on the todo page."
+  },
+  "todo.todos": {
+    "defaultMessage": "todos",
+    "description": "Text on the todo page."
+  },
+  "todo.whatNeedsToBe": {
+    "defaultMessage": "What needs to be done?",
+    "description": "Text on the todo page."
+  },
+  "ui.actionSheet": {
+    "defaultMessage": "Action Sheet",
+    "description": "Text on the ui page."
+  },
+  "ui.alert": {
+    "defaultMessage": "Alert",
+    "description": "Default modal title."
+  },
+  "ui.autoFollowsTheHost": {
+    "defaultMessage": "Auto follows the host appearance; Light and Dark keep your chosen theme. Your preference is saved for this app.",
+    "description": "Text on the ui page."
+  },
+  "ui.autoHome": {
+    "defaultMessage": "Auto home",
+    "description": "Text on the ui page."
+  },
+  "ui.backToPreviousPage": {
+    "defaultMessage": "Back to previous page",
+    "description": "Text on the ui page."
+  },
+  "ui.background": {
+    "defaultMessage": "Background",
+    "description": "Text on the ui page."
+  },
+  "ui.backgroundingFiresOnhideOnshow": {
+    "defaultMessage": "Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.",
+    "description": "Text on the ui page."
+  },
+  "ui.badgeControls": {
+    "defaultMessage": "Badge Controls",
+    "description": "Text on the ui page."
+  },
+  "ui.badgeText": {
+    "defaultMessage": "Badge Text",
+    "description": "Text on the ui page."
+  },
+  "ui.cancelButtonText": {
+    "defaultMessage": "Cancel Button Text",
+    "description": "Text on the ui page."
+  },
+  "ui.cancelButtonText2": {
+    "defaultMessage": "Cancel button text",
+    "description": "Text on the ui page."
+  },
+  "ui.change": {
+    "defaultMessage": "Change",
+    "description": "Text on the ui page."
+  },
+  "ui.chrome": {
+    "defaultMessage": "Chrome",
+    "description": "Text on the ui page."
+  },
+  "ui.clearResult": {
+    "defaultMessage": "Clear Result",
+    "description": "Text on the ui page."
+  },
+  "ui.close": {
+    "defaultMessage": "Close",
+    "description": "Text on the ui page."
+  },
+  "ui.closePopup": {
+    "defaultMessage": "Close popup",
+    "description": "Text on the ui page."
+  },
+  "ui.confirmButtonText": {
+    "defaultMessage": "Confirm Button Text",
+    "description": "Text on the ui page."
+  },
+  "ui.confirmButtonText2": {
+    "defaultMessage": "Confirm button text",
+    "description": "Text on the ui page."
+  },
+  "ui.content": {
+    "defaultMessage": "Content",
+    "description": "Text on the ui page."
+  },
+  "ui.dismissed": {
+    "defaultMessage": "Dismissed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "ui.durationMs": {
+    "defaultMessage": "Duration (ms)",
+    "description": "Text on the ui page."
+  },
+  "ui.eachEntryCreatesA": {
+    "defaultMessage": "Each entry creates a fresh instance. Watch the stack grow.",
+    "description": "Text on the ui page."
+  },
+  "ui.edge": {
+    "defaultMessage": "Edge",
+    "description": "Text on the ui page."
+  },
+  "ui.enterBadgeText": {
+    "defaultMessage": "Enter badge text",
+    "description": "Text on the ui page."
+  },
+  "ui.enterModalContent": {
+    "defaultMessage": "Enter modal content",
+    "description": "Text on the ui page."
+  },
+  "ui.enterNewText": {
+    "defaultMessage": "Enter new text",
+    "description": "Text on the ui page."
+  },
+  "ui.enterTitle": {
+    "defaultMessage": "Enter title",
+    "description": "Text on the ui page."
+  },
+  "ui.enterToastTitle": {
+    "defaultMessage": "Enter toast title",
+    "description": "Text on the ui page."
+  },
+  "ui.ffffff": {
+    "defaultMessage": "#ffffff",
+    "description": "Text on the ui page."
+  },
+  "ui.height": {
+    "defaultMessage": "Height",
+    "description": "Surface size field."
+  },
+  "ui.heightPxOr": {
+    "defaultMessage": "Height (px or %)",
+    "description": "Text on the ui page."
+  },
+  "ui.heightPxOr2": {
+    "defaultMessage": "height (px or %)",
+    "description": "Text on the ui page."
+  },
+  "ui.helloToast": {
+    "defaultMessage": "Hello Toast!",
+    "description": "Default toast title."
+  },
+  "ui.hidden": {
+    "defaultMessage": "hidden",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "ui.hide": {
+    "defaultMessage": "Hide",
+    "description": "Text on the ui page."
+  },
+  "ui.hideFailed": {
+    "defaultMessage": "Hide failed: {reason}",
+    "description": "Surface demo error."
+  },
+  "ui.hideHome": {
+    "defaultMessage": "Hide home",
+    "description": "Text on the ui page."
+  },
+  "ui.hideRedDot": {
+    "defaultMessage": "Hide Red Dot",
+    "description": "Text on the ui page."
+  },
+  "ui.hideTabbar": {
+    "defaultMessage": "Hide TabBar",
+    "description": "Text on the ui page."
+  },
+  "ui.hideToast": {
+    "defaultMessage": "Hide Toast",
+    "description": "Text on the ui page."
+  },
+  "ui.icon": {
+    "defaultMessage": "Icon",
+    "description": "Text on the ui page."
+  },
+  "ui.jumpToTabPage": {
+    "defaultMessage": "Jump to Tab page",
+    "description": "Text on the ui page."
+  },
+  "ui.kind": {
+    "defaultMessage": "Kind",
+    "description": "Text on the ui page."
+  },
+  "ui.kind.aside": {
+    "defaultMessage": "Aside",
+    "description": "A surface kind."
+  },
+  "ui.kind.float": {
+    "defaultMessage": "Float",
+    "description": "A surface kind."
+  },
+  "ui.kind.lxapp": {
+    "defaultMessage": "Lxapp",
+    "description": "A surface kind."
+  },
+  "ui.kind.window": {
+    "defaultMessage": "Window",
+    "description": "A surface kind."
+  },
+  "ui.kindHint.aside": {
+    "defaultMessage": "Docks beside the main page. On compact screens, switch between tabs to view it.",
+    "description": "What a surface kind does."
+  },
+  "ui.kindHint.float": {
+    "defaultMessage": "A popup above the main page, like a dialog. It does not take layout space.",
+    "description": "What a surface kind does."
+  },
+  "ui.kindHint.lxapp": {
+    "defaultMessage": "Opens the chat app as an aside. Requires home-app privilege.",
+    "description": "What a surface kind does."
+  },
+  "ui.kindHint.window": {
+    "defaultMessage": "A standalone window with no sidebar or shell. Desktop only.",
+    "description": "What a surface kind does."
+  },
+  "ui.leaveEmptyForNo": {
+    "defaultMessage": "Leave empty for no title",
+    "description": "Text on the ui page."
+  },
+  "ui.leaveThisPageWith": {
+    "defaultMessage": "Leave this page with the popup open. A fresh visit starts with it closed, because View state belongs to each page instance.",
+    "description": "Text on the ui page."
+  },
+  "ui.lifecycleOfThisInstance": {
+    "defaultMessage": "Lifecycle of this instance",
+    "description": "Text on the ui page."
+  },
+  "ui.lightDark": {
+    "defaultMessage": "Light / Dark",
+    "description": "Text on the ui page."
+  },
+  "ui.logic1": {
+    "defaultMessage": "Logic +1",
+    "description": "Text on the ui page."
+  },
+  "ui.logicAndViewReset": {
+    "defaultMessage": "Logic and View reset per entry; the module counter is shared by every instance.",
+    "description": "Text on the ui page."
+  },
+  "ui.logicInstance": {
+    "defaultMessage": "Logic instance",
+    "description": "Text on the ui page."
+  },
+  "ui.modalContent": {
+    "defaultMessage": "This is a modal dialog",
+    "description": "Default modal content."
+  },
+  "ui.modalParameters": {
+    "defaultMessage": "Modal Parameters",
+    "description": "Text on the ui page."
+  },
+  "ui.modalResult": {
+    "defaultMessage": "Modal Result",
+    "description": "Text on the ui page."
+  },
+  "ui.module1": {
+    "defaultMessage": "Module +1",
+    "description": "Text on the ui page."
+  },
+  "ui.moduleScope": {
+    "defaultMessage": "module scope",
+    "description": "Text on the ui page."
+  },
+  "ui.navigationbarApis": {
+    "defaultMessage": "NavigationBar APIs",
+    "description": "Text on the ui page."
+  },
+  "ui.newTab": {
+    "defaultMessage": "New Tab",
+    "description": "Default new tab text."
+  },
+  "ui.noEventsYet": {
+    "defaultMessage": "No events yet",
+    "description": "Text on the ui page."
+  },
+  "ui.noMessage": {
+    "defaultMessage": "No message received yet.",
+    "description": "Surface demo message placeholder."
+  },
+  "ui.notSupported": {
+    "defaultMessage": "not supported",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "ui.openASurface": {
+    "defaultMessage": "Open a surface",
+    "description": "Text on the ui page."
+  },
+  "ui.openViewPopup": {
+    "defaultMessage": "Open View popup",
+    "description": "Text on the ui page."
+  },
+  "ui.option.bottom": {
+    "defaultMessage": "Bottom",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.center": {
+    "defaultMessage": "Center",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.full": {
+    "defaultMessage": "Full",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.left": {
+    "defaultMessage": "Left",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.right": {
+    "defaultMessage": "Right",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.system": {
+    "defaultMessage": "System",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.option.top": {
+    "defaultMessage": "Top",
+    "description": "A surface edge, position or chrome."
+  },
+  "ui.position": {
+    "defaultMessage": "Position",
+    "description": "Text on the ui page."
+  },
+  "ui.preference": {
+    "defaultMessage": "Preference",
+    "description": "Text on the ui page."
+  },
+  "ui.previousInstance": {
+    "defaultMessage": "Previous instance",
+    "description": "Text on the ui page."
+  },
+  "ui.pushThisPageAgain": {
+    "defaultMessage": "Push this page again",
+    "description": "Text on the ui page."
+  },
+  "ui.pushThisPageAgain2": {
+    "defaultMessage": "Push this page again to create a new Page instance with a new tag.",
+    "description": "Text on the ui page."
+  },
+  "ui.redDotControls": {
+    "defaultMessage": "Red Dot Controls",
+    "description": "Text on the ui page."
+  },
+  "ui.removeBadge": {
+    "defaultMessage": "Remove Badge",
+    "description": "Text on the ui page."
+  },
+  "ui.replaceThisPageRedirectto": {
+    "defaultMessage": "Replace this page (redirectTo)",
+    "description": "Text on the ui page."
+  },
+  "ui.reset": {
+    "defaultMessage": "Reset",
+    "description": "Text on the ui page."
+  },
+  "ui.resolved": {
+    "defaultMessage": "Resolved",
+    "description": "Text on the ui page."
+  },
+  "ui.setBadge": {
+    "defaultMessage": "Set Badge",
+    "description": "Text on the ui page."
+  },
+  "ui.setColors": {
+    "defaultMessage": "Set Colors",
+    "description": "Text on the ui page."
+  },
+  "ui.setOrRemoveThe": {
+    "defaultMessage": "Set or remove the badge on tab 1",
+    "description": "Text on the ui page."
+  },
+  "ui.setTitle": {
+    "defaultMessage": "Set Title",
+    "description": "Text on the ui page."
+  },
+  "ui.show": {
+    "defaultMessage": "Show",
+    "description": "Text on the ui page."
+  },
+  "ui.showActionSheet": {
+    "defaultMessage": "Show Action Sheet",
+    "description": "Text on the ui page."
+  },
+  "ui.showCancelButton": {
+    "defaultMessage": "Show cancel button",
+    "description": "Text on the ui page."
+  },
+  "ui.showFailed": {
+    "defaultMessage": "Show failed: {reason}",
+    "description": "Surface demo error."
+  },
+  "ui.showModal": {
+    "defaultMessage": "Show Modal",
+    "description": "Text on the ui page."
+  },
+  "ui.showOrHideThe": {
+    "defaultMessage": "Show or hide the TabBar and update item text",
+    "description": "Text on the ui page."
+  },
+  "ui.showOrHideThe2": {
+    "defaultMessage": "Show or hide the red dot on tab 1",
+    "description": "Text on the ui page."
+  },
+  "ui.showRedDot": {
+    "defaultMessage": "Show Red Dot",
+    "description": "Text on the ui page."
+  },
+  "ui.showTabbar": {
+    "defaultMessage": "Show TabBar",
+    "description": "Text on the ui page."
+  },
+  "ui.showToast": {
+    "defaultMessage": "Show Toast",
+    "description": "Text on the ui page."
+  },
+  "ui.shown": {
+    "defaultMessage": "shown",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "ui.sizePercent": {
+    "defaultMessage": "{label} must be a percentage greater than 0% and at most 100%.",
+    "description": "Surface size error."
+  },
+  "ui.sizePx": {
+    "defaultMessage": "{label} must be a positive px value or a percentage like 80%.",
+    "description": "Surface size error."
+  },
+  "ui.stackFull": {
+    "defaultMessage": "Page stack is full (10)",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "ui.stateThatResetsAnd": {
+    "defaultMessage": "State that resets and state that stays",
+    "description": "Text on the ui page."
+  },
+  "ui.storedInPageData": {
+    "defaultMessage": "Stored in page data, so it starts over with every entry.",
+    "description": "Text on the ui page."
+  },
+  "ui.text": {
+    "defaultMessage": "Text",
+    "description": "Text on the ui page."
+  },
+  "ui.thePreviousTagIs": {
+    "defaultMessage": "The previous tag is saved in app storage and survives a page reset.",
+    "description": "Text on the ui page."
+  },
+  "ui.theResolvedThemeIs": {
+    "defaultMessage": "The resolved theme is in use now. Pages share one palette, so their colors update together.",
+    "description": "Text on the ui page."
+  },
+  "ui.theme.auto": {
+    "defaultMessage": "Auto",
+    "description": "A theme preference."
+  },
+  "ui.theme.dark": {
+    "defaultMessage": "Dark",
+    "description": "A theme preference."
+  },
+  "ui.theme.light": {
+    "defaultMessage": "Light",
+    "description": "A theme preference."
+  },
+  "ui.thisInstance": {
+    "defaultMessage": "This instance",
+    "description": "Text on the ui page."
+  },
+  "ui.thisSetdata": {
+    "defaultMessage": "this.setData",
+    "description": "Text on the ui page."
+  },
+  "ui.title": {
+    "defaultMessage": "Title",
+    "description": "Text on the ui page."
+  },
+  "ui.titleOptional": {
+    "defaultMessage": "Title (optional)",
+    "description": "Text on the ui page."
+  },
+  "ui.toast.bottom": {
+    "defaultMessage": "Bottom",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.center": {
+    "defaultMessage": "Center",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.error": {
+    "defaultMessage": "Error",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.loading": {
+    "defaultMessage": "Loading",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.none": {
+    "defaultMessage": "None",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.success": {
+    "defaultMessage": "Success",
+    "description": "A toast icon or position option."
+  },
+  "ui.toast.top": {
+    "defaultMessage": "Top",
+    "description": "A toast icon or position option."
+  },
+  "ui.toastParameters": {
+    "defaultMessage": "Toast Parameters",
+    "description": "Text on the ui page."
+  },
+  "ui.update": {
+    "defaultMessage": "Update",
+    "description": "Text on the ui page."
+  },
+  "ui.updateTab1Text": {
+    "defaultMessage": "Update Tab 1 Text",
+    "description": "Text on the ui page."
+  },
+  "ui.uselocal": {
+    "defaultMessage": "useLocal",
+    "description": "Text on the ui page."
+  },
+  "ui.view1": {
+    "defaultMessage": "View +1",
+    "description": "Text on the ui page."
+  },
+  "ui.viewPopup": {
+    "defaultMessage": "View popup",
+    "description": "Text on the ui page."
+  },
+  "ui.visibilityControls": {
+    "defaultMessage": "Visibility Controls",
+    "description": "Text on the ui page."
+  },
+  "ui.width": {
+    "defaultMessage": "Width",
+    "description": "Surface size field."
+  },
+  "ui.widthPxOr": {
+    "defaultMessage": "Width (px or %)",
+    "description": "Text on the ui page."
+  },
+  "ui.widthPxOr2": {
+    "defaultMessage": "width (px or %)",
+    "description": "Text on the ui page."
+  },
+  "video.bigBuckBunny": {
+    "defaultMessage": "Big Buck Bunny",
+    "description": "Text on the video page."
+  },
+  "video.controls.auto": {
+    "defaultMessage": "Auto",
+    "description": "A video control's label."
+  },
+  "video.controls.exitFullscreen": {
+    "defaultMessage": "Exit full screen",
+    "description": "A video control's label."
+  },
+  "video.controls.failed": {
+    "defaultMessage": "This video cannot play right now",
+    "description": "A video control's label."
+  },
+  "video.controls.fullscreen": {
+    "defaultMessage": "Full screen",
+    "description": "A video control's label."
+  },
+  "video.controls.live": {
+    "defaultMessage": "LIVE",
+    "description": "A video control's label."
+  },
+  "video.controls.loading": {
+    "defaultMessage": "Loading",
+    "description": "A video control's label."
+  },
+  "video.controls.mute": {
+    "defaultMessage": "Mute",
+    "description": "A video control's label."
+  },
+  "video.controls.pause": {
+    "defaultMessage": "Pause",
+    "description": "A video control's label."
+  },
+  "video.controls.play": {
+    "defaultMessage": "Play",
+    "description": "A video control's label."
+  },
+  "video.controls.quality": {
+    "defaultMessage": "Quality",
+    "description": "A video control's label."
+  },
+  "video.controls.rate": {
+    "defaultMessage": "Playback speed",
+    "description": "A video control's label."
+  },
+  "video.controls.replay": {
+    "defaultMessage": "Replay",
+    "description": "A video control's label."
+  },
+  "video.controls.retry": {
+    "defaultMessage": "Retry",
+    "description": "A video control's label."
+  },
+  "video.controls.seek": {
+    "defaultMessage": "Seek",
+    "description": "A video control's label."
+  },
+  "video.controls.settings": {
+    "defaultMessage": "Playback settings",
+    "description": "A video control's label."
+  },
+  "video.controls.unmute": {
+    "defaultMessage": "Unmute",
+    "description": "A video control's label."
+  },
+  "video.hlsTest": {
+    "defaultMessage": "HLS test",
+    "description": "Text on the video page."
+  },
+  "video.npFromLogic": {
+    "defaultMessage": "360p from Logic",
+    "description": "Text on the video page."
+  },
+  "video.overlayRow": {
+    "defaultMessage": "Row {id} · overlay above video",
+    "description": "A list row drawn over the video."
+  },
+  "video.pause": {
+    "defaultMessage": "Pause",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "video.pauseFromLogic": {
+    "defaultMessage": "Pause from Logic",
+    "description": "Text on the video page."
+  },
+  "video.paused": {
+    "defaultMessage": "paused",
+    "description": "Hero player state."
+  },
+  "video.play": {
+    "defaultMessage": "Play",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "video.playFromLogic": {
+    "defaultMessage": "Play from Logic",
+    "description": "Text on the video page."
+  },
+  "video.playing": {
+    "defaultMessage": "playing",
+    "description": "Hero player state."
+  },
+  "video.portraitClip": {
+    "defaultMessage": "Portrait clip",
+    "description": "Text on the video page."
+  },
+  "video.qualityTest": {
+    "defaultMessage": "Quality test",
+    "description": "Text on the video page."
+  },
+  "video.row": {
+    "defaultMessage": "Row {id}",
+    "description": "A list row."
+  },
+  "video.testPattern": {
+    "defaultMessage": "Test pattern",
+    "description": "Text on the video page."
+  },
+  "wifi.clear": {
+    "defaultMessage": "Clear",
+    "description": "Text on the wifi page."
+  },
+  "wifi.connect": {
+    "defaultMessage": "Connect",
+    "description": "Text on the wifi page."
+  },
+  "wifi.connectFailed": {
+    "defaultMessage": "Connection request failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.connectManual": {
+    "defaultMessage": "Provide SSID and password",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.connectPick": {
+    "defaultMessage": "Select a network above or enter SSID manually",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.connectToWifi": {
+    "defaultMessage": "Connect to WiFi",
+    "description": "Text on the wifi page."
+  },
+  "wifi.connected": {
+    "defaultMessage": "Connected",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.connectedWifi": {
+    "defaultMessage": "Connected WiFi",
+    "description": "Text on the wifi page."
+  },
+  "wifi.disconnected": {
+    "defaultMessage": "Disconnected",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.eventState": {
+    "defaultMessage": "State: {state}",
+    "description": "A WiFi event line; state = connected or the platform state."
+  },
+  "wifi.frequency": {
+    "defaultMessage": "Frequency",
+    "description": "Text on the wifi page."
+  },
+  "wifi.getCurrentWifiConnection": {
+    "defaultMessage": "Get current WiFi connection info",
+    "description": "Text on the wifi page."
+  },
+  "wifi.getInfo": {
+    "defaultMessage": "Get Info",
+    "description": "Text on the wifi page."
+  },
+  "wifi.getListOfAvailable": {
+    "defaultMessage": "Get list of available networks",
+    "description": "Text on the wifi page."
+  },
+  "wifi.initializeOrStopWifi": {
+    "defaultMessage": "Initialize or stop WiFi module",
+    "description": "Text on the wifi page."
+  },
+  "wifi.listenToWifiConnection": {
+    "defaultMessage": "Listen to WiFi connection changes",
+    "description": "Text on the wifi page."
+  },
+  "wifi.noEventsYet": {
+    "defaultMessage": "No events yet.",
+    "description": "Text on the wifi page."
+  },
+  "wifi.noNetworksFound": {
+    "defaultMessage": "No networks found",
+    "description": "Text on the wifi page."
+  },
+  "wifi.off": {
+    "defaultMessage": "Off",
+    "description": "Text on the wifi page."
+  },
+  "wifi.on": {
+    "defaultMessage": "On",
+    "description": "Text on the wifi page."
+  },
+  "wifi.password": {
+    "defaultMessage": "Password",
+    "description": "Text on the wifi page."
+  },
+  "wifi.passwordOptional": {
+    "defaultMessage": "Password (optional)",
+    "description": "Text on the wifi page."
+  },
+  "wifi.readFailed": {
+    "defaultMessage": "Unable to read connected network",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.requestFailed": {
+    "defaultMessage": "Wi-Fi request failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.scan": {
+    "defaultMessage": "Scan",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.scanFailed": {
+    "defaultMessage": "Wi-Fi scan failed",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.scanWifiNetworks": {
+    "defaultMessage": "Scan WiFi Networks",
+    "description": "Text on the wifi page."
+  },
+  "wifi.scanning": {
+    "defaultMessage": "Scanning...",
+    "description": "Text Logic shows natively (toast, dialog, sheet)."
+  },
+  "wifi.secure": {
+    "defaultMessage": "Secure",
+    "description": "Text on the wifi page."
+  },
+  "wifi.signal": {
+    "defaultMessage": "Signal",
+    "description": "Text on the wifi page."
+  },
+  "wifi.startWifi": {
+    "defaultMessage": "Start WiFi",
+    "description": "Text on the wifi page."
+  },
+  "wifi.state.found": {
+    "defaultMessage": "{count, plural, one {Found # network} other {Found # networks}}",
+    "description": "WiFi status after a scan."
+  },
+  "wifi.state.ready": {
+    "defaultMessage": "Ready",
+    "description": "WiFi status line, set by Logic."
+  },
+  "wifi.state.requested": {
+    "defaultMessage": "Connection requested",
+    "description": "WiFi status line, set by Logic."
+  },
+  "wifi.state.scanning": {
+    "defaultMessage": "Scanning nearby networks…",
+    "description": "WiFi status line, set by Logic."
+  },
+  "wifi.state.started": {
+    "defaultMessage": "Module started",
+    "description": "WiFi status line, set by Logic."
+  },
+  "wifi.state.stopped": {
+    "defaultMessage": "Module stopped",
+    "description": "WiFi status line, set by Logic."
+  },
+  "wifi.stopWifi": {
+    "defaultMessage": "Stop WiFi",
+    "description": "Text on the wifi page."
+  },
+  "wifi.wifiConnectedEvents": {
+    "defaultMessage": "WiFi Connected Events",
+    "description": "Text on the wifi page."
+  },
+  "wifi.wifiModule": {
+    "defaultMessage": "WiFi Module",
+    "description": "Text on the wifi page."
+  }
+}

@@ -1,4 +1,4 @@
-import { useLeaveGuard, useLocal, type View } from '@lingxia/view';
+import { t, useLeaveGuard, useLocal, type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, Field, Page, Section } from '../../shared/ui';
 
@@ -8,30 +8,30 @@ export function render(_view: View) {
   const dirty = draft.value !== saved.value;
   const guard = useLeaveGuard('draft', { enabled: dirty });
   return (
-    <Page intro="Edit the draft, then go back or home: the page stays and asks. Save, and it leaves at once.">
-      <Section title="Draft">
-        <Field testId="leave-draft" label="Draft" bind={draft} placeholder="Type something" />
+    <Page intro={t('leave.intro')}>
+      <Section title={t('leave.draft')}>
+        <Field testId="leave-draft" label={t('leave.draft')} bind={draft} placeholder={t('leave.placeholder')} />
         <view className="flex-row items-center justify-between gap-2">
           <text data-testid="leave-status" className="text-xs text-muted">
-            {dirty ? 'Unsaved changes' : 'Saved'}
+            {dirty ? t('leave.unsaved') : t('leave.saved')}
           </text>
-          <text data-testid="leave-requests" className="text-xs text-muted">{`leave requests: ${guard.requests}`}</text>
+          <text data-testid="leave-requests" className="text-xs text-muted">{t('leave.requests', { count: guard.requests })}</text>
         </view>
         <Button testId="leave-save" disabled={!dirty} onClick={() => saved.set(draft.value)}>
-          Save
+          {t('leave.save')}
         </Button>
       </Section>
       {guard.pending && (
-        <Section testId="leave-confirm" title="Discard unsaved changes?">
+        <Section testId="leave-confirm" title={t('leave.confirmTitle')}>
           <text data-testid="leave-question" className="text-sm">
-            Leaving now drops the draft.
+            {t('leave.confirmBody')}
           </text>
           <view className="grid gap-2 grid-cols-2">
             <Button variant="secondary" testId="leave-keep" onClick={() => guard.answer(false)}>
-              Keep editing
+              {t('leave.keep')}
             </Button>
             <Button variant="destructive" testId="leave-discard" onClick={() => guard.answer(true)}>
-              Discard
+              {t('leave.discard')}
             </Button>
           </view>
         </Section>
