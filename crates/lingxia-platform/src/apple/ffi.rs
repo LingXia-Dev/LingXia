@@ -540,15 +540,17 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 // `notify_app_update_ready` is macOS (callout/card) and iOS (store alert).
 // `reveal_in_file_manager` / control-session indicator stay macOS-only.
+#[cfg(target_os = "macos")]
+pub use bridge::autostart_is_supported;
 pub use bridge::get_capsule_rect;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use bridge::notify_app_update_ready;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, activate_browser_tab,
-    apply_appearance, autostart_is_enabled, autostart_is_supported, autostart_set_enabled,
-    cancel_preview_media, clipboard_clear, clipboard_read, clipboard_types, clipboard_write,
-    close_browser_tab, close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface,
-    hide_toast, host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
+    apply_appearance, autostart_is_enabled, autostart_set_enabled, cancel_preview_media,
+    clipboard_clear, clipboard_read, clipboard_types, clipboard_write, close_browser_tab,
+    close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
+    host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
     notification_last_error, notification_permission, notification_request_permission,
     notification_show, on_home_first_ready, open_builtin_browser_page, open_document_external,
     open_lxapp, open_managed_native_surface, open_url, present_layout, present_surface,
