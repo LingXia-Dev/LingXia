@@ -33,7 +33,7 @@ test('authoring types preserve binding ownership, page contracts and children', 
     for (const prop of type.getProperties())
       assert.ok(acceptsProp(element.name, prop.name), `${element.name}.${prop.name} must be accepted at runtime`);
   }
-  // Every role the runtime admits from page code is typed; `dialog` is the <dialog> element's own.
+  // Every role the runtime admits from page code is typed, `dialog` for a popover <view> included.
   let props;
   const find = node => {
     if (ts.isInterfaceDeclaration(node) && node.name.text === 'Props') props = node;
@@ -42,5 +42,5 @@ test('authoring types preserve binding ownership, page contracts and children', 
   find(authoring);
   const role = checker.getTypeAtLocation(props).getProperty('role');
   const typed = checker.getTypeOfSymbolAtLocation(role, props).types.filter(type => type.isStringLiteral()).map(type => type.value);
-  assert.deepEqual(typed.sort(), fieldOptions.role.filter(name => name !== 'dialog').sort());
+  assert.deepEqual(typed.sort(), [...fieldOptions.role].sort());
 });

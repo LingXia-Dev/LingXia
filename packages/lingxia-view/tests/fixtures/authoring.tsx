@@ -68,6 +68,7 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const decorativeImage = <image src="texture.png" alt=""/>;
   // @ts-expect-error alternative text must be text
   const invalidAlt = <image src="photo.png" alt={3}/>;
+  const sheet = <view popover="manual" role="dialog" aria-modal aria-label="Sheet"/>;
   // @ts-expect-error roles are a closed set.
   const banner = <view role="banner"/>;
   // @ts-expect-error aria states are booleans.
