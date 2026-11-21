@@ -116,17 +116,15 @@ pub fn resolve_page_path(
 /// First line of every compiled GPU View; the native loader reads it before running the module.
 pub(crate) const UI_MODULE_HEADER: &str = "// LingXia UI module; ";
 
-/// Every page of an lxapp renders natively exactly when its `lxapp.json` declares
-/// `"renderer": "gpu"`.
+/// Every page of an lxapp renders natively exactly when its pages export `render`.
 pub(crate) fn is_gpu_page(project_root: &Path, _page: &str) -> bool {
     is_gpu_lxapp(project_root)
 }
 
+/// A disagreement between pages is reported by `Project::discover`; here it reads as WebView.
 pub(crate) fn is_gpu_lxapp(project_root: &Path) -> bool {
-    fs::read_to_string(project_root.join("lxapp.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .is_some_and(|value| value["renderer"] == "gpu")
+    crate::lxapp::renderer::lxapp_renderer(project_root)
+        .is_ok_and(|renderer| renderer == crate::lxapp::renderer::Renderer::Gpu)
 }
 
 pub(crate) fn page_base(path: &str) -> String {
@@ -282,12 +280,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
             dir.path().join("lxapp.json"),
-            r#"{"renderer":"gpu","pages":[{"name":"native","path":"native"},{"name":"other","path":"other"}]}"#,
+            r#"{"pages":[{"name":"native","path":"native"},{"name":"other","path":"other"}]}"#,
         )
         .unwrap();
-        for file in ["native.tsx", "native.ts", "other.tsx"] {
-            fs::write(dir.path().join(file), "").unwrap();
+        for file in ["native.tsx", "other.tsx"] {
+            fs::write(dir.path().join(file), "export function render() {}").unwrap();
         }
+        fs::write(dir.path().join("native.ts"), "").unwrap();
         assert_eq!(
             detect_project_framework(dir.path()).unwrap(),
             ProjectFramework::Html
@@ -301,6 +300,11 @@ mod tests {
         fs::write(
             dir.path().join("lxapp.json"),
             r#"{"pages":[{"name":"native","path":"native.tsx"}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("native.tsx"),
+            "export default function Page() {}",
         )
         .unwrap();
         assert_eq!(compiled_page_path(dir.path(), "native.tsx"), "native.tsx");

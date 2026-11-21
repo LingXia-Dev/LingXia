@@ -7,6 +7,7 @@ mod options;
 mod package;
 mod page_types;
 mod project;
+mod renderer;
 mod view;
 
 use anyhow::Result;

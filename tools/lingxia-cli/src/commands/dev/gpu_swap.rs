@@ -282,7 +282,7 @@ mod tests {
         };
         write(
             "lxapp.json",
-            r#"{"appId":"prime-test","appName":"Prime","version":"1.0.0","renderer":"gpu","pages":[{"name":"a","path":"pages/a/index"}]}"#,
+            r#"{"appId":"prime-test","appName":"Prime","version":"1.0.0","pages":[{"name":"a","path":"pages/a/index"}]}"#,
         );
         write("package.json", r#"{"name":"prime-test","private":true}"#);
         write(

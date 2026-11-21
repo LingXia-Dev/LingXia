@@ -35,6 +35,12 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 .collect::<std::collections::HashMap<_, _>>();
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
+            if crate::lxapp::renderer::lxapp_renderer(&project.root)?
+                == crate::lxapp::renderer::Renderer::Gpu
+                && let Some(manifest) = value.as_object_mut()
+            {
+                manifest.insert("renderer".to_string(), Value::String("gpu".to_string()));
+            }
             let min_runtime = crate::versions::lxapp_min_runtime(&value)?;
             crate::versions::ensure_build_target(&min_runtime)?;
             reject_npm_ahead_of_min_runtime(&project.root, &min_runtime)?;
@@ -469,6 +475,13 @@ mod tests {
             "pages/home/index.tsx".to_string(),
             "pages/settings/index.tsx".to_string(),
         ];
+        for page in ["home", "settings"] {
+            write_file(
+                temp.path(),
+                &format!("pages/{page}/index.tsx"),
+                "export default function Page() { return null; }",
+            );
+        }
         write_file(
             temp.path(),
             "lxapp.json",
@@ -510,6 +523,62 @@ mod tests {
         );
         assert!(manifest["tabBar"]["items"][0].get("pagePath").is_none());
         assert_eq!(manifest["minRuntime"].as_str(), Some("0.25.0"));
+        assert!(manifest.get("renderer").is_none(), "WebView is the default");
+    }
+
+    #[test]
+    fn write_root_manifest_names_the_gpu_renderer_its_pages_export() {
+        let temp = tempdir().unwrap();
+        let mut project = make_project(temp.path());
+        project.pages = vec!["pages/home/index.tsx".to_string()];
+        write_file(
+            temp.path(),
+            "pages/home/index.tsx",
+            "export { render } from './view';",
+        );
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{ "appId": "demo", "version": "1.0.0", "minRuntime": "0.25.0", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
+        );
+        fs::create_dir_all(&project.output_dir).unwrap();
+
+        write_root_manifest(&project).unwrap();
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(project.output_dir.join("lxapp.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["renderer"].as_str(), Some("gpu"));
+        assert_eq!(
+            manifest["pages"][0]["path"].as_str(),
+            Some("pages/home/index.js")
+        );
+    }
+
+    #[test]
+    fn write_root_manifest_leaves_html_pages_on_the_default_renderer() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{ "appId": "demo", "version": "1.0.0", "minRuntime": "0.25.0", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
+        );
+        fs::create_dir_all(&project.output_dir).unwrap();
+
+        write_root_manifest(&project).unwrap();
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(project.output_dir.join("lxapp.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(manifest.get("renderer").is_none());
+        assert_eq!(
+            manifest["pages"][0]["path"].as_str(),
+            Some("pages/home/index.html")
+        );
     }
 
     #[test]
