@@ -104,9 +104,8 @@ export class GpuPageModel {
   textMenu: GpuFrameTextMenu | null = null;
   handles: GpuSelectionHandles | null = null;
   webViews: GpuWebViewMount[] = [];
-  /** Web views being pictured, and those asked before their `Web` attached. */
+  /** Web views being pictured. */
   picturing: Set<string> = new Set();
-  unattachedPictures: Set<string> = new Set();
   topLayer: boolean = false;
   /** The bar-snapshot generation the frame on screen draws; 0 when none. */
   chromeSnapshot: number = 0;
@@ -335,14 +334,6 @@ export class GpuPages {
     }
   }
 
-  /** A web view's `Web` attached: take the pictures asked before it could. */
-  static webViewAttached(page: GpuPageModel, webTag: string): void {
-    const mount = page.webViews.find((m: GpuWebViewMount) => m.webTag === webTag);
-    if (mount && page.unattachedPictures.delete(mount.webId)) {
-      GpuPages.pictureWebView(page, mount.webId, 0);
-    }
-  }
-
   private static pictureWebView(page: GpuPageModel, id: string, attempt: number): void {
     if (page.picturing.has(id)) {
       return;
@@ -357,11 +348,10 @@ export class GpuPages {
       page.picturing.delete(id);
       // ArkWeb throws its codes as strings.
       const code = Number(raw);
-      if (code === GpuPages.WEB_NOT_ATTACHED) {
-        // The native web view loads before ArkUI builds its `Web`.
-        page.unattachedPictures.add(id);
-      } else if (code === GpuPages.WEB_NOT_ENABLED && attempt < 4) {
-        setTimeout(() => GpuPages.pictureWebView(page, id, attempt + 1), 250 * (attempt + 1));
+      // The native web view reports ready up to ~2 s before ArkWeb can snapshot it, with no
+      // event for that moment.
+      if ((code === GpuPages.WEB_NOT_ATTACHED || code === GpuPages.WEB_NOT_ENABLED) && attempt < 4) {
+        setTimeout(() => GpuPages.pictureWebView(page, id, attempt + 1), 250 * Math.pow(2, attempt));
       } else {
         LxLog.w(TAG, `web view picture ${id}: ${why}`);
       }

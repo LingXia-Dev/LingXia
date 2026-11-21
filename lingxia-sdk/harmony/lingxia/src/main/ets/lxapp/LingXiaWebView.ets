@@ -215,7 +215,6 @@ export struct LingXiaWebView {
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
   /// A GPU page's `<webview>`: true when ArkWeb's own pan should yield a drag of `dx`, `dy` vp.
   yieldsPan?: (dx: number, dy: number) => boolean
-  onAttached?: () => void
 
   // Same-level rendering state (simplified: single webTag, no Map wrappers)
   @State private embedComponentIds: string[] = []
@@ -638,7 +637,6 @@ export struct LingXiaWebView {
         }
       })
       .onControllerAttached(() => {
-        this.onAttached?.();
         if (this.rules().nativeComponentBridge) {
           this.setupEmbedManager();
           hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${this.webTag}`);
