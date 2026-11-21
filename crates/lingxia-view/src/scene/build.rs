@@ -1595,6 +1595,7 @@ impl Renderer {
                     .find(|(field, _)| *field == field::ON_LAYOUT)
                     .and_then(|(_, value)| value.as_u64())
                     .filter(|handle| *handle != 0),
+                intrinsic: self.intrinsic.get(&index).copied(),
                 content_box: {
                     let [left, top, width, height] = content_boxes[index];
                     let (x, y) = origins[index];

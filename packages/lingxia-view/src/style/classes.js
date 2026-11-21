@@ -5,9 +5,9 @@ import { resetLonghands } from './lower.js';
 
 let byName = new Map();
 const cache = new Map();
-const states = ['focus', 'focusVisible', 'active', 'hover', 'disabled', 'starting', 'exit', 'hasChecked', 'hasDisabled', 'focusWithin', 'groupActive'];
+const states = ['focus', 'focusVisible', 'active', 'hover', 'disabled', 'starting', 'exit', 'hasChecked', 'hasDisabled', 'focusWithin', 'groupActive', 'sideTop', 'sideBottom', 'sideStart', 'sideEnd'];
 const parts = ['track', 'range', 'secondary', 'thumb'];
-const variantNames = { focusVisible: 'focus-visible', hasChecked: 'has-checked', hasDisabled: 'has-disabled', focusWithin: 'focus-within', groupActive: 'group-active', children: 'space-*/divide-*', every: '*' };
+const variantNames = { focusVisible: 'focus-visible', hasChecked: 'has-checked', hasDisabled: 'has-disabled', focusWithin: 'focus-within', groupActive: 'group-active', sideTop: 'side-top', sideBottom: 'side-bottom', sideStart: 'side-start', sideEnd: 'side-end', children: 'space-*/divide-*', every: '*' };
 const geometryKeys = { linear: ['direction', 'angle'], radial: ['shape', 'size', 'at'], conic: ['from', 'at'] };
 
 function copy(value) {

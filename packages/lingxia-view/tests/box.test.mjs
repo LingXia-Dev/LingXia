@@ -31,6 +31,26 @@ test('useBox is null until the element is laid out, then holds its size and re-r
   assert.equal(byId(render(view), 'out').text, '200x180.125');
 });
 
+test('a box also holds its content\'s min- and max-content widths, and a change in them alone re-renders', () => {
+  reset();
+  const view = () => {
+    const box = useBox('title');
+    const fits = box.value && box.value.maxContentWidth <= box.value.width;
+    return h('page', {}, h('view', { box, 'data-testid': 'title' }),
+      h('text', { 'data-testid': 'out' }, box.value ? `${box.value.minContentWidth}-${box.value.maxContentWidth} ${fits ? 'one line' : 'wraps'}` : 'none'));
+  };
+  const measured = (width, min, max) => JSON.stringify({ width, height: 20, minContentWidth: min, maxContentWidth: max });
+  let nodes = render(view);
+  dispatch(byId(nodes, 'title').props.onLayout, measured(200, 64, 180));
+  nodes = render(view);
+  assert.equal(byId(nodes, 'out').text, '64-180 one line');
+  dispatch(byId(nodes, 'title').props.onLayout, measured(200, 64, 180));
+  assert.equal(hasLocalUpdates(), false);
+  dispatch(byId(nodes, 'title').props.onLayout, measured(200, 64, 240));
+  assert.equal(hasLocalUpdates(), true, 'longer content at the same size is news');
+  assert.equal(byId(render(view), 'out').text, '64-240 wraps');
+});
+
 test('onLayout is the primitive: each of its elements takes it, with or without a box', () => {
   reset();
   const seen = [];

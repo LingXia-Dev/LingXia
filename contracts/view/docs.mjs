@@ -284,6 +284,8 @@ function variants(schema, system, rules) {
     starting: 'any element; paint only, the values it enters from',
     has: 'any element, alone; `has-checked:` (a descendant checkbox, switch or radio option that reads checked, bound or not), `has-disabled:` (a disabled descendant) and `has-focus:`; paint only',
     'focus-within': 'any element; while it or a descendant has focus; paint only',
+    'side-top': 'any element in an anchored popover, the popover included; while that popover sits above its anchor, after any flip; paint only', 'side-bottom': 'any element in an anchored popover, the popover included; while that popover sits below its anchor, after any flip; paint only',
+    'side-start': 'any element in an anchored popover, the popover included; while that popover sits at the inline start of its anchor (its left in LTR), after any flip; paint only', 'side-end': 'any element in an anchored popover, the popover included; while that popover sits at the inline end of its anchor (its right in LTR), after any flip; paint only',
     ...parts,
     data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included', exit: 'any element; paint only, the values a removed element leaves toward',
   };

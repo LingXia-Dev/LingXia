@@ -232,9 +232,10 @@ impl ViewSession {
         };
         // An eighth of a point: a re-render that nudges the size settles.
         let size = |node: &crate::scene::node::NodeSnapshot| {
-            [node.content_box[2], node.content_box[3]].map(|v| (v * 8.0).round() / 8.0)
+            let [min, max] = node.intrinsic.unwrap_or_default();
+            [node.content_box[2], node.content_box[3], min, max].map(|v| (v * 8.0).round() / 8.0)
         };
-        let observed: HashMap<&str, [f32; 2]> = retained
+        let observed: HashMap<&str, [f32; 4]> = retained
             .nodes
             .iter()
             .filter(|node| node.on_layout.is_some())
@@ -273,7 +274,10 @@ impl ViewSession {
                 continue;
             };
             self.boxes.insert(identity, size);
-            let payload = format!(r#"{{"width":{},"height":{}}}"#, size[0], size[1]);
+            let payload = format!(
+                r#"{{"width":{},"height":{},"minContentWidth":{},"maxContentWidth":{}}}"#,
+                size[0], size[1], size[2], size[3]
+            );
             ran |= self.text_event(self.generation, handle, &payload)?;
         }
         Ok(ran)

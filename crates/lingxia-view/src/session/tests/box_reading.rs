@@ -97,3 +97,48 @@ fn text_scroll_vector_and_plot_report_a_box_and_a_remounted_element_reports_agai
         "mounted again, the text reports again"
     );
 }
+
+#[test]
+fn a_box_reports_its_contents_min_and_max_content_widths_inside_its_padding() {
+    // The same words padded and bare, and the longest word alone; the boxes are wider than
+    // the line, so their own width says nothing about the content.
+    let mut session = crate::ViewSession::new(&source(
+        "function render(){const on=()=>{};const words=t=>h('text',{style:{fontSize:16}},t);return h('page',{},h('view',{onLayout:on,'data-testid':'padded',style:{width:300,padding:10,borderWidth:1,borderColor:'#000000'}},words('Hello wonderful world')),h('view',{onLayout:on,'data-testid':'bare',style:{width:300}},words('Hello wonderful world')),h('view',{onLayout:on,'data-testid':'word',style:{width:300}},words('wonderful')),h('view',{'data-testid':'unread',style:{width:300}},words('Hello')))}",
+    ))
+    .unwrap();
+    let display = session.layout(400, 400, 1.0).unwrap();
+    let widths = |id: &str| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == id)
+            .unwrap()
+            .intrinsic
+    };
+    let [min, max] = widths("padded").unwrap();
+    assert_eq!(
+        widths("bare"),
+        Some([min, max]),
+        "padding and border excluded"
+    );
+    let [word, word_max] = widths("word").unwrap();
+    assert_eq!(
+        (min, word),
+        (word_max, word_max),
+        "narrowest: the longest word"
+    );
+    assert!(max > min * 2.0 && max < 278.0, "one line: {max}");
+    assert_eq!(widths("unread"), None, "only a box a page reads is probed");
+}
+
+#[test]
+fn a_box_delivers_its_content_widths_to_the_page() {
+    let worker = ViewWorker::spawn("test-box-widths").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = page(
+        &platform,
+        &worker,
+        "function render(){const box=useBox('m');const b=box.value;return h('page',{},h('view',{box,style:{width:300}},h('text',{style:{fontSize:16}},'Hello wonderful world')),h('text',{'data-testid':'fits-'+(b?String(b.minContentWidth>0&&b.maxContentWidth>b.minContentWidth&&b.maxContentWidth<b.width):'none')},'f'))}",
+    );
+    assert_eq!(count(&host, "fits-true"), 1);
+}

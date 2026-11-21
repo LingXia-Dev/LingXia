@@ -7,12 +7,12 @@ use slotmap::{DefaultKey, SlotMap};
 
 #[cfg(feature = "block_layout")]
 use crate::block::BlockContext;
-use crate::geometry::Size;
+use crate::geometry::{AbsoluteAxis, Line, Size};
 use crate::style::{AvailableSpace, Display, Style};
 use crate::sys::DefaultCheapStr;
 use crate::tree::{
-    Cache, ClearState, Layout, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree, RoundTree, RunMode,
-    TraversePartialTree, TraverseTree,
+    Cache, ClearState, Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId, PrintTree,
+    RoundTree, RunMode, SizingMode, TraversePartialTree, TraverseTree,
 };
 use crate::util::debug::{debug_log, debug_log_node};
 use crate::util::sys::{new_vec_with_capacity, ChildrenVec, Vec};
@@ -910,6 +910,35 @@ impl<NodeContext> TaffyTree<NodeContext> {
             round_layout(&mut taffy_view, node_id);
         }
         Ok(())
+    }
+
+    /// Each node's border-box width sized by its content alone under min-content and
+    /// max-content available space, without changing any stored layout.
+    pub fn intrinsic_widths_with_measure<MeasureFunction>(
+        &mut self,
+        nodes: &[NodeId],
+        measure_function: MeasureFunction,
+    ) -> Vec<[f32; 2]>
+    where
+        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+    {
+        let mut taffy_view = TaffyView { taffy: self, measure_function };
+        nodes
+            .iter()
+            .map(|&node| {
+                [AvailableSpace::MinContent, AvailableSpace::MaxContent].map(|width| {
+                    taffy_view.measure_child_size(
+                        node,
+                        Size::NONE,
+                        Size::NONE,
+                        Size { width, height: AvailableSpace::MaxContent },
+                        SizingMode::ContentSize,
+                        AbsoluteAxis::Horizontal,
+                        Line::FALSE,
+                    )
+                })
+            })
+            .collect()
     }
 
     /// Updates the stored layout of the provided `node` and its children

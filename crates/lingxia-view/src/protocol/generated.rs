@@ -311,6 +311,10 @@ pub mod field {
     pub const CHECKED_STYLE: usize = 273;
     pub const HAS_CHECKED_STYLE: usize = 274;
     pub const MODAL: usize = 275;
+    pub const SIDE_TOP_STYLE: usize = 276;
+    pub const SIDE_BOTTOM_STYLE: usize = 277;
+    pub const SIDE_START_STYLE: usize = 278;
+    pub const SIDE_END_STYLE: usize = 279;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -593,6 +597,10 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("checkedStyle", "state-style"),
     ("hasCheckedStyle", "state-style"),
     ("modal", "flag"),
+    ("sideTopStyle", "state-style"),
+    ("sideBottomStyle", "state-style"),
+    ("sideStartStyle", "state-style"),
+    ("sideEndStyle", "state-style"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -1128,4 +1136,8 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: None, parent: None },
 ];

@@ -494,7 +494,7 @@ impl ViewSession {
                 .viewport
                 .is_some_and(|viewport| viewport != (width, height, scale));
         let rebuild = rebuild || self.input_rebuild || self.reveal_input;
-        let native_input = !rebuild
+        let mut native_input = !rebuild
             && (self.input_dirty || self.pointer_dirty)
             && self.input_records.is_some()
             && self.viewport == Some((width, height, scale));
@@ -549,7 +549,16 @@ impl ViewSession {
             let mut display = retained.compose(&offsets)?;
             metrics.compose_us += crate::session::metrics::micros(started);
             window_only = crate::layout::list_layout::scroll_windows(&display, &self.lists)?;
-            if window_only.is_none() {
+            // A scroll that flipped a popover restyles its `side-*:` paint, without the View.
+            let flipped = display.flipped != self.renderer.flipped
+                && self
+                    .input_records
+                    .as_deref()
+                    .is_some_and(crate::interaction::input_state::has_side_styles);
+            if flipped && window_only.is_none() {
+                native_input = true;
+            }
+            if window_only.is_none() && !flipped {
                 let started = std::time::Instant::now();
                 display = animation
                     .compose(
@@ -644,6 +653,11 @@ impl ViewSession {
                     &mut uncontrolled,
                 );
                 crate::interaction::input_state::apply_checked_styles(&mut render_records)?;
+                crate::interaction::input_state::apply_side_styles(
+                    &mut render_records,
+                    &self.renderer.flipped,
+                    self.renderer.rtl,
+                )?;
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
                 self.renderer.pressed.clone_from(&self.pressed);
@@ -678,6 +692,14 @@ impl ViewSession {
                     metrics.layout_passes += 1;
                     display
                 };
+                // A popover placed on another side than its styles assumed paints again in this
+                // frame; paint-only styles cannot move it, so the second placement agrees.
+                if display.flipped != self.renderer.flipped {
+                    self.renderer.flipped = display.flipped.clone();
+                    if crate::interaction::input_state::has_side_styles(&render_records) {
+                        continue;
+                    }
+                }
                 // An overlay whose editor or invoker unmounted goes with it, in this frame, as
                 // when that control blurs.
                 if !native_input

@@ -227,8 +227,15 @@ export interface PointerEvent {
  * An input method that is composing keeps every key. `Escape` left out closes the topmost overlay.
  */
 export type EditorKeys = Partial<Record<"ArrowUp" | "ArrowDown" | "Enter" | "Escape" | "Home" | "End" | "PageUp" | "PageDown", () => void>>;
-/** An element's laid-out content box, inside its padding and border, in points. */
-export interface BoxSize { readonly width: number; readonly height: number }
+/**
+ * An element's laid-out content box, inside its padding and border, in points, and the widths
+ * its content would take at its narrowest (`minContentWidth`: every line broken, as CSS
+ * `min-content`) and with no line broken (`maxContentWidth`, as `max-content`).
+ */
+export interface BoxSize {
+  readonly width: number; readonly height: number;
+  readonly minContentWidth: number; readonly maxContentWidth: number;
+}
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */

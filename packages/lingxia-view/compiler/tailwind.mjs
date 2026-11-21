@@ -188,6 +188,10 @@ function roleColor(value) {
 // adds FLIP position motion to whatever `transition-*` sets; `ease-spring*` time a transition by a spring;
 // `touch-target-none` keeps a finger to the element's own box.
 export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
+@custom-variant side-top (&:where(.lx-side-top));
+@custom-variant side-bottom (&:where(.lx-side-bottom));
+@custom-variant side-start (&:where(.lx-side-start));
+@custom-variant side-end (&:where(.lx-side-end));
 @custom-variant track (&::-lx-track);
 @custom-variant range (&::-lx-range);
 @custom-variant secondary (&::-lx-secondary);
@@ -1024,6 +1028,9 @@ function selectorParts(selector) {
   if (has) return { name, state: has, ...extra };
   // `exit:` is LingXia's presence variant: the values a removed element leaves toward.
   if (remaining === ':where(.lx-exit)') return { name, state: 'exit', ...extra };
+  // `side-*:` paints while the anchored popover the element is (or sits in) ended on that side of its anchor.
+  const side = remaining.match(/^:where\(\.lx-side-(top|bottom|start|end)\)$/)?.[1];
+  if (side) return { name, state: `side${side[0].toUpperCase()}${side.slice(1)}`, ...extra };
   // `group-active:` paints while the control the element sits in is pressed.
   if (remaining === ':is(:where(.group):active *)') return { name, state: 'groupActive', ...extra };
   const matched = remaining.match(/^:(focus-visible|focus|active|hover|disabled)$/)?.[1];

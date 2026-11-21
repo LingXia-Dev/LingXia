@@ -27,6 +27,8 @@ pub struct DisplayList {
     /// A capture: every `<webview>` draws its picture instead of a hole to the native view.
     pub(crate) web_pictures: bool,
     pub(crate) retained: Arc<RetainedLayout>,
+    /// Anchored popovers this composition placed on another side than authored, by identity.
+    pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,
 }
 
 /// An outermost animated subtree's commands, holding this frame's sampled values. A span

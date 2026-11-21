@@ -49,6 +49,9 @@ export function GapDemo() {
         onToggle={next => { if (!next) side.set('none'); }} style={{ positionArea: below ? 'bottom' : 'top' }}
         className={`w-48 rounded-lg bg-text p-3 ${below ? 'mt-3' : 'mb-3'} ${nudged.value ? (below ? 'translate-y-2' : '-translate-y-2') : ''}`}>
         <text className="text-xs text-surface">{t(labels.gapNote)}</text>
+        {/* One caret per edge; each shows only on the side the callout ended on, flip or not. */}
+        <view data-testid="lab-gap-caret-up" className="absolute -top-1.5 left-1/2 -ml-1.5 size-3 rotate-45 bg-text opacity-0 side-bottom:opacity-100"/>
+        <view data-testid="lab-gap-caret-down" className="absolute -bottom-1.5 left-1/2 -ml-1.5 size-3 rotate-45 bg-text opacity-0 side-top:opacity-100"/>
       </view>
       <Readout testId="lab-gap-state" state={`side=${side.value} nudged=${nudged.value}`}>{t(readouts.gap(side.value, nudged.value))}</Readout>
     </>

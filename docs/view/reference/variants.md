@@ -40,6 +40,10 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `dark:` | any element; not on colours, which follow appearance |
 | `starting:` | any element; paint only, the values it enters from |
 | `exit:` | any element; paint only, the values a removed element leaves toward |
+| `side-top:` | any element in an anchored popover, the popover included; while that popover sits above its anchor, after any flip; paint only |
+| `side-bottom:` | any element in an anchored popover, the popover included; while that popover sits below its anchor, after any flip; paint only |
+| `side-start:` | any element in an anchored popover, the popover included; while that popover sits at the inline start of its anchor (its left in LTR), after any flip; paint only |
+| `side-end:` | any element in an anchored popover, the popover included; while that popover sits at the inline end of its anchor (its right in LTR), after any flip; paint only |
 | `track:` | `<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch (while it reads checked, bound or not; another state may not keep part of its paint on the same part), eased over 150 ms |
 | `range:` | `<slider>`; its range, min to value: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
 | `secondary:` | `<slider>`; its secondary range, min to `secondaryValue`: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |

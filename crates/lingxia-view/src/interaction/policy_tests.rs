@@ -28,6 +28,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         interest_for: None,
         on_pointer: [None; 2],
         on_layout: None,
+        intrinsic: None,
         on_pointer_event: None,
         on_focus: [None; 2],
         key_map: None,

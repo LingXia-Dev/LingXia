@@ -78,9 +78,9 @@ pub struct ViewSession {
     /// Bumped whenever a frame commits a different retained layout.
     layout_revision: u64,
     /// The content size last reported to each `onLayout` element, by identity.
-    boxes: HashMap<String, [f32; 2]>,
+    boxes: HashMap<String, [f32; 4]>,
     /// Sizes that changed in the committed layout and wait for delivery.
-    boxes_due: Vec<(String, [f32; 2])>,
+    boxes_due: Vec<(String, [f32; 4])>,
     /// The first commit of the current layout revision.
     /// The last commit the host presented: the frame the user saw.
     seen_commit: lifecycle::CommitTicket,

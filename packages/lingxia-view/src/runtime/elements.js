@@ -273,6 +273,13 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   }
   state('focusWithin', 'focusWithinStyle', true);
   state('groupActive', 'groupPressedStyle', true);
+  // The side of its anchor an anchored popover ended on, after any flip, for it and its subtree.
+  for (const side of ['Top', 'Bottom', 'Start', 'End']) {
+    const delta = classes?.[`side${side}`];
+    if (!delta || !Object.keys(delta).length) continue;
+    paintOnly(`side-${side.toLowerCase()}`, tag, delta);
+    states[`side${side}Style`] = lowerStyle(tag, delta, env, { fontSize: typography.fontSize }).fields;
+  }
   // The core paints `checked:` while the control reads checked, bound or not, and `has-checked:`
   // while a descendant does; each lays over the base before any interaction state.
   const checked = classes?.checked && (disabled ? classes.checked.disabled : classes.checked.base);
@@ -491,9 +498,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     const binding = props.box === undefined ? undefined : boxBinding(props.box);
     if (props.box !== undefined && !binding) throw Error('UI_PROP: box takes the handle useBox(name) returns');
     on('onLayout', payload => {
-      const { width, height } = JSON.parse(payload);
-      const size = { width, height }, held = binding?.value;
-      if (binding && !(held && held.width === width && held.height === height)) binding.set(size);
+      const { width, height, minContentWidth, maxContentWidth } = JSON.parse(payload);
+      const size = { width, height, minContentWidth, maxContentWidth }, held = binding?.value;
+      if (binding && !(held && Object.keys(size).every(key => held[key] === size[key]))) binding.set(size);
       onLayout?.(size);
     }, 'text');
   }

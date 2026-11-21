@@ -347,7 +347,11 @@
     {"id": 272, "key": "defaultValue", "wire": "defaultValue", "kind": "default-value", "tags": ["checkbox", "switch", "slider", "select"]},
     {"id": 273, "key": "checkedStyle", "wire": "checkedStyle", "kind": "state-style", "tags": ["checkbox", "switch", "radio-option"]},
     {"id": 274, "key": "hasCheckedStyle", "wire": "hasCheckedStyle", "kind": "state-style"},
-    {"id": 275, "key": "modal", "wire": "modal", "kind": "flag", "tags": ["column"]}
+    {"id": 275, "key": "modal", "wire": "modal", "kind": "flag", "tags": ["column"]},
+    {"id": 276, "key": "sideTopStyle", "wire": "sideTopStyle", "kind": "state-style"},
+    {"id": 277, "key": "sideBottomStyle", "wire": "sideBottomStyle", "kind": "state-style"},
+    {"id": 278, "key": "sideStartStyle", "wire": "sideStartStyle", "kind": "state-style"},
+    {"id": 279, "key": "sideEndStyle", "wire": "sideEndStyle", "kind": "state-style"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

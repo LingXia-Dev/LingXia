@@ -172,6 +172,9 @@ pub struct NodeSnapshot {
     /// `onLayout`'s handle: the element reports its content box.
     #[serde(skip)]
     pub on_layout: Option<u64>,
+    /// With `on_layout`: the content's min- and max-content widths.
+    #[serde(skip)]
+    pub intrinsic: Option<[f32; 2]>,
     /// The content box, inside padding and border: its offset in `bounds`, then its size.
     #[serde(skip)]
     pub content_box: [f32; 4],

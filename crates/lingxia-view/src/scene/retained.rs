@@ -448,6 +448,7 @@ impl RetainedLayout {
         ];
         let mut nodes = self.nodes.clone();
         let mut translations: Vec<[f32; 2]> = vec![[0.0; 2]; count];
+        let mut flipped = HashMap::new();
         let mut clips = vec![[0.0f32; 4]; count];
         let mut commands = Vec::new();
         let mut rounded: Vec<Vec<ClipSnapshot>> = vec![Vec::new(); count];
@@ -592,13 +593,16 @@ impl RetainedLayout {
                     .unwrap_or_default();
                 natural[0] -= translation[0] + tx;
                 natural[1] -= translation[1] + ty;
-                let [dx, dy] = crate::scene::anchor::place(
+                let ([dx, dy], side) = crate::scene::anchor::place(
                     natural,
                     anchor_box(&nodes, &self.parents, target),
                     self.unobscured,
                     *area,
                     *margin,
                 );
+                if side != area.side {
+                    flipped.insert(self.nodes[index].identity.to_string(), area.logical(side));
+                }
                 translation = [translation[0] - dx, translation[1] - dy];
             }
             // A drag element sits at its offset, its whole subtree with it.
@@ -1464,6 +1468,7 @@ impl RetainedLayout {
             device_raster: None,
             web_pictures: false,
             retained: Arc::clone(self),
+            flipped,
         })
     }
 }

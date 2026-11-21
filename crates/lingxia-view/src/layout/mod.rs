@@ -53,6 +53,10 @@ pub struct Renderer {
     pub(crate) focus_visible: bool,
     /// The theme's small control radius (`radius.sm`), which a focused link's ring takes.
     pub(crate) control_radius: f32,
+    /// This frame's min- and max-content widths of each content box a page reads, by record.
+    pub(crate) intrinsic: HashMap<usize, [f32; 2]>,
+    /// Popovers the last composition flipped off their authored side: `side-*:` follows them.
+    pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,
 }
 
 #[cfg(test)]
@@ -98,6 +102,8 @@ impl Default for Renderer {
             webviews,
             focus_visible: true,
             control_radius: crate::protocol::scales::Scales::builtin().control_radius(),
+            intrinsic: HashMap::new(),
+            flipped: HashMap::new(),
         }
     }
 }
@@ -379,144 +385,174 @@ impl Renderer {
         kept.prune()?;
         let root = *ids.first().ok_or("UI_ROOT: missing")?;
         let tree = &mut kept.tree;
+        let mut measure = |mut inputs: taffy::LayoutInput,
+                           _: taffy::NodeId,
+                           context: Option<&mut usize>,
+                           style: &taffy::Style|
+         -> taffy::LayoutOutput {
+            let index = context.as_ref().map(|index| **index);
+            // Taffy applies `aspect-ratio` to styled sizes only; a size the parent
+            // fixes (a flexed main size, a stretched cross size) must derive the other axis.
+            if let Some(ratio) = style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) {
+                let known = &mut inputs.known_dimensions;
+                match (known.width, known.height) {
+                    (Some(width), None) => known.height = Some(width / ratio),
+                    (None, Some(height)) => known.width = Some(height * ratio),
+                    _ => {}
+                }
+            }
+            let mut output = taffy::compute_leaf_layout(
+                inputs,
+                style,
+                |_, _| 0.0,
+                |known, available| {
+                    let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
+                    let control = context.as_ref().map(|i| &records[**i]);
+                    let reserve = context
+                        .as_ref()
+                        .map_or(0.0, |i| check_reserve(&records[**i], growth[**i]));
+                    let single_line = matches!(tag, tag::INPUT | tag::SEARCH | tag::SELECT)
+                        || context.as_ref().is_some_and(|i| styles[**i].nowrap);
+                    let limit = context
+                        .as_ref()
+                        .and_then(|i| records[**i].number(field::TEXT_LINES))
+                        .map(|n| n as usize);
+                    let rows = context.as_ref().and_then(|i| {
+                        let record = &records[**i];
+                        record
+                            .number(field::ROWS)
+                            .map(|rows| (rows, record.number(field::MAX_ROWS)))
+                    });
+                    let Some(layout) = context.and_then(|i| layouts[*i].as_mut()) else {
+                        return Size::ZERO;
+                    };
+                    // Taffy supplies border-box known dimensions but content-box
+                    // available space. Wrapping must match the painted content box.
+                    // Min-content breaks at every opportunity: the longest word, as CSS
+                    // sizes a shrinking text item's automatic minimum.
+                    let max_width = match available.width {
+                        AvailableSpace::Definite(w) => Some(w),
+                        AvailableSpace::MinContent => Some(0.0),
+                        AvailableSpace::MaxContent => None,
+                    };
+                    let started = std::time::Instant::now();
+                    self.text_cache.break_lines(
+                        layout,
+                        if single_line {
+                            None
+                        } else {
+                            max_width.map(|w| (w - reserve).max(0.0))
+                        },
+                        None,
+                    );
+                    self.text_time += started.elapsed();
+                    let (width, mut height) = text_extent(layout, limit);
+                    // An autosizing textarea grows with its lines between `rows` and `maxRows`.
+                    if let Some((rows, max_rows)) = rows {
+                        let line = layout
+                            .lines()
+                            .next()
+                            .map(|line| line.metrics().line_height)
+                            .filter(|height| *height > 0.0)
+                            .unwrap_or(16.0 * 1.25);
+                        height = height.max(rows * line);
+                        if let Some(max) = max_rows {
+                            height = height.min(max * line);
+                        }
+                    }
+                    Size {
+                        width: known.width.unwrap_or(width.ceil() + reserve),
+                        height: known
+                            .height
+                            .unwrap_or(height.ceil().max(control.map_or(0.0, check_height))),
+                    }
+                },
+            );
+            if let Some(index) = index.filter(|_| needs_baselines)
+                && let Some(text) = layouts[index].as_mut()
+            {
+                let record = &records[index];
+                let padding = style
+                    .padding
+                    .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
+                let border = style
+                    .border
+                    .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
+                let top = padding.top + border.top;
+                let bottom = padding.bottom + border.bottom;
+                // Known dimensions can bypass measurement. Reflow against
+                // the final content width so the reported baseline matches paint.
+                let started = std::time::Instant::now();
+                let width = if matches!(record.tag, tag::INPUT | tag::SEARCH) {
+                    None
+                } else {
+                    Some(
+                        (output.size.width
+                            - padding.left
+                            - padding.right
+                            - border.left
+                            - border.right
+                            - check_reserve(record, growth[index]))
+                        .max(0.0),
+                    )
+                };
+                self.text_cache.break_lines(text, width, None);
+                self.text_time += started.elapsed();
+                let label_y = if matches!(
+                    record.tag,
+                    tag::BUTTON
+                        | tag::INPUT
+                        | tag::CHECKBOX
+                        | tag::SWITCH
+                        | tag::RADIO_OPTION
+                        | tag::SEARCH
+                        | tag::SELECT
+                ) {
+                    ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
+                } else {
+                    0.0
+                };
+                output.baselines.first = text
+                    .lines()
+                    .next()
+                    .map(|line| top + label_y + line.metrics().baseline);
+            }
+            output
+        };
         tree.compute_layout_with_measure(
             root,
             Size {
                 width: AvailableSpace::Definite(width as f32 / scale),
                 height: AvailableSpace::Definite(height as f32 / scale),
             },
-            |mut inputs, _, context, style| {
-                let index = context.as_ref().map(|index| **index);
-                // Taffy applies `aspect-ratio` to styled sizes only; a size the parent
-                // fixes (a flexed main size, a stretched cross size) must derive the other axis.
-                if let Some(ratio) = style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) {
-                    let known = &mut inputs.known_dimensions;
-                    match (known.width, known.height) {
-                        (Some(width), None) => known.height = Some(width / ratio),
-                        (None, Some(height)) => known.width = Some(height * ratio),
-                        _ => {}
-                    }
-                }
-                let mut output = taffy::compute_leaf_layout(
-                    inputs,
-                    style,
-                    |_, _| 0.0,
-                    |known, available| {
-                        let tag = context.as_ref().map(|i| records[**i].tag).unwrap_or(0);
-                        let control = context.as_ref().map(|i| &records[**i]);
-                        let reserve = context
-                            .as_ref()
-                            .map_or(0.0, |i| check_reserve(&records[**i], growth[**i]));
-                        let single_line = matches!(tag, tag::INPUT | tag::SEARCH | tag::SELECT)
-                            || context.as_ref().is_some_and(|i| styles[**i].nowrap);
-                        let limit = context
-                            .as_ref()
-                            .and_then(|i| records[**i].number(field::TEXT_LINES))
-                            .map(|n| n as usize);
-                        let rows = context.as_ref().and_then(|i| {
-                            let record = &records[**i];
-                            record
-                                .number(field::ROWS)
-                                .map(|rows| (rows, record.number(field::MAX_ROWS)))
-                        });
-                        let Some(layout) = context.and_then(|i| layouts[*i].as_mut()) else {
-                            return Size::ZERO;
-                        };
-                        // Taffy supplies border-box known dimensions but content-box
-                        // available space. Wrapping must match the painted content box.
-                        // Min-content breaks at every opportunity: the longest word, as CSS
-                        // sizes a shrinking text item's automatic minimum.
-                        let max_width = match available.width {
-                            AvailableSpace::Definite(w) => Some(w),
-                            AvailableSpace::MinContent => Some(0.0),
-                            AvailableSpace::MaxContent => None,
-                        };
-                        let started = std::time::Instant::now();
-                        self.text_cache.break_lines(
-                            layout,
-                            if single_line {
-                                None
-                            } else {
-                                max_width.map(|w| (w - reserve).max(0.0))
-                            },
-                            None,
-                        );
-                        self.text_time += started.elapsed();
-                        let (width, mut height) = text_extent(layout, limit);
-                        // An autosizing textarea grows with its lines between `rows` and `maxRows`.
-                        if let Some((rows, max_rows)) = rows {
-                            let line = layout
-                                .lines()
-                                .next()
-                                .map(|line| line.metrics().line_height)
-                                .filter(|height| *height > 0.0)
-                                .unwrap_or(16.0 * 1.25);
-                            height = height.max(rows * line);
-                            if let Some(max) = max_rows {
-                                height = height.min(max * line);
-                            }
-                        }
-                        Size {
-                            width: known.width.unwrap_or(width.ceil() + reserve),
-                            height: known
-                                .height
-                                .unwrap_or(height.ceil().max(control.map_or(0.0, check_height))),
-                        }
-                    },
-                );
-                if let Some(index) = index.filter(|_| needs_baselines)
-                    && let Some(text) = layouts[index].as_mut()
-                {
-                    let record = &records[index];
-                    let padding = style
-                        .padding
-                        .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
-                    let border = style
-                        .border
-                        .resolve_or_zero(inputs.parent_size.width, |_, _| 0.0);
-                    let top = padding.top + border.top;
-                    let bottom = padding.bottom + border.bottom;
-                    // Known dimensions can bypass measurement. Reflow against
-                    // the final content width so the reported baseline matches paint.
-                    let started = std::time::Instant::now();
-                    let width = if matches!(record.tag, tag::INPUT | tag::SEARCH) {
-                        None
-                    } else {
-                        Some(
-                            (output.size.width
-                                - padding.left
-                                - padding.right
-                                - border.left
-                                - border.right
-                                - check_reserve(record, growth[index]))
-                            .max(0.0),
-                        )
-                    };
-                    self.text_cache.break_lines(text, width, None);
-                    self.text_time += started.elapsed();
-                    let label_y = if matches!(
-                        record.tag,
-                        tag::BUTTON
-                            | tag::INPUT
-                            | tag::CHECKBOX
-                            | tag::SWITCH
-                            | tag::RADIO_OPTION
-                            | tag::SEARCH
-                            | tag::SELECT
-                    ) {
-                        ((output.size.height - top - bottom - text.height()) / 2.0).max(0.0)
-                    } else {
-                        0.0
-                    };
-                    output.baselines.first = text
-                        .lines()
-                        .next()
-                        .map(|line| top + label_y + line.metrics().baseline);
-                }
-                output
-            },
+            &mut measure,
         )
         .map_err(|e| e.to_string())?;
+        // A box a page reads (`onLayout`, `useBox`) also reports its content's intrinsic widths.
+        let probed: Vec<usize> = (0..records.len())
+            .filter(|&index| {
+                records[index]
+                    .fields
+                    .iter()
+                    .any(|(id, _)| *id == field::ON_LAYOUT)
+            })
+            .collect();
+        let widths = if probed.is_empty() {
+            Vec::new()
+        } else {
+            let nodes: Vec<_> = probed.iter().map(|&index| ids[index]).collect();
+            tree.intrinsic_widths_with_measure(&nodes, &mut measure)
+        };
+        self.intrinsic.clear();
+        for (&index, [min, max]) in probed.iter().zip(widths) {
+            let layout = tree.layout(ids[index]).map_err(|e| e.to_string())?;
+            let edges = layout.padding.left
+                + layout.padding.right
+                + layout.border.left
+                + layout.border.right;
+            self.intrinsic
+                .insert(index, [(min - edges).max(0.0), (max - edges).max(0.0)]);
+        }
         let retained = self.build_scene(
             &spaced,
             &*tree,

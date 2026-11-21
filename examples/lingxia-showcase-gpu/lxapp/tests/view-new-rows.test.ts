@@ -64,6 +64,12 @@ test('a callout sits its margin clear of its anchor above or below, and a transl
   [anchor, box] = [await target.boundingBox(), await note.boundingBox()];
   expect(near(box.y + box.height, anchor.y - 12) || near(box.y, anchor.y + anchor.height + 12)).toBe(true);
   expect(centred(anchor, box)).toBe(true);
+  // Both carets ride the callout's edges, centred on it; `side-*:` shows the one facing the box.
+  for (const [id, edge] of [['lab-gap-caret-up', box.y], ['lab-gap-caret-down', box.y + box.height]] as const) {
+    const caret = await view.testId(id).boundingBox();
+    expect(near(caret.y + caret.height / 2, edge)).toBe(true);
+    expect(near(caret.x + caret.width / 2, box.x + box.width / 2)).toBe(true);
+  }
 });
 
 test('a parent checkbox reads mixed while some of its boxes are checked, and a tap checks them all', { covers: ['view:checkbox'], start: openDemo('partly') }, async (t) => {

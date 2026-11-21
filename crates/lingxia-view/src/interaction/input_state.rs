@@ -661,6 +661,66 @@ pub(crate) fn apply_checked_styles(records: &mut [Record]) -> Result<(), String>
     Ok(())
 }
 
+const SIDE_STYLES: [usize; 4] = [
+    field::SIDE_TOP_STYLE,
+    field::SIDE_BOTTOM_STYLE,
+    field::SIDE_START_STYLE,
+    field::SIDE_END_STYLE,
+];
+
+/// Whether any record styles itself by the side its popover ended on.
+pub(crate) fn has_side_styles(records: &[Record]) -> bool {
+    records
+        .iter()
+        .any(|record| record.fields.iter().any(|(id, _)| SIDE_STYLES.contains(id)))
+}
+
+/// Merges each `side-*:` style whose popover sits on that side of its anchor: the side it
+/// was authored on, or the one `flipped` names after the last placement moved it. An
+/// element outside a popover has no side.
+pub(crate) fn apply_side_styles(
+    records: &mut [Record],
+    flipped: &HashMap<String, crate::scene::anchor::LogicalSide>,
+    rtl: bool,
+) -> Result<(), String> {
+    use crate::scene::anchor::{Area, LogicalSide};
+    if !has_side_styles(records) {
+        return Ok(());
+    }
+    let ids = crate::protocol::identities(records);
+    let directions = crate::layout::style::directions(records, rtl);
+    let mut sides: Vec<Option<LogicalSide>> = Vec::with_capacity(records.len());
+    for (index, record) in records.iter().enumerate() {
+        let own = record.string(field::ANCHOR_TO).map(|_| {
+            flipped.get(&ids[index]).copied().unwrap_or_else(|| {
+                let area = Area::parse(record.string(field::ANCHOR_AREA), directions[index]);
+                area.logical(area.side)
+            })
+        });
+        sides.push(own.or_else(|| record.parent.and_then(|parent| sides[parent])));
+    }
+    for (record, side) in records.iter_mut().zip(sides) {
+        let Some(side) = side else { continue };
+        let state = SIDE_STYLES[side as usize];
+        let Some(style) = record
+            .fields
+            .iter()
+            .find(|(field, _)| *field == state)
+            .map(|(_, style)| style.clone())
+        else {
+            continue;
+        };
+        for (field, value) in crate::protocol::focus_style(&style)? {
+            if let Some((_, old)) = record.fields.iter_mut().find(|(id, _)| *id == field) {
+                *old = value;
+            } else {
+                record.fields.push((field, value));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_state_style(
     records: &mut [Record],
     identity: &str,
