@@ -1,4 +1,4 @@
-import type { HostInfo, NavigationTarget, SystemSettingInfo } from "@lingxia/types";
+import type { HostInfo, HostTarget, SystemSettingInfo } from "@lingxia/types";
 import type { PageLoadOptions } from '@lingxia/types';
 import { definePage } from '@lingxia/types/page';
 
@@ -417,18 +417,15 @@ export default definePage({
   },
 });
 
-/**
- * `page` is navigateTo. `route` is a host-registered native location.
- * Neither needs a product URL.
- */
-function notificationTargetFor(choice: string): NavigationTarget {
+/** `route` is a host-registered native location, not a page. */
+function notificationTargetFor(choice: string): HostTarget {
   if (choice === 'native') {
-    return { kind: 'route' as const, name: 'showcase.native.note', params: { text: 'from a notification' } };
+    return { route: 'showcase.native.note', params: { text: 'from a notification' } };
   }
   if (choice === 'page') {
-    return { kind: 'page' as const, page: 'system', query: { type: 'notification' } };
+    return { page: 'system', params: { type: 'notification' } };
   }
-  return { kind: 'activate' as const };
+  return { activate: true };
 }
 
 function notificationBody(choice: string): string {

@@ -498,6 +498,28 @@ impl AttentionScope {
     /// A guest may only target itself: `{ kind: 'app' }` with its own
     /// `appId` (or none, which means itself). An omitted target opens the
     /// guest too, rather than only bringing the product forward.
+    /// Reads a `HostTarget` from Logic, then scopes it as [`Self::notification_target`].
+    /// `is_tab` says whether a page name is one of the caller's tab roots.
+    pub(crate) fn host_target(
+        &self,
+        route: &str,
+        target: Option<serde_json::Value>,
+        is_tab: impl Fn(&str) -> bool,
+    ) -> Result<NavigationTarget, ScopeRefusal> {
+        let own_appid = match self {
+            Self::Product => None,
+            Self::App { app_id } => Some(app_id.as_str()),
+        };
+        let target = match target.filter(|value| !value.is_null()) {
+            None => None,
+            Some(value) => Some(
+                crate::host_target::to_navigation_json(value, own_appid, is_tab)
+                    .map_err(|message| ScopeRefusal::Invalid(format!("{route} {message}")))?,
+            ),
+        };
+        self.notification_target(route, target)
+    }
+
     pub(crate) fn notification_target(
         &self,
         route: &str,
@@ -525,8 +547,8 @@ impl AttentionScope {
             Some("app") => {}
             Some(kind @ ("activate" | "page" | "route" | "appLink")) => {
                 return Err(ScopeRefusal::Denied(format!(
-                    "{route} target {{ kind: '{kind}' }} is only available in the Control app; \
-                     a guest lxapp's notification opens only itself: {{ kind: 'app' }}"
+                    "{route} target {{ {kind} }} is only available in the Control app; \
+                     a guest lxapp's notification opens only itself: {{ page }} or {{ app: '{app_id}' }}"
                 )));
             }
             // Unknown or missing kinds are malformed for every caller.

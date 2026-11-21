@@ -500,6 +500,16 @@ export type ActionSheetResult = {
     id: string;
 } | CanceledResult;
 
+export type ActivateTarget = {
+    /** Bring the product forward, nothing else. */
+    activate: true;
+    page?: never;
+    tab?: never;
+    app?: never;
+    route?: never;
+    appLink?: never;
+};
+
 /** An acknowledgement dialog has no cancel button. */
 export type AlertOptions = {
     /** The question or statement. */
@@ -640,6 +650,15 @@ export type AppLifecycleEventArgs = {
     scene?: AppLaunchScene;
     /** Inbound link, present only with `scene: 8003`. */
     url?: string;
+};
+
+export type AppLinkTarget = {
+    /** An `https://` URL that is also an inbound App Link (`scene === 8003`). */
+    appLink: string;
+    page?: never;
+    tab?: never;
+    app?: never;
+    route?: never;
 };
 
 export type AppScreenshotOptions = {
@@ -785,12 +804,10 @@ export type BannerApi = {
             /** Emphasis: `primary` for the expected choice, `destructive` for a dangerous one. */
             style?: 'default' | 'primary' | 'destructive';
             /**
-             * Where picking this action goes, as a notification target: the
-             * product comes forward and the target opens. A guest may only
-             * target itself (`{ kind: 'app' }`). Checked before the banner
-             * shows. Omitted, picking it only resolves `show`.
+             * Where picking this action goes, as a notification target, checked
+             * before the banner shows; absent, picking it only resolves `show`.
              */
-            target?: NavigationTarget;
+            target?: HostTarget;
         }>;
         /**
          * Close after this many milliseconds; a guest's banners close after 60000 at most.
@@ -1290,6 +1307,13 @@ export type HostAppUpdateTask = Task<HostAppUpdateResult, HostAppUpdateEvent>;
  */
 export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
 
+/**
+ * Where a notification tap or a banner action goes: a page, tab or
+ * lxapp as `lx.nav.go` takes it, or `{ activate }`, `{ route }`,
+ * `{ appLink }`. One destination per target; a mix is a parameter error.
+ */
+export type HostTarget = PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget;
+
 export type ImageInfoOptions = {
     /** The image: a bundled path, an `lx://` path or a picked file. */
     path: string;
@@ -1374,47 +1398,6 @@ export type NavigationBarStylePatch = {
     dividerColor?: string | null;
 };
 
-/**
- * Where a notification tap, a menu item, or the tray goes.
- * `page` and `app` are the same contract as `lx.nav.go({ page })` /
- * `lx.nav.go({ app })`: a configured page name and a query, ordinary
- * scene. `route` is a host-registered location that is not a page.
- * `appLink` is an `https://` product URL that is also a real inbound
- * App Link (`scene === 8003`). `activate` just brings the product
- * forward.
- * A branch carries its own fields and no others: a mixed target is a
- * parameter error, not a best guess.
- */
-export type NavigationTarget = 
-    | {
-        /** Bring the product forward, nothing else. */
-        kind: 'activate';
-    }
-    | {
-        /** A page of this lxapp. */
-        kind: 'page';
-        page: ConfiguredPageName;
-        query?: PageQuery;
-    }
-    | {
-        /** An lxapp, optionally at a page. */
-        kind: 'app';
-        appId: string;
-        page?: ExternalPageName;
-        query?: PageQuery;
-    }
-    | {
-        /** A location the host registered that is not a page. */
-        kind: 'route';
-        name: string;
-        params?: Record<string, JsonValue>;
-    }
-    | {
-        /** An `https://` URL that is also an inbound App Link. */
-        kind: 'appLink';
-        url: string;
-    };
-
 export type NetworkApi = globalThis.NetworkApi;
 
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
@@ -1474,11 +1457,9 @@ export type NotificationApi = {
         body?: string;
         /**
          * Where a tap goes; absent brings the product forward, nothing else.
-         * `page` and `app` open as `lx.nav.go` does; `route` is a location the host
-         * registered; `appLink` an `https://` URL that is also an inbound App Link.
-         * A guest lxapp may only target itself (`{ kind: 'app' }`).
+         * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
          */
-        target?: NavigationTarget;
+        target?: HostTarget;
         /** When to present; a time not in the future posts now. */
         schedule?: {
             /** Epoch milliseconds. */
@@ -2018,6 +1999,17 @@ export type PreviewMediaSource = {
 };
 
 export type ResolvedAppearance = 'light' | 'dark';
+
+export type RouteTarget = {
+    /** A location the host registered at startup that is not a page. */
+    route: string;
+    /** Values for the route's declared params. */
+    params?: Record<string, JsonValue>;
+    page?: never;
+    tab?: never;
+    app?: never;
+    appLink?: never;
+};
 
 export type SetBadgeOptions = {
     /**

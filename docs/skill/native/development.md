@@ -56,7 +56,7 @@ fn register_host_addon() {
 - `issue_app_resource_grants` runs once per session while it is created.
   Decide from `authority` alone: never prompt, block, or open/close an lxapp
   there. Privilege classes: [Permissions](./permissions.md).
-- `install_navigation_routes` registers `{ kind: 'route' }` notification
+- `install_navigation_routes` registers `{ route }` notification
   targets (native screens, not pages), sealed before the runtime starts.
 - A launch cover per cold start: [Launch screen](./splash.md).
 

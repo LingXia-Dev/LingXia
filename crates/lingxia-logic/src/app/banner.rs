@@ -64,7 +64,9 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let mut targets = Vec::with_capacity(raw_targets.len());
     for (action, target) in raw_targets {
         let target = scope
-            .notification_target("lx.host.banner.show", Some(target))
+            .host_target("lx.host.banner.show", Some(target), |name| {
+                crate::ui::router::is_tab_name(&app, name)
+            })
             .map_err(|refusal| refusal.into_js())?;
         navigation::validate(&target).map_err(navigation_error)?;
         targets.push((action, target));

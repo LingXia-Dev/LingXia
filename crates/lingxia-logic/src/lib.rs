@@ -10,6 +10,7 @@ mod device;
 mod dismissal;
 mod display;
 mod fs;
+mod host_target;
 pub mod i18n;
 mod input;
 mod location;

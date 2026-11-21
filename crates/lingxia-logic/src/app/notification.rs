@@ -148,8 +148,11 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             decode_show(options)
         })?;
     let scope = AttentionScope::of(&invocation);
+    let caller = invocation.lxapp();
     let target = scope
-        .notification_target("lx.host.notification.show", request.target)
+        .host_target("lx.host.notification.show", request.target, |name| {
+            crate::ui::router::is_tab_name(&caller, name)
+        })
         .map_err(|refusal| refusal.into_js())?;
     // The request is checked before the frontmost state is consulted, so an
     // invalid target cannot be quietly accepted as a suppressed show.

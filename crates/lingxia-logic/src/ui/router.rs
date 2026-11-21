@@ -201,6 +201,11 @@ fn configured_page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> 
     Ok(url)
 }
 
+/// Whether `name` is one of this lxapp's tab roots.
+pub(crate) fn is_tab_name(lxapp: &LxApp, name: &str) -> bool {
+    page_url(lxapp, name, None).is_ok_and(|url| is_tabbar_page_url(lxapp, &url))
+}
+
 fn tab_url(lxapp: &LxApp, name: &str) -> JSResult<String> {
     let url = page_url(lxapp, name, None).map_err(|e| js_error_from_lxapp_error(&e))?;
     ensure_page_exists_js(lxapp, &url)?;

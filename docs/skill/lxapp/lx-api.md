@@ -166,15 +166,12 @@ yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
   `status: 'suppressed'` and posts nothing; scheduled ones always present.
 - `id` replaces on every path; the replaced tap target stops resolving.
 - `status: 'posted'` means the OS accepted it, nothing more.
-- `target` decides where a tap goes, resolved at tap time with no fallback:
-  - omitted, or `{ kind: 'activate' }` — bring the product forward;
-  - `{ kind: 'page', page, query }` — a page of this app, as `lx.nav.go({ page })`;
-  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.nav.go({ app })`;
-    one already docked as an aside is brought back there, and the query
-    reaches its App `onShow` (`switch_back`);
-  - `{ kind: 'route', name, params }` — a host-registered location;
-  - `{ kind: 'appLink', url }` — a URL on a configured
-    [App Link](../app/applinks.md) host, delivered as `scene === 8003`.
+- `target` decides where a tap goes, resolved at tap time with no fallback.
+  It takes what `lx.nav.go` takes (`{ page, params }`, `{ tab }`, `{ app, page }`),
+  plus `{ activate: true }` (the default: bring the product forward),
+  `{ route, params }` (a host-registered location) and `{ appLink }` (a URL on a
+  configured [App Link](../app/applinks.md) host, delivered as `scene === 8003`).
+  A tab root given as `{ page }` is refused; name it with `{ tab }`.
 - Android may fire schedules late and drops them on reboot; on HarmonyOS
   `silent` does nothing and `schedule` needs the agent-reminder privilege.
 
@@ -184,8 +181,8 @@ A guest (any lxapp but the Control app) may use `lx.host.notification` and
 `lx.host.banner` for itself; refusals reject with `E_PERMISSION_DENIED`.
 
 - Ids are its own; `cancelAll()` clears only its own.
-- A notification opens only the guest: omit `target`, or `{ kind: 'app' }`
-  with its own `appId` (or none), `page`, `query`.
+- A notification opens only the guest: omit `target`, or `{ page }`, `{ tab }`,
+  or `{ app }` naming itself.
 - Per guest: 32 live notifications; 3 banners showing or queued, each up for
   60 s at most and queued behind the product's. Its banner shows its name and icon.
 - One permission prompt per launch, only while it is open: ask from a user action.
@@ -195,7 +192,7 @@ A guest (any lxapp but the Control app) may use `lx.host.notification` and
 ```ts
 await lx.host.banner.show({
   title: 'Run finished',
-  actions: [{ id: 'open', label: 'Open', target: { kind: 'app', query: { run: runId } } }],
+  actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: runId } } }],
 })
 ```
 

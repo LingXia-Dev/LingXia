@@ -7,7 +7,7 @@ original URL. Logic decides what it means.
 
 Links arrive from OS App Links / Universal Links, browser handoff, push links,
 and local notifications posted with
-`lx.host.notification.show({ target: { kind: 'appLink', url } })`. QR scans are
+`lx.host.notification.show({ target: { appLink: url } })`. QR scans are
 the exception: `scanCode` auto-opens only the `/lxapp/` namespace; any other URL
 is just returned as the scan result. Scans also accept `/lxapp/open` on the
 current HTTPS `lingxiaServer` origin (same scheme, host, and effective port).
