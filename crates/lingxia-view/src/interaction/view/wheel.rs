@@ -94,6 +94,10 @@ impl ViewInteraction {
         if fresh {
             self.scroll.wheel_began(&target);
         }
+        // A paging region moves one page per swipe, as a platform pager does.
+        if event.phase == WheelPhase::Momentum && self.scroll.snap_stop(&target) {
+            return (true, Vec::new());
+        }
         // Momentum stays on the latched region, as a platform scroll view's does: a list
         // that reaches its end stops there instead of handing the glide to the page.
         let moved = distance != 0.0

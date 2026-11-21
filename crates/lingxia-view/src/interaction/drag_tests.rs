@@ -635,6 +635,29 @@ fn a_trackpad_swipe_pages_a_snap_always_region_by_one() {
 }
 
 #[test]
+fn momentum_after_a_trackpad_swipe_leaves_a_snap_always_region_on_its_page() {
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, pager(0), 1);
+    let wheel = |phase, dx: f32| Wheel {
+        phase,
+        x: 50.0,
+        y: 50.0,
+        dx,
+        dy: 0.0,
+        precise: true,
+    };
+    interaction.wheel(wheel(WheelPhase::Began, -20.0));
+    interaction.wheel(wheel(WheelPhase::Ended, 0.0));
+    assert_eq!(pages_settle(&mut interaction), [1]);
+    // A fast swipe's momentum outlasts the settle; it must not carry the pager on.
+    for _ in 0..10 {
+        interaction.wheel(wheel(WheelPhase::Momentum, -30.0));
+    }
+    assert_eq!(pages_settle(&mut interaction), Vec::<usize>::new());
+    assert_eq!(interaction.scroll().offset("pager"), 100.0);
+}
+
+#[test]
 fn an_assistive_step_wins_over_a_page_index_requested_before_it() {
     let mut interaction = ViewInteraction::default();
     let page = PageTicket::new(1);
