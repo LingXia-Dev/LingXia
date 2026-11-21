@@ -1,7 +1,5 @@
-import type { ChartData, ChatChunk, Message } from '../../shared/chat';
 import { definePage } from '@lingxia/types/page';
-
-export type { ChartData, ChatChunk, Message };
+import type { ChartData, ChatChunk, ChatPage } from './contract';
 
 interface MockScenario {
   text: string;
@@ -125,99 +123,61 @@ async function* mockChatStream(): AsyncGenerator<ChatChunk, void> {
   }
 }
 
+const initialData: ChatPage['data'] = { messages: [], isStreaming: false };
+
 export default definePage({
-  data: {
-    messages: [] as Message[],
-    isStreaming: false,
-  },
-  setup(page) {
-    const actions = {
-      async *onSend(params: { text: string }): AsyncGenerator<ChatChunk, void> {
-        const text = (params?.text ?? '').trim();
+  data: initialData,
+  setup: page => ({
+    actions: {
+      async *onSend({ text: raw }: { text: string }): AsyncGenerator<ChatChunk, void> {
+        const text = raw.trim();
         if (!text || page.data.isStreaming) return;
 
-        const userMsg: Message = {
-          id: `u${Date.now()}`,
-          role: 'user',
-          content: text,
-        };
         page.update(d => {
-          d.messages.push(userMsg);
+          d.messages.push({ id: `u${Date.now()}`, role: 'user', content: text });
           d.isStreaming = true;
         });
 
         let accumulated = '';
-        let chartData: ChartData | undefined;
-
+        let chart: ChartData | undefined;
         try {
-          const nativeChatStream = (globalThis as any)?.lx?.ai?.chatStream as
-            | ((params: { messages: { role: string; content: string }[] }) => AsyncIterable<{ token: string }>)
-            | undefined;
-
-          // Read `data` before the generator: a generator function expression has
-          // its own `this`, and the IIFE below is called without a receiver.
-          const history = page.data.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          }));
-
-          const stream = nativeChatStream
-            ? (async function* () {
-                for await (const chunk of nativeChatStream({ messages: history })) {
-                  yield { type: 'token' as const, token: chunk.token };
-                }
-              })()
-            : mockChatStream();
-
-          for await (const chunk of stream) {
+          for await (const chunk of mockChatStream()) {
             if (chunk.type === 'token') accumulated += chunk.token;
-            if (chunk.type === 'artifact') chartData = chunk.chart;
+            if (chunk.type === 'artifact') chart = chunk.chart;
             yield chunk;
           }
         } finally {
-          const assistantMsg: Message = {
-            id: `a${Date.now()}`,
-            role: 'assistant',
-            content: accumulated || '(no response)',
-            chart: chartData,
-          };
+          // Runs on cancel too, so a stopped reply keeps what had arrived.
           page.update(d => {
-            d.messages.push(assistantMsg);
+            d.messages.push({
+              id: `a${Date.now()}`,
+              role: 'assistant',
+              content: accumulated || '(no response)',
+              chart,
+            });
             d.isStreaming = false;
           });
         }
-      },
-      async onOpenAbout() {
-        await lx.nav.go({ page: 'about' }).opened;
       },
       onClear() {
         if (page.data.isStreaming) return;
         page.update(d => { d.messages = []; });
       },
-      // Desktop-only (the View gates the affordance): open the host-declared
-      // terminal using the placement owned by lingxia.yaml.
+      async onOpenAbout() {
+        await lx.nav.go({ page: 'about' }).opened;
+      },
+      // Desktop only (the View gates it): the host declares the terminal and its placement.
       async onOpenTerminal() {
         await lx.surface.openDeclared('terminal');
       },
-      // Open a new in-app browser tab (self browser with an editable address bar).
-      // The start host must be in the host-granted domain list, else openUrl
-      // rejects with `denied` — catch it so a policy denial can never take down
-      // the host/Runner.
+      // The start host must be in the host's domain grant; a denial must not take the page down.
       async onOpenBrowser() {
         try {
           await lx.surface.openUrl('https://www.deepseek.com');
-        } catch (err) {
-          console.error('openBrowser failed', err);
+        } catch (error) {
+          console.error('openBrowser failed', error);
         }
       },
-    };
-    return {
-      onLoad() {
-        try {
-          void page.navigationBar.update({ title: 'AI Chat' });
-        } catch (_) {}
-      },
-      actions,
-    };
-  },
+    },
+  }),
 });

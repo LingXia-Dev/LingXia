@@ -1081,7 +1081,7 @@ async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> 
   // "managed surface request rejected".
   await closeChatSurface(t, app);
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.surface.openApp('lingxia-showcase-web', { as: 'main' });
+    await lx.surface.openApp('lingxia-showcase-web', { as: 'main', page: 'chat' });
   });
 }
 
@@ -1164,7 +1164,7 @@ async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurface
   return app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     const probe = globalThis as unknown as DynamicHandleGlobals;
     for (const unsubscribe of probe.__surfaceSwitcherDynamicHandleGate?.unsubscribe ?? []) unsubscribe();
-    const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'main' });
+    const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'main', page: 'chat' });
     const events: RetainedAppSurfaceState['events'] = [];
     const unsubscribe = [
       handle.onHide((event) => events.push({ type: 'hide', ...event })),
@@ -3028,7 +3028,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       nativeWindowExtent(platform, host, 640),
     );
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
     });
     const asideLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -3247,7 +3247,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       await expectMainUnchanged('after the aside tab close');
 
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-        await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+        await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
       });
       const reopened = await waitForChatInput(desktop, host, 'Chat input after reopening the aside');
       expect(inRightAside(host, reopened.rect)).toBeTruthy();
@@ -3329,7 +3329,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     );
     await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
     });
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4098,7 +4098,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       return current.name === 'home' && current.ready ? true : undefined;
     }, 'main on the Home page');
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
     });
     await waitForValue(async () => {
       const slot = chatAsideSlot(await app.surfaceLayout());
@@ -4332,7 +4332,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
     );
     await app.nav.go({ tab: 'home' });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
     });
     const before = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4398,7 +4398,7 @@ test('promotes a dragged lxapp aside to a main without reloading it', {
       activeMain: closed.activeMainId === 'lingxia-showcase-web',
     }).toEqual({ inSwitcher: false, activeMain: false });
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
     });
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
@@ -4491,7 +4491,7 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
   );
   try {
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+      const handle = await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
       const closes: string[] = [];
       const unsubscribe = handle.onClose((event) => closes.push(event.reason));
       (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe = { handle, closes, unsubscribe };

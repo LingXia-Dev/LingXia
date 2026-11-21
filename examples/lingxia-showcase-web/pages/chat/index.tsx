@@ -1,13 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as echarts from 'echarts';
-import { useLxHost, useLxPage, useLxStream } from '@lingxia/react';
-import type { LxStream } from '@lingxia/bridge';
-import type { Message, ChatChunk, ChartData } from '../../shared/chat';
+import { useLxHost, useLxPage, useLxStream, type DeepReadonly } from '@lingxia/react';
+import type { ChartData, ChatPage as Chat, Message } from './contract';
+import {
+  chartAxisColors,
+  getResolvedTheme,
+  subscribeTheme,
+  type ChartAxisColors,
+  type ResolvedTheme,
+} from '../../shared/lib/theme';
 import '../../tailwind.css';
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
-function buildOption(data: ChartData): echarts.EChartsOption {
+// ECharts paints into SVG it owns, so the theme is passed in as resolved values.
+function buildOption(data: DeepReadonly<ChartData>, axis: ChartAxisColors): echarts.EChartsOption {
   const labels = data.series.map((s) => s.label);
   const values = data.series.map((s) => s.value);
 
@@ -17,7 +24,7 @@ function buildOption(data: ChartData): echarts.EChartsOption {
       tooltip: { trigger: 'item', formatter: '{b}: {d}%' },
       legend: {
         bottom: 0,
-        textStyle: { fontSize: 11, color: '#6b7280' },
+        textStyle: { fontSize: 11, color: axis.label },
         icon: 'circle',
         itemWidth: 8,
         itemHeight: 8,
@@ -50,14 +57,14 @@ function buildOption(data: ChartData): echarts.EChartsOption {
     xAxis: {
       type: 'category',
       data: labels,
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLine: { lineStyle: { color: axis.line } },
       axisTick: { show: false },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      axisLabel: { fontSize: 11, color: axis.label },
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-      axisLabel: { fontSize: 11, color: '#6b7280' },
+      splitLine: { lineStyle: { color: axis.split, type: 'dashed' } },
+      axisLabel: { fontSize: 11, color: axis.label },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -83,21 +90,24 @@ function buildOption(data: ChartData): echarts.EChartsOption {
   };
 }
 
-function ChartCard({ data }: { data: ChartData }) {
+function ChartCard({ data }: { data: DeepReadonly<ChartData> }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<ResolvedTheme>(getResolvedTheme);
+
+  useEffect(() => subscribeTheme(setTheme), []);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = echarts.init(containerRef.current, null, { renderer: 'svg' });
-    chart.setOption(buildOption(data));
+    chart.setOption(buildOption(data, chartAxisColors()));
     return () => chart.dispose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [theme]);
 
   const height = data.kind === 'pie' ? 210 : 180;
 
   return (
-    <div className="mt-3 rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 shadow-sm animate-chart-in">
+    <div className="mt-3 rounded-2xl overflow-hidden bg-surface-50 border border-line-200 shadow-sm animate-chart-in">
       <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-400 px-3.5 pt-3 pb-0.5">
         {data.title}
       </p>
@@ -108,7 +118,7 @@ function ChartCard({ data }: { data: ChartData }) {
 
 interface StreamState {
   text: string;
-  chart?: ChartData;
+  chart?: DeepReadonly<ChartData>;
 }
 
 const HINTS = [
@@ -120,8 +130,8 @@ const HINTS = [
 function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white shadow flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8" stroke="#2563EB" strokeWidth="1.5">
+      <div className="w-16 h-16 rounded-2xl bg-surface shadow flex items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-blue-600 dark:text-blue-400" stroke="currentColor" strokeWidth="1.5">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -132,102 +142,19 @@ function EmptyState() {
       <div>
         <p className="text-base font-semibold text-gray-800">AI Chat</p>
         <p className="text-sm text-gray-500 mt-1">
-          Streaming demo — text &amp; chart artifacts via LingXia bridge.
+          Streaming demo &mdash; text &amp; chart artifacts via LingXia bridge.
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full mt-2">
         {HINTS.map((hint) => (
           <div
             key={hint}
-            className="text-sm text-blue-600 bg-blue-50 rounded-xl px-4 py-2.5 text-left"
+            className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50 rounded-xl px-4 py-2.5 text-left"
           >
             {hint}
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-const TERMINAL_EDGES = [
-  { edge: 'left' as const, label: 'Dock left', arrow: 'M15 6l-6 6 6 6' },
-  { edge: 'right' as const, label: 'Dock right', arrow: 'M9 6l6 6-6 6' },
-  { edge: 'top' as const, label: 'Dock top', arrow: 'M6 15l6-6 6 6' },
-  { edge: 'bottom' as const, label: 'Dock bottom', arrow: 'M6 9l6 6 6-6' },
-];
-
-// SVG path for a menu row icon.
-function MenuIcon({ d }: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="#6b7280" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
-    </svg>
-  );
-}
-
-// A "New browser tab" globe icon path.
-const BROWSER_ICON = 'M12 3a9 9 0 100 18 9 9 0 000-18zM3.6 9h16.8M3.6 15h16.8M12 3c2.5 2.4 3.75 5.4 3.75 9S14.5 18.6 12 21c-2.5-2.4-3.75-5.4-3.75-9S9.5 5.4 12 3z';
-
-// Tools menu: a wrench-icon button opening a dropdown of host tools. Always
-// offers "New browser tab"; adds the terminal dock-edge items when the host
-// provides the terminal surface (desktop and not the Runner).
-function ToolsMenu({
-  showTerminal,
-  onOpenBrowser,
-  onOpenTerminal,
-}: {
-  showTerminal: boolean;
-  onOpenBrowser: () => void;
-  onOpenTerminal: (edge: 'left' | 'right' | 'top' | 'bottom') => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title="Tools"
-        className="w-7 h-7 bg-white rounded-full shadow-sm flex items-center justify-center active:opacity-70"
-      >
-        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="#374151" strokeWidth="1.8">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a4 4 0 00-5.2 5.2L3 18l3 3 6.5-6.5a4 4 0 005.2-5.2l-2.6 2.6-2.5-.6-.6-2.5 2.6-2.6z" />
-        </svg>
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 bg-white rounded-xl shadow-lg border border-gray-200 py-1 w-44">
-            <button
-              onClick={() => {
-                setOpen(false);
-                onOpenBrowser();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
-            >
-              <MenuIcon d={BROWSER_ICON} />
-              New browser tab
-            </button>
-            {showTerminal && (
-              <>
-                <div className="my-1 border-t border-gray-100" />
-                {TERMINAL_EDGES.map(({ edge, label, arrow }) => (
-                  <button
-                    key={edge}
-                    onClick={() => {
-                      setOpen(false);
-                      onOpenTerminal(edge);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100"
-                  >
-                    <MenuIcon d={arrow} />
-                    {label}
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -242,10 +169,10 @@ function AIAvatar() {
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message }: { message: DeepReadonly<Message> }) {
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end" data-testid="stream-message" data-role="user">
         <div
           className="max-w-[78%] px-4 py-2.5 rounded-3xl rounded-br-md bg-blue-600 text-white text-sm leading-relaxed"
           style={{ wordBreak: 'break-word' }}
@@ -257,11 +184,11 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" data-testid="stream-message" data-role="assistant">
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
-          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-white border border-gray-200 text-gray-800 text-sm leading-relaxed shadow-sm"
+          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-surface border border-line-200 text-gray-800 text-sm leading-relaxed shadow-sm"
           style={{ wordBreak: 'break-word' }}
         >
           {message.content || <span className="text-gray-400 italic">...</span>}
@@ -276,11 +203,11 @@ function StreamingBubble({ state }: { state: StreamState }) {
   const showCursor = !state.chart;
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start" data-testid="stream-live">
       <div className="flex items-start gap-2 max-w-[90%]">
         <AIAvatar />
         <div
-          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-white border border-gray-200 text-gray-800 text-sm leading-relaxed shadow-sm"
+          className="px-4 py-2.5 rounded-3xl rounded-bl-md bg-surface border border-line-200 text-gray-800 text-sm leading-relaxed shadow-sm"
           style={{ wordBreak: 'break-word' }}
         >
           {state.text ? (
@@ -334,11 +261,13 @@ function InputBar({
 
   return (
     <div
-      className="bg-white border-t border-gray-200 px-3 py-3 flex items-end gap-2"
+      className="bg-surface border-t border-line-200 px-3 py-3 flex items-end gap-2"
       style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
     >
-      <div className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
+      <div className="flex-1 bg-surface-100 rounded-2xl px-3.5 py-2.5 flex items-end gap-2">
         <textarea
+          data-testid="stream-input"
+          data-controlled-value={value}
           ref={textareaRef}
           value={value}
           onChange={(e) => { onChange(e.target.value); autoResize(); }}
@@ -353,13 +282,15 @@ function InputBar({
 
       {streaming ? (
         <button
+          data-testid="stream-stop"
           onClick={onStop}
-          className="w-9 h-9 shrink-0 rounded-full bg-gray-800 flex items-center justify-center active:opacity-70"
+          className="w-9 h-9 shrink-0 rounded-full bg-surface-800 flex items-center justify-center active:opacity-70"
         >
-          <div className="w-3 h-3 bg-white rounded-sm" />
+          <div className="w-3 h-3 bg-surface rounded-sm" />
         </button>
       ) : (
         <button
+          data-testid="stream-send"
           onClick={onSend}
           disabled={!value.trim()}
           className="w-9 h-9 shrink-0 rounded-full bg-blue-600 flex items-center justify-center active:opacity-70 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -373,23 +304,85 @@ function InputBar({
   );
 }
 
+// SVG path for a menu row icon.
+function MenuIcon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-gray-500" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  );
+}
+
+const TERMINAL_ICON = 'M4 5h16v14H4zM7 9l3 3-3 3M12 15h5';
+const BROWSER_ICON = 'M12 3a9 9 0 100 18 9 9 0 000-18zM3.6 9h16.8M3.6 15h16.8M12 3c2.5 2.4 3.75 5.4 3.75 9S14.5 18.6 12 21c-2.5-2.4-3.75-5.4-3.75-9S9.5 5.4 12 3z';
+
+// The terminal is a surface the host declares; the Runner declares none.
+function ToolsMenu({
+  showTerminal,
+  onOpenBrowser,
+  onOpenTerminal,
+}: {
+  showTerminal: boolean;
+  onOpenBrowser: () => void;
+  onOpenTerminal: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Tools"
+        className="w-7 h-7 bg-surface rounded-full shadow-sm flex items-center justify-center active:opacity-70"
+      >
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-gray-700" stroke="currentColor" strokeWidth="1.8">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a4 4 0 00-5.2 5.2L3 18l3 3 6.5-6.5a4 4 0 005.2-5.2l-2.6 2.6-2.5-.6-.6-2.5 2.6-2.6z" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-20 bg-surface rounded-xl shadow-lg border border-line-200 py-1 w-44">
+            <button
+              onClick={() => {
+                setOpen(false);
+                onOpenBrowser();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-surface-50 active:bg-surface-100"
+            >
+              <MenuIcon d={BROWSER_ICON} />
+              New browser tab
+            </button>
+            {showTerminal && (
+              <>
+                <div className="my-1 border-t border-line-100" />
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenTerminal();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-surface-50 active:bg-surface-100"
+                >
+                  <MenuIcon d={TERMINAL_ICON} />
+                  Terminal
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   // The Tools menu is for desktop hosts; its dockable terminal is a
   // host-declared surface the LingXia Runner does not provide.
   const { os, runner } = useLxHost();
   const desktopHost = os === 'macOS' || os === 'Windows';
-  const { data, actions } = useLxPage<
-    { messages: Message[] },
-    {
-      onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
-      onClear: () => void;
-      onOpenTerminal: (params: { edge: 'left' | 'right' | 'top' | 'bottom' }) => void;
-      onOpenBrowser: () => void;
-      onOpenAbout: () => void;
-    }
-  >();
+  const { data, actions } = useLxPage<Chat['data'], Chat['actions']>();
 
-  const messages = data?.messages ?? [];
+  const { messages } = data;
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -422,18 +415,18 @@ export default function ChatPage() {
   const streamState = chat.data ?? { text: '' };
 
   return (
-    <div className="flex flex-col bg-gray-100" style={{ height: '100vh' }}>
+    <div className="flex flex-col bg-surface-100" style={{ height: '100vh' }} data-testid="stream-page">
       <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
         <button
           onClick={() => actions.onOpenAbout()}
-          className="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
+          className="text-xs text-blue-600 dark:text-blue-400 px-3 py-1 bg-surface rounded-full shadow-sm active:opacity-70"
         >
           About
         </button>
         {messages.length > 0 && !chat.streaming && (
           <button
             onClick={() => actions.onClear()}
-            className="text-xs text-blue-600 px-3 py-1 bg-white rounded-full shadow-sm active:opacity-70"
+            className="text-xs text-blue-600 dark:text-blue-400 px-3 py-1 bg-surface rounded-full shadow-sm active:opacity-70"
           >
             Clear
           </button>
@@ -442,7 +435,7 @@ export default function ChatPage() {
           <ToolsMenu
             showTerminal={!runner}
             onOpenBrowser={() => actions.onOpenBrowser()}
-            onOpenTerminal={(edge) => actions.onOpenTerminal({ edge })}
+            onOpenTerminal={() => actions.onOpenTerminal()}
           />
         )}
       </div>

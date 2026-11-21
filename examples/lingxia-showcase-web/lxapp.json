@@ -1,11 +1,20 @@
 {
   "appId": "lingxia-showcase-web",
   "appName": "LingXia Showcase (WebView)",
-  "version": "1.0.13",
+  "version": "1.1.0",
   "minRuntime": "0.30.0",
   "pages": [
+    { "name": "home", "path": "pages/home/index" },
     { "name": "chat", "path": "pages/chat/index" },
     { "name": "feedback", "path": "pages/feedback/index" },
-    { "name": "about", "path": "pages/about/index" }
+    { "name": "about", "path": "pages/about/index" },
+    { "name": "picker", "path": "pages/picker/index" },
+    { "name": "swiper", "path": "pages/swiper/index" },
+    { "name": "navigator", "path": "pages/navigator/index" },
+    { "name": "video", "path": "pages/video/index" },
+    { "name": "pullToRefresh", "path": "pages/pulltorefresh/index" },
+    { "name": "channel", "path": "pages/channel/index" },
+    { "name": "bridge-repro", "path": "pages/bridge-repro/index" },
+    { "name": "spec-embedded", "path": "pages/spec-embedded/index" }
   ]
 }

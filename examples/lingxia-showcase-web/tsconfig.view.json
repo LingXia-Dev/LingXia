@@ -15,10 +15,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
+    "rootDirs": [".", "./.lingxia/types"],
     "paths": {
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["pages/**/*.tsx", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", "global.d.ts"],
+  "include": ["pages/**/*.tsx", "pages/**/contract.ts", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", "global.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

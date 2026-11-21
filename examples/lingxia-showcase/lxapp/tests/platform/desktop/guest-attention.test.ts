@@ -41,7 +41,7 @@ test('a guest lxapp gets attention for itself only', {
   });
 
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right' });
+    await lx.surface.openApp('lingxia-showcase-web', { as: 'aside', edge: 'right', page: 'chat' });
   });
   const chat = t.automation.lxapp(CHAT_APP_ID);
 

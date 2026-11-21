@@ -1,25 +1,18 @@
 import { definePage } from '@lingxia/types/page';
-export default definePage({
-  data: {},
-  setup(page) {
-    const actions = {
-      async submitFeedback(params: { category?: string; message?: string; email?: string }) {
-        const category = typeof params?.category === 'string' ? params.category.trim() : 'Other';
-        const message = typeof params?.message === 'string' ? params.message.trim() : '';
-        const email = typeof params?.email === 'string' ? params.email.trim() : '';
 
-        if (!message) {
+export default definePage({
+  setup: page => ({
+    actions: {
+      async submitFeedback({ category, message, email }: { category: string; message: string; email: string }) {
+        if (!message.trim()) {
           lx.ui.toast({ title: 'Tell us what happened', icon: 'none' });
           return;
         }
-
-        console.log('[Feedback] Submitted', { category, message, email });
+        console.log('[Feedback] Submitted', { category, message: message.trim(), email: email.trim() });
         lx.ui.toast({ title: 'Thanks for the feedback', icon: 'success' });
+        // Opened as a float, the page closes its own surface; pushed, it stays.
         await page.surface?.close();
       },
-    };
-    return {
-      actions,
-    };
-  },
+    },
+  }),
 });

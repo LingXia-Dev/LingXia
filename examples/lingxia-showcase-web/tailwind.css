@@ -1,25 +1,43 @@
 @import 'tailwindcss' source(none);
+@import './theme/tokens.css';
 
 @source './pages';
+@source './shared';
 @source './lxapp.ts';
 
-@theme {
-  --animate-blink: blink 0.9s step-end infinite;
-  --animate-chart-in: chart-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-
-  @keyframes blink {
-    0%, 49% { opacity: 1; }
-    50%, 100% { opacity: 0; }
-  }
-  @keyframes chart-in {
-    from { opacity: 0; transform: scale(0.96) translateY(8px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-  }
-}
+/* The runtime stamps the resolved appearance on <html>; platform media
+   queries can lag an in-place switch, so `dark:` keys off the attribute. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @layer base {
-  body {
-    overflow: hidden;
-    background-color: #f2f2f7;
+  /* Tailwind 3 behavior: borders default to the hairline color, not currentColor. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-line-200);
   }
+
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    background-color: var(--lx-page);
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    color: var(--lx-text);
+    overflow-x: hidden;
+  }
+  #app {
+    min-height: 100%;
+  }
+  button:disabled {
+    opacity: 0.5;
+  }
+
+  /* Text selection / copy policy is provided by the LingXia runtime per
+     platform: selectable on desktop, native-app no-select on touch.
+     Override with .no-select (desktop) or .selectable (touch). */
 }
