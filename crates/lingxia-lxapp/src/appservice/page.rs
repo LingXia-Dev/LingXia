@@ -89,7 +89,10 @@ impl PageObject {
 
 #[js_class(clone)]
 pub struct PageSvc {
-    functions: HashMap<String, JSFunc>,
+    /// Lifecycle hooks by name; runtime calls only, never reachable from the View.
+    hooks: HashMap<String, JSFunc>,
+    /// The page's `actions`: the whole View-callable surface, called with `this` undefined.
+    actions: HashMap<String, JSFunc>,
     /// Methods declared as `stream_handlers` in page meta — they receive an
     /// explicit `StreamHandle` JS object as their second argument and are
     /// expected to call `stream.end(result)` (or `stream.error(code, msg)`)
@@ -258,8 +261,6 @@ impl Drop for ChannelTurn {
 
 #[derive(Debug, Deserialize, Default)]
 struct PageBindingMeta {
-    #[serde(default)]
-    handlers: Vec<String>,
     /// Methods that receive an explicit `StreamHandle` JS object as their
     /// second argument instead of using the `async function*` generator pattern.
     #[serde(default)]
@@ -535,18 +536,12 @@ impl PageSvc {
                 match call_arg {
                     Some(val) => {
                         js_func
-                            .call_async::<_, JSValue>(
-                                Some(self.this.require()?),
-                                (val, stream_handle),
-                            )
+                            .call_async::<_, JSValue>(None, (val, stream_handle))
                             .await
                     }
                     None => {
                         js_func
-                            .call_async::<_, JSValue>(
-                                Some(self.this.require()?),
-                                (JSObject::new(&ctx), stream_handle),
-                            )
+                            .call_async::<_, JSValue>(None, (JSObject::new(&ctx), stream_handle))
                             .await
                     }
                 }
@@ -576,16 +571,8 @@ impl PageSvc {
         // Generator / unary path.
         let fut = async {
             match call_arg {
-                Some(val) => {
-                    js_func
-                        .call_async::<_, JSValue>(Some(self.this.require()?), (val,))
-                        .await
-                }
-                None => {
-                    js_func
-                        .call_async::<_, JSValue>(Some(self.this.require()?), ())
-                        .await
-                }
+                Some(val) => js_func.call_async::<_, JSValue>(None, (val,)).await,
+                None => js_func.call_async::<_, JSValue>(None, ()).await,
             }
         };
 
@@ -726,8 +713,8 @@ impl PageSvc {
                 }
                 result = async {
                     match call_arg {
-                        Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
-                        None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
+                        Some(val) => js_func.call_async::<_, ()>(None, (val,)).await,
+                        None => js_func.call_async::<_, ()>(None, ()).await,
                     }
                 } => result,
             };
@@ -823,10 +810,9 @@ impl PageSvc {
         let page_svc = self.clone();
         let key_for_task = key.clone();
         let outbound_for_task = outbound.clone();
-        let this = self
-            .this
-            .get()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+        if self.this.get().is_none() {
+            return Err(RpcError::new(BRIDGE_CANCELED, None));
+        }
         super::context_lifecycle::spawn(&ctx, move |ctx| async move {
             let result =
                 with_document_callback_work(Some(key_for_task.work_id), outbound_for_task, async {
@@ -837,13 +823,13 @@ impl PageSvc {
                             match call_arg {
                                 Some(val) => {
                                     js_func
-                                        .call_async::<_, JSValue>(Some(this), (val, channel_ctx))
+                                        .call_async::<_, JSValue>(None, (val, channel_ctx))
                                         .await
                                 }
                                 None => {
                                     js_func
                                         .call_async::<_, JSValue>(
-                                            Some(this),
+                                            None,
                                             (JSObject::new(&ctx), channel_ctx),
                                         )
                                         .await
@@ -1198,7 +1184,7 @@ impl PageSvc {
     }
 
     fn get_js_func(&self, service_name: &str) -> Option<JSFunc> {
-        self.functions.get(service_name).cloned()
+        self.actions.get(service_name).cloned()
     }
 }
 
@@ -1237,7 +1223,8 @@ impl PageSvc {
 
         // Cache capabilities
         let mut page_svc = PageSvc {
-            functions: HashMap::new(),
+            hooks: HashMap::new(),
+            actions: HashMap::new(),
             stream_handlers: HashSet::new(),
             this: PageObject::new(config.clone()),
             page,
@@ -1444,7 +1431,7 @@ impl PageSvc {
     where
         F: FnMut(&JSValue),
     {
-        for func in self.functions.values() {
+        for func in self.hooks.values().chain(self.actions.values()) {
             mark_fn(func.as_js_value());
         }
         // `this` is one shared native root, also owned by the service registry
@@ -1480,6 +1467,8 @@ fn notify_stream_cancel(handler: &Rc<RefCell<Option<JSFunc>>>) {
 }
 
 impl PageSvc {
+    /// Hooks come from the config's lifecycle names; actions only from its
+    /// `actions` object, so no action name collides with the runtime's.
     fn register_functions(&mut self, obj: &JSObject, meta_json: Option<&str>) -> JSResult<()> {
         let meta: PageBindingMeta = meta_json
             .map(serde_json::from_str)
@@ -1487,36 +1476,27 @@ impl PageSvc {
             .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
             .unwrap_or_default();
 
-        for function_name in meta.handlers {
-            if function_name.starts_with('_') {
-                continue;
-            }
-            if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
-                self.functions.insert(function_name, func);
+        for event in PageLifecycleEvent::ALL {
+            if let Ok(func) = obj.get::<_, JSFunc>(event.as_str()) {
+                self.hooks.insert(event.as_str().to_string(), func);
             }
         }
 
+        let Ok(actions) = obj.get::<_, JSObject>("actions") else {
+            return Ok(());
+        };
         for function_name in meta.stream_handlers {
-            if function_name.starts_with('_') {
-                continue;
-            }
-            if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
-                self.functions.insert(function_name.clone(), func);
+            if let Ok(func) = actions.get::<_, JSFunc>(function_name.as_str()) {
+                self.actions.insert(function_name.clone(), func);
                 self.stream_handlers.insert(function_name);
             }
         }
-
-        // Metadata is intentionally conservative; fall back to runtime
-        // reflection so spreads and aliased handlers still register.
-        for key_value in obj.keys()? {
+        for key_value in actions.keys()? {
             let Ok(function_name) = key_value.to_rust::<String>() else {
                 continue;
             };
-            if function_name.starts_with('_') {
-                continue;
-            }
-            if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
-                self.functions.insert(function_name, func);
+            if let Ok(func) = actions.get::<_, JSFunc>(function_name.as_str()) {
+                self.actions.entry(function_name).or_insert(func);
             }
         }
         Ok(())
@@ -1679,16 +1659,19 @@ impl PageSvc {
         let cancel_store = cancel_handler.clone();
         let ctx_on_cancel = ctx.clone();
         let handle_for_handler = handle.clone();
-        let on_cancel_fn = JSFunc::new(&ctx, move |handler: JSFunc| {
-            *cancel_store.borrow_mut() = Some(handler.clone());
-            let _ = handle_for_handler.set("_cancelHandler", handler);
-            let cancel_store = cancel_store.clone();
-            let handle_for_handler = handle_for_handler.clone();
-            let ctx_unsub = ctx_on_cancel.clone();
-            JSFunc::new(&ctx_on_cancel, move || {
-                *cancel_store.borrow_mut() = None;
-                let _ = handle_for_handler.set("_cancelHandler", JSValue::undefined(&ctx_unsub));
-                Ok(())
+        let on_cancel_fn = JSFunc::new(&ctx, move |handler: JSFunc, options: Optional<JSValue>| {
+            crate::lx::subscribe(&ctx_on_cancel, options.0, || {
+                *cancel_store.borrow_mut() = Some(handler.clone());
+                let _ = handle_for_handler.set("_cancelHandler", handler);
+                let cancel_store = cancel_store.clone();
+                let handle_for_handler = handle_for_handler.clone();
+                let ctx_unsub = ctx_on_cancel.clone();
+                JSFunc::new(&ctx_on_cancel, move || {
+                    *cancel_store.borrow_mut() = None;
+                    let _ =
+                        handle_for_handler.set("_cancelHandler", JSValue::undefined(&ctx_unsub));
+                    Ok(())
+                })
             })
         })
         .map_err(rpc_error_from_rong)?;
@@ -1892,17 +1875,15 @@ impl PageSvc {
         func_name: &str,
         args: Option<&str>,
     ) -> JSResult<()> {
-        if let Some(func) = self.functions.get(func_name) {
+        let (func, this) = match self.hooks.get(func_name) {
+            Some(hook) => (Some(hook), Some(self.this.require()?)),
+            None => (self.actions.get(func_name), None),
+        };
+        if let Some(func) = func {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
             return match args_obj {
-                Some(obj) => {
-                    func.call_async::<_, ()>(Some(self.this.require()?), (obj,))
-                        .await
-                }
-                None => {
-                    func.call_async::<_, ()>(Some(self.this.require()?), ())
-                        .await
-                }
+                Some(obj) => func.call_async::<_, ()>(this, (obj,)).await,
+                None => func.call_async::<_, ()>(this, ()).await,
             };
         }
         Err(RongJSError::from(HostError::new(
@@ -1961,7 +1942,8 @@ impl PageSvc {
         };
         // The JS object carries its own copy of the service.
         if let Ok(mut own) = object.borrow_mut::<PageSvc>() {
-            own.functions.clear();
+            own.hooks.clear();
+            own.actions.clear();
             own.event_emitter = EventEmitter::default();
         };
     }
@@ -2085,7 +2067,7 @@ impl PageSvc {
         if event == PageLifecycleEvent::OnUnload {
             self.abort_lifetime();
         }
-        if let Some(js_func) = self.functions.get(event.as_str()) {
+        if let Some(js_func) = self.hooks.get(event.as_str()) {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
             // The caller owns a task-local JSContext for the full async call;
             // avoid Rong's runtime-wide invoke queue across LxApp restarts.
@@ -2504,16 +2486,16 @@ mod tests {
               page.flush().then(() => { flushSettled = "resolved"; }, () => { flushSettled = "rejected"; });
               page._cancelPendingSetData();
               page._abortLifetime();
-              let reserved = false;
+              let refused = false;
               try {
                 __registerPage("pages/bad", { signal: null });
                 __LX_CREATE_PAGE__("pages/bad", null, "p2");
               } catch (error) {
-                reserved = /reserved by the runtime/.test(String(error));
+                refused = /not a lifecycle hook/.test(String(error));
               }
               await Promise.resolve();
               await Promise.resolve();
-              return [before, page.signal.aborted, heard, reserved, flushSettled].join(",");
+              return [before, page.signal.aborted, heard, refused, flushSettled].join(",");
             } catch (error) { return `threw: ${error}`; } })()
             "#,
         ))

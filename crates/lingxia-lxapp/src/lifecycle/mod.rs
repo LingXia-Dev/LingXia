@@ -85,6 +85,15 @@ pub enum PageLifecycleEvent {
 }
 
 impl PageLifecycleEvent {
+    pub const ALL: [PageLifecycleEvent; 6] = [
+        PageLifecycleEvent::OnLoad,
+        PageLifecycleEvent::OnReady,
+        PageLifecycleEvent::OnShow,
+        PageLifecycleEvent::OnHide,
+        PageLifecycleEvent::OnUnload,
+        PageLifecycleEvent::OnPullDownRefresh,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             PageLifecycleEvent::OnLoad => "onLoad",

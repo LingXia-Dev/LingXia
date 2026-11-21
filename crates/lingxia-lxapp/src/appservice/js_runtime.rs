@@ -1835,11 +1835,11 @@ mod worker_assignment_tests {
                     .insert(instance.clone(), page);
                 let script = format!(
                     "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
-                     __registerPage('pages/home/index', {{ data: {{}}, \
+                     __registerPage('pages/home/index', {{ data: {{}}, actions: {{ \
                        async start() {{ \
                          await new Promise((resolve) => {{ globalThis.__release = resolve; }}); \
                          globalThis.__settled = true; \
-                       }} }}); \
+                       }} }} }}); \
                      __LX_CREATE_PAGE__('pages/home/index', null, {instance:?});"
                 );
                 ctx.eval::<()>(Source::from_bytes(script)).unwrap();

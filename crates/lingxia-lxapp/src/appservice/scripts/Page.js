@@ -45,36 +45,31 @@
   function createPageInstance(definition, pagePath, pageInstanceId, gpu, lifetime = new AbortController()) {
     const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
-      throw new Error("setData: Invalid page configuration");
-    }
-
-    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', 'close', 'setResult', '_abortLifetime', '_cancelPendingSetData', '_setData', '_leave', '_bindResult', '_settleResult', '_handOver', '_adopt']) {
-      if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
-        throw new TypeError(`Page member '${key}' is reserved by the runtime`);
-      }
+      throw new Error("Invalid page configuration");
     }
     assertPageData(pageConfig.data || {});
+    // Only hooks and the `actions` object reach the service, so a page's own
+    // names never shadow the runtime's members.
+    const svcConfig = { actions: {} };
+    for (const [key, value] of Object.entries(pageConfig)) {
+      if (key === "data" || key === "route") continue;
+      if (key === "actions") {
+        Object.assign(svcConfig.actions, value);
+      } else if (PAGE_HOOKS.includes(key) && typeof value === "function") {
+        svcConfig[key] = value;
+      } else {
+        throw new TypeError(`Page config: '${key}' is not a lifecycle hook; put View-callable functions under actions`);
+      }
+    }
     const pageSvc = new PageSvc(
-      pageConfig,
+      svcConfig,
       pagePath,
-      definition.bindingMetaJson || '{"handlers":[]}',
+      definition.bindingMetaJson || "{}",
       pageInstanceId || "",
     );
 
     pageSvc.data = cloneJsonValue(pageConfig.data || {});
-
-    for (const [key, value] of Object.entries(pageConfig)) {
-      if (key === "data") {
-        continue;
-      }
-      if (typeof value === "function") {
-        pageSvc[key] = function (...args) {
-          return value.apply(pageSvc, args);
-        };
-      } else {
-        pageSvc[key] = value;
-      }
-    }
+    pageSvc.route = pageConfig.route;
 
     // Aborted as the page unloads — just before `onUnload` runs, or when the
     // page is retired without one — so work the page started (a fetch, a
@@ -319,7 +314,7 @@
       },
     });
 
-    // Size class only; a watcher goes with the page.
+    // Size class only. A watcher starts with the current value and goes with the page.
     const env = Object.freeze({
       get sizeClass() {
         return native().env().sizeClass;
@@ -327,20 +322,29 @@
       get canDock() {
         return native().env().canDock;
       },
-      watch(callback) {
+      watch(callback, options) {
         if (typeof callback !== "function") {
           throw new TypeError("page.env.watch takes a callback");
         }
-        if (lifetime.signal.aborted) return () => {};
+        const signal = subscriptionSignal(options);
+        if (lifetime.signal.aborted || (signal && signal.aborted)) return () => {};
+        let stopped = false;
         const off = native().envWatch((context) => {
           const parsed = typeof context === "string" ? JSON.parse(context) : context;
-          callback({ sizeClass: parsed.sizeClass, canDock: parsed.canDock });
+          if (!stopped) callback({ sizeClass: parsed.sizeClass, canDock: parsed.canDock });
         });
-        lifetime.signal.addEventListener("abort", off, { once: true });
-        return () => {
-          lifetime.signal.removeEventListener("abort", off);
+        const stop = () => {
+          if (stopped) return;
+          stopped = true;
+          lifetime.signal.removeEventListener("abort", stop);
+          if (signal) signal.removeEventListener("abort", stop);
           off();
         };
+        lifetime.signal.addEventListener("abort", stop, { once: true });
+        if (signal) signal.addEventListener("abort", stop, { once: true });
+        const current = native().env();
+        callback({ sizeClass: current.sizeClass, canDock: current.canDock });
+        return stop;
       },
     });
 
@@ -461,16 +465,14 @@
     if (typeof actions !== "object") {
       throw new TypeError("definePage: actions must be an object of functions");
     }
+    config.actions = {};
     for (const [name, fn] of Object.entries(actions)) {
       if (typeof fn !== "function") throw new TypeError(`definePage: action '${name}' must be a function`);
-      if (name.startsWith("_") || PAGE_HOOKS.includes(name) || name === "data") {
-        throw new TypeError(`definePage: '${name}' cannot be an action name`);
-      }
-      config[name] = fn;
+      config.actions[name] = fn;
     }
     config.route = pagePath.replace(/\.[^./]+$/, "");
     svc = createPageInstance(
-      { config, bindingMetaJson: JSON.stringify({ handlers: Object.keys(actions) }) },
+      { config },
       pagePath,
       pageInstanceId,
       gpu,
@@ -738,52 +740,32 @@ function getValueAtPath(root, segments) {
   return { exists: true, value: current };
 }
 
+// The container decides how a key applies; a numeric-looking key in an object is a plain key.
 function setValueBySegments(root, segments, value) {
   let current = root;
 
   for (let i = 0; i < segments.length - 1; i++) {
     const key = segments[i];
-    const nextKey = segments[i + 1];
-    const isNextKeyArrayIndex = /^\d+$/.test(nextKey);
-
     if (current[key] === undefined || current[key] === null) {
-      current[key] = isNextKeyArrayIndex ? [] : {};
+      current[key] = /^\d+$/.test(segments[i + 1]) ? [] : {};
     } else if (typeof current[key] !== "object") {
-      throw new Error(
-        `setData: Cannot set path "${key}", parent is not an object`,
-      );
-    } else if (isNextKeyArrayIndex && !Array.isArray(current[key])) {
-      throw new Error(
-        `setData: Cannot set array index on non-array at "${key}"`,
-      );
+      throw new Error(`Cannot set "${segments.slice(0, i + 2).join(".")}": "${key}" is not an object`);
     }
-
     current = current[key];
-    if (!current || typeof current !== "object") {
-      throw new Error(`setData: Invalid path segment "${key}"`);
-    }
   }
 
   const finalKey = segments[segments.length - 1];
   if (value === undefined) {
     if (Array.isArray(current)) {
       const index = parseInt(finalKey, 10);
-      if (index >= 0 && index < current.length) {
-        current.splice(index, 1);
-      } else {
-        throw new Error(
-          `setData: Invalid array index "${finalKey}" for deletion`,
-        );
+      if (!(index >= 0 && index < current.length)) {
+        throw new Error(`Cannot remove item "${finalKey}": the array has ${current.length} items`);
       }
+      current.splice(index, 1);
       return;
     }
-
-    if (current && typeof current === "object") {
-      delete current[finalKey];
-      return;
-    }
-
-    throw new Error(`setData: Cannot delete property "${finalKey}"`);
+    delete current[finalKey];
+    return;
   }
 
   current[finalKey] = value;
@@ -977,4 +959,15 @@ function assertPageData(value, seen = new Set()) {
   seen.add(value);
   for (const item of Object.values(value)) assertPageData(item, seen);
   seen.delete(value);
+}
+
+// The `{ signal }` every subscription takes; anything else is refused.
+function subscriptionSignal(options) {
+  if (options === undefined) return undefined;
+  const signal = options !== null && typeof options === "object" ? options.signal : null;
+  if (signal === undefined) return undefined;
+  if (!signal || typeof signal.addEventListener !== "function") {
+    throw new TypeError("a subscription takes { signal } as its options");
+  }
+  return signal;
 }

@@ -7,6 +7,7 @@ const context = vm.createContext({ setTimeout, clearTimeout, console, AbortContr
 vm.runInContext(`
 globalThis.acks = [];
 globalThis.PageSvc = class {
+  constructor(config) { this.config = config; }
   _setData(ops, ack) { acks.push({ ops: JSON.parse(ops), ack }); return Promise.resolve(); }
 };
 `, context);
@@ -52,7 +53,7 @@ await run('deferred');
 run('globalThis.unloaded = page.flush(); unloaded.catch(() => {}); page._cancelPendingSetData();');
 await assert.rejects(run('unloaded'), /unloaded/);
 await assert.rejects(run('page.flush()'), /unloaded/);
-assert.throws(() => run(`__registerPage('bad', { flush() {} }); __LX_CREATE_PAGE__('bad');`), /reserved/);
+assert.throws(() => run(`__registerPage('bad', { flush() {} }); __LX_CREATE_PAGE__('bad');`), /under actions/);
 
 // `this.signal` lives as long as the page: aborted when the runtime retires it.
 run(`globalThis.signalPage = __LX_CREATE_PAGE__('home');
@@ -64,7 +65,7 @@ assert.equal(run('signalPage.signal.aborted'), true);
 assert.equal(run('heardAbort'), true);
 assert.throws(
   () => run(`__registerPage('taken', { signal: null }); __LX_CREATE_PAGE__('taken');`),
-  /reserved by the runtime/,
+  /not a lifecycle hook/,
 );
 // The opener's result settles once, after the page leaves.
 const settled = async (expr) => JSON.parse(JSON.stringify(await run(expr)));
@@ -103,9 +104,9 @@ acks.length = 0;`);
 assert.equal(run('orderPage.data.meta.a'), 10, 'an update in setup is the initial data');
 assert.equal(run('orderPage.name'), 'order');
 assert.equal(run('orderPage.params.id'), 7);
-run('orderSvc.onLoad({ id: 8 })');
+run("orderSvc.config.onLoad({ id: 8 })");
 assert.equal(run('orderPage.params.id'), 8, 'onLoad refreshes params');
-run('orderSvc.bump()');
+run("orderSvc.config.actions.bump()");
 await new Promise(resolve => setTimeout(resolve, 30));
 assert.deepEqual(JSON.parse(JSON.stringify(run('acks[0].ops'))), [
   { op: 'replace', path: '/list/1/n', value: 3 },
@@ -150,3 +151,64 @@ await run(`__lxNavForView({ back: 2 })`);
 await run(`__lxNavForView({ page: 'detail' })`);
 await run(`__lxNavForView({ tab: 'home' })`);
 assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['back', 2], ['go', 'detail'], ['go', 'home']]));
+
+// Actions are dispatched from their own map: no name is reserved, and `this` is undefined.
+run(`globalThis.closed = 0;
+__registerPage('dialog', define({
+  data: { byId: { '7': { n: 1 } }, counts: {} },
+  setup(page) {
+    globalThis.dialogPage = page;
+    return { actions: {
+      close() { 'use strict'; closed += 1; globalThis.closeThis = this; },
+      flush() { return 'flush'; }, signal() { return 'signal'; }, setData() { return 'setData'; },
+      route() { return 'route'; }, page() { return 'page'; }, data() { return 'data'; }, onLoad() { return 'onLoad action'; },
+    } };
+  },
+}));
+globalThis.dialogSvc = __LX_CREATE_PAGE__('pages/dialog/index', 'dialog', 'd1', false, JSON.stringify({ name: 'dialog' }));
+acks.length = 0;`);
+const dispatch = (name) => run(`dialogSvc.config.actions[${JSON.stringify(name)}].call(undefined)`);
+dispatch('close');
+assert.equal(run('closed'), 1, 'an action named close runs');
+assert.equal(run('closeThis'), undefined, 'an action sees this as undefined');
+for (const name of ['flush', 'signal', 'setData', 'route', 'page', 'data']) {
+  assert.equal(dispatch(name), name, `an action may be named ${name}`);
+}
+assert.equal(dispatch('onLoad'), 'onLoad action', 'an action named like a hook stays an action');
+assert.equal(run('typeof dialogSvc.config.onLoad'), 'function', 'the hook is the runtime one');
+assert.equal(run('typeof dialogSvc.flush'), 'function', 'the runtime member is untouched');
+
+// A numeric-looking key in an object is a plain key.
+run(`dialogPage.update(d => { d.byId['12'] = { n: 5 }; d.byId['7'].n = 2; d.counts['2024'] = 5; })`);
+assert.deepEqual(JSON.parse(JSON.stringify(run('dialogPage.data'))), {
+  byId: { '7': { n: 2 }, '12': { n: 5 } }, counts: { '2024': 5 },
+});
+await new Promise(resolve => setTimeout(resolve, 30));
+assert.deepEqual(JSON.parse(JSON.stringify(run('acks[0].ops'))), [
+  { op: 'replace', path: '/byId/7/n', value: 2 },
+  { op: 'add', path: '/byId/12', value: { n: 5 } },
+  { op: 'add', path: '/counts/2024', value: 5 },
+]);
+run(`dialogPage.update(d => { delete d.byId['12']; })`);
+assert.equal(run(`'12' in dialogPage.data.byId`), false, 'a numeric-looking key is removed, not spliced');
+console.log('definePage action map and numeric object keys passed.');
+
+// page.env.watch: the current value first, then flips; `{ signal }` ends it.
+run(`globalThis.envNow = { sizeClass: 'compact', canDock: false };
+globalThis.envSubs = new Set();
+globalThis.__LX_PAGE_NATIVE__ = {
+  env: () => envNow,
+  envWatch(cb) { envSubs.add(cb); return () => envSubs.delete(cb); },
+};
+globalThis.envSeen = [];
+globalThis.envStop = new AbortController();
+dialogPage.env.watch(e => envSeen.push(e.sizeClass), { signal: envStop.signal });`);
+assert.deepEqual(JSON.parse(run('JSON.stringify(envSeen)')), ['compact'], 'watch delivers the current value at once');
+run(`envNow = { sizeClass: 'regular', canDock: true }; for (const cb of envSubs) cb(envNow);`);
+assert.deepEqual(JSON.parse(run('JSON.stringify(envSeen)')), ['compact', 'regular']);
+run('envStop.abort()');
+assert.equal(run('envSubs.size'), 0, 'aborting the signal unsubscribes');
+run(`globalThis.envLate = []; dialogPage.env.watch(e => envLate.push(e), { signal: AbortSignal.abort() });`);
+assert.equal(run('envLate.length'), 0, 'an aborted signal subscribes nothing');
+assert.throws(() => run('dialogPage.env.watch(() => {}, { signal: 1 })'), /\{ signal \}/);
+console.log('page.env.watch delivery and signal passed.');

@@ -34,6 +34,7 @@ import type {
   MessageIn,
   MessageOut,
   PageSurface,
+  SignalOptions,
   VideoContext,
 } from './generated/logic.js';
 
@@ -63,8 +64,8 @@ export interface PageSetup<Params, Actions> {
   onUnload?: Hook;
   /** A pull, or `page.refresh()`. The indicator stays until the returned promise settles. */
   onPullDownRefresh?: Hook;
-  /** The page's whole View-callable surface. */
-  actions?: Actions;
+  /** The page's whole View-callable surface. Actions are called with `this` undefined. */
+  actions?: Actions & ThisType<void>;
 }
 
 type ExactSetup<R> = {
@@ -119,7 +120,7 @@ export interface PageApi<Data, Params, Result, Messages = never> {
     /** Delivers to the opener's `onMessage` handlers; until it first subscribes, messages wait. */
     send(message: MessageOut<Messages>): void;
     /** Receives what the opener sends. Returns a function that removes the handler. */
-    onMessage(handler: (message: MessageIn<Messages>) => void): () => void;
+    onMessage(handler: (message: MessageIn<Messages>) => void, options?: SignalOptions): () => void;
   };
   /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
   readonly surface?: PageSurface;
@@ -136,11 +137,12 @@ export interface PageApi<Data, Params, Result, Messages = never> {
   /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */
   video(name: string): VideoContext;
   /**
-   * The size class this page lays out for. `watch` runs when `sizeClass` or
-   * `canDock` changes, not on every resize, and stops when the page unloads.
+   * The size class this page lays out for. `watch` delivers it at once, then
+   * when `sizeClass` or `canDock` changes (not on every resize), and stops
+   * when the page unloads.
    */
   readonly env: PageEnvContext & {
-    watch(callback: (env: PageEnvContext) => void): () => void;
+    watch(callback: (env: PageEnvContext) => void, options?: SignalOptions): () => void;
   };
 }
 
