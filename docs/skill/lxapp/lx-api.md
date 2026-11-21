@@ -55,6 +55,8 @@ library, and the root `tsconfig.json` references both.
   before `watch` returns its unsubscribe.
 - Every subscription returns its unsubscribe and takes `{ signal }`:
   `lx.network.watch(cb, { signal: page.signal })` ends with the page.
+- A call that waits on the network or a radio takes `signal` instead of a timeout
+  (`AbortSignal.timeout(ms)`); abort rejects `E_ABORT`. `lx.ui.toast` takes one and dismisses.
 
 ## Web globals
 
@@ -85,13 +87,12 @@ No lxapp keeps its own copy or offers its own picker.
 lx.host.displayLanguage.get();        lx.host.displayLanguage.watch(cb);
 lx.host.appearance.get();             lx.host.appearance.watch(cb);
 
-lx.host.displayLanguage.setPreference('zh-CN');
-lx.host.appearance.setPreference('dark');
+lx.host.displayLanguage.preference.set('zh-CN');
+lx.host.appearance.preference.set('dark');
 ```
 
-- `get`/`watch` report what is in effect; `getPreference` / `setPreference` /
-  `watchPreference` report the user's choice (a system change under `'auto'`
-  moves only the first pair).
+- `get`/`watch` report what is in effect; `preference.get` / `.set` / `.watch`
+  report the user's choice (a system change under `'auto'` moves only the first pair).
 - Use `watch` to re-set strings you hand to native chrome (titles, tab
   labels, modals).
 - View: `useLxHost().displayLanguage`. The View's `subscribe(cb)` fires only
@@ -101,7 +102,7 @@ lx.host.appearance.setPreference('dark');
   the display language narrowed to them — `ja-JP` gives `en` — and sets
   `<html lang>` / `<html dir>` and built-in control words. Logic narrows itself.
 - `lxdev runner set --language` shadows the effective language; there
-  `get()` and `getPreference()` disagree and `setPreference` shows no effect.
+  `get()` and `preference.get()` disagree and `preference.set` shows no effect.
   Test a Settings screen without it.
 - The starting scheme is the host's `theme.defaultAppearance`; a one-scheme
   lxapp declares `"appearance"` in `lxapp.json`
@@ -118,41 +119,39 @@ if (lx.supports('surface.window.fullChrome')) {
 - The set is frozen per Logic context. Unknown strings return false;
   non-strings throw `TypeError`.
 - `true` is not permission: grants and failures surface at the call.
-- Capability members are always present: `lx.host.terminal`, `autostart`,
-  `notification`, `banner`. Without the feature their calls fail
-  `E_NOT_SUPPORTED`; without the right (`lx.host.cache` outside the Control
-  app), `E_PERMISSION_DENIED`.
+- Capability members are always present. Without the feature their calls fail
+  `E_NOT_SUPPORTED`; each member names its key under `@supports` (`host.tray`,
+  `host.badge`, `device.haptics`, `pick.directory`, …). Without the right
+  (`lx.host.cache` outside the Control app), `E_PERMISSION_DENIED`.
 - Required features need a matching `minRuntime`; optional ones need a
   fallback.
 - Ask `lx.app.info.role === 'control'` for Control-app members, not a feature key
   ([Control app](../app/control-app.md)).
-- Unsupported cosmetic calls (tray on mobile) are silent no-ops; calls with a
-  result reject.
 
 ## Badges
 
-`lx.host.setBadge(value, options?)` (Control app) resolves `{ painted, reason? }`:
+`lx.host.setBadge(value, options?)` (Control app) resolves `{ painted }`:
 
 - `surface: 'auto'` (default) covers dock and menu bar on macOS, taskbar and
   tray on Windows, the home-screen icon on iOS and HarmonyOS.
-- No such surface resolves `reason: 'no_surface'`, never rejects. **Android** always does.
+- No such surface rejects `E_NOT_SUPPORTED`; ask `lx.supports('host.badge')`. **Android** has none.
 - **Apple**: request notification permission first
   (`lx.host.notification.requestPermission()`); a denied macOS app gets no Dock
   badge, and iOS accepts only numbers.
 - A badge never prompts, and a notification never sets one. Pass `null` to
   clear.
 
-`lx.host.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
-the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
+`lx.host.tray.update({ icon?, title?, visible? })`, `tray.menu.replace(items)` and
+`tray.onClick` change the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner
 
 `lx.host.banner` (macOS/Windows; elsewhere calls fail `E_NOT_SUPPORTED`, so ask
-`lx.supports('app.banner')`) draws a product card in the top-right corner. No
+`lx.supports('host.banner')`) draws a product card in the top-right corner. No
 yaml capability. Guests: see [Guest lxapps](#guest-lxapps).
 
 - Without `actions`: informational, auto-dismisses after 5 s unless
-  `timeoutMs`; closing resolves `{ status: 'canceled', reason: 'dismissed' }`.
+  `durationMs`; closing resolves `{ status: 'canceled', reason: 'dismissed' }`.
 - With `actions` (at most two): a gate without close control; resolves the
   chosen `action`, or `canceled` on timeout or replacement.
 - The same `id` replaces (`reason: 'replaced'`); different ids queue.

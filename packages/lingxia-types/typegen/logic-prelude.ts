@@ -234,6 +234,7 @@ declare global {
      * Open one of this lxapp's pages as a float or a window. Returns at once;
      * await `.opened` to wait for the page.
      * @throws {E_INVALID_ARG} Malformed options.
+     * @supports surface.window
      * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
@@ -286,21 +287,21 @@ declare global {
 
     /**
      * Launch the host app when the user signs in.
-     * @supports app.autostart
+     * @supports host.autostart
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
     readonly autostart: AutostartApi;
 
     /**
      * Local notifications, posted now or scheduled.
-     * @supports app.notification
+     * @supports host.notification
      * @throws {E_NOT_SUPPORTED} The host cannot post them.
      */
     readonly notification: NotificationApi;
 
     /**
      * A banner the product draws at the top right of the desktop.
-     * @supports app.banner
+     * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     readonly banner: BannerApi;
@@ -325,23 +326,25 @@ declare global {
 
     /**
      * Terminal settings, for the host-bundled Terminal Settings lxapp.
-     * @supports terminal
+     * @supports host.terminal
      * @throws {E_NOT_SUPPORTED} Without `capabilities.terminal`.
      */
     readonly terminal: TerminalApi;
 
     /**
-     * Take over host updates for the rest of this process. Irreversible: the
-     * built-in auto-flow will not prompt or download again, including after
-     * the calling page unloads. Does not cancel an already-started update task.
-     * `update.apply()` claims as well. `checkUpdate()` does not.
+     * Newer host app versions: `check()` finds one, `claim()` takes over the
+     * built-in auto-flow. Control app only.
      */
-    claimCustomUpdate(): void;
+    readonly update: HostUpdateApi;
 
     /** The host app's identity: OS, product name and version, runtime version. */
     readonly info: Readonly<HostInfo>;
 
-    /** The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. */
+    /**
+     * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.
+     * @supports host.tray
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
+     */
     readonly tray: TrayApi;
   }
 
@@ -351,6 +354,17 @@ declare global {
 
     /** This lxapp's tab bar: items, badges and visibility. */
     readonly tabBar: TabBarApi;
+
+    /** This lxapp's own updates: follow a downloaded bundle and restart onto it. */
+    readonly update: LxAppUpdateApi;
+
+    /** The actions this lxapp adds to the host's More menu. */
+    readonly moreActions: MoreActionsApi;
+  }
+
+  interface TrayApi {
+    /** The dropdown menu under the tray item. */
+    readonly menu: TrayMenuApi;
   }
 
   interface DeviceApi {
@@ -382,19 +396,19 @@ declare global {
      * transfer starts: `result` settles once, `progress` streams, `cancel()`
      * aborts.
      */
-    download(url: string, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    download(url: string | URL, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
     /** Download to a durable path under `lx://userdata`. */
     download(
-      url: string,
+      url: string | URL,
       options: AppDownloadOptions & { to: string },
     ): DownloadTask<AppPersistedDownloadResult>;
     /** Download to a temporary file this lxapp owns. */
     download(
-      url: string,
+      url: string | URL,
       options?: AppDownloadOptions & { to?: undefined },
     ): DownloadTask<AppTempDownloadResult>;
-    download(url: string, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
-    download(url: string, options?: DownloadOptions): DownloadTask<DownloadResult>;
+    download(url: string | URL, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    download(url: string | URL, options?: DownloadOptions): DownloadTask<DownloadResult>;
   }
 
   interface Lx {

@@ -80,9 +80,9 @@ test('switches display language from the home control', {
   id: 'UI-LANGUAGE-001',
   covers: [
     'lx.host.displayLanguage.watch',
-    'lx.host.displayLanguage.getPreference',
-    'lx.host.displayLanguage.setPreference',
-    'lx.host.displayLanguage.watchPreference',
+    'lx.host.displayLanguage.preference.get',
+    'lx.host.displayLanguage.preference.set',
+    'lx.host.displayLanguage.preference.watch',
   ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -91,12 +91,12 @@ test('switches display language from the home control', {
   await app.nav.reset({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(
-    () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.displayLanguage?.setPreference),
+    () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.displayLanguage?.preference?.set),
     (kind) => kind === 'function',
     { describe: 'home Logic displayLanguage control', timeoutMs: 20_000, retryIf: () => true },
   );
 
-  const original = await app.logic.eval(({ lx }) => lx.host.displayLanguage.getPreference());
+  const original = await app.logic.eval(({ lx }) => lx.host.displayLanguage.preference.get());
 
   // Switching the language re-renders home in place; it does not remount it.
   const home = await app.page({ name: 'home' });
@@ -104,7 +104,7 @@ test('switches display language from the home control', {
     await waitForElementEnabled(home.view, '[data-testid="home-language-zh-CN"]');
     await home.view.testId('home-language-zh-CN').click();
     await eventually(
-      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.displayLanguage.getPreference()),
+      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.displayLanguage.preference.get()),
       (preference) => preference === 'zh-CN',
       {
         describe: 'home language control to set zh-CN',
@@ -134,7 +134,7 @@ test('switches display language from the home control', {
     await waitForElementEnabled(home.view, '[data-testid="home-language-en-US"]');
     await home.view.testId('home-language-en-US').click();
     await eventually(
-      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.displayLanguage.getPreference()),
+      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.displayLanguage.preference.get()),
       (preference) => preference === 'en-US',
       {
         describe: 'home language control to set en-US',
@@ -162,7 +162,7 @@ test('switches display language from the home control', {
     );
   } finally {
     await app.logic.eval(async ({ lx }, original) => {
-      await lx.host.displayLanguage.setPreference(original);
+      await lx.host.displayLanguage.preference.set(original);
     }, original);
   }
 });

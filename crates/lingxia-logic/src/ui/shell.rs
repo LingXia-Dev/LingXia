@@ -182,7 +182,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
             "icon",
             "value",
             "disabled",
-            "onActivate",
+            "onSelect",
         ],
     )?;
     let id = required_string(item, "id")?;
@@ -201,10 +201,10 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
     let icon = required_string(item, "icon")?;
     let value = optional_value(item)?;
     let disabled = optional_bool(item, "disabled")?.unwrap_or(false);
-    let handler = item.get::<_, JSFunc>("onActivate").map_err(|_| {
+    let handler = item.get::<_, JSFunc>("onSelect").map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            "shell sidebar action onActivate must be a function",
+            "shell sidebar action onSelect must be a function",
         )
     })?;
 
@@ -503,7 +503,7 @@ rong::js_api! {
     fn register_sidebar_actions_api(ctx) {
         namespace ShellSidebarActionsApi = sidebar_actions_namespace(ctx)?;
         fn replace(
-            ts_params = "items: ShellSidebarAction[]",
+            ts_params = "items: readonly ShellSidebarAction[]",
             ts_return = "Promise<void>"
         ) = sidebar_actions_replace;
         fn update(

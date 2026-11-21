@@ -2,6 +2,15 @@
 //! host. Every such API gates on the same lxapp domain policy, so they must
 //! agree on what counts as an http URL and on which host that URL names.
 
+/// The text of a `string | URL` argument; a `URL` serializes on `href`.
+pub(crate) fn text_of(value: &rong::JSValue) -> Option<String> {
+    if value.is_string() {
+        return value.clone().to_rust::<String>().ok();
+    }
+    let object = value.clone().into_object()?;
+    object.get::<_, String>("href").ok()
+}
+
 /// `http://` / `https://`, case-insensitive. Byte-slicing is safe: a
 /// multi-byte boundary yields `None` rather than a panic.
 pub(crate) fn is_http_url(value: &str) -> bool {

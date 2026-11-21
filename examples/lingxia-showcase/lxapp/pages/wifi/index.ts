@@ -1,5 +1,4 @@
 import { definePage, lx, type ConnectWifiOptions, type WifiInfo } from '@lingxia/logic';
-import { appState } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 
 export default definePage({
@@ -8,7 +7,6 @@ export default definePage({
     scanning: false,
     wifiList: null as WifiInfo[] | null,
     connectedWifi: null as WifiInfo | null,
-    wifiModuleEnabled: false,
     wifiListenerEnabled: false,
     wifiConnectedEvents: [] as unknown[],
   },
@@ -53,41 +51,7 @@ export default definePage({
 
     const actions = {
       async goBack() { await lx.nav.back(); },
-      // WiFi APIs
-      async startWifi() {
-        try {
-          await lx.network.wifi.start();
-          console.log("WiFi module started");
-          // Persist state to the shared app state
-          appState.wifiModuleEnabled = true;
-          page.update(d => {
-            d.wifiModuleEnabled = true;
-            d.statusText = "Module started";
-          });
-        } catch (error) {
-          console.error("Failed to start WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi request failed"); });
-          lx.ui.toast(errorMessage(error, "Wi-Fi request failed"));
-        }
-      },
-      async stopWifi() {
-        try {
-          await lx.network.wifi.stop();
-          console.log("WiFi module stopped");
-          stopWifiConnectedListener();
-          // Persist state to the shared app state
-          appState.wifiModuleEnabled = false;
-          page.update(d => {
-            d.wifiModuleEnabled = false;
-            d.wifiList = null;
-            d.connectedWifi = null;
-            d.statusText = "Module stopped";
-          });
-        } catch (error) {
-          console.error("Failed to stop WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi request failed"); });
-        }
-      },
+      // Wi-Fi starts on the first call.
       async getWifiList() {
         if (page.data.scanning) return;
         page.update(d => {
@@ -145,22 +109,6 @@ export default definePage({
     return {
       async onLoad(options) {
         console.log("WiFi page onLoad options:", options);
-        // Restore WiFi module state from the shared app state
-        const wifiModuleEnabled = appState.wifiModuleEnabled;
-        if (wifiModuleEnabled) {
-          page.update(d => {
-            d.wifiModuleEnabled = true;
-            d.statusText = "Module started";
-          });
-        }
-      },
-      onShow() {
-        console.log("WiFi page onShow");
-        // Sync WiFi module state from the shared app state
-        const wifiModuleEnabled = appState.wifiModuleEnabled;
-        if (wifiModuleEnabled !== page.data.wifiModuleEnabled) {
-          page.update(d => { d.wifiModuleEnabled = wifiModuleEnabled; });
-        }
       },
       onHide() {
         console.log("WiFi page onHide");

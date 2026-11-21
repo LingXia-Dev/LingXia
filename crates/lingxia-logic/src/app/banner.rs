@@ -27,7 +27,7 @@ struct JSShowOptions {
     #[js_name = "message"]
     body: Option<String>,
     actions: Option<Vec<JSAction>>,
-    #[js_name = "timeoutMs"]
+    #[js_name = "durationMs"]
     timeout_ms: Option<f64>,
     background: Option<String>,
 }
@@ -36,8 +36,8 @@ struct JSShowOptions {
 /// fails `E_NOT_SUPPORTED`. A guest's banners are
 /// scoped to it and carry its name and icon.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::exposes(ctx, "app.banner") {
-        crate::capability::unsupported_namespace(ctx, app, "lx.host.banner", "app.banner")?;
+    if !crate::capability::exposes(ctx, "host.banner") {
+        crate::capability::unsupported_namespace(ctx, app, "lx.host.banner", "host.banner")?;
         return Ok(());
     }
     let banner = JSObject::new(ctx);
@@ -228,7 +228,7 @@ fn decode_show(options: JSValue) -> JSResult<(DesktopBannerShow, ActionTargets)>
         Some(ms) if ms >= 0.0 => Some(ms as u64),
         Some(_) => {
             return Err(js_invalid_parameter_error(
-                "lx.host.banner.show timeoutMs must be >= 0",
+                "lx.host.banner.show durationMs must be >= 0",
             ));
         }
     };

@@ -35,7 +35,7 @@ export default definePage({
         try {
           page.update(d => {
             d.appearance = {
-              preference: lx.host.appearance.getPreference() ?? "auto",
+              preference: lx.host.appearance.preference.get() ?? "auto",
               resolved: lx.host.appearance.get(),
             };
           });
@@ -55,7 +55,7 @@ export default definePage({
           } = {
             displayLanguage: {
               preference: resolveDisplayLanguagePreference(
-                lx.host.displayLanguage.getPreference(),
+                lx.host.displayLanguage.preference.get(),
               ),
               resolved,
             },
@@ -77,7 +77,7 @@ export default definePage({
       async setAppearance(options: Partial<AppearanceRequest> = {}) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.appearance.setPreference(preference);
+          await lx.host.appearance.preference.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set appearance:", error);
           const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
@@ -92,7 +92,7 @@ export default definePage({
       ) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.displayLanguage.setPreference(preference);
+          await lx.host.displayLanguage.preference.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set display language:", error);
           const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
@@ -144,7 +144,7 @@ export default definePage({
         stopWatchingAppearance = lx.host.appearance.watch(() => helpers.syncAppearance());
         stopWatchingLanguage = lx.host.displayLanguage.watch(() => helpers.syncLanguage());
         stopWatchingLanguagePreference =
-          lx.host.displayLanguage.watchPreference(() => helpers.syncLanguage()) ?? null;
+          lx.host.displayLanguage.preference.watch(() => helpers.syncLanguage()) ?? null;
         try {
           const info = lx.app.info;
           const suffix =

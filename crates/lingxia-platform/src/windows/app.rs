@@ -299,7 +299,7 @@ fn invoke_windows_close_browser_tab_handler(tab_id: &str) -> bool {
 }
 
 /// Process-wide handler that pushes the JS-registered tray menu spec
-/// (`items_json`, the array `lx.host.tray.setMenu` produced) to the native
+/// (`items_json`, the array `lx.host.tray.menu.replace` produced) to the native
 /// system-tray icon. Registered by the Windows host SDK; when absent (headless
 /// / non-shell builds) `set_tray_menu` no-ops, matching the trait contract.
 type WindowsTrayMenuHandler = Arc<dyn Fn(&str) + Send + Sync>;

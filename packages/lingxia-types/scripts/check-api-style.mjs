@@ -24,14 +24,46 @@ const rules = {
   "doc-length": "a member's doc is at most 12 lines; details go on its option and result fields",
   "jargon": "a summary says what the member does, without its own path or internal terms",
   "argument-shape": "a member takes `(subject?, options?)`: at most one positional subject (a callback for `watch`/`on<Event>`), then one `options` or `patch` object last; no boolean flag argument",
+  "literal-case": "a multi-word string literal is snake_case and a one-word literal lower case; HTTP methods are exempt",
+  "readonly-array-field": "an array field of an option or result type is `readonly`",
+  "url-type": "a `url` parameter or field accepts `string | URL`",
+  "supports-key": "a member that can reject `E_NOT_SUPPORTED` names its `@supports` key, and every key is one `lx.supports` answers (crates/lingxia-logic/src/features.json)",
 };
 
 const { members, types } = catalogue();
+const featureKeys = new Set(JSON.parse(readFileSync(resolve(packageDir, "../../crates/lingxia-logic/src/features.json"), "utf8")).map(entry => entry.key));
 const findings = [];
 const find = (rule, path) => findings.push(`${rule} ${path}`);
 const proseDefault = /(^|[.;:(]\s*)Default\b|\(default\b|\bdefaults? (to|is)\b|\bby default\b/;
 const jargon = /^`?lx\.[\w.]+\(|\b(Rong|js_api|LogicRoute|native-assigned|appservice|bizCode|generation-scoped|event bus)\b/;
+// Drop every `readonly` array or tuple first, so a nested mutable one still shows.
+function withoutReadonly(type) {
+  let out = "";
+  for (let i = 0; i < type.length;) {
+    if (!type.startsWith("readonly ", i)) { out += type[i++]; continue; }
+    let j = i + 9;
+    const open = type[j];
+    if ("({[".includes(open)) {
+      const close = { "(": ")", "{": "}", "[": "]" }[open];
+      for (let depth = 0; j < type.length; j++) {
+        if (type[j] === open) depth++;
+        else if (type[j] === close && --depth === 0) { j++; break; }
+      }
+    } else {
+      while (j < type.length && /[\w.<>]/.test(type[j])) j++;
+    }
+    while (type.startsWith("[]", j)) j += 2;
+    i = j;
+  }
+  return out;
+}
+const isMutableArray = type => /\[\]|(?<!Readonly)Array<|^\[|[|(] *\[/.test(withoutReadonly(type));
+const isBareUrl = type => type === "string" || type === "string | undefined";
 function checkDoc(path, item) {
+  const jsdoc = item.jsdoc ?? [];
+  const keys = jsdoc.filter(tag => tag.name === "supports").map(tag => tag.text.trim());
+  if (jsdoc.some(tag => tag.name === "throws" && /^\{?E_NOT_SUPPORTED\b/.test(tag.text.trim())) && !keys.length) find("supports-key", path);
+  for (const key of keys) if (!featureKeys.has(key)) find("supports-key", `${path}:${key}`);
   if (/\bE_[A-Z_]+/.test(item.doc) && !item.tags.includes("throws")) find("tags", path);
   if (/lx\.supports\(/.test(item.doc) && !item.tags.includes("supports")) find("tags", path);
   if (proseDefault.test(item.doc) && !item.tags.includes("default")) find("tags", path);
@@ -79,8 +111,9 @@ for (const member of members) {
   }
   for (const signature of member.signatures) {
     for (const parameter of signature.parameters) {
-      if (/(^|[^\w.])(?!readonly )\w+\[\]|(^|[^y])Array</.test(parameter.type) && !/^readonly /.test(parameter.type))
+      if (isMutableArray(parameter.type))
         find("readonly-array-param", `${member.path}(${parameter.name})`);
+      if (parameter.name === "url" && isBareUrl(parameter.type)) find("url-type", `${member.path}(${parameter.name})`);
     }
   }
 }
@@ -91,6 +124,8 @@ for (const [type, fields] of types) {
     if (!field.summary) find("summary", path);
     checkDoc(path, field);
     if (staleFieldName.test(field.name) || (field.name === "style" && /^"/.test(field.type))) find("field-name", path);
+    if (isMutableArray(field.type)) find("readonly-array-field", path);
+    if (field.name === "url" && isBareUrl(field.type)) find("url-type", path);
     if (field.name === "status" && field.type !== "number") {
       const values = [...field.type.matchAll(/"([^"]+)"/g)].map(([, value]) => value);
       if (values.some(value => value !== "ok" && value !== "canceled")) find("status-values", path);
@@ -114,6 +149,16 @@ const declaredCodes = new Set(readFileSync(resolve(packageDir, "src/error.ts"), 
 for (const file of ["src/generated/logic.ts", "src/page.ts", "src/index.ts"]) {
   for (const [, code] of readFileSync(resolve(packageDir, file), "utf8").matchAll(/@throws \{(E_[A-Z_]+)\}/g)) {
     if (!declaredCodes.has(code)) find("error-code", `${file}:${code}`);
+  }
+}
+
+// Literals are read from the declarations, where a union alias such as `HostOs` is spelled out.
+for (const line of readFileSync(resolve(packageDir, "src/generated/logic.ts"), "utf8").split("\n")) {
+  if (/^\s*(\*|\/\/|\/\*)/.test(line) || /Brand\]:/.test(line)) continue;
+  for (const [, literal] of line.matchAll(/'([^'\s]+)'/g)) {
+    if (/^[A-Z]+$/.test(literal) || /^[a-z0-9]+(_[a-z0-9]+)*$/.test(literal) || /:\/\/|\$\{/.test(literal)) continue;
+    if (/^[a-z][\w.]*\.\w/.test(literal) || /^on[A-Z]\w*$|^[a-z]+$/.test(literal)) continue;
+    find("literal-case", `logic.ts:'${literal}'`);
   }
 }
 

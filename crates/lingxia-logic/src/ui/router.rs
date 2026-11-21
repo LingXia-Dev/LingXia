@@ -20,7 +20,7 @@ struct NavTargetInput {
     page: Option<String>,
     tab: Option<String>,
     app: Option<String>,
-    url: Option<String>,
+    url: Option<JSValue>,
     params: Option<JSObject>,
     channel: Option<String>,
     version: Option<String>,
@@ -74,10 +74,15 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
     } else {
         &input.page
     };
-    let named = [page, &input.tab, &input.app, &input.url]
-        .iter()
-        .filter(|key| key.is_some())
-        .count();
+    let named = [
+        page.is_some(),
+        input.tab.is_some(),
+        input.app.is_some(),
+        input.url.is_some(),
+    ]
+    .into_iter()
+    .filter(|named| *named)
+    .count();
     if named != 1 {
         return Err(invalid(
             "a target names exactly one of page, tab, app or url",
@@ -115,7 +120,11 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
     }
     match (input.tab, input.url) {
         (Some(name), _) => Ok(NavTarget::Tab(non_empty("tab", name)?)),
-        (_, Some(url)) => Ok(NavTarget::Url(non_empty("url", url)?)),
+        (_, Some(url)) => {
+            let url = crate::url::text_of(&url)
+                .ok_or_else(|| invalid("url must be a string or a URL"))?;
+            Ok(NavTarget::Url(non_empty("url", url)?))
+        }
         _ => unreachable!("exactly one key is named"),
     }
 }
@@ -415,7 +424,7 @@ fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult
             navigator::navigate_to_app(task_ctx, options).await
         })?,
         NavTarget::Url(url) => Promise::from_future(&ctx, None, async move {
-            crate::surface::open_url(task_ctx, url, Optional(None))
+            crate::surface::open_url_text(task_ctx, url, Optional(None))
                 .await
                 .map(|_| ())
         })?,

@@ -52,7 +52,7 @@ err_code:
   6001: "Device not supported"
   6002: "System version too low"
   # 12xxx - WiFi errors
-  12000: "Not initialized (call lx.network.wifi.start first)"
+  12000: "Wi-Fi is not initialized"
   12001: "System error (internal error)"
   12002: "Password error (incorrect WiFi password)"
   12003: "Connection timeout"

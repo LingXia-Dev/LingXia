@@ -27,7 +27,7 @@ test("read core app, device, screen, network, and system state", { id: "LOGIC-00
   });
 
   expect(result.appId).toBe(SHOWCASE_APP_ID);
-  expect(['control', 'control-surface', 'guest']).toContain(result.role);
+  expect(['control', 'control_surface', 'guest']).toContain(result.role);
   expect(result.device).toBeTruthy();
   expect(result.screen).toBeTruthy();
   expect(result.network).toBeTruthy();
@@ -79,15 +79,15 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
       os: lx.host.info.os,
       role: lx.app.info.role,
       supported: {
-        terminal: lx.supports('terminal'),
-        autostart: lx.supports('app.autostart'),
-        notification: lx.supports('app.notification'),
-        banner: lx.supports('app.banner'),
+        terminal: lx.supports('host.terminal'),
+        autostart: lx.supports('host.autostart'),
+        notification: lx.supports('host.notification'),
+        banner: lx.supports('host.banner'),
       },
       calls: {
         terminal: await outcome(() => lx.host.terminal.settings.get()),
         autostart: await outcome(() => lx.host.autostart.isEnabled()),
-        notification: await outcome(() => lx.host.notification.getPermission()),
+        notification: await outcome(() => lx.host.notification.permission()),
         banner: await outcome(() => lx.host.banner.dismiss('lx-capability-probe')),
       },
       cache: await outcome(() => lx.host.cache.size()),
@@ -99,7 +99,7 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
     };
   });
 
-  const desktop = result.os === 'macOS' || result.os === 'Windows';
+  const desktop = result.os === 'macos' || result.os === 'windows';
   // The showcase host declares notifications and autostart; autostart and
   // banners are desktop-only; the terminal belongs to the terminal app's context.
   expect(result.supported).toEqual({ terminal: false, autostart: desktop, notification: true, banner: desktop });

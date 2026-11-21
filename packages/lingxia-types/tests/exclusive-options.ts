@@ -113,7 +113,7 @@ function transferShapes(): void {
 async function pickFileShapes(): Promise<void> {
   const single = await lx.pick.file();
   if (single.status !== 'canceled') {
-    const only: [PickedFile] = single.files;
+    const only: readonly [PickedFile] = single.files;
     // @ts-expect-error pick.file returns exactly one file
     single.files[1].path;
     void only;

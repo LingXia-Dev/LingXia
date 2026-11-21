@@ -23,7 +23,7 @@ export default definePage({
         }
         // Only desktop answers `ui.*` in the View; mobile shows toasts natively.
         const os = lx.device.info.osName;
-        const viewUi = os === 'macOS' || os === 'Windows';
+        const viewUi = os === 'macos' || os === 'windows';
         if (viewUi) {
           // A toast is posted in the background; spacing keeps one request in flight at a time.
           for (let i = 0; i < requests; i++) {

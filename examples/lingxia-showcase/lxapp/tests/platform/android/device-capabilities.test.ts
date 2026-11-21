@@ -30,20 +30,17 @@ interface WifiRoundTrip {
 test('scan, read, and observe Wi-Fi on a real radio', {
   skip: androidSkip,
   id: 'ANDROID-WIFI-001',
-  covers: ['lx.network.wifi.start', 'lx.network.wifi.list', 'lx.network.wifi.current', 'lx.network.wifi.onConnected', 'lx.network.wifi.stop'],
+  covers: ['lx.network.wifi.list', 'lx.network.wifi.current', 'lx.network.wifi.onConnected'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'needs a device with Wi-Fi on, location services on, and the location permission granted',
 }, async (t) => {
-  const { app, defer } = bindFixture(t, 'ANDROID-WIFI-001');
+  const { app } = bindFixture(t, 'ANDROID-WIFI-001');
   expect(await runtimePlatform(app)).toBe('android');
-  defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.network.wifi.stop(); }).catch(() => undefined);
-  });
-
   const result: WifiRoundTrip = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
+    let list;
     try {
-      await lx.network.wifi.start();
+      list = await lx.network.wifi.list();
     } catch (error) {
       // 12009: Wi-Fi is off, a device precondition rather than a failure.
       if ((error as { data?: { bizCode?: number } }).data?.bizCode === 12009) {
@@ -51,14 +48,12 @@ test('scan, read, and observe Wi-Fi on a real radio', {
       }
       throw error;
     }
-    const list = await lx.network.wifi.list();
     const connected = await lx.network.wifi.current();
     // A listener handle must be a function and stay inert after unsubscribe.
     const off = lx.network.wifi.onConnected(() => {});
     const listener = typeof off;
     off();
     off();
-    await lx.network.wifi.stop();
     return {
       started: true,
       list: {

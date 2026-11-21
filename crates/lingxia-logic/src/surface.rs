@@ -55,7 +55,7 @@ struct ManagedHandleKey {
 }
 
 /// An `AppSurface` handle per caller and app session, so every open and
-/// `lx.shell.getApp` hand back one object.
+/// `lx.surface.app` hand back one object.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct AppHandleKey {
     app_id: String,
@@ -146,7 +146,7 @@ impl JSSurface {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
-            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            rong::error::E_TYPE,
             "Surface cannot be directly constructed",
         )
         .into())
@@ -237,7 +237,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_surface_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn openExternal = open_external;
+        fn openExternal(ts_params = "url: string | URL") = open_external;
         const surface: "SurfaceApi" = surface_namespace(ctx)?;
     }
 }
@@ -246,7 +246,7 @@ rong::js_api! {
     fn register_surface_namespace(ctx) {
         namespace SurfaceApi = surface_namespace(ctx)?;
         fn openUrl(
-            ts_params = "url: string, options?: OpenUrlOptions",
+            ts_params = "url: string | URL, options?: OpenUrlOptions",
             ts_return = "Promise<TabSurface>"
         ) = open_url;
         fn openApp(
@@ -261,20 +261,20 @@ rong::js_api! {
             ts_params = "key: string",
             ts_return = "PageSurface | TabSurface | undefined"
         ) = get_surface;
+        fn app(
+            ts_params = "appId: string",
+            ts_return = "AppSurface | undefined"
+        ) = surface_app;
+        fn declared(
+            ts_params = "id: string, options?: GetDeclaredOptions",
+            ts_return = "DeclaredSurface | AppSurface | undefined"
+        ) = surface_declared;
     }
 }
 
 rong::js_api! {
     fn register_shell_surface_api(ctx) {
         namespace ShellApi = shell_namespace(ctx)?;
-        fn getApp(
-            ts_params = "appId: string",
-            ts_return = "AppSurface | undefined"
-        ) = shell_get_app;
-        fn getDeclared(
-            ts_params = "id: string, options?: GetDeclaredOptions",
-            ts_return = "DeclaredSurface | AppSurface | undefined"
-        ) = shell_get_declared;
         fn openBuiltin(
             ts_params = "page: BuiltinShellPage",
             ts_return = "Promise<BuiltinSurface>"
@@ -640,7 +640,17 @@ async fn call_control(surface: &JSObject, name: &str) -> JSResult<()> {
 }
 
 /// Open a URL in the in-app browser, as a main tab or docked as an aside.
-pub(crate) async fn open_url(
+async fn open_url(ctx: JSContext, url: JSValue, options: Optional<JSObject>) -> JSResult<JSObject> {
+    let url = crate::url::text_of(&url).ok_or_else(|| {
+        surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "url must be a string or a URL",
+        )
+    })?;
+    open_url_text(ctx, url, options).await
+}
+
+pub(crate) async fn open_url_text(
     ctx: JSContext,
     url: String,
     options: Optional<JSObject>,
@@ -756,11 +766,11 @@ async fn open_app(
 
 /// The handle of an lxapp live as a surface of its own, declared or not;
 /// `undefined` when it is not. A live lxapp has one handle: `lx.surface.openApp`,
-/// `getApp` and `getDeclared` of the declaration that shows it return the same one.
-fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
+/// `lx.surface.app` and `lx.surface.declared` of the declaration that shows it return the same one.
+fn surface_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
     let (invocation, app_id) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellGetApp, || {
-            shell_string_argument(app_id, "lx.shell.getApp appId")
+        authorization::require_before_decode(&ctx, LogicRoute::SurfaceApp, || {
+            shell_string_argument(app_id, "lx.surface.app appId")
         })?;
     let app_id = app_id.trim().to_string();
     if app_id.is_empty() || !app_owns_surface(&app_id) {
@@ -773,19 +783,15 @@ fn shell_get_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
 /// The handle of a live declared surface, or of its keyed instance, the same
 /// object on every call; `undefined` when it is not live. A declaration that
 /// shows an lxapp answers with that app's `AppSurface`.
-fn shell_get_declared(
-    ctx: JSContext,
-    id: JSValue,
-    options: Optional<JSObject>,
-) -> JSResult<JSValue> {
+fn surface_declared(ctx: JSContext, id: JSValue, options: Optional<JSObject>) -> JSResult<JSValue> {
     let (invocation, (id, key)) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellGetDeclared, || {
-            let id = shell_string_argument(id, "lx.shell.getDeclared id")?;
+        authorization::require_before_decode(&ctx, LogicRoute::SurfaceDeclared, || {
+            let id = shell_string_argument(id, "lx.surface.declared id")?;
             let key = options
                 .0
                 .and_then(|options| options.get::<_, JSValue>("key").ok())
                 .filter(|value| !value.is_undefined() && !value.is_null())
-                .map(|value| shell_string_argument(value, "lx.shell.getDeclared key"))
+                .map(|value| shell_string_argument(value, "lx.surface.declared key"))
                 .transpose()?
                 .map(|key| key.trim().to_string());
             if key
@@ -1069,7 +1075,7 @@ fn finish_handle(
         }
     }
     // `get` finds the caller's own pages and URLs; declared surfaces
-    // have `lx.shell.getDeclared`. Only keyed handles are kept alive here.
+    // have `lx.surface.declared`. Only keyed handles are kept alive here.
     if let Some(key) = key {
         handle.set("key", key.as_str())?;
         if matches!(kind, "page" | "tab") {
@@ -1846,7 +1852,10 @@ fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
 ///
 /// @throws {E_INVALID_ARG} Not an absolute URL.
 /// @throws {E_PERMISSION_DENIED} Any other scheme.
-fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
+fn open_external(ctx: JSContext, url: JSValue) -> JSResult<()> {
+    let url = crate::url::text_of(&url).ok_or_else(|| {
+        crate::i18n::js_invalid_parameter_error("lx.openExternal url must be a string or a URL")
+    })?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let url = validate_external_url(&lxapp, &url)?;
     lxapp
@@ -3279,9 +3288,9 @@ fn parse_surface_interaction(
         .unwrap_or(if kind == SurfaceKind::Window {
             "manual"
         } else {
-            "tapOutside"
+            "tap_outside"
         }) {
-        "tapOutside" => lxapp::lingxia_surface::FloatDismiss::TapOutside,
+        "tap_outside" => lxapp::lingxia_surface::FloatDismiss::TapOutside,
         "manual" => lxapp::lingxia_surface::FloatDismiss::Manual,
         other => {
             return Err(surface_error(

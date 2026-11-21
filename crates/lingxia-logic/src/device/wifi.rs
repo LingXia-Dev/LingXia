@@ -5,7 +5,7 @@ use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedR
 use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler_token};
 use lxapp::{info, warn};
 use rong::{
-    FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, JSValue, RongJSError,
+    FromJSObject, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
     function::Optional,
 };
 use serde_json::{Value, json};
@@ -196,6 +196,7 @@ struct JSConnectWifiOptions {
     ssid: String,
     /// Network password (omit for open networks)
     password: Option<String>,
+    signal: Option<JSObject>,
 }
 
 /// Generic handler for WiFi callbacks that return no data
@@ -273,65 +274,79 @@ fn parse_connected_wifi(data: String) -> Result<WifiInfo, RongJSError> {
     Ok(parse_wifi_info_from_json(&parsed, 100, true))
 }
 
-/// Starts the Wi-Fi module; call it before any other `lx.network.wifi` call,
-/// which otherwise rejects "not initialized". Rejects when Wi-Fi is off.
-async fn start_wifi(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+#[derive(Clone, Copy, Default)]
+struct WifiStarted(bool);
 
-    // Check if WiFi is enabled before attempting to start
+/// Natives refuse every Wi-Fi call before their module starts; start it on first use.
+async fn ensure_wifi_started(ctx: &JSContext) -> JSResult<()> {
+    if ctx.get_state::<WifiStarted>().is_some_and(|s| s.0) {
+        return Ok(());
+    }
+    let lxapp = LxApp::from_ctx(ctx)?;
     let wifi_enabled = lxapp
         .runtime
         .is_wifi_enabled()
         .map_err(|e| js_error_from_platform_error(&e))?;
-
     if !wifi_enabled {
         return Err(js_error_from_business_code(12009));
     }
-
-    handle_wifi_callback(&ctx, |id| lxapp.runtime.start_wifi(id), "start WiFi").await
-}
-
-/// Stops the Wi-Fi module and its event delivery.
-async fn stop_wifi(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    handle_wifi_callback(&ctx, |id| lxapp.runtime.stop_wifi(id), "stop WiFi").await
+    handle_wifi_callback(ctx, |id| lxapp.runtime.start_wifi(id), "start WiFi").await?;
+    ctx.set_state(WifiStarted(true));
+    Ok(())
 }
 
 /// Asks the system to join a network. Resolves once the request is submitted,
-/// not when the device has joined: `onConnected` reports that.
+/// not when the device has joined: `onConnected` reports that. Rejects when Wi-Fi is off.
 async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let JSConnectWifiOptions { ssid, password } = options;
-    handle_wifi_callback(
-        &ctx,
-        move |id| {
-            let request = WifiConnectRequest {
-                callback_id: id,
-                ssid,
-                password,
-            };
-            lxapp.runtime.connect_wifi(request)
-        },
-        "connect WiFi",
-    )
-    .await
+    let JSConnectWifiOptions {
+        ssid,
+        password,
+        signal,
+    } = options;
+    let work = async {
+        ensure_wifi_started(&ctx).await?;
+        handle_wifi_callback(
+            &ctx,
+            move |id| {
+                let request = WifiConnectRequest {
+                    callback_id: id,
+                    ssid,
+                    password,
+                };
+                lxapp.runtime.connect_wifi(request)
+            },
+            "connect WiFi",
+        )
+        .await
+    };
+    crate::task_object::abortable(&ctx, signal, work).await
 }
 
-/// Scans and resolves the networks in range.
-async fn get_wifi_list(ctx: JSContext) -> JSResult<Vec<WifiInfo>> {
+/// Scans and resolves the networks in range. Rejects when Wi-Fi is off.
+async fn get_wifi_list(
+    ctx: JSContext,
+    options: Optional<crate::task_object::SignalOptions>,
+) -> JSResult<Vec<WifiInfo>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    handle_wifi_callback_with_data(
-        &ctx,
-        |id| lxapp.runtime.get_wifi_list(id),
-        parse_wifi_list,
-        "get WiFi list",
-    )
-    .await
+    let signal = options.0.and_then(|options| options.signal);
+    let work = async {
+        ensure_wifi_started(&ctx).await?;
+        handle_wifi_callback_with_data(
+            &ctx,
+            |id| lxapp.runtime.get_wifi_list(id),
+            parse_wifi_list,
+            "get WiFi list",
+        )
+        .await
+    };
+    crate::task_object::abortable(&ctx, signal, work).await
 }
 
-/// The network the device is on now.
+/// The network the device is on now. Rejects when Wi-Fi is off.
 async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_wifi_started(&ctx).await?;
     handle_wifi_callback_with_data(
         &ctx,
         |id| {
@@ -385,10 +400,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace WifiApi = crate::namespace::wifi(ctx)?;
-        fn start = start_wifi;
-        fn stop = stop_wifi;
         fn connect(ts_params = "options: ConnectWifiOptions") = connect_wifi;
-        fn list(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
+        fn list(ts_params = "options?: SignalOptions", ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
         fn current(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
         fn onConnected(
             ts_params = "callback: WifiConnectedCallback, options?: SignalOptions",

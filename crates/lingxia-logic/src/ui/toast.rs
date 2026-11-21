@@ -54,6 +54,7 @@ struct JSToastOptions {
     #[js_name = "durationMs"]
     duration: Option<f64>,
     position: Option<String>,
+    signal: Option<JSObject>,
 }
 
 /// A toast as the hosts take it: their `icon` vocabulary carries tone and loading.
@@ -144,7 +145,10 @@ fn show_toast(
     message: String,
     options: Optional<JSToastOptions>,
 ) -> JSResult<JSObject> {
-    let request = ToastRequest::parse(message, options.0.unwrap_or_default())?;
+    let mut options = options.0.unwrap_or_default();
+    let signal = options.signal.take();
+    crate::task_object::validate_abort_signal(signal.as_ref())?;
+    let request = ToastRequest::parse(message, options)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     if !lxapp.is_opened() {
         return Err(js_service_unavailable_error(
@@ -198,30 +202,29 @@ fn show_toast(
     });
 
     let handle = JSObject::new(&ctx);
-    handle.set(
-        "dismiss",
-        JSFunc::new(&ctx, move |ctx: JSContext| {
-            let dismissed = state
-                .compare_exchange(
-                    generation,
-                    generation + 1,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                )
-                .is_ok();
-            if !dismissed {
-                return Ok::<(), rong::RongJSError>(());
-            }
-            let was = phase.replace(ToastPhase::Dismissed);
-            if was == ToastPhase::Shown {
-                let hide_ctx = ctx.clone();
-                ctx.spawn_task(async move {
-                    let _ = hide_toast(&hide_ctx).await;
-                });
-            }
-            Ok(())
-        })?,
-    )?;
+    let dismiss = JSFunc::new(&ctx, move |ctx: JSContext| {
+        let dismissed = state
+            .compare_exchange(
+                generation,
+                generation + 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok();
+        if !dismissed {
+            return Ok::<(), rong::RongJSError>(());
+        }
+        let was = phase.replace(ToastPhase::Dismissed);
+        if was == ToastPhase::Shown {
+            let hide_ctx = ctx.clone();
+            ctx.spawn_task(async move {
+                let _ = hide_toast(&hide_ctx).await;
+            });
+        }
+        Ok(())
+    })?;
+    handle.set("dismiss", dismiss.clone())?;
+    crate::task_object::on_abort(&ctx, signal, dismiss)?;
     Ok(handle)
 }
 

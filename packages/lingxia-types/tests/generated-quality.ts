@@ -39,9 +39,9 @@ declare const videoInfo: VideoInfo;
 const resolvedAppearance: ResolvedAppearance = lx.host.appearance.get();
 const appearanceUnwatch: () => void = lx.host.appearance.watch(() => {});
 const appearanceSetResult: Promise<void> | undefined =
-  lx.host.appearance.setPreference("dark");
+  lx.host.appearance.preference.set("dark");
 const appearancePreference: AppearancePreference | undefined =
-  lx.host.appearance.getPreference();
+  lx.host.appearance.preference.get();
 const navigationUpdateResult: Promise<void> = page.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "visible" });
@@ -83,7 +83,7 @@ const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
 const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
 // Control-only is a run-time refusal, not an absent member (rule 2).
 const cacheSize: Promise<number> = lx.host.cache.size();
-const notifyPermission = lx.host.notification.getPermission();
+const notifyPermission = lx.host.notification.permission();
 const hostOs: HostOs = lx.host.info.os;
 const deviceOs: HostOs = lx.device.info.osName;
 const showArgs: AppLifecycleEventArgs = { source: "lxapp", reason: "switch_back", path: "pages/home/index" };

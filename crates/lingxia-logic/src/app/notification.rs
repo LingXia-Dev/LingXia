@@ -41,19 +41,19 @@ struct JSShowOptions {
 /// `E_NOT_SUPPORTED`. Every lxapp gets it; a
 /// guest's calls are scoped to itself by [`AttentionScope`].
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::exposes(ctx, "app.notification") {
+    if !crate::capability::exposes(ctx, "host.notification") {
         crate::capability::unsupported_namespace(
             ctx,
             app,
             "lx.host.notification",
-            "app.notification",
+            "host.notification",
         )?;
         return Ok(());
     }
     let notification = JSObject::new(ctx);
     notification.set(
-        "getPermission",
-        JSFunc::new(ctx, get_permission)?.name("getPermission")?,
+        "permission",
+        JSFunc::new(ctx, permission)?.name("permission")?,
     )?;
     notification.set(
         "requestPermission",
@@ -69,8 +69,8 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-async fn get_permission(ctx: JSContext) -> JSResult<String> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppNotificationGetPermission)?;
+async fn permission(ctx: JSContext) -> JSResult<String> {
+    let invocation = authorization::require(&ctx, LogicRoute::AppNotificationPermission)?;
     let runtime = invocation.lxapp().runtime.clone();
     spawn_blocking(move || runtime.notification_permission()).await
 }

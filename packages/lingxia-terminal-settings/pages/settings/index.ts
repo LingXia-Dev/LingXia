@@ -52,7 +52,7 @@ async function action<T>(operation: () => Promise<T>): Promise<ActionResult<T>> 
 }
 
 function terminal() {
-  if (!lx.supports('terminal')) {
+  if (!lx.supports('host.terminal')) {
     throw new Error('Terminal settings are unavailable in this host');
   }
   return lx.host.terminal;
@@ -83,7 +83,7 @@ export default definePage({
       loadTerminalSettings() {
         return action(async () => {
           const api = terminal();
-          const isWindows = lx.host.info.os === 'Windows';
+          const isWindows = lx.host.info.os === 'windows';
           const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
             api.settings.get(),
             api.colorSchemes.list(),

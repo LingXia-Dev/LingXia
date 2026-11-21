@@ -36,7 +36,7 @@ async function applyHostChrome(os: string, tag: string) {
       placement: 'header',
       icon: 'public/sidebar-downloads.svg',
       label: t('sidebarDownloads'),
-      onActivate: () => {
+      onSelect: () => {
         void lx.shell.openBuiltin('downloads')
           .catch((error) => console.warn('downloads action failed', error));
       },
@@ -46,7 +46,7 @@ async function applyHostChrome(os: string, tag: string) {
       placement: 'footer',
       icon: 'public/sidebar-chat.svg',
       label: t('sidebarChat'),
-      onActivate: () => {
+      onSelect: () => {
         void lx.surface.openDeclared('lingxia-showcase-web')
           .catch((error) => console.warn('chat action failed', error));
       },
@@ -58,7 +58,7 @@ async function applyHostChrome(os: string, tag: string) {
       placement: 'footer',
       icon: 'public/sidebar-terminal-settings.svg',
       label: t('sidebarTerminalSettings'),
-      onActivate: () => {
+      onSelect: () => {
         void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' })
           .catch((error) => console.warn('terminal settings action failed', error));
       },
@@ -68,7 +68,7 @@ async function applyHostChrome(os: string, tag: string) {
       placement: 'footer',
       icon: 'public/sidebar-terminal.svg',
       label: t('sidebarTerminal'),
-      onActivate: () => {
+      onSelect: () => {
         void lx.surface.openDeclared('terminal')
           .catch((error) => console.warn('terminal action failed', error));
       },
@@ -79,7 +79,7 @@ async function applyHostChrome(os: string, tag: string) {
     placement: 'footer',
     icon: 'public/activator.svg',
     label: t('sidebarPing'),
-    onActivate: () => {
+    onSelect: () => {
       lx.ui.toast(t('pingToast'), { tone: 'success' });
     },
   });
@@ -91,17 +91,17 @@ async function applyHostChrome(os: string, tag: string) {
     icon: 'public/sidebar-language.svg',
     label: t('sidebarLanguage'),
     value: t('languageName'),
-    onActivate: () => {
+    onSelect: () => {
       const next = language === 'zh-CN' ? 'en-US' : 'zh-CN';
-      void lx.host.displayLanguage.setPreference(next)
+      void lx.host.displayLanguage.preference.set(next)
         .catch((error) => console.warn('language action failed', error));
     },
   });
   await lx.shell.sidebarActions.replace(sidebarActions);
-  lx.app.setMoreActions([{
+  lx.app.moreActions.replace([{
     icon: 'public/showcase-icon.png',
     label: t('moreFeedback'),
-    onClick: async () => {
+    onSelect: async () => {
       try { await openFeedback(); }
       catch (error) { console.warn('failed to open feedback surface', error); }
     },
@@ -122,9 +122,9 @@ App({
     // A preference click always moves the preference event; the effective-tag watch alone can
     // miss a Harmony dispatch.
     lx.host.displayLanguage.watch((tag) => applyChrome(tag));
-    lx.host.displayLanguage.watchPreference(() => applyChrome());
+    lx.host.displayLanguage.preference.watch(() => applyChrome());
 
-    lx.app.onUpdateReady(async () => {
+    lx.app.update.onReady(async () => {
       const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       const applyNow = await lx.ui.confirm({
         title: t('updateTitle'),
@@ -132,9 +132,9 @@ App({
         cancelText: t('updateLater'),
         confirmText: t('updateApply'),
       });
-      if (applyNow) lx.app.applyUpdate();
+      if (applyNow) lx.app.update.apply();
     });
-    lx.app.onUpdateFailed((info) => {
+    lx.app.update.onFailed((info) => {
       console.warn('Update failed', info);
     });
     // Not awaited: the first page's onLoad waits for onLaunch.

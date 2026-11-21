@@ -20,13 +20,12 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 struct ParsedDownloadOptions {
     url: String,
     headers: Vec<(String, String)>,
-    timeout_ms: Option<u64>,
     file_path: Option<String>,
     destination: DownloadDestination,
     signal: Option<JSObject>,
@@ -447,26 +446,6 @@ fn read_optional_string_field(
         .map_err(|_| js_invalid_parameter_error(format!("{api_name} {field} must be a string")))
 }
 
-fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
-    let Some(value) = get_present_property(obj, "timeoutMs") else {
-        return Ok(None);
-    };
-    if !value.is_number() {
-        return Err(js_invalid_parameter_error(
-            "network.download timeoutMs must be a positive number",
-        ));
-    }
-    let timeout = value.to_rust::<f64>().map_err(|_| {
-        js_invalid_parameter_error("network.download timeoutMs must be a positive number")
-    })?;
-    if !timeout.is_finite() || timeout <= 0.0 {
-        return Err(js_invalid_parameter_error(
-            "network.download timeoutMs must be a positive number",
-        ));
-    }
-    Ok(Some(timeout.round() as u64))
-}
-
 fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
     let Some(value) = get_present_property(obj, "signal") else {
         return Ok(None);
@@ -479,19 +458,17 @@ fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
 
 /// The positional subject of `download` / `upload`: a URL string.
 pub(super) fn read_url_argument(url: &JSValue, api_name: &str) -> JSResult<String> {
+    if let Some(text) = crate::url::text_of(url) {
+        return Ok(text);
+    }
     if url.is_object() {
         return Err(js_invalid_parameter_error(format!(
             "{api_name} takes the URL first: {api_name}(url, options)"
         )));
     }
-    if !url.is_string() {
-        return Err(js_invalid_parameter_error(format!(
-            "{api_name} url must be a string"
-        )));
-    }
-    url.clone()
-        .to_rust::<String>()
-        .map_err(|_| js_invalid_parameter_error(format!("{api_name} url must be a string")))
+    Err(js_invalid_parameter_error(format!(
+        "{api_name} url must be a string or a URL"
+    )))
 }
 
 fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, String)>> {
@@ -561,7 +538,6 @@ fn parse_download_options(
     Ok(ParsedDownloadOptions {
         url,
         headers: read_header_entries(&obj, "headers")?,
-        timeout_ms: read_optional_timeout_field(&obj)?,
         file_path,
         destination,
         signal: read_optional_signal(&obj)?,
@@ -1217,10 +1193,7 @@ fn download_file(
         ));
     }
 
-    let mut behavior = DownloadBehavior::default();
-    if let Some(timeout_ms) = options.timeout_ms {
-        behavior.request_timeout = Duration::from_millis(timeout_ms);
-    }
+    let behavior = DownloadBehavior::default();
 
     let output_path = match options.destination {
         DownloadDestination::App => resolve_output_path(&lxapp, options.file_path.as_deref())?,

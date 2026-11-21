@@ -291,7 +291,7 @@ function isCameraOnlySource(sourceOption: MediaOption | undefined) {
   return sources.includes("camera") && !sources.includes("album");
 }
 
-function mapChosenMedia(results: PickedFile[]): ChosenMedia[] {
+function mapChosenMedia(results: readonly PickedFile[]): ChosenMedia[] {
   return results.map((item) => ({
     path: item.path,
     type: item.type.startsWith("video/") ? "video" : "image",
@@ -755,8 +755,8 @@ export default definePage({
       async openScanTypePicker() {
         const OPTIONS = [
           { key: "all", label: "All" },
-          { key: "barCode", label: "barCode (1D)" },
-          { key: "qrCode", label: "qrCode" },
+          { key: "bar_code", label: "bar_code (1D)" },
+          { key: "qr_code", label: "qr_code" },
           { key: "datamatrix", label: "datamatrix" },
           { key: "pdf417", label: "pdf417" },
         ];

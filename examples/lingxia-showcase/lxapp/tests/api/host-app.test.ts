@@ -96,23 +96,24 @@ test('set and clear the host app badge without leaving one behind', {
 
 test('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.host.setBadge', 'lx.host.tray.show', 'lx.host.tray.hide'],
+  covers: ['lx.host.setBadge', 'lx.host.tray.update'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); lx.host.tray.hide(); } catch {} return true;
+      try { await lx.host.setBadge(null); lx.host.tray.update({ visible: false }); } catch {} return true;
     });
   });
 
   // A declared tray has a status item from the start but stays hidden until
-  // `show()`, so "the item took the value" is not "the user can see it".
+  // `visible: true`, so "the item took the value" is not "the user can see it".
+  // A host without a tray rejects `E_NOT_SUPPORTED`, which reads as not painted.
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.hide(); } catch {} return (await lx.host.setBadge(4, { surface: 'tray' })).painted;
+    try { lx.host.tray.update({ visible: false }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.show(); } catch {} return (await lx.host.setBadge(4, { surface: 'tray' })).painted;
+    try { lx.host.tray.update({ visible: true }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -122,7 +123,7 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
   expect(shown === true || shown === false).toBe(true);
 });
 
-test('report a surface this platform does not have instead of failing', {
+test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   id: 'HOSTAPP-BADGE-003',
   covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
@@ -134,19 +135,19 @@ test('report a surface this platform does not have instead of failing', {
     });
   });
 
-  // A named surface that is absent resolves `no_surface`; it never rejects, so
-  // portable code can ask for one without guarding the call.
+  // A named surface that is absent rejects `E_NOT_SUPPORTED`; one that exists
+  // but declines resolves `painted: false`.
   const outcome = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
       const value = await lx.host.setBadge(2, { surface: 'tray' });
-      return { ok: true, value: value.painted ? 'painted' : value.reason ?? 'declined' };
+      return { ok: true, value: value.painted ? 'painted' : 'declined' };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
       return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
     }
   });
-  expect(outcome.ok).toBeTruthy();
-  expect(['painted', 'no_surface', 'declined']).toContain(outcome.value);
+  if (outcome.ok) expect(['painted', 'declined']).toContain(outcome.value);
+  else expect(outcome.code).toBe('E_NOT_SUPPORTED');
 
   const bad = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
@@ -199,18 +200,17 @@ test('reject a badge value that is neither a string, a number, nor null', {
   }
 });
 
-test('answer checkUpdate with an update or null instead of throwing', {
+test('answer update.check with an update or null instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
-  covers: ['lx.host.checkUpdate', 'lx.app.onUpdateReady', 'lx.app.onUpdateFailed'],
+  covers: ['lx.host.update.check', 'lx.app.update.onReady', 'lx.app.update.onFailed'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-UPDATE-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const decision = await lx.host.checkUpdate();
-    const manager = lx.app;
-    const ready = manager.onUpdateReady(() => {});
-    const failed = manager.onUpdateFailed(() => {});
+    const decision = await lx.host.update.check();
+    const ready = lx.app.update.onReady(() => {});
+    const failed = lx.app.update.onFailed(() => {});
     ready();
     failed();
     // Unsubscribing twice must stay inert.
@@ -230,18 +230,18 @@ test('answer checkUpdate with an update or null instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.displayLanguage.setPreference'],
+  covers: ['lx.host.displayLanguage.preference.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.setPreference);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.preference?.set);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.displayLanguage.setPreference(language);
+        await lx.host.displayLanguage.preference.set(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -277,7 +277,7 @@ test('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
     'lx.host.notification',
-    'lx.host.notification.getPermission',
+    'lx.host.notification.permission',
     'lx.host.notification.requestPermission',
     'lx.host.notification.show',
     'lx.host.notification.cancel',
@@ -288,11 +288,11 @@ test('request permission and replace local notifications by id', {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
   // The showcase host declares notifications, so every platform must report them.
-  expect(await app.logic.eval(({ lx }) => lx.supports('app.notification'))).toBe(true);
+  expect(await app.logic.eval(({ lx }) => lx.supports('host.notification'))).toBe(true);
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     const n = lx.host.notification;
-    const permission = await n.getPermission();
+    const permission = await n.permission();
     // A pending OS prompt has nobody to answer it here, so only ask when
     // the answer is already known.
     const requested = permission === 'default' ? null : await n.requestPermission();
@@ -401,7 +401,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
 
   const offered = await app.logic.eval(({ lx }) => !!(lx.host.banner && typeof lx.host.banner.show === 'function'));
   expect(offered).toBe(true);
-  const supported = await app.logic.eval(({ lx }) => !!lx.supports('app.banner'));
+  const supported = await app.logic.eval(({ lx }) => !!lx.supports('host.banner'));
   expect(supported).toBe(true);
 
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
@@ -410,7 +410,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
       id: 'automation-banner-toast',
       title: 'LingXia automation',
       message: 'desktop card',
-      timeoutMs: 800,
+      durationMs: 800,
     });
     const prompt = banner.show({
       id: 'automation-banner-prompt',
@@ -420,7 +420,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
         { id: 'deny', label: 'Deny' },
         { id: 'allow', label: 'Allow', tone: 'primary' },
       ],
-      timeoutMs: 0,
+      durationMs: 0,
     });
     await banner.dismiss('automation-banner-prompt');
     await banner.dismiss('never-shown');
@@ -476,9 +476,9 @@ test('report autostart state and accept an idempotent write', {
 
   // The member is always present; a host without login items refuses the call.
   const probe = await app.logic.eval(async ({ lx }) => ({
-    desktop: lx.host.info.os === 'macOS' || lx.host.info.os === 'Windows',
-    supported: lx.supports('app.autostart'),
-    refusal: lx.supports('app.autostart') ? null
+    desktop: lx.host.info.os === 'macos' || lx.host.info.os === 'windows',
+    supported: lx.supports('host.autostart'),
+    refusal: lx.supports('host.autostart') ? null
       : await lx.host.autostart.isEnabled().then(() => 'resolved', (error: { code?: string }) => error?.code ?? String(error)),
   }));
   expect(probe.supported).toBe(probe.desktop);
@@ -547,11 +547,8 @@ test('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [
     'lx.host.tray',
-    'lx.host.tray.show',
-    'lx.host.tray.hide',
-    'lx.host.tray.setTitle',
-    'lx.host.tray.setMenu',
-    'lx.host.tray.setIcon',
+    'lx.host.tray.update',
+    'lx.host.tray.menu.replace',
     'lx.host.tray.onClick',
   ],
   app: SHOWCASE_APP_ID,
@@ -559,29 +556,35 @@ test('show, label, and retract the host tray item', {
   const { app } = bindFixture(t, 'HOSTAPP-TRAY-001');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { lx.host.tray.hide(); } catch {} return true;
+      try { lx.host.tray.update({ visible: false }); } catch {} return true;
     });
   });
 
   const result = await app.logic.eval(async ({ lx }) => {
-    lx.host.tray.show();
-    lx.host.tray.setTitle('LX');
-    lx.host.tray.setIcon('public/showcase-icon.svg');
-    lx.host.tray.setMenu([
-      { label: 'Open Showcase', onClick: () => {} },
+    if (!lx.supports('host.tray')) {
+      try {
+        lx.host.tray.update({ visible: true });
+        return { supported: false, refusal: 'resolved' };
+      } catch (error) {
+        return { supported: false, refusal: (error as { code?: string }).code ?? String(error) };
+      }
+    }
+    lx.host.tray.update({ visible: true, title: 'LX', icon: 'public/showcase-icon.svg' });
+    lx.host.tray.menu.replace([
+      { label: 'Open Showcase', onSelect: () => {} },
       { separator: true },
-      { label: 'Disabled', enabled: false },
+      { label: 'Disabled', disabled: true },
     ]);
     const off = lx.host.tray.onClick(() => {});
     off();
-    lx.host.tray.setTitle(null);
-    lx.host.tray.hide();
+    lx.host.tray.update({ title: null, visible: false });
     // Hiding a hidden tray stays a no-op.
-    lx.host.tray.hide();
-    return { unsubscribe: typeof off };
+    lx.host.tray.update({ visible: false });
+    return { supported: true, unsubscribe: typeof off };
   });
 
-  expect(result.unsubscribe).toBe('function');
+  if (result.supported) expect(result.unsubscribe).toBe('function');
+  else expect(result.refusal).toBe('E_NOT_SUPPORTED');
 });
 
 test('declare, patch, and retract runtime sidebar actions atomically', {
@@ -613,8 +616,8 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
         await lx.shell.sidebarActions.replace([
-          { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
-          { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer', onActivate() {} },
+          { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onSelect() {} },
+          { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer', onSelect() {} },
         ]);
         return { ok: true };
       } catch (error) {
@@ -659,9 +662,9 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
     const result = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
         await lx.shell.sidebarActions.replace([
-          { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate() {} },
-          { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate() {} },
-          { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate() {} },
+          { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onSelect() {} },
+          { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onSelect() {} },
+          { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onSelect() {} },
         ]);
         await lx.shell.sidebarActions.update('settings', { label: 'ID spoof live' });
         await lx.shell.sidebarActions.update('label-spoof', { disabled: true });
@@ -678,8 +681,8 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
     const restored = await app.logic.eval(async ({ lx }): Promise<Caught> => {
       try {
         await lx.shell.sidebarActions.replace([
-          { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
-          { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onActivate() {} },
+          { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onSelect() {} },
+          { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onSelect() {} },
         ]);
         return { ok: true };
       } catch (error) {
@@ -710,9 +713,9 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
       let pending: Promise<void>;
       try {
         pending = lx.shell.sidebarActions.replace([
-          { id: 'h1', placement: 'header', icon: 'public/showcase-icon.svg', label: 'One', onActivate() {} },
-          { id: 'h2', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Two', onActivate() {} },
-          { id: 'h3', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Three', onActivate() {} },
+          { id: 'h1', placement: 'header', icon: 'public/showcase-icon.svg', label: 'One', onSelect() {} },
+          { id: 'h2', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Two', onSelect() {} },
+          { id: 'h3', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Three', onSelect() {} },
         ]);
       } catch (error) {
         return { ok: false, code: 'THREW', message: String(error), data: null };
@@ -759,9 +762,9 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
         clearNull: await attempt(() => lx.shell.sidebarActions.update('probe-footer', { value: null })),
         header: await attempt(() => lx.shell.sidebarActions.update('probe-header', { value: 'Acme' })),
         third: await attempt(() => lx.shell.sidebarActions.replace([
-          { id: 'v1', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'One', value: 'a', onActivate() {} },
-          { id: 'v2', placement: 'footer', icon: 'public/showcase-icon.png', label: 'Two', value: 'b', onActivate() {} },
-          { id: 'v3', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'Three', value: 'c', onActivate() {} },
+          { id: 'v1', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'One', value: 'a', onSelect() {} },
+          { id: 'v2', placement: 'footer', icon: 'public/showcase-icon.png', label: 'Two', value: 'b', onSelect() {} },
+          { id: 'v3', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'Three', value: 'c', onSelect() {} },
         ])),
       };
     });

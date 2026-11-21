@@ -22,9 +22,9 @@ export default [
   },
   {
     id: "PEND-DESTRUCTIVE-001",
-    title: "exit and applyUpdate end the host process under test",
+    title: "exit and update.apply end the host process under test",
     mode: "planned",
-    covers: ["lx.host.exit", "lx.app.applyUpdate"],
+    covers: ["lx.host.exit", "lx.app.update.apply"],
     reason: "lx.host.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
   },
   {
@@ -79,9 +79,9 @@ export default [
   },
   {
     id: "PEND-MORE-ACTIONS-001",
-    title: "setMoreActions overflow item opens the declared surface",
+    title: "moreActions.replace overflow item opens the declared surface",
     mode: "external-ui",
-    covers: ["lx.app.setMoreActions"],
+    covers: ["lx.app.moreActions.replace"],
     reason: "host chrome overflow menu is not exposed as a Logic contract yet",
   },
   {
@@ -240,7 +240,7 @@ export default [
     id: "PEND-ANDROID-DEV-001",
     title: "Android DeviceDriver, wifi landscape, and PTR gesture",
     mode: "planned",
-    covers: ["lx.network.wifi.start"],
+    covers: ["lx.network.wifi.list"],
     reason: "out of the Windows Showcase run",
   },
   {

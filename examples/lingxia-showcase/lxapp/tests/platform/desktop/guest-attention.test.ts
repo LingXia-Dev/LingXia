@@ -50,7 +50,7 @@ test('a guest lxapp gets attention for itself only', {
 
   const offered = await chat.logic.eval(({ lx }) => ({
     banner: typeof lx.host.banner.show,
-    supportsBanner: lx.supports('app.banner'),
+    supportsBanner: lx.supports('host.banner'),
     notification: typeof lx.host.notification.show,
     activate: typeof lx.shell.activate,
   }));
@@ -112,7 +112,7 @@ test('a guest lxapp gets attention for itself only', {
   // Its own notification, opening itself, under its own id.
   const own = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     const n = lx.host.notification;
-    const permission = await n.getPermission();
+    const permission = await n.permission();
     try {
       const shown = await n.show({
         id: 'guest-own',
@@ -147,7 +147,7 @@ test('a guest lxapp gets attention for itself only', {
       title: 'Run finished',
       message: 'DESKTOP-GUEST-ATTENTION-001',
       actions: [{ id: 'open', label: 'Open run', tone: 'primary', target: { app: 'lingxia-showcase-web', params: { run: 'probe' } } }],
-      timeoutMs: 0,
+      durationMs: 0,
     }).then(
       (result) => { probe.result = result; },
       (error: { code?: string }) => { probe.result = { error: error.code ?? String(error) }; },

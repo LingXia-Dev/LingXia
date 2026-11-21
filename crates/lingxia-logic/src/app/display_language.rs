@@ -36,18 +36,11 @@ pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get)?.name("get")?)?;
     namespace.set("watch", JSFunc::new(ctx, watch)?.name("watch")?)?;
-    namespace.set(
-        "getPreference",
-        JSFunc::new(ctx, get_preference)?.name("getPreference")?,
-    )?;
-    namespace.set(
-        "setPreference",
-        JSFunc::new(ctx, set_preference)?.name("setPreference")?,
-    )?;
-    namespace.set(
-        "watchPreference",
-        JSFunc::new(ctx, watch_preference)?.name("watchPreference")?,
-    )?;
+    let preference = JSObject::new(ctx);
+    preference.set("get", JSFunc::new(ctx, get_preference)?.name("get")?)?;
+    preference.set("set", JSFunc::new(ctx, set_preference)?.name("set")?)?;
+    preference.set("watch", JSFunc::new(ctx, watch_preference)?.name("watch")?)?;
+    namespace.set("preference", preference)?;
     app.set("displayLanguage", namespace)?;
     Ok(())
 }
@@ -92,7 +85,7 @@ fn watch(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResu
 }
 
 fn get_preference(ctx: JSContext) -> JSResult<String> {
-    authorization::require(&ctx, LogicRoute::AppGetDisplayLanguagePreference)?;
+    authorization::require(&ctx, LogicRoute::AppDisplayLanguagePreferenceGet)?;
     Ok(lxapp::display_language_state().preference.to_string())
 }
 
@@ -100,7 +93,7 @@ fn get_preference(ctx: JSContext) -> JSResult<String> {
 async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
     let (_, preference) = authorization::require_before_decode(
         &ctx,
-        LogicRoute::AppSetDisplayLanguagePreference,
+        LogicRoute::AppDisplayLanguagePreferenceSet,
         || preference.to_rust::<String>(),
     )?;
     let preference = preference
@@ -122,7 +115,7 @@ fn watch_preference(
     lxapp::lx::subscribe(&scope, options.0, move || {
         let (_, callback) = authorization::require_before_decode(
             &ctx,
-            LogicRoute::AppWatchDisplayLanguagePreference,
+            LogicRoute::AppDisplayLanguagePreferenceWatch,
             || callback.to_rust::<JSFunc>(),
         )?;
         let last_revision = Rc::new(Cell::new(0));

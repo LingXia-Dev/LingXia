@@ -43,6 +43,9 @@ rong::js_api! {
 /// completed selection resolves `{ status: 'ok', files }` with at least one
 /// file. Rejects when capture or selection fails, or the host returns an invalid
 /// payload.
+///
+/// @supports pick.camera
+/// @throws {E_NOT_SUPPORTED} A camera-only request where the host cannot capture, such as on Windows.
 async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

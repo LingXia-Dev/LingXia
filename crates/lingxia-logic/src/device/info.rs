@@ -38,7 +38,7 @@ impl From<PlatformDeviceInfo> for DeviceInfo {
             brand: device_info.brand,
             model: device_info.model,
             market_name: device_info.market_name,
-            os_name: device_info.os_name,
+            os_name: crate::app::host_os(&device_info.os_name).to_string(),
             os_version: device_info.os_version,
         }
     }

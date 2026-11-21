@@ -122,7 +122,7 @@ test('a programmatic back is never held', {
 
 test('tab labels and titles declared per language follow the display language', {
   id: 'UI-LOCALIZED-CHROME-001',
-  covers: ['lx.host.displayLanguage.setPreference'],
+  covers: ['lx.host.displayLanguage.preference.set'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
@@ -135,14 +135,14 @@ test('tab labels and titles declared per language follow the display language', 
   const title = async () => (await app.info()).navigationBar?.title ?? null;
 
   await openLeaveGuard(app);
-  const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.getPreference());
+  const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.preference.get());
   try {
     for (const [language, todo, heading] of [
       ['zh-CN', '待办', '离开确认'],
       ['en-US', 'ToDo', 'Leave guard'],
     ] as const) {
       await app.logic.eval(async ({ lx }, language) => {
-        await lx.host.displayLanguage.setPreference(language);
+        await lx.host.displayLanguage.preference.set(language);
       }, language);
       await eventually(todoLabel, (text) => text === todo, {
         describe: `the ToDo tab label in ${language}`,
@@ -155,7 +155,7 @@ test('tab labels and titles declared per language follow the display language', 
     }
   } finally {
     await app.logic.eval(async ({ lx }, preference) => {
-      await lx.host.displayLanguage.setPreference(preference);
+      await lx.host.displayLanguage.preference.set(preference);
     }, preference);
   }
 });

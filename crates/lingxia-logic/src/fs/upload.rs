@@ -15,7 +15,6 @@ use lxapp::LxApp;
 use rong::{HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::oneshot as tokio_oneshot;
 
 #[derive(Debug, Clone)]
@@ -29,7 +28,6 @@ struct ParsedUploadOptions {
     field_name: Option<String>,
     headers: Vec<(String, String)>,
     form_data: Vec<(String, String)>,
-    timeout_ms: Option<u64>,
     file_name: Option<String>,
     mime_type: Option<String>,
     signal: Option<JSObject>,
@@ -224,26 +222,6 @@ fn read_optional_string_field(
         .map_err(|_| js_invalid_parameter_error(format!("{api_name} {field} must be a string")))
 }
 
-fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
-    let Some(value) = get_present_property(obj, "timeoutMs") else {
-        return Ok(None);
-    };
-    if !value.is_number() {
-        return Err(js_invalid_parameter_error(
-            "network.upload timeoutMs must be a positive number",
-        ));
-    }
-    let timeout = value.to_rust::<f64>().map_err(|_| {
-        js_invalid_parameter_error("network.upload timeoutMs must be a positive number")
-    })?;
-    if !timeout.is_finite() || timeout <= 0.0 {
-        return Err(js_invalid_parameter_error(
-            "network.upload timeoutMs must be a positive number",
-        ));
-    }
-    Ok(Some(timeout.round() as u64))
-}
-
 fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
     let Some(value) = get_present_property(obj, "signal") else {
         return Ok(None);
@@ -336,7 +314,6 @@ fn parse_upload_options(url: JSValue, options: JSValue) -> JSResult<ParsedUpload
         field_name,
         headers: read_string_map(&obj, "headers", "network.upload")?,
         form_data,
-        timeout_ms: read_optional_timeout_field(&obj)?,
         file_name,
         mime_type: read_optional_string_field(&obj, "type", "network.upload")?,
         signal: read_optional_signal(&obj)?,
@@ -554,13 +531,10 @@ fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObj
             .map_err(|err| js_error_from_lxapp_error(&err))
     })?;
     let file_name = resolve_upload_file_name(&resolved_path, options.file_name.as_deref());
-    let mut behavior = UploadBehavior {
+    let behavior = UploadBehavior {
         resolve_http_errors: true,
         ..UploadBehavior::default()
     };
-    if let Some(timeout_ms) = options.timeout_ms {
-        behavior.request_timeout = Duration::from_millis(timeout_ms);
-    }
 
     let (tx, rx) = mpsc::channel::<UploadIteratorMessage>(64);
     let (completion_tx, completion_rx) = oneshot::channel::<UploadCompletionOutcome>();
@@ -982,27 +956,6 @@ mod tests {
     }
 
     #[test]
-    fn timeout_takes_positive_numbers_only() {
-        let (_runtime, ctx) = js_context();
-
-        let value = number(&ctx, 1500.6);
-        let parsed =
-            parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).unwrap();
-        assert_eq!(parsed.timeout_ms, Some(1501));
-
-        for input in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-            let value = number(&ctx, input);
-            assert!(
-                parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).is_err(),
-                "timeout {input} should be rejected"
-            );
-        }
-
-        let value = string(&ctx, "3000");
-        assert!(parse_upload_options(url(&ctx), options(&ctx, &[("timeoutMs", value)])).is_err());
-    }
-
-    #[test]
     fn string_maps_reject_shapes_that_cannot_become_headers() {
         let (_runtime, ctx) = js_context();
 
@@ -1063,7 +1016,7 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace NetworkApi = crate::namespace::network(ctx)?;
         fn upload(
-            ts_params = "url: string, options: UploadOptions",
+            ts_params = "url: string | URL, options: UploadOptions",
             ts_return = "UploadTask"
         ) = upload_file;
     }

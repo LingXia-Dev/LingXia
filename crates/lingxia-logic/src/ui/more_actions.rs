@@ -1,4 +1,4 @@
-//! `lx.app.setMoreActions` — app-declared actions for the host's secondary menu.
+//! `lx.app.moreActions` — app-declared actions for the host's secondary menu.
 
 use lxapp::{
     LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, register_app_handler, unregister_app_handler,
@@ -73,7 +73,7 @@ fn required_string(item: &JSObject, field: &'static str) -> JSResult<String> {
 
 fn reject_unknown_keys(item: &JSObject) -> JSResult<()> {
     for key in item.keys_as::<String>()? {
-        if !["icon", "label", "onClick"].contains(&key.as_str()) {
+        if !["icon", "label", "onSelect"].contains(&key.as_str()) {
             return Err(rong::HostError::new(
                 rong::error::E_INVALID_ARG,
                 format!("unknown More action field '{key}'"),
@@ -128,10 +128,10 @@ fn parse_action(app: &LxApp, item: &JSObject) -> JSResult<ParsedMoreAction> {
     let icon = required_string(item, "icon")?;
     validate_icon(&icon)?;
     let label = required_string(item, "label")?;
-    let handler = item.get::<_, JSFunc>("onClick").map_err(|_| {
+    let handler = item.get::<_, JSFunc>("onSelect").map_err(|_| {
         rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            "More action onClick must be a function",
+            "More action onSelect must be a function",
         )
     })?;
     // A missing file must not drop the action — the host already draws
@@ -152,11 +152,11 @@ fn parse_action(app: &LxApp, item: &JSObject) -> JSResult<ParsedMoreAction> {
 /// Replace the current lxapp's complete app-declared More action list (seven
 /// entries maximum). Pass an empty array to clear it. Native hosts append these
 /// entries after their own lifecycle actions.
-fn set_more_actions(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
+fn replace_more_actions(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     if items.len() > LXAPP_MORE_ACTION_LIMIT {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("setMoreActions accepts at most {LXAPP_MORE_ACTION_LIMIT} items"),
+            format!("moreActions.replace accepts at most {LXAPP_MORE_ACTION_LIMIT} items"),
         )
         .into());
     }
@@ -197,15 +197,27 @@ fn set_more_actions(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = registry(ctx);
+    register_property(ctx)?;
     register_api(ctx)
+}
+
+fn more_actions_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &crate::namespace::app(ctx)?, "moreActions")
+}
+
+rong::js_api! {
+    fn register_property(ctx) {
+        namespace LxAppApi = crate::namespace::app(ctx)?;
+        const moreActions: "MoreActionsApi" = more_actions_namespace(ctx)?;
+    }
 }
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace LxAppApi = crate::namespace::app(ctx)?;
-        fn setMoreActions(
-            ts_params = "items: MoreAction[]"
-        ) = set_more_actions;
+        namespace MoreActionsApi = more_actions_namespace(ctx)?;
+        fn replace(
+            ts_params = "items: readonly MoreAction[]"
+        ) = replace_more_actions;
     }
 }
 

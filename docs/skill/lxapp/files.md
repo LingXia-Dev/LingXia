@@ -21,7 +21,7 @@ host downloads center, not to these classes.
 `storage` (`temp` | `userdata` | `downloads`) says where it went.
 
 ```ts
-const result = await lx.network.download(url, { headers, timeoutMs, signal }).result;
+const result = await lx.network.download(url, { headers, signal }).result;
 result.path; // lx://temp/<opaque_id>
 ```
 
@@ -118,7 +118,7 @@ const response = await task.result; // { status, ok, headers, text, json() }
 ```
 
 - Any HTTP status resolves: check `ok` before reporting success.
-- `cancel()`, `signal`, and `timeoutMs` are available. Keep the source file
+- `cancel()` and `signal` are available. Keep the source file
   until the transfer ends.
 
 ## Picking files

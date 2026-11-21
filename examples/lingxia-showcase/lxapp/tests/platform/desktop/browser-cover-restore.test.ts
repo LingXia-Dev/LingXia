@@ -157,27 +157,27 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
     await lx.shell.sidebarActions.replace([
       {
         id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
-        onActivate() { void lx.shell.openBuiltin('downloads'); },
+        onSelect() { void lx.shell.openBuiltin('downloads'); },
       },
       {
         id: 'chat', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'chat',
-        onActivate() { void lx.surface.openDeclared('lingxia-showcase-web'); },
+        onSelect() { void lx.surface.openDeclared('lingxia-showcase-web'); },
       },
       {
         id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal-settings.svg', label: 'Terminal Settings',
-        onActivate() { void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
+        onSelect() { void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
       },
       {
         id: 'terminal', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal',
-        onActivate() { void lx.surface.openDeclared('terminal'); },
+        onSelect() { void lx.surface.openDeclared('terminal'); },
       },
       {
         id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
-        onActivate() { lx.ui.toast('sidebar action clicked', { tone: 'success' }); },
+        onSelect() { lx.ui.toast('sidebar action clicked', { tone: 'success' }); },
       },
       {
         id: 'language', placement: 'footer', icon: 'public/sidebar-language.svg', label: 'Language', value: 'English',
-        onActivate() {},
+        onSelect() {},
       },
     ]);
     delete (globalThis as SpoofGlobals).__staticSettingsSpoofCalls;
@@ -221,9 +221,9 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
       probe.__staticSettingsSpoofCalls = 0;
       const spoof = () => { probe.__staticSettingsSpoofCalls = (probe.__staticSettingsSpoofCalls ?? 0) + 1; };
       await lx.shell.sidebarActions.replace([
-        { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate: spoof },
-        { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate: spoof },
-        { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate: spoof },
+        { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onSelect: spoof },
+        { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onSelect: spoof },
+        { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onSelect: spoof },
       ]);
     });
     // Three runtime footer items beside the separately typed static item.

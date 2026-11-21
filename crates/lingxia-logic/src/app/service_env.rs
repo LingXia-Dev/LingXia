@@ -1,6 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
-use lingxia_app_context::ServiceEnvSnapshot;
+use lingxia_app_context::{AppEnv, ServiceEnvSnapshot, ServiceEnvSwitch};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSResult};
 
@@ -19,18 +19,19 @@ struct HostServiceEnvState {
     #[ts_type = "HostAppEnv"]
     next_launch_env: String,
     /// Environments it may switch to.
-    #[ts_type = "HostAppEnv[]"]
+    #[ts_type = "readonly HostAppEnv[]"]
     available: Vec<String>,
     /// Switching is allowed in this build.
-    #[js_name = "canToggle"]
-    can_toggle: bool,
+    #[js_name = "canSwitch"]
+    can_switch: bool,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvSwitchResult {
     /// The environments after the switch.
     state: HostServiceEnvState,
-    /// The app asked the OS to close it so the next launch uses the new environment.
+    /// The app asked the OS to close it so the next launch uses the new environment;
+    /// `false` with no `exitError` when `env` was already running.
     #[js_name = "exitRequested"]
     exit_requested: bool,
     /// If present, the environment was saved; close and reopen the app manually.
@@ -38,21 +39,33 @@ struct HostServiceEnvSwitchResult {
     exit_error: Option<String>,
 }
 
-/// Query the running and next-launch service environments. Control app only.
-fn get_service_env(ctx: JSContext) -> JSResult<HostServiceEnvState> {
-    authorization::require(&ctx, LogicRoute::AppGetServiceEnv)?;
+/// The running and next-launch service environments. Control app only.
+fn service_env(ctx: JSContext) -> JSResult<HostServiceEnvState> {
+    authorization::require(&ctx, LogicRoute::AppServiceEnv)?;
     Ok(state_from_snapshot(
         lingxia_app_context::service_env_snapshot(),
     ))
 }
 
-/// Save the other service environment for next launch and request exit.
-/// A dev build cannot switch. Control app only. Save failures throw before exit.
-/// If exitRequested is false, ask the user to close and reopen the app manually.
-/// Retrying before restart keeps the same target environment.
-fn toggle_service_env(ctx: JSContext) -> JSResult<HostServiceEnvSwitchResult> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppToggleServiceEnv)?;
-    let snapshot = lingxia_app_context::prepare_toggle().map_err(switch_error)?;
+/// Save `env` for next launch and request exit; nothing to do when it is
+/// already running. A dev build cannot switch. Control app only. Save failures
+/// throw before exit. If `exitRequested` is false and `exitError` is set, ask
+/// the user to close and reopen the app.
+fn set_service_env(ctx: JSContext, env: String) -> JSResult<HostServiceEnvSwitchResult> {
+    let invocation = authorization::require(&ctx, LogicRoute::AppSetServiceEnv)?;
+    let target = AppEnv::parse(&env).ok_or_else(|| {
+        js_invalid_parameter_error(format!("service env must be 'dev' or 'prod', got '{env}'"))
+    })?;
+    let snapshot = match lingxia_app_context::prepare_switch(target).map_err(switch_error)? {
+        ServiceEnvSwitch::Unchanged(snapshot) => {
+            return Ok(HostServiceEnvSwitchResult {
+                state: state_from_snapshot(snapshot),
+                exit_requested: false,
+                exit_error: None,
+            });
+        }
+        ServiceEnvSwitch::RestartRequired(snapshot) => snapshot,
+    };
     let exit_error = invocation
         .lxapp()
         .runtime
@@ -78,7 +91,7 @@ fn switch_error(error: lingxia_app_context::ServiceEnvError) -> rong::RongJSErro
 
 fn state_from_snapshot(snapshot: ServiceEnvSnapshot) -> HostServiceEnvState {
     HostServiceEnvState {
-        can_toggle: snapshot.can_toggle(),
+        can_switch: snapshot.can_toggle(),
         build_env: snapshot.build_env.as_str().to_string(),
         service_env: snapshot.service_env.as_str().to_string(),
         next_launch_env: snapshot.next_launch_env.as_str().to_string(),
@@ -97,9 +110,10 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace HostAppApi = super::app_namespace(ctx)?;
-        fn getServiceEnv = get_service_env;
-        fn toggleServiceEnv(
+        fn serviceEnv = service_env;
+        fn setServiceEnv(
+            ts_params = "env: HostAppEnv",
             ts_return = "HostServiceEnvSwitchResult"
-        ) = toggle_service_env;
+        ) = set_service_env;
     }
 }

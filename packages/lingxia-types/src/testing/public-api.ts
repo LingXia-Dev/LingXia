@@ -67,6 +67,10 @@ import type {
   TerminalPreviewController,
   TerminalSettingsApi,
   TrayApi,
+  TrayMenuApi,
+  HostUpdateApi,
+  LxAppUpdateApi,
+  MoreActionsApi,
   LxAppApi,
   UploadTask,
   PagePlayer,
@@ -98,19 +102,18 @@ const HOST_APP_API = [
   'autostart',
   'banner',
   'cache',
-  'checkUpdate',
-  'claimCustomUpdate',
   'displayLanguage',
   'env',
   'exit',
-  'getServiceEnv',
   'info',
   'notification',
   'screenshot',
+  'serviceEnv',
   'setBadge',
+  'setServiceEnv',
   'terminal',
-  'toggleServiceEnv',
   'tray',
+  'update',
 ] as const;
 // `autostart`, `banner`, `cache`, `notification`, and `terminal` are injected
 // only where they apply, so a runtime walk of `lx.host` must not require them.
@@ -127,26 +130,22 @@ const BANNER_API = ['dismiss', 'show'] as const;
 const NOTIFICATION_API = [
   'cancel',
   'cancelAll',
-  'getPermission',
+  'permission',
   'requestPermission',
   'show',
 ] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
-const DISPLAY_LANGUAGE_API = [
-  'get',
-  'getPreference',
-  'setPreference',
-  'watch',
-  'watchPreference',
-] as const;
+const DISPLAY_LANGUAGE_API = ['get', 'preference', 'watch'] as const;
 const APPEARANCE_API = DISPLAY_LANGUAGE_API;
+const PREFERENCE_API = ['get', 'set', 'watch'] as const;
+const HOST_UPDATE_API = ['check', 'claim'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
 const DEVICE_API = ['haptics', 'info', 'location', 'onKeyDown', 'onKeyUp', 'orientation', 'screen', 'systemSettings'] as const;
 const ORIENTATION_API = ['set', 'unlock', 'watch'] as const;
 const NETWORK_API = ['download', 'status', 'upload', 'watch', 'wifi'] as const;
-const WIFI_API = ['connect', 'current', 'list', 'onConnected', 'start', 'stop'] as const;
+const WIFI_API = ['connect', 'current', 'list', 'onConnected'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
 const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
@@ -155,10 +154,11 @@ const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
-const SURFACE_NAMESPACE_API = ['get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
-const SHELL_API = ['activate', 'getApp', 'getDeclared', 'openBuiltin', 'setAppDisplay', 'sidebarActions'] as const;
+const SURFACE_NAMESPACE_API = ['app', 'declared', 'get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
+const SHELL_API = ['activate', 'openBuiltin', 'setAppDisplay', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
-const TRAY_API = ['hide', 'onClick', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
+const TRAY_API = ['menu', 'onClick', 'update'] as const;
+const TRAY_MENU_API = ['replace'] as const;
 const CLIPBOARD_API = ['clear', 'read', 'readText', 'types', 'write', 'writeText'] as const;
 const FILE_SYSTEM_API = [
   'copy',
@@ -184,7 +184,9 @@ const LX_FILE_API = [
   'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
-const APP_API = ['applyUpdate', 'info', 'onUpdateFailed', 'onUpdateReady', 'setMoreActions', 'tabBar'] as const;
+const APP_API = ['info', 'moreActions', 'tabBar', 'update'] as const;
+const APP_UPDATE_API = ['apply', 'onFailed', 'onReady'] as const;
+const MORE_ACTIONS_API = ['replace'] as const;
 const PAGE_PLAYER_API = [
   'exitFullscreen',
   'pause',
@@ -385,7 +387,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'displayLanguage', 'env', 'info', 'tray'],
+    properties: ['appearance', 'displayLanguage', 'env', 'info', 'tray', 'update'],
+  },
+  {
+    name: 'lx.host.update',
+    layer: 'logic',
+    expression: 'lx.host.update',
+    members: HOST_UPDATE_API,
   },
   {
     name: 'lx.host.autostart',
@@ -535,7 +543,8 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
   },
-  { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API },
+  { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API, properties: ['menu'] },
+  { name: 'lx.host.tray.menu', layer: 'logic', expression: 'lx.host.tray.menu', members: TRAY_MENU_API },
   {
     name: 'lx.fs',
     layer: 'logic',
@@ -545,7 +554,9 @@ export const LX_RUNTIME_SURFACES = [
   },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
-  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'tabBar'] },
+  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'moreActions', 'tabBar', 'update'] },
+  { name: 'lx.app.update', layer: 'logic', expression: 'lx.app.update', members: APP_UPDATE_API },
+  { name: 'lx.app.moreActions', layer: 'logic', expression: 'lx.app.moreActions', members: MORE_ACTIONS_API },
   {
     name: 'Automation',
     layer: 'automation',
@@ -741,7 +752,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['channel', 'releaseNotes', 'size', 'version'],
     optionalProperties: ['releaseNotes', 'size'],
     fixture: 'external-service',
-    factory: 'lx.host.checkUpdate().update',
+    factory: 'lx.host.update.check()',
   },
   {
     name: 'HostAppUpdateTask',
@@ -850,6 +861,12 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
+  AssertTrue<Exact<TrayMenuApi, typeof TRAY_MENU_API>>,
+  AssertTrue<Exact<HostUpdateApi, typeof HOST_UPDATE_API>>,
+  AssertTrue<Exact<LxAppUpdateApi, typeof APP_UPDATE_API>>,
+  AssertTrue<Exact<MoreActionsApi, typeof MORE_ACTIONS_API>>,
+  AssertTrue<Exact<AppearanceApi['preference'], typeof PREFERENCE_API>>,
+  AssertTrue<Exact<DisplayLanguageApi['preference'], typeof PREFERENCE_API>>,
   AssertTrue<Exact<FileSystemApi, typeof FILE_SYSTEM_API>>,
   AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,

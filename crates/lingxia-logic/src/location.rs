@@ -6,7 +6,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::LxApp;
 use rong::function::Optional;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde_json::Value;
 
 fn handle_location_error(code: u32) -> RongJSError {
@@ -81,8 +81,7 @@ struct JSLocationOptions {
     #[js_name = "coordinates"]
     coordinate_type: Option<String>,
     accuracy: Option<String>,
-    #[js_name = "timeoutMs"]
-    high_accuracy_expire_time: Option<u32>,
+    signal: Option<JSObject>,
 }
 
 /// Location information
@@ -136,14 +135,15 @@ fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
 }
 
 /// The device's position, in WGS-84 unless `coordinates` says otherwise.
-/// Rejects when permission is denied, location is off, or no fix arrives
-/// within `timeoutMs`.
+/// Rejects when permission is denied or location is off; abort `signal` to stop waiting.
 ///
 /// @permission location, asked the first time.
 async fn get_location(
     ctx: JSContext,
     options: Optional<JSLocationOptions>,
 ) -> JSResult<LocationInfo> {
+    let mut options = options;
+    let signal = options.0.as_mut().and_then(|opts| opts.signal.take());
     let lxapp = LxApp::from_ctx(&ctx)?;
     let requested_type = options
         .as_ref()
@@ -167,13 +167,21 @@ async fn get_location(
     }
     let config = LocationRequestConfig {
         is_high_accuracy: accuracy == "high",
-        high_accuracy_expire_time: options
-            .as_ref()
-            .and_then(|opts| opts.high_accuracy_expire_time),
+        high_accuracy_expire_time: None,
         include_altitude: true,
     };
 
-    match lxapp.runtime.request_location(config).await {
+    let request = async {
+        lxapp
+            .runtime
+            .request_location(config)
+            .await
+            .map_err(|error| match error {
+                PlatformError::BusinessError(code) => handle_location_error(code),
+                other => js_error_from_platform_error(&other),
+            })
+    };
+    match crate::task_object::abortable(&ctx, signal, request).await {
         Ok(data) => {
             let mut location = parse_location_payload(&data)?;
 
@@ -186,8 +194,7 @@ async fn get_location(
 
             Ok(location)
         }
-        Err(PlatformError::BusinessError(code)) => Err(handle_location_error(code)),
-        Err(e) => Err(js_error_from_platform_error(&e)),
+        Err(error) => Err(error),
     }
 }
 

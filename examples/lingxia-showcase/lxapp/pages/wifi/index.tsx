@@ -9,146 +9,127 @@ const percent = (value?: number) => (typeof value === 'number' ? `${value}%` : '
 export function render({ data, actions }: View) {
   const ssid = useLocal('ssid', '');
   const password = useLocal('password', '');
-  const enabled = !!data.wifiModuleEnabled;
   const listening = !!data.wifiListenerEnabled;
   const networks = (data.wifiList ?? []) as Wifi[];
   const connected = data.connectedWifi as Wifi | null;
   const events = (data.wifiConnectedEvents ?? []) as WifiEvent[];
   return (
     <Page>
-      <Section title="WiFi Module" description="Initialize or stop WiFi module">
-        <view className="grid gap-3 grid-cols-2">
-          <Button testId="wifi-start" disabled={enabled || !!data.scanning} onClick={() => actions.startWifi()}>
-            Start WiFi
+      {data.statusText !== 'Ready' && (
+        <text data-testid="wifi-status" className="text-xs text-muted">
+          {String(data.statusText || '')}
+        </text>
+      )}
+      <Section
+        title="Connected WiFi"
+        description="Get current WiFi connection info"
+        action={
+          <Button size="sm" testId="wifi-current" onClick={() => actions.getConnectedWifi()}>
+            Get Info
           </Button>
-          <Button variant="destructive" testId="wifi-stop" disabled={!enabled || !!data.scanning} onClick={() => actions.stopWifi()}>
-            Stop WiFi
-          </Button>
-        </view>
-        {data.statusText !== 'Ready' && (
-          <text data-testid="wifi-status" className="text-xs text-muted">
-            {String(data.statusText || '')}
-          </text>
+        }
+      >
+        {!!connected && (
+          <InfoList testId="wifi-connected">
+            <InfoRow label="SSID" value={connected.ssid} />
+            <InfoRow label="BSSID" value={connected.bssid} />
+            <InfoRow label="Secure" value={connected.secure ? 'Yes' : 'No'} />
+            <InfoRow label="Signal" value={percent(connected.signalStrength)} />
+            <InfoRow label="Frequency" value={connected.frequency === undefined ? undefined : `${connected.frequency} MHz`} />
+          </InfoList>
         )}
       </Section>
-      {enabled && (
-        <Section
-          title="Connected WiFi"
-          description="Get current WiFi connection info"
-          action={
-            <Button size="sm" testId="wifi-current" onClick={() => actions.getConnectedWifi()}>
-              Get Info
+      <Section
+        title="WiFi Connected Events"
+        description="Listen to WiFi connection changes"
+        action={
+          <view className="flex-row gap-2">
+            <Button size="sm" testId="wifi-listener-on" disabled={listening} onClick={() => actions.onWifiConnected()}>
+              On
             </Button>
-          }
-        >
-          {!!connected && (
-            <InfoList testId="wifi-connected">
-              <InfoRow label="SSID" value={connected.ssid} />
-              <InfoRow label="BSSID" value={connected.bssid} />
-              <InfoRow label="Secure" value={connected.secure ? 'Yes' : 'No'} />
-              <InfoRow label="Signal" value={percent(connected.signalStrength)} />
-              <InfoRow label="Frequency" value={connected.frequency === undefined ? undefined : `${connected.frequency} MHz`} />
-            </InfoList>
-          )}
-        </Section>
-      )}
-      {enabled && (
-        <Section
-          title="WiFi Connected Events"
-          description="Listen to WiFi connection changes"
-          action={
-            <view className="flex-row gap-2">
-              <Button size="sm" testId="wifi-listener-on" disabled={listening} onClick={() => actions.onWifiConnected()}>
-                On
-              </Button>
-              <Button size="sm" variant="secondary" testId="wifi-listener-off" disabled={!listening} onClick={() => actions.offWifiConnected()}>
-                Off
-              </Button>
-            </view>
-          }
-        >
-          <view className="flex-row items-center justify-between">
-            <text data-testid="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
-            {events.length > 0 && (
-              <Button variant="ghost" size="sm" testId="wifi-clear-events" onClick={() => actions.clearWifiConnectedEvents()}>
-                Clear
-              </Button>
-            )}
+            <Button size="sm" variant="secondary" testId="wifi-listener-off" disabled={!listening} onClick={() => actions.offWifiConnected()}>
+              Off
+            </Button>
           </view>
-          {!events.length ? (
-            <text data-testid="wifi-events" className="text-sm text-muted">
-              No events yet.
-            </text>
-          ) : (
-            <view data-testid="wifi-events" className="gap-2">
-              {events.map(event => (
-                <view key={event.id} className="p-3 gap-1 rounded-lg border border-line">
-                  <view className="flex-row justify-between">
-                    <text className="text-xs text-muted">{event.time}</text>
-                    <text className="text-xs text-muted">{percent(event.signalStrength)}</text>
-                  </view>
-                  <text className="text-sm font-semibold">{event.ssid || '--'}</text>
-                  <text className="text-[11px] text-muted">
-                    {`State: ${event.state ?? (event.connected === undefined ? '--' : event.connected ? 'Connected' : 'Disconnected')}`}
-                  </text>
-                  <text className="text-[11px] text-muted">{`Secure: ${event.secure === undefined ? '--' : event.secure ? 'Yes' : 'No'}`}</text>
-                </view>
-              ))}
-            </view>
-          )}
-        </Section>
-      )}
-      {enabled && (
-        <Section
-          title="Scan WiFi Networks"
-          description="Get list of available networks"
-          action={
-            <Button size="sm" testId="wifi-scan" disabled={!!data.scanning} onClick={() => actions.getWifiList()}>
-              {data.scanning ? 'Scanning...' : 'Scan'}
+        }
+      >
+        <view className="flex-row items-center justify-between">
+          <text data-testid="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
+          {events.length > 0 && (
+            <Button variant="ghost" size="sm" testId="wifi-clear-events" onClick={() => actions.clearWifiConnectedEvents()}>
+              Clear
             </Button>
-          }
-        >
-          {data.wifiList !== null && (
-            <text data-testid="wifi-scan-count" className="text-sm font-semibold">{`Available Networks (${networks.length})`}</text>
           )}
-          {data.wifiList !== null && !networks.length && <EmptyState icon="device" title="No networks found" />}
-          <scroll className="max-h-96 gap-2">
-            {networks.map((wifi, index) => (
-              <button
-                key={wifi.bssid || `${wifi.ssid}-${index}`}
-                data-testid={`wifi-network-${index}`}
-                onClick={() => ssid.set(wifi.ssid || '')}
-                className="p-3 rounded-lg border border-line bg-surface text-text text-left active:bg-surface-sunken"
-              >
-                <view className="gap-1">
-                  <view className="flex-row items-center justify-between gap-2">
-                    <text className="grow basis-0 min-w-0 text-sm font-semibold">{wifi.ssid || 'Hidden network'}</text>
-                    <text className="px-2 py-1 rounded-full bg-accent-soft text-xs text-accent">{percent(wifi.signalStrength)}</text>
-                  </view>
-                  {!!wifi.bssid && <text className="text-xs text-muted">{`BSSID: ${wifi.bssid}`}</text>}
-                  <text className="text-xs text-muted">{wifi.secure ? 'Security: Secured' : 'Security: Open'}</text>
+        </view>
+        {!events.length ? (
+          <text data-testid="wifi-events" className="text-sm text-muted">
+            No events yet.
+          </text>
+        ) : (
+          <view data-testid="wifi-events" className="gap-2">
+            {events.map(event => (
+              <view key={event.id} className="p-3 gap-1 rounded-lg border border-line">
+                <view className="flex-row justify-between">
+                  <text className="text-xs text-muted">{event.time}</text>
+                  <text className="text-xs text-muted">{percent(event.signalStrength)}</text>
                 </view>
-              </button>
+                <text className="text-sm font-semibold">{event.ssid || '--'}</text>
+                <text className="text-[11px] text-muted">
+                  {`State: ${event.state ?? (event.connected === undefined ? '--' : event.connected ? 'Connected' : 'Disconnected')}`}
+                </text>
+                <text className="text-[11px] text-muted">{`Secure: ${event.secure === undefined ? '--' : event.secure ? 'Yes' : 'No'}`}</text>
+              </view>
             ))}
-          </scroll>
-        </Section>
-      )}
-      {enabled && (
-        <Section
-          title="Connect to WiFi"
-          description={networks.length ? 'Select a network above or enter SSID manually' : 'Provide SSID and password'}
-        >
-          <Field testId="wifi-ssid" label="SSID" bind={ssid} placeholder={networks.length ? 'Enter SSID or select a network above' : 'SSID'} />
-          <Field testId="wifi-password" label="Password" bind={password} type="password" placeholder="Password (optional)" />
-          <Button
-            testId="wifi-connect"
-            disabled={!ssid.value.trim()}
-            onClick={() => actions.connectWifi({ ssid: ssid.value.trim(), password: password.value || undefined })}
-          >
-            Connect
+          </view>
+        )}
+      </Section>
+      <Section
+        title="Scan WiFi Networks"
+        description="Get list of available networks"
+        action={
+          <Button size="sm" testId="wifi-scan" disabled={!!data.scanning} onClick={() => actions.getWifiList()}>
+            {data.scanning ? 'Scanning...' : 'Scan'}
           </Button>
-        </Section>
-      )}
+        }
+      >
+        {data.wifiList !== null && (
+          <text data-testid="wifi-scan-count" className="text-sm font-semibold">{`Available Networks (${networks.length})`}</text>
+        )}
+        {data.wifiList !== null && !networks.length && <EmptyState icon="device" title="No networks found" />}
+        <scroll className="max-h-96 gap-2">
+          {networks.map((wifi, index) => (
+            <button
+              key={wifi.bssid || `${wifi.ssid}-${index}`}
+              data-testid={`wifi-network-${index}`}
+              onClick={() => ssid.set(wifi.ssid || '')}
+              className="p-3 rounded-lg border border-line bg-surface text-text text-left active:bg-surface-sunken"
+            >
+              <view className="gap-1">
+                <view className="flex-row items-center justify-between gap-2">
+                  <text className="grow basis-0 min-w-0 text-sm font-semibold">{wifi.ssid || 'Hidden network'}</text>
+                  <text className="px-2 py-1 rounded-full bg-accent-soft text-xs text-accent">{percent(wifi.signalStrength)}</text>
+                </view>
+                {!!wifi.bssid && <text className="text-xs text-muted">{`BSSID: ${wifi.bssid}`}</text>}
+                <text className="text-xs text-muted">{wifi.secure ? 'Security: Secured' : 'Security: Open'}</text>
+              </view>
+            </button>
+          ))}
+        </scroll>
+      </Section>
+      <Section
+        title="Connect to WiFi"
+        description={networks.length ? 'Select a network above or enter SSID manually' : 'Provide SSID and password'}
+      >
+        <Field testId="wifi-ssid" label="SSID" bind={ssid} placeholder={networks.length ? 'Enter SSID or select a network above' : 'SSID'} />
+        <Field testId="wifi-password" label="Password" bind={password} type="password" placeholder="Password (optional)" />
+        <Button
+          testId="wifi-connect"
+          disabled={!ssid.value.trim()}
+          onClick={() => actions.connectWifi({ ssid: ssid.value.trim(), password: password.value || undefined })}
+        >
+          Connect
+        </Button>
+      </Section>
     </Page>
   );
 }

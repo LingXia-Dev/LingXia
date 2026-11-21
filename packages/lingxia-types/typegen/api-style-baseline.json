@@ -1,20 +1,9 @@
 {
-  "no-get-read": [
-    "lx.host.appearance.getPreference",
-    "lx.host.displayLanguage.getPreference",
-    "lx.host.getServiceEnv",
-    "lx.host.notification.getPermission",
-    "lx.shell.getApp",
-    "lx.shell.getDeclared"
-  ],
+  "no-get-read": [],
   "subscription-shape": [],
   "field-name": [],
   "status-values": [],
-  "readonly-array-param": [
-    "lx.app.setMoreActions(items)",
-    "lx.host.banner.show(options)",
-    "lx.shell.sidebarActions.replace(items)"
-  ],
+  "readonly-array-param": [],
   "required-member": [
     "lx.host.terminal.windows"
   ],
@@ -23,5 +12,9 @@
   "tags": [],
   "doc-length": [],
   "jargon": [],
-  "argument-shape": []
+  "argument-shape": [],
+  "literal-case": [],
+  "readonly-array-field": [],
+  "url-type": [],
+  "supports-key": []
 }

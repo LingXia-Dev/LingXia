@@ -179,9 +179,9 @@ update:
 ```
 
 - `direct` downloads the LingXia feed and self-installs. `store` never
-  self-installs: `lx.host.checkUpdate()` reports the version, the built-in
+  self-installs: `lx.host.update.check()` reports the version, the built-in
   prompt (at most once per 3 days per version) or `apply()` opens the store
-  listing, and `lx.supports('app.selfUpdate')` is false.
+  listing, and `lx.supports('host.selfUpdate')` is false.
 - Store updates need no keys and reuse the existing `ios.store` / `macos.store`
   / `harmony.store` / `windows.store` identity. Publish the feed entry only
   after the listing is live.
@@ -191,7 +191,7 @@ update:
   process. With it, both are checked again after each interval, also after a
   failed check. Use it for always-on devices such as signage; a phone app does
   not need it. A downloaded home lxapp update still applies only on
-  `updateManager.applyUpdate()` or the next cold start, and `onUpdateReady`
+  `lx.app.update.apply()` or the next cold start, and `lx.app.update.onReady`
   fires again on each interval until it does, so don't show a dialog per event.
 - Minting keys and publishing: [Distribution](../cli/distribution.md#update-signing-keys).
 
@@ -226,7 +226,7 @@ service server. A prod build can switch
 service servers at runtime; package id, icon, and signed App Link entitlements
 stay with the build env. Read the build env with `lx.host.env` (JS) or
 `lingxia::app::env()` (Rust), and the running service env with
-`lx.host.getServiceEnv()` (JS) or `lingxia::app::service_env()` (Rust).
+`lx.host.serviceEnv()` (JS) or `lingxia::app::service_env()` (Rust).
 
 ## `features`
 
@@ -427,7 +427,7 @@ await lx.shell.sidebarActions.replace([
     placement: 'footer',
     icon: 'public/sidebar-agent.png',
     label: 'Agent',             // tooltip/a11y only — never drawn
-    onActivate: () => void openAgent(),
+    onSelect: () => void openAgent(),
   },
   {
     id: 'brand',
@@ -435,7 +435,7 @@ await lx.shell.sidebarActions.replace([
     icon: uri,
     label: 'Brand',
     value: activeBrand.shortName, // drawn beside the icon; footer only
-    onActivate: () => void openBrandPanel(),
+    onSelect: () => void openBrandPanel(),
   },
 ]);
 ```
@@ -452,8 +452,8 @@ declaration; `replace([])` clears. `update(id, patch)` sets every key the patch
 carries: `update('brand', { value: brand?.shortName })` clears the value when
 there is no brand. Pins are the user's; there is no API to write them. Open a
 declared aside with `lx.surface.openDeclared(id)`. A live lxapp has one handle,
-its `AppSurface`: `lx.surface.openApp`, `lx.shell.getApp` and
-`lx.surface.openDeclared` / `lx.shell.getDeclared` of its declaration return the
+its `AppSurface`: `lx.surface.openApp`, `lx.surface.app` and
+`lx.surface.openDeclared` / `lx.surface.declared` of its declaration return the
 same object.
 
 ### App name and icon
@@ -492,7 +492,7 @@ Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
 
 A terminal main is the default workspace; open or reuse a named one with
 `lx.surface.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
-keys reuse one workspace; `lx.shell.getDeclared('terminal', { key: 'project-a' })`
+keys reuse one workspace; `lx.surface.declared('terminal', { key: 'project-a' })`
 returns its live handle. `native: browser`
 opens an empty tab in the managed browser; use a `url:` main for a fixed target.
 

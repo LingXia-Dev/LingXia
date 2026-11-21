@@ -35,7 +35,7 @@ impl JSMessagePort {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
-            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            rong::error::E_TYPE,
             "MessagePort cannot be directly constructed",
         )
         .into())

@@ -3009,7 +3009,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   skip: desktopSkip,
   id: 'DESKTOP-ASIDE-NAV-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.surface.openApp', 'lx.shell.getApp', 'lx.nav.go', 'lx.nav.back', 'lx.surface.openPage', 'lx.surface.get'],
+  covers: ['lx.surface.openApp', 'lx.surface.app', 'lx.nav.go', 'lx.nav.back', 'lx.surface.openPage', 'lx.surface.get'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -3198,7 +3198,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       // The live app answers lookup with the handle its opener holds.
       expect(await app.logic.eval(({ lx }, appId) => {
         const held = (globalThis as unknown as Record<string, unknown>).__asideNavOtherMain;
-        return lx.shell.getApp(appId) === held;
+        return lx.surface.app(appId) === held;
       }, ASIDE_NAV_OTHER_APP_ID)).toBeTruthy();
       const lxapps = await t.automation.lxapps.list();
       for (const appId of ['lingxia-showcase-web', ASIDE_NAV_OTHER_APP_ID]) {
@@ -3485,7 +3485,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
   skip: desktopSkip,
   id: 'DESKTOP-MIGRATE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.surface.openDeclared', 'lx.shell.getDeclared'],
+  covers: ['lx.surface.openDeclared', 'lx.surface.declared'],
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
@@ -3519,7 +3519,7 @@ test('migrates one keyed workspace across aside edges and main exactly once', {
         key, as: 'aside', edge: 'bottom',
       });
       const dockedLayout = await snapshot();
-      const lookedUp = lx.shell.getDeclared('terminal', { key });
+      const lookedUp = lx.surface.declared('terminal', { key });
       await docked.hide();
       await docked.hide();
       const hiddenLayout = await snapshot();
@@ -4442,7 +4442,7 @@ interface OpenAppMoveOptions {
 
 interface MovedHandleState {
   same: boolean;
-  /** `appInstance` and `getDeclared` of the declared Chat return that same object. */
+  /** `appInstance` and `lx.surface.declared` of the declared Chat return that same object. */
   lookedUp: boolean;
   realized: string;
   visible: boolean;
@@ -4466,7 +4466,7 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
   skip: desktopSkip,
   id: 'DESKTOP-OPENAPP-MOVE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.surface.openApp', 'lx.shell.getApp', 'lx.shell.getDeclared', 'lx.surface.openDeclared'],
+  covers: ['lx.surface.openApp', 'lx.surface.app', 'lx.surface.declared', 'lx.surface.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
   await closeChatSurface(t, app);
@@ -4481,8 +4481,8 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
       const handle = await lx.surface.openApp('lingxia-showcase-web', options);
       return {
         same: handle === probe.handle,
-        lookedUp: lx.shell.getApp('lingxia-showcase-web') === handle
-          && lx.shell.getDeclared('lingxia-showcase-web') === handle,
+        lookedUp: lx.surface.app('lingxia-showcase-web') === handle
+          && lx.surface.declared('lingxia-showcase-web') === handle,
         realized: handle.realized,
         visible: handle.visible,
         alive: handle.alive,
@@ -4509,13 +4509,13 @@ test('moves a live lxapp between aside and main through lx.surface.openApp', {
       if (!probe) throw new Error('openApp move probe is not installed');
       const declared = await lx.surface.openDeclared('lingxia-showcase-web');
       return {
-        appInstance: lx.shell.getApp('lingxia-showcase-web') === probe.handle,
-        getDeclared: lx.shell.getDeclared('lingxia-showcase-web') === probe.handle,
+        appInstance: lx.surface.app('lingxia-showcase-web') === probe.handle,
+        declared: lx.surface.declared('lingxia-showcase-web') === probe.handle,
         openDeclared: declared === probe.handle,
         kind: declared.kind,
       };
     });
-    expect(identity).toEqual({ appInstance: true, getDeclared: true, openDeclared: true, kind: 'app' });
+    expect(identity).toEqual({ appInstance: true, declared: true, openDeclared: true, kind: 'app' });
 
     // A page Chat does not configure is refused before anything moves.
     const refused = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {

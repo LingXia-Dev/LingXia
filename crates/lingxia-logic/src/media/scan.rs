@@ -65,8 +65,8 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
     let scan_type = payload
         .get("scanType")
         .and_then(Value::as_str)
-        .ok_or_else(|| js_internal_error("pick.code payload missing string `scanType`"))?
-        .to_string();
+        .ok_or_else(|| js_internal_error("pick.code payload missing string `scanType`"))
+        .map(snake_case)?;
 
     // Only the `/lxapp/*` namespace auto-opens. A product URL that merely
     // shares a configured host is returned to the caller, not acted on.
@@ -76,6 +76,22 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
     result.set("value", scan_result)?;
     result.set("format", scan_type)?;
     Ok(result)
+}
+
+/// Hosts name symbologies in camelCase.
+fn snake_case(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    for c in value.chars() {
+        if c.is_ascii_uppercase() {
+            if !out.is_empty() {
+                out.push('_');
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
@@ -94,8 +110,8 @@ fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
 
 fn parse_scan_type_token(value: &str) -> Option<ScanType> {
     match value {
-        "barCode" => Some(ScanType::BarCode),
-        "qrCode" => Some(ScanType::QrCode),
+        "bar_code" => Some(ScanType::BarCode),
+        "qr_code" => Some(ScanType::QrCode),
         "datamatrix" => Some(ScanType::DataMatrix),
         "pdf417" => Some(ScanType::Pdf417),
         _ => None,

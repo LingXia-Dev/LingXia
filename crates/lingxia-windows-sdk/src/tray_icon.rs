@@ -32,7 +32,7 @@ const TRAY_ICON_ID: u32 = 1;
 const NIN_KEYSELECT: u32 = NIN_SELECT | NINF_KEY;
 const UPDATE_READY_COMMAND: usize = 0x7002;
 
-/// One entry in the JS-registered tray dropdown (`lx.host.tray.setMenu`). The native
+/// One entry in the JS-registered tray dropdown (`lx.host.tray.menu.replace`). The native
 /// menu carries no default items; the developer supplies them (and their
 /// click handlers) — mirroring the macOS tray contract.
 #[derive(Debug, Clone, Default)]
@@ -151,7 +151,7 @@ pub(crate) fn is_installed() -> bool {
 }
 
 /// Replace the JS-registered tray dropdown. `items_json` is the array
-/// `lx.host.tray.setMenu` produced: each entry is `{ "separator": true }` or
+/// `lx.host.tray.menu.replace` produced: each entry is `{ "separator": true }` or
 /// `{ "label", "enabled", "checked" }`. Invoked via the platform tray-menu
 /// handler; the menu is rebuilt on demand when the icon is right-clicked.
 pub(crate) fn set_menu(items_json: &str) {
@@ -652,7 +652,7 @@ fn open_pending_update_card() {
 fn show_tray_menu(hwnd: HWND) {
     // A context menu replaces the flyout; leave only one surface up.
     crate::window_host::hide_exclusive_tray_popover();
-    // JS `lx.host.tray.setMenu` owns the dropdown when the app registered one.
+    // JS `lx.host.tray.menu.replace` owns the dropdown when the app registered one.
     // Exclusive tray hosts still need a way out: an empty menu gets Quit.
     let items = TRAY_MENU
         .lock()

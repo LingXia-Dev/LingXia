@@ -5,9 +5,9 @@ import { Button, ErrorState, InfoList, InfoRow, Page, Section, Segmented } from 
 const titles: Record<string, string> = {
   appBaseInfo: 'app.getBaseInfo',
   systemSetting: 'getSystemSetting',
-  autostart: 'app.autostart',
-  notification: 'app.notification',
-  banner: 'app.banner',
+  autostart: 'host.autostart',
+  notification: 'host.notification',
+  banner: 'host.banner',
   cache: 'app.cache',
 };
 const yesNo = (value: unknown) => (value == null ? '--' : value ? 'Yes' : 'No');

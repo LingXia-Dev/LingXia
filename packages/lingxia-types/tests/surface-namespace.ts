@@ -87,12 +87,12 @@ async function builtinReportsIdentityOnly(): Promise<string> {
 
 // Shell-owned surfaces are looked up by identity, not by a handle id.
 function shellLookups(): boolean {
-  const app = lx.shell.getApp("com.example.agent");
-  const terminal = lx.shell.getDeclared("terminal", { key: "project-a" });
+  const app = lx.surface.app("com.example.agent");
+  const terminal = lx.surface.declared("terminal", { key: "project-a" });
   // @ts-expect-error handles carry no runtime id
   app?.id;
   // A declaration that shows an lxapp answers with that app's handle.
-  const chat = lx.shell.getDeclared("chat");
+  const chat = lx.surface.declared("chat");
   const chatRealized: "main" | "aside" | undefined =
     chat?.kind === "app" ? chat.realized : undefined;
   return Boolean(app?.alive && terminal?.alive && chatRealized);
@@ -218,15 +218,15 @@ async function sidebarActionsAreReachableThroughLxShell(): Promise<void> {
 // `value` is the footer's changing fact; a header action has none, and that is a
 // compile error rather than a runtime rejection.
 function sidebarActionValueIsFooterOnly(): void {
-  const onActivate = () => {};
+  const onSelect = () => {};
   lx.shell.sidebarActions.replace([
-    { id: "brand", placement: "footer", icon: "public/brand.svg", label: "Brand", value: "Acme", onActivate },
-    { id: "agent", placement: "footer", icon: "public/agent.svg", label: "Agent", onActivate },
-    { id: "downloads", placement: "header", icon: "public/dl.svg", label: "Downloads", onActivate },
+    { id: "brand", placement: "footer", icon: "public/brand.svg", label: "Brand", value: "Acme", onSelect },
+    { id: "agent", placement: "footer", icon: "public/agent.svg", label: "Agent", onSelect },
+    { id: "downloads", placement: "header", icon: "public/dl.svg", label: "Downloads", onSelect },
   ]);
   lx.shell.sidebarActions.replace([
     // @ts-expect-error a header action cannot carry a value
-    { id: "brand", placement: "header", icon: "public/brand.svg", label: "Brand", value: "Acme", onActivate },
+    { id: "brand", placement: "header", icon: "public/brand.svg", label: "Brand", value: "Acme", onSelect },
   ]);
   const brand = Math.random() > 0.5 ? { name: "Acme" } : undefined;
   lx.shell.sidebarActions.update("brand", { value: brand?.name });

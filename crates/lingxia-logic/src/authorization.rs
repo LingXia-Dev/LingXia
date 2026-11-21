@@ -10,44 +10,42 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LogicRoute {
     AppExit,
-    AppGetServiceEnv,
-    AppToggleServiceEnv,
+    AppServiceEnv,
+    AppSetServiceEnv,
     AppSetBadge,
     AppCacheSize,
     AppCacheClear,
-    AppGetAppearancePreference,
-    AppSetAppearancePreference,
-    AppWatchAppearancePreference,
-    AppGetDisplayLanguagePreference,
-    AppSetDisplayLanguagePreference,
-    AppWatchDisplayLanguagePreference,
+    AppAppearancePreferenceGet,
+    AppAppearancePreferenceSet,
+    AppAppearancePreferenceWatch,
+    AppDisplayLanguagePreferenceGet,
+    AppDisplayLanguagePreferenceSet,
+    AppDisplayLanguagePreferenceWatch,
     AppCheckUpdate,
+    AppClaimUpdate,
     AppApplyUpdate,
     AppScreenshot,
     AppAutostartIsEnabled,
     AppAutostartEnable,
     AppAutostartDisable,
-    AppNotificationGetPermission,
+    AppNotificationPermission,
     AppNotificationRequestPermission,
     AppNotificationShow,
     AppNotificationCancel,
     AppNotificationCancelAll,
     AppBannerShow,
     AppBannerDismiss,
-    TraySetIcon,
-    TraySetTitle,
-    TraySetMenu,
+    TrayUpdate,
+    TrayMenuReplace,
     TrayOnClick,
-    TrayShow,
-    TrayHide,
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
     SurfaceOpenApp,
     ShellOpenBuiltin,
     SurfaceOpenDeclaredPlacement,
-    ShellGetApp,
-    ShellGetDeclared,
+    SurfaceApp,
+    SurfaceDeclared,
     ShellSetAppDisplay,
     ShellOpenHostTerminalSettings,
     ShellActivate,
@@ -73,44 +71,42 @@ pub(crate) enum LogicRoute {
 impl LogicRoute {
     pub(crate) const ALL: &'static [Self] = &[
         Self::AppExit,
-        Self::AppGetServiceEnv,
-        Self::AppToggleServiceEnv,
+        Self::AppServiceEnv,
+        Self::AppSetServiceEnv,
         Self::AppSetBadge,
         Self::AppCacheSize,
         Self::AppCacheClear,
-        Self::AppGetAppearancePreference,
-        Self::AppSetAppearancePreference,
-        Self::AppWatchAppearancePreference,
-        Self::AppGetDisplayLanguagePreference,
-        Self::AppSetDisplayLanguagePreference,
-        Self::AppWatchDisplayLanguagePreference,
+        Self::AppAppearancePreferenceGet,
+        Self::AppAppearancePreferenceSet,
+        Self::AppAppearancePreferenceWatch,
+        Self::AppDisplayLanguagePreferenceGet,
+        Self::AppDisplayLanguagePreferenceSet,
+        Self::AppDisplayLanguagePreferenceWatch,
         Self::AppCheckUpdate,
+        Self::AppClaimUpdate,
         Self::AppApplyUpdate,
         Self::AppScreenshot,
         Self::AppAutostartIsEnabled,
         Self::AppAutostartEnable,
         Self::AppAutostartDisable,
-        Self::AppNotificationGetPermission,
+        Self::AppNotificationPermission,
         Self::AppNotificationRequestPermission,
         Self::AppNotificationShow,
         Self::AppNotificationCancel,
         Self::AppNotificationCancelAll,
         Self::AppBannerShow,
         Self::AppBannerDismiss,
-        Self::TraySetIcon,
-        Self::TraySetTitle,
-        Self::TraySetMenu,
+        Self::TrayUpdate,
+        Self::TrayMenuReplace,
         Self::TrayOnClick,
-        Self::TrayShow,
-        Self::TrayHide,
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
         Self::SurfaceOpenApp,
         Self::ShellOpenBuiltin,
         Self::SurfaceOpenDeclaredPlacement,
-        Self::ShellGetApp,
-        Self::ShellGetDeclared,
+        Self::SurfaceApp,
+        Self::SurfaceDeclared,
         Self::ShellSetAppDisplay,
         Self::ShellOpenHostTerminalSettings,
         Self::ShellActivate,
@@ -145,41 +141,39 @@ impl LogicRoute {
     pub(crate) const fn audience(self) -> RouteAudience {
         match self {
             Self::AppExit
-            | Self::AppGetServiceEnv
-            | Self::AppToggleServiceEnv
+            | Self::AppServiceEnv
+            | Self::AppSetServiceEnv
             | Self::AppSetBadge
             | Self::AppCacheSize
             | Self::AppCacheClear
-            | Self::AppGetAppearancePreference
-            | Self::AppSetAppearancePreference
-            | Self::AppWatchAppearancePreference
-            | Self::AppGetDisplayLanguagePreference
-            | Self::AppSetDisplayLanguagePreference
-            | Self::AppWatchDisplayLanguagePreference
+            | Self::AppAppearancePreferenceGet
+            | Self::AppAppearancePreferenceSet
+            | Self::AppAppearancePreferenceWatch
+            | Self::AppDisplayLanguagePreferenceGet
+            | Self::AppDisplayLanguagePreferenceSet
+            | Self::AppDisplayLanguagePreferenceWatch
             | Self::AppCheckUpdate
+            | Self::AppClaimUpdate
             | Self::AppApplyUpdate
             | Self::AppScreenshot
             | Self::AppAutostartIsEnabled
             | Self::AppAutostartEnable
             | Self::AppAutostartDisable
-            | Self::TraySetIcon
-            | Self::TraySetTitle
-            | Self::TraySetMenu
+            | Self::TrayUpdate
+            | Self::TrayMenuReplace
             | Self::TrayOnClick
-            | Self::TrayShow
-            | Self::TrayHide
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
             | Self::SurfaceOpenApp
             | Self::ShellOpenBuiltin
             | Self::SurfaceOpenDeclaredPlacement
-            | Self::ShellGetApp
-            | Self::ShellGetDeclared
+            | Self::SurfaceApp
+            | Self::SurfaceDeclared
             | Self::ShellSetAppDisplay
             | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
-            Self::AppNotificationGetPermission
+            Self::AppNotificationPermission
             | Self::AppNotificationRequestPermission
             | Self::AppNotificationShow
             | Self::AppNotificationCancel
@@ -207,44 +201,42 @@ impl LogicRoute {
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::AppExit => "lx.host.exit",
-            Self::AppGetServiceEnv => "lx.host.getServiceEnv",
-            Self::AppToggleServiceEnv => "lx.host.toggleServiceEnv",
+            Self::AppServiceEnv => "lx.host.serviceEnv",
+            Self::AppSetServiceEnv => "lx.host.setServiceEnv",
             Self::AppSetBadge => "lx.host.setBadge",
             Self::AppCacheSize => "lx.host.cache.size",
             Self::AppCacheClear => "lx.host.cache.clear",
-            Self::AppGetAppearancePreference => "lx.host.appearance.getPreference",
-            Self::AppSetAppearancePreference => "lx.host.appearance.setPreference",
-            Self::AppWatchAppearancePreference => "lx.host.appearance.watchPreference",
-            Self::AppGetDisplayLanguagePreference => "lx.host.displayLanguage.getPreference",
-            Self::AppSetDisplayLanguagePreference => "lx.host.displayLanguage.setPreference",
-            Self::AppWatchDisplayLanguagePreference => "lx.host.displayLanguage.watchPreference",
-            Self::AppCheckUpdate => "lx.host.checkUpdate",
-            Self::AppApplyUpdate => "lx.host.checkUpdate.apply",
+            Self::AppAppearancePreferenceGet => "lx.host.appearance.preference.get",
+            Self::AppAppearancePreferenceSet => "lx.host.appearance.preference.set",
+            Self::AppAppearancePreferenceWatch => "lx.host.appearance.preference.watch",
+            Self::AppDisplayLanguagePreferenceGet => "lx.host.displayLanguage.preference.get",
+            Self::AppDisplayLanguagePreferenceSet => "lx.host.displayLanguage.preference.set",
+            Self::AppDisplayLanguagePreferenceWatch => "lx.host.displayLanguage.preference.watch",
+            Self::AppCheckUpdate => "lx.host.update.check",
+            Self::AppClaimUpdate => "lx.host.update.claim",
+            Self::AppApplyUpdate => "lx.host.update.check.apply",
             Self::AppScreenshot => "lx.host.screenshot",
             Self::AppAutostartIsEnabled => "lx.host.autostart.isEnabled",
             Self::AppAutostartEnable => "lx.host.autostart.enable",
             Self::AppAutostartDisable => "lx.host.autostart.disable",
-            Self::AppNotificationGetPermission => "lx.host.notification.getPermission",
+            Self::AppNotificationPermission => "lx.host.notification.permission",
             Self::AppNotificationRequestPermission => "lx.host.notification.requestPermission",
             Self::AppNotificationShow => "lx.host.notification.show",
             Self::AppNotificationCancel => "lx.host.notification.cancel",
             Self::AppNotificationCancelAll => "lx.host.notification.cancelAll",
             Self::AppBannerShow => "lx.host.banner.show",
             Self::AppBannerDismiss => "lx.host.banner.dismiss",
-            Self::TraySetIcon => "lx.host.tray.setIcon",
-            Self::TraySetTitle => "lx.host.tray.setTitle",
-            Self::TraySetMenu => "lx.host.tray.setMenu",
+            Self::TrayUpdate => "lx.host.tray.update",
+            Self::TrayMenuReplace => "lx.host.tray.menu.replace",
             Self::TrayOnClick => "lx.host.tray.onClick",
-            Self::TrayShow => "lx.host.tray.show",
-            Self::TrayHide => "lx.host.tray.hide",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
             Self::SurfaceOpenApp => "lx.surface.openApp",
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
-            Self::ShellGetApp => "lx.shell.getApp",
-            Self::ShellGetDeclared => "lx.shell.getDeclared",
+            Self::SurfaceApp => "lx.surface.app",
+            Self::SurfaceDeclared => "lx.surface.declared",
             Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
             Self::ShellActivate => "lx.shell.activate",
@@ -656,7 +648,7 @@ mod tests {
         assert_eq!(
             attention,
             [
-                "lx.host.notification.getPermission",
+                "lx.host.notification.permission",
                 "lx.host.notification.requestPermission",
                 "lx.host.notification.show",
                 "lx.host.notification.cancel",
@@ -720,7 +712,7 @@ mod tests {
         let mut decoded = false;
         let denied = authorize_caller_then(
             &standard,
-            LogicRoute::AppSetDisplayLanguagePreference,
+            LogicRoute::AppDisplayLanguagePreferenceSet,
             || decoded = true,
         );
         assert!(denied.is_err());
@@ -728,7 +720,7 @@ mod tests {
 
         authorize_caller_then(
             &control,
-            LogicRoute::AppSetDisplayLanguagePreference,
+            LogicRoute::AppDisplayLanguagePreferenceSet,
             || decoded = true,
         )
         .expect("ControlApp is authorized");

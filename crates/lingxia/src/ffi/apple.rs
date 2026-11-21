@@ -113,7 +113,7 @@ mod bridge {
         /// Tray icon left-clicked (delivered to `lx.host.tray.onClick`)
         TrayClick,
         /// Tray menu item clicked; `data` is the item index (delivered to the
-        /// item's `onClick` registered by `lx.host.tray.setMenu`)
+        /// item's `onSelect` registered by `lx.host.tray.menu.replace`)
         TrayMenuClick,
         /// Stop pressed on the "an AI assistant is in control" indicator
         ControlSessionStopClick,
@@ -1300,7 +1300,7 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
         }
         self::bridge::AppUiEventType::TrayMenuClick => {
             // `data` is "<appid>:<index>" — deliver to the owning app's handler that
-            // `lx.host.tray.setMenu` registered for that index (split on the last ':' so
+            // `lx.host.tray.menu.replace` registered for that index (split on the last ':' so
             // an appid containing ':' is tolerated).
             if let Some((appid, index)) = data.rsplit_once(':')
                 && !appid.is_empty()

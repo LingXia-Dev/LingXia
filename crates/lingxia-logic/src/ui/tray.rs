@@ -2,14 +2,14 @@ use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 /// Number of tray menu items each app currently has registered, so a later
-/// `setMenu` can unregister the previous items' click handlers.
+/// `menu.replace` can unregister the previous items' click handlers.
 static MENU_COUNTS: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -23,53 +23,71 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     crate::namespace::child(ctx, &crate::app::app_namespace(ctx)?, "tray")
 }
 
-/// Replace the tray icon with a bundled resource.
-fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TraySetIcon)?;
-    let lxapp = invocation.lxapp();
-    lxapp
-        .runtime
-        .set_tray_icon(&icon)
-        .map_err(|e| js_error_from_platform_error(&e))
+fn require_tray(ctx: &JSContext, route: LogicRoute) -> JSResult<std::sync::Arc<lxapp::LxApp>> {
+    let invocation = authorization::require(ctx, route)?;
+    if !crate::capability::exposes(ctx, "host.tray") {
+        return Err(rong::HostError::new(
+            rong::error::E_NOT_SUPPORTED,
+            "this host has no tray item; check lx.supports('host.tray') first",
+        )
+        .into());
+    }
+    Ok(invocation.lxapp())
 }
 
-/// Set the text beside the icon (macOS). Empty clears it.
-fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TraySetTitle)?;
-    let lxapp = invocation.lxapp();
-    lxapp
-        .runtime
-        .set_tray_title(text.as_deref().unwrap_or(""))
-        .map_err(|e| js_error_from_platform_error(&e))
+/// `lx.host.tray.update` patch; an absent key leaves that part unchanged.
+#[derive(FromJSObject)]
+#[ts_skip]
+struct JSTrayPatch {
+    icon: Option<String>,
+    title: Option<JSValue>,
+    visible: Option<bool>,
 }
 
-/// Show the tray item.
-fn show(ctx: JSContext) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TrayShow)?;
-    let lxapp = invocation.lxapp();
-    lxapp
-        .runtime
-        .set_tray_visible(true)
-        .map_err(|e| js_error_from_platform_error(&e))
+/// Change the tray item: its icon (a bundled resource), the text beside it
+/// (macOS; `null` or `''` clears it), and whether it shows.
+///
+/// @supports host.tray
+/// @throws {E_NOT_SUPPORTED} Off the desktop.
+fn update(ctx: JSContext, patch: JSTrayPatch) -> JSResult<()> {
+    let lxapp = require_tray(&ctx, LogicRoute::TrayUpdate)?;
+    let title = match patch.title {
+        None => None,
+        Some(value) if value.is_null() || value.is_undefined() => Some(String::new()),
+        Some(value) => Some(value.to_rust::<String>().map_err(|_| {
+            crate::i18n::js_invalid_parameter_error("tray title must be a string or null")
+        })?),
+    };
+    if let Some(icon) = patch.icon {
+        lxapp
+            .runtime
+            .set_tray_icon(&icon)
+            .map_err(|e| js_error_from_platform_error(&e))?;
+    }
+    if let Some(title) = title {
+        lxapp
+            .runtime
+            .set_tray_title(&title)
+            .map_err(|e| js_error_from_platform_error(&e))?;
+    }
+    if let Some(visible) = patch.visible {
+        lxapp
+            .runtime
+            .set_tray_visible(visible)
+            .map_err(|e| js_error_from_platform_error(&e))?;
+    }
+    Ok(())
 }
 
-/// Hide the tray item.
-fn hide(ctx: JSContext) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TrayHide)?;
-    let lxapp = invocation.lxapp();
-    lxapp
-        .runtime
-        .set_tray_visible(false)
-        .map_err(|e| js_error_from_platform_error(&e))
-}
-
-/// Run `handler` on a left-click of the tray icon. While any handler is
+/// Run `callback` on a left-click of the tray icon. While any handler is
 /// registered, the tray's declared action does not run. Returns an unsubscribe function.
+///
+/// @supports host.tray
+/// @throws {E_NOT_SUPPORTED} Off the desktop.
 fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
     let scope = ctx.clone();
     lxapp::lx::subscribe(&scope, options.0, move || {
-        let invocation = authorization::require(&ctx, LogicRoute::TrayOnClick)?;
-        let lxapp = invocation.lxapp();
+        let lxapp = require_tray(&ctx, LogicRoute::TrayOnClick)?;
         let token = register_app_handler(&ctx, "lx.host.tray.click", handler)?;
         if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
             let _ = lxapp.runtime.set_tray_click_intercept(true);
@@ -91,10 +109,12 @@ fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSRe
     })
 }
 
-/// Replace the tray's dropdown menu. A picked item runs its `onClick`.
-fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TraySetMenu)?;
-    let lxapp = invocation.lxapp();
+/// Replace the tray's dropdown menu. A picked item runs its `onSelect`.
+///
+/// @supports host.tray
+/// @throws {E_NOT_SUPPORTED} Off the desktop.
+fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
+    let lxapp = require_tray(&ctx, LogicRoute::TrayMenuReplace)?;
     let appid = lxapp.appid.clone();
 
     // Drop the previous menu's per-index click handlers.
@@ -112,11 +132,12 @@ fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
             continue;
         }
         let label = item.get::<_, String>("label").unwrap_or_default();
-        let enabled = item.get::<_, bool>("enabled").unwrap_or(true);
+        // Natives take `enabled`.
+        let enabled = !item.get::<_, bool>("disabled").unwrap_or(false);
         let checked = item.get::<_, bool>("checked").unwrap_or(false);
         specs.push(json!({ "label": label, "enabled": enabled, "checked": checked }));
-        if let Ok(on_click) = item.get::<_, JSFunc>("onClick") {
-            register_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), on_click)?;
+        if let Ok(on_select) = item.get::<_, JSFunc>("onSelect") {
+            register_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), on_select)?;
         }
     }
 
@@ -133,7 +154,8 @@ fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_tray_property(ctx)?;
-    register_tray_api(ctx)
+    register_tray_api(ctx)?;
+    register_menu_api(ctx)
 }
 
 rong::js_api! {
@@ -143,17 +165,25 @@ rong::js_api! {
     }
 }
 
+fn menu_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &tray_namespace(ctx)?, "menu")
+}
+
 rong::js_api! {
     fn register_tray_api(ctx) {
         namespace TrayApi = tray_namespace(ctx)?;
-        fn setIcon(ts_params = "icon: string") = set_icon;
-        fn setTitle(ts_params = "text: string | null") = set_title;
-        fn setMenu(ts_params = "items: Array<TrayMenuItem | TrayMenuSeparator>") = set_menu;
+        const menu: "TrayMenuApi" = menu_namespace(ctx)?;
+        fn update(ts_params = "patch: TrayPatch") = update;
         fn onClick(
-            ts_params = "handler: () => void, options?: SignalOptions",
+            ts_params = "callback: () => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_click;
-        fn show = show;
-        fn hide = hide;
+    }
+}
+
+rong::js_api! {
+    fn register_menu_api(ctx) {
+        namespace TrayMenuApi = menu_namespace(ctx)?;
+        fn replace(ts_params = "items: readonly (TrayMenuItem | TrayMenuSeparator)[]") = replace_menu;
     }
 }

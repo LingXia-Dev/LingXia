@@ -10,10 +10,10 @@ const unsubscribeKeyUp: () => void = lx.device.onKeyUp(() => {});
 
 // The update manager is a listener set; each subscribe call returns its own
 // unsubscribe handle, same idiom as the rest of the surface.
-const updates = lx.app;
-const unsubscribeUpdateReady: () => void = updates.onUpdateReady(() => {});
-const secondReady: () => void = updates.onUpdateReady(() => {});
-const unsubscribeUpdateFailed: () => void = updates.onUpdateFailed(() => {});
+const updates = lx.app.update;
+const unsubscribeUpdateReady: () => void = updates.onReady(() => {});
+const secondReady: () => void = updates.onReady(() => {});
+const unsubscribeUpdateFailed: () => void = updates.onFailed(() => {});
 void secondReady;
 
 // No lx member can remove a listener it did not register.

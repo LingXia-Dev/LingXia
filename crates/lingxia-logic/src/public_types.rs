@@ -82,7 +82,7 @@ rong::js_api! {
 
         /// Canonical platform-family label shared by `lx.host.info.os`
         /// and `lx.device.info.osName`. `"unknown"` is a non-product build.
-        type HostOs = r###"'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'"###;
+        type HostOs = r###"'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unknown'"###;
 
         /// Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript
         /// navigation accepts only this name; full routes such as
@@ -187,7 +187,7 @@ rong::js_api! {
         ///
         /// Without `capabilities.notifications`, or where the platform has no
         /// local API, every call fails `E_NOT_SUPPORTED`; ask
-        /// `lx.supports('app.notification')` first.
+        /// `lx.supports('host.notification')` first.
         /// Declaring the capability never prompts; permission runs on
         /// `requestPermission()` or the first `show()` that reaches the OS.
         ///
@@ -201,7 +201,7 @@ rong::js_api! {
      * Read the current permission without prompting. `'default'` means the
      * user has not been asked yet.
      */
-    getPermission(): Promise<'granted' | 'denied' | 'default'>;
+    permission(): Promise<'granted' | 'denied' | 'default'>;
     /**
      * Ask for notification permission. Prompts where the OS has a prompt and
      * the user has not answered; otherwise reports the current setting.
@@ -263,15 +263,15 @@ rong::js_api! {
 
         /// Product-drawn desktop banner, top-right. Not an OS notification and
         /// not bound to App Link. Desktop only, in every lxapp: elsewhere every
-        /// call fails `E_NOT_SUPPORTED`, so ask `lx.supports('app.banner')` first.
+        /// call fails `E_NOT_SUPPORTED`, so ask `lx.supports('host.banner')` first.
         ///
         /// A guest lxapp's banner carries its name and icon, so
         /// it cannot pass as the product's. Its ids are its own, it may have
         /// three banners showing or waiting, each closes after 60s at most
-        /// (`timeoutMs` is capped), and the product's banners go first.
+        /// (`durationMs` is capped), and the product's banners go first.
         ///
         /// No buttons: an informational card that auto-dismisses (5s unless
-        /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
+        /// `durationMs` is set). With buttons: a gate that waits for a choice,
         /// dismiss, timeout, or replace. User outcomes resolve; presentation
         /// failures reject.
         type BannerApi = r###"{
@@ -284,7 +284,7 @@ rong::js_api! {
         /** Text below the title. */
         message?: string;
         /** Buttons; with any, the banner waits for a choice instead of closing by itself. */
-        actions?: Array<{
+        actions?: ReadonlyArray<{
             /** What `action` reports when this button is picked. */
             id: string;
             /** Button text. */
@@ -301,7 +301,7 @@ rong::js_api! {
          * Close after this many milliseconds; a guest's banners close after 60000 at most.
          * @default 5000 without buttons; with buttons, it waits for a choice
          */
-        timeoutMs?: number;
+        durationMs?: number;
         /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
         background?: 'system' | 'light' | 'dark' | string;
     }): Promise<
@@ -318,7 +318,7 @@ rong::js_api! {
             status: 'canceled';
             /** The banner's replace key. */
             id: string;
-            /** Closed by the person, by `timeoutMs`, or by a banner with the same `id`. */
+            /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
             reason: 'dismissed' | 'timeout' | 'replaced';
         }
     >;
@@ -332,7 +332,7 @@ rong::js_api! {
         /// `E_NOT_SUPPORTED`; ask first:
         ///
         /// ```ts
-        /// if (lx.supports('app.autostart')) {
+        /// if (lx.supports('host.autostart')) {
         ///   // render the "Launch at startup" toggle
         /// }
         /// ```
@@ -343,7 +343,7 @@ rong::js_api! {
         /// is called, so the decision stays with the user (typically a settings-page
         /// toggle, default off).
         ///
-        /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+        /// Host-app-level capability: like `update.check` and `screenshot`, the methods
         /// are available only to the native-assigned Control app; other lxapps receive
         /// a permission error.
         type AutostartApi = r###"{
@@ -385,12 +385,12 @@ rong::js_api! {
         /** What happened to the WebView's own cache. */
         webview: 'cleared' | 'unsupported' | 'failed';
         /** Categories that could not be cleared. */
-        failures: string[];
+        failures: readonly string[];
     }>;
 }"###;
         type TerminalFontSettings = r###"{
     /** Ordered candidates; the first installed monospaced family wins. */
-    family: string[];
+    family: readonly string[];
     /**
      * Font size in points.
      * @default 13
@@ -430,7 +430,7 @@ rong::js_api! {
 
         type TerminalSettingsWarning = r###"{
     /** What is wrong: the user's settings file does not parse, or names a scheme that does not exist. */
-    code: 'invalidUserFile' | 'missingColorScheme';
+    code: 'invalid_user_file' | 'missing_color_scheme';
     /** A sentence for a person. */
     message: string;
 }"###;
@@ -455,13 +455,13 @@ rong::js_api! {
             /** The family drawn. */
             family: string;
             /** Requested families that are not installed. */
-            missing: string[];
+            missing: readonly string[];
             /** None of the requested families is installed, so a system monospace font is drawn. */
             fellBack: boolean;
         };
     };
     /** Problems found while reading the settings; they never block it. */
-    warnings: TerminalSettingsWarning[];
+    warnings: readonly TerminalSettingsWarning[];
 }"###;
 
         type TerminalColorScheme = r###"{
@@ -515,7 +515,7 @@ rong::js_api! {
     /** The name settings refer to it by. */
     name: string;
     /** Shipped with the product, or imported by the user. */
-    source: 'builtIn' | 'imported';
+    source: 'built_in' | 'imported';
     /** Its colors. */
     scheme: TerminalColorScheme;
 }"###;
@@ -543,12 +543,18 @@ rong::js_api! {
         type TerminalSettingsApi = r###"{
     /** The settings now: defaults, the user's overrides, and what is in effect. */
     get(): Promise<TerminalSettingsSnapshot>;
-    /** Save the patched fields; rejects when the saved settings moved past `ifRevision`. */
+    /**
+     * Save the patched fields.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     */
     update(patch: TerminalSettingsPatch & {
         /** The `revision` the patch was made against. */
         ifRevision: number;
     }): Promise<TerminalSettingsSnapshot>;
-    /** Drop the user's overrides; rejects when the saved settings moved past `ifRevision`. */
+    /**
+     * Drop the user's overrides.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     */
     reset(options: {
         /** The `revision` the reset was decided against. */
         ifRevision: number;
@@ -631,20 +637,22 @@ rong::js_api! {
      */
     watch(callback: (resolved: ResolvedAppearance) => void, options?: SignalOptions): () => void;
     /** What the user chose for the whole product. Control app only. */
-    getPreference(): AppearancePreference;
-    /**
-     * Pin the product to `'light'` or `'dark'`, or follow the system with
-     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
-     * Control app only.
-     */
-    setPreference(preference: AppearancePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
-     * current value; that first callback runs synchronously, before
-     * `watchPreference` returns. Control app only.
-     */
-    watchPreference(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
+    readonly preference: {
+        /** The choice now. */
+        get(): AppearancePreference;
+        /**
+         * Pin the product to `'light'` or `'dark'`, or follow the system with
+         * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+         */
+        set(preference: AppearancePreference): Promise<void>;
+        /**
+         * Follow the choice, not what it resolves to: a system flip under `'auto'`
+         * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
+         * current value; that first callback runs synchronously, before
+         * `watch` returns.
+         */
+        watch(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
+    };
 }"###;
         /// What the product's language is set to: `'auto'` follows the system,
         /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
@@ -672,19 +680,19 @@ rong::js_api! {
      */
     watch(callback: (language: string) => void, options?: SignalOptions): () => void;
     /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
-    getPreference(): DisplayLanguagePreference;
-    /**
-     * Persist the product's language. Rejects a tag that is not valid BCP-47.
-     * Control app only.
-     */
-    setPreference(preference: DisplayLanguagePreference): Promise<void>;
-    /**
-     * Follow the choice, not what it resolves to: a system locale change under
-     * `'auto'` moves the language without moving the preference. Starts with
-     * the current value and returns an unsubscribe; that first callback runs
-     * synchronously, before `watchPreference` returns. Control app only.
-     */
-    watchPreference(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
+    readonly preference: {
+        /** The choice now. */
+        get(): DisplayLanguagePreference;
+        /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+        set(preference: DisplayLanguagePreference): Promise<void>;
+        /**
+         * Follow the choice, not what it resolves to: a system locale change under
+         * `'auto'` moves the language without moving the preference. Starts with
+         * the current value and returns an unsubscribe; that first callback runs
+         * synchronously, before `watch` returns.
+         */
+        watch(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
+    };
 }"###;
 
         type ResolvedAppearance = r###"'light' | 'dark'"###;
@@ -747,7 +755,7 @@ rong::js_api! {
     /** Visible action label. */
     label: string;
     /** Runs when the person picks it, after the menu has closed. */
-    onClick: () => void | Promise<void>;
+    onSelect: () => void | Promise<void>;
 }"###;
 
         type PickDirectoryOptions = r###"{
@@ -801,7 +809,7 @@ rong::js_api! {
 
         type PickFileOptions = r###"{
     /** Optional file filters. Empty or omitted means all file types. */
-    filters?: FileDialogFilter[];
+    filters?: readonly FileDialogFilter[];
     /**
      * Initial directory the dialog opens in.
      *
@@ -816,7 +824,7 @@ rong::js_api! {
     /** A file was picked. */
     status: 'ok';
     /** The picked file, alone in a list. */
-    files: [PickedFile];
+    files: readonly [PickedFile];
 } | CanceledResult"###;
 
         /// Result of `lx.pick.files` and `lx.pick.media`: at least one file.
@@ -826,7 +834,7 @@ rong::js_api! {
     /** At least one file was picked. */
     status: 'ok';
     /** The picked files, in the order chosen. */
-    files: [PickedFile, ...PickedFile[]];
+    files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult"###;
 
         type PickMediaOptions = r###"{
@@ -841,13 +849,13 @@ rong::js_api! {
      * camera name a single entry (macOS excepted).
      * @default ['image', 'video']
      */
-    mediaType?: ('image' | 'video')[];
+    mediaType?: readonly ('image' | 'video')[];
     /**
      * Where media comes from; with both, the person chooses first.
      * @platform Windows: no camera; `camera` is dropped from a pair and a camera-only request rejects.
      * @default ['album']
      */
-    sourceType?: ('album' | 'camera')[];
+    sourceType?: readonly ('album' | 'camera')[];
     /**
      * Camera facing.
      * @default 'back'
@@ -900,7 +908,7 @@ rong::js_api! {
     /** The clipboard was read. */
     status: 'ok';
     /** One entry per representation; empty when nothing matched. */
-    items: ClipboardItem[];
+    items: readonly ClipboardItem[];
 } | CanceledResult"###;
 
         type ClipboardItem = r###"{
@@ -1002,6 +1010,8 @@ rong::js_api! {
     ssid: string;
     /** Omit for an open network. */
     password?: string;
+    /** Aborting it stops waiting for the system, and the call rejects. */
+    signal?: AbortSignal;
 }"###;
 
         /// Where `lx.fs.copy` puts the copy.
@@ -1027,9 +1037,7 @@ rong::js_api! {
      * Restricted headers such as `Referer` are ignored by the runtime.
      */
     headers?: Record<string, string>;
-    /** Request timeout in milliseconds. */
-    timeoutMs?: number;
-    /** Optional abort signal. */
+    /** Aborting it cancels the download, and the task's `result` rejects. */
     signal?: AbortSignal;
 }"###;
 
@@ -1095,7 +1103,7 @@ rong::js_api! {
     /** Optional label shown in the native dialog (desktop only). */
     name?: string;
     /** Allowed extensions without dots, e.g. ['pdf', 'txt']. */
-    extensions: string[];
+    extensions: readonly string[];
 }"###;
 
         type GetLocationOptions = r###"{
@@ -1109,11 +1117,8 @@ rong::js_api! {
      * @default 'balanced'
      */
     accuracy?: 'balanced' | 'high';
-    /**
-     * How long to wait for a fix before failing, in milliseconds.
-     * @default 10000
-     */
-    timeoutMs?: number;
+    /** Aborting it stops waiting for a fix, and the call rejects. */
+    signal?: AbortSignal;
 }"###;
 
         /// Build-time deployment environment of the host app (`dev` | `prod`).
@@ -1123,9 +1128,9 @@ rong::js_api! {
         ///
         /// This is the immutable host build axis: package-id suffix, publish
         /// token, signed App Link entitlements, and self-update channel.
-        /// In-app App Link hosts follow {@link HostAppApi.getServiceEnv} on
+        /// In-app App Link hosts follow {@link HostAppApi.serviceEnv} on
         /// the next launch. The mutable service environment is
-        /// {@link HostAppApi.toggleServiceEnv}. It is **not** the
+        /// {@link HostAppApi.setServiceEnv}. It is **not** the
         /// lxapp publish channel (`LxAppReleaseType`:
         /// `'release' | 'draft'`). Default channel is `release` and can be
         /// overridden when opening an lxapp.
@@ -1141,12 +1146,12 @@ rong::js_api! {
     /** Package size in bytes, when the feed names it. */
     size?: number;
     /** Release notes, one entry per line. */
-    releaseNotes?: string[];
+    releaseNotes?: readonly string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
      * `direct` downloads and self-installs, the only case where
      * self-update is supported.
-     * @supports app.selfUpdate
+     * @supports host.selfUpdate
      */
     via: 'direct' | 'store';
     /**
@@ -1154,21 +1159,21 @@ rong::js_api! {
      *
      * `apply()` is single-use for this update object. It also claims custom
      * host updates for the rest of this process, same as
-     * {@link HostAppApi.claimCustomUpdate}.
+     * {@link HostUpdateApi.claim}.
      *
      * Await `task.result` when progress is not needed, or iterate the task
      * to render it.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
      * platform store listing (no package is downloaded) and resolves
-     * `storeOpened`; whether the user then updates is not reported.
+     * `store_opened`; whether the user then updates is not reported.
      */
     apply(): HostAppUpdateTask;
 }"###;
 
         type HostAppUpdateResult = r###"{
-    /** `storeOpened` via `store`: the listing opened, nothing was installed. */
-    state: 'installRequested' | 'storeOpened';
+    /** `store_opened` via `store`: the listing opened, nothing was installed. */
+    state: 'install_requested' | 'store_opened';
 }"###;
 
         /// Handle returned by `apply()`. Its progress is the package download;
@@ -1234,7 +1239,7 @@ rong::js_api! {
         /// A web page, opened in the in-app browser. `lx.openExternal` hands a URL to the system.
         type UrlTarget = r###"{
     /** An `https` URL. */
-    url: string;
+    url: string | URL;
     page?: never;
     tab?: never;
     app?: never;
@@ -1252,9 +1257,9 @@ rong::js_api! {
     /** `'none'` whenever `isConnected` is false. */
     networkType: NetworkType;
     /** The primary IPv4 address, at most one; empty when not connected. */
-    ipv4: string[];
+    ipv4: readonly string[];
     /** The primary IPv6 address, at most one; empty when not connected. */
-    ipv6: string[];
+    ipv6: readonly string[];
 }"###;
 
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
@@ -1278,9 +1283,9 @@ rong::js_api! {
     closeButton?: boolean;
     /**
      * Whether a tap outside closes it.
-     * @default 'tapOutside' for floats, 'manual' for windows
+     * @default 'tap_outside' for floats, 'manual' for windows
      */
-    dismiss?: 'tapOutside' | 'manual';
+    dismiss?: 'tap_outside' | 'manual';
     /**
      * Block interaction with content below.
      * @default false
@@ -1397,7 +1402,7 @@ rong::js_api! {
     /**
      * Preview list. Supports images, videos, or a mixed queue.
      */
-    sources: PreviewMediaSource[];
+    sources: readonly PreviewMediaSource[];
     /**
      * Initial item index in `sources`.
      * Must be an integer.
@@ -1524,7 +1529,7 @@ rong::js_api! {
      */
     onlyFromCamera?: boolean;
     /** Symbologies to read; every one when absent. */
-    formats?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
+    formats?: readonly ('bar_code' | 'qr_code' | 'datamatrix' | 'pdf417')[];
 }"###;
 
         /// Result of `lx.pick.code`. `format` is the symbology that was read.
@@ -1533,7 +1538,7 @@ rong::js_api! {
     status: 'ok';
     /** Its decoded text. */
     value: string;
-    /** The symbology, e.g. `qrCode`. */
+    /** The symbology, in snake_case, e.g. `qr_code`. */
     format: string;
 } | CanceledResult"###;
 
@@ -1691,6 +1696,8 @@ true
      * @default 'center'
      */
     position?: 'top' | 'center' | 'bottom';
+    /** Aborting it dismisses the toast. */
+    signal?: AbortSignal;
 }"###;
 
         /// Asynchronous persistent key-value storage backed by the lxapp
@@ -1975,7 +1982,7 @@ true
     key?: string;
 }"###;
 
-        /// Which instance `lx.shell.getDeclared` looks up.
+        /// Which instance `lx.surface.declared` looks up.
         type GetDeclaredOptions = r###"{
     /** The instance key it was opened with; the unkeyed instance when absent. */
     key?: string;
@@ -1989,7 +1996,7 @@ true
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
-     * `lx.shell.getDeclared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
+     * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
      * without instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
@@ -2056,12 +2063,13 @@ true
      * Open one of this lxapp's pages as a float or a window. Returns at once;
      * await `.opened` to wait for the page.
      * @throws {E_INVALID_ARG} Malformed options.
+     * @supports surface.window
      * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
     /** Open external content in the in-app browser. */
-    openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
+    openUrl(url: string | URL, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
      * Open another lxapp in main or a companion slot, focus it if it is open,
      * or move it to the role `as` names. Control app only.
@@ -2078,9 +2086,19 @@ true
     /**
      * Find one of this lxapp's own live pages or browser tabs by the key passed
      * to `openPage` / `openUrl`. Declared surfaces and other lxapps are found
-     * with `lx.shell.getDeclared` and `lx.shell.getApp`.
+     * with `lx.surface.declared` and `lx.surface.app`.
      */
     get(key: string): PageSurface | TabSurface | undefined;
+    /**
+     * The handle of an lxapp live as a surface of its own, declared or not;
+     * `undefined` when it is not. Control app only.
+     */
+    app(appId: string): AppSurface | undefined;
+    /**
+     * The handle of a live declared surface, or of its keyed instance, the same
+     * object on every call; `undefined` when it is not live. Control app only.
+     */
+    declared(id: string, options?: GetDeclaredOptions): DeclaredSurface | AppSurface | undefined;
 }"###;
 
         type SurfaceCloseReason = r###"'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
@@ -2131,31 +2149,36 @@ true
 
         type SetBadgeOptions = r###"{
     /**
-     * Where to paint: `auto` is every product-owned surface; `appIcon` or `tray` names one.
+     * Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.
      * @default 'auto'
      */
-    surface?: 'auto' | 'appIcon' | 'tray';
+    surface?: 'auto' | 'app_icon' | 'tray';
 }"###;
 
         type SetBadgeResult = r###"{
-    /** Whether any surface now shows the badge. */
+    /** Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item. */
     painted: boolean;
-    /** The platform has no surface of the requested kind. Absent when one exists but declined, such as a hidden tray item. */
-    reason?: 'no_surface';
 }"###;
 
         type TrayMenuItem = r###"{
     /** Text shown. */
     label: string;
-    /** Invoked when this item is clicked. */
-    onClick?: () => void;
-    /**
-     * False greys it out.
-     * @default true
-     */
-    enabled?: boolean;
+    /** Runs when the person picks this item. */
+    onSelect?: () => void;
+    /** Greys it out. */
+    disabled?: boolean;
     /** Draw a check mark. */
     checked?: boolean;
+}"###;
+
+        /// What `lx.host.tray.update` changes; an absent key is left as it is.
+        type TrayPatch = r###"{
+    /** A bundled resource path. */
+    icon?: string;
+    /** Text beside the icon (macOS); `null` or `''` clears it. */
+    title?: string | null;
+    /** Show or hide the item. */
+    visible?: boolean;
 }"###;
 
         type TrayMenuSeparator = r###"{
@@ -2219,15 +2242,13 @@ true
      * carries the part boundary.
      */
     headers?: Record<string, string>;
-    /** Request timeout in milliseconds. */
-    timeoutMs?: number;
     /**
      * The file's MIME type: the file part's type under `multipart`, the
      * request's `Content-Type` under `raw`.
      * @default 'application/octet-stream' under `raw`
      */
     type?: string;
-    /** Optional abort signal. */
+    /** Aborting it cancels the upload, and the task's `result` rejects. */
     signal?: AbortSignal;
 } & (
     | {
@@ -2397,6 +2418,10 @@ true
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxAppApi = "globalThis.LxAppApi";
+        /// This lxapp's own updates: a newer bundle downloads in the background.
+        type LxAppUpdateApi = "globalThis.LxAppUpdateApi";
+        /// The actions this lxapp adds to the host's More menu.
+        type MoreActionsApi = "globalThis.MoreActionsApi";
         type NavApi = "globalThis.NavApi";
         type DeviceApi = "globalThis.DeviceApi";
         type NetworkApi = "globalThis.NetworkApi";
@@ -2409,6 +2434,10 @@ true
         /// `lingxia.yaml` (`tray:`). Desktop only: on mobile every method is a
         /// no-op and never throws. Control app only; a guest gets a permission error.
         type TrayApi = "globalThis.TrayApi";
+        /// The tray item's dropdown menu.
+        type TrayMenuApi = "globalThis.TrayMenuApi";
+        /// Check for a newer host app and take over the update flow. Control app only.
+        type HostUpdateApi = "globalThis.HostUpdateApi";
         type UiApi = "globalThis.UiApi";
 
         /// The product's desktop shell. Changes are Control app only; other
@@ -2431,7 +2460,7 @@ true
         type ShellSidebarActionPlacement = r###"'header' | 'footer'"###;
 
         /// One app-declared shell sidebar action. It is a stateless command, not a
-        /// selectable navigation item: the shell invokes `onActivate` once and
+        /// selectable navigation item: the shell invokes `onSelect` once and
         /// does not infer a target or active state.
         ///
         /// `value` is footer-only, so a header action with one does not type-check.
@@ -2486,13 +2515,13 @@ true
      * Called once for each enabled mouse, keyboard, accessibility, shortcut, or
      * automation activation. Explicitly open or navigate to the desired content.
      */
-    onActivate: () => void;
+    onSelect: () => void;
 }"###;
 
         /// Mutable presentation fields for an existing sidebar action. The patch
         /// must contain at least one field. A key that is present is set; a key
         /// that is absent is left unchanged. Use `replace` to change `placement`
-        /// or `onActivate`.
+        /// or `onSelect`.
         type ShellSidebarActionUpdate = r###"{
     /** Replacement local icon, with the same path rules as registration. */
     icon?: string;

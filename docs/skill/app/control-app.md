@@ -23,10 +23,10 @@ separate from class: see [Permissions](../native/permissions.md).
 
 ```ts
 if (lx.app.info.role !== 'control') return; // offer nothing that needs it
-await lx.host.appearance.setPreference('dark');
+await lx.host.appearance.preference.set('dark');
 ```
 
-`role` is `'control'`, `'control-surface'` or `'guest'`. Control-only members
+`role` is `'control'`, `'control_surface'` or `'guest'`. Control-only members
 are present for every lxapp and refuse a guest at the call.
 
 ## Control-app-only calls
@@ -36,14 +36,13 @@ These act on the product, not on the calling lxapp:
 - `lx.host.exit()`
 - `lx.host.setBadge(...)` and `lx.host.tray.*` ([Badges](../lxapp/lx-api.md#badges))
 - `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
-- `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`
-  — the host app, not your bundle (that is `lx.app.onUpdateReady`)
+- `lx.host.update.*`, `lx.host.screenshot()`
+  — the host app, not your bundle (that is `lx.app.update.onReady`)
 - `lx.host.autostart.*`
-- `lx.host.displayLanguage` / `.appearance` `getPreference`, `setPreference`,
-  `watchPreference`
+- `lx.host.displayLanguage.preference` / `lx.host.appearance.preference`
   ([Product settings](../lxapp/lx-api.md#product-settings))
-- `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`, and `getApp` /
-  `getDeclared` to find a live app or declared surface
+- `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`
+- `lx.surface.app(appId)` / `lx.surface.declared(id)` to find a live app or declared surface
 - `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
   `edge`: other lxapps are refused at run time
 

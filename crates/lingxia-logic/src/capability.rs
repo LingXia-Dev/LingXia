@@ -32,6 +32,11 @@ enum Predicate {
     MediaCapture,
     Window,
     FullChrome,
+    Tray,
+    Badge,
+    Haptics,
+    PickDirectory,
+    PickCamera,
 }
 
 fn registry() -> &'static Result<Vec<FeatureEntry>, String> {
@@ -149,6 +154,27 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
             Predicate::MediaCapture => lingxia_app_context::capability::media_capture(),
             Predicate::Window => crate::surface::window_placement_available(),
             Predicate::FullChrome => crate::surface::window_full_chrome_available(),
+            Predicate::Tray => cfg!(any(target_os = "macos", target_os = "windows")),
+            Predicate::Badge => {
+                let surfaces = lingxia_platform::badge_surfaces();
+                surfaces.app_icon || surfaces.tray
+            }
+            Predicate::Haptics => {
+                cfg!(any(
+                    target_os = "android",
+                    target_os = "ios",
+                    target_env = "ohos"
+                ))
+            }
+            // Android and HarmonyOS phones have no system folder picker.
+            Predicate::PickDirectory => {
+                cfg!(any(
+                    target_os = "macos",
+                    target_os = "windows",
+                    target_os = "ios"
+                ))
+            }
+            Predicate::PickCamera => !cfg!(target_os = "windows"),
         }
     })
     .map_err(js_internal_error)?;
@@ -306,7 +332,7 @@ mod tests {
         let entries = registry().as_ref().unwrap();
         let supported = resolve(entries, |predicate| predicate != Predicate::Window).unwrap();
         assert!(!supported.contains("surface.window.fullChrome"));
-        assert!(supported.contains("app.notification"));
+        assert!(supported.contains("host.notification"));
         let without_browser =
             resolve(entries, |predicate| predicate != Predicate::Browser).unwrap();
         assert!(!without_browser.contains("app.browser"));
@@ -330,7 +356,10 @@ mod tests {
             predicate == Predicate::Terminal
         })
         .unwrap();
-        assert_eq!(snapshot.into_iter().collect::<Vec<_>>(), vec!["terminal"]);
+        assert_eq!(
+            snapshot.into_iter().collect::<Vec<_>>(),
+            vec!["host.terminal"]
+        );
     }
 
     #[test]

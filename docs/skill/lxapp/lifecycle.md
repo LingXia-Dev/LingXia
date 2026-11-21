@@ -71,7 +71,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   target: cold, it runs after `onLaunch` settles; warm, before `onShow`
   (`reason: 'switch_back'`). No other hook sees the link.
 - **`onLaunch` runs once per Logic start.** Restarts start Logic again:
-  - `lx.app.applyUpdate()` closes the session (`onHide`, `close`) and opens
+  - `lx.app.update.apply()` closes the session (`onHide`, `close`) and opens
     a new one: `onLaunch`, `onShow` (`open`), then the initial page's `onLoad`.
   - A dev or code reload, or a device switch in the Runner, keeps the window
     but starts fresh Logic: `onLaunch`, then `onShow` (`open`) if the lxapp is

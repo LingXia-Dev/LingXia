@@ -17,8 +17,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-const REVISION_CONFLICT: &str = "E_TERMINAL_REVISION_CONFLICT";
-
 type ChangeListeners = Rc<RefCell<Vec<Option<JSFunc>>>>;
 
 #[derive(FromJSObject)]
@@ -190,10 +188,11 @@ fn mutation_error(error: MutationError) -> RongJSError {
     match error {
         MutationError::Config(error) => config_error(error),
         MutationError::RevisionConflict { expected, actual } => HostError::new(
-            REVISION_CONFLICT,
+            rong::error::E_INVALID_STATE,
             "terminal settings changed since they were read",
         )
         .with_data(rong::err_data!({
+            reason: ("revision_conflict"),
             expectedRevision: (expected),
             actualRevision: (actual)
         }))
@@ -214,13 +213,13 @@ fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
             ConfigError::Io(error) => format!("User terminal settings could not be read: {error}"),
         };
         warnings.push(serde_json::json!({
-            "code": "invalidUserFile",
+            "code": "invalid_user_file",
             "message": message,
         }));
     }
     if !scheme_exists {
         warnings.push(serde_json::json!({
-            "code": "missingColorScheme",
+            "code": "missing_color_scheme",
             "message": format!("Color scheme '{selected}' is not installed"),
         }));
     }
@@ -595,7 +594,7 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(ctx)?;
     let app = invocation.lxapp();
-    if !crate::capability::exposes(ctx, "terminal") {
+    if !crate::capability::exposes(ctx, "host.terminal") {
         return crate::app::unsupported_terminal(ctx);
     }
 

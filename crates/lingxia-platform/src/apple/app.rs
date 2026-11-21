@@ -196,7 +196,7 @@ impl AppRuntime for Platform {
 
     fn set_tray_badge(&self, text: &str) -> Result<bool, PlatformError> {
         // False is "no visible status item", not a failure: a declared tray
-        // stays hidden until `lx.host.tray.show()`.
+        // stays hidden until `lx.host.tray.update({ visible: true })`.
         Ok(ffi::set_tray_badge(text))
     }
 

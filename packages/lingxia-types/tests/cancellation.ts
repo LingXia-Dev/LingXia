@@ -23,10 +23,10 @@ async function checkedResultsNarrow(): Promise<string> {
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.pick.file();
-  const only: [PickedFile] | null = (file.status === 'canceled') ? null : file.files;
+  const only: readonly [PickedFile] | null = (file.status === 'canceled') ? null : file.files;
   const files = await lx.pick.files();
   const paths: string[] = (files.status === 'canceled') ? [] : files.files.map(f => f.path);
-  const nonEmpty: [PickedFile, ...PickedFile[]] | null = (files.status === 'canceled') ? null : files.files;
+  const nonEmpty: readonly [PickedFile, ...PickedFile[]] | null = (files.status === 'canceled') ? null : files.files;
 
   const directory = await lx.pick.directory();
   const directoryPath: string = (directory.status === 'canceled') ? "" : directory.directory.path;

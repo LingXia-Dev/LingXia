@@ -110,7 +110,7 @@ pub(crate) async fn await_pending_view_call(
 ) -> Result<Value, LxAppError> {
     match time::timeout(timeout, pending.rx).await {
         Ok(Ok(result)) => result.map_err(|rpc_err| LxAppError::RongJSHost {
-            code: rpc_err.code,
+            code: lx_error_code(&rpc_err.code).to_string(),
             message: rpc_err
                 .message
                 .unwrap_or_else(|| "View call failed".to_string()),
@@ -129,6 +129,20 @@ pub(crate) async fn await_pending_view_call(
                 BRIDGE_TIMEOUT, timeout
             )))
         }
+    }
+}
+
+/// A View reply's code as one `lx` callers can branch on; the View keeps its own names.
+fn lx_error_code(code: &str) -> &'static str {
+    match code {
+        "E_INVALID_ARG" | "E_INVALID_ARGUMENT" | "E_INVALID_PARAMETER" => "E_INVALID_ARG",
+        "E_NOT_SUPPORTED" | "E_UNSUPPORTED" => "E_NOT_SUPPORTED",
+        "E_NOT_FOUND" => "E_NOT_FOUND",
+        "E_INVALID_STATE" => "E_INVALID_STATE",
+        "E_TIMEOUT" => "E_TIMEOUT",
+        "E_ABORT" => "E_ABORT",
+        "E_PERMISSION_DENIED" => "E_PERMISSION_DENIED",
+        _ => "E_INTERNAL",
     }
 }
 
@@ -267,7 +281,7 @@ mod tests {
         };
 
         tx.send(Err(RpcError {
-            code: "E_VIEW".to_string(),
+            code: "E_UNSUPPORTED".to_string(),
             message: Some("view failed".to_string()),
             data: Some(serde_json::json!({ "retryable": false })),
         }))
@@ -283,7 +297,7 @@ mod tests {
                 message,
                 data,
             } => {
-                assert_eq!(code, "E_VIEW");
+                assert_eq!(code, "E_NOT_SUPPORTED");
                 assert_eq!(message, "view failed");
                 assert_eq!(data, Some(serde_json::json!({ "retryable": false })));
             }

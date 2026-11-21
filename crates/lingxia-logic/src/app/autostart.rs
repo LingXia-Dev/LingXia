@@ -6,7 +6,7 @@ use rong::{HostError, JSContext, JSFunc, JSObject, JSResult};
 /// `lx.host.autostart` — launch-at-startup control, when the host declared the
 /// `autostart` capability; otherwise every call fails `E_NOT_SUPPORTED`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::exposes(ctx, "app.autostart") {
+    if !crate::capability::exposes(ctx, "host.autostart") {
         return super::unsupported_autostart(ctx, app);
     }
     let autostart = JSObject::new(ctx);

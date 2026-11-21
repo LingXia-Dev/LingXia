@@ -64,14 +64,29 @@ impl AppUpdateIteratorState {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    register_api(ctx)
+    register_api(ctx)?;
+    register_update_api(ctx)
+}
+
+fn update_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &super::app_namespace(ctx)?, "update")
 }
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("host")?;
-        fn checkUpdate(ts_return = "Promise<HostAppUpdateInfo | null>") = check_app_update;
-        fn claimCustomUpdate(ts_return = "void") = claim_custom_update;
+        namespace HostAppApi = super::app_namespace(ctx)?;
+        const update: "HostUpdateApi" = update_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_update_api(ctx) {
+        namespace HostUpdateApi = update_namespace(ctx)?;
+        fn check(
+            ts_params = "options?: SignalOptions",
+            ts_return = "Promise<HostAppUpdateInfo | null>"
+        ) = check_app_update;
+        fn claim(ts_return = "void") = claim_custom_update;
     }
 }
 
@@ -79,18 +94,25 @@ rong::js_api! {
 ///
 /// This host-level capability is restricted to the Control app. A successful
 /// check does **not** take over the built-in auto-flow — that is
-/// `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
+/// `claim()` or the result's `apply()`. Abort `signal` to stop waiting. Permission denial or a failed
 /// check claims nothing. Incompatible updates are hidden as
 /// `null`. Store-channel hosts still surface a newer feed version;
 /// `apply()` opens the store listing instead of downloading.
-async fn check_app_update(ctx: JSContext) -> JSResult<JSValue> {
+async fn check_app_update(
+    ctx: JSContext,
+    options: rong::function::Optional<crate::task_object::SignalOptions>,
+) -> JSResult<JSValue> {
     let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
     let lxapp = invocation.lxapp();
+    let signal = options.0.and_then(|options| options.signal);
 
-    let update = host_update_service_from(&lxapp)
-        .check()
-        .await
-        .map_err(js_error_from_update_error)?;
+    let check = async {
+        host_update_service_from(&lxapp)
+            .check()
+            .await
+            .map_err(js_error_from_update_error)
+    };
+    let update = crate::task_object::abortable(&ctx, signal, check).await?;
     let Some(update) = update else {
         return Ok(JSValue::null(&ctx));
     };
@@ -109,7 +131,7 @@ async fn check_app_update(ctx: JSContext) -> JSResult<JSValue> {
 /// including after the calling page unloads. Does not cancel an already-started
 /// update task. Later failed checks do not undo a claim already made.
 fn claim_custom_update(ctx: JSContext) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
+    authorization::require(&ctx, LogicRoute::AppClaimUpdate)?;
     lingxia_service::update::claim_custom_host_update();
     Ok(())
 }
@@ -298,11 +320,11 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
     match event {
         AppUpdateEvent::InstallRequested { .. } => {
             AppUpdateCompletion::Success(JSAppUpdateResult {
-                state: "installRequested".to_string(),
+                state: "install_requested".to_string(),
             })
         }
         AppUpdateEvent::StoreOpened { .. } => AppUpdateCompletion::Success(JSAppUpdateResult {
-            state: "storeOpened".to_string(),
+            state: "store_opened".to_string(),
         }),
         AppUpdateEvent::Failed { stage, error } => AppUpdateCompletion::Failed {
             stage: *stage,
@@ -353,14 +375,14 @@ fn js_event_from_update_event(event: AppUpdateEvent) -> JSAppUpdateEvent {
             error: None,
         },
         AppUpdateEvent::InstallRequested { .. } => JSAppUpdateEvent {
-            state: "installRequested".to_string(),
+            state: "install_requested".to_string(),
             stage: None,
             downloaded_bytes: None,
             progress: None,
             error: None,
         },
         AppUpdateEvent::StoreOpened { .. } => JSAppUpdateEvent {
-            state: "storeOpened".to_string(),
+            state: "store_opened".to_string(),
             stage: None,
             downloaded_bytes: None,
             progress: None,

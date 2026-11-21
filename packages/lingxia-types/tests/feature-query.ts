@@ -5,7 +5,7 @@ declare const feature: LxFeature;
 const known: boolean = lx.supports(feature);
 const window: boolean = lx.supports('surface.window');
 const fullChrome: boolean = lx.supports('surface.window.fullChrome');
-const notifications: boolean = lx.supports('app.notification');
+const notifications: boolean = lx.supports('host.notification');
 const control: boolean = lx.app.info.role === 'control';
 const docked = (env: PageEnvContext): boolean => env.canDock;
 // @ts-expect-error unknown strings are runtime-compatible but statically checked
@@ -29,7 +29,7 @@ lx.supports(42);
 
 // A capability namespace is present on every host, guarded or not; without the
 // capability its calls reject `E_NOT_SUPPORTED`, so no `?.` is needed.
-if (lx.supports('app.autostart')) {
+if (lx.supports('host.autostart')) {
   const guarded: AutostartApi = lx.host.autostart;
   void guarded.enable();
 }
@@ -41,7 +41,7 @@ void lx.host.autostart.disable();
 // The Windows terminal controls exist only on Windows, so they stay possibly absent.
 // @ts-expect-error absent off Windows, guarded by the terminal feature or not
 const windowsAlways: WindowsTerminalApi = lx.host.terminal.windows;
-if (lx.supports('terminal')) {
+if (lx.supports('host.terminal')) {
   // @ts-expect-error the terminal feature does not imply Windows
   const windowsGuarded: WindowsTerminalApi = lx.host.terminal.windows;
   void windowsGuarded;

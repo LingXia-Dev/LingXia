@@ -31,7 +31,7 @@ interface SettingsRoundTrip {
   defaultSize: number;
   hasOverrides: boolean;
   updated: { revision: number; size: number };
-  stale: { code?: string } | null;
+  stale: { code?: string; reason?: string } | null;
   reset: { revision: number; size: number; fontOverride: unknown };
   fonts: { count: number; monospace: boolean; family: string };
   schemes: { count: number; first: string; background: string };
@@ -102,11 +102,11 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     // blank document a WebView shows before its first navigation commits.
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
     await settings.view.css('#type-heading').first().waitFor({ state: 'visible', timeout: 30_000 });
-    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.getPreference());
+    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.preference.get());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
-          await lx.host.displayLanguage.setPreference(language);
+          await lx.host.displayLanguage.preference.set(language);
         }, language);
         await eventually(
           // The bridge also writes the HTML language tag. Check translated
@@ -121,7 +121,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {
-        await lx.host.displayLanguage.setPreference(preference);
+        await lx.host.displayLanguage.preference.set(preference);
       }, preference);
     }
   });
@@ -142,7 +142,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     try {
       await t.settings.update({ font: { size: nextSize }, ifRevision: first.revision });
     } catch (error) {
-      stale = { code: (error as { code?: string } | null)?.code ?? '' };
+      const failure = error as { code?: string; data?: { reason?: string } } | null;
+      stale = { code: failure?.code ?? '', reason: failure?.data?.reason ?? '' };
     }
 
     const reset = await t.settings.reset({ ifRevision: updated.revision, scope: 'font' });
@@ -190,7 +191,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       { describe: 'onChange to report the latest revision', timeoutMs: 10_000 },
     );
     expect(events.length).toBeGreaterThanOrEqual(1);
-    expect(result.stale?.code).toBe('E_TERMINAL_REVISION_CONFLICT');
+    expect(result.stale?.code).toBe('E_INVALID_STATE');
+    expect(result.stale?.reason).toBe('revision_conflict');
     expect(result.reset.revision).toBeGreaterThan(result.updated.revision);
     expect(result.reset.size).toBe(result.defaultSize);
     expect(result.reset.fontOverride).toBe(null);

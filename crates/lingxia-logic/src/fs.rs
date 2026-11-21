@@ -510,6 +510,7 @@ async fn run_file_picker(
 /// it resolves, including through a symlink.
 ///
 /// @platform Android, HarmonyOS phones and tablets: no system folder picker, so only a `defaultPath` in lxapp storage works.
+/// @supports pick.directory
 /// @throws {E_NOT_SUPPORTED} No system folder picker and `defaultPath` is not in lxapp storage.
 async fn pick_directory(
     ctx: JSContext,
@@ -1083,7 +1084,7 @@ fn read_managed_file(lxapp: &LxApp, raw_path: &str, api_name: &'static str) -> J
 impl JSLxFile {
     #[js_method(constructor, private)]
     fn _ctor() -> JSResult<()> {
-        Err(HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.fs.file(path)").into())
+        Err(HostError::new(rong::error::E_TYPE, "Use lx.fs.file(path)").into())
     }
 
     /// The path supplied to `lx.fs.file`.

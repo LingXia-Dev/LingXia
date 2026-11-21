@@ -237,7 +237,7 @@ impl GpuViewRequest {
             params: serde_json::Value,
         ) -> Result<T, (&'static str, String)> {
             serde_json::from_value(params)
-                .map_err(|error| ("E_INVALID_ARGUMENT", format!("{method}: {error}")))
+                .map_err(|error| ("E_INVALID_ARG", format!("{method}: {error}")))
         }
         Ok(match method {
             "ui.showToast" => Self::Ui(GpuUiRequest::ShowToast(fit(method, params)?)),
@@ -247,7 +247,7 @@ impl GpuViewRequest {
             "video.command" => Self::Video(fit(method, params)?),
             _ => {
                 return Err((
-                    "E_UNSUPPORTED",
+                    "E_NOT_SUPPORTED",
                     format!("{method} is not served by a GPU View"),
                 ));
             }
@@ -433,7 +433,7 @@ mod gpu_request_tests {
         );
         assert_eq!(
             GpuViewRequest::from_call("ui.unknown", None).unwrap_err().0,
-            "E_UNSUPPORTED"
+            "E_NOT_SUPPORTED"
         );
         assert_eq!(
             GpuViewRequest::from_call(
@@ -442,7 +442,7 @@ mod gpu_request_tests {
             )
             .unwrap_err()
             .0,
-            "E_INVALID_ARGUMENT"
+            "E_INVALID_ARG"
         );
     }
 
@@ -468,7 +468,7 @@ mod gpu_request_tests {
             )
             .unwrap_err()
             .0,
-            "E_INVALID_ARGUMENT"
+            "E_INVALID_ARG"
         );
     }
 }

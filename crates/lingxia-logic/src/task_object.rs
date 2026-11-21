@@ -188,6 +188,69 @@ pub(crate) fn validate_abort_signal(signal: Option<&JSObject>) -> JSResult<()> {
     Ok(())
 }
 
+/// The `{ signal }` a waiting call takes.
+#[derive(rong::FromJSObject)]
+#[ts_skip]
+pub(crate) struct SignalOptions {
+    pub(crate) signal: Option<JSObject>,
+}
+
+fn abort_error() -> rong::RongJSError {
+    rong::HostError::new(rong::error::E_ABORT, "the call was aborted").into()
+}
+
+/// Run `work` until it settles or `signal` aborts. Abort rejects `E_ABORT` and drops
+/// the wait; an already-aborted signal rejects before `work` starts.
+pub(crate) async fn abortable<T>(
+    ctx: &JSContext,
+    signal: Option<JSObject>,
+    work: impl std::future::Future<Output = JSResult<T>>,
+) -> JSResult<T> {
+    let Some(signal) = signal else {
+        return work.await;
+    };
+    validate_abort_signal(Some(&signal))?;
+    if signal.get::<_, bool>("aborted")? {
+        return Err(abort_error());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = Rc::new(std::cell::RefCell::new(Some(tx)));
+    let on_abort = JSFunc::new(ctx, move || {
+        if let Some(tx) = tx.borrow_mut().take() {
+            let _ = tx.send(());
+        }
+    })?;
+    let options = JSObject::new(ctx);
+    options.set("once", true)?;
+    let add: JSFunc = signal.get("addEventListener")?;
+    add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+    let outcome = {
+        futures::pin_mut!(work);
+        match futures::future::select(work, rx).await {
+            futures::future::Either::Left((done, _)) => done,
+            futures::future::Either::Right(_) => Err(abort_error()),
+        }
+    };
+    let remove: JSFunc = signal.get("removeEventListener")?;
+    let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    outcome
+}
+
+/// Call `dismiss` when `signal` aborts, or at once if it already has.
+pub(crate) fn on_abort(ctx: &JSContext, signal: Option<JSObject>, dismiss: JSFunc) -> JSResult<()> {
+    let Some(signal) = signal else {
+        return Ok(());
+    };
+    validate_abort_signal(Some(&signal))?;
+    if signal.get::<_, bool>("aborted")? {
+        return dismiss.call::<_, ()>(None, ());
+    }
+    let options = JSObject::new(ctx);
+    options.set("once", true)?;
+    let add: JSFunc = signal.get("addEventListener")?;
+    add.call::<_, ()>(Some(signal.clone()), ("abort", dismiss, options))
+}
+
 /// Attach external cancellation and release the listener on either terminal outcome.
 pub(crate) fn bind_abort_signal(
     ctx: &JSContext,

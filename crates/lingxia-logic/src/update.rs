@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// Identifies one `onUpdateReady`/`onUpdateFailed` registration so an
+/// Identifies one `onReady`/`onFailed` registration so an
 /// unsubscribe handle clears only its own listener.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct UpdateSlotToken(u64);
@@ -157,7 +157,7 @@ impl JSUpdateManager {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
-            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            rong::error::E_TYPE,
             err_code_message(1002),
         )
         .with_data(
@@ -276,12 +276,13 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // before app logic subscribes.
     ensure_update_handlers(ctx)?;
 
+    register_update_property(ctx)?;
     register_update_api(ctx)
 }
 
 /// Return the callback-based update manager for this lxapp's bundle. This is
 /// available to every lxapp and is distinct from the Control-app-only
-/// `lx.host.checkUpdate()`, which updates the native host app.
+/// `lx.host.update.check()`, which updates the native host app.
 fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
     ensure_update_handlers(&ctx)?;
 
@@ -314,22 +315,33 @@ fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
     Ok(instance)
 }
 
+fn update_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &crate::namespace::app(ctx)?, "update")
+}
+
+rong::js_api! {
+    fn register_update_property(ctx) {
+        namespace LxAppApi = crate::namespace::app(ctx)?;
+        const update: "LxAppUpdateApi" = update_namespace(ctx)?;
+    }
+}
+
 rong::js_api! {
     fn register_update_api(ctx) {
-        namespace LxAppApi = crate::namespace::app(ctx)?;
-        fn applyUpdate(ts_return = "void") = apply_update;
-        fn onUpdateReady(
+        namespace LxAppUpdateApi = update_namespace(ctx)?;
+        fn apply(ts_return = "void") = apply_update;
+        fn onReady(
             ts_params = "callback: (info: UpdateReadyInfo) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_update_ready;
-        fn onUpdateFailed(
+        fn onFailed(
             ts_params = "callback: (info: UpdateFailedInfo) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_update_failed;
     }
 }
 
-/// Restarts this lxapp on the update `onUpdateReady` announced.
+/// Restarts this lxapp on the update `onReady` announced.
 fn apply_update(ctx: JSContext) -> JSResult<()> {
     let manager = get_update_manager(ctx.clone())?;
     manager.borrow::<JSUpdateManager>()?.apply_update(ctx)

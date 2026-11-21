@@ -15,9 +15,9 @@ struct AppInfo {
     #[ts_type = "LxAppReleaseType"]
     release_type: String,
     /// What this lxapp may call. `control`: the product's own lxapp, admitted to
-    /// Control-only members. `control-surface`: a host-bundled settings lxapp the
+    /// Control-only members. `control_surface`: a host-bundled settings lxapp the
     /// Control app opens, admitted only to its own members. `guest`: any other.
-    #[ts_type = "'control' | 'control-surface' | 'guest'"]
+    #[ts_type = "'control' | 'control_surface' | 'guest'"]
     role: &'static str,
 }
 
@@ -32,7 +32,7 @@ fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
         release_type: info.release_type,
         role: match lxapp.app_session_class() {
             AppSessionClass::ControlApp => "control",
-            AppSessionClass::ControlSurface => "control-surface",
+            AppSessionClass::ControlSurface => "control_surface",
             AppSessionClass::StandardApp => "guest",
         },
     })

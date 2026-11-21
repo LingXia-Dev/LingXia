@@ -11,11 +11,11 @@ function moreFeedbackLabel(tag: string): string {
 }
 
 function applyMoreActions(tag = lx.host.displayLanguage.get()) {
-  lx.app.setMoreActions([
+  lx.app.moreActions.replace([
     {
       icon: 'public/chat.png',
       label: moreFeedbackLabel(tag),
-      onClick: async () => {
+      onSelect: async () => {
         try {
           await lx.surface.openPage('feedback', {
             as: 'float',
@@ -47,7 +47,7 @@ App({
       applyMoreActions(tag);
     });
 
-    lx.app.onUpdateReady(async () => {
+    lx.app.update.onReady(async () => {
       const applyNow = await lx.ui.confirm({
         title: 'Update Available',
         message: 'A new version is ready. Apply now?',
@@ -55,10 +55,10 @@ App({
         confirmText: 'Apply',
       });
       if (applyNow) {
-        lx.app.applyUpdate();
+        lx.app.update.apply();
       }
     });
-    lx.app.onUpdateFailed((info) => {
+    lx.app.update.onFailed((info) => {
       console.warn('Update failed', info);
     });
   },

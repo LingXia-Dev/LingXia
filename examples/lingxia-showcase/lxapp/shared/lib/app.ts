@@ -15,8 +15,6 @@ export const appState = {
   },
   greeting: "This is from the app's shared state",
   ipAddr: "loading",
-  /** Written by the Wi-Fi page so the flag survives navigation away and back. */
-  wifiModuleEnabled: false,
 };
 
 const ipListeners = new Set<(ip: string) => void>();

@@ -71,7 +71,7 @@
 
   function color(theme, key, fallback) { return theme.scheme[key] || fallback; }
   function sourceLabel(source) {
-    return source === "builtIn" ? tr("appearance.builtIn") : source === "imported" ? tr("appearance.imported") : source;
+    return source === "built_in" ? tr("appearance.builtIn") : source === "imported" ? tr("appearance.imported") : source;
   }
   function label(entry) {
     return entry.displayName || entry.scheme.name || entry.name.replace(/(^|-)(.)/g, function (_, lead, letter) { return (lead ? " " : "") + letter.toUpperCase(); });

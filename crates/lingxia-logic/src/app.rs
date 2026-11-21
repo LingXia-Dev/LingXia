@@ -20,8 +20,7 @@ mod update;
 /// `lx.host.displayLanguage`.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostInfo {
-    /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
-    /// `"Harmony"`. Matches the View-side `useLxHost().os` value.
+    /// Platform family, lower case.
     #[ts_type = "HostOs"]
     os: String,
     /// The product's name.
@@ -35,13 +34,25 @@ struct HostInfo {
     sdk_version: String,
 }
 
+/// `HostOs` for a platform label; the platform layer keeps product casing for the WebView bridge.
+pub(crate) fn host_os(label: &str) -> &'static str {
+    match label {
+        "iOS" => "ios",
+        "macOS" => "macos",
+        "Android" => "android",
+        "Windows" => "windows",
+        "Harmony" => "harmony",
+        _ => "unknown",
+    }
+}
+
 /// The host app's identity: OS, product name, product version, and SDK runtime
 /// version.
 fn host_info() -> JSResult<HostInfo> {
     let app_cfg =
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(HostInfo {
-        os: lingxia_platform::os_label().to_string(),
+        os: host_os(lingxia_platform::os_label()).to_string(),
         product_name: lingxia_app_context::product_name()
             .unwrap_or(app_cfg.product_name.as_str())
             .to_string(),
@@ -68,14 +79,14 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 }
 
 /// Mark the product in system chrome, such as with an unread count; `null` or
-/// `''` clears it. Control app only. Resolves whether anything was painted;
-/// `reason: 'no_surface'` where there is no such chrome, so portable code calls it unconditionally.
+/// `''` clears it. Control app only. Resolves whether anything was painted.
 ///
+/// @supports host.badge
 /// @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
 /// @platform Windows: the taskbar and the notification-area item.
 /// @platform iOS: the home-screen icon, numbers only; needs notification permission.
 /// @platform HarmonyOS: the home-screen icon.
-/// @platform Android: resolves `{ painted: false, reason: 'no_surface' }`.
+/// @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
 /// @throws {E_INVALID_ARG} Text where the platform paints numbers only.
 /// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
 async fn set_app_badge(
@@ -98,10 +109,8 @@ async fn set_app_badge(
         .into());
     }
 
-    // The platform answers "painted" as a value, so a surface that has no
-    // chrome to paint on — a macOS status item the product never showed — is
-    // reported, not raised. Only a malfunction rejects, and it does so whether
-    // the caller named a surface or took `auto`.
+    // A surface that exists but declined, such as a hidden macOS status item,
+    // resolves `painted: false`; a surface the platform lacks rejects.
     let mut painted = false;
     let mut reachable = false;
     // Off the JS thread: a platform may block, and HarmonyOS answers through a
@@ -118,11 +127,15 @@ async fn set_app_badge(
         let text = text.clone();
         painted |= blocking(move || runtime.set_tray_badge(&text)).await?;
     }
+    if !reachable {
+        return Err(rong::HostError::new(
+            rong::error::E_NOT_SUPPORTED,
+            "this platform has no badge surface of that kind; check lx.supports('host.badge') first",
+        )
+        .into());
+    }
     let result = JSObject::new(&ctx);
     result.set("painted", painted)?;
-    if !reachable {
-        result.set("reason", "no_surface")?;
-    }
     Ok(result)
 }
 
@@ -157,11 +170,13 @@ fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
     };
     match surface.as_str() {
         "auto" => Ok(BadgeSurface::Auto),
-        "appIcon" => Ok(BadgeSurface::AppIcon),
+        "app_icon" => Ok(BadgeSurface::AppIcon),
         "tray" => Ok(BadgeSurface::Tray),
         other => Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("lx.host.setBadge surface must be auto, appIcon, or tray (received {other:?})"),
+            format!(
+                "lx.host.setBadge surface must be auto, app_icon, or tray (received {other:?})"
+            ),
         )
         .into()),
     }
@@ -257,7 +272,7 @@ rong::js_api! {
 }
 
 fn unsupported_autostart(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    crate::capability::unsupported_namespace(ctx, app, "lx.host.autostart", "app.autostart")?;
+    crate::capability::unsupported_namespace(ctx, app, "lx.host.autostart", "host.autostart")?;
     Ok(())
 }
 
@@ -270,7 +285,7 @@ pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",
     ] {
-        crate::capability::unsupported_namespace(ctx, &terminal, path, "terminal")?;
+        crate::capability::unsupported_namespace(ctx, &terminal, path, "host.terminal")?;
     }
     app_namespace(ctx)?.set("terminal", terminal)?;
     Ok(())
