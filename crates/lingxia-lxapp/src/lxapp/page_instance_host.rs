@@ -445,28 +445,23 @@ impl LxApp {
     }
 
     /// Leave a stack page the way Back does: `this.close()` on a pushed page.
-    /// Only the top entry can leave; a root or a tab page never does.
+    /// Only the top entry above the root can leave.
     pub(crate) fn leave_page_instance(&self, id: &str) -> Result<(), LxAppError> {
-        let (stack, pinned) = {
+        let (position, depth, pinned) = {
             let state = self.state.lock().unwrap();
-            let stack: Vec<String> = state.page_stack.lock().unwrap().iter().cloned().collect();
+            let (position, depth) = {
+                let stack = state.page_stack.lock().unwrap();
+                (stack.iter().position(|entry| entry == id), stack.len())
+            };
             let pinned = state
                 .path_pins
                 .lock()
                 .is_ok_and(|pins| pins.values().any(|pinned| pinned == id));
-            (stack, pinned)
+            (position, depth, pinned)
         };
-        let invalid = |detail: &str| LxAppError::UnsupportedOperation(detail.to_string());
-        if pinned {
-            return Err(invalid("a tab page cannot be closed; switch tabs instead"));
-        }
-        match stack.iter().position(|entry| entry == id) {
-            None => Err(invalid("this page is not on the page stack")),
-            Some(0) => Err(invalid("the root page cannot be closed")),
-            Some(index) if index + 1 != stack.len() => Err(invalid(
-                "only the top page can close itself; a page under it cannot yet",
-            )),
-            Some(_) => self.current_page()?.navigate_back(1),
+        match leave_refusal(position, depth, pinned) {
+            Some(detail) => Err(LxAppError::UnsupportedOperation(detail.to_string())),
+            None => self.current_page()?.navigate_back(1),
         }
     }
 
@@ -1391,11 +1386,26 @@ fn plugin_page_map_contains(
     })
 }
 
+/// Why a page at `position` on a stack `depth` deep cannot close itself. A tab
+/// page pushed over the root pops like any other page.
+fn leave_refusal(position: Option<usize>, depth: usize, pinned: bool) -> Option<&'static str> {
+    match position {
+        None | Some(0) if pinned => Some("a tab page cannot be closed; switch tabs instead"),
+        None => Some("this page is not on the page stack"),
+        Some(0) => Some("the root page cannot be closed"),
+        Some(index) if index + 1 != depth => {
+            Some("only the top page can close itself; a page under it cannot yet")
+        }
+        Some(_) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
-        find_matching_page_path, isolated_page_waits_for_page_service, validate_navigation_stack,
+        find_matching_page_path, isolated_page_waits_for_page_service, leave_refusal,
+        validate_navigation_stack,
     };
     use crate::NavigationType;
 
@@ -1500,5 +1510,15 @@ mod tests {
         let error = validate_navigation_stack(&stack, None, "pages/new", NavigationType::Forward)
             .unwrap_err();
         assert_eq!(navigation_reason(error), "stack_full");
+    }
+
+    #[test]
+    fn a_tab_page_pushed_over_the_root_closes_but_not_as_the_root() {
+        assert!(leave_refusal(Some(0), 1, true).is_some_and(|why| why.contains("tab page")));
+        assert!(leave_refusal(None, 1, true).is_some_and(|why| why.contains("tab page")));
+        assert_eq!(leave_refusal(Some(1), 2, true), None);
+        assert_eq!(leave_refusal(Some(1), 2, false), None);
+        assert!(leave_refusal(Some(1), 3, true).is_some());
+        assert!(leave_refusal(Some(0), 2, false).is_some());
     }
 }
