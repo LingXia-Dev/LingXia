@@ -5,16 +5,10 @@ use crate::i18n::{
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
 use lxapp::LxApp;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, function::Optional};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-#[derive(FromJSObject)]
-#[ts_skip]
-struct JSGetImageInfoOptions {
-    path: String,
-}
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct ImageInfo {
@@ -29,22 +23,20 @@ struct ImageInfo {
     path: String,
 }
 
-#[derive(FromJSObject)]
+#[derive(FromJSObject, Default)]
 #[ts_skip]
 struct JSCompressImageOptions {
-    path: String,
     quality: Option<i32>,
-    #[js_name = "compressedWidth"]
-    compressed_width: Option<u32>,
-    #[js_name = "compressedHeight"]
-    compressed_height: Option<u32>,
+    #[js_name = "maxWidth"]
+    max_width: Option<u32>,
+    #[js_name = "maxHeight"]
+    max_height: Option<u32>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSCompressImageResult {
-    #[js_name = "uri"]
-    temp_file_path: String,
+    path: String,
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -55,23 +47,27 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace MediaApi = crate::media::media_namespace(ctx)?;
         fn imageInfo(
-            ts_params = "options: ImageInfoOptions",
+            ts_params = "path: string",
             ts_return = "Promise<ImageInfo>"
         ) = get_image_info_api;
         fn compressImage(
-            ts_params = "options: CompressImageOptions",
+            ts_params = "path: string, options?: CompressImageOptions",
             ts_return = "Promise<CompressImageResult>"
         ) = compress_image_api;
     }
 }
 
 /// Read an image's dimensions and type without decoding it into a view.
-async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> JSResult<ImageInfo> {
+///
+/// @example
+/// ```ts
+/// const { width, height } = await lx.media.imageInfo('images/cover.png');
+/// ```
+async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
-    let original_path = options.path;
-    let trimmed_path = original_path.trim();
+    let trimmed_path = path.trim();
     let resolved = lxapp
         .resolve_accessible_path(trimmed_path)
         .map_err(|err| js_error_from_lxapp_error(&err))?;
@@ -108,16 +104,23 @@ async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> J
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// Re-encode an image at a lower quality or size, writing a new managed file.
+/// Re-encode an image as JPEG at a lower quality or size, writing a new temporary file.
+///
+/// @example
+/// ```ts
+/// const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });
+/// ```
 async fn compress_image_api(
     ctx: JSContext,
-    options: JSCompressImageOptions,
+    path: String,
+    options: Optional<JSCompressImageOptions>,
 ) -> JSResult<JSCompressImageResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
+    let options = options.0.unwrap_or_default();
 
     let resolved_source = lxapp
-        .resolve_accessible_path(options.path.trim())
+        .resolve_accessible_path(path.trim())
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
@@ -126,26 +129,24 @@ async fn compress_image_api(
     let request = CompressImageRequest {
         source_uri,
         quality: clamp_quality(options.quality),
-        max_width: sanitize_dimension(options.compressed_width),
-        max_height: sanitize_dimension(options.compressed_height),
+        max_width: sanitize_dimension(options.max_width),
+        max_height: sanitize_dimension(options.max_height),
         output_path,
     };
 
-    let path = runtime
+    let output = runtime
         .compress_image(&request)
         .map_err(|e| js_error_from_platform_error(&e))?;
-    ensure_temp_output_quota(&lxapp, &path)?;
+    ensure_temp_output_quota(&lxapp, &output)?;
 
-    let uri = lxapp
-        .to_uri(&path)
+    let path = lxapp
+        .to_uri(&output)
         .ok_or_else(|| {
             js_internal_error("compressImage failed to convert output path to lx:// uri")
         })?
         .into_string();
 
-    Ok(JSCompressImageResult {
-        temp_file_path: uri,
-    })
+    Ok(JSCompressImageResult { path })
 }
 
 fn sanitize_dimension(value: Option<u32>) -> Option<u32> {

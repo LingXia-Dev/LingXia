@@ -8,7 +8,6 @@ type PageData = {
   pdfUrl?: string;
   officeUrl?: string;
   officeFileType?: string;
-  showMenu?: boolean;
   chooseFileDefaultPath?: string;
   chooseFileStatusText?: string;
   chooseFileSelectedPath?: string;
@@ -28,7 +27,6 @@ type PageActions = {
   onPdfUrlInput(event: any): void;
   onOfficeUrlInput(event: any): void;
   onOfficeFileTypeInput(event: any): void;
-  toggleShowMenu(): void;
   chooseFileFromUserCache(): void;
   openChosenFile(): void;
   openPdf(): void;
@@ -42,7 +40,6 @@ export default function FilePage() {
     onPdfUrlInput,
     onOfficeUrlInput,
     onOfficeFileTypeInput,
-    toggleShowMenu,
     chooseFileFromUserCache,
     openChosenFile,
     openPdf,
@@ -54,7 +51,6 @@ export default function FilePage() {
   const pdfUrl = data?.pdfUrl || '';
   const officeUrl = data?.officeUrl || '';
   const officeFileType = data?.officeFileType || '';
-  const showMenu = Boolean(data?.showMenu);
   const chooseFileDefaultPath = data?.chooseFileDefaultPath || '';
   const chooseFileStatusText = data?.chooseFileStatusText || 'Choose a file';
   const chooseFileSelectedPath = data?.chooseFileSelectedPath || '';
@@ -87,28 +83,6 @@ export default function FilePage() {
   return (
     <div className="min-h-screen bg-surface-100">
       <div className="px-3 pt-6 pb-12 space-y-3">
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-3 border-b border-line-100">
-            <div className="text-base text-gray-900 font-medium">Options</div>
-          </div>
-          <div className="px-4 py-3">
-            <label className="flex items-start cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showMenu}
-                onChange={() => toggleShowMenu()}
-                className="w-5 h-5 text-blue-500 dark:text-blue-400 border-line-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
-              />
-              <div className="ml-3 flex-1">
-                <div className="text-sm text-gray-900 font-medium">Show Share Button</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Only applies to PDF documents. Office documents always open with system default viewer.
-                </div>
-              </div>
-            </label>
-          </div>
-        </div>
-
         {activeDemo === 'openFile' ? (
           <>
             <div className="bg-surface rounded-lg shadow-sm">

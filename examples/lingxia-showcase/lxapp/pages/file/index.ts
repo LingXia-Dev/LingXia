@@ -206,7 +206,6 @@ export default definePage({
     pdfUrl: "https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf",
     officeUrl: "https://example-files.online-convert.com/document/docx/example.docx",
     officeFileType: "docx",
-    showMenu: true,
     chooseFileDefaultPath: "",
     chooseFileStatusText: "Choose a file",
     chooseFileSelectedPath: "",
@@ -236,9 +235,6 @@ export default definePage({
       },
       onOfficeFileTypeInput(event: NativeEvent<InputEventDetail>) {
         page.update(d => { d.officeFileType = eventDetail(event).value || ""; });
-      },
-      toggleShowMenu() {
-        page.update(d => { d.showMenu = !page.data.showMenu; });
       },
       async openPdf() {
         const url = page.data.pdfUrl?.trim();
@@ -303,12 +299,7 @@ export default definePage({
             d.pdfDownloadProgress = 95;
             d.pdfProgressText = `Downloaded to ${resultPath}, opening...`;
           });
-          await lx.openFile({
-            filePath: resultPath,
-            fileType: "pdf",
-            mode: "auto",
-            showMenu: page.data.showMenu,
-          });
+          await lx.openFile(resultPath, { mode: "auto" });
           if (runId !== pdfOpenRunId || pdfDownloadPage !== page) {
             return;
           }
@@ -403,12 +394,7 @@ export default definePage({
         }
 
         try {
-          await lx.openFile({
-            filePath,
-            fileType: page.data.chooseFileSelectedType || undefined,
-            mode: "auto",
-            showMenu: page.data.showMenu,
-          });
+          await lx.openFile(filePath, { mode: "auto" });
         } catch (error) {
           lx.ui.toast({ title: errorMessage(error, "openFile failed"), icon: "none" });
         }
@@ -444,12 +430,7 @@ export default definePage({
             overwrite: true,
           });
           page.update(d => { d.officeStatusText = `Fetched ${formatBytes(buffer.byteLength)}, opening...`; });
-          await lx.openFile({
-            filePath,
-            fileType,
-            mode: "auto",
-            showMenu: page.data.showMenu,
-          });
+          await lx.openFile(filePath, { mode: "auto" });
           page.update(d => { d.officeStatusText = `Opened ${filePath}`; });
         } catch (error) {
           page.update(d => { d.officeStatusText = errorMessage(error, "Fetch failed"); });

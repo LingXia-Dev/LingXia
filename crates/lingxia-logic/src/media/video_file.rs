@@ -9,7 +9,10 @@ use lingxia_platform::traits::media_runtime::{
 };
 use lingxia_service::storage;
 use lxapp::LxApp;
-use rong::{FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise};
+use rong::{
+    FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, Promise,
+    function::Optional,
+};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,12 +44,6 @@ struct ValidatedVideoOutput {
     root: PathBuf,
 }
 
-#[derive(FromJSObject)]
-#[ts_skip]
-struct JSGetVideoInfoOptions {
-    path: String,
-}
-
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSVideoInfoResult {
@@ -69,28 +66,24 @@ struct JSVideoInfoResult {
     path: String,
 }
 
-#[derive(FromJSObject)]
+#[derive(FromJSObject, Default)]
 #[ts_skip]
 struct JSVideoThumbnailOptions {
-    path: String,
-    #[js_name = "outputPath"]
-    output_path: Option<String>,
+    #[js_name = "positionMs"]
+    position_ms: Option<i64>,
+    to: Option<String>,
     #[js_name = "maxWidth"]
     max_width: Option<u32>,
     #[js_name = "maxHeight"]
     max_height: Option<u32>,
-    #[js_name = "timeMs"]
-    time_ms: Option<i64>,
     quality: Option<i32>,
 }
 
-#[derive(FromJSObject)]
+#[derive(FromJSObject, Default)]
 #[ts_skip]
 struct JSCompressVideoOptions {
     signal: Option<JSObject>,
-    path: String,
-    #[js_name = "outputPath"]
-    output_path: Option<String>,
+    to: Option<String>,
     quality: Option<String>,
     bitrate: Option<u32>,
     fps: Option<u32>,
@@ -100,8 +93,7 @@ struct JSCompressVideoOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSVideoThumbnailResult {
-    #[js_name = "uri"]
-    temp_file_path: String,
+    path: String,
     width: u32,
     height: u32,
     #[js_name = "type"]
@@ -111,8 +103,7 @@ struct JSVideoThumbnailResult {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSCompressVideoResult {
-    #[js_name = "uri"]
-    temp_file_path: String,
+    path: String,
     width: u32,
     height: u32,
     #[js_name = "durationMs"]
@@ -169,15 +160,15 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace MediaApi = crate::media::media_namespace(ctx)?;
         fn videoInfo(
-            ts_params = "options: VideoInfoOptions",
+            ts_params = "path: string",
             ts_return = "Promise<VideoInfo>"
         ) = get_video_info_api;
         fn videoThumbnail(
-            ts_params = "options: VideoThumbnailOptions",
+            ts_params = "path: string, options?: VideoThumbnailOptions",
             ts_return = "Promise<VideoThumbnailResult>"
         ) = extract_video_thumbnail_api;
         fn compressVideo(
-            ts_params = "options: CompressVideoOptions",
+            ts_params = "path: string, options?: CompressVideoOptions",
             ts_return = "CompressVideoTask"
         ) = compress_video_api;
     }
@@ -189,15 +180,16 @@ rong::js_api! {
 /// rotation, and track-level codec/audio fields are best-effort and may be
 /// omitted when the platform cannot determine them. The receiving service must
 /// still validate the uploaded bytes.
-async fn get_video_info_api(
-    ctx: JSContext,
-    options: JSGetVideoInfoOptions,
-) -> JSResult<JSVideoInfoResult> {
+///
+/// @example
+/// ```ts
+/// const { durationMs, size } = await lx.media.videoInfo(clip);
+/// ```
+async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
-    let original_path = options.path;
-    let trimmed_path = original_path.trim();
+    let trimmed_path = path.trim();
     let resolved = lxapp
         .resolve_accessible_path(trimmed_path)
         .map_err(|err| js_error_from_lxapp_error(&err))?;
@@ -222,27 +214,34 @@ async fn get_video_info_api(
 }
 
 /// Write one frame of a video out as an image file.
+///
+/// @example
+/// ```ts
+/// const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });
+/// ```
 async fn extract_video_thumbnail_api(
     ctx: JSContext,
-    options: JSVideoThumbnailOptions,
+    path: String,
+    options: Optional<JSVideoThumbnailOptions>,
 ) -> JSResult<JSVideoThumbnailResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
+    let options = options.0.unwrap_or_default();
 
     let resolved_source = lxapp
-        .resolve_accessible_path(options.path.trim())
+        .resolve_accessible_path(path.trim())
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
-    let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
-    let output_path = resolve_thumbnail_output_path(&lxapp, options.output_path.as_deref())?;
+    let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());
+    let output_path = resolve_thumbnail_output_path(&lxapp, options.to.as_deref())?;
     ensure_distinct_video_paths(&resolved_source, &output_path, "media.videoThumbnail")?;
     let request = ExtractVideoThumbnailRequest {
         source_uri,
         output_path: output_path.clone(),
         max_width: sanitize_optional_u32(options.max_width),
         max_height: sanitize_optional_u32(options.max_height),
-        time_ms: sanitize_time_ms(options.time_ms),
+        time_ms: sanitize_time_ms(options.position_ms),
         quality: clamp_quality(options.quality),
     };
 
@@ -251,7 +250,7 @@ async fn extract_video_thumbnail_api(
         .map_err(|e| js_error_from_platform_error(&e))?;
     ensure_output_quota(&lxapp, &output_path, &thumbnail.path)?;
 
-    let uri = match explicit_output_uri {
+    let path = match explicit_output_uri {
         Some(uri) => uri,
         None => lxapp
             .to_uri(&thumbnail.path)
@@ -262,7 +261,7 @@ async fn extract_video_thumbnail_api(
     };
 
     Ok(JSVideoThumbnailResult {
-        temp_file_path: uri,
+        path,
         width: thumbnail.width,
         height: thumbnail.height,
         image_type: thumbnail
@@ -276,18 +275,30 @@ async fn extract_video_thumbnail_api(
 ///
 /// Returns a task handle synchronously, so progress and cancellation can be
 /// wired up before transcoding starts.
-fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResult<JSObject> {
+///
+/// @example
+/// ```ts
+/// const task = lx.media.compressVideo(clip, { quality: 'medium' });
+/// for await (const event of task.progress) render(event.progress);
+/// const { path, size } = await task.result;
+/// ```
+fn compress_video_api(
+    ctx: JSContext,
+    path: String,
+    options: Optional<JSCompressVideoOptions>,
+) -> JSResult<JSObject> {
+    let options = options.0.unwrap_or_default();
     crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = lxapp.runtime.clone();
 
     let resolved_source = lxapp
-        .resolve_accessible_path(options.path.trim())
+        .resolve_accessible_path(path.trim())
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
-    let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
-    let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
+    let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());
+    let output_path = resolve_compress_video_output_path(&lxapp, options.to.as_deref())?;
     ensure_distinct_video_paths(&resolved_source, &output_path, "media.compressVideo")?;
     reject_mixed_compress_settings(
         options.quality.as_deref(),
@@ -361,7 +372,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
                     js_internal_error("compressVideo result is missing the output path")
                 })?);
                 ensure_output_quota(&final_lxapp, &final_output_path, &path)?;
-                let temp_file_path = match explicit_output_uri {
+                let output_path = match explicit_output_uri {
                     Some(uri) => uri,
                     None => final_lxapp
                         .to_uri(&path)
@@ -373,7 +384,7 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
                         .into_string(),
                 };
                 Ok(JSCompressVideoResult {
-                    temp_file_path,
+                    path: output_path,
                     width: parsed.width.unwrap_or(0),
                     height: parsed.height.unwrap_or(0),
                     duration_ms: parsed.duration_ms.unwrap_or(0),
@@ -543,9 +554,7 @@ where
     F: FnOnce() -> JSResult<PathBuf>,
 {
     match raw_output_path.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(path) => {
-            crate::fs::resolve_writable_file_path(lxapp, path, api_name, "outputPath", true)
-        }
+        Some(path) => crate::fs::resolve_writable_file_path(lxapp, path, api_name, "to", true),
         None => default(),
     }
 }
@@ -571,7 +580,7 @@ fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
 fn ensure_distinct_video_paths(source: &Path, output: &Path, api_name: &str) -> JSResult<()> {
     if paths_refer_to_same_file(source, output) {
         return Err(js_invalid_parameter_error(format!(
-            "{api_name} outputPath must be different from source path"
+            "{api_name} `to` must be different from the source path"
         )));
     }
     Ok(())

@@ -954,36 +954,31 @@ rong::js_api! {
 }"###;
 
 
+        /// How `lx.media.compressImage` re-encodes the image.
         type CompressImageOptions = r###"{
-    /** Source image. */
-    path: string;
     /**
-     * JPEG quality, 0 to 100.
+     * JPEG quality, an integer from 0 to 100; values outside are clamped.
      * @default 80
      */
     quality?: number;
-    /** Output width in pixels; the height follows the aspect ratio when only one is given. */
-    compressedWidth?: number;
-    /** Output height in pixels. */
-    compressedHeight?: number;
+    /** Largest output width in pixels; the aspect ratio is kept. */
+    maxWidth?: number;
+    /** Largest output height in pixels; the aspect ratio is kept. */
+    maxHeight?: number;
 }"###;
 
+        /// The image `lx.media.compressImage` wrote.
         type CompressImageResult = r###"{
-    /** The compressed image, a temporary `lx://` path. */
-    uri: string;
+    /** The compressed JPEG, a temporary `lx://` path. */
+    path: string;
 }"###;
 
+        /// Where `lx.media.compressVideo` writes and how hard it compresses.
         type CompressVideoOptions = r###"{
     /** Aborting it stops the compression. */
     signal?: AbortSignal;
-    /**
-     * Source video path or `lx://` URI.
-     */
-    path: string;
-    /**
-     * Optional output path for compressed file.
-     */
-    outputPath?: string;
+    /** Where to write it: an `lx://userdata`, `lx://usercache` or `lx://temp` path, or a path relative to `lx://userdata`. A temporary file when omitted. */
+    to?: string;
 } & (
     | {
     /**
@@ -1022,7 +1017,7 @@ rong::js_api! {
 
         type CompressVideoResult = r###"{
     /** The compressed video, an `lx://` path. */
-    uri: string;
+    path: string;
     /** Width in pixels. */
     width: number;
     /** Height in pixels. */
@@ -1096,41 +1091,30 @@ rong::js_api! {
     sizeBytes: number;
 }"###;
 
+        /// Which frame `lx.media.videoThumbnail` takes and where it writes it.
         type VideoThumbnailOptions = r###"{
     /**
-     * Source video path or `lx://` URI.
+     * The frame's position from the start, in milliseconds.
+     * @default 0
      */
-    path: string;
-    /**
-     * Optional output image path. If omitted, runtime chooses a temporary path.
-     */
-    outputPath?: string;
-    /**
-     * Max output width in pixels.
-     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
-     */
+    positionMs?: number;
+    /** Where to write it: an `lx://userdata`, `lx://usercache` or `lx://temp` path, or a path relative to `lx://userdata`. A temporary file when omitted. */
+    to?: string;
+    /** Largest output width in pixels; the aspect ratio is kept, nothing is cropped. */
     maxWidth?: number;
-    /**
-     * Max output height in pixels.
-     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
-     */
+    /** Largest output height in pixels; the aspect ratio is kept, nothing is cropped. */
     maxHeight?: number;
     /**
-     * Target frame time in milliseconds from video start.
-     * `0` means first frame.
-     */
-    timeMs?: number;
-    /**
-     * JPEG quality in range `0-100`.
+     * JPEG quality, an integer from 0 to 100; values outside are clamped.
+     * @default 80
      */
     quality?: number;
 }"###;
 
+        /// The image `lx.media.videoThumbnail` wrote.
         type VideoThumbnailResult = r###"{
-    /**
-     * Generated thumbnail file path.
-     */
-    uri: string;
+    /** The thumbnail: the `to` path when it was an `lx://` path, else the `lx://` path written. */
+    path: string;
     /**
      * Output image width in pixels.
      */
@@ -1152,11 +1136,6 @@ rong::js_api! {
     extensions: string[];
 }"###;
 
-        type ImageInfoOptions = r###"{
-    /** The image: a bundled path, an `lx://` path or a picked file. */
-    path: string;
-}"###;
-
         type GetLocationOptions = r###"{
     /**
      * Coordinate system of the result.
@@ -1172,13 +1151,6 @@ rong::js_api! {
      * @default 10000
      */
     timeoutMs?: number;
-}"###;
-
-        type VideoInfoOptions = r###"{
-    /**
-     * Video file path or `lx://` URI.
-     */
-    path: string;
 }"###;
 
         /// Build-time deployment environment of the host app (`dev` | `prod`).
@@ -1340,19 +1312,14 @@ rong::js_api! {
 
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
+        /// How `lx.openFile` shows the file.
         type OpenFileOptions = r###"{
-    /** Local file path or runtime-managed temp path. */
-    filePath: string;
-    /** Optional coarse file type hint such as `pdf`, `docx`, or `xlsx`. */
-    fileType?: string;
     /**
-     * `auto`: prefer native review, then fall back to external open.
-     * `review`: require native review UI and reject when unsupported.
-     * `external`: hand off directly to the system / external app.
+     * `auto` previews in the app and falls back to another app; `review` only
+     * previews in the app and rejects when it cannot; `external` hands the file to another app.
+     * @default 'auto'
      */
     mode?: 'auto' | 'review' | 'external';
-    /** Hint for whether the native review UI should expose its action menu when supported. */
-    showMenu?: boolean;
 }"###;
 
         /// Native interaction supplied by the host around page content.
@@ -1576,7 +1543,7 @@ rong::js_api! {
      * Clockwise rotation in degrees.
      * @default the rotation the media's metadata records
      */
-    rotate?: MediaRotation;
+    rotation?: MediaRotation;
     /**
      * How a video fits the screen.
      * @default 'contain'

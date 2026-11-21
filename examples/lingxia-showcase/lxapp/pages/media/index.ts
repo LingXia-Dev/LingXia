@@ -311,7 +311,7 @@ async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<Chose
   return Promise.all(
     items.map(async (item) => {
       if (item.type !== "video") return item;
-      const info = await lx.media.videoInfo({ path: item.path });
+      const info = await lx.media.videoInfo(item.path);
       const display = resolveVideoDisplaySize(info);
       return display ? { ...item, ...display } : item;
     }),
@@ -401,7 +401,7 @@ function createState(modeKey: unknown) {
     thumbnailMaxHeight: "",
     thumbnailTimeMs: defaults.thumbnailTimeMs || "0",
     thumbnailBusy: false,
-    thumbnailResult: null as { uri?: string } | null,
+    thumbnailResult: null as { path?: string } | null,
     thumbnailError: "",
     saveToAlbumBusy: false,
     videoCompressQuality: "medium",
@@ -410,7 +410,7 @@ function createState(modeKey: unknown) {
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
     videoCompressProgress: null as number | null,
-    videoCompressResult: null as { uri?: string } | null,
+    videoCompressResult: null as { path?: string } | null,
     videoCompressError: "",
     previewRotateKey: "meta",
     previewObjectFitKey: "default",
@@ -778,11 +778,11 @@ export default definePage({
           const source: {
             path: string;
             type: string;
-            rotate?: number;
+            rotation?: number;
             objectFit?: string;
             durationMs?: number;
           } = { path: item.path, type: item.type };
-          if (typeof previewRotate === "number") source.rotate = previewRotate;
+          if (typeof previewRotate === "number") source.rotation = previewRotate;
           if (previewObjectFit) source.objectFit = previewObjectFit;
           if (item.type !== "video" && (imageDurationMs ?? 0) > 0) source.durationMs = imageDurationMs;
           return source;
@@ -807,7 +807,7 @@ export default definePage({
           d.imageInfoResult = null;
         });
         try {
-          const info = await lx.media.imageInfo({ path: picked });
+          const info = await lx.media.imageInfo(picked);
           const size = await helpers.getFileSize(picked);
           page.update(d => {
             d.imageInfoResult = { ...info, size };
@@ -846,7 +846,7 @@ export default definePage({
           d.videoInfoResult = null;
         });
         try {
-          const info = await lx.media.videoInfo({ path: picked });
+          const info = await lx.media.videoInfo(picked);
           page.update(d => {
             d.videoInfoResult = info;
             d.videoInfoBusy = false;
@@ -896,20 +896,17 @@ export default definePage({
         const quality = parseQualityInput(page.data.thumbnailQuality);
         const maxWidth = parsePositiveInt(page.data.thumbnailMaxWidth);
         const maxHeight = parsePositiveInt(page.data.thumbnailMaxHeight);
-        const timeMs = parseNonNegativeInt(page.data.thumbnailTimeMs);
+        const positionMs = parseNonNegativeInt(page.data.thumbnailTimeMs);
 
-        const payload: VideoThumbnailOptions = {
-          path: sourcePath,
-          quality,
-        };
+        const payload: VideoThumbnailOptions = { quality };
         if (typeof maxWidth === "number") {
           payload.maxWidth = maxWidth;
         }
         if (typeof maxHeight === "number") {
           payload.maxHeight = maxHeight;
         }
-        if (typeof timeMs === "number") {
-          payload.timeMs = timeMs;
+        if (typeof positionMs === "number") {
+          payload.positionMs = positionMs;
         }
 
         page.update(d => {
@@ -918,7 +915,7 @@ export default definePage({
           d.thumbnailResult = null;
         });
         try {
-          const thumbnail = await lx.media.videoThumbnail(payload);
+          const thumbnail = await lx.media.videoThumbnail(sourcePath, payload);
           page.update(d => {
             d.thumbnailResult = thumbnail;
             d.thumbnailBusy = false;
@@ -937,7 +934,7 @@ export default definePage({
         }
       },
       async previewVideoThumbnail() {
-        const path = page.data.thumbnailResult?.uri;
+        const path = page.data.thumbnailResult?.path;
         if (!path) {
           lx.ui.toast({
             title: "No thumbnail to preview",
@@ -983,9 +980,8 @@ export default definePage({
 
         const quality = (page.data.videoCompressQuality || "").trim().toLowerCase();
         const payload: CompressVideoOptions = quality
-          ? { path: sourcePath, quality: quality as VideoCompressQuality }
+          ? { quality: quality as VideoCompressQuality }
           : {
-              path: sourcePath,
               bitrate: kbpsToBps(parsePositiveInt(page.data.videoCompressBitrate)),
               fps: parsePositiveInt(page.data.videoCompressFps),
               resolution: parseResolutionRatio(page.data.videoCompressResolution),
@@ -998,7 +994,7 @@ export default definePage({
           d.videoCompressProgress = 0;
         });
 
-        const task = lx.media.compressVideo(payload);
+        const task = lx.media.compressVideo(sourcePath, payload);
         compressVideoTask = task;
         try {
           for await (const { progress } of task.progress) {
@@ -1032,18 +1028,18 @@ export default definePage({
         compressVideoTask?.cancel();
       },
       async previewCompressedVideo() {
-        const path = page.data.videoCompressResult?.uri;
+        const path = page.data.videoCompressResult?.path;
         if (!path) {
           lx.ui.toast({ title: "No compressed video to preview", icon: "none" });
           return;
         }
-        const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
+        const source: { path: string; type: string; rotation?: number; objectFit?: string } = {
           path,
           type: "video",
         };
         const rotate = resolveRotateValue(page.data.previewRotateKey || "meta");
         const objectFit = resolveObjectFitValue(page.data.previewObjectFitKey || "default", "contain");
-        if (typeof rotate === "number") source.rotate = rotate;
+        if (typeof rotate === "number") source.rotation = rotate;
         if (objectFit) source.objectFit = objectFit;
         await helpers.runPreviewSession({
           sources: [source],
@@ -1080,12 +1076,12 @@ export default definePage({
         const compressedWidth = parsePositiveInt(page.data.compressedWidth);
         const compressedHeight = parsePositiveInt(page.data.compressedHeight);
 
-        const payload: CompressImageOptions = { path, quality };
+        const payload: CompressImageOptions = { quality };
         if (typeof compressedWidth === "number") {
-          payload.compressedWidth = compressedWidth;
+          payload.maxWidth = compressedWidth;
         }
         if (typeof compressedHeight === "number") {
-          payload.compressedHeight = compressedHeight;
+          payload.maxHeight = compressedHeight;
         }
 
         page.update(d => {
@@ -1095,9 +1091,9 @@ export default definePage({
         });
 
         try {
-          const result = await lx.media.compressImage(payload);
-          const resultPath = result.uri;
-          const info = await lx.media.imageInfo({ path: resultPath });
+          const result = await lx.media.compressImage(path, payload);
+          const resultPath = result.path;
+          const info = await lx.media.imageInfo(resultPath);
           const size = await helpers.getFileSize(resultPath);
           page.update(d => {
             d.compressResult = { path: resultPath, width: info.width, height: info.height, type: info.type, size };

@@ -283,7 +283,7 @@ function VideoTools({ data, actions }: Pane) {
         </Button>
         <ErrorState testId="media-thumbnailError" error={data.thumbnailError ? String(data.thumbnailError) : null} />
       </Section>
-      {!!thumb?.uri && (
+      {!!thumb?.path && (
         <Facts
           title="Thumbnail Result"
           rows={[
@@ -294,12 +294,12 @@ function VideoTools({ data, actions }: Pane) {
         >
           <image
             data-testid="media-thumbnail-image"
-            src={String(thumb.uri)}
+            src={String(thumb.path)}
             alt="Thumbnail of the selected video"
             className="w-full rounded-lg border border-line bg-text/5 object-contain"
             style={{ height: 280 / Math.max(0.25, ratio) }}
           />
-          <Path value={String(thumb.uri)} />
+          <Path value={String(thumb.path)} />
           <Button testId="media-previewVideoThumbnail" onClick={() => actions.previewVideoThumbnail()}>
             Preview Thumbnail
           </Button>
@@ -331,7 +331,7 @@ function VideoTools({ data, actions }: Pane) {
         )}
         <ErrorState testId="media-videoCompressError" error={data.videoCompressError ? String(data.videoCompressError) : null} />
       </Section>
-      {!!result?.uri && (
+      {!!result?.path && (
         <Facts
           title="Compressed Video"
           rows={[
@@ -341,7 +341,7 @@ function VideoTools({ data, actions }: Pane) {
             ['File Size', fileSize(result.size), 'media-videoCompressResult-size'],
           ]}
         >
-          <Path value={String(result.uri)} testId="media-videoCompressResult-uri" />
+          <Path value={String(result.path)} testId="media-videoCompressResult-path" />
           <Button testId="media-previewCompressedVideo" onClick={() => actions.previewCompressedVideo()}>
             Preview Compressed Video
           </Button>

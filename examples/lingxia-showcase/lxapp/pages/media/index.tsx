@@ -82,14 +82,14 @@ type VideoInfoResult = {
 };
 
 type VideoThumbnailResult = {
-  uri?: string;
+  path?: string;
   width?: number;
   height?: number;
   type?: string;
 };
 
 type CompressVideoResult = {
-  uri?: string;
+  path?: string;
   width?: number;
   height?: number;
   durationMs?: number;
@@ -798,7 +798,7 @@ export default function MediaPage() {
           </div>
         )}
 
-        {thumbnailResult?.uri && (
+        {thumbnailResult?.path && (
           <div className="space-y-4">
             <InfoCard
               title="Thumbnail Result"
@@ -810,12 +810,12 @@ export default function MediaPage() {
               footer={
                 <div className="space-y-2">
                   <img
-                    src={thumbnailResult.uri}
+                    src={thumbnailResult.path}
                     alt="thumbnail"
                     className="w-full rounded-lg border border-line-200 bg-black/5"
                   />
                   <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
-                    {thumbnailResult.uri}
+                    {thumbnailResult.path}
                   </div>
                 </div>
               }
@@ -909,7 +909,7 @@ export default function MediaPage() {
             </div>
           )}
 
-          {videoCompressResult?.uri && (
+          {videoCompressResult?.path && (
             <div className="space-y-3">
               <InfoCard
                 title="Compressed Video"
@@ -921,7 +921,7 @@ export default function MediaPage() {
                 ]}
                 footer={
                   <div className="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
-                    {videoCompressResult.uri}
+                    {videoCompressResult.path}
                   </div>
                 }
               />

@@ -52,21 +52,6 @@ export function render({ data, actions: raw }: View) {
         : 'Download and Preview PDF';
   return (
     <Page>
-      <Section title="Options">
-        <checkbox
-          data-testid="file-show-menu"
-          value={!!data.showMenu}
-          onChange={() => actions.toggleShowMenu()}
-          className="bg-transparent text-text"
-        >
-          <view className="gap-1">
-            <text className="text-sm font-medium">Show Share Button</text>
-            <text className="text-xs text-muted">
-              Only applies to PDF documents. Office documents always open with the system default viewer.
-            </text>
-          </view>
-        </checkbox>
-      </Section>
       {data.activeDemo === 'chooseFile' ? (
         <Section title="Choose File" description="Open the host chooser in a predefined folder instead of the recent-files picker.">
           <InfoRow label="Default folder" value={data.chooseFileDefaultPath} testId="file-default-path" />

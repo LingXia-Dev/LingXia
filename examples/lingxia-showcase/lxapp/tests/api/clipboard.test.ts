@@ -44,7 +44,7 @@ test('round-trip text, empty clipboard, and typed image items', {
       const imageRead = await lx.clipboard.read({ type: 'image' });
       const imageItem = imageRead.status === 'ok' ? imageRead.items.find((item) => item.type === 'image') : null;
       const imageInfo = imageItem?.type === 'image'
-        ? await lx.media.imageInfo({ path: imageItem.filePath })
+        ? await lx.media.imageInfo(imageItem.filePath)
         : null;
 
       await lx.clipboard.clear();

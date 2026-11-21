@@ -58,16 +58,15 @@ void rawWithName;
 void rawWithForm;
 void rawWithFileName;
 
-const preset: CompressVideoOptions = { path: "lx://temp/clip.mp4", quality: "low" };
-const manual: CompressVideoOptions = { path: "lx://temp/clip.mp4", bitrate: 800, fps: 24 };
-const defaults: CompressVideoOptions = { path: "lx://temp/clip.mp4" };
+const preset: CompressVideoOptions = { quality: "low" };
+const manual: CompressVideoOptions = { bitrate: 800, fps: 24 };
+const defaults: CompressVideoOptions = { to: "lx://userdata/clip.mp4" };
 void preset;
 void manual;
 void defaults;
 
 // @ts-expect-error quality cannot be combined with bitrate
 const mixed: CompressVideoOptions = {
-  path: "lx://temp/clip.mp4",
   quality: "low",
   bitrate: 800,
 };

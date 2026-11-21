@@ -27,16 +27,10 @@ mod upload;
 
 const READ_FILE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
-#[derive(FromJSObject)]
+#[derive(FromJSObject, Default)]
 #[ts_skip]
 struct JSOpenFileOptions {
-    #[js_name = "filePath"]
-    file_path: String,
-    #[js_name = "fileType"]
-    file_type: Option<String>,
     mode: Option<String>,
-    #[js_name = "showMenu"]
-    show_menu: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,8 +54,9 @@ impl OpenFileMode {
     }
 }
 
-fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
-    match file_type.unwrap_or_default().to_lowercase().as_str() {
+fn mime_from_extension(path: &Path) -> Option<String> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
         "pdf" => Some("application/pdf".to_string()),
         "doc" => Some("application/msword".to_string()),
         "docx" => Some(
@@ -82,24 +77,24 @@ fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
 
 fn resolve_open_file_request(
     lxapp: &LxApp,
-    options: &JSOpenFileOptions,
+    path: &str,
     api_name: &'static str,
 ) -> JSResult<OpenFileRequest> {
-    if options.file_path.is_empty() {
+    if path.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            format!("{api_name} requires filePath"),
+            format!("{api_name} requires path"),
         ));
     }
 
     let resolved_path = lxapp
-        .resolve_accessible_path(&options.file_path)
+        .resolve_accessible_path(path)
         .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?;
 
     Ok(OpenFileRequest {
+        mime_type: mime_from_extension(&resolved_path),
         path: resolved_path.to_string_lossy().into_owned(),
-        mime_type: map_file_type_to_mime(options.file_type.clone()),
-        show_menu: options.show_menu,
+        show_menu: None,
     })
 }
 
@@ -133,14 +128,24 @@ async fn open_file_with_mode(
     }
 }
 
-/// Open a local file with the requested strategy.
+/// Open a local file; its type comes from the path's extension.
 ///
 /// Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
 /// `mode: "auto"`.
-async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
+///
+/// @example
+/// ```ts
+/// await lx.openFile('lx://userdata/report.pdf');
+/// ```
+async fn open_file(
+    ctx: JSContext,
+    path: String,
+    options: Optional<JSOpenFileOptions>,
+) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let options = options.0.unwrap_or_default();
     let mode = OpenFileMode::parse(options.mode.as_deref(), "openFile")?;
-    let request = resolve_open_file_request(&lxapp, &options, "openFile")?;
+    let request = resolve_open_file_request(&lxapp, &path, "openFile")?;
     open_file_with_mode(&lxapp, request, mode).await
 }
 
@@ -1463,7 +1468,10 @@ pub(crate) fn init_download(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
+        fn openFile(
+            ts_params = "path: string, options?: OpenFileOptions",
+            ts_return = "void"
+        ) = open_file;
     }
 }
 
@@ -1581,7 +1589,7 @@ mod tests {
             &user_data_dir,
             "pages/home/index.js",
             "compressVideo",
-            "outputPath",
+            "to",
         )
         .unwrap();
 
@@ -1599,8 +1607,7 @@ mod tests {
             "/bundle.js",
         ] {
             assert!(
-                resolve_relative_managed_path(&user_data_dir, path, "compressVideo", "outputPath",)
-                    .is_err(),
+                resolve_relative_managed_path(&user_data_dir, path, "compressVideo", "to").is_err(),
                 "path should be rejected: {path}"
             );
         }
@@ -1612,7 +1619,7 @@ mod tests {
             ensure_managed_path_kind_allowed(
                 ManagedPathKind::Temp,
                 "compressVideo",
-                "outputPath",
+                "to",
                 true,
                 true,
             )

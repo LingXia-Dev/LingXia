@@ -25,7 +25,7 @@ lx.ui.confirm({});
 // @ts-expect-error upload needs its options
 lx.network.upload(url);
 // @ts-expect-error quality excludes fps
-lx.media.compressVideo({ path: "a.mp4", quality: "low", fps: 3 });
+lx.media.compressVideo("a.mp4", { quality: "low", fps: 3 });
 // @ts-expect-error files exclude text
 lx.share({ files: ["a"], text: "hello" });
 

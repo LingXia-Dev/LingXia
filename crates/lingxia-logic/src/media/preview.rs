@@ -529,7 +529,7 @@ fn parse_raw_source_object(
     Ok(RawPreviewMediaSource {
         path: read_optional_string_field(obj, "path", context)?,
         kind: read_optional_string_field(obj, "type", context)?,
-        rotate: read_optional_u16_field(obj, "rotate", context)?,
+        rotate: read_optional_u16_field(obj, "rotation", context)?,
         object_fit: read_optional_string_field(obj, "objectFit", context)?,
         duration_ms: read_optional_number_field(obj, "durationMs", context)?,
     })
@@ -758,7 +758,7 @@ fn parse_rotation(value: Option<u16>) -> JSResult<Option<u16>> {
     match rotation {
         0 | 90 | 180 | 270 => Ok(Some(rotation)),
         _ => Err(js_invalid_parameter_error(format!(
-            "media.preview invalid rotate: {}",
+            "media.preview invalid rotation: {}",
             rotation
         ))),
     }

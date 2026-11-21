@@ -937,36 +937,31 @@ export type ClipboardWriteItem = {
     filePath: string;
 };
 
+/** How `lx.media.compressImage` re-encodes the image. */
 export type CompressImageOptions = {
-    /** Source image. */
-    path: string;
     /**
-     * JPEG quality, 0 to 100.
+     * JPEG quality, an integer from 0 to 100; values outside are clamped.
      * @default 80
      */
     quality?: number;
-    /** Output width in pixels; the height follows the aspect ratio when only one is given. */
-    compressedWidth?: number;
-    /** Output height in pixels. */
-    compressedHeight?: number;
+    /** Largest output width in pixels; the aspect ratio is kept. */
+    maxWidth?: number;
+    /** Largest output height in pixels; the aspect ratio is kept. */
+    maxHeight?: number;
 };
 
+/** The image `lx.media.compressImage` wrote. */
 export type CompressImageResult = {
-    /** The compressed image, a temporary `lx://` path. */
-    uri: string;
+    /** The compressed JPEG, a temporary `lx://` path. */
+    path: string;
 };
 
+/** Where `lx.media.compressVideo` writes and how hard it compresses. */
 export type CompressVideoOptions = {
     /** Aborting it stops the compression. */
     signal?: AbortSignal;
-    /**
-     * Source video path or `lx://` URI.
-     */
-    path: string;
-    /**
-     * Optional output path for compressed file.
-     */
-    outputPath?: string;
+    /** Where to write it: an `lx://userdata`, `lx://usercache` or `lx://temp` path, or a path relative to `lx://userdata`. A temporary file when omitted. */
+    to?: string;
 } & (
     | {
     /**
@@ -1005,7 +1000,7 @@ export type CompressVideoProgressEvent = {
 
 export type CompressVideoResult = {
     /** The compressed video, an `lx://` path. */
-    uri: string;
+    path: string;
     /** Width in pixels. */
     width: number;
     /** Height in pixels. */
@@ -1314,11 +1309,6 @@ export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unkn
  */
 export type HostTarget = PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget;
 
-export type ImageInfoOptions = {
-    /** The image: a bundled path, an `lx://` path or a picked file. */
-    path: string;
-};
-
 export type InstalledTerminalFont = {
     /** Family name, as `TerminalFontSettings.family` takes it. */
     family: string;
@@ -1546,19 +1536,14 @@ export type OpenDeclaredOptions = {
     edge?: SurfaceEdge;
 };
 
+/** How `lx.openFile` shows the file. */
 export type OpenFileOptions = {
-    /** Local file path or runtime-managed temp path. */
-    filePath: string;
-    /** Optional coarse file type hint such as `pdf`, `docx`, or `xlsx`. */
-    fileType?: string;
     /**
-     * `auto`: prefer native review, then fall back to external open.
-     * `review`: require native review UI and reject when unsupported.
-     * `external`: hand off directly to the system / external app.
+     * `auto` previews in the app and falls back to another app; `review` only
+     * previews in the app and rejects when it cannot; `external` hands the file to another app.
+     * @default 'auto'
      */
     mode?: 'auto' | 'review' | 'external';
-    /** Hint for whether the native review UI should expose its action menu when supported. */
-    showMenu?: boolean;
 };
 
 /** An inbound App Link, as `App.onOpen` receives it. */
@@ -1985,7 +1970,7 @@ export type PreviewMediaSource = {
      * Clockwise rotation in degrees.
      * @default the rotation the media's metadata records
      */
-    rotate?: MediaRotation;
+    rotation?: MediaRotation;
     /**
      * How a video fits the screen.
      * @default 'contain'
@@ -3015,48 +3000,30 @@ export type VideoInfo = {
     path: string;
 };
 
-export type VideoInfoOptions = {
-    /**
-     * Video file path or `lx://` URI.
-     */
-    path: string;
-};
-
+/** Which frame `lx.media.videoThumbnail` takes and where it writes it. */
 export type VideoThumbnailOptions = {
     /**
-     * Source video path or `lx://` URI.
+     * The frame's position from the start, in milliseconds.
+     * @default 0
      */
-    path: string;
-    /**
-     * Optional output image path. If omitted, runtime chooses a temporary path.
-     */
-    outputPath?: string;
-    /**
-     * Max output width in pixels.
-     * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
-     */
+    positionMs?: number;
+    /** Where to write it: an `lx://userdata`, `lx://usercache` or `lx://temp` path, or a path relative to `lx://userdata`. A temporary file when omitted. */
+    to?: string;
+    /** Largest output width in pixels; the aspect ratio is kept, nothing is cropped. */
     maxWidth?: number;
-    /**
-     * Max output height in pixels.
-     * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
-     */
+    /** Largest output height in pixels; the aspect ratio is kept, nothing is cropped. */
     maxHeight?: number;
     /**
-     * Target frame time in milliseconds from video start.
-     * `0` means first frame.
-     */
-    timeMs?: number;
-    /**
-     * JPEG quality in range `0-100`.
+     * JPEG quality, an integer from 0 to 100; values outside are clamped.
+     * @default 80
      */
     quality?: number;
 };
 
+/** The image `lx.media.videoThumbnail` wrote. */
 export type VideoThumbnailResult = {
-    /**
-     * Generated thumbnail file path.
-     */
-    uri: string;
+    /** The thumbnail: the `to` path when it was an `lx://` path, else the `lx://` path written. */
+    path: string;
     /**
      * Output image width in pixels.
      */
@@ -3472,11 +3439,15 @@ declare global {
     readonly device: DeviceApi;
     readonly network: NetworkApi;
     /**
-     * Open a local file with the requested strategy.
+     * Open a local file; its type comes from the path's extension.
      * Use `mode: "review"` when the UX requires in-app preview; otherwise prefer
      * `mode: "auto"`.
+     * @example
+     * ```ts
+     * await lx.openFile('lx://userdata/report.pdf');
+     * ```
      */
-    openFile(options: OpenFileOptions): Promise<void>;
+    openFile(path: string, options?: OpenFileOptions): Promise<void>;
     readonly fs: FileSystemApi;
     readonly app: LxAppApi;
     readonly media: MediaApi;
@@ -3532,10 +3503,22 @@ declare global {
 
 declare global {
   interface MediaApi {
-    /** Read an image's dimensions and type without decoding it into a view. */
-    imageInfo(options: ImageInfoOptions): Promise<ImageInfo>;
-    /** Re-encode an image at a lower quality or size, writing a new managed file. */
-    compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
+    /**
+     * Read an image's dimensions and type without decoding it into a view.
+     * @example
+     * ```ts
+     * const { width, height } = await lx.media.imageInfo('images/cover.png');
+     * ```
+     */
+    imageInfo(path: string): Promise<ImageInfo>;
+    /**
+     * Re-encode an image as JPEG at a lower quality or size, writing a new temporary file.
+     * @example
+     * ```ts
+     * const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });
+     * ```
+     */
+    compressImage(path: string, options?: CompressImageOptions): Promise<CompressImageResult>;
     /**
      * Show images and videos full screen. The handle comes back at once, so
      * listeners attach before the first event.
@@ -3553,16 +3536,32 @@ declare global {
      * rotation, and track-level codec/audio fields are best-effort and may be
      * omitted when the platform cannot determine them. The receiving service must
      * still validate the uploaded bytes.
+     * @example
+     * ```ts
+     * const { durationMs, size } = await lx.media.videoInfo(clip);
+     * ```
      */
-    videoInfo(options: VideoInfoOptions): Promise<VideoInfo>;
-    /** Write one frame of a video out as an image file. */
-    videoThumbnail(options: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
+    videoInfo(path: string): Promise<VideoInfo>;
+    /**
+     * Write one frame of a video out as an image file.
+     * @example
+     * ```ts
+     * const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });
+     * ```
+     */
+    videoThumbnail(path: string, options?: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
     /**
      * Transcode a video to a smaller file.
      * Returns a task handle synchronously, so progress and cancellation can be
      * wired up before transcoding starts.
+     * @example
+     * ```ts
+     * const task = lx.media.compressVideo(clip, { quality: 'medium' });
+     * for await (const event of task.progress) render(event.progress);
+     * const { path, size } = await task.result;
+     * ```
      */
-    compressVideo(options: CompressVideoOptions): CompressVideoTask;
+    compressVideo(path: string, options?: CompressVideoOptions): CompressVideoTask;
   }
 }
 

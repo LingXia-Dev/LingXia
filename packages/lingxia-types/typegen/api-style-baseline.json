@@ -10,14 +10,10 @@
   "subscription-shape": [],
   "field-name": [
     "AppScreenshotResult.uri",
-    "CompressImageResult.uri",
-    "CompressVideoResult.uri",
     "DownloadsDownloadResult.mimeType",
     "DownloadsDownloadResult.sizeBytes",
     "DownloadsDownloadResult.uri",
-    "OpenFileOptions.filePath",
     "PickMediaOptions.maxDurationSeconds",
-    "VideoThumbnailResult.uri",
     "lx.network.upload(options).mimeType"
   ],
   "status-values": [
