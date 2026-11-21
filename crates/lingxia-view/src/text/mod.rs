@@ -2,6 +2,7 @@
 /// Parley brush: the 1-based run a glyph belongs to, or 0 outside rich text.
 pub type RunBrush = u16;
 
+pub(crate) mod breaks;
 pub(crate) mod cache;
 pub(crate) mod editing;
 pub mod fonts;

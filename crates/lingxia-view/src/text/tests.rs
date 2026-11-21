@@ -773,3 +773,82 @@ fn editors_take_the_box_direction_unless_dir_is_auto() {
             .contains("editors")
     );
 }
+
+/// The lines a selectable paragraph of `width` breaks `text` into.
+fn wrapped_lines(text: &str, width: f32) -> Vec<String> {
+    let source = crate::session::tests::source(&format!(
+        "function render(){{return h('view',{{}},h('text',{{style:{{userSelect:'text',fontSize:16,width:{width}}}}},'{text}'))}}"
+    ));
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(400, 400, 1.0).unwrap();
+    let paragraph = display
+        .retained
+        .selectables
+        .iter()
+        .flatten()
+        .next()
+        .unwrap();
+    paragraph
+        .layout
+        .lines()
+        .map(|line| paragraph.text[line.text_range()].to_owned())
+        .collect()
+}
+
+/// Each break that falls inside a word, as the characters on either side of it.
+fn mid_word_breaks(lines: &[String]) -> Vec<(char, char)> {
+    lines
+        .windows(2)
+        .filter_map(|pair| {
+            let end = pair[0].chars().last()?;
+            let next = pair[1].chars().next()?;
+            (!end.is_whitespace()).then_some((end, next))
+        })
+        .collect()
+}
+
+#[test]
+fn a_long_address_breaks_after_the_at_and_before_a_dot_never_mid_word() {
+    let email = "ana.maria.lopez@example-mail.com";
+    let text = format!("Write to {email} today");
+    let mut counts = Vec::new();
+    for width in [60.0, 90.0, 120.0, 160.0, 200.0, 400.0] {
+        let lines = wrapped_lines(&text, width);
+        assert_eq!(lines.concat(), text, "{width}");
+        for (end, next) in mid_word_breaks(&lines) {
+            assert!(
+                matches!(end, '@' | '-') || next == '.',
+                "{width}: {lines:?}"
+            );
+        }
+        if width == 120.0 {
+            assert!(
+                mid_word_breaks(&lines)
+                    .iter()
+                    .any(|&(end, next)| end == '@' || next == '.'),
+                "the address itself breaks: {lines:?}"
+            );
+        }
+        counts.push(lines.len());
+    }
+    assert!(counts[0] > 3 && counts[5] == 1, "{counts:?}");
+}
+
+#[test]
+fn a_long_url_breaks_after_slashes_and_before_dots() {
+    let url = "https://docs.example.com/guides/getting-started/install";
+    for width in [70.0, 110.0, 150.0, 220.0] {
+        let lines = wrapped_lines(url, width);
+        assert_eq!(lines.concat(), url, "{width}");
+        assert!(lines.len() > 1, "{width}: {lines:?}");
+        for (end, next) in mid_word_breaks(&lines) {
+            assert!(
+                (end == '/' && next != '/') || end == '-' || next == '.',
+                "{width}: {lines:?}"
+            );
+        }
+    }
+    // A two-letter domain ending is not left alone on its line: it moves with its name.
+    let lines = wrapped_lines("ana@example.co", 100.0);
+    assert_eq!(lines, ["ana@", "example.co"]);
+}

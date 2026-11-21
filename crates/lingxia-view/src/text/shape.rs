@@ -216,7 +216,9 @@ impl Renderer {
             return Some(cached);
         }
         let shaped = {
+            let breaks = crate::text::breaks::overrides(text);
             let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
+            builder.set_line_break_override(breaks.as_deref());
             // `dir="auto"` editors follow their first strong character; others the box.
             builder.set_base_direction(if record.string(field::DIRECTION) == Some("auto") {
                 parley::BaseDirection::Auto
