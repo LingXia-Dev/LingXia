@@ -156,6 +156,13 @@ await run(`__lxNavForView({ back: 2 })`);
 await run(`__lxNavForView({ page: 'detail' })`);
 await run(`__lxNavForView({ tab: 'home' })`);
 assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['back', 2], ['go', 'detail'], ['go', 'home']]));
+// A link to where its page already is does nothing; other params or a new page still go.
+run(`navs.length = 0; globalThis.herePage = { page: { name: 'detail', params: { id: '7' } } };`);
+await run(`__lxNavForView({ page: 'detail', params: { id: '7' } }, herePage)`);
+await run(`__lxNavForView({ tab: 'detail' }, herePage)`);
+await run(`__lxNavForView({ page: 'detail', params: { id: '8' } }, herePage)`);
+await run(`__lxNavForView({ app: 'other', page: 'detail', params: { id: '7' } }, herePage)`);
+assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail'], ['go', 'detail']]));
 
 // Actions are dispatched from their own map: no name is reserved, and `this` is undefined.
 run(`globalThis.closed = 0;

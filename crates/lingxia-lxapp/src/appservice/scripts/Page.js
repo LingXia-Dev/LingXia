@@ -14,10 +14,14 @@
     realTimers = { set, clear };
   }
   // A View `<link to>`: `{ back: n }` or a target of `lx.nav.go`, settled
-  // once the destination is on screen.
+  // once the destination is on screen. A link to where its page already is does nothing.
   Object.defineProperty(globalThis, "__lxNavForView", {
-    value: async (target) => {
+    value: async (target, svc) => {
       if (target.back !== undefined) return lx.nav.back(target.back);
+      const here = svc && svc.page;
+      if (here && target.app === undefined && (target.tab !== undefined
+        ? target.tab === here.name
+        : target.page === here.name && isDeepEqual(target.params || {}, here.params || {}))) return;
       const went = lx.nav.go(target);
       await (went && went.opened ? went.opened : went);
     },

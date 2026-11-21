@@ -674,9 +674,12 @@ impl PageSvc {
                 Some("nav.go requires a target object".to_string()),
             )
         })?;
+        let here = self.this.get();
         let call = async {
             let navigate = ctx.global().get::<_, JSFunc>("__lxNavForView")?;
-            navigate.call_async::<_, JSValue>(None, (target,)).await
+            navigate
+                .call_async::<_, JSValue>(None, (target, here))
+                .await
         };
         await_js_call_or_cancel(cancel_rx, call).await?;
         Ok(Payload::Tree(serde_json::Value::Null))
