@@ -25,6 +25,8 @@ export default definePage({
     return {
       // `home?page=stat` opens on that page; without one, on the entry the workspace last showed.
       async onLoad(query?: { page?: string }) {
+        // A page named in the query wins over one a closing page handed off before this home opened.
+        if (query?.page) takeHandedOff();
         const page = query?.page || (await rememberedEntry());
         if (page) thisPage.update(d => { d.page = page; });
         unwatch = pushEntryWhenNarrow(() => thisPage.data.page, thisPage.env, () => covered);

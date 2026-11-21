@@ -49,7 +49,10 @@ async function openOverlay(view: { getByRole(role: (typeof overlayRoles)[number]
 }
 
 for (const page of pages) {
-  test(`baseline: ${page}`, { start: { page }, timeout: 90_000 }, async (t) => {
+  // Home opens on the entry the workspace last showed, which a page left open by the case before
+  // hands it when the window widens; the home picture is the Overview, so it asks for that.
+  const start = page === 'home' ? { page, params: { page: 'home' } } : { page };
+  test(`baseline: ${page}`, { start, timeout: 90_000 }, async (t) => {
     const view = t.app.view;
     // A page has a phone form and a desk form. A session that reports the wrong one for its window
     // would be recorded as a layout change, so the capture stops here instead.
