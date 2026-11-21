@@ -353,8 +353,10 @@ export class GpuPages {
       return;
     }
     page.picturing.add(id);
-    const failed = (code: number, why: string) => {
+    const failed = (raw: number | string | undefined, why: string) => {
       page.picturing.delete(id);
+      // ArkWeb throws its codes as strings.
+      const code = Number(raw);
       if (code === GpuPages.WEB_NOT_ATTACHED) {
         // The native web view loads before ArkUI builds its `Web`.
         page.unattachedPictures.add(id);
@@ -369,7 +371,7 @@ export class GpuPages {
         (err: BusinessError, result: webview.SnapshotResult) => {
           const pixelMap = result?.imagePixelMap;
           if ((err && err.code !== 0) || !pixelMap) {
-            failed(err?.code ?? 0, `${err?.code} ${err?.message}`);
+            failed(err?.code, `${err?.code} ${err?.message}`);
             return;
           }
           const packer = image.createImagePacker();
@@ -388,7 +390,7 @@ export class GpuPages {
           });
         });
     } catch (e) {
-      failed((e as BusinessError).code ?? 0, `${e}`);
+      failed((e as BusinessError).code, `${e}`);
     }
   }
 
