@@ -5,5 +5,9 @@
 export const SHOWCASE_APP_ID: string =
   (globalThis as { __SHOWCASE_APP_ID__?: string }).__SHOWCASE_APP_ID__ ?? 'lingxia-showcase';
 
-/** The run drives the GPU mirror, whose pages draw Logic's overlays in the View. */
-export const GPU_MIRROR = SHOWCASE_APP_ID === 'lingxia-showcase-gpu';
+/**
+ * The run drives GPU pages, which draw Logic's overlays in the View. Keyed on the renderer the
+ * showcase declares before importing these specs, not on its id, which the showcases share.
+ */
+export const GPU_MIRROR =
+  (globalThis as { __SHOWCASE_RENDERER__?: string }).__SHOWCASE_RENDERER__ === 'gpu';
