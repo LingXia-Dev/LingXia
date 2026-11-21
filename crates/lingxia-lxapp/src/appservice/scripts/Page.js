@@ -527,7 +527,7 @@
   globalThis.__registerDefinedPage = function (pagePath, definition) {
     if (!definition || definition[PAGE_BRAND] !== true) {
       throw new TypeError(
-        `Page '${pagePath}' must default-export definePage({ ... }) from '@lingxia/types/page'`,
+        `Page '${pagePath}' must default-export definePage({ ... }) from '@lingxia/logic'`,
       );
     }
     pageDefinitions.set(pagePath, { config: definition });
@@ -535,7 +535,7 @@
 
   function removedPageRegistration(symbolName) {
     throw new Error(
-      `${symbolName}() was removed: a page's Logic default-exports definePage({ data, setup }) from '@lingxia/types/page'.`,
+      `${symbolName}() was removed: a page's Logic default-exports definePage({ data, setup }) from '@lingxia/logic'.`,
     );
   }
 

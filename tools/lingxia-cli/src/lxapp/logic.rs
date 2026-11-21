@@ -48,7 +48,7 @@ pub fn build(
     };
 
     let app_logic = discover_app_logic(project.root.as_path())?;
-    let page_logic_entries = discover_page_logic_entries(project)?;
+    let (page_logic_entries, view_only_pages) = discover_page_logic_entries(project)?;
 
     if app_logic.is_none() && page_logic_entries.is_empty() {
         return Ok(LogicBuildReport {
@@ -69,6 +69,9 @@ pub fn build(
     }
     for (logic_path, page_path) in page_logic_entries {
         bundler.add_entry(logic_path, ModuleRole::Page { page_path })?;
+    }
+    for page_path in view_only_pages {
+        bundler.add_view_only_page(&page_path)?;
     }
 
     let bundle = bundler.render_bundle(options.release)?;
@@ -307,6 +310,7 @@ struct LogicBundler<'a> {
     modules: Vec<ModuleArtifact>,
     module_vars: HashMap<PathBuf, String>,
     visiting: HashSet<PathBuf>,
+    view_only: Vec<String>,
 }
 
 impl<'a> LogicBundler<'a> {
@@ -316,6 +320,7 @@ impl<'a> LogicBundler<'a> {
             modules: Vec::new(),
             module_vars: HashMap::new(),
             visiting: HashSet::new(),
+            view_only: Vec::new(),
         }
     }
 
@@ -323,11 +328,24 @@ impl<'a> LogicBundler<'a> {
         self.compile_module(path, role)
     }
 
+    /// A page without Logic still gets a service once the lxapp has Logic, so it
+    /// registers an empty definition: no data, no actions.
+    fn add_view_only_page(&mut self, page_path: &str) -> Result<()> {
+        self.view_only.push(format!(
+            "globalThis.__registerDefinedPage({}, Object.defineProperty({{}}, Symbol.for(\"lingxia.page\"), {{ value: true }}));\n",
+            json_string_literal(&page_registration_path(self.project, page_path)?)
+        ));
+        Ok(())
+    }
+
     fn render_bundle(self, release: bool) -> Result<String> {
         let mut output = String::from("(function() {\n\n");
         for module in self.modules {
             output.push_str(&module.rendered);
             output.push('\n');
+        }
+        for registration in self.view_only {
+            output.push_str(&registration);
         }
         output.push_str("})();\n");
         if release {
@@ -480,8 +498,13 @@ fn discover_app_logic(project_root: &Path) -> Result<Option<PathBuf>> {
     }
 }
 
-fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String)>> {
+/// `(module, compiled page path)` for each page with Logic, then the compiled
+/// paths of the pages without it.
+type PageLogicEntries = (Vec<(PathBuf, String)>, Vec<String>);
+
+fn discover_page_logic_entries(project: &Project) -> Result<PageLogicEntries> {
     let mut entries = Vec::new();
+    let mut view_only = Vec::new();
     for page_path in &project.pages {
         let without_ext = PathBuf::from(crate::lxapp::framework::page_base(page_path));
         let ts_path = project.root.join(&without_ext).with_extension("ts");
@@ -500,10 +523,13 @@ fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String
                 js_path,
                 crate::lxapp::framework::compiled_page_path(&project.root, page_path),
             )),
-            (false, false) => {}
+            (false, false) => view_only.push(crate::lxapp::framework::compiled_page_path(
+                &project.root,
+                page_path,
+            )),
         }
     }
-    Ok(entries)
+    Ok((entries, view_only))
 }
 
 fn collect_imports(
@@ -1576,6 +1602,48 @@ mod tests {
             order,
             r#"[["app",true],["App",true],["page",true],["register",true]]"#
         );
+    }
+
+    /// A View-only page in an lxapp with Logic registers an empty, branded definition.
+    #[test]
+    fn a_page_without_logic_registers_an_empty_definition() {
+        use rong::{JSEngine, RongJS, Source};
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "pages/home/index.tsx",
+            "export default function Home() {}\n",
+        );
+        write(
+            root,
+            "pages/about/index.ts",
+            "export default { data: {} };\n",
+        );
+        let mut project = test_project(root);
+        project.pages = vec!["pages/home/index".into(), "pages/about/index".into()];
+        let (entries, view_only) = discover_page_logic_entries(&project).unwrap();
+        assert_eq!(entries.len(), 1);
+        let home = crate::lxapp::framework::compiled_page_path(root, "pages/home/index");
+        assert_eq!(view_only, std::slice::from_ref(&home));
+
+        let mut bundler = LogicBundler::new(&project);
+        for page_path in &view_only {
+            bundler.add_view_only_page(page_path).unwrap();
+        }
+        let bundle = bundler.render_bundle(false).unwrap();
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.seen = []; globalThis.__registerDefinedPage = (path, d) => \
+             seen.push([path, d[Symbol.for('lingxia.page')] === true, Object.keys(d).length]);",
+        ))
+        .unwrap();
+        ctx.eval::<()>(Source::from_bytes(bundle)).unwrap();
+        let seen: String = ctx
+            .eval(Source::from_bytes("JSON.stringify(seen)"))
+            .unwrap();
+        assert_eq!(seen, format!(r#"[["{home}",true,0]]"#));
     }
 
     #[test]
