@@ -13,7 +13,7 @@ import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/w
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
-import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle, backdropOwner } from './toplayer.js';
+import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle, backdropOwner, panelMark } from './toplayer.js';
 import { rangeSlider, thumbMark } from './range.js';
 import { recall, enter, leave, remember } from './memo.js';
 import { isProvider, provide } from './context.js';
@@ -373,7 +373,7 @@ function strongDirection(children, depth = 0) {
 // DOM-named accessibility props as the runtime carries them.
 const ariaNames = [['aria-label', 'accessibilityLabel'], ['aria-hidden', 'accessibilityHidden'], ['aria-live', 'accessibilityLiveRegion'],
   ['aria-valuenow', 'ariaValueNow'], ['aria-valuemin', 'ariaValueMin'], ['aria-valuemax', 'ariaValueMax'], ['aria-valuetext', 'ariaValueText'],
-  ['aria-level', 'ariaLevel']];
+  ['aria-level', 'ariaLevel'], ['aria-modal', 'ariaModal']];
 const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], ['aria-expanded', 'expanded'], ['aria-busy', 'busy'],
   ['aria-invalid', 'invalid'], ['aria-required', 'required'], ['aria-checked', 'checked']];
 function ariaProps(props) {
@@ -518,7 +518,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (tag === 'dialog') {
     if (props.role !== undefined && props.role !== 'alertdialog') throw Error('UI_PROP: a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
+    if (props.ariaModal === false) throw Error('UI_PROP: a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"');
     wire('role', props.role ?? 'dialog');
+    wire('modal', 1);
   }
   switch (tag) {
     case 'link': {
@@ -915,7 +917,7 @@ const checkedRoles = new Set(['radio', 'menuitemcheckbox', 'menuitemradio']);
 function semantics(tag, props, wire) {
   const { role, headingLevel, ariaLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
-    if (role === 'dialog') throw Error('UI_PROP: role="dialog" is the <dialog> element');
+    if (role === 'dialog' && (tag !== 'view' || !props[panelMark])) throw Error('UI_PROP: role="dialog" goes on a popover <view>, or is the <dialog> element');
     if (role === 'alertdialog' && tag !== 'dialog') throw Error('UI_PROP: role="alertdialog" goes on a <dialog>');
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
     if (itemRoles.has(role) && role !== 'option' && tag !== 'button') throw Error(`UI_PROP: role="${role}" belongs on a <button>`);
@@ -926,6 +928,11 @@ function semantics(tag, props, wire) {
       throw Error('UI_PROP: role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content');
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
+  }
+  if (props.ariaModal !== undefined) {
+    if (typeof props.ariaModal !== 'boolean') throw Error('UI_PROP: aria-modal is a boolean');
+    if (tag !== 'dialog' && role !== 'dialog') throw Error('UI_PROP: aria-modal belongs on a popover with role="dialog"');
+    if (tag !== 'dialog' && props.ariaModal) wire('modal', 1);
   }
   progressValues(role, props, wire, tag);
   const idOf = name => {

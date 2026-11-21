@@ -98,6 +98,8 @@ how much of it shows. Its `exit:` styles have nothing left to show by then.
 
 - A dialog is modal: taps outside reach only its backdrop, Tab stays inside, and assistive tech reads
   only the dialog. It needs `aria-label`.
+- A popover with `role="dialog"` (a panel of settings, say) is announced as a dialog but is not modal:
+  Tab can leave it and the page stays readable. `aria-modal` makes it modal like a `<dialog>`.
 - With a hardware keyboard, opening a dialog moves focus to its first control and closing it returns
   focus to what had it before. Opened by touch, it leaves focus and the focus ring alone.
 - The `popoverTarget` button or link reports `aria-expanded`.

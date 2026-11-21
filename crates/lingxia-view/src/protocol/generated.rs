@@ -310,6 +310,7 @@ pub mod field {
     pub const DEFAULT_VALUE: usize = 272;
     pub const CHECKED_STYLE: usize = 273;
     pub const HAS_CHECKED_STYLE: usize = 274;
+    pub const MODAL: usize = 275;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -591,6 +592,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("defaultValue", "default-value"),
     ("checkedStyle", "state-style"),
     ("hasCheckedStyle", "state-style"),
+    ("modal", "flag"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -1125,4 +1127,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::SLIDER, tag::SELECT]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
 ];

@@ -41,6 +41,8 @@ export interface Props {
   "aria-controls"?: string; "aria-autocomplete"?: "list" | "none";
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
+  /** On a popover with `role="dialog"`: modal like a `<dialog>`, which always is. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars. Without it the popover dialog is non-modal. */
+  "aria-modal"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
   "aria-live"?: "off" | "polite" | "assertive";
   /** States assistive input announces; leave one out when the element has no such state. */

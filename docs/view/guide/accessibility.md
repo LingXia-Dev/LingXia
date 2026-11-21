@@ -72,8 +72,9 @@ below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`
 | `combobox` | on a `<button>` that opens a list: `aria-expanded`, `aria-controls` and an `aria-valuetext` naming what is chosen. On an `<input>` that filters a list: also `aria-autocomplete="list"`, and `aria-activedescendant` naming the option its `onKeyDown` arrows point at, which is spoken as it changes while focus stays in the text. `aria-controls` takes 1..8 ids; one naming no element yet (a list that mounts later) is left out |
 | `spinbutton` | on a number `<input>`: `aria-valuenow`, `-valuemin`, `-valuemax` and an `aria-valuetext` with the unit; a screen reader's increment and decrement call the `ArrowUp` and `ArrowDown` handlers of its `onKeyDown` |
 
-A modal is the `<dialog>` element, not a role: it keeps focus inside and hides the page behind it
-([Overlays](overlays.md#focus-and-assistive-tech)). `role="menu"` names a popover of actions and
+A modal is the `<dialog>` element, or a popover with `role="dialog"` and `aria-modal`: it keeps focus
+inside and hides the page behind it ([Overlays](overlays.md#focus-and-assistive-tech)). A popover with
+`role="dialog"` alone is a non-modal dialog. `role="menu"` names a popover of actions and
 `role="menuitem"` its buttons.
 
 Tab reaches a `tablist`, `radiogroup`, `toolbar`, `listbox`, `tree` or `grid` once, on its selected or

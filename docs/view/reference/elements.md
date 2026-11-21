@@ -24,6 +24,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"aria-controls"` | `string` | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. |
 | `"aria-autocomplete"` | `"list" \| "none"` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
+| `"aria-modal"` | `boolean` | On a popover with `role="dialog"`: modal like a `<dialog>`, which always is. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars. Without it the popover dialog is non-modal. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
 | `"aria-pressed"` | `boolean` | States assistive input announces; leave one out when the element has no such state. |
 | `"aria-selected"` | `boolean` |  |

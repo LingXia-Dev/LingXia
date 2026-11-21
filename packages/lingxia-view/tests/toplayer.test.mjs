@@ -35,6 +35,27 @@ test('an open dialog is a top-layer box with a backdrop, a modal role and auto m
   assert.equal(close, 2, 'Escape is a close request');
 });
 
+test('a <dialog> is modal; a popover with role="dialog" is not unless aria-modal says so', () => {
+  reset();
+  const view = modal => () => h('page', {},
+    h('dialog', { open: true, 'aria-label': 'Delete?', 'data-testid': 'd' }, h('text', {}, 'Sure?')),
+    h('view', { id: 'p', popover: true, open: true, role: 'dialog', 'aria-label': 'Filters', 'aria-modal': modal, 'data-testid': 'p' }, h('text', {}, 'Filters')));
+  let nodes = render(view(undefined));
+  assert.equal(byId(nodes, 'd').props.modal, 1);
+  assert.equal(byId(nodes, 'p').props.role, 'dialog');
+  assert.equal(byId(nodes, 'p').props.modal, undefined, 'a popover dialog is non-modal');
+  reset();
+  nodes = render(view(true));
+  assert.equal(byId(nodes, 'p').props.modal, 1, 'aria-modal makes it modal');
+});
+
+test('role="dialog" needs a popover view, aria-modal a dialog, and a <dialog> stays modal', () => {
+  const refused = (props, pattern) => { reset(); assert.throws(() => prepare(() => h('page', {}, h(props.tag, props.attrs))), pattern); };
+  refused({ tag: 'view', attrs: { role: 'dialog', 'aria-label': 'Panel' } }, /role="dialog" goes on a popover <view>/);
+  refused({ tag: 'view', attrs: { 'aria-modal': true } }, /aria-modal belongs on a popover with role="dialog"/);
+  refused({ tag: 'dialog', attrs: { open: true, 'aria-label': 'Delete?', 'aria-modal': false } }, /a <dialog> is always modal/);
+});
+
 test('a closed dialog renders nothing; closedby="none" ignores Escape and the backdrop', () => {
   reset();
   let close = 0;
