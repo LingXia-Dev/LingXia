@@ -61,6 +61,8 @@ test('component member expressions are not intrinsic tags; fragments and DOM glo
   for (const source of ['const metadata = {window: 1}; metadata.window;', 'function read(document) { return document.title; }', 'const window = 1; const metadata = {window};'])
     clean(source);
   for (const source of ['window.location;', 'const metadata = {window};', 'function read(document) { return document; } document.title;']) flags(source, /UI_DOM/);
+  flags('export function render(){ return <button onClick={() => lx.ui.toast("hi")}>Hi</button> }', /UI_LX: lx is Logic-only; do the call in a Logic action/);
+  for (const source of ['const lx = { n: 1 }; export const n = lx.n;', 'const metadata = { lx: 1 }; metadata.lx;']) clean(source);
   flags('export function render(){return <><text>Hello</text></>}', /UI_FRAGMENT/);
   flags('export const render = () => (<><text>Hello</text></>);', /UI_FRAGMENT/);
   clean('export function render(){return <page data-state="open" className="data-[state=open]:p-4"><text>x</text></page>}');

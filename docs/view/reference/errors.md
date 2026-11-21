@@ -51,6 +51,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_LIMIT` | runtime, native | A page limit was exceeded. |
 | `UI_LIST` | runtime, native | Invalid list description, keys, anchor or row height. |
 | `UI_LOCAL` | runtime | A duplicate `useLocal` name in one component, or `set` on an unmounted cell. |
+| `UI_LX` | build | `lx` is used in View code; call an action that does it in Logic. |
 | `UI_MODULE` | native | The compiled page module failed to load. |
 | `UI_OVERRUN` | native | A render ran past its time budget; the frame is dropped and the page renders again (`UI_TIMEOUT` after several in a row). |
 | `UI_PAGE` | native | A call reached a page that was already discarded. |

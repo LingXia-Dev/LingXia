@@ -452,6 +452,7 @@ const errorNotes = {
   UI_CONTEXT: 'A `createContext` call that is not a module-level const, a `Provider` without one element or a value, or a context value that is not plain data, functions or handles.',
   UI_CSS: 'The page stylesheet has something other than tokens, or more than one is imported.',
   UI_DOM: 'A DOM global (`window`, `document`, …) is used in View code.',
+  UI_LX: '`lx` is used in View code; call an action that does it in Logic.',
   UI_ENVIRONMENT: 'The host reported an invalid environment.',
   UI_ERROR: 'A failure without its own code.',
   UI_FIELD: 'A wire field on a tag that does not accept it.',

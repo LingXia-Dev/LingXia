@@ -189,6 +189,14 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const symbol = ts.isShorthandPropertyAssignment(parent) ? checker.getShorthandAssignmentValueSymbol(parent) : checker.getSymbolAtLocation(node);
       if (!propertyName && !symbol) report(node, `UI_DOM: ${node.text} is unavailable in GPU Views`);
     }
+    // `lx` is Logic's; a View reaches it only through an action. A local binding named lx is fine.
+    if (ts.isIdentifier(node) && node.text === 'lx') {
+      const parent = node.parent;
+      const propertyName = parent.name === node && !ts.isShorthandPropertyAssignment(parent);
+      const symbol = ts.isShorthandPropertyAssignment(parent) ? checker.getShorthandAssignmentValueSymbol(parent) : checker.getSymbolAtLocation(node);
+      const ambient = !symbol || (symbol.declarations ?? []).every(declaration => declaration.getSourceFile().isDeclarationFile);
+      if (!propertyName && ambient) report(node, 'UI_LX: lx is Logic-only; do the call in a Logic action and call the action from the View');
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
