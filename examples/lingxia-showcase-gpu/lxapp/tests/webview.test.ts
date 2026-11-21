@@ -292,11 +292,11 @@ test('a web page in a fading box keeps showing while it fades and returns', { co
   await expect.poll(probe, settled).toBe('solid');
   await view.testId('lab-web-motion-toggle').click();
   await expect(state).toHaveAttribute('data-state', /faded=true/);
-  await new Promise(resolve => setTimeout(resolve, 1_000));
+  await new Promise<void>(resolve => setTimeout(resolve, 1_000));
   await expect.poll(probe, settled).toBe('faint');
   await view.testId('lab-web-motion-toggle').click();
   await expect(state).toHaveAttribute('data-state', /faded=false/);
-  await new Promise(resolve => setTimeout(resolve, 1_000));
+  await new Promise<void>(resolve => setTimeout(resolve, 1_000));
   await expect.poll(probe, settled).toBe('solid');
   expect(await state.getAttribute('data-state'), 'the web page did not reload').toMatch(/loads=1 /);
 });
