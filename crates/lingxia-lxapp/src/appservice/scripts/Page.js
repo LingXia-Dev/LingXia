@@ -373,10 +373,16 @@
           updating = false;
           draft.close();
         }
-        if (returned !== undefined) {
-          throw new TypeError(returned && typeof returned.then === "function"
-            ? "page.update: the recipe must be synchronous; await first, then update"
-            : "page.update: change the draft in place; the recipe returns nothing");
+        // What a recipe returns is ignored (`d => d.list.push(x)`, `d => d.list.pop()`),
+        // except a promise (an await that came too late) and a new plain object (a
+        // replacement that would be lost). Data is an object, so an array never replaces it.
+        if (returned !== null && typeof returned === "object") {
+          if (typeof returned.then === "function") {
+            throw new TypeError("page.update: the recipe must be synchronous; await first, then update");
+          }
+          if (!Array.isArray(returned) && !draft.owns(returned)) {
+            throw new TypeError("page.update: change the draft in place; a returned object is not applied");
+          }
         }
         const changes = draft.changes();
         if (svc) {
@@ -669,6 +675,7 @@ function createDraft(base) {
   const root = make(base, null);
   return {
     root: root.proxy,
+    owns: (value) => states.has(value),
     close() {
       closed = true;
     },

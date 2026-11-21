@@ -116,6 +116,11 @@ assert.throws(() => run('orderPage.update(d => { orderPage.update(e => {}); })')
 assert.throws(() => run('orderPage.update(async d => { d.list = []; })'), /synchronous/);
 assert.throws(() => run('orderPage.update(d => ({ ...d }))'), /in place/);
 assert.equal(run('orderPage.data.list.length'), 2, 'a rejected recipe changes nothing');
+// What a recipe returns is ignored unless it is a promise or a new object.
+run("orderPage.update(d => d.list.push({ n: 9 }))");
+run("orderPage.update(d => d.list.pop())");
+run("orderPage.update(d => d.list.splice(5, 1))");
+assert.equal(run('orderPage.data.list.length'), 2, 'push, pop and splice recipes apply');
 // The draft copies only what a recipe writes; these are the writes a naive copy-on-write loses.
 run(`orderPage.update(d => { d.extra = { a: 1 }; d.extra.c = 2; });
 orderPage.update(d => { d.list.push({ n: 4 }); d.list[0].n = 9; });

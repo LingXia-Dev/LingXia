@@ -33,7 +33,7 @@ const params: OrderParams = { id: 'a' };
 const done: ResultOf<typeof order> = { status: 'done' };
 
 definePage({
-  data: { n: 0 },
+  data: { n: 0, list: [] as string[], rows: [] as { id: string }[] },
   setup: page => ({
     actions: {
       bad() {
@@ -41,6 +41,10 @@ definePage({
         page.update(async d => { d.n = 1; });
         // @ts-expect-error a recipe changes the draft in place
         page.update(d => ({ ...d, n: 1 }));
+        page.update(d => d.n++);
+        page.update(d => d.list.push('x'));
+        page.update(d => d.list.splice(0, 1));
+        page.update(d => d.rows.pop());
         // @ts-expect-error data is readonly
         page.data.n = 2;
       },

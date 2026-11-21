@@ -80,8 +80,19 @@ type SyncSetup<R> = R extends PromiseLike<unknown>
   ? { 'LingXia type error': 'setup is synchronous; start async work in onLoad' }
   : unknown;
 
-/** A recipe changes the draft in place and returns nothing. */
-export type UpdateRecipe<Data> = (draft: Data) => undefined;
+/**
+ * A recipe changes the draft in place. What it returns is ignored, so
+ * `d => d.list.push(x)` is fine; a promise, or a new object shaped like the
+ * data, is refused.
+ */
+export type UpdateRecipe<Data, R = unknown> = (draft: Data) => R & RecipeReturn<R, Data>;
+
+type RecipeReturn<R, Data> = R extends PromiseLike<unknown>
+  ? { 'LingXia type error': 'a recipe is synchronous; await first, then update' }
+  : R extends readonly unknown[] ? unknown
+  : R extends object
+    ? R extends Data ? { 'LingXia type error': 'change the draft in place; a returned object is not applied' } : unknown
+    : unknown;
 
 /** One page instance, as `setup` and everything it returns see it. */
 export interface PageApi<Data, Params, Result, Messages = never> {
@@ -92,7 +103,7 @@ export interface PageApi<Data, Params, Result, Messages = never> {
    * changes at once; the View gets the changes once per turn. Throws inside
    * another `update`; ignored after the page unloads.
    */
-  update(recipe: UpdateRecipe<Data>): void;
+  update<R>(recipe: UpdateRecipe<Data, R>): void;
   /**
    * Resolves when the View has everything updated so far. Rejects on unload.
    * Throws while `setup` runs; call it from a hook or an action.
