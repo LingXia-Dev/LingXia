@@ -1,0 +1,79 @@
+import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
+import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+
+test.configure({ skip: notDesktop });
+
+/**
+ * `lx.clipboard` is the system clipboard, not a runtime-private buffer. The
+ * shared round-trip cannot tell the two apart, so this case crosses the
+ * boundary with the desktop driver, which reads and writes the OS clipboard
+ * through its own native path: text placed by the OS side is what `readText`
+ * sees, and what `writeText` / `clear` do is what the OS side sees.
+ *
+ * The driver runs in the host process, so neither direction raises the macOS
+ * paste prompt. The person's clipboard text is put back afterwards.
+ */
+test('lx.clipboard reads and writes the same clipboard the OS sees', {
+  id: 'DESKTOP-CLIPBOARD-001',
+  covers: [
+    'lx.clipboard.readText',
+    'lx.clipboard.writeText',
+    'lx.clipboard.clear',
+    'lx.clipboard.types',
+    'DesktopClipboard.get',
+    'DesktopClipboard.set',
+  ],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const auto = t.automation;
+  const { app, namespace } = bindFixture(t, 'DESKTOP-CLIPBOARD-001');
+  const platform = await runtimePlatform(app);
+  if (platform !== 'macos' && platform !== 'windows') {
+    throw new Error(`desktop clipboard case ran against ${platform || 'unknown'}`);
+  }
+  const doctor = await auto.desktop.doctor();
+  if (!doctor.capabilities.clipboard) {
+    throw new Error('desktop driver reports no clipboard capability on a desktop host');
+  }
+  const desktop = auto.desktop.clipboard;
+
+  const previous = (await desktop.get()).text;
+  t.defer(async () => {
+    if (previous === null) await desktop.clear();
+    else await desktop.set({ text: previous });
+  });
+
+  const fromOs = `os-to-lx-${namespace}-中文`;
+  await desktop.set({ text: fromOs });
+  const seen = await app.logic.eval(async ({ lx }) => {
+    const read = await lx.clipboard.readText();
+    const types = await lx.clipboard.types();
+    return {
+      status: read.status,
+      empty: (read.status === 'canceled') ? null : (read.status === 'empty'),
+      text: read.status !== 'canceled' && !(read.status === 'empty') ? read.text : null,
+      types,
+    };
+  });
+  expect(seen.status === 'canceled').toBe(false);
+  expect(seen.empty).toBe(false);
+  expect(seen.text).toBe(fromOs);
+  expect(seen.types).toContain('text');
+
+  const fromLx = `lx-to-os-${namespace}-emoji-✓`;
+  await app.logic.eval(async ({ lx }, text) => {
+    await lx.clipboard.writeText(text);
+    return true;
+  }, fromLx);
+  expect((await desktop.get()).text).toBe(fromLx);
+
+  await app.logic.eval(async ({ lx }) => {
+    await lx.clipboard.clear();
+    return true;
+  });
+  const afterClear = await desktop.get();
+  expect(afterClear.text ?? '').toBe('');
+});

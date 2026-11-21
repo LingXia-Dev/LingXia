@@ -1,0 +1,650 @@
+import { expect, test } from '@lingxia/test';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { bindFixture, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
+
+
+/**
+ * The fixture server is started outside the runtime (see tests/harness). With
+ * no `--arg httpBase=…` these register as pending with the reason, rather than
+ * vanishing from the report as if transfer were covered.
+ */
+const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
+test.configure({ skip: httpBase ? undefined : 'needs --arg httpBase' });
+const pending = {
+  reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
+};
+
+test('download a body and read the bytes back out of the sandbox', {
+  id: 'TRANSFER-DOWNLOAD-001',
+  covers: ['lx.network.download', 'DownloadTask.result'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-DOWNLOAD-001');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl) => {
+    const task = lx.network.download(sourceUrl);
+    const awaited = await task.result;
+    // task.result settles once, so a second await observes that same
+    // transfer rather than starting or re-reporting another one.
+    const reawaited = await task.result;
+    const stat = await lx.fs.stat(awaited.uri);
+    return {
+      awaitedSize: awaited.sizeBytes,
+      reawaitedSize: reawaited.sizeBytes,
+      sameUri: reawaited.uri === awaited.uri,
+      onDisk: stat.size,
+      managed: awaited.uri.startsWith('lx://'),
+    };
+  }, `${httpBase}/file/a.bin?size=4096`);
+
+  expect(result.awaitedSize).toBe(4096);
+  expect(result.reawaitedSize).toBe(4096);
+  expect(result.sameUri).toBeTruthy();
+  // A download the lxapp cannot read back is not a download.
+  expect(result.onDisk).toBe(4096);
+  expect(result.managed).toBeTruthy();
+});
+
+test('abort an in-flight download and reject with E_ABORT', {
+  id: 'TRANSFER-ABORT-001',
+  covers: ['DownloadTask.cancel'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-ABORT-001');
+
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
+      const task = lx.network.download(slowUrl);
+      setTimeout(() => task.cancel(), 300);
+      const value = await task.result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/slow?size=400000&chunks=40&delayMs=100`);
+
+  expect(outcome.ok).toBeFalsy();
+  expect(outcome.code).toBe('E_ABORT');
+});
+
+test('stream monotonic download progress across pause and resume', {
+  id: 'TRANSFER-PROGRESS-001',
+  covers: ['DownloadTask.progress', 'DownloadTask.pause', 'DownloadTask.resume'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-PROGRESS-001');
+
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
+      const task = lx.network.download(slowUrl);
+      const events = [];
+      let pauseRequested = false;
+      let resumeRequested = false;
+
+      const progress = task.progress[Symbol.asyncIterator]();
+      while (true) {
+        const step = await progress.next();
+        if (step.done) break;
+        const event = step.value;
+        events.push({
+          kind: event.kind,
+          downloaded: event.downloadedBytes ?? null,
+          total: event.totalBytes ?? null,
+          progress: event.progress ?? null,
+          resultSize: event.kind === 'completed' ? event.result.sizeBytes : null,
+        });
+
+        if (event.kind === 'progress' && !pauseRequested) {
+          pauseRequested = true;
+          await task.pause();
+        } else if (event.kind === 'paused' && !resumeRequested) {
+          resumeRequested = true;
+          await new Promise<void>((resolve) => setTimeout(resolve, 150));
+          await task.resume();
+        } else if (event.kind === 'completed') {
+          break;
+        }
+      }
+
+      const waited = await task.result;
+      const value = { events, waitedSize: waited.sizeBytes };
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`);
+  if (!outcome.ok) {
+    throw new Error(`download progress failed: ${JSON.stringify(outcome)}`);
+  }
+  const result = outcome.value as {
+    events: Array<{
+      kind: string;
+      downloaded: number | null;
+      total: number | null;
+      progress: number | null;
+      resultSize: number | null;
+    }>;
+    waitedSize: number;
+  };
+
+  const kinds = result.events.map((event) => event.kind);
+  const pausedAt = kinds.indexOf('paused');
+  const resumedAt = kinds.indexOf('resumed');
+  expect(pausedAt).toBeGreaterThan(0);
+  expect(resumedAt).toBeGreaterThan(pausedAt);
+  expect(kinds[kinds.length - 1]).toBe('completed');
+
+  const progress = result.events.filter(
+    (event): event is typeof event & { downloaded: number; total: number; progress: number } =>
+      event.kind === 'progress'
+      && event.downloaded !== null
+      && event.total !== null
+      && event.progress !== null,
+  );
+  expect(progress.length).toBeGreaterThan(1);
+  expect(progress.every((event, index) =>
+    index === 0 || event.downloaded >= progress[index - 1].downloaded)).toBeTruthy();
+  expect(progress.every((event) => event.total === 1_200_000)).toBeTruthy();
+  expect(progress.every((event) => event.progress >= 0 && event.progress <= 1)).toBeTruthy();
+
+  const completed = result.events[result.events.length - 1];
+  expect(completed.resultSize).toBe(1_200_000);
+  expect(result.waitedSize).toBe(1_200_000);
+});
+
+test('stop download iteration without canceling the transfer promise', {
+  id: 'TRANSFER-RETURN-001',
+  covers: ['DownloadTask.progress', 'DownloadTask.progress', 'DownloadTask.result'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-RETURN-001');
+
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
+      const value = await (async () => {
+        const task = lx.network.download(slowUrl);
+        const progress = task.progress[Symbol.asyncIterator]();
+        const first = await progress.next();
+        const returned = await progress.return!();
+        const afterReturn = await progress.next();
+        let finallyCount = 0;
+        const completed = await task.result.finally(() => { finallyCount += 1; });
+        return {
+          firstKind: first.value?.kind ?? null,
+          returnedDone: returned.done ?? false,
+          afterReturnDone: afterReturn.done ?? false,
+          completedSize: completed.sizeBytes,
+          finallyCount,
+        };
+      })();
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`);
+  if (!outcome.ok) {
+    throw new Error(`download iterator return failed: ${JSON.stringify(outcome)}`);
+  }
+  const result = outcome.value as {
+    firstKind: string | null;
+    returnedDone: boolean;
+    afterReturnDone: boolean;
+    completedSize: number;
+    finallyCount: number;
+  };
+
+  expect(result.firstKind).toBe('progress');
+  expect(result.returnedDone).toBeTruthy();
+  expect(result.afterReturnDone).toBeTruthy();
+  expect(result.completedSize).toBe(131_072);
+  expect(result.finallyCount).toBe(1);
+});
+
+test('cancel a download through its promise helpers', {
+  id: 'TRANSFER-CANCEL-001',
+  covers: ['DownloadTask.cancel', 'DownloadTask.result', 'DownloadTask.result'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-CANCEL-001');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, slowUrl) => {
+    const task = lx.network.download(slowUrl);
+    let finallyCount = 0;
+    const finalized = task.result.finally(() => { finallyCount += 1; }).catch(() => undefined);
+    setTimeout(() => task.cancel(), 300);
+    const caught = await task.result.then(
+      () => ({ code: '', message: 'resolved' }),
+      (error: { code?: string; message?: string } | null) => ({
+        code: String(error?.code || ''),
+        message: String(error?.message || error),
+      }),
+    );
+    await finalized;
+    return { caught, finallyCount };
+  }, `${httpBase}/slow.bin?size=400000&chunks=40&delayMs=100&case=${encodeURIComponent(namespace)}`);
+
+  expect(result.caught.code).toBe('E_ABORT');
+  expect(result.caught.message).toContain('canceled');
+  expect(result.finallyCount).toBe(1);
+});
+
+test('report the server status a failed download saw', {
+  id: 'TRANSFER-STATUS-001',
+  covers: ['lx.network.download'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-STATUS-001');
+
+  for (const status of [404, 500, 503]) {
+    await t.step(`http ${status}`, async () => {
+      const outcome = await app.logic.eval(async ({ lx }, statusUrl, status): Promise<Caught> => {
+        try {
+          const value = await lx.network.download(`${statusUrl}${status}`).result;
+          return { ok: true, value };
+        } catch (error) {
+          const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+          return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+        }
+      }, `${httpBase}/status?code=`, status);
+      expect(outcome.ok).toBeFalsy();
+      expect(outcome.code).toBe('E_NETWORK');
+      // The status has to reach the caller, or a 404 is indistinguishable
+      // from a dropped connection.
+      expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain(String(status));
+    });
+  }
+});
+
+test('upload a managed file as multipart and read the server echo', {
+  id: 'TRANSFER-UPLOAD-001',
+  covers: ['lx.network.upload', 'UploadTask.result', 'UploadTask.result'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-001');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
+    const source = await lx.network.download(sourceUrl).result;
+    const response = await lx.network.upload(uploadUrl, {
+      file: source.uri,
+      name: 'asset',
+      fileName: 'up.bin',
+      formData: { note: 'spec' },
+      headers: { 'x-lx-test': 'echo' },
+    }).result;
+    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+  }, `${httpBase}/file/up.bin?size=1024`, `${httpBase}/upload`);
+
+  expect(result.statusCode).toBe(200);
+  expect(result.echo.ok).toBeTruthy();
+  // Every option the caller passed has to survive the multipart envelope.
+  expect(result.echo.file.field).toBe('asset');
+  expect(result.echo.file.filename).toBe('up.bin');
+  expect(result.echo.file.bytes).toBe(1024);
+  expect(result.echo.fields).toEqual({ note: 'spec' });
+  expect(result.echo.headerEcho).toBe('echo');
+});
+
+test('keep the multipart envelope intact whatever the caller heads', {
+  id: 'TRANSFER-UPLOAD-002',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-002');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
+    const source = await lx.network.download(sourceUrl).result;
+    // Content-Type carries the boundary the server parses by, so a caller
+    // header must not reach it -- unlike bodyMode 'raw', where it must.
+    // user-agent is the runtime's to state, and content-length is derived.
+    const response = await lx.network.upload(uploadUrl, {
+      file: source.uri,
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/plain',
+        'User-Agent': 'spoofed/1.0',
+        'Content-Length': '1',
+      },
+    }).result;
+    return JSON.parse(response.data);
+  }, `${httpBase}/file/env.bin?size=512`, `${httpBase}/upload`);
+
+  expect(result.ok).toBeTruthy();
+  // method is orthogonal to body shape: PUT with a multipart envelope is legal.
+  expect(result.method).toBe('PUT');
+  expect(result.contentType.startsWith('multipart/form-data; boundary=')).toBeTruthy();
+  expect(result.userAgent).not.toBe('spoofed/1.0');
+  expect(result.file?.bytes).toBe(512);
+  // A caller Content-Length of 1 would have truncated the body at the server.
+  expect(result.received).toBeGreaterThan(512);
+});
+
+test('stream upload progress that ends on a completed event', {
+  id: 'TRANSFER-UPLOAD-PROGRESS-001',
+  covers: ['lx.network.upload', 'UploadTask.progress'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-PROGRESS-001');
+
+  const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadRawUrl, uploadUrl) => {
+    const collect = async (url: string, options: Parameters<typeof lx.network.upload>[1]) => {
+      const events: { kind: string; uploaded?: number; total?: number }[] = [];
+      const task = lx.network.upload(url, options);
+      for await (const event of task.progress) {
+        events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
+      }
+      await task.result;
+      return events;
+    };
+    const source = await lx.network.download(sourceUrl).result;
+    const raw = await collect(uploadRawUrl, {
+      file: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+    const multipart = await collect(uploadUrl, {
+      file: source.uri,
+    });
+    return { raw, multipart, size: source.sizeBytes };
+  }, `${httpBase}/file/prog.bin?size=1500000`, `${httpBase}/upload-raw`, `${httpBase}/upload`);
+
+  // One shape per mode, so a failure names the property that moved rather than
+  // just the assertion that tripped. Progress that goes backwards is worse
+  // than no progress at all, and the stream has to end on a terminal event.
+  const shape = (events: { kind: string; uploaded?: number; total?: number }[]) => ({
+    streamed: events.length > 1,
+    terminal: events[events.length - 1].kind,
+    monotonic: events.every((event, i) => i === 0 || Number(event.uploaded) >= Number(events[i - 1].uploaded)),
+    finished: events[events.length - 1].uploaded === events[events.length - 1].total,
+  });
+  const complete = { streamed: true, terminal: 'completed', monotonic: true, finished: true };
+  expect(shape(result.raw)).toEqual(complete);
+  expect(shape(result.multipart)).toEqual(complete);
+
+  // Raw carries the file and nothing else; multipart also pays for the
+  // envelope, so its total runs above the file size.
+  expect(result.raw[0].total).toBe(result.size);
+  expect(result.multipart[0].total).toBeGreaterThan(result.size);
+});
+
+test('stop upload iteration and observe rejected promise helpers', {
+  id: 'TRANSFER-UPLOAD-HELPERS-001',
+  covers: ['UploadTask.progress', 'UploadTask.result', 'UploadTask.result'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-UPLOAD-HELPERS-001');
+
+  const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadUrl, uploadRawUrl) => {
+    const source = await lx.network.download(sourceUrl).result;
+
+    const completing = lx.network.upload(uploadUrl, {
+      file: source.uri,
+    });
+    const completingProgress = completing.progress[Symbol.asyncIterator]();
+    const first = await completingProgress.next();
+    const returned = await completingProgress.return!();
+    const afterReturn = await completingProgress.next();
+    let successFinallyCount = 0;
+    const completed = await completing.result.finally(() => { successFinallyCount += 1; });
+
+    const rejecting = lx.network.upload(uploadRawUrl, {
+      file: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+    let rejectFinallyCount = 0;
+    const finalized = rejecting.result
+      .finally(() => { rejectFinallyCount += 1; })
+      .catch(() => undefined);
+    const caught = await rejecting.result.then(
+      () => ({ code: '', detail: 'resolved' }),
+      (error: { code?: string; data?: { detail?: string } } | null) => ({
+        code: String(error?.code || ''),
+        detail: String(error?.data?.detail || ''),
+      }),
+    );
+    await finalized;
+
+    return {
+      firstKind: first.value?.kind ?? null,
+      returnedDone: returned.done ?? false,
+      afterReturnDone: afterReturn.done ?? false,
+      completedStatus: completed.statusCode,
+      successFinallyCount,
+      caught,
+      rejectFinallyCount,
+    };
+  }, `${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`);
+
+  expect(result.firstKind).toBe('progress');
+  expect(result.returnedDone).toBeTruthy();
+  expect(result.afterReturnDone).toBeTruthy();
+  expect(result.completedStatus).toBe(200);
+  expect(result.successFinallyCount).toBe(1);
+  expect(result.caught.code).toBe('E_NETWORK');
+  expect(result.caught.detail).toContain('403');
+  expect(result.rejectFinallyCount).toBe(1);
+});
+
+test('upload a raw body with PUT for presigned endpoints', {
+  id: 'TRANSFER-UPLOAD-RAW-001',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-001');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
+    const source = await lx.network.download(sourceUrl).result;
+    const response = await lx.network.upload(uploadRawUrl, {
+      file: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+      mimeType: 'application/x-lingxia-test',
+      headers: { 'x-lx-test': 'echo' },
+    }).result;
+    // A presigned signature covers Content-Type, so an explicit header has
+    // to win over mimeType rather than be rewritten by the runtime.
+    const overridden = await lx.network.upload(uploadRawUrl, {
+      file: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+      mimeType: 'application/x-lingxia-test',
+      headers: { 'Content-Type': 'image/avif' },
+    }).result;
+    return {
+      statusCode: response.statusCode,
+      echo: JSON.parse(response.data),
+      overriddenContentType: JSON.parse(overridden.data).contentType,
+    };
+  }, `${httpBase}/file/raw.bin?size=2048`, `${httpBase}/upload-raw`);
+
+  expect(result.statusCode).toBe(200);
+  expect(result.echo.method).toBe('PUT');
+  // Raw means the file bytes and nothing else: no multipart framing overhead,
+  // and a Content-Length taken from the file, which presigned PUT endpoints
+  // require. The fixture fills byte i with i % 251.
+  expect(result.echo.received).toBe(2048);
+  expect(result.echo.contentLength).toBe(2048);
+  expect(result.echo.firstBytes).toBe('0001020304050607');
+  expect(result.echo.contentType).toBe('application/x-lingxia-test');
+  expect(result.echo.headerEcho).toBe('echo');
+  expect(result.overriddenContentType).toBe('image/avif');
+});
+
+test('reject multipart-only options when the body is raw', {
+  id: 'TRANSFER-UPLOAD-RAW-002',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-002');
+
+  // Dropping these silently would leave the lxapp believing they were sent.
+  const rejectedFormData = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.network.download(sourceUrl).result;
+      // Multipart-only options under a raw body: the typings refuse them on purpose.
+      const value = await (lx.network.upload as (url: string, options: object) => ReturnType<typeof lx.network.upload>)(uploadRawUrl, {
+        file: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+        formData: { note: 'spec' },
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
+  const rejectedName = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.network.download(sourceUrl).result;
+      // Multipart-only options under a raw body: the typings refuse them on purpose.
+      const value = await (lx.network.upload as (url: string, options: object) => ReturnType<typeof lx.network.upload>)(uploadRawUrl, {
+        file: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+        name: 'asset',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
+
+  expect(rejectedFormData.ok).toBeFalsy();
+  expect(String(rejectedFormData.code)).toBe('E_INVALID_ARG');
+  expect(rejectedName.ok).toBeFalsy();
+  expect(String(rejectedName.code)).toBe('E_INVALID_ARG');
+});
+
+test('report the refusing status when a raw upload is rejected mid-body', {
+  id: 'TRANSFER-UPLOAD-RAW-003',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-003');
+
+  // How a presigned URL refuses a signature: answer, then hang up before the
+  // body is done. The status has to survive that, or the lxapp cannot tell a
+  // rejected signature from a flaky network.
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.network.download(sourceUrl).result;
+      const value = await lx.network.upload(uploadRawUrl, {
+        file: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/file/reject.bin?size=8000000`, `${httpBase}/upload-raw?reject=403`);
+
+  expect(outcome.ok).toBeFalsy();
+  expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
+});
+
+test('accept PATCH and an empty file as a raw body', {
+  id: 'TRANSFER-UPLOAD-RAW-004',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-004');
+
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
+    // Zero bytes is only reachable with a raw body -- multipart always has an
+    // envelope -- and it must still be a well-formed request, not a hang.
+    const empty = await lx.network.download(sourceUrl).result;
+    const response = await lx.network.upload(uploadRawUrl, {
+      file: empty.uri,
+      method: 'PATCH',
+      bodyMode: 'raw',
+    }).result;
+    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+  }, `${httpBase}/file/empty.bin?size=0`, `${httpBase}/upload-raw`);
+
+  expect(result.statusCode).toBe(200);
+  expect(result.echo.method).toBe('PATCH');
+  expect(result.echo.received).toBe(0);
+  expect(result.echo.contentLength).toBe(0);
+  // No mimeType was given, so the runtime states the neutral default.
+  expect(result.echo.contentType).toBe('application/octet-stream');
+});
+
+test('deny an upload to a host the lxapp never trusted', {
+  id: 'TRANSFER-UPLOAD-AUTH-001',
+  covers: ['lx.network.upload'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-AUTH-001');
+
+  // The host network grant governs uploads exactly as it governs downloads,
+  // and the file resolving first must not be mistaken for permission to send it.
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl): Promise<Caught> => {
+    try {
+      const source = await lx.network.download(sourceUrl).result;
+      const value = await lx.network.upload('https://not-trusted.example/upload', {
+        file: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/file/auth.bin?size=64`);
+
+  expect(outcome.ok).toBeFalsy();
+  expect(String(outcome.code)).toBe('E_PERMISSION_DENIED');
+});
+
+test('cancel an upload and reject rather than resolve', {
+  id: 'TRANSFER-UPLOAD-CANCEL-001',
+  covers: ['UploadTask.cancel'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-CANCEL-001');
+
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadUrl): Promise<Caught> => {
+    try {
+      const source = await lx.network.download(sourceUrl).result;
+      // holdMs keeps the request open long enough for a cancel to be meaningful.
+      const task = lx.network.upload(uploadUrl, {
+        file: source.uri,
+      });
+      setTimeout(() => task.cancel(), 200);
+      const value = await task.result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+    }
+  }, `${httpBase}/file/big.bin?size=2000000`, `${httpBase}/upload?holdMs=3000`);
+
+  expect(outcome.ok).toBeFalsy();
+  // A cancel that reports as a connection error is indistinguishable from the
+  // network dropping, so E_NETWORK is not an acceptable answer here.
+  expect(String(outcome.code)).toBe('E_ABORT');
+});

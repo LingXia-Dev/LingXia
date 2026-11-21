@@ -1,0 +1,20 @@
+// Diagnostic probe (not part of any suite): drives relaunch/push/pop cycles
+// at driver pace using only pages that exist on the branch base, then checks
+// whether `home` still boots — reproduces the Harmony post-navigation
+// bridge-poisoning without the lifecycle fixtures.
+import { expect, test } from '@lingxia/test';
+import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+
+test('relaunch/push/pop churn leaves home bootable', { app: SHOWCASE_APP_ID }, async (t) => {
+  const app = t.app;
+  for (let i = 0; i < 6; i += 1) {
+    await app.nav.reset({ page: 'home' });
+    await app.nav.go({ page: 'ui' });
+    await app.nav.back();
+    await app.nav.reset({ page: 'device' });
+  }
+  await app.nav.reset({ page: 'home' });
+  await app.view.testId('home-page').waitFor({ state: 'visible', timeout: 8_000 });
+  const current = await app.nav.current();
+  expect(current.ready).toBe(true);
+});

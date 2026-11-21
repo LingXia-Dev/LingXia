@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../../../packages/lingxia-test/schemas/scenario.schema.json",
+  "name": "Profile",
+  "description": "The profile answered by mocks/ handlers, with states on top.",
+  "variants": {
+    "suspended": {
+      "description": "the account is suspended",
+      "rules": [
+        {
+          "http": "GET https://api.example.com/lingxia-showcase/mocks/profile",
+          "status": 403,
+          "json": { "error": "suspended" }
+        }
+      ]
+    },
+    "renamed": {
+      "description": "the handler answers, its name patched",
+      "rules": [
+        {
+          "http": "GET https://api.example.com/lingxia-showcase/mocks/profile",
+          "continue": true,
+          "patchJson": { "name": "Grace" }
+        }
+      ]
+    }
+  }
+}

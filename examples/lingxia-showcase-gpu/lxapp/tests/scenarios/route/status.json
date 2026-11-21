@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../../../packages/lingxia-test/schemas/scenario.schema.json",
+  "name": "Status",
+  "description": "The route status endpoint online or offline; device reads carry a stale lastSeen, and renames answer by what they send.",
+  "rules": [
+    {
+      "http": "GET https://api.example.com/lingxia-showcase/route/devices/*",
+      "json": { "id": "d1", "online": false, "lastSeen": "{{now-6h}}" }
+    },
+    {
+      "http": "PATCH https://api.example.com/lingxia-showcase/route/devices/*",
+      "match": { "json": { "name": "Office" } },
+      "status": 409,
+      "json": { "error": "name_taken" }
+    },
+    {
+      "http": "PATCH https://api.example.com/lingxia-showcase/route/devices/*",
+      "match": { "json": { "name": "/^Lab-\\d+$/", "tags": ["lab", "floor-2"] } },
+      "json": { "renamed": true }
+    }
+  ],
+  "variants": {
+    "online": {
+      "description": "The service reports itself up.",
+      "rules": [
+        {
+          "http": "GET https://api.example.com/lingxia-showcase/route/status",
+          "json": { "up": true, "checkedAt": "{{now}}" }
+        }
+      ]
+    },
+    "offline": {
+      "description": "The service reports itself down.",
+      "rules": [
+        {
+          "http": "GET https://api.example.com/lingxia-showcase/route/status",
+          "status": 503,
+          "json": { "up": false, "checkedAt": "{{now}}" }
+        }
+      ]
+    }
+  }
+}
