@@ -34,9 +34,9 @@ This keeps UI rendering separate from business work. View code renders; Logic co
 
 An experimental [GPU View](docs/skill/lxapp/gpu.md) path compiles TSX and a
 validated Tailwind subset to native rendering while retaining the same Logic
-bridge and host-owned navbar/tabbar. The current host adapter is Android;
-[the independent GPU showcase](examples/lingxia-showcase-gpu/README.md) documents
-its build and device acceptance tests.
+bridge and host-owned navbar/tabbar.
+[The showcase](examples/lingxia-showcase/README.md) is built on it and documents
+its build and checks.
 
 ## What You Build
 

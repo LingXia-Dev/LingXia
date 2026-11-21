@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Run both showcases' full suites on one attached device from a clean export
+# Run the showcase's full suite on one attached device from a clean export
 # of a commit, and keep every result under an evidence directory, so a
 # readiness round always carries the whole suite rather than chosen rows.
 #
 #   scripts/automation/device-readiness.sh --platform android --device SERIAL
 #   scripts/automation/device-readiness.sh --platform macos [--rev REV] [--keep-export]
-#     [--app lingxia-showcase-gpu]   (one showcase only)
-#     [--dev-smoke]                  (also a dev-build subset of the GPU showcase)
+#     [--dev-smoke]                  (also a dev-build subset of the suite)
 #
 # Suites run on release builds, which is what ships; --dev-smoke adds the specs
 # that guard dev-session behaviour on a debug build in the same round.
@@ -16,7 +15,7 @@
 # feature-coverage check does.
 set -euo pipefail
 
-platform="" device="" rev="HEAD" keep=0 apps="lingxia-showcase lingxia-showcase-gpu" dev_smoke=0
+platform="" device="" rev="HEAD" keep=0 apps="lingxia-showcase" dev_smoke=0
 # Edits and dialogs in a dev build: what developers see in every dev session.
 DEV_SMOKE='select below the fold|view lab editors take text|the controls take|a guarded page asks|UI-FEEDBACK-001|PULL-002' 
 evidence="${LINGXIA_EVIDENCE_DIR:-$HOME/.cache/lingxia-gpu-evidence/quality/readiness}"
@@ -27,7 +26,6 @@ while (( $# )); do
     --rev) rev=$2; shift 2 ;;
     --evidence) evidence=$2; shift 2 ;;
     --keep-export) keep=1; shift ;;
-    --app) apps=$2; shift 2 ;;
     --dev-smoke) dev_smoke=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -145,11 +143,7 @@ keyguard_watch() {
   done
 }
 
-# Both install even for one showcase: the GPU showcase runs React's specs,
-# which resolve their packages from React's lxapp.
-for app in lingxia-showcase lingxia-showcase-gpu; do
-  (cd "$export_dir/examples/$app/lxapp" && npm install --no-audit --no-fund >/dev/null)
-done
+(cd "$export_dir/examples/lingxia-showcase/lxapp" && npm install --no-audit --no-fund >/dev/null)
 check_purity
 
 # Host-side device control for specs that turn the phone or read its native
@@ -176,7 +170,7 @@ trap cleanup_fixture EXIT
 
 runs=()
 for app in $apps; do runs+=("$app|release"); done
-(( dev_smoke )) && runs+=("lingxia-showcase-gpu|debug")
+(( dev_smoke )) && runs+=("lingxia-showcase|debug")
 
 status=0
 summary="["
@@ -208,9 +202,7 @@ for entry in "${runs[@]}"; do
     summary+="{\"app\":\"$app\",\"started\":false},"
     continue
   fi
-  test=(--session "$session" test --output-dir "$result/run" ${fixture_args[@]+"${fixture_args[@]}"})
-  # The React showcase picks its platform entry by preset; the GPU one runs tests/.
-  [[ "$app" == lingxia-showcase ]] && test+=(--preset "$platform")
+  test=(--session "$session" test --preset "$platform" --output-dir "$result/run" ${fixture_args[@]+"${fixture_args[@]}"})
   [[ "$profile" == debug ]] && test+=(--grep "$DEV_SMOKE")
   wake
   : >"$result/keyguard.jsonl"
@@ -241,9 +233,8 @@ for entry in "${runs[@]}"; do
   # A dev smoke is a subset: coverage is graded on the release suites.
   [[ "$profile" == debug ]] && coverage=0 covered=null
   if [[ -f "$report" && "$profile" == release ]]; then
-    kind=react; [[ "$app" == lingxia-showcase-gpu ]] && kind=gpu
     node "$export_dir/examples/lingxia-showcase/lxapp/tests/feature-coverage.mjs" \
-      --report "$report" --app "$kind" >"$result/feature-coverage.txt" 2>&1 && coverage=0 covered=true
+      --report "$report" >"$result/feature-coverage.txt" 2>&1 && coverage=0 covered=true
   fi
   (( code != 0 || coverage != 0 )) && status=1
   counts=$(node -e '

@@ -756,7 +756,7 @@ mod tests {
         use lingxia_theme::{Appearance, Prefs, Role};
         let pack = lingxia_theme::complete(
             serde_json::from_str(include_str!(
-                "../../../../examples/lingxia-showcase-gpu/lxapp/theme/pack.json"
+                "../../../../examples/lingxia-showcase/lxapp/theme/pack.json"
             ))
             .unwrap(),
         );

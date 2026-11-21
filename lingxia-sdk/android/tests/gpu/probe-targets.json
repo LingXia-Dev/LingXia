@@ -1,10 +1,10 @@
 {
   "apps": {
     "showcase": {
-      "package": "com.lingxia.example.gpu.dev",
+      "package": "com.lingxia.example.lxapp.dev",
       "sources": [
-        "examples/lingxia-showcase-gpu/lxapp/pages",
-        "examples/lingxia-showcase-gpu/lxapp/shared"
+        "examples/lingxia-showcase/lxapp/pages",
+        "examples/lingxia-showcase/lxapp/shared"
       ]
     },
     "renderer": {

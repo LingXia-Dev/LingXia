@@ -2,7 +2,7 @@
 
 The crates.io package of vello_gpu 0.3.0 (linebender/vello `f3000c8d`, `vello_gpu/`) plus one
 change, used through `[patch.crates-io]` in the workspace `Cargo.toml` and in each app workspace
-that builds the View (`examples/lingxia-showcase-gpu/native/Cargo.toml`), until upstream takes it
+that builds the View (`examples/lingxia-showcase/native/Cargo.toml`), until upstream takes it
 (upstream proposal: not opened yet). Delete this directory and the patch entries once a vello_gpu
 release carries it.
 

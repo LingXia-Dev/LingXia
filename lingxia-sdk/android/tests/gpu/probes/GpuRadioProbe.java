@@ -8,8 +8,8 @@ import android.graphics.Rect;
 public final class GpuRadioProbe {
  static UiAutomation automation;
  // run-probe.mjs sets GPU_PACKAGE for probes that target the smoke host's fixture app.
- static final String PACKAGE=System.getenv("GPU_PACKAGE")==null?"com.lingxia.example.gpu.dev":System.getenv("GPU_PACKAGE");
- static final String LAUNCHER=PACKAGE+(PACKAGE.equals("com.lingxia.view.smoke")?"/com.lingxia.view.SmokeActivity":"/com.lingxia.example.gpu.MainActivity");
+ static final String PACKAGE=System.getenv("GPU_PACKAGE")==null?"com.lingxia.example.lxapp.dev":System.getenv("GPU_PACKAGE");
+ static final String LAUNCHER=PACKAGE+(PACKAGE.equals("com.lingxia.view.smoke")?"/com.lingxia.view.SmokeActivity":"/com.lingxia.example.lxapp.MainActivity");
  static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
  static AccessibilityNodeInfo find(AccessibilityNodeInfo n,String id){
   if(n==null)return null;if((GpuRadioProbe.PACKAGE+":id/"+id).equals(n.getViewIdResourceName()))return n;

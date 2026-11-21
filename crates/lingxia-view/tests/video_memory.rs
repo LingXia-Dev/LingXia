@@ -98,7 +98,7 @@ mod measure {
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let clip = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/lingxia-showcase-gpu/lxapp/public/video/q360.mp4"
+            "/../../examples/lingxia-showcase/lxapp/public/video/q360.mp4"
         );
         let mut player = measure_player(&format!("file://{clip}")).unwrap();
         player.apply(

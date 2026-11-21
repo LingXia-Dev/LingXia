@@ -98,7 +98,7 @@ pub(crate) const SIBLING_EDIT: (&str, &str, &str) = (
 
 pub(crate) fn showcase_page_module_edited(page: &str, edit: Option<(&str, &str, &str)>) -> String {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let lab = std::path::Path::new(root).join("examples/lingxia-showcase-gpu/lxapp");
+    let lab = std::path::Path::new(root).join("examples/lingxia-showcase/lxapp");
     assert!(
         lab.join("node_modules/@liulidesign/core").exists(),
         "the showcase imports Liuli from its node_modules: run npm install in {}",

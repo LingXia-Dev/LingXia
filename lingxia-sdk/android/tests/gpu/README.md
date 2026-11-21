@@ -18,7 +18,7 @@ requires both connections to close, and verifies a new request can complete.
 Generated fixtures live under `target/gpu-device-fixtures`, outside lxapp bundles.
 
 These SDK-owned Android device tools exercise the GPU renderer and the
-showcase app fixture at `examples/lingxia-showcase-gpu`. They are not bundled
+showcase app fixture at `examples/lingxia-showcase`. They are not bundled
 with the host or lxapp. Shared interaction semantics belong in Rust tests under
 `crates/lingxia-view`; Android adapter unit tests live in
 `lingxia-sdk/android/lingxia/src/test`.
@@ -26,7 +26,7 @@ with the host or lxapp. Shared interaction semantics belong in Rust tests under
 `probe-targets.json` names the app (and page) each probe and driver targets;
 probes without an entry target the showcase. `run-probe.mjs` launches smoke-host
 targets on their page and passes the package as `GPU_PACKAGE`.
-`examples/lingxia-showcase-gpu/tests/probe-ids.test.mjs` fails when a referenced
+`examples/lingxia-showcase/tests/probe-ids.test.mjs` fails when a referenced
 test id no longer exists in its target's sources; ids built by string
 concatenation in a probe are not checked.
 
@@ -63,7 +63,7 @@ Build `:app:assembleReleaseAndroidTest` from its Android project with
 `-Plingxia.gpuDeviceTests=true -Plingxia.applicationIdSuffix=.dev`, after installing
 the matching release host. Install `app-release-androidTest.apk` and run
 `adb shell am instrument -w -e class com.lingxia.view.tests.GpuSessionRecoveryTest
-com.lingxia.example.gpu.dev.test/androidx.test.runner.AndroidJUnitRunner`.
+com.lingxia.example.lxapp.dev.test/androidx.test.runner.AndroidJUnitRunner`.
 This injects a session error through reflection in the test APK, clicks the
 host-owned reload action, waits for fresh Logic readiness and rejects an old
 generation's restart callback. It adds no fault-injection API to the product.
@@ -96,7 +96,7 @@ It saves `gpu-independent-chart-{bar,line,pie}.png` under `/data/local/tmp/`.
 Pull and inspect those screenshots as well: colored-pixel counts alone cannot
 detect rendering seams or label collisions.
 
-For `GpuMediaImageProbe`, first push `examples/lingxia-showcase-gpu/lxapp/public/mark.png` to
+For `GpuMediaImageProbe`, first push `examples/lingxia-showcase/lxapp/public/mark.png` to
 `/sdcard/Download/lingxia-gpu-media-fixture.png` and broadcast
 `android.intent.action.MEDIA_SCANNER_SCAN_FILE` for its `file://` URI.
 The probe selects the newest album image; run immediately after importing this
@@ -116,7 +116,7 @@ It also cancels a compression and restarts it before checking successful output.
 It does not prove playback motion, compression ratio or mid-task navigation.
 
 A probe's presence does not establish current product coverage. See
-[the parity checklist](../../../../examples/lingxia-showcase-gpu/tests/PARITY.md).
+[the parity checklist](../../../../examples/lingxia-showcase/tests/PARITY.md).
 
 For `GpuScanProbe`, push `fixtures/scanner-qr.png` to
 `/sdcard/Download/lingxia-gpu-scanner-fixture.png` and broadcast
@@ -128,7 +128,7 @@ The fixture becomes the newest image; re-import the image-compression fixture
 before running `GpuMediaImageProbe`. This verifies album decoding, not live
 camera recognition of a physical code.
 
-For `GpuClipboardImageProbe`, import `examples/lingxia-showcase-gpu/lxapp/public/mark.png` as the newest album
+For `GpuClipboardImageProbe`, import `examples/lingxia-showcase/lxapp/public/mark.png` as the newest album
 image (for example `/sdcard/Download/lingxia-gpu-clipboard-selected.png`, then
 broadcast the media scanner). Start at Home. The probe verifies selected-image
 clipboard roundtrip, centered square GPU preview bounds, cancel without losing
@@ -160,7 +160,7 @@ Cloud provider verification uses `D:/lingxia-cloud-client` through
 rebuilds; the ordinary example build intentionally leaves the provider disabled.
 The local mock configuration for this run is
 `target/gpu-cloud/cloud-mockd.toml`: HTTP `127.0.0.1:39881`, MQTT QUIC
-`192.168.37.80:39883`, LingXia id `lingxia-showcase-gpu`, tenants A/B. The
+`192.168.37.80:39883`, LingXia id `lingxia-showcase`, tenants A/B. The
 example's dev server and HTTP probes use USB loopback:
 `adb reverse tcp:39881 tcp:39881`. The mock binds HTTP to `0.0.0.0` and
 advertises `127.0.0.1`; MQTT advertises the machine's reachable LAN address.

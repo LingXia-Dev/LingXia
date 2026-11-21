@@ -1,5 +1,5 @@
 {
-  "package": "com.lingxia.example.gpu.dev",
+  "package": "com.lingxia.example.lxapp.dev",
   "scenarios": [
     {"probe":"GpuHomeParityProbe","timeoutSeconds":180},
     {"probe":"GpuTodoParityProbe","timeoutSeconds":180},

@@ -142,7 +142,7 @@ Increment and decrement are the `scroll-forward`/`scroll-backward` pair sliders 
 **Tests.**
 - Host (`session/tests`): the arbitration table as pointer sequences, handoff in one gesture, RTL, row eviction, value and velocity continuous across a retarget, reduced motion, close-request order, focus return, modal semantics.
 - Corpus (`--visual`): `overlay-dialog`, `overlay-menu`, `sheet-detents`, `swipe-row`, `pager`, spring at time zero and midpoint.
-- `@lingxia/test` specs in showcase-gpu driving each by pointer and by accessibility action, on macOS by me.
+- `@lingxia/test` specs in the showcase driving each by pointer and by accessibility action, on macOS by me.
 
 **iPhone checks, one list per round:**
 - Overlays: menu opens at a button in a scrolled list and follows; tap outside closes without activating; VoiceOver stays inside a dialog, two-finger scrub closes it.

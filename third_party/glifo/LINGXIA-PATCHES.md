@@ -2,7 +2,7 @@
 
 The crates.io package of glifo 0.4.0 (linebender/vello `f3000c8d`, `glifo/`) plus one fix, used
 through `[patch.crates-io]` in the workspace `Cargo.toml` and in each app workspace that builds the
-View (`examples/lingxia-showcase-gpu/native/Cargo.toml`), until upstream takes it
+View (`examples/lingxia-showcase/native/Cargo.toml`), until upstream takes it
 (proposed as linebender/vello#2067). Delete this
 directory and the patch entries once a glifo release carries it.
 

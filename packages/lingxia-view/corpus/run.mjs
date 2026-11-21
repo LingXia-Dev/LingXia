@@ -2,7 +2,7 @@
 // appearances, in two lanes:
 //   fixture: crates/lingxia-view/tests/fixtures, one renderer construct per page; cost budgets and
 //     an exact SHA-256 of each CPU frame.
-//   showcase: every GPU page of examples/lingxia-showcase-gpu with its captured Logic state; cost
+//   showcase: every GPU page of examples/lingxia-showcase with its captured Logic state; cost
 //     budgets and UI_* errors only, since its pixels follow product edits.
 // Each lane keeps budgets.json (and the fixture lane renders.json) beside its pages. Timings are informative.
 //   node corpus/run.mjs [--lane fixture|showcase] [--only <substring>] [--update-budgets] [--png] [--nodes]
@@ -32,7 +32,7 @@ const file = id => id.replace(/[/@]/g, '_');
 const readJson = async (path, fallback) => existsSync(path) ? JSON.parse(await readFile(path, 'utf8')) : fallback;
 
 const fixtures = join(repo, 'crates/lingxia-view/tests/fixtures');
-const showcase = join(repo, 'examples/lingxia-showcase-gpu/lxapp');
+const showcase = join(repo, 'examples/lingxia-showcase/lxapp');
 const lanes = [
   { name: 'fixture', root: fixtures, states: fixtures, budgets: join(fixtures, 'budgets.json'), renders: join(fixtures, 'renders.json'), images: true,
     pages: async () => (await readdir(fixtures)).filter(name => name.endsWith('.tsx')).sort() },

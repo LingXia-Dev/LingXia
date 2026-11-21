@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn the_gpu_showcase_tokens_are_current() {
         let theme = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/lingxia-showcase-gpu/lxapp/theme");
+            .join("../../examples/lingxia-showcase/lxapp/theme");
         assert_eq!(
             fs::read_to_string(theme.join("tokens.css")).unwrap(),
             stylesheet(&load(Some(&theme.join("pack.json"))).unwrap()),

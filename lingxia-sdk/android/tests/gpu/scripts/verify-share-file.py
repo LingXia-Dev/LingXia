@@ -18,6 +18,6 @@ assert len(record['files']) == 1
 received = record['files'][0]
 assert received['size'] == len(expected), received
 assert received['sha256'] == hashlib.sha256(expected).hexdigest(), received
-assert received['uri'].startswith('content://com.lingxia.example.gpu.dev.lingxia.documents/')
+assert received['uri'].startswith('content://com.lingxia.example.lxapp.dev.lingxia.documents/')
 Path('target/ui-share-file-payload.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
 print('PASS selected PDF bytes, MIME type, content URI grant and SHA-256 match fixture')

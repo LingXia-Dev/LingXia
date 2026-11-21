@@ -23,8 +23,7 @@ for (const [file, reason] of Object.entries(manifest.skip)) {
   if (!specs.includes(file)) problems.push(`skip names ${file}, which is not a page or flow spec`);
   if (typeof reason !== 'string' || !reason.trim()) problems.push(`skip of ${file} has no reason`);
 }
-// Every literal testId a run spec names must exist in both lxapps, so the
-// GPU mirror cannot drift from the React pages.
+// Every literal testId a run spec names must exist in this lxapp.
 const sourceIds = (root, attr, computed = false) => {
   const ids = new Set();
   const prefixes = [];
@@ -52,12 +51,10 @@ const sourceIds = (root, attr, computed = false) => {
   walk(root);
   return (id) => ids.has(id) || prefixes.some((prefix) => prefix && id.startsWith(prefix));
 };
-// The React showcase renders every id the shared specs name; it is read, never imported.
-const lxapps = { react: join(here, '../../../lingxia-showcase'), gpu: join(here, '..') };
-const has = { react: sourceIds(join(lxapps.react, 'lxapp'), 'data-testid'), gpu: sourceIds(lxapps.gpu, 'data-testid', true) };
+const has = sourceIds(join(here, '..'), 'data-testid', true);
 for (const [id, reason] of Object.entries(manifest.keyed ?? {})) {
   if (typeof reason !== 'string' || !reason.trim()) problems.push(`keyed id ${id} has no reason`);
-  if (!has.gpu(`${id}-`)) problems.push(`keyed id ${id}: the gpu showcase renders no ${id}-<key>`);
+  if (!has(`${id}-`)) problems.push(`keyed id ${id}: the showcase renders no ${id}-<key>`);
 }
 for (const spec of specs.filter((file) => !(file in manifest.skip))) {
   const text = readFileSync(join(source, spec), 'utf8');
@@ -69,10 +66,8 @@ for (const spec of specs.filter((file) => !(file in manifest.skip))) {
     // `lx-*` ids belong to the runtime's own overlays (toast, modal, action
     // sheet), which carry them on both renderers.
     if (id.startsWith('lx-')) continue;
-    for (const app of ['react', 'gpu']) {
-      if (app === 'gpu' && id in manifest.keyed) continue;
-      if (!has[app](id)) problems.push(`${spec} names testId ${id}, which the ${app} showcase does not render`);
-    }
+    if (id in manifest.keyed) continue;
+    if (!has(id)) problems.push(`${spec} names testId ${id}, which the showcase does not render`);
   }
 }
 if (problems.length > 0) {

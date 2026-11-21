@@ -1,0 +1,198 @@
+# Showcase automation contracts
+
+These tests validate LingXia's public behavior, not the implementation of the
+Showcase. A passing suite must show that a public capability is present, works
+through its real boundary, reports failures predictably, and leaves no state
+behind.
+
+The page and flow specs shared with other apps, and their helpers, live in
+`packages/lingxia-test/showcase` and are imported as `@lingxia/test/showcase/…`;
+`shared-specs.json` names the shared files this app skips, each with a reason.
+`node scripts/ci/check-example-imports.mjs` keeps examples from importing each other.
+
+## Suite layout
+
+`lxdev test tests` discovers every spec under `tests/`; `shared-setup.ts` (the
+`test.setup` in `lxapp/lxdev.json`) runs first: it names this app's id for the
+shared specs, applies the skips and waits until the showcase's Logic answers.
+A spec that needs a platform says so itself: `platform/desktop/only.ts` skips
+desktop specs off macOS and Windows, and platform specs read `--arg platform=…`.
+
+`lxapp/lxdev.json` names one preset per platform (`lxdev test --preset macos`;
+the npm `test:automation:*` scripts use them; `lxdev test presets` lists them).
+
+`contract/` holds routed contract tests that need their OpenAPI document:
+`lxdev test tests/contract --openapi tests/contract/devices.openapi.yaml
+--covers-manifest tests/contract/coverage.yaml`; without `--openapi` they skip
+themselves. `scenarios/` holds dev-time product states for `lxdev mock use`,
+which tests may import too (`route/status`, with its `online` and `offline`
+variants, is `AUT-NET-007`'s: `lxdev mock use route/status:offline`).
+`../mocks/` holds the Showcase's mock handlers, answered in development for the
+calls `mocks/config.json` selects (`AUT-NET-008`).
+
+CI runs the showcase on Windows and macOS; the phones run locally.
+
+From the repository root, `scripts/automation/run-android-showcase.ps1 -Device
+<serial>` builds and checks the Android showcase. It starts the HTTP and
+Android system-input fixtures and reverses their ports through adb. Direct
+`lxdev test` runs need `--secret-arg androidDevice=...` to include OS-input
+cases; see [harness setup](harness/README.md#android-system-input).
+Keep other installed development variants stopped so they cannot replace the
+intended runtime connection on the forwarded dev port.
+
+`feature-coverage.mjs` fails when a page or app config feature the showcase
+uses, or an interactive View element kind, has no spec that drives it as a user
+does; `feature-gaps.json` lists the known gaps with a reason.
+
+## What every public capability needs
+
+Use these coverage levels in order:
+
+1. **Shape** — the member exists in the real runtime. `api/surface.test.ts`
+   derives this inventory from `@lingxia/types/testing`; do not add a second
+   hand-maintained API list.
+2. **Semantic contract** — valid input, result shape/value, state transition,
+   event ordering, and idempotency where applicable.
+3. **Failure contract** — invalid input and denied authority reject with a
+   stable error code/message and do not mutate state.
+4. **Boundary contract** — Bridge serialization, DOM `CustomEvent`, native
+   component, host surface, filesystem/network, or OS integration is exercised
+   through the real boundary instead of a mock.
+5. **Lifecycle contract** — cleanup, restart/relaunch, repeated calls,
+   concurrent calls, and leak checks where the capability owns resources.
+
+System-dialog APIs such as media/file pickers, sharing, Wi-Fi, and permissions
+also require an external OS-UI case. Their JavaScript case owns the action and
+postcondition; UIAutomator (Android) or the desktop AX driver owns the system
+dialog. Do not fake those dialogs from page JavaScript.
+
+## Case authoring rules
+
+New cases use `test` from `@lingxia/test`:
+
+- assign a stable domain ID and list public members in `{ covers }` on the test;
+- use `bindFixture(t, id)` for a unique `namespace` and `t.defer` cleanup;
+- assert an observable public result, not a private host field;
+- use `expect(locator)` / `expect.poll(fn)` (or `PageDriver.waitFor` on a raw driver); fixed sleeps are
+  permitted only for a documented physical stabilization interval;
+- bind a page once, `const home = await app.page({ name: 'home' })`, and act through `home.view.testId('…')`; the handle never follows navigation, so bind again after a relaunch, redirect or reopen of that page. Select duplicate matches with `.nth(index)` and press keys with `.press('Enter')`;
+- call a page's public actions and read its data through its `PageContract` (`app.page<TodoPage>(…)`, then `todo.actions.addTodo(…)` / `todo.data()`); keep `app.logic.eval` for what no page exposes;
+- use `t.automation` for host/browser/terminal drivers; keep raw drivers only for deliberate API-boundary checks;
+- for rejected operations, use `t.reject` and assert unchanged state;
+- keep one primary behavior per case so the report identifies the broken
+  contract;
+- never catch and discard an error merely to make a platform pass.
+
+Use `--id ID` or `--last-failed path/to/report.json` for focused reruns;
+`--verbose` adds the full action trace. `--shard i/n` needs a separate host session
+and output directory per shard. Filtered runs cannot refresh the covers gate.
+
+Retries require real state recovery. The shared `pages/todo.test.ts` (in `/test/showcase`) supplies `test.reset`
+and bounded `t.defer` cleanup; run it with `--retries 1`. Do not enable retries
+for the whole suite without file-specific reset hooks: cold-start, permission,
+and host-window contracts cannot share a generic relaunch reset.
+
+Failure forensics (screenshot + route/state) are attached by `@lingxia/test`.
+The covers gate (`tests/scripts/check-covers.mjs`) only refreshes from a full
+unfiltered passing `report.json`.
+
+## Cross-platform policy
+
+Portable tests contain no Windows/macOS/Android branch. Classify differences as:
+
+1. **Same public contract:** one shared case, no platform condition.
+2. **Documented contract difference:** one shared scenario fed by a small,
+   table-driven capability profile that states `supported`, `absent`,
+   `external-ui`, or another explicit outcome.
+3. **Physical implementation difference:** a case under `platform/<name>/` or
+   `platform/desktop/` using window, AX, pixel, process, or system-UI drivers.
+
+An OS name must not be used as a proxy for privilege, permission, home-app
+status, or a runtime capability. Probe the capability or pass an explicit
+profile. Platform branches are acceptable inside physical drivers because
+coordinate units and native window topology genuinely differ there.
+
+## Running on Windows
+
+From the repository root:
+
+```powershell
+./scripts/automation/run-windows-showcase.ps1
+```
+
+The runner builds `lingxia` and `lxdev` from the current checkout, installs
+both executables into `~/.local/bin`, then starts and tests the showcase.
+Artifacts and session logs are retained under
+`lxapp/test-results/automation/windows`.
+
+## Running on macOS
+
+From the repository root:
+
+```bash
+bash scripts/automation/run-macos-showcase.sh
+```
+
+## Running on Android locally
+
+Android requires `JAVA_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_ROOT`, `adb` on
+`PATH`, the Rust target matching the device (`aarch64-linux-android` or
+`armv7-linux-androideabi`), and one ARM64/ARMv7 device or emulator. The CLI
+currently rejects an x86_64-only emulator.
+
+From the repository root:
+
+```powershell
+cargo build -p lingxia-cli -p lingxia-devtools-cli
+./scripts/automation/run-android-showcase.ps1
+```
+
+Pass `-Device <adb-serial>` when more than one device is connected. The script
+runs `lingxia doctor`, checks the selected ABI, then starts Android dev mode.
+`lingxia dev` builds and installs the APK, configures `adb reverse`, launches
+the host, and waits for the runtime websocket before `lxdev test` starts.
+Test artifacts and session logs are retained under
+`lxapp/test-results/automation/android`.
+
+After installation the script grants coarse/fine location to the test host
+(`-PackageId`, default `com.lingxia.example.lxapp.dev`) and requires Location
+services on. Wi-Fi scanning needs these; otherwise `startWifi` waits for a
+system permission dialog the JS runner cannot answer and the eval times out.
+When invoking `lxdev test` directly, prepare these permissions first.
+
+The Android JavaScript suite can drive Logic and page DOM and can take page/app
+screenshots. It cannot operate permission dialogs, the photo picker, share
+sheet, or other Android system UI. Add those actions to an external
+UIAutomator/Appium device-lab suite, then return to `lxdev` for the app-state
+assertion.
+
+## Interpreting skips
+
+Every run also includes the shared pending backlog. A skip is not
+automatically a non-Android case: `planned` means the assertion is not implemented,
+`external-ui` needs an OS UI driver, and `external-fixture` needs its stated
+service or device setup. Some backlog entries explicitly target desktop or iOS.
+Read each report's `reason`; skips do not count as verified coverage. Promote a
+pending entry only after replacing it with an executable assertion.
+
+## Error-code ownership
+
+`error-catalog.mjs` assigns all 20 `LxErrorCode`, 9 `SurfaceErrorCode`, and
+14 `BRIDGE_*` values to executable tests. `npm run test:harness` checks this
+inventory against the source declarations and rejects missing or stale owners.
+Run the owners from the repository root:
+
+```sh
+npm run test:runtime --prefix packages/lingxia-types
+npm test --prefix packages/lingxia-bridge
+```
+
+The types owner verifies normalization, precedence, unknown-code rejection,
+and surface-code extraction. The bridge owner verifies error-envelope
+preservation, readiness, and close races using a controlled transport.
+These layers do not prove every native failure can be induced on a phone.
+The catalog separately lists stronger real-device owners and states the
+remaining origin-coverage limits for each family. `CHANNEL-ERROR-001` covers
+real disconnected sends and missing topics; `PULL-001` covers invalid refresh
+state. App lifecycle and native page-JSON chrome are covered on Android by
+`NAV-APP-001` and `ANDROID-PAGE-CONFIG-001` respectively.

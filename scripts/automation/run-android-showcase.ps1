@@ -201,10 +201,10 @@ function Invoke-ProcessRestoreProbe {
     )
     # Exercise navigation through Logic and back, beyond merely seeing a cover
     # disappear or finding an Activity with the expected name.
-    Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'components', '--json')
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'system', '--json')
     Invoke-Checked $lxdev @(
-      'lxapp', 'page', 'wait', '--page', 'components',
-      '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '10000'
+      'lxapp', 'page', 'wait', '--page', 'system',
+      '[data-testid="system-page"]', '--state', 'visible', '--timeout-ms', '10000'
     )
     Invoke-Checked $lxdev @('lxapp', 'nav', 'reset', 'home', '--json')
     Invoke-Checked $lxdev @(

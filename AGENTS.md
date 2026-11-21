@@ -36,12 +36,11 @@ recoverable from the code alone.
 Reference projects under `examples/`:
 
 - [examples/lingxia-showcase-web](examples/lingxia-showcase-web) — **standalone WebView lxapp**, no native host: React pages for what only a WebView page shows (native components in a page, the bridge, streams, channels) and a chat. The reference for WebView lxapp structure; run it in the Runner.
-- [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, native components, media, and the terminal. Its pages are React.
+- [examples/lingxia-showcase](examples/lingxia-showcase) — **native host app + embedded lxapp**: one host app for Android/iOS/macOS/HarmonyOS/Windows embedding the showcase lxapp; kitchen-sink demo of pages, the `lx.*` surface, View elements, media, and the terminal. Its pages are GPU Views (TSX).
 
 ## Build & verify
 
-`examples/lingxia-showcase-gpu` is an independent Android GPU host and embedded
-TSX lxapp; the React showcase is its parity reference. SDK device probes belong
+SDK device probes for the showcase's GPU pages belong
 in `lingxia-sdk/android/tests/gpu`, outside app bundles. `lingxia-sdk/fixtures/hello-view`
 is the bare-renderer smoke fixture every platform's smoke harness loads. Read `docs/internal/view-authoring.md`,
 `view-renderer.md`, `view-styling.md` and `view-animation.md` before changing GPU contracts.

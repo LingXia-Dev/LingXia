@@ -136,8 +136,6 @@ jobs:
               - 'examples/lingxia-showcase/icons/**'
               - 'examples/lingxia-showcase/lxapp/**'
               - 'examples/lingxia-showcase/native/**'
-              - 'examples/lingxia-showcase/lingxia-lib/**'
-              - 'examples/lingxia-showcase/lingxia-showcase/**'
               - 'examples/lingxia-showcase-web/**'
             ex_ios:
               - 'examples/lingxia-showcase/ios/**'
@@ -152,9 +150,8 @@ jobs:
             npm:
               - 'packages/**'
               - 'contracts/**'
-              - 'examples/lingxia-showcase-gpu/**'
+              - 'examples/lingxia-showcase/**'
               - 'lingxia-sdk/android/tests/gpu/**'
-              - 'examples/lingxia-showcase/lxapp/**'
               - 'crates/lingxia-lxapp/src/appservice/scripts/**'
               - 'crates/lingxia-browser-shell/webui/**'
             # Source of truth for the generated @lingxia/types Logic API.
@@ -230,7 +227,7 @@ jobs:
               - 'packages/lingxia-page-runtime/**'
             automation_react:
               - 'packages/lingxia-react/**'
-            # Windows and macOS both run the React showcase.
+            # Windows and macOS both run the showcase.
             automation_showcase:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/lxapp/**'
@@ -931,9 +928,9 @@ jobs:
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
 
-      # The view-lab tests compile the GPU showcase, whose pages import Liuli through its node_modules.
-      - name: Install the GPU showcase
-        working-directory: examples/lingxia-showcase-gpu/lxapp
+      # The view-lab tests compile the showcase, whose pages import Liuli through its node_modules.
+      - name: Install the showcase
+        working-directory: examples/lingxia-showcase/lxapp
         run: npm ci
 
       # The only other run of these tests is the advisory rust-test job. `hot-swap` is a
@@ -1430,8 +1427,8 @@ jobs:
 
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Install the GPU showcase
-        working-directory: examples/lingxia-showcase-gpu/lxapp
+      - name: Install the showcase
+        working-directory: examples/lingxia-showcase/lxapp
         run: npm ci
 
       - name: Test all workspace crates
@@ -1696,8 +1693,8 @@ jobs:
       - name: Check every semantic role has a native mapping
         run: node scripts/ci/check-semantic-roles.mjs
 
-      - name: Check GPU showcase contracts and Logic
-        working-directory: examples/lingxia-showcase-gpu/lxapp
+      - name: Check showcase contracts and Logic
+        working-directory: examples/lingxia-showcase/lxapp
         run: |
           npm ci
           npm run typecheck
@@ -1799,8 +1796,8 @@ jobs:
 
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Install the GPU showcase
-        working-directory: examples/lingxia-showcase-gpu/lxapp
+      - name: Install the showcase
+        working-directory: examples/lingxia-showcase/lxapp
         run: npm ci
 
       - name: Render the corpus against its budgets
@@ -1839,8 +1836,8 @@ jobs:
 
       - uses: ./.github/actions/build-web-runtime
 
-      - name: Install the GPU showcase
-        working-directory: examples/lingxia-showcase-gpu/lxapp
+      - name: Install the showcase
+        working-directory: examples/lingxia-showcase/lxapp
         run: npm ci
 
       - name: Compare the fixture renders with their recorded hashes
@@ -1905,7 +1902,7 @@ jobs:
         run: node examples/lingxia-showcase/lxapp/tests/feature-coverage.mjs
 
       - name: Check the shared spec manifest and testIds
-        run: node examples/lingxia-showcase-gpu/lxapp/tests/shared-specs.check.mjs
+        run: node examples/lingxia-showcase/lxapp/tests/shared-specs.check.mjs
 
   release-tooling:
     needs: changes

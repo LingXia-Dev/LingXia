@@ -1,6 +1,14 @@
 {
   "$schema": "../../../packages/lingxia-test/schemas/lxdev.schema.json",
   "test": {
-    "setup": "tests/shared-setup.ts"
+    "setup": "tests/shared-setup.ts",
+    "presets": {
+      "portable": ["tests", "--forbid-only"],
+      "macos": ["tests", "--forbid-only", "--arg", "platform=macos"],
+      "windows": ["tests", "--forbid-only", "--arg", "platform=windows"],
+      "android": ["tests", "--forbid-only", "--arg", "platform=android"],
+      "ios": ["tests", "--forbid-only", "--arg", "platform=ios"],
+      "harmony": ["tests", "--forbid-only", "--arg", "platform=harmony"]
+    }
   }
 }

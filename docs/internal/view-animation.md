@@ -136,6 +136,6 @@ queues `nativeAnimationPresented` on the same worker; it returns -1 (no wakeup),
   routes agree at fixed times; reduced motion lands in one frame; hidden pages park.
 - Host tests (`session/tests/host.rs`): a spinner presents once per vsync only while
   shown, nothing hidden, removed or after a one-shot completes, no timers left.
-- Device acceptance (`examples/lingxia-showcase-gpu/pages/motion-lab`, Pixel): fade,
+- Device acceptance (`examples/lingxia-showcase/pages/motion-lab`, Pixel): fade,
   interruption, press scale, spin at display rate, reduced motion, hidden pages and
   CPU parity.
