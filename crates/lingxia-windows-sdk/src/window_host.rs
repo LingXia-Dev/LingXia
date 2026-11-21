@@ -2,6 +2,10 @@
 
 #[cfg(feature = "shell-chrome")]
 mod full_chrome_caption;
+#[cfg(feature = "components")]
+mod relaunch_cover;
+#[cfg(feature = "components")]
+pub(crate) use relaunch_cover::cover_relaunch;
 #[cfg(feature = "shell-chrome")]
 mod sidebar_peek;
 #[cfg(feature = "shell-chrome")]

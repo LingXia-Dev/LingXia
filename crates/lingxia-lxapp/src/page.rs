@@ -59,6 +59,13 @@ const PAGE_SVC_READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// overlay on this signal.
 static HOME_FIRST_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+static RELAUNCH_OBSERVER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Runs as a reLaunch begins, while the pages it ends are still on screen.
+pub fn set_relaunch_observer(observer: fn()) {
+    let _ = RELAUNCH_OBSERVER.set(observer);
+}
+
 fn notify_home_first_ready_once(appid: &str) {
     if lingxia_app_context::home_app_id() != Some(appid) {
         return;
@@ -2545,6 +2552,11 @@ impl PageInstance {
                     // with its old document, Logic page object, data and no
                     // new onLoad. See `relaunch_retirees`.
                     let retiring = lxapp.relaunch_retirees();
+                    if !retiring.is_empty()
+                        && let Some(observer) = RELAUNCH_OBSERVER.get()
+                    {
+                        observer();
+                    }
                     for page in &retiring {
                         if page.owes_on_unload() {
                             page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);

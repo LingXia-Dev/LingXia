@@ -497,6 +497,16 @@ pub(super) fn window_has_frame(content: isize) -> bool {
     frame_state(content, |_| ()).is_some()
 }
 
+pub(super) fn frame_window(content: isize) -> Option<isize> {
+    frame_state(content, |state| state.frame).filter(|frame| *frame != 0)
+}
+
+pub(super) fn frame_shown(content: isize) -> bool {
+    frame_state(content, |state| state.frame).is_some_and(|frame| unsafe {
+        WindowsAndMessaging::IsWindowVisible(hwnd_from_handle(frame)).as_bool()
+    })
+}
+
 /// Hairline color for the frameless screen outline (`0xAARGB`; the partial
 /// alpha selects the composition layer's outline mode).
 const FRAMELESS_OUTLINE_COLOR: u32 = 0xE030_3030;

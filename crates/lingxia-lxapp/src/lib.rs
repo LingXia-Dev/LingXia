@@ -159,6 +159,7 @@ pub use page::{
 pub use page::{
     LeaveReason, NavigationType, PageAutomationState, PageInstance, PageInstanceId,
     PageWebViewAwait, ViewCallOptions, register_page_resolver, resolve_page_path,
+    set_relaunch_observer,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
