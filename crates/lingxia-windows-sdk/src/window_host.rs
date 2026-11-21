@@ -1089,21 +1089,7 @@ fn present_webview_in_active_group_with_policy(
         // A re-present of the active page is still a present: surface the
         // host if something hid it and converge stray duplicates.
         if !is_window_visible(host) {
-            unsafe {
-                let _ = WindowsAndMessaging::SetWindowPos(
-                    host,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    WindowsAndMessaging::SWP_NOMOVE
-                        | WindowsAndMessaging::SWP_NOSIZE
-                        | WindowsAndMessaging::SWP_SHOWWINDOW,
-                );
-                let _ = WindowsAndMessaging::BringWindowToTop(host);
-                let _ = WindowsAndMessaging::SetForegroundWindow(host);
-            }
+            show_presented_host(host);
         }
         hide_other_workspace_windows(host);
         if presentation == GroupMainPresentation::Replace {
@@ -1194,21 +1180,7 @@ fn present_webview_in_active_group_with_policy(
     // Show the host before the content so the controller's SetIsVisible(true)
     // lands on a visible parent chain and composition starts immediately.
     if !is_window_visible(host) {
-        unsafe {
-            let _ = WindowsAndMessaging::SetWindowPos(
-                host,
-                None,
-                0,
-                0,
-                0,
-                0,
-                WindowsAndMessaging::SWP_NOMOVE
-                    | WindowsAndMessaging::SWP_NOSIZE
-                    | WindowsAndMessaging::SWP_SHOWWINDOW,
-            );
-            let _ = WindowsAndMessaging::BringWindowToTop(host);
-            let _ = WindowsAndMessaging::SetForegroundWindow(host);
-        }
+        show_presented_host(host);
     }
     handler.set_content_visible(true)?;
 
@@ -1231,6 +1203,51 @@ fn present_webview_in_active_group_with_policy(
         clear_presented_group_main_for_host(host);
     }
     Ok(())
+}
+
+/// Shows a host a present needs on screen. Like the macOS shell, it takes the foreground only
+/// when the app has it already or no dev session drives it: a test run must not keep pulling
+/// the window over the user's (and flashing its taskbar button when Windows refuses).
+fn show_presented_host(host: HWND) {
+    #[cfg(feature = "components")]
+    let driven = lxapp::is_dev_session();
+    #[cfg(not(feature = "components"))]
+    let driven = false;
+    let forward = !driven || app_has_foreground();
+    let activate = if forward {
+        WindowsAndMessaging::SET_WINDOW_POS_FLAGS(0)
+    } else {
+        WindowsAndMessaging::SWP_NOACTIVATE
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            host,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_SHOWWINDOW
+                | activate,
+        );
+        if forward {
+            let _ = WindowsAndMessaging::BringWindowToTop(host);
+            let _ = WindowsAndMessaging::SetForegroundWindow(host);
+        }
+    }
+}
+
+fn app_has_foreground() -> bool {
+    let mut pid = 0;
+    unsafe {
+        WindowsAndMessaging::GetWindowThreadProcessId(
+            WindowsAndMessaging::GetForegroundWindow(),
+            Some(&mut pid),
+        );
+    }
+    pid == std::process::id()
 }
 
 fn clear_presented_group_main_for_host(host: HWND) {
