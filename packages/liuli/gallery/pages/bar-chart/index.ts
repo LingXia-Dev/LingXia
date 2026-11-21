@@ -1,21 +1,10 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 import { definePage } from '@lingxia/types/page';
+import { publish, returnToWorkspaceWhenWide, signIn } from '../../shared/pages';
 
 export default definePage({
   setup(thisPage) {
-    let unwatch = undefined as (() => void) | undefined;
-    const actions = {
-      async open({ page }: { page: string }) {
-        await lx.nav.go({ page }).opened;
-      },
-      async publish() {
-        await publish();
-      },
-      async signIn() {
-        await signIn();
-      },
-    };
+    let unwatch: (() => void) | undefined;
     return {
       onLoad() {
         unwatch = returnToWorkspaceWhenWide("bar-chart", thisPage.env);
@@ -23,7 +12,13 @@ export default definePage({
       onUnload() {
         unwatch?.();
       },
-      actions,
+      actions: {
+        async open({ page }: { page: string }) {
+          await lx.nav.go({ page }).opened;
+        },
+        publish,
+        signIn,
+      },
     };
   },
 });
