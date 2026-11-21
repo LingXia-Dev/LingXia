@@ -381,7 +381,7 @@ mod image_native {
             .unwrap_or(&request.source_uri);
         let source_path_ref = Path::new(source_path);
         if source_path_ref.is_absolute() && !source_path_ref.exists() {
-            return Err(PlatformError::Platform(format!(
+            return Err(PlatformError::AssetNotFound(format!(
                 "source image does not exist: {}",
                 source_path
             )));
@@ -715,9 +715,10 @@ mod image_native {
             let c_mime = CString::new(mime).map_err(|_| {
                 PlatformError::Platform("Mime type contains invalid characters".to_string())
             })?;
+            // Without the NUL: the encoder compares the whole buffer to its format names.
             let mut mime_string = ImageString {
                 data: c_mime.as_ptr() as *mut c_char,
-                size: c_mime.as_bytes_with_nul().len(),
+                size: c_mime.as_bytes().len(),
             };
             check(
                 unsafe { OH_PackingOptions_SetMimeType(self.handle, &mut mime_string) },
@@ -2871,9 +2872,10 @@ mod video_native {
             let c_mime = CString::new(mime).map_err(|_| {
                 PlatformError::Platform("Mime type contains invalid characters".to_string())
             })?;
+            // Without the NUL: the encoder compares the whole buffer to its format names.
             let mut mime_string = ImageString {
                 data: c_mime.as_ptr() as *mut c_char,
-                size: c_mime.as_bytes_with_nul().len(),
+                size: c_mime.as_bytes().len(),
             };
             check_image(
                 unsafe { OH_PackingOptions_SetMimeType(self.handle, &mut mime_string) },
@@ -2971,10 +2973,14 @@ mod video_native {
 
         let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
         if fd < 0 {
-            return Err(PlatformError::Platform(format!(
-                "Failed to open video file: {}",
-                path
-            )));
+            let detail = format!("Failed to open video file: {}", path);
+            return Err(
+                if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+                    PlatformError::AssetNotFound(detail)
+                } else {
+                    PlatformError::Platform(detail)
+                },
+            );
         }
 
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
@@ -3034,13 +3040,21 @@ mod video_native {
     }
 
     fn check_av(code: i32, context: &str) -> Result<(), PlatformError> {
-        if code == AV_SUCCESS {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
+        // AV_ERR_UNSUPPORT, AV_ERR_UNSUPPORTED_FORMAT: a source the device's decoders refuse.
+        const AV_ERR_UNSUPPORT: i32 = 9;
+        const AV_ERR_UNSUPPORTED_FORMAT: i32 = 11;
+        match code {
+            AV_SUCCESS => Ok(()),
+            AV_ERR_UNSUPPORT | AV_ERR_UNSUPPORTED_FORMAT => {
+                Err(PlatformError::NotSupported(format!(
+                    "{} failed: this device cannot decode the source (code {})",
+                    context, code
+                )))
+            }
+            _ => Err(PlatformError::Platform(format!(
                 "{} failed: code {}",
                 context, code
-            )))
+            ))),
         }
     }
 
