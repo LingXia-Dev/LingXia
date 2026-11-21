@@ -8,6 +8,7 @@ use lxapp::{
 };
 use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 use std::cell::Cell;
+use std::rc::Rc;
 
 const DEVICE_ORIENTATION_CHANGE_EVENT: &str = "DeviceOrientationChange";
 const ORIENTATION_PORTRAIT: &str = "portrait";
@@ -35,16 +36,33 @@ fn should_emit_orientation_event_after_set() -> bool {
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
 }
 
-/// The orientation the current page resolves to: the lock in effect, or the
-/// screen's shape when nothing locks it.
-fn current_orientation(lxapp: &LxApp) -> &'static str {
+/// One watcher's view of the stream: a value passes only when it differs from
+/// the last one that watcher was given.
+struct DeliveredOrientation(Cell<&'static str>);
+
+impl DeliveredOrientation {
+    fn admit(&self, reported: &str) -> Option<&'static str> {
+        let value = normalize_orientation_value(reported)?;
+        (self.0.replace(value) != value).then_some(value)
+    }
+}
+
+/// The lock or declared orientation the current page resolves to; `None` when
+/// it follows the screen.
+fn resolved_orientation(lxapp: &LxApp) -> Option<&'static str> {
     let current_path = lxapp.peek_current_page_path().unwrap_or_default();
     let current = if current_path.is_empty() {
         lxapp.get_app_orientation()
     } else {
         lxapp.get_page_orientation(&current_path)
     };
-    normalize_orientation_value(current.to_label()).unwrap_or_else(|| {
+    normalize_orientation_value(current.to_label())
+}
+
+/// The orientation the current page resolves to: the lock in effect, or the
+/// screen's shape when nothing locks it.
+fn current_orientation(lxapp: &LxApp) -> &'static str {
+    resolved_orientation(lxapp).unwrap_or_else(|| {
         let screen = lxapp.runtime.screen_info();
         if screen.width > screen.height {
             ORIENTATION_LANDSCAPE
@@ -87,8 +105,12 @@ fn apply_orientation_lock(ctx: &JSContext, lock: Option<OrientationConfig>) -> J
         .update_orientation_ui(lxapp.appid.clone())
         .map_err(|e| js_error_from_platform_error(&e))?;
 
-    if should_emit_orientation_event_after_set() {
-        emit_orientation_change_event(&lxapp.appid, current_orientation(&lxapp));
+    // A page that follows the screen waits for the host's report: the screen
+    // size read here predates the window turning.
+    if should_emit_orientation_event_after_set()
+        && let Some(value) = resolved_orientation(&lxapp)
+    {
+        emit_orientation_change_event(&lxapp.appid, value);
     }
 
     Ok(())
@@ -106,7 +128,15 @@ fn on_device_orientation_change(
         let lxapp = LxApp::from_ctx(&ctx)?;
         let value = current_orientation(&lxapp);
 
-        let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
+        let delivered = Rc::new(DeliveredOrientation(Cell::new(value)));
+        let user = callback.clone();
+        let filter = JSFunc::new(&ctx, move |event: JSObject| {
+            let reported = event.get::<_, String>("value").unwrap_or_default();
+            if delivered.admit(&reported).is_some() {
+                let _ = user.call::<_, ()>(None, (event,));
+            }
+        })?;
+        let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, filter)?;
 
         let payload = JSObject::new(&ctx);
         payload.set("value", value)?;
@@ -136,5 +166,37 @@ rong::js_api! {
             ts_params = "callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_device_orientation_change;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deliver(initial: &'static str, reports: &[&str]) -> Vec<&'static str> {
+        let delivered = DeliveredOrientation(Cell::new(initial));
+        reports.iter().filter_map(|r| delivered.admit(r)).collect()
+    }
+
+    #[test]
+    fn a_report_repeating_the_lock_reaches_no_watcher() {
+        assert!(deliver("landscape", &["landscape", "landscape"]).is_empty());
+        assert_eq!(
+            deliver("portrait", &["landscape", "landscape"]),
+            vec!["landscape"]
+        );
+    }
+
+    #[test]
+    fn a_stale_shape_after_unlock_is_dropped_and_the_turn_delivered_once() {
+        assert_eq!(
+            deliver("landscape", &["landscape", "portrait", "portrait"]),
+            vec!["portrait"]
+        );
+        assert_eq!(
+            deliver("portrait", &["reverse-portrait", "reverse-landscape"]),
+            vec!["landscape"]
+        );
+        assert!(deliver("portrait", &["upside-down"]).is_empty());
     }
 }
