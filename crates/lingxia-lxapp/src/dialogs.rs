@@ -12,9 +12,10 @@ use std::sync::OnceLock;
 /// A toast the host accepted for presentation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToastShown {
-    pub title: String,
-    /// `success` / `error` / `loading` / `none`, as the app passed it.
-    pub icon: String,
+    pub message: String,
+    /// `default` / `success` / `danger`, as the app passed it.
+    pub tone: String,
+    pub loading: bool,
     pub duration_ms: f64,
 }
 

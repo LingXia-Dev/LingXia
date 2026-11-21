@@ -846,20 +846,20 @@ export interface NavGoOptions extends NavWaitOptions {
 /** A navigation bar button `t.app.nav.press` can press. */
 export type NavButton = "back" | "home";
 
-/** `t.app.nav.back` options. */
-export interface NavBackOptions extends NavWaitOptions {
-  /** Number of pages to pop (default 1). */
-  delta?: number;
-}
-
 /** `t.app.nav`: the page stack. Actions resolve to the landed page. */
 export interface TestNav {
   /** Push `{ page }`, replace with `{ replace: true }`, or switch to `{ tab }`. */
   go(target: NavTarget, options?: NavGoOptions): Promise<PageInfo>;
   /** Unload every page (cached tab pages included) and open a fresh instance of the target. */
   reset(target: NavTarget, options?: NavWaitOptions): Promise<PageInfo>;
-  /** Pop pages programmatically; a leave guard is not asked. */
-  back(options?: NavBackOptions): Promise<PageInfo>;
+  /**
+   * Pop `n` pages (default 1) programmatically, as `lx.nav.back(n)`; a leave guard is not asked.
+   * @example
+   * ```ts
+   * await t.app.nav.back(2, { waitUntil: 'commit' });
+   * ```
+   */
+  back(n?: number, options?: NavWaitOptions): Promise<PageInfo>;
   /**
    * Press a navigation bar button as the user does. A page holding the leave
    * guard stays and is asked, so this resolves to the same page.

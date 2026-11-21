@@ -9,7 +9,7 @@ export default definePage({
     const actions = {
       async openOtherApp() {
         try { await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' }); }
-        catch (error) { await lx.ui.toast({ title: errorMessage(error, 'Unable to open the app. Please try again.'), icon: 'none' }); }
+        catch (error) { await lx.ui.toast(errorMessage(error, 'Unable to open the app. Please try again.')); }
       },
       async openDeepSeek() {
         const choice = await lx.ui.actionSheet({
@@ -22,7 +22,7 @@ export default definePage({
           else if (choice.id === 'aside') await lx.surface.openUrl(url, { as: 'aside' });
           else await lx.surface.openUrl(url);
         } catch (error) {
-          await lx.ui.toast({ title: errorMessage(error, 'Unable to open the page. Please try again.'), icon: 'none' });
+          await lx.ui.toast(errorMessage(error, 'Unable to open the page. Please try again.'));
         }
       },
       async exitApp() {

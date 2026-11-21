@@ -71,8 +71,8 @@ function createDialogs() {
     },
   };
   const logic = {
-    showToast({ title, icon = "none", durationMs = 1500 }) {
-      watch?.toasts.push({ title, icon, duration: durationMs, at: Date.now() });
+    showToast(message, { tone = "default", loading = false, durationMs = 1500 } = {}) {
+      watch?.toasts.push({ message, tone, loading, durationMs, at: Date.now() });
       return "presented";
     },
     showModal({ title = "", content = "", confirmText, cancelText, showCancel = true }) {
@@ -436,7 +436,7 @@ export function createWorld(options = {}) {
     },
     async back(options) {
       navCalls.push(["back", options]);
-      if (stack.length > 1) stack.pop();
+      for (let popped = 0; popped < (options?.delta ?? 1) && stack.length > 1; popped++) stack.pop();
       currentPage = stack[stack.length - 1];
       return currentPage;
     },

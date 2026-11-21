@@ -7,24 +7,24 @@
   "events": [],
   "modalResult": null,
   "actionSheetResult": null,
-  "toastIcon": "success",
-  "toastIconLabel": "Success",
-  "toastIconOptions": [
+  "toastStyle": "success",
+  "toastStyleLabel": "Success",
+  "toastStyleOptions": [
+    {
+      "label": "Default",
+      "value": "default"
+    },
     {
       "label": "Success",
       "value": "success"
     },
     {
-      "label": "Error",
-      "value": "error"
+      "label": "Danger",
+      "value": "danger"
     },
     {
       "label": "Loading",
       "value": "loading"
-    },
-    {
-      "label": "None",
-      "value": "none"
     }
   ],
   "toastPosition": "center",

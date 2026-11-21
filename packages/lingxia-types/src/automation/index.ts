@@ -1572,11 +1572,12 @@ export interface ClockDriver {
 
 /** A toast Logic presented while watched; the host drew it as usual. */
 export interface ToastRecord {
-  title: string;
-  /** `success` / `error` / `loading` / `none`. */
-  icon: string;
+  message: string;
+  tone: 'default' | 'success' | 'danger';
+  /** Shown with a spinner. */
+  loading: boolean;
   /** Milliseconds the toast asked to stay. */
-  duration: number;
+  durationMs: number;
   /** Epoch milliseconds it was presented. */
   at: number;
 }

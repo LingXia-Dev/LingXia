@@ -80,7 +80,7 @@ async function applyHostChrome(os: string, tag: string) {
     icon: 'public/activator.svg',
     label: t('sidebarPing'),
     onActivate: () => {
-      lx.ui.toast({ title: t('pingToast'), icon: 'success' });
+      lx.ui.toast(t('pingToast'), { tone: 'success' });
     },
   });
   // The one action with a `value`: the display language is a fact that changes, drawn beside

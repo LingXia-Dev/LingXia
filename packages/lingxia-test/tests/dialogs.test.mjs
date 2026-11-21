@@ -15,15 +15,15 @@ const finished = (events) => events.filter((event) => event.type === "case_finis
 test("toasts are observed per spec and read through expect.poll + objectContaining", async () => {
   const world = createWorld();
   // The app's Logic shows the toast a moment after the tap, as a save would.
-  world.add({ testId: "save", text: "Save", onClick: () => setTimeout(() => world.dialogs.logic.showToast({ title: "Saved", icon: "success" }), 20) });
+  world.add({ testId: "save", text: "Save", onClick: () => setTimeout(() => world.dialogs.logic.showToast("Saved", { tone: "success" }), 20) });
   const { events } = installFakeHost(world);
   let second;
 
   lxTest("shows a toast", async (t) => {
     await t.app.view.testId("save").click();
-    await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ title: "Saved", icon: "success" }));
+    await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ message: "Saved", tone: "success" }));
     const [toast] = await t.app.dialogs.toasts();
-    expect(toast.duration).toBe(1500);
+    expect(toast.durationMs).toBe(1500);
     expect(typeof toast.at).toBe("number");
   });
   lxTest("starts with none", async (t) => { second = await t.app.dialogs.toasts(); });

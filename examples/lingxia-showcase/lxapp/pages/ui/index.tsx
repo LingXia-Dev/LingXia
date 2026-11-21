@@ -51,7 +51,7 @@ export default function UIPage() {
     concealTabBar,
     updateTabBarItem,
     setAppearance,
-    chooseToastIcon,
+    chooseToastStyle,
     chooseToastPosition,
     showDemoActionSheet,
     openSurfaceDemo,
@@ -68,9 +68,9 @@ export default function UIPage() {
     events = [],
     modalResult = null,
     actionSheetResult = null,
-    toastIcon = 'success',
-    toastIconLabel = 'Success',
-    toastIconOptions = [],
+    toastStyle = 'success',
+    toastStyleLabel = 'Success',
+    toastStyleOptions = [],
     toastPosition = 'center',
     toastPositionLabel = 'Center',
     toastPositionOptions = [],
@@ -84,10 +84,10 @@ export default function UIPage() {
   const [viewCounter, setViewCounter] = React.useState(0);
   const [popupOpen, setPopupOpen] = React.useState(false);
 
-  const toastIconDisplay = React.useMemo(() => {
-    const match = toastIconOptions.find((option) => option.value === toastIcon);
-    return match?.label || toastIconLabel || toastIcon || 'Select icon';
-  }, [toastIconOptions, toastIcon, toastIconLabel]);
+  const toastStyleDisplay = React.useMemo(() => {
+    const match = toastStyleOptions.find((option) => option.value === toastStyle);
+    return match?.label || toastStyleLabel || toastStyle || 'Select style';
+  }, [toastStyleOptions, toastStyle, toastStyleLabel]);
 
   const toastPositionDisplay = React.useMemo(() => {
     const match = toastPositionOptions.find((option) => option.value === toastPosition);
@@ -122,7 +122,6 @@ export default function UIPage() {
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
   const [toastDuration, setToastDuration] = React.useState(2000);
-  const [toastMask, setToastMask] = React.useState(false);
 
   // Local state for modal parameters
   const [modalTitle, setModalTitle] = React.useState('Alert');
@@ -441,25 +440,25 @@ export default function UIPage() {
 
                 {/* Title Input */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
                   <input
                     type="text"
                     value={toastTitle}
                     onChange={(e) => setToastTitle(e.target.value)}
                     className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter toast title"
+                    placeholder="Enter toast message"
                   />
                 </div>
 
-                {/* Icon Selection */}
+                {/* Style Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Style</label>
                   <button
                     type="button"
-                    onClick={chooseToastIcon}
+                    onClick={chooseToastStyle}
                     className="w-full px-3 py-2 border border-line-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   >
-                    <span>{toastIconDisplay}</span>
+                    <span>{toastStyleDisplay}</span>
                     <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
                   </button>
                 </div>
@@ -490,20 +489,6 @@ export default function UIPage() {
                     <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
                   </button>
                 </div>
-
-                {/* Mask Checkbox */}
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="toastMask"
-                    checked={toastMask}
-                    onChange={(e) => setToastMask(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500 border-line-300 rounded"
-                  />
-                  <label htmlFor="toastMask" className="ml-2 block text-sm text-gray-700">
-                    Show mask (prevents interaction)
-                  </label>
-                </div>
               </div>
             </div>
 
@@ -513,11 +498,8 @@ export default function UIPage() {
                 data-testid="toast-show"
                 className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
                 onClick={() => showToastWithParams({
-                  title: toastTitle,
-                  icon: toastIcon,
+                  message: toastTitle,
                   durationMs: toastDuration,
-                  position: toastPosition,
-                  mask: toastMask
                 })}
               >
                 <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
@@ -1031,7 +1013,7 @@ export default function UIPage() {
                       const result = await revealTabBar();
                       console.log('Show TabBar:', result);
                       // Toast at resolve time: the bar must already be visible.
-                      showToastWithParams({ title: 'shown', icon: 'success', durationMs: 800 });
+                      showToastWithParams({ message: 'shown', style: 'success', durationMs: 800 });
                     }}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
@@ -1043,7 +1025,7 @@ export default function UIPage() {
                       const result = await concealTabBar();
                       console.log('Hide TabBar:', result);
                       // Toast at resolve time: the bar must already be gone.
-                      showToastWithParams({ title: 'hidden', icon: 'success', durationMs: 800 });
+                      showToastWithParams({ message: 'hidden', style: 'success', durationMs: 800 });
                     }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >

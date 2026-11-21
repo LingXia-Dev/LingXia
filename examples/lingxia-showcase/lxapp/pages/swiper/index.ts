@@ -63,10 +63,7 @@ export default definePage({
           });
         } catch (error) {
           page.update(d => { d.busy = false; });
-          lx.ui.toast({
-            title: errorMessage(error, "chooseMedia failed"),
-            icon: "none",
-          });
+          lx.ui.toast(errorMessage(error, "chooseMedia failed"));
         }
       },
     };

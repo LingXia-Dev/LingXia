@@ -15,6 +15,7 @@ import {
 
 /** What the modal demo shows: whether the dialog was confirmed. */
 type ModalResult = { status: 'ok' } | { status: 'canceled' };
+type ToastStyle = NonNullable<ToastOptions["tone"]> | "loading";
 
 type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
 
@@ -105,14 +106,14 @@ export default definePage({
     events: [] as string[],
     modalResult: null as ModalResult | null,
     actionSheetResult: null as ActionSheetResult | null,
-    toastIcon: "success" as NonNullable<ToastOptions["icon"]>,
-    toastIconLabel: "Success",
-    toastIconOptions: [
+    toastStyle: "success" as ToastStyle,
+    toastStyleLabel: "Success",
+    toastStyleOptions: [
+      { label: "Default", value: "default" },
       { label: "Success", value: "success" },
-      { label: "Error", value: "error" },
+      { label: "Danger", value: "danger" },
       { label: "Loading", value: "loading" },
-      { label: "None", value: "none" },
-    ] as { label: string; value: NonNullable<ToastOptions["icon"]> }[],
+    ] as { label: string; value: ToastStyle }[],
     toastPosition: "center" as NonNullable<ToastOptions["position"]>,
     toastPositionLabel: "Center",
     toastPositionOptions: [
@@ -303,7 +304,7 @@ export default definePage({
         try {
           await lx.nav.go({ page: "ui", params: { type: "navigation" } }).opened;
         } catch (err) {
-          lx.ui.toast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
+          lx.ui.toast("Page stack is full (10)", { tone: "danger", durationMs: 1800 });
           console.warn("[UI] navigateTo rejected", err);
         }
       },
@@ -322,29 +323,26 @@ export default definePage({
         }, { replace: true });
       },
       // Show toast with custom parameters
-      async showToastWithParams(params: Partial<ToastOptions>) {
-        const icon = params.icon || thisPage.data.toastIcon || "success";
-        const position = params.position || thisPage.data.toastPosition || "center";
-        lastToast = await lx.ui.toast({
-          title: params.title || "Hello Toast!",
-          icon,
+      showToastWithParams(params: { message?: string; style?: ToastStyle; durationMs?: number }) {
+        const style = params.style || thisPage.data.toastStyle;
+        lastToast = lx.ui.toast(params.message || "Hello Toast!", {
+          ...(style === "loading" ? { loading: true } : { tone: style }),
           durationMs: params.durationMs || 2000,
-          position,
-          mask: params.mask || false,
+          position: thisPage.data.toastPosition,
         });
       },
-      // Choose toast icon via action sheet
-      async chooseToastIcon() {
+      // Choose toast style via action sheet
+      async chooseToastStyle() {
         const result = await lx.ui.actionSheet({
-          items: thisPage.data.toastIconOptions.map((option, index) => ({ id: String(index), label: option.label })),
+          items: thisPage.data.toastStyleOptions.map((option, index) => ({ id: String(index), label: option.label })),
         });
         if (result.status === 'canceled') {
           return;
         }
-        const selected = thisPage.data.toastIconOptions[Number(result.id)];
+        const selected = thisPage.data.toastStyleOptions[Number(result.id)];
         thisPage.update(d => {
-          d.toastIcon = selected.value;
-          d.toastIconLabel = selected.label;
+          d.toastStyle = selected.value;
+          d.toastStyleLabel = selected.label;
         });
       },
       // Choose toast position via action sheet
@@ -361,8 +359,8 @@ export default definePage({
           d.toastPositionLabel = selected.label;
         });
       },
-      async hideToast() {
-        await lastToast?.dismiss();
+      hideToast() {
+        lastToast?.dismiss();
       },
       // Demo action sheet with mixed language options
       async showDemoActionSheet() {
@@ -373,10 +371,10 @@ export default definePage({
         });
         thisPage.update(d => { d.actionSheetResult = result; });
         if (result.status === 'canceled') {
-          lx.ui.toast({ title: "Dismissed", icon: "none" });
+          lx.ui.toast("Dismissed");
           return;
         }
-        lx.ui.toast({ title: `Selected: ${items[Number(result.id)]}`, icon: "success" });
+        lx.ui.toast(`Selected: ${items[Number(result.id)]}`, { tone: "success" });
       },
       async openSurfaceDemo(config?: DemoSurfaceConfig) {
         thisPage.update(d => { d.surfaceDemo.message = ""; });
@@ -400,7 +398,7 @@ export default definePage({
               visible: false,
             };
           });
-          lx.ui.toast({ title: "not supported", icon: "none" });
+          lx.ui.toast("not supported");
           return;
         }
 
@@ -437,7 +435,7 @@ export default definePage({
               visible: false,
             };
           });
-          lx.ui.toast({ title: `open failed: ${message}`, icon: "none" });
+          lx.ui.toast(`open failed: ${message}`);
         }
       },
       async showActiveSurface() {

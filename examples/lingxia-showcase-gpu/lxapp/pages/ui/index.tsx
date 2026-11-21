@@ -51,7 +51,6 @@ function Dialogs({ data, actions }: Pane) {
   const type = String(data.currentType);
   const toastTitle = useLocal('toastTitle', 'Hello Toast!');
   const toastDuration = useLocal('toastDuration', '2000');
-  const toastMask = useLocal('toastMask', false);
   const modalTitle = useLocal('modalTitle', 'Alert');
   const modalContent = useLocal('modalContent', 'This is a modal dialog');
   const modalCancel = useLocal('modalCancel', true);
@@ -59,11 +58,8 @@ function Dialogs({ data, actions }: Pane) {
   const confirmText = useLocal('confirmText', 'OK');
   const showToast = () =>
     actions.showToastWithParams({
-      title: toastTitle.value,
-      icon: data.toastIcon,
+      message: toastTitle.value,
       durationMs: parseInt(toastDuration.value, 10) || 2000,
-      position: data.toastPosition,
-      mask: toastMask.value,
     });
   const showModal = () =>
     actions.showModalWithParams({
@@ -78,8 +74,8 @@ function Dialogs({ data, actions }: Pane) {
       <ChromeError data={data} />
       {type === 'toast' && (
         <Section title="Toast Parameters">
-          <Field testId="toast-title" label="Title" bind={toastTitle} placeholder="Enter toast title" />
-          <Choice testId="toast-icon" label="Icon" value={String(data.toastIconLabel || 'Success')} onClick={() => actions.chooseToastIcon()} />
+          <Field testId="toast-title" label="Message" bind={toastTitle} placeholder="Enter toast message" />
+          <Choice testId="toast-style" label="Style" value={String(data.toastStyleLabel || 'Success')} onClick={() => actions.chooseToastStyle()} />
           <Field testId="toast-duration" label="Duration (ms)" bind={toastDuration} type="number" />
           <Choice
             testId="toast-position"
@@ -87,9 +83,6 @@ function Dialogs({ data, actions }: Pane) {
             value={String(data.toastPositionLabel || 'Center')}
             onClick={() => actions.chooseToastPosition()}
           />
-          <checkbox data-testid="toast-mask" bind={toastMask} className="text-sm">
-            Show mask (prevents interaction)
-          </checkbox>
           <view className="grid gap-3 grid-cols-2">
             <Button testId="toast-show" onClick={showToast}>
               Show Toast

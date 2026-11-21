@@ -29,7 +29,7 @@ export default definePage({
         } catch (error) {
           const message = errorMessage(error, "share failed");
           page.update(d => { d.statusText = message; });
-          lx.ui.toast({ title: message, icon: "none" });
+          lx.ui.toast(message);
         }
       },
     };
@@ -69,13 +69,13 @@ export default definePage({
         } catch (error) {
           const message = errorMessage(error, "pick.media failed");
           page.update(d => { d.statusText = message; });
-          lx.ui.toast({ title: message, icon: "none" });
+          lx.ui.toast(message);
         }
       },
       async shareSelectedImage() {
         const path = page.data.selectedImagePath;
         if (!path) {
-          lx.ui.toast({ title: "Choose an image first", icon: "none" });
+          lx.ui.toast("Choose an image first");
           return;
         }
         await helpers.runShare({
@@ -93,13 +93,13 @@ export default definePage({
         } catch (error) {
           const message = errorMessage(error, "chooseFile failed");
           page.update(d => { d.statusText = message; });
-          lx.ui.toast({ title: message, icon: "none" });
+          lx.ui.toast(message);
         }
       },
       async shareSelectedFile() {
         const path = page.data.selectedFilePath;
         if (!path) {
-          lx.ui.toast({ title: "Choose a file first", icon: "none" });
+          lx.ui.toast("Choose a file first");
           return;
         }
         await helpers.runShare({

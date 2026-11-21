@@ -273,7 +273,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
     // The handle stays in Logic: it is not JSON.
     await app.logic.eval(async ({ lx }) => {
       (globalThis as { coverageToast?: ToastHandle }).coverageToast =
-        await lx.ui.toast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });
+        lx.ui.toast('Coverage toast', { durationMs: 8000 });
     });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toContainText('Coverage toast', { timeout: 30_000 });
@@ -283,7 +283,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       await expect(page.view.testId('lx-toast')).toHaveCount(0);
     }
     await app.logic.eval(async () => {
-      await (globalThis as { coverageToast?: ToastHandle }).coverageToast?.dismiss();
+      (globalThis as { coverageToast?: ToastHandle }).coverageToast?.dismiss();
     });
     if (overlays === 'dom') {
       await expect(page.view.testId('lx-toast')).toHaveCount(0, { timeout: 10_000 });

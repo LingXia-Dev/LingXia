@@ -5,7 +5,7 @@ declare const url: string;
 
 // Wrong keys name the right one.
 // @ts-expect-error durationMs, not duration
-lx.ui.toast({ title: "x", duration: 1 });
+lx.ui.toast("x", { duration: 1 });
 // @ts-expect-error isHighAccuracy, not highAccuracy
 lx.device.location({ highAccuracy: true });
 // @ts-expect-error fileName, not fileNmae
@@ -16,8 +16,8 @@ lx.network.upload(url, { file: "a", fileNmae: "x" });
 lx.device.haptics("medium");
 // @ts-expect-error not a code format
 lx.pick.code({ formats: ["qr"] });
-// @ts-expect-error not a toast icon
-lx.ui.toast({ title: "x", icon: "warning" });
+// @ts-expect-error not a toast tone
+lx.ui.toast("x", { tone: "warning" });
 
 // Missing fields and exclusive options.
 // @ts-expect-error confirm needs a title

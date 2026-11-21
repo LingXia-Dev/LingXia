@@ -2727,31 +2727,29 @@ export type TerminalThemeSettings = {
     dark: string;
 };
 
+/** The toast `lx.ui.toast` returned. */
 export type ToastHandle = {
-    /** Dismiss this toast only; harmless after a newer toast replaces it. */
-    dismiss(): Promise<void>;
+    /**
+     * Dismiss this toast only; harmless after a newer toast replaces it.
+     * Before it shows, this cancels it.
+     */
+    dismiss(): void;
 };
 
+/** How `lx.ui.toast` looks and how long it stays. */
 export type ToastOptions = {
-    /** The text. */
-    title: string;
     /**
-     * An icon above the text; `none` shows text only.
-     * @default 'none'
+     * `success` and `danger` add a matching icon above the text.
+     * @default 'default'
      */
-    icon?: 'success' | 'error' | 'loading' | 'none';
-    /** A bundled or `lx://` image instead of the icon. */
-    image?: string;
+    tone?: 'default' | 'success' | 'danger';
+    /** Show a spinner above the text instead of a tone icon. */
+    loading?: boolean;
     /**
-     * How long it stays.
+     * How long it stays, in milliseconds.
      * @default 1500
      */
     durationMs?: number;
-    /**
-     * Block touches while it shows.
-     * @default false
-     */
-    mask?: boolean;
     /**
      * Where it appears.
      * @default 'center'
@@ -3760,11 +3758,15 @@ declare global {
     /** Ask a yes/no question. Dismissal resolves false; presentation failure rejects. */
     confirm(options: string | ConfirmOptions): Promise<boolean>;
     /**
-     * Presents a toast and resolves a handle once the host accepted it. The handle
-     * dismisses only this toast, never a newer one — including a newer one posted
-     * by another lxapp onto a host's shared overlay.
+     * Show a short message over the page. Returns at once; a newer toast replaces it.
+     * @example
+     * ```ts
+     * lx.ui.toast('Saved', { tone: 'success' });
+     * const busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });
+     * busy.dismiss();
+     * ```
      */
-    toast(options: string | ToastOptions): Promise<ToastHandle>;
+    toast(message: string, options?: ToastOptions): ToastHandle;
   }
 }
 

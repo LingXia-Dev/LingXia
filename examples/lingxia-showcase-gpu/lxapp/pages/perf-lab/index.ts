@@ -25,9 +25,10 @@ export default definePage({
         const os = lx.device.info.osName;
         const viewUi = os === 'macOS' || os === 'Windows';
         if (viewUi) {
+          // A toast is posted in the background; spacing keeps one request in flight at a time.
           for (let i = 0; i < requests; i++) {
-            const toast = await lx.ui.toast({ title: 'bench', durationMs: 1 }).catch(() => undefined);
-            await toast?.dismiss().catch(() => undefined);
+            lx.ui.toast('bench', { durationMs: 1 });
+            await sleep(16);
           }
         }
         const record = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, `value ${i}`]));

@@ -2,14 +2,16 @@
 use crate::i18n::js_error_from_platform_error;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::i18n::js_internal_error;
-use crate::i18n::js_service_unavailable_error;
+use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::LxApp;
 use lxapp::dialogs::ToastShown;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use rong::JSContextService;
-use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, function::Optional};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -43,130 +45,189 @@ fn toast_generation(_ctx: &JSContext) -> Arc<AtomicU64> {
     GENERATION.clone()
 }
 
-/// Toast options from JavaScript
-#[derive(FromJSObject)]
+/// `lx.ui.toast` options; the message is the first argument.
+#[derive(FromJSObject, Default)]
 #[ts_skip]
 struct JSToastOptions {
-    title: String,
-    icon: Option<String>,
-    image: Option<String>,
+    tone: Option<String>,
+    loading: Option<bool>,
     #[js_name = "durationMs"]
     duration: Option<f64>,
-    mask: Option<bool>,
     position: Option<String>,
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn convert_string_to_toast_icon(icon: &str) -> ToastIcon {
-    match icon.to_lowercase().as_str() {
-        "success" => ToastIcon::Success,
-        "error" => ToastIcon::Error,
-        "loading" => ToastIcon::Loading,
-        "none" => ToastIcon::None,
-        _ => ToastIcon::None,
+/// A toast as the hosts take it: their `icon` vocabulary carries tone and loading.
+struct ToastRequest {
+    title: String,
+    tone: &'static str,
+    loading: bool,
+    icon: &'static str,
+    duration_ms: f64,
+    position: &'static str,
+}
+
+impl ToastRequest {
+    fn parse(message: String, options: JSToastOptions) -> JSResult<Self> {
+        let (tone, tone_icon) = match options.tone.as_deref() {
+            None | Some("default") => ("default", "none"),
+            Some("success") => ("success", "success"),
+            Some("danger") => ("danger", "error"),
+            Some(other) => {
+                return Err(js_invalid_parameter_error(format!(
+                    "toast tone must be 'default', 'success' or 'danger', got '{other}'"
+                )));
+            }
+        };
+        let position = match options.position.as_deref() {
+            None | Some("center") => "center",
+            Some("top") => "top",
+            Some("bottom") => "bottom",
+            Some(other) => {
+                return Err(js_invalid_parameter_error(format!(
+                    "toast position must be 'top', 'center' or 'bottom', got '{other}'"
+                )));
+            }
+        };
+        let loading = options.loading.unwrap_or(false);
+        Ok(Self {
+            title: message,
+            tone,
+            loading,
+            icon: if loading { "loading" } else { tone_icon },
+            duration_ms: options.duration.unwrap_or(1500.0),
+            position,
+        })
     }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn convert_string_to_toast_position(position: &str) -> ToastPosition {
-    match position.to_lowercase().as_str() {
-        "top" => ToastPosition::Top,
-        "bottom" => ToastPosition::Bottom,
-        "center" => ToastPosition::Center,
-        _ => ToastPosition::Center,
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-impl From<JSToastOptions> for ToastOptions {
-    fn from(js_options: JSToastOptions) -> Self {
-        // Convert duration from milliseconds (JS) to seconds (native platforms)
-        let duration_seconds = js_options.duration.unwrap_or(1500.0) / 1000.0;
-
+impl From<ToastRequest> for ToastOptions {
+    fn from(request: ToastRequest) -> Self {
         ToastOptions {
-            title: js_options.title,
-            icon: convert_string_to_toast_icon(js_options.icon.as_deref().unwrap_or("none")),
-            image: js_options.image.filter(|s| !s.is_empty()),
-            duration: duration_seconds,
-            mask: js_options.mask.unwrap_or(false),
-            position: convert_string_to_toast_position(
-                js_options.position.as_deref().unwrap_or("center"),
-            ),
+            title: request.title,
+            icon: match request.icon {
+                "success" => ToastIcon::Success,
+                "error" => ToastIcon::Error,
+                "loading" => ToastIcon::Loading,
+                _ => ToastIcon::None,
+            },
+            image: None,
+            // Natives take seconds.
+            duration: request.duration_ms / 1000.0,
+            mask: false,
+            position: match request.position {
+                "top" => ToastPosition::Top,
+                "bottom" => ToastPosition::Bottom,
+                _ => ToastPosition::Center,
+            },
         }
     }
 }
 
-/// `lx.ui.toast('Saved')` is `{ title: 'Saved' }`.
-fn toast_options(value: JSValue) -> JSResult<JSToastOptions> {
-    if value.is_string() {
-        return Ok(JSToastOptions {
-            title: value.to_rust::<String>()?,
-            icon: None,
-            image: None,
-            duration: None,
-            mask: None,
-            position: None,
-        });
-    }
-    value.to_rust::<JSToastOptions>()
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToastPhase {
+    Pending,
+    Shown,
+    Dismissed,
 }
 
-/// Presents a toast and resolves a handle once the host accepted it. The handle
-/// dismisses only this toast, never a newer one — including a newer one posted
-/// by another lxapp onto a host's shared overlay.
-async fn show_toast(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
-    let options = toast_options(options)?;
+/// Show a short message over the page. Returns at once; a newer toast replaces it.
+///
+/// @example
+/// ```ts
+/// lx.ui.toast('Saved', { tone: 'success' });
+/// const busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });
+/// busy.dismiss();
+/// ```
+fn show_toast(
+    ctx: JSContext,
+    message: String,
+    options: Optional<JSToastOptions>,
+) -> JSResult<JSObject> {
+    let request = ToastRequest::parse(message, options.0.unwrap_or_default())?;
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    if !lxapp.is_opened() {
+        return Err(js_service_unavailable_error(
+            "LxApp is closed; toast suppressed",
+        ));
+    }
     let state = toast_generation(&ctx);
+    // Invalidate older handles before dispatch so they cannot hide a pending replacement.
     let previous = state.fetch_add(1, Ordering::SeqCst);
     let generation = previous + 1;
-    // Invalidate older handles before dispatch so they cannot hide a pending replacement.
-    let shown = lxapp::dialogs::dialog_hook().map(|hook| {
-        (
-            hook,
-            ToastShown {
-                title: options.title.clone(),
-                icon: options.icon.clone().unwrap_or_else(|| "none".to_string()),
-                duration_ms: options.duration.unwrap_or(1500.0),
-            },
-        )
+    let phase = Rc::new(Cell::new(ToastPhase::Pending));
+
+    let present_ctx = ctx.clone();
+    let present_state = state.clone();
+    let present_phase = phase.clone();
+    ctx.spawn_task(async move {
+        // Dismissed, or replaced by a newer toast, before it could show.
+        if present_state.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let shown = ToastShown {
+            message: request.title.clone(),
+            tone: request.tone.to_string(),
+            loading: request.loading,
+            duration_ms: request.duration_ms,
+        };
+        if let Err(error) = present_toast(&present_ctx, request).await {
+            let _ = present_state.compare_exchange(
+                generation,
+                previous,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            );
+            log::warn!("toast presentation failed: {error:?}");
+            return;
+        }
+        // Observed, never intercepted: the toast was presented as usual.
+        if let Some(hook) = lxapp::dialogs::dialog_hook()
+            && let Ok(lxapp) = LxApp::from_ctx(&present_ctx)
+        {
+            hook.toast(&lxapp.appid, &shown);
+        }
+        if present_phase.get() == ToastPhase::Dismissed {
+            // Dismissed while presenting; a newer toast since then owns the overlay.
+            if present_state.load(Ordering::SeqCst) == generation + 1 {
+                let _ = hide_toast(&present_ctx).await;
+            }
+        } else {
+            present_phase.set(ToastPhase::Shown);
+        }
     });
-    if let Err(error) = present_toast(ctx.clone(), options).await {
-        let _ = state.compare_exchange(generation, previous, Ordering::SeqCst, Ordering::SeqCst);
-        return Err(error);
-    }
-    // Observed, never intercepted: the toast was presented as usual.
-    if let Some((hook, toast)) = shown
-        && let Ok(lxapp) = LxApp::from_ctx(&ctx)
-    {
-        hook.toast(&lxapp.appid, &toast);
-    }
+
     let handle = JSObject::new(&ctx);
     handle.set(
         "dismiss",
         JSFunc::new(&ctx, move |ctx: JSContext| {
-            let state = state.clone();
-            async move {
-                if state
-                    .compare_exchange(
-                        generation,
-                        generation + 1,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
-                    .is_ok()
-                {
-                    hide_toast(ctx).await?;
-                }
-                Ok::<(), rong::RongJSError>(())
+            let dismissed = state
+                .compare_exchange(
+                    generation,
+                    generation + 1,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_ok();
+            if !dismissed {
+                return Ok::<(), rong::RongJSError>(());
             }
+            let was = phase.replace(ToastPhase::Dismissed);
+            if was == ToastPhase::Shown {
+                let hide_ctx = ctx.clone();
+                ctx.spawn_task(async move {
+                    let _ = hide_toast(&hide_ctx).await;
+                });
+            }
+            Ok(())
         })?,
     )?;
     Ok(handle)
 }
 
 /// Resolves after the host accepts presentation, not after the toast expires.
-async fn present_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
@@ -178,12 +239,12 @@ async fn present_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let params = serde_json::json!({
-            "title": options.title,
-            "icon": options.icon.as_deref().unwrap_or("none"),
-            "image": options.image,
-            "duration": options.duration.unwrap_or(1500.0),
-            "mask": options.mask.unwrap_or(false),
-            "position": options.position.as_deref().unwrap_or("center"),
+            "title": request.title,
+            "icon": request.icon,
+            "image": null,
+            "duration": request.duration_ms,
+            "mask": false,
+            "position": request.position,
         });
 
         let _: () = lxapp
@@ -196,7 +257,7 @@ async fn present_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> 
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let toast_options: ToastOptions = options.into();
+        let toast_options: ToastOptions = request.into();
         lxapp
             .runtime
             .show_toast(toast_options)
@@ -207,8 +268,8 @@ async fn present_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> 
 }
 
 /// Hides whichever toast is showing.
-async fn hide_toast(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+async fn hide_toast(ctx: &JSContext) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
     if !lxapp.is_opened() {
         return Err(js_service_unavailable_error(
             "LxApp is closed; toast dismissal suppressed",
@@ -244,6 +305,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace UiApi = super::ui_namespace(ctx)?;
-        fn toast(ts_params = "options: string | ToastOptions", ts_return = "ToastHandle") = show_toast;
+        fn toast(
+            ts_params = "message: string, options?: ToastOptions",
+            ts_return = "ToastHandle"
+        ) = show_toast;
     }
 }

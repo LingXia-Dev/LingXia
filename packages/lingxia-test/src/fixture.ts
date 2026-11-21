@@ -61,7 +61,6 @@ import type {
   OpenApiRun,
   TestLogic,
   TestNav,
-  NavBackOptions,
   NavButton,
   NavGoOptions,
   NavTarget,
@@ -1250,8 +1249,14 @@ export class LiveFixture implements Fixture {
     return {
       go: (target: NavTarget, options?: NavGoOptions) => land("go", target, options ?? {}),
       reset: (target: NavTarget, options?: NavWaitOptions) => land("reset", target, options ?? {}),
-      back: (options?: NavBackOptions) =>
-        this.act("nav.back", summarise(options), () => nav().back(this.navOptions(options ?? {}, "t.app.nav.back"))),
+      back: (n?: number, options?: NavWaitOptions) =>
+        this.act("nav.back", summarise({ n, ...options }), () => {
+          if (n !== undefined && (!Number.isInteger(n) || n < 1)) {
+            throw new TypeError("t.app.nav.back(n) takes a positive whole number of pages");
+          }
+          const wait = this.navOptions(options ?? {}, "t.app.nav.back");
+          return nav().back(n === undefined ? wait : { ...wait, delta: n });
+        }),
       press: (button: NavButton, options?: NavWaitOptions) =>
         this.act("nav.press", summarise({ button, ...options }), () =>
           nav().press(button, this.navOptions(options ?? {}, "t.app.nav.press"))),

@@ -165,9 +165,10 @@ impl DialogHook for Hook {
                 push_record(
                     &mut watch.toasts,
                     json!({
-                        "title": toast.title,
-                        "icon": toast.icon,
-                        "duration": toast.duration_ms,
+                        "message": toast.message,
+                        "tone": toast.tone,
+                        "loading": toast.loading,
+                        "durationMs": toast.duration_ms,
                         "at": now_ms(),
                     }),
                 );
@@ -760,8 +761,9 @@ mod tests {
     fn toasts_are_recorded_only_while_watched_and_bounded() {
         let hook = Hook;
         let toast = ToastShown {
-            title: "Saved".into(),
-            icon: "success".into(),
+            message: "Saved".into(),
+            tone: "success".into(),
+            loading: false,
             duration_ms: 1500.0,
         };
         hook.toast("dialogs-toast", &toast);
@@ -771,9 +773,10 @@ mod tests {
         }
         let toasts = with_watches(|watches| watches["dialogs-toast"].toasts.clone());
         assert_eq!(toasts.len(), MAX_RECORDS);
-        assert_eq!(toasts[0]["title"], "Saved");
-        assert_eq!(toasts[0]["icon"], "success");
-        assert_eq!(toasts[0]["duration"], 1500.0);
+        assert_eq!(toasts[0]["message"], "Saved");
+        assert_eq!(toasts[0]["tone"], "success");
+        assert_eq!(toasts[0]["loading"], false);
+        assert_eq!(toasts[0]["durationMs"], 1500.0);
         assert!(toasts[0]["at"].as_f64().unwrap() > 0.0);
         assert_eq!(
             reclaim_attempt("run-t", 4),

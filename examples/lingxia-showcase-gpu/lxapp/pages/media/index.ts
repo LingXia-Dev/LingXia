@@ -511,7 +511,7 @@ export default definePage({
           });
           if (!isAbort) {
             console.error("[media-demo] media.preview failed:", error);
-            lx.ui.toast({ title: errorMessage(error, "Preview failed"), icon: "none" });
+            lx.ui.toast(errorMessage(error, "Preview failed"));
           }
           return null;
         } finally {
@@ -541,7 +541,7 @@ export default definePage({
           return (result.status === 'canceled') ? null : result.files[0].path;
         } catch (error) {
           console.error("[media-demo] pickSingleMedia failed:", error);
-          lx.ui.toast({ title: errorMessage(error, "pick.media failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "pick.media failed"));
           return null;
         }
       },
@@ -705,10 +705,7 @@ export default definePage({
           page.update(d => { d.selectedMedia = enrichedList; });
         } catch (error) {
           console.error("[media-demo] pick.media failed:", error);
-          lx.ui.toast({
-            title: errorMessage(error, "Operation failed"),
-            icon: "none",
-          });
+          lx.ui.toast(errorMessage(error, "Operation failed"));
         } finally {
           page.update(d => { d.isRunning = false; });
         }
@@ -742,10 +739,7 @@ export default definePage({
         } catch (error) {
           console.error("pick.code failed:", error);
           page.update(d => { d.scanBusy = false; });
-          lx.ui.toast({
-            title: errorMessage(error, "pick.code failed"),
-            icon: "none",
-          });
+          lx.ui.toast(errorMessage(error, "pick.code failed"));
         }
       },
       async openScanSourcePicker() {
@@ -773,10 +767,7 @@ export default definePage({
       async previewSelectedMedia() {
         const selected = page.data.selectedMedia || [];
         if (!selected.length) {
-          lx.ui.toast({
-            title: "Nothing to preview",
-            icon: "none",
-          });
+          lx.ui.toast("Nothing to preview");
           return;
         }
 
@@ -830,10 +821,7 @@ export default definePage({
             d.imageInfoResult = null;
             d.imageInfoBusy = false;
           });
-          lx.ui.toast({
-            title: message,
-            icon: "none",
-          });
+          lx.ui.toast(message);
         }
       },
       async pickVideoForTools() {
@@ -868,10 +856,7 @@ export default definePage({
             d.videoInfoBusy = false;
             d.videoInfoError = message;
           });
-          lx.ui.toast({
-            title: message,
-            icon: "none",
-          });
+          lx.ui.toast(message);
         }
       },
       onThumbnailQualityInput(event: NativeEvent<{ value: string }>) {
@@ -896,10 +881,7 @@ export default definePage({
         }
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
-          lx.ui.toast({
-            title: "Please pick a video first",
-            icon: "none",
-          });
+          lx.ui.toast("Please pick a video first");
           return;
         }
 
@@ -937,19 +919,13 @@ export default definePage({
             d.thumbnailResult = null;
             d.thumbnailBusy = false;
           });
-          lx.ui.toast({
-            title: message,
-            icon: "none",
-          });
+          lx.ui.toast(message);
         }
       },
       async previewVideoThumbnail() {
         const path = page.data.thumbnailResult?.path;
         if (!path) {
-          lx.ui.toast({
-            title: "No thumbnail to preview",
-            icon: "none",
-          });
+          lx.ui.toast("No thumbnail to preview");
           return;
         }
 
@@ -981,10 +957,7 @@ export default definePage({
         }
         const sourcePath = page.data.thumbnailVideoPath;
         if (!sourcePath) {
-          lx.ui.toast({
-            title: "Please pick a video first",
-            icon: "none",
-          });
+          lx.ui.toast("Please pick a video first");
           return;
         }
 
@@ -1035,10 +1008,7 @@ export default definePage({
             d.videoCompressBusy = false;
             d.videoCompressProgress = null;
           });
-          lx.ui.toast({
-            title: isAbort ? "Compression cancelled" : message,
-            icon: "none",
-          });
+          lx.ui.toast(isAbort ? "Compression cancelled" : message);
         } finally {
           if (compressVideoTask === task) compressVideoTask = null;
         }
@@ -1051,13 +1021,13 @@ export default definePage({
             d.videoCompressProgress = null;
             d.videoCompressError = "";
           });
-          lx.ui.toast({ title: "Compression cancelled", icon: "none" });
+          lx.ui.toast("Compression cancelled");
         }
       },
       async previewCompressedVideo() {
         const path = page.data.videoCompressResult?.path;
         if (!path) {
-          lx.ui.toast({ title: "No compressed video to preview", icon: "none" });
+          lx.ui.toast("No compressed video to preview");
           return;
         }
         const source: { path: string; type: string; rotation?: number; objectFit?: string } = {
@@ -1092,10 +1062,7 @@ export default definePage({
         }
         const path = page.data.imageInfoResult?.path;
         if (!path) {
-          lx.ui.toast({
-            title: "Please select an image first",
-            icon: "none",
-          });
+          lx.ui.toast("Please select an image first");
           return;
         }
 
@@ -1135,10 +1102,7 @@ export default definePage({
             d.compressError = message;
             d.compressResult = null;
           });
-          lx.ui.toast({
-            title: message,
-            icon: "none",
-          });
+          lx.ui.toast(message);
         } finally {
           if (!disposed && epoch === compressionEpoch) page.update(d => { d.compressing = false; });
         }
@@ -1146,10 +1110,7 @@ export default definePage({
       async previewCompressedImage() {
         const path = page.data.compressResult?.path;
         if (!path) {
-          lx.ui.toast({
-            title: "No compressed image to preview",
-            icon: "none",
-          });
+          lx.ui.toast("No compressed image to preview");
           return;
         }
 
@@ -1168,9 +1129,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);
-          lx.ui.toast({ title: "Image saved to album", icon: "success" });
+          lx.ui.toast("Image saved to album", { tone: "success" });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Failed to save image"));
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }
@@ -1184,9 +1145,9 @@ export default definePage({
           });
           if (result.status === 'canceled') return;
           await lx.media.saveToLibrary(result.files[0].path);
-          lx.ui.toast({ title: "Video saved to album", icon: "success" });
+          lx.ui.toast("Video saved to album", { tone: "success" });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Failed to save video"));
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }

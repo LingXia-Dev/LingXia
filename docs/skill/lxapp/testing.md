@@ -98,7 +98,7 @@ everything once before pushing; CI runs it again.
 | Task | API |
 |---|---|
 | Relaunch mid-test | `t.app.nav.reset({ page, params? })` |
-| Navigate | `t.app.nav.go({ page, params? } \| { tab }, { replace? })` / `.back`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
+| Navigate | `t.app.nav.go({ page, params? } \| { tab }, { replace? })` / `.back(n?)`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
@@ -465,13 +465,13 @@ test('deleting asks first', async (t) => {
   await t.app.dialogs.answerNextModal({ confirm: true });  // before the tap
   await t.app.view.testId('delete').click();
   await expect.poll(() => t.app.dialogs.toasts())
-    .toContainEqual(expect.objectContaining({ title: 'Deleted' }));
+    .toContainEqual(expect.objectContaining({ message: 'Deleted' }));
   expect(await t.app.dialogs.modals()).toContainEqual(
     expect.objectContaining({ title: 'Delete device?', answer: { confirm: true } }));
 });
 ```
 
-- Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
+- Toasts are recorded (`{ message, tone, loading, durationMs, at }`) and still drawn;
   never stub `lx.ui.toast` in Logic.
 - Dialogs (`lx.ui.alert` / `confirm`) and `lx.ui.actionSheet` are
   drawn unless the test queues an answer for the next one, so a test can tap them

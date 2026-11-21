@@ -335,6 +335,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
     await t.app.nav.back();
     const current = await t.app.nav.current();
     assert.equal(current.name, "slow");
+    assert.equal((await t.app.nav.back(2, { waitUntil: "commit" })).name, "detail");
     refused = await t.reject(() => t.app.nav.go({ page: "x" }, { timeoutMs: 1 }));
   });
 
@@ -347,6 +348,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
     ["go", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
     ["go", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
     ["back", { waitUntil: "ready", timeoutMs: "room" }],
+    ["back", { waitUntil: "commit", delta: 2 }],
   ]);
   assert.match(refused.message, /takes \{ timeout \} in ms/);
 });

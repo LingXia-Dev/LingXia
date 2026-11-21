@@ -28,7 +28,6 @@ export type {
   LogicPage,
   LogicScope,
   Matchers,
-  NavBackOptions,
   NavButton,
   NavGoOptions,
   NavTarget,

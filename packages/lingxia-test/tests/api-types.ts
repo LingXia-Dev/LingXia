@@ -40,7 +40,9 @@ test('typed test boundary', async t => {
   await app.page({ name: 'editor', instanceId: '1' });
   // @ts-expect-error `app.page()` waits with `timeout`.
   await app.page({ name: 'editor' }, { timeoutMs: 1_000 });
-  await app.nav.back({waitUntil:'ready', timeout:5_000});
+  await app.nav.back(1, {waitUntil:'ready', timeout:5_000});
+  // @ts-expect-error back takes a page count, as `lx.nav.back(n)` does.
+  await app.nav.back({ delta: 2 });
   await app.nav.reset({ page:'editor' }, { timeout:5_000 });
   // @ts-expect-error Fixture waits take `timeout`; `timeoutMs` is the raw driver's.
   await app.nav.go({ page:'editor' }, { timeoutMs:5_000 });
@@ -282,7 +284,7 @@ test('typed Logic access', async t => {
   await expect.poll(async () => [1, 2]).toHaveLength(2);
   await expect.poll(async () => 3).toBeGreaterThan(2);
   // Dialogs: toasts are observed, modals and action sheets answered.
-  await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ title: 'Saved' }));
+  await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ message: 'Saved' }));
   await t.app.dialogs.answerNextModal({ confirm: true });
   await t.app.dialogs.answerNextActionSheet({ index: 0 });
   await t.app.dialogs.answerNextActionSheet({ cancel: true });

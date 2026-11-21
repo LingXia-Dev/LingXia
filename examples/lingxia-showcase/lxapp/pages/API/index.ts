@@ -85,7 +85,7 @@ export default definePage({
           });
         } catch (err) {
           console.error("navigateToApp failed", err);
-          lx.ui.toast({ title: errorMessage(err, "navigateToApp failed"), icon: "none" });
+          lx.ui.toast(errorMessage(err, "navigateToApp failed"));
         }
       },
       async navigateToCloudPage(params: { type?: string } | undefined) {
@@ -115,7 +115,7 @@ export default definePage({
             await lx.surface.openUrl(url);
           }
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       async navigateToSharePage() {

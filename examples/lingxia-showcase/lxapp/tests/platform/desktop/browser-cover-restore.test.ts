@@ -170,7 +170,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
       },
       {
         id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
-        onActivate() { lx.ui.toast({ title: 'sidebar action clicked', icon: 'success' }); },
+        onActivate() { lx.ui.toast('sidebar action clicked', { tone: 'success' }); },
       },
       {
         id: 'language', placement: 'footer', icon: 'public/sidebar-language.svg', label: 'Language', value: 'English',

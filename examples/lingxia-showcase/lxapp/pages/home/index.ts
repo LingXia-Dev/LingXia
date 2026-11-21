@@ -80,7 +80,7 @@ export default definePage({
         } catch (error) {
           console.warn("[Home] Failed to set appearance:", error);
           const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-          lx.ui.toast({ title: t("appearanceUnavailable"), icon: "none" });
+          lx.ui.toast(t("appearanceUnavailable"));
         }
         helpers.syncAppearance();
       },
@@ -95,7 +95,7 @@ export default definePage({
         } catch (error) {
           console.warn("[Home] Failed to set display language:", error);
           const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-          lx.ui.toast({ title: t("languageUnavailable"), icon: "none" });
+          lx.ui.toast(t("languageUnavailable"));
         }
         helpers.syncLanguage();
       },

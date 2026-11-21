@@ -62,7 +62,7 @@ export default definePage({
           console.log("Triggered short vibration");
         } catch (error) {
           console.error("Failed to trigger short vibration:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       // Trigger long vibration
@@ -72,7 +72,7 @@ export default definePage({
           console.log("Triggered long vibration");
         } catch (error) {
           console.error("Failed to trigger long vibration:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       // Make a phone call
@@ -88,7 +88,7 @@ export default definePage({
           console.log("Making phone call to:", normalizedPhoneNumber);
         } catch (error) {
           console.error("Failed to make phone call:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       async getNetworkInfo() {
@@ -122,7 +122,7 @@ export default definePage({
           page.update(d => { d.orientationLock = "portrait"; });
         } catch (error) {
           console.error("Failed to set portrait orientation:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       async setOrientationLandscape() {
@@ -131,7 +131,7 @@ export default definePage({
           page.update(d => { d.orientationLock = "landscape"; });
         } catch (error) {
           console.error("Failed to set landscape orientation:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       startDeviceOrientationListen() {
@@ -147,7 +147,7 @@ export default definePage({
           page.update(d => { d.orientationListening = true; });
         } catch (error) {
           console.error("Failed to start device orientation listener:", error);
-          lx.ui.toast({ title: errorMessage(error, "Request failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
       stopDeviceOrientationListen() {

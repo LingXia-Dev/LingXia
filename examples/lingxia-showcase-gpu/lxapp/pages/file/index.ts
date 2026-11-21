@@ -245,7 +245,7 @@ export default definePage({
       async openPdf() {
         const url = page.data.pdfUrl?.trim();
         if (!url) {
-          lx.ui.toast({ title: "Please enter PDF URL", icon: "none" });
+          lx.ui.toast("Please enter PDF URL");
           return;
         }
         if (page.data.isPdfDownloading) return;
@@ -327,7 +327,7 @@ export default definePage({
               ? "Download canceled"
               : errorMessage(error, "Open PDF failed");
           });
-          lx.ui.toast({ title: errorMessage(error, "Open PDF failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Open PDF failed"));
         } finally {
           if (pdfDownloadPage === page) {
             if (pdfDownloadTask === task && page.data.pdfDownloadState !== "paused") {
@@ -344,7 +344,7 @@ export default definePage({
       async togglePdfTransfer() {
         const task = pdfDownloadTask;
         if (!task || !supportsTransferControl(task)) {
-          lx.ui.toast({ title: "Current runtime does not support pause/resume yet", icon: "none" });
+          lx.ui.toast("Current runtime does not support pause/resume yet");
           return;
         }
 
@@ -368,7 +368,7 @@ export default definePage({
             await task.pause();
           }
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "Transfer action failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Transfer action failed"));
         }
       },
       async chooseFileFromUserCache() {
@@ -393,32 +393,32 @@ export default definePage({
             d.chooseFileSelectedType = fileType || "unknown";
           });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "pick.file failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "pick.file failed"));
           page.update(d => { d.chooseFileStatusText = errorMessage(error, "pick.file failed"); });
         }
       },
       async openChosenFile() {
         const filePath = page.data.chooseFileSelectedPath;
         if (!filePath) {
-          lx.ui.toast({ title: "Choose a file first", icon: "none" });
+          lx.ui.toast("Choose a file first");
           return;
         }
 
         try {
           await lx.openFile(filePath, { mode: "auto" });
         } catch (error) {
-          lx.ui.toast({ title: errorMessage(error, "openFile failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "openFile failed"));
         }
       },
       async openOffice() {
         const url = page.data.officeUrl?.trim();
         const fileType = page.data.officeFileType?.trim();
         if (!url) {
-          lx.ui.toast({ title: "Please enter document URL", icon: "none" });
+          lx.ui.toast("Please enter document URL");
           return;
         }
         if (!fileType) {
-          lx.ui.toast({ title: "Please enter file type", icon: "none" });
+          lx.ui.toast("Please enter file type");
           return;
         }
         if (page.data.isOfficeFetching) return;
@@ -445,7 +445,7 @@ export default definePage({
           page.update(d => { d.officeStatusText = `Opened ${filePath}`; });
         } catch (error) {
           page.update(d => { d.officeStatusText = errorMessage(error, "Fetch failed"); });
-          lx.ui.toast({ title: errorMessage(error, "Fetch failed"), icon: "none" });
+          lx.ui.toast(errorMessage(error, "Fetch failed"));
         } finally {
           page.update(d => { d.isOfficeFetching = false; });
         }
