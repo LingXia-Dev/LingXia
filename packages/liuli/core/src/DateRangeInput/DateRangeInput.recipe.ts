@@ -1,5 +1,6 @@
 export const dateRangeInputParts = {
   value: 'text',
+  icon: 'vector',
   popover: 'view',
 } as const;
 
@@ -11,6 +12,10 @@ export const dateRangeInputParts = {
 export const dateRangeInputRecipe = {
   value: {
     base: 'tabular-nums',
+  },
+  // DateInput's calendar, so the two date fields match.
+  icon: {
+    base: 'size-4 shrink-0 text-muted',
   },
   popover: {
     base: 'mt-1 w-[312px] max-w-[90vw] p-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',

@@ -108,6 +108,7 @@ export function Empty() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | value | `<text>` | yes | The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures. |
+| icon | `<vector>` | yes | The calendar mark at the field's end, the size of DateInput's. |
 | popover | `<view>` | no | With a mouse or trackpad: a panel under the field holding the calendar. |
 
 ## What an app may override
@@ -115,7 +116,7 @@ export function Empty() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `dateRangeInputRecipe` from `@liulidesign/core/DateRangeInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `surface-overlay`, `text`.
+- Colour roles it paints with, set by the theme pack: `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

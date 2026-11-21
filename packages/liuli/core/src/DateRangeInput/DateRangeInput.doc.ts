@@ -15,6 +15,7 @@ export const doc: ComponentDoc = {
   recipe: { map: 'dateRangeInputRecipe', parts: 'dateRangeInputParts' },
   anatomy: [
     { part: 'value', required: true, description: 'The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures.' },
+    { part: 'icon', required: true, description: 'The calendar mark at the field\'s end, the size of DateInput\'s.' },
     { part: 'popover', required: false, description: 'With a mouse or trackpad: a panel under the field holding the calendar.' },
   ],
   accessibility: {

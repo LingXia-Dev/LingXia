@@ -5831,6 +5831,7 @@
       "otherProps": {},
       "parts": {
         "value": "text",
+        "icon": "vector",
         "popover": "view"
       },
       "accessibility": {
@@ -5974,7 +5975,8 @@
         ],
         "roles": [
           "surface-overlay",
-          "text"
+          "text",
+          "text-muted"
         ]
       },
       "related": [

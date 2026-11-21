@@ -95,7 +95,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
             className={cx(c.trigger.base, c.trigger.size[size], c.trigger.pressable, status && c.trigger.status[status.type])}
           >
             <text id={valueId} className={cx(isEmpty ? c.value.placeholder : c.value.base, c.value.size[size], r.value.base, isDisabled && c.value.disabled)}>{shown}</text>
-            <Glyph name="calendar" className={c.chevron.base} />
+            <Glyph name="calendar" className={r.icon.base} />
           </button>
           {isSheet ? (
             <dialog
