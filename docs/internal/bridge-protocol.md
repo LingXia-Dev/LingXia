@@ -49,7 +49,7 @@ Every View speaks the same message families, routing rules, capability rules and
 | **WebView** | an HTML document in a platform WebView | JSON frames over the WebView message path | one of two profiles, section 8 |
 | **GPU** | a `lingxia-view` session in the host process | typed Rust values, in process | none needed: same process, same trust |
 
-A renderer is chosen per lxapp (`renderer` in `lxapp.json`); a page cannot pick its transport,
+A renderer is chosen per lxapp (`renderer` in the built `lxapp.json`, which the CLI derives from the pages' exports); a page cannot pick its transport,
 and neither transport can be negotiated into the other.
 
 The GPU transport is fully typed: state, requests, replies, events, streams and channels cross

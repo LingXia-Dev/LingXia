@@ -8,7 +8,7 @@ Status: preview. Each component is unit-tested in Node and has a page in the gal
 
 ## What it needs
 
-- An lxapp with `"renderer": "gpu"`, `@lingxia/view` and `@liulidesign/core`.
+- A GPU View lxapp (its pages export `render`) with `@lingxia/view` and `@liulidesign/core`.
 - No stylesheet import. It uses Liuli core's type scale, which `tokens.css` repeats so that a page
   using charts alone has it.
 

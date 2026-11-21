@@ -39,7 +39,7 @@ impl Project {
         if lxapp_path.exists() {
             let manifest = read_json(&lxapp_path)?;
             validate_lxapp_manifest(&manifest)?;
-            check_declared_renderer(&manifest, project_root)?;
+            crate::lxapp::renderer::lxapp_renderer(project_root)?;
             let framework = detect_project_framework(project_root)?;
             let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
             let page_names = resolve_page_names(&manifest);
@@ -124,23 +124,6 @@ impl Project {
     }
 }
 
-/// The pages decide the renderer; a `renderer` key may only repeat what they say.
-fn check_declared_renderer(manifest: &Value, project_root: &Path) -> Result<()> {
-    use crate::lxapp::renderer::{Renderer, pages_renderer};
-    let derived = match pages_renderer(project_root)? {
-        Renderer::Gpu => "gpu",
-        Renderer::Webview => "webview",
-    };
-    if let Some(declared) = manifest.get("renderer").and_then(Value::as_str)
-        && declared != derived
-    {
-        return Err(anyhow!(
-            "lxapp.json renderer: {declared}, but the pages make it {derived}; the renderer follows from the pages"
-        ));
-    }
-    Ok(())
-}
-
 fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
     non_empty_str(manifest.get("appId"), "appId in lxapp.json")?;
     let version = non_empty_str(manifest.get("version"), "version in lxapp.json")?;
@@ -152,10 +135,10 @@ fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
             r#""appService" is no longer supported; use "logic" instead"#
         ));
     }
-    if let Some(value) = manifest.get("renderer")
-        && !matches!(value.as_str(), Some("gpu" | "webview"))
-    {
-        return Err(anyhow!("renderer: expected gpu or webview"));
+    if manifest.get("renderer").is_some() {
+        return Err(anyhow!(
+            "lxapp.json renderer: remove it; the renderer follows from the pages"
+        ));
     }
     validate_lxapp_pages(manifest.get("pages"))?;
     validate_page_chrome_manifest(manifest)?;
@@ -1226,7 +1209,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_page_renderer_and_a_manifest_renderer_the_pages_contradict() {
+    fn rejects_a_renderer_key_in_a_page_config_or_the_manifest() {
         let temp = tempdir().unwrap();
         write_file(
             temp.path(),
@@ -1248,12 +1231,12 @@ mod tests {
         write_file(
             temp.path(),
             "pages/home/index.tsx",
-            "export default function Page() { return null; }",
+            "export function render() { return null; }",
         );
         let error = Project::discover(temp.path()).unwrap_err().to_string();
-        assert!(
-            error.contains("lxapp.json renderer: gpu, but the pages make it webview"),
-            "{error}"
+        assert_eq!(
+            error,
+            "lxapp.json renderer: remove it; the renderer follows from the pages"
         );
     }
 

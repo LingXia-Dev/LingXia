@@ -46,7 +46,6 @@ const viewports = [
 
 async function gpuPages(root) {
   const manifest = JSON.parse(await readFile(join(root, 'lxapp.json'), 'utf8'));
-  if (manifest.renderer !== 'gpu') return [];
   return (manifest.pages ?? []).map(page => `${page.path.replace(/\.tsx$/, '')}.tsx`).filter(page => existsSync(join(root, page)));
 }
 

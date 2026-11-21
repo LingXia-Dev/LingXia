@@ -1,6 +1,5 @@
 {
   "appId": "hello-view",
-  "renderer": "gpu",
   "appName": "Hello View",
   "version": "0.1.0",
   "minRuntime": "0.30.0",

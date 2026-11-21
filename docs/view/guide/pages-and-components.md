@@ -45,11 +45,11 @@ function Row({ title, done, onToggle }: { title: string; done: boolean; onToggle
 
 ## A page
 
-An lxapp opts into native rendering once, in `lxapp.json`; every page renders natively and none
-may name a renderer of its own:
+A page renders natively when its View exports a named `render`; every page of the lxapp must, and
+`lxapp.json` names no renderer:
 
 ```json
-{ "appId": "groceries", "version": "1.0.0", "renderer": "gpu", "pages": [{ "name": "list", "path": "pages/list/index" }] }
+{ "appId": "groceries", "version": "1.0.0", "pages": [{ "name": "list", "path": "pages/list/index" }] }
 ```
 
 A page is a directory under `pages/`. Its optional `index.json` sets its chrome:

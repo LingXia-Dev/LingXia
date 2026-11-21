@@ -21,7 +21,7 @@ lxapp in that workspace depends on it by name:
 { "dependencies": { "@lingxia/view": "*", "@liulidesign/core": "*" } }
 ```
 
-The lxapp needs `"renderer": "gpu"` in its `lxapp.json`. Then a page is:
+A page is a GPU View when it exports a named `render`:
 
 ```tsx
 import { useLocal } from '@lingxia/view';

@@ -1,8 +1,8 @@
 # GPU Views (Android, iOS, macOS, HarmonyOS)
 
-An lxapp renders natively when its `lxapp.json` has `"renderer": "gpu"`: every page does, and a page
-config naming a renderer fails the build (no mixed apps). A page's View is `index.tsx` (Logic stays in
-`index.ts`). Add `@lingxia/view` as a dependency.
+A page whose View (`index.tsx`, Logic stays in `index.ts`) exports a named `render` renders natively;
+one that exports a default component is a WebView page. All pages of an lxapp must agree, or the
+build stops. Add `@lingxia/view` as a dependency.
 There is no DOM. The host owns navbar and tabbar.
 
 ```tsx

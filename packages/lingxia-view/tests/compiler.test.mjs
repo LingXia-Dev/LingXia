@@ -322,7 +322,7 @@ test('wrapper components forward children; a page config naming a renderer is re
     await build(); await load(root);
     assert.equal(tree(describePage()).props.flexDirection, 'column');
     await writeFile(join(root, 'page.json'), '{"renderer":"gpu"}');
-    await assert.rejects(build(), /page.json: renderer: removed; an lxapp declares one renderer in lxapp.json/);
+    await assert.rejects(build(), /page.json: renderer: remove it; the renderer follows from the pages/);
     await assert.rejects(build('../outside.tsx'), /Invalid GPU page path/);
   });
 });

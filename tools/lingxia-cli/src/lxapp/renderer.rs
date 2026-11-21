@@ -47,13 +47,6 @@ pub(crate) fn lxapp_renderer(root: &Path) -> Result<Renderer> {
     derive(root, &text, &manifest)
 }
 
-/// The renderer the pages' View files make, whatever the manifest says.
-pub(crate) fn pages_renderer(root: &Path) -> Result<Renderer> {
-    let text = fs::read_to_string(root.join("lxapp.json"))?;
-    let manifest: Value = serde_json::from_str(&text)?;
-    derive(root, &text, &manifest)
-}
-
 fn derive(root: &Path, text: &str, manifest: &Value) -> Result<Renderer> {
     let pages: Vec<&str> = manifest
         .get("pages")

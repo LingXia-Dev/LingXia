@@ -9,7 +9,7 @@ cd lxapp && npm install && cd ..
 lingxia dev -p android --release
 ```
 
-Every page renders natively because `lxapp/lxapp.json` declares `"renderer": "gpu"`;
+Every page renders natively because its View exports a named `render`;
 a page's View is `index.tsx` beside the Logic in `index.ts`. Shared View code lives in
 `lxapp/shared/ui` (the design system) and `lxapp/shared` (charts, types).
 
