@@ -38,6 +38,10 @@ export function ScreenFacts() {
         <Readout testId="lab-env-size-class" state={env.sizeClass ?? 'compact'}>{env.sizeClass ?? 'compact'}</Readout>
       </view>
       <view className={row}>
+        <text className={name}>{t(labels.envTextScale)}</text>
+        <Readout testId="lab-env-text-scale" state={String(env.textScale)}>{`×${env.textScale}`}</Readout>
+      </view>
+      <view className={row}>
         <text className={name}>{t(labels.envContrast)}</text>
         <Readout testId="lab-env-contrast" state={env.highContrast ? 'high' : 'standard'}>{env.highContrast ? 'high' : 'standard'}</Readout>
       </view>

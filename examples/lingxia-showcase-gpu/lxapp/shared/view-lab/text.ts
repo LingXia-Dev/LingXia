@@ -311,6 +311,7 @@ export const labels = {
   envCapsule: { en: 'Capsule', zh: '胶囊' },
   envNone: { en: 'none', zh: '无' },
   envSize: { en: 'Size class', zh: '尺寸类别' },
+  envTextScale: { en: 'Text size', zh: '文字大小' },
   envContrast: { en: 'Contrast', zh: '对比度' },
   envTheme: { en: 'Appearance', zh: '外观' },
   envMotion: { en: 'Motion', zh: '动效' },

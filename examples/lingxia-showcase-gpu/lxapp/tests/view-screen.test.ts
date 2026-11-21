@@ -13,6 +13,7 @@ async function wellFormed(t: Fixture): Promise<{ capsule: string; safeTop: numbe
     }
   }
   expect(['compact', 'regular']).toContain(await state(t, 'lab-env-size-class'));
+  expect(Number(await state(t, 'lab-env-text-scale'))).toBeGreaterThan(0);
   expect(['standard', 'high']).toContain(await state(t, 'lab-env-contrast'));
   expect(['light', 'dark']).toContain(await state(t, 'lab-env-theme'));
   expect(['reduce', 'full']).toContain(await state(t, 'lab-env-reduced-motion'));
@@ -68,4 +69,20 @@ test('a pinned environment reaches the readout: still motion reads as reduced, t
   await t.app.view.environment({ theme: 'light', still: false, contrast: 'standard' });
   await expect.poll(() => state(t, 'lab-env-theme')).toBe('light');
   expect(await state(t, 'lab-env-contrast')).toBe('standard');
+});
+
+// The system text size reaches the page as `env.textScale` and a change re-renders it at once.
+test('a page reads the system text size and follows a change live', {
+  covers: ['view:environment'], start: openDemo('screen'),
+}, async (t) => {
+  const scale = t.app.view.testId('lab-env-text-scale');
+  try {
+    await t.app.view.environment({ textScale: 2 });
+    await expect(scale).toHaveAttribute('data-state', '2');
+    await t.app.view.environment({ textScale: 1.3 });
+    await expect(scale).toHaveAttribute('data-state', '1.3');
+  } finally {
+    await t.app.view.environment(null);
+  }
+  await expect(scale).not.toHaveAttribute('data-state', '1.3');
 });
