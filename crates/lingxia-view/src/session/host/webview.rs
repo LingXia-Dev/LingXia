@@ -79,6 +79,8 @@ pub(super) struct WebViewState {
     native_fullscreen: HashSet<String>,
     awaiting_fullscreen: HashSet<String>,
     last_mounts: Vec<WebViewMount>,
+    /// The web views the last frame's scene degraded, picture or not.
+    degraded: HashSet<String>,
     /// When each web view's latest picture was bound.
     pictured: HashMap<String, Instant>,
     /// The last presented frame.
@@ -97,6 +99,7 @@ impl WebViewState {
         self.native_fullscreen.clear();
         self.awaiting_fullscreen.clear();
         self.last_mounts.clear();
+        self.degraded.clear();
         self.pictured.clear();
         self.capture_ask = None;
     }
@@ -526,7 +529,6 @@ impl<A: PlatformAdapter> Inner<A> {
             .into_iter()
             .filter_map(|(_, node)| mount_of(node))
             .collect();
-        crate::scene::webview::occlude(&mut mounts);
         let (changed, exit_fullscreen, degrading) = {
             let mut main = self.main();
             if main.disposed {
@@ -558,19 +560,25 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
             }
             main.webviews.presented = Some(std::time::Instant::now());
-            let was_live: HashSet<&str> = main
-                .webviews
-                .last_mounts
-                .iter()
-                .filter(|m| !m.degraded)
-                .map(|m| m.web_id.as_str())
-                .collect();
             // Starting motion: picture the view as it is now, over the one kept from its load.
             let degrading: Vec<String> = mounts
                 .iter()
-                .filter(|m| m.degraded && was_live.contains(m.web_id.as_str()))
+                .filter(|m| m.degraded && !main.webviews.degraded.contains(&m.web_id))
                 .map(|m| m.web_id.clone())
                 .collect();
+            main.webviews.degraded = mounts
+                .iter()
+                .filter(|m| m.degraded)
+                .map(|m| m.web_id.clone())
+                .collect();
+            // With no picture yet the live view stays: a box that does not follow the motion
+            // for a moment beats an empty one.
+            for mount in &mut mounts {
+                if mount.degraded && !main.webviews.pictured.contains_key(&mount.web_id) {
+                    mount.degraded = false;
+                }
+            }
+            crate::scene::webview::occlude(&mut mounts);
             let same = main.webviews.last_mounts == mounts;
             if !same {
                 main.webviews.last_mounts = mounts.clone();

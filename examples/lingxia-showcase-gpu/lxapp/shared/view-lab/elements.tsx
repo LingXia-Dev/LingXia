@@ -248,6 +248,25 @@ export function WebSchemeDemo() {
   );
 }
 
+// A web page in a box that scales: in motion and while small it draws as its picture, which
+// scales with the box; at full size the live page returns.
+export function WebMotionDemo() {
+  const web = useWebView('lab-web-motion');
+  const small = useLocal('lab-web-motion-small', false);
+  const loads = useLocal('lab-web-motion-loads', 0);
+  const t = useSay();
+  return (
+    <>
+      <Button testId="lab-web-motion-toggle" size="sm" onClick={() => small.set(!small.value)}>{t(small.value ? labels.grow : labels.shrink)}</Button>
+      <view data-testid="lab-web-motion-box" className={`w-full h-32 transition-transform duration-700 ${small.value ? 'scale-75' : 'scale-100'}`}>
+        <webview web={web} data-testid="lab-web-motion-frame" src="public/embed/motion.html" aria-label={t(labels.webMotionFrame)}
+          onLoad={() => loads.set(loads.value + 1)} className="w-full h-full rounded-xl" />
+      </view>
+      <Readout testId="lab-web-motion-state" state={`loads=${loads.value} small=${small.value}`} />
+    </>
+  );
+}
+
 // A page taller than its box: a drag inside scrolls it to its edge; the next drag belongs to the screen.
 export function WebScrollDemo() {
   const web = useWebView('lab-web-scroll');
@@ -430,6 +449,7 @@ export const mediaDemos = {
   webScheme: WebSchemeDemo,
   webScroll: WebScrollDemo,
   webDrags: WebDragsDemo,
+  webMotion: WebMotionDemo,
   plot: PlotDemo,
   progress: ProgressDemo,
 };

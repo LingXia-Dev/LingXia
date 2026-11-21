@@ -525,10 +525,8 @@ impl DisplayList {
                         context.reset_paint_transform();
                         context.pop_clip();
                         context.pop_clip();
-                    } else if !*degraded
-                        && !self.web_pictures
-                        && crate::scene::webview::is_ready_key(key)
-                    {
+                    } else if !self.web_pictures && crate::scene::webview::is_ready_key(key) {
+                        // Live, or degraded with no picture yet: the native view shows through.
                         context.push_layer(
                             None,
                             Some(vello_cpu::peniko::BlendMode::new(
