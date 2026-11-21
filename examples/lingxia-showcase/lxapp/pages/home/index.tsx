@@ -1,223 +1,118 @@
-import React from 'react';
-import { useLxHost, useLxPage } from '@lingxia/react';
-import {
-  resolveDisplayLanguage,
-  type DisplayLanguagePreference,
-} from '../../shared/display-language';
+import { useLocal, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, Notice, Segmented } from '../../shared/ui';
+import { resolveDisplayLanguage } from '../../shared/display-language';
+import type { HomeActions, HomePageData } from '../../shared/home-types';
 import { getMessages } from './messages';
-import '../../tailwind.css';
 
-type AppearancePreference = 'auto' | 'light' | 'dark';
-
-type PageData = {
-  greeting?: string;
-  imageUrl?: string;
-  ipAddr?: string;
-  appVersion?: string;
-  appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
-  displayLanguage?: { preference: DisplayLanguagePreference; resolved: string };
-};
-
-type PageActions = {
-  greet(payload: { name: string }): void;
-  setAppearance(payload: { preference: AppearancePreference }): void;
-  setDisplayLanguage(payload: { preference: DisplayLanguagePreference }): void;
-};
-
-const APPEARANCE_OPTIONS: AppearancePreference[] = ['auto', 'light', 'dark'];
-const LANGUAGE_OPTIONS: DisplayLanguagePreference[] = ['auto', 'en-US', 'zh-CN'];
-
-export default function HomePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-  const { greet, setAppearance, setDisplayLanguage } = actions;
-  const { displayLanguage: hostLanguage } = useLxHost();
-  const { t } = getMessages(resolveDisplayLanguage(hostLanguage));
-  const [name, setName] = React.useState('');
-  const [isSending, setIsSending] = React.useState(false);
-
-  const greetingMessage = typeof data?.greeting === 'string' ? data.greeting : '';
-  const ipAddress = typeof data?.ipAddr === 'string' ? data.ipAddr : '';
-  const imageUrl = typeof data?.imageUrl === 'string' ? data.imageUrl : '';
-  const appVersion = typeof data?.appVersion === 'string' ? data.appVersion : '';
-  const preference = data?.appearance?.preference ?? 'auto';
-  const resolvedAppearance = data?.appearance?.resolved ?? 'light';
-  const languagePreference = data?.displayLanguage?.preference ?? 'auto';
-  const appearanceLabels: Record<AppearancePreference, string> = {
-    auto: t('appearanceAuto'),
-    light: t('appearanceLight'),
-    dark: t('appearanceDark'),
-  };
-  const languageLabels: Record<DisplayLanguagePreference, string> = {
-    auto: t('languageAuto'),
-    'en-US': t('languageEn'),
-    'zh-CN': t('languageZh'),
-  };
-  const resolvedAppearanceLabel =
-    resolvedAppearance === 'dark' ? t('appearanceDark') : t('appearanceLight');
-  const resolvedLanguageLabel =
-    resolveDisplayLanguage(data?.displayLanguage?.resolved ?? hostLanguage) === 'zh-CN'
-      ? t('languageZh')
-      : t('languageEn');
-
-  React.useEffect(() => {
-    if (isSending && greetingMessage) {
-      setIsSending(false);
-    }
-  }, [greetingMessage, isSending]);
-
-  const handleGreet = React.useCallback(() => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setIsSending(true);
-    greet({ name: trimmed });
-  }, [name, greet]);
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      handleGreet();
+export function render({ data, actions, env }: View<HomeActions, HomePageData>) {
+  const name = useLocal('home-name', '');
+  const sending = useLocal('home-sending', false);
+  const failed = useLocal('home-error', false);
+  const photo = useLocal('home-photo', false);
+  const language = resolveDisplayLanguage(data.displayLanguage.resolved ?? env.displayLanguage);
+  const { t } = getMessages(language);
+  const trimmed = name.value.trim();
+  const greet = async () => {
+    if (!trimmed || sending.value) return;
+    sending.set(true);
+    failed.set(false);
+    try {
+      await actions.greet({ name: trimmed });
+    } catch {
+      failed.set(true);
+    } finally {
+      sending.set(false);
     }
   };
-
+  const greeting = failed.value ? t('sendFailed') : data.greeting;
   return (
-    <div className="fixed inset-0 w-screen h-screen overflow-hidden" data-testid="home-page">
-      {imageUrl && (
-        <img
-          src={imageUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-      )}
-
-      <div className="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-black/40" />
-
-      <div className="relative z-10 w-full h-full overflow-y-auto">
-        <div className="min-h-full flex flex-col justify-center items-center px-5 py-10">
-        <div className="max-w-full bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
-          <div className="text-center mb-6">
-            <img src="/public/AppIcon.png" alt="Logo" className="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
-            <div className="text-[17px] font-semibold text-gray-900">LingXia</div>
-            <div className="text-[13px] text-gray-500 mt-0.5" data-testid="home-tagline">
-              {t('tagline')}
-            </div>
-          </div>
-
-          <div className="space-y-3">
+    <page data-testid="home-page" className="bg-canvas">
+      {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
+      {photo.value && <view data-testid="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
+      <scroll data-testid="home-scroll" className="grow basis-0">
+        <view className="min-h-full px-5 py-10 items-center justify-center gap-4">
+          <Card testId="home-card" className="w-full max-w-sm p-6 gap-3 bg-surface/80 backdrop-blur-xl shadow-lg border-line/60">
+            <view data-testid="home-header" className="items-center gap-1 pb-3">
+              <image data-testid="home-logo" src="public/AppIcon.png" alt="" className="w-16 h-16 mb-2 rounded-2xl object-contain" />
+              <text data-testid="home-title" className="text-[17px] font-semibold">
+                LingXia
+              </text>
+              <text data-testid="home-tagline" className="text-[13px] text-muted text-center line-clamp-2">
+                {t('tagline')}
+              </text>
+            </view>
             <input
               data-testid="home-name"
-              data-controlled-value={name}
-              type="text"
+              data-controlled-value={name.value}
+              aria-label={t('nameLabel')}
+              bind={name}
+              disabled={sending.value}
               placeholder={t('namePlaceholder')}
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-full h-[44px] px-4 bg-surface-100/80 border-0 rounded-[10px] text-[17px] text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all"
+              onSubmit={greet}
+              className="min-h-11 px-4 py-2 rounded-lg bg-surface-sunken text-[17px] placeholder:text-muted focus:ring-2 focus:ring-focus/30"
             />
-
-            <button
-              data-testid="home-greet"
-              type="button"
-              onClick={handleGreet}
-              disabled={!name.trim() || isSending}
-              className="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
-            >
-              {isSending ? t('sending') : t('sayHello')}
-            </button>
-          </div>
-
-          {greetingMessage && (
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-              <div className="flex items-start gap-3">
-                <div className="w-5 h-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                  </svg>
-                </div>
-                <p className="min-w-0 whitespace-pre-wrap break-words text-sm text-green-700 dark:text-green-400 leading-relaxed" data-testid="home-greeting">
-                  {greetingMessage}
-                </p>
-              </div>
-            </div>
+            <Button testId="home-greet" onClick={greet} disabled={!trimmed || sending.value} className="min-h-12 text-[17px] font-semibold">
+              {sending.value ? t('sending') : t('sayHello')}
+            </Button>
+            {Boolean(greeting) && (
+              <Notice tone={failed.value ? 'error' : 'success'} testId="home-greeting">
+                {greeting}
+              </Notice>
+            )}
+            <view data-testid="home-appearance" className="gap-1.5 pt-2">
+              <view className="flex-row justify-between">
+                <text className="text-[11px] font-medium text-muted">{t('appearance')}</text>
+                <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
+                  {env.theme === 'dark' ? t('appearanceDark') : t('appearanceLight')}
+                </text>
+              </view>
+              <Segmented
+                testId="home-appearance"
+                value={data.appearance.preference}
+                onChange={preference => actions.setAppearance({ preference })}
+                options={[
+                  { value: 'auto', label: t('appearanceAuto') },
+                  { value: 'light', label: t('appearanceLight') },
+                  { value: 'dark', label: t('appearanceDark') },
+                ]}
+              />
+            </view>
+            <view data-testid="home-language" className="gap-1.5 pt-1">
+              <view className="flex-row justify-between">
+                <text className="text-[11px] font-medium text-muted">{t('language')}</text>
+                <text data-testid="home-language-resolved" className="text-[11px] text-muted">
+                  {language === 'zh-CN' ? t('languageZh') : t('languageEn')}
+                </text>
+              </view>
+              <Segmented
+                testId="home-language"
+                value={data.displayLanguage.preference}
+                onChange={preference => actions.setDisplayLanguage({ preference })}
+                options={[
+                  { value: 'auto', label: t('languageAuto') },
+                  { value: 'en-US', label: t('languageEn') },
+                  { value: 'zh-CN', label: t('languageZh') },
+                ]}
+              />
+            </view>
+            {Boolean(data.appVersion) && (
+              <text data-testid="home-version" className="text-[10px] font-medium text-muted">
+                {data.appVersion}
+              </text>
+            )}
+          </Card>
+          {Boolean(data.ipAddr) && (
+            <view className="flex-row max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
+              <view className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
+              <text className="shrink-0 text-xs font-medium tracking-wide text-text">{t('myIp')}</text>
+              <text data-testid="home-ip" className="min-w-0 grow truncate text-xs font-mono text-muted">
+                {data.ipAddr}
+              </text>
+            </view>
           )}
-
-          <div className="mt-4" data-testid="home-appearance">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-medium text-gray-500">
-                {t('appearance')}
-              </span>
-              <span className="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
-                {resolvedAppearanceLabel}
-              </span>
-            </div>
-            <div className="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
-              {APPEARANCE_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  data-testid={`home-appearance-${option}`}
-                  data-selected={preference === option}
-                  onClick={() => setAppearance({ preference: option })}
-                  className={`flex-1 h-8 rounded-[8px] text-[13px] font-medium transition-colors ${
-                    preference === option
-                      ? 'bg-surface text-gray-900 shadow-sm'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  {appearanceLabels[option]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Showcase is the Control app, so it may host the product language switch. */}
-          <div className="mt-3" data-testid="home-language">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-medium text-gray-500">
-                {t('language')}
-              </span>
-              <span className="text-[11px] text-gray-400" data-testid="home-language-resolved">
-                {resolvedLanguageLabel}
-              </span>
-            </div>
-            <div className="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
-              {LANGUAGE_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  data-testid={`home-language-${option}`}
-                  data-selected={languagePreference === option}
-                  onClick={() => setDisplayLanguage({ preference: option })}
-                  className={`flex-1 h-8 rounded-[8px] text-[13px] font-medium transition-colors ${
-                    languagePreference === option
-                      ? 'bg-surface text-gray-900 shadow-sm'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  {languageLabels[option]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {appVersion && (
-            <div className="mt-1 text-left leading-none">
-              <span className="text-[10px] text-gray-500 font-medium">{appVersion}</span>
-            </div>
-          )}
-        </div>
-
-        {ipAddress && (
-          <div className="mt-4 flex justify-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full text-white/90">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-xs font-medium tracking-wide">{t('myIp')} </span>
-              <span className="text-xs font-mono">{ipAddress}</span>
-            </div>
-          </div>
-        )}
-      </div>
-      </div>
-
-    </div>
+        </view>
+      </scroll>
+    </page>
   );
 }

@@ -222,6 +222,12 @@ export default definePage({
   },
   setup(page) {
     const actions = {
+      async goBack() { await lx.nav.back(); },
+      selectSection({ section }: { section: string }) {
+        if (section === "openFile" || section === "chooseFile") {
+          page.update(d => { d.activeDemo = section; });
+        }
+      },
       onPdfUrlInput(event: NativeEvent<InputEventDetail>) {
         page.update(d => { d.pdfUrl = eventDetail(event).value || ""; });
       },
@@ -344,6 +350,11 @@ export default definePage({
 
         try {
           if (page.data.pdfDownloadState === "paused") {
+            // A recreated page must own a completion waiter before resuming.
+            if (!page.data.isPdfDownloading) {
+              await actions.openPdf();
+              return;
+            }
             page.update(d => {
               d.pdfTransferButtonText = "Resuming...";
               d.pdfProgressText = page.data.pdfProgressText || "Resuming transfer...";
@@ -444,9 +455,10 @@ export default definePage({
       async onLoad(options = {}) {
         pdfDownloadPage = page;
         const requestedSection = options?.section === "chooseFile" ? "chooseFile" : "openFile";
-        const hasPausedPdf = pdfDownloadTask && page.data.pdfUrl?.trim() === pdfDownloadUrl;
+        const hasPausedPdf = Boolean(pdfDownloadTask);
         page.update(d => {
           d.activeDemo = requestedSection;
+          d.pdfUrl = hasPausedPdf ? pdfDownloadUrl : page.data.pdfUrl;
           d.chooseFileDefaultPath = lx.fs.userData || "";
           d.chooseFileStatusText = "Choose a file";
           d.isPdfDownloading = false;

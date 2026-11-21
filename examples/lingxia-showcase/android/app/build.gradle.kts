@@ -148,6 +148,12 @@ android {
         }
     }
 
+    if (providers.gradleProperty("lingxia.gpuDeviceTests").orNull == "true") {
+        testBuildType = "release"
+        sourceSets.getByName("androidTest").java.srcDir("../../../../lingxia-sdk/android/tests/gpu/instrumentation")
+        sourceSets.getByName("androidTest").assets.srcDir("../../../../target/gpu-device-fixtures")
+    }
+
     signingConfigs {
         if (releaseSigningEnabled) {
             create("release") {
@@ -221,6 +227,8 @@ if (packageMpvJni) {
 }
 
 dependencies {
+    androidTestImplementation(libs.androidxTestRunner)
+    androidTestImplementation(libs.androidxTestExtJunit)
     implementation(project(":lingxia"))
 
     // App's own dependencies

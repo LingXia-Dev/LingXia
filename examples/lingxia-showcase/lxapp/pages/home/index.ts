@@ -5,26 +5,23 @@ import {
   type DisplayLanguagePreference,
 } from "../../shared/display-language";
 import { formatHomeGreeting, getMessages } from "./messages";
+import type { HomeActions, HomePageData, GreetingRequest, AppearanceRequest, DisplayLanguageRequest } from '../../shared/home-types';
 import { definePage, lx } from '@lingxia/logic';
 
 
 
+const initialData: HomePageData = {
+  greeting: appState.greeting,
+  imageUrl: 'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg',
+  ipAddr: appState.ipAddr,
+  greetCount: 0,
+  appVersion: '',
+  appearance: { preference: 'auto', resolved: 'light' },
+  displayLanguage: { preference: 'auto', resolved: 'en-US' },
+};
 
 export default definePage({
-  data: {
-    greeting: appState.greeting,
-    imageUrl:
-      "https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg",
-
-    ipAddr: appState.ipAddr,
-    greetCount: 0,
-    appVersion: "",
-    appearance: { preference: "auto", resolved: "light" },
-    displayLanguage: {
-      preference: "auto" as DisplayLanguagePreference,
-      resolved: "en-US",
-    },
-  },
+  data: initialData,
   setup(page) {
     let stopWatchingIp = null as (() => void) | null;
     let stopWatchingAppearance = null as (() => void) | null;
@@ -73,7 +70,11 @@ export default definePage({
       },
     };
     const actions = {
-      async setAppearance(options: { preference?: "auto" | "light" | "dark" } = {}) {
+      async openApi() { await lx.nav.go({ page: 'api' }).opened; },
+      async openTodo() { await lx.nav.go({ page: 'todo' }).opened; },
+      async openClipboard() { await lx.nav.go({ page: 'clipboard' }).opened; },
+      async openShare() { await lx.nav.go({ page: 'share' }).opened; },
+      async setAppearance(options: Partial<AppearanceRequest> = {}) {
         const preference = options.preference || "auto";
         try {
           await lx.host.appearance.setPreference(preference);
@@ -87,7 +88,7 @@ export default definePage({
       // Showcase is the Control app, so it owns the product-wide language
       // preference. Ordinary lxapps must not add their own selector.
       async setDisplayLanguage(
-        options: { preference?: DisplayLanguagePreference } = {},
+        options: Partial<DisplayLanguageRequest> = {},
       ) {
         const preference = options.preference || "auto";
         try {
@@ -99,7 +100,7 @@ export default definePage({
         }
         helpers.syncLanguage();
       },
-      async greet(option: { name?: string } = {}) {
+      async greet(option: Partial<GreetingRequest> = {}) {
         const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
         const count = page.data.greetCount + 1;
         page.update(d => {
@@ -135,6 +136,8 @@ export default definePage({
         stopWatchingIp = null;
       },
       async onLoad() {
+        // Keep the exported View surface checked against registered Logic actions.
+        void (actions satisfies HomeActions);
         console.log("[Home] Page loaded");
         helpers.syncAppearance();
         helpers.syncLanguage();

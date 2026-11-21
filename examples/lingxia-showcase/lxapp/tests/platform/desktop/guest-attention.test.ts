@@ -1,8 +1,11 @@
 import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
+
+test.configure({ skip: notDesktop });
 
 const CHAT_APP_ID = 'lingxia-showcase-web';
 
@@ -59,7 +62,7 @@ test('a guest lxapp gets attention for itself only', {
   });
 
   // Every refusal lands before anything is posted, so none of these prompts.
-  const refused = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+  const refused = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }, otherAppId) => {
     const show = lx.host.notification.show as (options: unknown) => Promise<unknown>;
     const code = async (target: unknown) => {
       try {
@@ -89,12 +92,12 @@ test('a guest lxapp gets attention for itself only', {
       page: await code({ kind: 'page', page: 'chat' }),
       route: await code({ kind: 'route', name: 'anything' }),
       appLink: await code({ kind: 'appLink', url: 'https://example.com/x' }),
-      otherApp: await code({ kind: 'app', appId: 'lingxia-showcase' }),
+      otherApp: await code({ kind: 'app', appId: otherAppId }),
       bannerActivate: await bannerCode({ kind: 'activate' }),
-      bannerOtherApp: await bannerCode({ kind: 'app', appId: 'lingxia-showcase' }),
+      bannerOtherApp: await bannerCode({ kind: 'app', appId: otherAppId }),
       shellActivate,
     };
-  });
+  }, SHOWCASE_APP_ID);
   expect(refused).toEqual({
     activate: 'E_PERMISSION_DENIED',
     page: 'E_PERMISSION_DENIED',

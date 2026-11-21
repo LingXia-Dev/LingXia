@@ -1,239 +1,153 @@
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
-type ActiveDemo = 'openFile' | 'chooseFile';
+type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
 
-type PageData = {
-  activeDemo?: ActiveDemo;
-  pdfUrl?: string;
-  officeUrl?: string;
-  officeFileType?: string;
-  chooseFileDefaultPath?: string;
-  chooseFileStatusText?: string;
-  chooseFileSelectedPath?: string;
-  chooseFileSelectedType?: string;
-  isPdfDownloading?: boolean;
-  pdfDownloadState?: string;
-  pdfProgressKnown?: boolean;
-  pdfDownloadProgress?: number;
-  pdfProgressText?: string;
-  pdfSupportsTransferControl?: boolean;
-  pdfTransferButtonText?: string;
-  isOfficeFetching?: boolean;
-  officeStatusText?: string;
-};
+function UrlField({
+  testId,
+  label,
+  value,
+  placeholder,
+  disabled,
+  onInput,
+}: {
+  testId: string;
+  label: string;
+  value: unknown;
+  placeholder: string;
+  disabled: boolean;
+  onInput: (value: string) => unknown;
+}) {
+  return (
+    <view className="gap-1.5">
+      <text className="text-sm text-muted">{label}</text>
+      <input
+        data-testid={testId}
+        aria-label={label}
+        value={String(value || '')}
+        disabled={disabled}
+        placeholder={placeholder}
+        onInput={value => {
+          void onInput(value);
+        }}
+        className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm"
+      />
+    </view>
+  );
+}
 
-type PageActions = {
-  onPdfUrlInput(event: any): void;
-  onOfficeUrlInput(event: any): void;
-  onOfficeFileTypeInput(event: any): void;
-  chooseFileFromUserCache(): void;
-  openChosenFile(): void;
-  openPdf(): void;
-  openOffice(): void;
-  togglePdfTransfer(): void;
-};
-
-export default function FilePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-  const {
-    onPdfUrlInput,
-    onOfficeUrlInput,
-    onOfficeFileTypeInput,
-    chooseFileFromUserCache,
-    openChosenFile,
-    openPdf,
-    openOffice,
-    togglePdfTransfer,
-  } = actions;
-
-  const activeDemo: ActiveDemo = data?.activeDemo || 'openFile';
-  const pdfUrl = data?.pdfUrl || '';
-  const officeUrl = data?.officeUrl || '';
-  const officeFileType = data?.officeFileType || '';
-  const chooseFileDefaultPath = data?.chooseFileDefaultPath || '';
-  const chooseFileStatusText = data?.chooseFileStatusText || 'Choose a file';
-  const chooseFileSelectedPath = data?.chooseFileSelectedPath || '';
-  const chooseFileSelectedType = data?.chooseFileSelectedType || '';
-  const isPdfDownloading = Boolean(data?.isPdfDownloading);
-  const pdfDownloadState = data?.pdfDownloadState || 'idle';
-  const pdfProgressKnown = Boolean(data?.pdfProgressKnown);
-  const pdfDownloadProgress = data?.pdfDownloadProgress || 0;
-  const pdfProgressText = data?.pdfProgressText || '';
-  const pdfSupportsTransferControl = Boolean(data?.pdfSupportsTransferControl);
-  const pdfTransferButtonText = data?.pdfTransferButtonText || 'Pause Download';
-  const canTogglePdfTransfer =
-    pdfSupportsTransferControl && (isPdfDownloading || pdfDownloadState === 'paused');
-  const showPdfProgress =
-    pdfDownloadState !== 'idle' || Boolean(data?.pdfProgressText);
-  const pdfPrimaryButtonText =
-    pdfDownloadState === 'paused'
-      ? 'Download Paused'
-      : pdfDownloadState === 'opening'
-        ? 'Opening File...'
-      : isPdfDownloading
+export function render({ data, actions: raw }: View) {
+  const actions = raw as Actions;
+  const state = String(data.pdfDownloadState || 'idle');
+  const paused = state === 'paused';
+  const transferEnabled = !!data.pdfSupportsTransferControl && (!!data.isPdfDownloading || paused);
+  const progress = Math.max(0, Math.min(100, Number(data.pdfDownloadProgress) || 0));
+  const pdfLabel = paused
+    ? 'Download Paused'
+    : state === 'opening'
+      ? 'Opening File...'
+      : data.isPdfDownloading
         ? 'Downloading...'
         : 'Download and Preview PDF';
-  const isOfficeFetching = Boolean(data?.isOfficeFetching);
-  const officeStatusText = data?.officeStatusText || '';
-  const officePrimaryButtonText = isOfficeFetching
-    ? 'Fetching and Opening File...'
-    : 'Fetch and Open File';
-
   return (
-    <div className="min-h-screen bg-surface-100">
-      <div className="px-3 pt-6 pb-12 space-y-3">
-        {activeDemo === 'openFile' ? (
-          <>
-            <div className="bg-surface rounded-lg shadow-sm">
-              <div className="px-4 py-4 border-b border-line-100">
-                <div className="text-base text-gray-900 font-medium">PDF via lx.network.download()</div>
-                <div className="text-xs text-gray-500 mt-1">Download to a temporary file with progress and pause/continue, then open with the native PDF viewer.</div>
-              </div>
-              <div className="px-4 py-4 space-y-3">
-                <div>
-                  <div className="text-sm text-gray-600 mb-2">PDF URL:</div>
-                  <input
-                    type="text"
-                    value={pdfUrl}
-                    onChange={(e) => onPdfUrlInput({ detail: { value: e.target.value } })}
-                    placeholder="Enter PDF URL"
-                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <button
-                  onClick={openPdf}
-                  disabled={isPdfDownloading}
-                  className={`w-full py-3 rounded-lg text-white font-medium ${
-                    isPdfDownloading
-                      ? 'bg-surface-400 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
-                  }`}
-                >
-                  {pdfPrimaryButtonText}
-                </button>
-                {showPdfProgress ? (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
-                    <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400">
-                      <span>PDF Transfer</span>
-                      <span>{pdfProgressKnown ? `${Math.round(pdfDownloadProgress)}%` : 'Streaming'}</span>
-                    </div>
-                    {pdfProgressKnown ? (
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
-                        <div
-                          className="h-full rounded-full bg-blue-500 transition-all duration-300"
-                          style={{ width: `${pdfDownloadProgress}%` }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-blue-700 dark:text-blue-400">
-                        <span className="inline-flex h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
-                        <span>Waiting for precise progress from runtime…</span>
-                      </div>
-                    )}
-                    <div className="mt-2 text-xs text-blue-900 dark:text-blue-400">{pdfProgressText}</div>
-                    <button
-                      onClick={togglePdfTransfer}
-                      disabled={!canTogglePdfTransfer}
-                      className={`mt-3 w-full rounded-lg py-2 text-sm font-medium ${
-                        canTogglePdfTransfer
-                          ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                          : 'bg-blue-100 text-blue-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {pdfTransferButtonText}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="bg-surface rounded-lg shadow-sm">
-              <div className="px-4 py-4 border-b border-line-100">
-                <div className="text-base text-gray-900 font-medium">Office via fetch()</div>
-                <div className="text-xs text-gray-500 mt-1">Use web-standard fetch in page logic, save into usercache, then open with the native file API.</div>
-              </div>
-              <div className="px-4 py-4 space-y-3">
-                <div>
-                  <div className="text-sm text-gray-600 mb-2">File URL:</div>
-                  <input
-                    type="text"
-                    value={officeUrl}
-                    onChange={(e) => onOfficeUrlInput({ detail: { value: e.target.value } })}
-                    placeholder="Enter file URL"
-                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600 mb-2">File Type:</div>
-                  <input
-                    type="text"
-                    value={officeFileType}
-                    onChange={(e) => onOfficeFileTypeInput({ detail: { value: e.target.value } })}
-                    placeholder="e.g., docx, xlsx, pptx"
-                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">Auto-detected from URL or enter manually</div>
-                </div>
-                <button
-                  onClick={openOffice}
-                  disabled={isOfficeFetching}
-                  className={`w-full py-3 rounded-lg text-white font-medium ${
-                    isOfficeFetching
-                      ? 'bg-surface-400 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
-                  }`}
-                >
-                  {officePrimaryButtonText}
-                </button>
-                {officeStatusText ? (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900 dark:text-blue-400">
-                    {officeStatusText}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="bg-surface rounded-lg shadow-sm">
-            <div className="px-4 py-4 border-b border-line-100">
-              <div className="text-base text-gray-900 font-medium">Choose File</div>
-              <div className="text-xs text-gray-500 mt-1">Open the host chooser in a predefined folder instead of the system recent-files picker.</div>
-            </div>
-            <div className="px-4 py-4 space-y-3">
-              <div className="text-sm text-gray-600">Default folder:</div>
-              <div className="rounded-lg bg-surface-50 border border-line-200 px-3 py-2 text-xs text-gray-700 break-all">
-                {chooseFileDefaultPath}
-              </div>
-              <button
-                onClick={chooseFileFromUserCache}
-                className="w-full py-3 rounded-lg bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium"
-              >
-                Open File Chooser
-              </button>
-              <div className="rounded-xl border border-line-200 bg-surface-50 p-3 space-y-2">
-                <div className="text-xs text-gray-500">Status</div>
-                <div className="text-sm text-gray-900">{chooseFileStatusText}</div>
-                <div className="text-xs text-gray-500">Selected Path</div>
-                <div className="text-xs text-gray-700 break-all">{chooseFileSelectedPath || 'None'}</div>
-                <div className="text-xs text-gray-500">Detected Type</div>
-                <div className="text-xs text-gray-700">{chooseFileSelectedType || 'Unknown'}</div>
-              </div>
-              <button
-                onClick={openChosenFile}
-                disabled={!chooseFileSelectedPath}
-                className={`w-full py-3 rounded-lg text-white font-medium ${
-                  chooseFileSelectedPath
-                    ? 'bg-surface-900 hover:bg-black active:bg-surface-800'
-                    : 'bg-surface-400 cursor-not-allowed'
-                }`}
-              >
-                Open Selected File
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+    <Page>
+      {data.activeDemo === 'chooseFile' ? (
+        <Section title="Choose File" description="Open the host chooser in a predefined folder instead of the recent-files picker.">
+          <InfoRow label="Default folder" value={data.chooseFileDefaultPath} testId="file-default-path" />
+          <Button testId="file-choose" onClick={() => actions.chooseFileFromUserCache()}>
+            Open File Chooser
+          </Button>
+          <InfoList>
+            <InfoRow label="Status" value={data.chooseFileStatusText || 'Choose a file'} testId="file-choose-status" />
+            <InfoRow label="Selected Path" value={data.chooseFileSelectedPath || 'None'} testId="file-selected-path" />
+            <InfoRow label="Detected Type" value={data.chooseFileSelectedType || 'Unknown'} testId="file-selected-type" />
+          </InfoList>
+          <Button variant="secondary" testId="file-open-selected" disabled={!data.chooseFileSelectedPath} onClick={() => actions.openChosenFile()}>
+            Open Selected File
+          </Button>
+        </Section>
+      ) : (
+        <view className="gap-4">
+          <Section
+            title="PDF via lx.network.download()"
+            description="Download to a temporary file with progress and pause/continue, then open the native PDF viewer."
+          >
+            <UrlField
+              testId="file-pdf-url"
+              label="PDF URL"
+              value={data.pdfUrl}
+              placeholder="Enter PDF URL"
+              disabled={!!data.isPdfDownloading}
+              onInput={value => actions.onPdfUrlInput({ detail: { value } })}
+            />
+            <Button
+              testId="file-pdf-open"
+              disabled={!!data.isPdfDownloading || paused || !String(data.pdfUrl || '').trim()}
+              onClick={() => actions.openPdf()}
+            >
+              {pdfLabel}
+            </Button>
+            {(state !== 'idle' || !!data.pdfProgressText) && (
+              <view className="p-3 gap-2 rounded-xl border border-accent/20 bg-accent-soft">
+                <view className="flex-row items-center justify-between">
+                  <text className="text-xs text-accent">PDF Transfer</text>
+                  <text data-testid="file-pdf-progress" className="text-xs text-accent">
+                    {data.pdfProgressKnown ? `${Math.round(progress)}%` : 'Streaming'}
+                  </text>
+                </view>
+                {data.pdfProgressKnown ? (
+                  <view className="flex-row h-2 rounded-full bg-accent-soft">
+                    <view data-testid="file-progress-bar" className="h-2 rounded-full bg-accent" style={{ width: `${progress}%` }} />
+                  </view>
+                ) : (
+                  <text className="text-[11px] text-accent">Waiting for precise progress from runtime...</text>
+                )}
+                <text data-testid="file-pdf-status" className="text-xs">
+                  {String(data.pdfProgressText || '')}
+                </text>
+                <Button size="sm" testId="file-pdf-transfer" disabled={!transferEnabled} onClick={() => actions.togglePdfTransfer()}>
+                  {String(data.pdfTransferButtonText || 'Pause Download')}
+                </Button>
+              </view>
+            )}
+          </Section>
+          <Section
+            title="Office via fetch()"
+            description="Use web-standard fetch in page logic, save into usercache, then open with the native file API."
+          >
+            <UrlField
+              testId="file-office-url"
+              label="File URL"
+              value={data.officeUrl}
+              placeholder="Enter file URL"
+              disabled={!!data.isOfficeFetching}
+              onInput={value => actions.onOfficeUrlInput({ detail: { value } })}
+            />
+            <UrlField
+              testId="file-office-type"
+              label="File Type"
+              value={data.officeFileType}
+              placeholder="e.g., docx, xlsx, pptx"
+              disabled={!!data.isOfficeFetching}
+              onInput={value => actions.onOfficeFileTypeInput({ detail: { value } })}
+            />
+            <text className="text-xs text-muted">Auto-detected from URL or enter manually</text>
+            <Button
+              testId="file-office-open"
+              disabled={!!data.isOfficeFetching || !String(data.officeUrl || '').trim() || !String(data.officeFileType || '').trim()}
+              onClick={() => actions.openOffice()}
+            >
+              {data.isOfficeFetching ? 'Fetching and Opening File...' : 'Fetch and Open File'}
+            </Button>
+            {!!data.officeStatusText && (
+              <text data-testid="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">
+                {String(data.officeStatusText)}
+              </text>
+            )}
+          </Section>
+        </view>
+      )}
+    </Page>
   );
 }

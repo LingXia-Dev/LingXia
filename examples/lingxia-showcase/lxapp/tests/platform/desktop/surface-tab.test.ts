@@ -1,11 +1,12 @@
 import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: notDesktop ?? (selectedGate ? 'a --arg gate run selects only its gate' : undefined) });
 
 interface OpenedTab {
   kind: string;

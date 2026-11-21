@@ -1,188 +1,123 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useLxChannel } from '@lingxia/react';
-import type { ServerMessage, ClientCommand, TickerUpdate } from './index';
-import '../../tailwind.css';
+import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, ErrorState, Page, Section } from '../../shared/ui';
+import type { ClientCommand, ServerMessage, TickerUpdate } from '../../shared/channel-types';
 
-interface TickerSnapshot {
-  symbol: string;
-  price: number;
-  change: number;
-  timestamp: number;
-}
+type Actions = { tickerSession(params: Record<string, never>, channel: ChannelEndpoint<ServerMessage, ClientCommand>): void };
+const changeClass = (value: number) => (value < 0 ? 'text-danger' : value > 0 ? 'text-success' : 'text-muted');
+const formatChange = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
 
-export default function ChannelPage() {
-  const openTickerSession = React.useCallback(
-    (params: Record<string, unknown>) => {
-      const bridge = window.LingXiaBridge;
-      if (!bridge?.raw?.channel?.open) {
-        return Promise.reject(new Error('LingXiaBridge channel API is not ready'));
+export function render({ actions }: View<Actions>) {
+  const symbols = useLocal<string[]>('symbols', []);
+  const symbol = useLocal('symbol', '');
+  const history = useLocal<TickerUpdate[]>('history', []);
+  const latest = useLocal<TickerUpdate | null>('latest', null);
+  const channel = useChannel('ticker', actions.tickerSession, {
+    params: {},
+    onData(message) {
+      if (message.type === 'init') {
+        symbols.set(message.symbols);
+        symbol.set(message.active);
+        history.set([]);
+        latest.set(null);
+      } else if (message.symbol === symbol.value) {
+        latest.set(message);
+        history.set([...history.value.slice(-29), message]);
       }
-      return bridge.raw.channel.open<ServerMessage, ClientCommand>('tickerSession', params);
     },
-    [],
-  );
-
-  const session = useLxChannel(openTickerSession, {
-    params: () => ({}),
   });
-
-  const [symbols, setSymbols] = useState<string[]>([]);
-  const [active, setActive] = useState('');
-  const [history, setHistory] = useState<TickerSnapshot[]>([]);
-  const [latest, setLatest] = useState<TickerSnapshot | null>(null);
-  const historyRef = useRef(history);
-  historyRef.current = history;
-
-  useEffect(() => {
-    if (!session.last) return;
-    const msg = session.last as ServerMessage;
-    if (msg.type === 'init') {
-      setSymbols(msg.symbols);
-      setActive(msg.active);
-      setHistory([]);
-      setLatest(null);
-    }
-    if (msg.type === 'tick') {
-      const snap: TickerSnapshot = {
-        symbol: msg.symbol,
-        price: msg.price,
-        change: msg.change,
-        timestamp: msg.timestamp,
-      };
-      setLatest(snap);
-      setHistory((prev) => [...prev.slice(-29), snap]);
-    }
-  }, [session.last]);
-
-  const switchSymbol = (symbol: string) => {
-    if (symbol === active || !session.connected) return;
-    setActive(symbol);
-    setHistory([]);
-    setLatest(null);
-    session.send({ type: 'subscribe', symbol });
+  const subscribe = (value: string) => {
+    if (!channel.connected || value === symbol.value) return;
+    channel.send({ type: 'subscribe', symbol: value });
+    symbol.set(value);
+    history.set([]);
+    latest.set(null);
   };
-
-  const changeColor = latest
-    ? latest.change > 0
-      ? 'text-green-600 dark:text-green-400'
-      : latest.change < 0
-        ? 'text-red-500 dark:text-red-400'
-        : 'text-gray-600'
-    : 'text-gray-600';
-
-  const changePrefix = latest && latest.change > 0 ? '+' : '';
-
+  const status = channel.connected ? 'Connected' : channel.connecting ? 'Connecting...' : 'Disconnected';
   return (
-    <div className="min-h-screen bg-surface-50 px-4 py-6" data-testid="channel-page">
-      {/* Connection status */}
-      <div className="flex items-center gap-2 mb-4">
-        <div
-          className={`w-2 h-2 rounded-full ${
-            session.connected ? 'bg-green-500' : session.connecting ? 'bg-yellow-400' : 'bg-surface-300'
-          }`}
+    <Page testId="channel-page">
+      <view className="flex-row items-center gap-2">
+        <view
+          className={
+            channel.connected
+              ? 'w-2 h-2 rounded-full bg-success'
+              : channel.connecting
+                ? 'w-2 h-2 rounded-full bg-warning'
+                : 'w-2 h-2 rounded-full bg-line'
+          }
         />
-        <span className="text-xs text-gray-500" data-testid="channel-status">
-          {session.connected ? 'Connected' : session.connecting ? 'Connecting...' : 'Disconnected'}
-        </span>
-      </div>
-
-      {/* Symbol tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto">
-        {symbols.map((sym) => (
-          <button
-            key={sym}
-            data-testid="channel-symbol"
-            data-symbol={sym}
-            onClick={() => switchSymbol(sym)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              sym === active
-                ? 'bg-blue-600 text-white'
-                : 'bg-surface text-gray-700 border border-line-200'
-            }`}
-          >
-            {sym}
-          </button>
-        ))}
-      </div>
-
-      {/* Price card */}
-      <div className="bg-surface rounded-2xl shadow-sm border border-line-200 p-6 mb-6">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1" data-testid="channel-active">{active || '---'}</p>
-        <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-bold text-gray-900" data-testid="channel-price">
-            {latest ? `$${latest.price.toFixed(2)}` : '---'}
-          </span>
-          {latest && (
-            <span className={`text-lg font-semibold ${changeColor}`}>
-              {changePrefix}{latest.change.toFixed(2)}
-            </span>
+        <text data-testid="channel-status" className="text-xs text-muted">
+          {status}
+        </text>
+      </view>
+      <scroll data-testid="channel-symbols" className="overflow-x-auto">
+        <view className="flex-row gap-2">
+          {symbols.value.map(value => (
+            <Button
+              key={value}
+              size="sm"
+              variant={value === symbol.value ? 'primary' : 'secondary'}
+              testId={`channel-symbol-${value}`}
+              disabled={!channel.connected}
+              onClick={() => subscribe(value)}
+              className="rounded-full"
+            >
+              {value}
+            </Button>
+          ))}
+        </view>
+      </scroll>
+      <Card className="p-6 gap-1">
+        <text data-testid="channel-active" className="text-xs font-medium tracking-wider text-muted">
+          {symbol.value || '---'}
+        </text>
+        <view className="flex-row items-baseline gap-3">
+          <text data-testid="channel-price" className="text-4xl font-bold">
+            {latest.value ? `$${latest.value.price.toFixed(2)}` : '---'}
+          </text>
+          {latest.value && (
+            <text data-testid="channel-change" className={`text-lg font-semibold ${changeClass(latest.value.change)}`}>
+              {formatChange(latest.value.change)}
+            </text>
           )}
-        </div>
-        {latest && (
-          <p className="text-xs text-gray-400 mt-1">
-            {new Date(latest.timestamp).toLocaleTimeString()}
-          </p>
+        </view>
+        {latest.value && (
+          <text data-testid="channel-last-time" className="text-xs text-muted">
+            {new Date(latest.value.timestamp).toLocaleTimeString()}
+          </text>
         )}
-      </div>
-
-      {/* Tick history */}
-      <div className="bg-surface rounded-2xl shadow-sm border border-line-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-line-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recent Ticks</p>
-        </div>
-        <div className="max-h-64 overflow-y-auto">
-          {history.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-gray-400 text-center">Waiting for data...</p>
+      </Card>
+      <Section title="Recent ticks">
+        <scroll data-testid="channel-history" className="max-h-64">
+          {!history.value.length ? (
+            <text className="py-6 text-sm text-center text-muted">Waiting for data...</text>
           ) : (
-            <div className="divide-y divide-line-50">
-              {[...history].reverse().map((tick, i) => {
-                const color =
-                  tick.change > 0 ? 'text-green-600 dark:text-green-400' : tick.change < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-500';
-                const prefix = tick.change > 0 ? '+' : '';
-                return (
-                  <div key={i} className="px-4 py-2.5 flex items-center justify-between">
-                    <span className="text-sm text-gray-800 font-mono">${tick.price.toFixed(2)}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-medium ${color}`}>
-                        {prefix}{tick.change.toFixed(2)}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(tick.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <view className="divide-y divide-line">
+              {history.value
+                .slice()
+                .reverse()
+                .map(tick => (
+                  <view key={`${tick.timestamp}-${tick.symbol}`} className="flex-row items-center justify-between gap-3 py-2.5">
+                    <text className="text-sm font-mono">{`$${tick.price.toFixed(2)}`}</text>
+                    <view className="flex-row items-center gap-3">
+                      <text className={`text-sm font-medium ${changeClass(tick.change)}`}>{formatChange(tick.change)}</text>
+                      <text className="text-xs text-muted">{new Date(tick.timestamp).toLocaleTimeString()}</text>
+                    </view>
+                  </view>
+                ))}
+            </view>
           )}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="mt-6 flex gap-3">
-        <button
-          data-testid="channel-disconnect"
-          onClick={() => session.close()}
-          disabled={!session.connected}
-          className="flex-1 py-3 rounded-xl text-sm font-medium bg-surface-200 text-gray-700 disabled:opacity-40"
-        >
+        </scroll>
+      </Section>
+      <view className="grid gap-3 grid-cols-2">
+        <Button variant="secondary" testId="channel-disconnect" disabled={!channel.connected} onClick={() => channel.close()}>
           Disconnect
-        </button>
-        <button
-          data-testid="channel-reconnect"
-          onClick={() => session.reopen()}
-          disabled={session.connected || session.connecting}
-          className="flex-1 py-3 rounded-xl text-sm font-medium bg-blue-600 text-white disabled:opacity-40"
-        >
+        </Button>
+        <Button testId="channel-reconnect" disabled={channel.connecting || channel.connected} onClick={() => channel.connect()}>
           Reconnect
-        </button>
-      </div>
-
-      {session.error && (
-        <p className="mt-3 text-xs text-red-500 dark:text-red-400 text-center">
-          Error: {session.error.code} {session.error.message && `\u2014 ${session.error.message}`}
-        </p>
-      )}
-    </div>
+        </Button>
+      </view>
+      <ErrorState error={channel.error} />
+    </Page>
   );
 }

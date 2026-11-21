@@ -1,5 +1,0 @@
-"NSCameraUsageDescription" = "Camera access is needed to take photos and video in this page.";
-"NSMicrophoneUsageDescription" = "Microphone access is needed to record audio in this page.";
-"NSLocationWhenInUseUsageDescription" = "Location access is needed to get your location and read Wi-Fi information.";
-"NSPhotoLibraryUsageDescription" = "Photo library access is needed to pick photos and videos.";
-"NSPhotoLibraryAddUsageDescription" = "Photo library access is needed to save photos and videos.";

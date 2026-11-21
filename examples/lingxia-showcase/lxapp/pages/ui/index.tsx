@@ -1,1156 +1,557 @@
-import React from 'react';
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { useLocal, type Child, type Local, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, Field, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
 
-// Parse a surface size input. Blank means "let the Host pick the default size";
-// a bare number is absolute px ("320"); a `%` suffix is a percentage of the
-// container ("80%"). Non-blank but unparseable input — a stray letter, a
-// full-width "％", a non-positive or out-of-range value — throws so the demo
-// reports the mistake instead of silently dropping the dimension (which would
-// e.g. quietly turn a 100%/100% float into a centered, default-size one).
-function parseSurfaceSize(raw: string, label: string): number | string | undefined {
-  const value = raw.trim();
-  if (!value) return undefined;
-  if (value.endsWith('%')) {
-    const pct = Number(value.slice(0, -1).trim());
-    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-      throw new Error(`${label} must be a percentage between 1% and 100% (got "${value}")`);
-    }
-    return `${pct}%`;
-  }
-  const px = Number(value);
-  if (!Number.isFinite(px) || px <= 0) {
-    throw new Error(`${label} must be a positive px value or a percentage like "80%" (got "${value}")`);
-  }
-  return px;
+type Data = Record<string, any>;
+type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
+type Pane = { data: Data; actions: Actions };
+
+export function render({ data, actions }: View) {
+  const pane = { data: data as Data, actions: actions as Actions };
+  const type = String(data.currentType || 'navigation');
+  if (['toast', 'actionsheet', 'modal'].includes(type)) return <Dialogs {...pane} />;
+  if (type === 'appearance') return <Appearance {...pane} />;
+  if (type === 'navbar') return <Navbar {...pane} />;
+  if (type === 'tabbar') return <Tabbar {...pane} />;
+  if (type === 'navigation') return <Navigation {...pane} />;
+  return <Surface {...pane} />;
 }
 
-export default function UIPage() {
-  // Use LingXia hook to get data and functions
-  const { data, actions } = useLxPage();
-  const {
-    demoNavigateTo,
-    demoNavigateBack,
-    demoSwitchTab,
-    demoRedirectTo,
-    bumpLogicCounter,
-    bumpModuleCounter,
-    showToastWithParams,
-    hideToast,
-    showModalWithParams,
-    clearModalResult,
-    updateNavigationBarTitle,
-    updateNavigationBarColors,
-    updateNavigationBarHomeButton,
-    resetNavigationBar,
-    enableTabBarRedDot,
-    disableTabBarRedDot,
-    updateTabBarBadge,
-    clearTabBarBadge,
-    revealTabBar,
-    concealTabBar,
-    updateTabBarItem,
-    setAppearance,
-    chooseToastStyle,
-    chooseToastPosition,
-    showDemoActionSheet,
-    openSurfaceDemo,
-    showActiveSurface,
-    hideActiveSurface,
-    closeActiveSurface,
-  } = actions;
-  const {
-    currentType = 'navigation',
-    instanceTag = '',
-    previousInstanceTag = '',
-    logicCounter = 0,
-    moduleCounter = 0,
-    events = [],
-    modalResult = null,
-    actionSheetResult = null,
-    toastStyle = 'success',
-    toastStyleLabel = 'Success',
-    toastStyleOptions = [],
-    toastPosition = 'center',
-    toastPositionLabel = 'Center',
-    toastPositionOptions = [],
-    surfaceDemo = {},
-    chromeError = '',
-    appearance = { preference: 'auto', resolved: 'light' },
-  } = data;
+function ChromeError({ data }: { data: Data }) {
+  return data.chromeError ? (
+    <text data-testid="ui-chrome-error" className="px-3 py-2 rounded-lg border border-danger/40 bg-danger-soft text-sm text-danger break-all">
+      {String(data.chromeError)}
+    </text>
+  ) : null;
+}
 
-  // View-local state: never leaves the WebView, so only a document reload
-  // (a fresh instance) clears it.
-  const [viewCounter, setViewCounter] = React.useState(0);
-  const [popupOpen, setPopupOpen] = React.useState(false);
-
-  const toastStyleDisplay = React.useMemo(() => {
-    const match = toastStyleOptions.find((option) => option.value === toastStyle);
-    return match?.label || toastStyleLabel || toastStyle || 'Select style';
-  }, [toastStyleOptions, toastStyle, toastStyleLabel]);
-
-  const toastPositionDisplay = React.useMemo(() => {
-    const match = toastPositionOptions.find((option) => option.value === toastPosition);
-    return match?.label || toastPositionLabel || toastPosition || 'Select position';
-  }, [toastPositionOptions, toastPosition, toastPositionLabel]);
-
-  const surfaceMessage = (surfaceDemo && surfaceDemo.message) || '';
-  const surfaceActive = surfaceDemo?.active === true;
-  const surfaceVisible = surfaceDemo?.visible === true;
-  const [surfaceKind, setSurfaceKind] = React.useState<'aside' | 'float' | 'window' | 'lxapp'>('aside');
-  const surfaceKinds: Array<{ id: 'aside' | 'float' | 'window' | 'lxapp'; label: string; hint: string }> = [
-    { id: 'aside', label: 'Aside', hint: 'Docks beside the main and splits it; a compact window folds it into a switchable tab.' },
-    { id: 'float', label: 'Float', hint: 'A popup above the main; it does not take layout space (like a dialog).' },
-    { id: 'window', label: 'Window', hint: 'A bare standalone window — no sidebar, no shell. Desktop only.' },
-    { id: 'lxapp', label: 'Lxapp', hint: 'Opens another lxapp (the chat app) docked as an aside. Home-app privilege.' },
-  ];
-  const [surfaceEdge, setSurfaceEdge] = React.useState<'left' | 'right' | 'top' | 'bottom'>('right');
-  const surfaceEdges: Array<'left' | 'right' | 'top' | 'bottom'> = ['left', 'right', 'top', 'bottom'];
-  const [surfaceFloatPosition, setSurfaceFloatPosition] = React.useState<'center' | 'top' | 'bottom' | 'left' | 'right'>('center');
-  const surfaceFloatPositions: Array<'center' | 'top' | 'bottom' | 'left' | 'right'> = ['center', 'top', 'bottom', 'left', 'right'];
-  const [surfaceWidth, setSurfaceWidth] = React.useState('');
-  const [surfaceHeight, setSurfaceHeight] = React.useState('');
-  const [surfaceChrome, setSurfaceChrome] = React.useState<'system' | 'full'>('full');
-  const surfaceChromes: Array<{ id: 'system' | 'full'; label: string; hint: string }> = [
-    { id: 'system', label: 'System', hint: 'Standard title bar with system close, minimize, and drag.' },
-    { id: 'full', label: 'Full', hint: 'Page runs to the window edge; system close/min/max and drag stay on top.' },
-  ];
-  // Shown when an entered width/height can't be parsed (so a typo like a
-  // full-width "％" surfaces instead of silently opening at the wrong size).
-  const [sizeError, setSizeError] = React.useState('');
-
-  // Local state for toast parameters
-  const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
-  const [toastDuration, setToastDuration] = React.useState(2000);
-
-  // Local state for modal parameters
-  const [modalTitle, setModalTitle] = React.useState('Alert');
-  const [modalContent, setModalContent] = React.useState('This is a modal dialog');
-  const [modalShowCancel, setModalShowCancel] = React.useState(true);
-  const [modalCancelText, setModalCancelText] = React.useState('Cancel');
-  const [modalConfirmText, setModalConfirmText] = React.useState('OK');
-
-  // Local state for TabBar parameters - fixed to tab 1
-  const [badgeText, setBadgeText] = React.useState('99');
-  const [itemText, setItemText] = React.useState('New Tab');
-  const [itemIcon, setItemIcon] = React.useState('');
-  const [selectedIcon, setSelectedIcon] = React.useState('');
-
-
+/** A labeled value that opens a Logic picker. */
+function Choice({ testId, label, value, onClick }: { testId: string; label: string; value: string; onClick: () => unknown }) {
   return (
-    <div
-      className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto"
-      data-testid="ui-page"
-      data-instance-tag={instanceTag}
+    <view className="gap-1.5">
+      <text className="text-sm font-medium">{label}</text>
+      <button
+        data-testid={testId}
+        aria-label={`${label}: ${value}`}
+        onClick={() => {
+          void onClick();
+        }}
+        className="px-3 py-2 rounded-lg border border-line-strong bg-surface text-text active:bg-surface-sunken"
+      >
+        <view className="flex-row items-center justify-between gap-3">
+          <text className="text-base">{value}</text>
+          <text className="text-xs text-accent">Change</text>
+        </view>
+      </button>
+    </view>
+  );
+}
+
+function Dialogs({ data, actions }: Pane) {
+  const type = String(data.currentType);
+  const toastTitle = useLocal('toastTitle', 'Hello Toast!');
+  const toastDuration = useLocal('toastDuration', '2000');
+  const modalTitle = useLocal('modalTitle', 'Alert');
+  const modalContent = useLocal('modalContent', 'This is a modal dialog');
+  const modalCancel = useLocal('modalCancel', true);
+  const cancelText = useLocal('cancelText', 'Cancel');
+  const confirmText = useLocal('confirmText', 'OK');
+  const showToast = () =>
+    actions.showToastWithParams({
+      message: toastTitle.value,
+      durationMs: parseInt(toastDuration.value, 10) || 2000,
+    });
+  const showModal = () =>
+    actions.showModalWithParams({
+      title: modalTitle.value,
+      content: modalContent.value,
+      showCancel: modalCancel.value,
+      cancelText: cancelText.value,
+      confirmText: confirmText.value,
+    });
+  return (
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+      <ChromeError data={data} />
+      {type === 'toast' && (
+        <Section title="Toast Parameters">
+          <Field testId="toast-title" label="Message" bind={toastTitle} placeholder="Enter toast message" />
+          <Choice testId="toast-style" label="Style" value={String(data.toastStyleLabel || 'Success')} onClick={() => actions.chooseToastStyle()} />
+          <Field testId="toast-duration" label="Duration (ms)" bind={toastDuration} type="number" />
+          <Choice
+            testId="toast-position"
+            label="Position"
+            value={String(data.toastPositionLabel || 'Center')}
+            onClick={() => actions.chooseToastPosition()}
+          />
+          <view className="grid gap-3 grid-cols-2">
+            <Button testId="toast-show" onClick={showToast}>
+              Show Toast
+            </Button>
+            <Button variant="secondary" testId="toast-hide" onClick={() => actions.hideToast()}>
+              Hide Toast
+            </Button>
+          </view>
+        </Section>
+      )}
+      {type === 'actionsheet' && (
+        <Section title="Action Sheet">
+          <Button testId="actionsheet-show" onClick={() => actions.showDemoActionSheet()}>
+            Show Action Sheet
+          </Button>
+          {!!data.actionSheetResult && (
+            <text data-testid="actionsheet-result" className="text-xs font-mono break-all whitespace-pre-wrap">
+              {JSON.stringify(data.actionSheetResult, null, 2)}
+            </text>
+          )}
+        </Section>
+      )}
+      {type === 'modal' && (
+        <Section title="Modal Parameters">
+          <Field testId="modal-title" label="Title (optional)" bind={modalTitle} placeholder="Leave empty for no title" />
+          <view className="gap-1.5">
+            <text className="text-sm font-medium">Content</text>
+            <textarea
+              data-testid="modal-content"
+              aria-label="Content"
+              bind={modalContent}
+              placeholder="Enter modal content"
+              className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
+            />
+          </view>
+          <checkbox data-testid="modal-show-cancel" bind={modalCancel} className="text-sm">
+            Show cancel button
+          </checkbox>
+          <Field testId="modal-cancel-text" label="Cancel Button Text" bind={cancelText} placeholder="Cancel button text" />
+          <Field testId="modal-confirm-text" label="Confirm Button Text" bind={confirmText} placeholder="Confirm button text" />
+          <Button testId="modal-show" onClick={showModal}>
+            Show Modal
+          </Button>
+        </Section>
+      )}
+      {type === 'modal' && !!data.modalResult && (
+        <Section title="Modal Result">
+          <text data-testid="modal-result" className="text-xs font-mono text-muted break-all whitespace-pre-wrap">
+            {JSON.stringify(data.modalResult, null, 2)}
+          </text>
+          <Button variant="ghost" testId="modal-clear" onClick={() => actions.clearModalResult()}>
+            Clear Result
+          </Button>
+        </Section>
+      )}
+    </Page>
+  );
+}
+
+function Appearance({ data, actions }: Pane) {
+  const appearance = data.appearance as { preference: string; resolved: string } | undefined;
+  const preference = appearance?.preference || 'auto';
+  return (
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+      <ChromeError data={data} />
+      <Section
+        title="Light / Dark"
+        description="Auto follows the host appearance; Light and Dark keep your chosen theme. Your preference is saved for this app."
+      >
+        <Segmented
+          testId="ui-appearance"
+          value={preference}
+          onChange={value => actions.setAppearance({ preference: value })}
+          options={[
+            { value: 'auto', label: 'Auto' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ]}
+        />
+        <InfoList>
+          <InfoRow label="Preference" value={preference} testId="ui-appearance-preference" />
+          <InfoRow label="Resolved" value={appearance?.resolved} testId="ui-appearance-resolved" />
+        </InfoList>
+        <text className="text-xs text-muted">
+          The resolved theme is in use now. Pages share one palette, so their colors update together.
+        </text>
+      </Section>
+    </Page>
+  );
+}
+
+function Navbar({ data, actions }: Pane) {
+  const title = useLocal('navTitle', '');
+  const background = useLocal('navBackground', '');
+  const foreground = useLocal('navForeground', '');
+  const preset = (name: string, backgroundColor: string, frontColor: string) => (
+    <Button
+      variant="secondary"
+      size="sm"
+      key={name}
+      testId={`navbar-preset-${name.toLowerCase()}`}
+      onClick={async () => {
+        await actions.updateNavigationBarTitle({ title: `${name} Theme` });
+        await actions.updateNavigationBarColors({ backgroundColor, frontColor });
+      }}
     >
-      <div className="flex-1 overflow-y-auto">
-        <div className="pb-6 px-4 pt-6">
-        {chromeError && (
-          <div data-testid="ui-chrome-error" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
-            {chromeError}
-          </div>
-        )}
-
-        {/* Navigation Demo Section */}
-        {currentType === 'navigation' && (
-          <>
-            <div className="mb-4 text-sm text-gray-600 font-semibold">navigateTo/Back, redirectTo</div>
-
-        <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-          <div
-            data-testid="ui-navigate-to"
-            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
-            onClick={demoNavigateTo}
+      {name}
+    </Button>
+  );
+  return (
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+      <ChromeError data={data} />
+      <Section title="NavigationBar APIs">
+        <Field testId="navbar-title-input" label="Title" bind={title} placeholder="Enter title" />
+        <Button testId="navbar-set-title" onClick={() => title.value && actions.updateNavigationBarTitle({ title: title.value })}>
+          Set Title
+        </Button>
+        <view className="grid gap-2 grid-cols-2">
+          <Field testId="navbar-bg-input" label="Background" bind={background} placeholder="#ffffff" />
+          <Field testId="navbar-fg-input" label="Text" bind={foreground} placeholder="#000000" />
+        </view>
+        <Button
+          testId="navbar-set-colors"
+          onClick={() =>
+            actions.updateNavigationBarColors({
+              backgroundColor: background.value || '#ffffff',
+              frontColor: foreground.value || '#000000',
+            })
+          }
+        >
+          Set Colors
+        </Button>
+        <view className="grid gap-2 grid-cols-2">
+          {preset('Dark', '#1f2937', '#ffffff')}
+          {preset('Blue', '#3b82f6', '#ffffff')}
+          {preset('Light', '#ffffff', '#000000')}
+          {preset('Green', '#10b981', '#ffffff')}
+        </view>
+        <view className="grid gap-2 grid-cols-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            testId="navbar-home-hide"
+            onClick={() => actions.updateNavigationBarHomeButton({ homeButton: 'hidden' })}
           >
-            <div>
-              <div className="text-sm text-gray-800 font-medium">Push this page again</div>
-              <div className="text-xs text-gray-500 mt-0.5">navigateTo → this route; every entry is a fresh instance, watch the stack grow</div>
-            </div>
-            <span className="text-gray-400 text-lg">›</span>
-          </div>
-          <div
-            data-testid="ui-navigate-back"
-            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
-            onClick={demoNavigateBack}
+            Hide home
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            testId="navbar-home-auto"
+            onClick={() => actions.updateNavigationBarHomeButton({ homeButton: 'auto' })}
           >
-            <div className="text-sm text-gray-800 font-medium">Back to previous page</div>
-            <span className="text-gray-400 text-lg">›</span>
-          </div>
-          <div
-            data-testid="ui-redirect-to"
-            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
-            onClick={demoRedirectTo}
+            Auto home
+          </Button>
+          <Button variant="ghost" size="sm" testId="navbar-reset" onClick={() => actions.resetNavigationBar()}>
+            Reset
+          </Button>
+        </view>
+      </Section>
+    </Page>
+  );
+}
+
+function Tabbar({ data, actions }: Pane) {
+  const itemText = useLocal('itemText', 'New Tab');
+  const badge = useLocal('badge', '99');
+  const pair = (left: Child, right: Child) => (
+    <view className="grid gap-3 grid-cols-2">
+      {left}
+      {right}
+    </view>
+  );
+  return (
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+      <ChromeError data={data} />
+      <Section title="Visibility Controls" description="Show or hide the TabBar and update item text">
+        {pair(
+          <Button testId="tabbar-show" onClick={() => actions.revealTabBar()}>
+            Show TabBar
+          </Button>,
+          <Button variant="secondary" testId="tabbar-hide" onClick={() => actions.concealTabBar()}>
+            Hide TabBar
+          </Button>,
+        )}
+        <Field testId="tabbar-item-text" label="Update Tab 1 Text" bind={itemText} placeholder="Enter new text" />
+        <Button testId="tabbar-item-update" onClick={() => actions.updateTabBarItem({ index: 1, text: itemText.value })}>
+          Update
+        </Button>
+      </Section>
+      <Section title="Red Dot Controls" description="Show or hide the red dot on tab 1">
+        {pair(
+          <Button variant="destructive" testId="tabbar-reddot-show" onClick={() => actions.enableTabBarRedDot({ index: 1 })}>
+            Show Red Dot
+          </Button>,
+          <Button variant="secondary" testId="tabbar-reddot-hide" onClick={() => actions.disableTabBarRedDot({ index: 1 })}>
+            Hide Red Dot
+          </Button>,
+        )}
+      </Section>
+      <Section title="Badge Controls" description="Set or remove the badge on tab 1">
+        <Field testId="tabbar-badge-input" label="Badge Text" bind={badge} placeholder="Enter badge text" />
+        {pair(
+          <Button testId="tabbar-badge-set" onClick={() => actions.updateTabBarBadge({ index: 1, text: badge.value })}>
+            Set Badge
+          </Button>,
+          <Button variant="secondary" testId="tabbar-badge-clear" onClick={() => actions.clearTabBarBadge({ index: 1 })}>
+            Remove Badge
+          </Button>,
+        )}
+      </Section>
+    </Page>
+  );
+}
+
+function NavLink({ testId, label, description, onClick }: { testId: string; label: string; description?: string; onClick: () => unknown }) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={() => {
+        void onClick();
+      }}
+      className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
+    >
+      <view className="flex-row items-center justify-between gap-3">
+        <view className="grow basis-0 gap-1">
+          <text className="text-sm font-medium">{label}</text>
+          {!!description && <text className="text-xs text-muted">{description}</text>}
+        </view>
+        <text className="text-lg text-muted">›</text>
+      </view>
+    </button>
+  );
+}
+
+function Counter({ id, label, value, hint, onClick }: { id: string; label: string; value: number; hint: string; onClick: () => unknown }) {
+  return (
+    <button
+      data-testid={`lifecycle-bump-${id}`}
+      aria-label={`${label}: ${value}`}
+      onClick={() => {
+        void onClick();
+      }}
+      className="px-2 py-4 rounded-xl bg-surface-sunken text-text active:bg-line"
+    >
+      <view className="items-center gap-1">
+        <text data-testid={`lifecycle-${id}-counter`} className="text-2xl font-bold">
+          {String(value)}
+        </text>
+        <text className="text-sm font-medium">{label}</text>
+        <text className="text-[10px] text-muted">{hint}</text>
+      </view>
+    </button>
+  );
+}
+
+function Navigation({ data, actions }: Pane) {
+  const count = useLocal('viewCounter', 0);
+  const popup = useLocal('popup', false);
+  const events = (data.events || []) as string[];
+  return (
+    <page data-testid="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
+      <scroll data-testid="page-scroll" className="grow basis-0">
+        <view className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
+          <ChromeError data={data} />
+          <Card className="divide-y divide-line">
+            <NavLink
+              testId="ui-navigate-to"
+              label="Push this page again"
+              description="Each entry creates a fresh instance. Watch the stack grow."
+              onClick={() => actions.demoNavigateTo()}
+            />
+            <NavLink testId="ui-navigate-back" label="Back to previous page" onClick={() => actions.demoNavigateBack()} />
+            <NavLink testId="ui-redirect-to" label="Replace this page (redirectTo)" onClick={() => actions.demoRedirectTo()} />
+            <NavLink testId="ui-switch-tab" label="Jump to Tab page" onClick={() => actions.demoSwitchTab()} />
+          </Card>
+          <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
+            <InfoList>
+              <InfoRow label="This instance" value={`#${data.instanceTag || '-'}`} testId="lifecycle-instance-tag" />
+              <InfoRow label="Previous instance" value={`#${data.previousInstanceTag || '-'}`} testId="lifecycle-previous-tag" />
+            </InfoList>
+            <text className="text-[11px] text-muted">The previous tag is saved in app storage and survives a page reset.</text>
+          </Section>
+          <Section
+            title="State that resets and state that stays"
+            description="Logic and View reset per entry; the module counter is shared by every instance."
           >
-            <div className="text-sm text-gray-800 font-medium">Replace this page (redirectTo)</div>
-            <span className="text-gray-400 text-lg">›</span>
-          </div>
-          <div
-            data-testid="ui-switch-tab"
-            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
-            onClick={demoSwitchTab}
+            <view className="grid gap-3 grid-cols-3">
+              <Counter
+                id="logic"
+                label="Logic +1"
+                value={Number(data.logicCounter || 0)}
+                hint="this.setData"
+                onClick={() => actions.bumpLogicCounter()}
+              />
+              <Counter id="view" label="View +1" value={count.value} hint="useLocal" onClick={() => count.set(count.value + 1)} />
+              <Counter
+                id="module"
+                label="Module +1"
+                value={Number(data.moduleCounter || 0)}
+                hint="module scope"
+                onClick={() => actions.bumpModuleCounter()}
+              />
+            </view>
+            <Button testId="lifecycle-open-popup" onClick={() => popup.set(true)}>
+              Open View popup
+            </Button>
+          </Section>
+          <Section title="Lifecycle of this instance" description="Stored in page data, so it starts over with every entry.">
+            <view data-testid="lifecycle-events" className="gap-2">
+              {events.map((event, index) => (
+                <text key={String(index)} className="px-3 py-2 rounded-lg border border-line bg-surface-sunken text-xs font-mono break-all">
+                  {event}
+                </text>
+              ))}
+              {!events.length && <text className="text-xs text-muted">No events yet</text>}
+            </view>
+            <text className="text-[11px] text-muted">
+              Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.
+            </text>
+          </Section>
+        </view>
+      </scroll>
+      {popup.value && (
+        <view data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center-safe justify-center-safe px-8">
+          <button
+            data-testid="lifecycle-popup-backdrop"
+            aria-label="Close popup"
+            onClick={() => popup.set(false)}
+            className="absolute inset-0 rounded-none bg-scrim"
+          />
+          <Card className="w-full max-w-xs px-5 py-6 gap-4 shadow-xl">
+            <text className="text-base font-semibold text-center">View popup</text>
+            <text className="text-xs text-muted text-center">
+              Leave this page with the popup open. A fresh visit starts with it closed, because View state belongs to each page instance.
+            </text>
+            <Button variant="secondary" testId="lifecycle-popup-close" onClick={() => popup.set(false)}>
+              Close
+            </Button>
+          </Card>
+        </view>
+      )}
+    </page>
+  );
+}
+
+const kinds = [
+  { value: 'aside', label: 'Aside', hint: 'Docks beside the main page. On compact screens, switch between tabs to view it.' },
+  { value: 'float', label: 'Float', hint: 'A popup above the main page, like a dialog. It does not take layout space.' },
+  { value: 'window', label: 'Window', hint: 'A standalone window with no sidebar or shell. Desktop only.' },
+  { value: 'lxapp', label: 'Lxapp', hint: 'Opens the chat app as an aside. Requires home-app privilege.' },
+];
+const titled = (values: string[]) => values.map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
+
+function parseSize(raw: string, label: string): number | string | undefined {
+  const value = raw.trim();
+  if (!value) return undefined;
+  const percent = value.endsWith('%');
+  const amount = Number(percent ? value.slice(0, -1).trim() : value);
+  if (!Number.isFinite(amount) || amount <= 0 || (percent && amount > 100))
+    throw new Error(
+      `${label} must be ${percent ? 'a percentage greater than 0% and at most 100%' : 'a positive px value or a percentage like 80%'}.`,
+    );
+  return percent ? `${amount}%` : amount;
+}
+
+function Options({
+  label,
+  testId,
+  bind,
+  options,
+  disabled,
+}: {
+  label: string;
+  testId: string;
+  bind: Local<string>;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+}) {
+  return (
+    <view className="gap-2">
+      <text className="text-xs text-muted uppercase">{label}</text>
+      <view className={options.length > 3 ? 'grid gap-2 grid-cols-2' : 'grid gap-2 grid-cols-3'}>
+        {options.map(option => (
+          <Button
+            key={option.value}
+            size="sm"
+            variant={bind.value === option.value ? 'primary' : 'secondary'}
+            testId={`${testId}-${option.value}`}
+            disabled={disabled}
+            onClick={() => bind.set(option.value)}
           >
-            <div className="text-sm text-gray-800 font-medium">Jump to Tab page</div>
-            <span className="text-gray-400 text-lg">›</span>
-          </div>
-        </div>
-          </>
+            {option.label}
+          </Button>
+        ))}
+      </view>
+    </view>
+  );
+}
+
+function Surface({ data, actions }: Pane) {
+  const kind = useLocal('surfaceKind', 'aside');
+  const edge = useLocal('surfaceEdge', 'right');
+  const position = useLocal('surfacePosition', 'center');
+  const chrome = useLocal('surfaceChrome', 'full');
+  const width = useLocal('surfaceWidth', '');
+  const height = useLocal('surfaceHeight', '');
+  const attempted = useLocal('surfaceSizeAttempted', false);
+  const state = data.surfaceDemo as { active?: boolean; visible?: boolean; message?: string } | undefined;
+  const active = state?.active === true;
+  let sizeError = '';
+  let size: { width?: number | string; height?: number | string } = {};
+  try {
+    const w = parseSize(width.value, 'Width'),
+      h = parseSize(height.value, 'Height');
+    size = { ...(w === undefined ? {} : { width: w }), ...(h === undefined ? {} : { height: h }) };
+  } catch (error) {
+    sizeError = error instanceof Error ? error.message : String(error);
+  }
+  const open = () => {
+    attempted.set(true);
+    if (!sizeError)
+      void actions.openSurfaceDemo({
+        verb: kind.value,
+        edge: edge.value,
+        position: position.value,
+        ...(kind.value === 'window' ? { chrome: chrome.value } : {}),
+        ...size,
+      });
+  };
+  return (
+    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+      <Section title="Open a surface" description={kinds.find(item => item.value === kind.value)?.hint}>
+        <Options label="Kind" testId="surface-kind" bind={kind} options={kinds} disabled={active} />
+        {kind.value === 'aside' && <Options label="Edge" testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}
+        {kind.value === 'float' && (
+          <Options label="Position" testId="surface-position" bind={position} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
         )}
-
-        {/* Surface Demo Section */}
-        {currentType === 'surface' && (
-          <>
-            <div className="mt-4 mb-6 px-4 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">lx.surface</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-4 space-y-4">
-                <div className="space-y-3">
-                  {/* Pick the surface kind first; the relevant placement
-                      control (edge / position) appears for that kind. */}
-                  <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {surfaceKinds.map((kind) => {
-                        const active = surfaceKind === kind.id;
-                        const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
-                        const className = active
-                          ? `${baseClass} bg-surface-800 border-line-800 text-white`
-                          : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
-                        return (
-                          <button
-                            key={kind.id}
-                            type="button"
-                            disabled={surfaceActive}
-                            className={`${className} disabled:opacity-50 disabled:cursor-not-allowed`}
-                            onClick={() => setSurfaceKind(kind.id)}
-                          >
-                            {kind.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-2 text-xs text-gray-500 leading-5 bg-surface-50 rounded-lg px-3 py-2">
-                      {surfaceKinds.find((k) => k.id === surfaceKind)?.hint}
-                    </div>
-                  </div>
-
-                  {surfaceKind === 'aside' && (
-                    <div>
-                      <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Edge</div>
-                      {/* Which side the aside docks to. */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {surfaceEdges.map((edge) => {
-                          const active = surfaceEdge === edge;
-                          const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
-                          const className = active
-                            ? `${baseClass} bg-blue-500 border-blue-500 text-white`
-                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
-                          return (
-                            <button
-                              key={edge}
-                              type="button"
-                              className={className}
-                              onClick={() => setSurfaceEdge(edge)}
-                            >
-                              {edge.charAt(0).toUpperCase() + edge.slice(1)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {surfaceKind === 'window' && (
-                    <div>
-                      <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Chrome</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {surfaceChromes.map((chrome) => {
-                          const active = surfaceChrome === chrome.id;
-                          const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
-                          const className = active
-                            ? `${baseClass} bg-surface-800 border-line-800 text-white`
-                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
-                          return (
-                            <button
-                              key={chrome.id}
-                              type="button"
-                              data-testid={`surface-chrome-${chrome.id}`}
-                              className={className}
-                              onClick={() => setSurfaceChrome(chrome.id)}
-                            >
-                              {chrome.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500 leading-5 bg-surface-50 rounded-lg px-3 py-2">
-                        {surfaceChromes.find((chrome) => chrome.id === surfaceChrome)?.hint}
-                      </div>
-                    </div>
-                  )}
-
-                  {surfaceKind === 'float' && (
-                    <div>
-                      <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
-                      {/* Where the float popup sits above the main. */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {surfaceFloatPositions.map((position) => {
-                          const active = surfaceFloatPosition === position;
-                          const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
-                          const className = active
-                            ? `${baseClass} bg-indigo-500 border-indigo-500 text-white`
-                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
-                          return (
-                            <button
-                              key={position}
-                              type="button"
-                              className={className}
-                              onClick={() => setSurfaceFloatPosition(position)}
-                            >
-                              {position.charAt(0).toUpperCase() + position.slice(1)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Size (optional — px or %)</div>
-                    {/* Preferred-size hint; the Host may clamp/override it. A
-                        percentage (e.g. 80%) is relative to the container; a
-                        bare number is absolute px. */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        inputMode="text"
-                        placeholder="width (px or %)"
-                        value={surfaceWidth}
-                        onChange={(e) => {
-                          setSurfaceWidth(e.target.value);
-                          setSizeError('');
-                        }}
-                        className="py-2 px-3 text-sm rounded-lg border border-line-200 focus:outline-hidden focus:ring-2 focus:ring-surface-400"
-                      />
-                      <input
-                        type="text"
-                        inputMode="text"
-                        placeholder="height (px or %)"
-                        value={surfaceHeight}
-                        onChange={(e) => {
-                          setSurfaceHeight(e.target.value);
-                          setSizeError('');
-                        }}
-                        className="py-2 px-3 text-sm rounded-lg border border-line-200 focus:outline-hidden focus:ring-2 focus:ring-surface-400"
-                      />
-                    </div>
-                    {sizeError && (
-                      <div data-testid="size-error" className="mt-2 text-xs text-rose-600 dark:text-rose-400">
-                        {sizeError}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  data-testid="open-surface"
-                  data-surface-width={surfaceWidth}
-                  data-surface-height={surfaceHeight}
-                  disabled={surfaceActive}
-                  onClick={() => {
-                    let width: number | string | undefined;
-                    let height: number | string | undefined;
-                    try {
-                      width = parseSurfaceSize(surfaceWidth, 'Width');
-                      height = parseSurfaceSize(surfaceHeight, 'Height');
-                    } catch (error) {
-                      setSizeError(error instanceof Error ? error.message : String(error));
-                      return;
-                    }
-                    setSizeError('');
-                    openSurfaceDemo({
-                      verb: surfaceKind,
-                      edge: surfaceEdge,
-                      position: surfaceFloatPosition,
-                      chrome: surfaceKind === 'window' ? surfaceChrome : undefined,
-                      width,
-                      height,
-                    });
-                  }}
-                  className="w-full bg-surface-800 hover:bg-surface-900 disabled:bg-surface-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                >
-                  {surfaceActive
-                    ? `Open ${surfaceKind} (already open)`
-                    : `Open ${surfaceKind}`}
-                </button>
-
-                <p className="text-xs text-gray-500">
-                  Edge / position is applied when the surface opens. Changing it
-                  while a surface is open — or across hide → show — has no effect;
-                  close and re-open to apply a new value.
-                </p>
-
-                {surfaceActive && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      disabled={surfaceVisible}
-                      onClick={() => showActiveSurface()}
-                      className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-surface-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Show
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!surfaceVisible}
-                      onClick={() => hideActiveSurface()}
-                      className="bg-amber-500 hover:bg-amber-600 disabled:bg-surface-200 disabled:text-gray-500 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Hide
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => closeActiveSurface()}
-                      className="bg-rose-500 hover:bg-rose-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
-                )}
-
-                <div className="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
-                <div className="text-sm text-gray-800 bg-surface-50 rounded-lg px-3 py-2 font-mono break-words">
-                  {surfaceMessage || 'No message received yet.'}
-                </div>
-              </div>
-            </div>
-          </>
+        {kind.value === 'window' && <Options label="Chrome" testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
+        <view className="grid gap-2 grid-cols-2">
+          <Field testId="surface-width" label="Width (px or %)" bind={width} placeholder="width (px or %)" />
+          <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="height (px or %)" />
+        </view>
+        {attempted.value && !!sizeError && (
+          <text data-testid="size-error" className="text-xs text-danger">
+            {sizeError}
+          </text>
         )}
-
-        {/* Toast Demo Section */}
-        {currentType === 'toast' && (
-          <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Toast Parameters</div>
-
-            {/* Toast Parameters */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-3 py-3 space-y-3">
-
-                {/* Title Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
-                  <input
-                    type="text"
-                    value={toastTitle}
-                    onChange={(e) => setToastTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter toast message"
-                  />
-                </div>
-
-                {/* Style Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Style</label>
-                  <button
-                    type="button"
-                    onClick={chooseToastStyle}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  >
-                    <span>{toastStyleDisplay}</span>
-                    <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
-                  </button>
-                </div>
-
-                {/* Duration Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Duration (ms)</label>
-                  <input
-                    type="number"
-                    value={toastDuration}
-                    onChange={(e) => setToastDuration(parseInt(e.target.value) || 2000)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    min="500"
-                    max="10000"
-                    step="500"
-                  />
-                </div>
-
-                {/* Position Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-                  <button
-                    type="button"
-                    onClick={chooseToastPosition}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                  >
-                    <span>{toastPositionDisplay}</span>
-                    <span className="text-xs text-blue-500 dark:text-blue-400">Change</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div
-                data-testid="toast-show"
-                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
-                onClick={() => showToastWithParams({
-                  message: toastTitle,
-                  durationMs: toastDuration,
-                })}
-              >
-                <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
-              </div>
-              <div
-                data-testid="toast-hide"
-                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
-                onClick={hideToast}
-              >
-                <div className="text-base text-red-600 dark:text-red-400 font-medium">Hide Toast</div>
-              </div>
-            </div>
-          </>
+        <Button testId="open-surface" data={{ 'data-surface-width': width.value, 'data-surface-height': height.value }} disabled={active} onClick={open}>{`Open ${kind.value}${active ? ' (already open)' : ''}`}</Button>
+        <text className="text-xs text-muted">
+          Placement applies when the surface opens; hiding and showing keeps it. Close and reopen to change it.
+        </text>
+        {active && (
+          <view className="grid gap-2 grid-cols-3">
+            <Button size="sm" testId="surface-parent-show" disabled={!!state?.visible} onClick={() => actions.showActiveSurface()}>
+              Show
+            </Button>
+            <Button size="sm" variant="secondary" testId="surface-parent-hide" disabled={!state?.visible} onClick={() => actions.hideActiveSurface()}>
+              Hide
+            </Button>
+            <Button size="sm" variant="destructive" testId="surface-parent-close" onClick={() => actions.closeActiveSurface()}>
+              Close
+            </Button>
+          </view>
         )}
-
-        {/* ActionSheet Demo Section */}
-        {currentType === 'actionsheet' && (
-          <div className="mx-1 mt-8 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-            <div
-              data-testid="actionsheet-show"
-              className="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50"
-              onClick={showDemoActionSheet}
-            >
-              Show Action Sheet
-            </div>
-            {actionSheetResult && <pre data-testid="actionsheet-result" className="p-4 text-xs whitespace-pre-wrap">{JSON.stringify(actionSheetResult, null, 2)}</pre>}
-          </div>
-        )}
-
-        {/* Modal Demo Section */}
-        {currentType === 'modal' && (
-          <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Modal Parameters</div>
-
-            {/* Modal Parameters */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-3 py-3 space-y-3">
-
-                {/* Title Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Title (optional)</label>
-                  <input
-                    type="text"
-                    value={modalTitle}
-                    onChange={(e) => setModalTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Leave empty for no title"
-                  />
-                </div>
-
-
-
-                {/* Content Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
-                  <textarea
-                    value={modalContent}
-                    onChange={(e) => setModalContent(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter modal content"
-                    rows={3}
-                  />
-                </div>
-
-                {/* Show Cancel Checkbox */}
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="modalShowCancel"
-                    checked={modalShowCancel}
-                    onChange={(e) => setModalShowCancel(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 dark:text-blue-400 focus:ring-blue-500 border-line-300 rounded"
-                  />
-                  <label htmlFor="modalShowCancel" className="ml-2 block text-sm text-gray-700">
-                    Show cancel button
-                  </label>
-                </div>
-
-                {/* Cancel Text Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Cancel Button Text</label>
-                  <input
-                    type="text"
-                    value={modalCancelText}
-                    onChange={(e) => setModalCancelText(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Cancel button text"
-                  />
-                </div>
-
-                {/* Confirm Text Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Button Text</label>
-                  <input
-                    type="text"
-                    value={modalConfirmText}
-                    onChange={(e) => setModalConfirmText(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Confirm button text"
-                  />
-                </div>
-
-
-              </div>
-            </div>
-
-            {/* Action Button */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div
-                data-testid="modal-show"
-                className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
-                onClick={() => showModalWithParams({
-                  title: modalTitle,
-                  content: modalContent,
-                  showCancel: modalShowCancel,
-                  cancelText: modalCancelText,
-                  confirmText: modalConfirmText
-                })}
-              >
-                <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Modal</div>
-              </div>
-            </div>
-
-            {/* Result Display */}
-            {modalResult && (
-              <div data-testid="modal-result" className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-                <div className="px-3 py-3">
-                  <div className="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
-                  <div className="bg-surface-50 rounded-lg p-3">
-                    <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                      {JSON.stringify(modalResult, null, 2)}
-                    </pre>
-                  </div>
-                  <div
-                    className="mt-3 text-center text-sm text-red-600 dark:text-red-400 cursor-pointer hover:text-red-800 dark:hover:text-red-400"
-                    onClick={clearModalResult}
-                  >
-                    Clear Result
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Instance lifecycle - Only show for navigation */}
-        {currentType === 'navigation' && (
-          <div className="mb-5 space-y-4">
-            {/* Instance identity */}
-            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Logic instance</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Push this page again and a new tag appears — every entry is a new Page instance
-                </p>
-              </div>
-              <div className="px-4 py-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">This instance</span>
-                  <span data-testid="lifecycle-instance-tag" className="text-sm font-mono font-medium text-violet-600 dark:text-violet-400">
-                    #{instanceTag || '…'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Previous instance</span>
-                  <span data-testid="lifecycle-previous-tag" className="text-sm font-mono text-gray-500">
-                    #{previousInstanceTag || '…'}
-                  </span>
-                </div>
-                <div className="text-[11px] text-gray-400 leading-relaxed pt-1">
-                  The previous tag is read back from <code>lx.storage()</code>, which is
-                  app-scoped and survives the reset.
-                </div>
-              </div>
-            </div>
-
-            {/* State that resets */}
-            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">State that resets — and state that doesn't</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Logic and View reset per entry; the module counter is shared by every instance and never resets
-                </p>
-              </div>
-              <div className="p-4 grid grid-cols-3 gap-3">
-                <button
-                  data-testid="lifecycle-bump-logic"
-                  onClick={bumpLogicCounter}
-                  className="flex flex-col items-center justify-center py-4 px-2 bg-violet-50 hover:bg-violet-100 active:bg-violet-200 text-violet-700 dark:text-violet-400 rounded-xl transition-colors"
-                >
-                  <span className="text-2xl font-bold" data-testid="lifecycle-logic-counter">{logicCounter}</span>
-                  <span className="text-sm font-medium mt-1">Logic +1</span>
-                  <span className="text-[10px] opacity-70">this.setData</span>
-                </button>
-                <button
-                  data-testid="lifecycle-bump-view"
-                  onClick={() => setViewCounter(count => count + 1)}
-                  className="flex flex-col items-center justify-center py-4 px-2 bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200 text-cyan-700 dark:text-cyan-400 rounded-xl transition-colors"
-                >
-                  <span className="text-2xl font-bold" data-testid="lifecycle-view-counter">{viewCounter}</span>
-                  <span className="text-sm font-medium mt-1">View +1</span>
-                  <span className="text-[10px] opacity-70">useState</span>
-                </button>
-                <button
-                  data-testid="lifecycle-bump-module"
-                  onClick={bumpModuleCounter}
-                  className="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-700 dark:text-amber-400 rounded-xl transition-colors"
-                >
-                  <span className="text-2xl font-bold" data-testid="lifecycle-module-counter">{moduleCounter}</span>
-                  <span className="text-sm font-medium mt-1">Module +1</span>
-                  <span className="text-[10px] opacity-70">module scope</span>
-                </button>
-              </div>
-              <div className="px-4 pb-4">
-                <button
-                  data-testid="lifecycle-open-popup"
-                  onClick={() => setPopupOpen(true)}
-                  className="w-full py-2.5 px-4 bg-linear-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm"
-                >
-                  Open H5 popup
-                </button>
-              </div>
-            </div>
-
-            {/* Lifecycle log */}
-            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Lifecycle of this instance</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Stored in <code>data</code>, so it starts over with every entry
-                </p>
-              </div>
-              <div className="p-4">
-                {events.length === 0 ? (
-                  <div className="text-xs text-gray-400">No events yet</div>
-                ) : (
-                  <div className="space-y-2" data-testid="lifecycle-events">
-                    {events.map((event: string, index: number) => (
-                      <div
-                        key={`${event}-${index}`}
-                        className="text-xs font-mono text-gray-700 bg-surface-50 border border-line-100 rounded-lg px-3 py-2"
-                      >
-                        {event}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="text-[11px] text-gray-400 leading-relaxed mt-3">
-                  Backgrounding the app fires <code>onHide</code> / <code>onShow</code> on the same
-                  instance. Only leaving the page fires <code>onUnload</code> and ends it.
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* A plain H5 overlay — the kind that used to still be open on re-entry */}
-        {popupOpen && (
-          <div
-            data-testid="lifecycle-popup"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-8"
-            onClick={() => setPopupOpen(false)}
-          >
-            <div
-              className="bg-surface rounded-2xl shadow-xl px-5 py-6 w-full max-w-xs text-center"
-              onClick={event => event.stopPropagation()}
-            >
-              <div className="text-base font-semibold text-gray-900">Pure H5 popup</div>
-              <div className="text-xs text-gray-500 mt-2 leading-relaxed">
-                Leave the page with this open. When you come back it is gone, because the
-                document was reloaded behind the scenes.
-              </div>
-              <button
-                className="mt-4 w-full py-2 rounded-lg bg-surface-100 hover:bg-surface-200 text-sm text-gray-700"
-                onClick={() => setPopupOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* NavigationBar Demo Section */}
-        {currentType === 'navbar' && (
-          <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">NavigationBar APIs</div>
-
-            {/* NavigationBar Controls */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="p-4 space-y-4">
-
-                {/* Set Title */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      id="navbarTitle"
-                      data-testid="navbar-title-input"
-                      placeholder="Enter title"
-                      className="flex-1 px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                    />
-                    <button
-                      data-testid="navbar-set-title"
-                      onClick={() => {
-                        const title = document.getElementById('navbarTitle').value;
-                        if (title) {
-                          updateNavigationBarTitle({ title });
-                        }
-                      }}
-                      className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                    >
-                      Set
-                    </button>
-                  </div>
-                </div>
-
-                {/* Set Colors */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Colors</label>
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        id="navbarBgColor"
-                        data-testid="navbar-bg-input"
-                        placeholder="Background #ffffff"
-                        className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                      />
-                      <input
-                        type="text"
-                        id="navbarTextColor"
-                        data-testid="navbar-fg-input"
-                        placeholder="Text #000000"
-                        className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <button
-                      data-testid="navbar-set-colors"
-                      onClick={() => {
-                        const bgColor = document.getElementById('navbarBgColor').value || '#ffffff';
-                        const textColor = document.getElementById('navbarTextColor').value || '#000000';
-                        updateNavigationBarColors({
-                          backgroundColor: bgColor,
-                          frontColor: textColor
-                        });
-                      }}
-                      className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-hidden focus:ring-1 focus:ring-green-500"
-                    >
-                      Set Colors
-                    </button>
-                  </div>
-                </div>
-
-
-
-                {/* Preset Examples */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Presets</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      data-testid="navbar-preset-dark"
-                      onClick={() => {
-                        updateNavigationBarTitle({ title: "Dark Theme" });
-                        updateNavigationBarColors({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
-                      }}
-                      className="px-2 py-1.5 bg-surface-800 text-white rounded hover:bg-surface-900 text-xs"
-                    >
-                      Dark
-                    </button>
-                    <button
-                      data-testid="navbar-preset-blue"
-                      onClick={() => {
-                        updateNavigationBarTitle({ title: "Blue Theme" });
-                        updateNavigationBarColors({ backgroundColor: "#3b82f6", frontColor: "#ffffff" });
-                      }}
-                      className="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
-                    >
-                      Blue
-                    </button>
-                    <button
-                      data-testid="navbar-preset-light"
-                      onClick={() => {
-                        updateNavigationBarTitle({ title: "Light Theme" });
-                        updateNavigationBarColors({ backgroundColor: "#ffffff", frontColor: "#000000" });
-                      }}
-                      className="px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded hover:bg-surface-50 text-xs"
-                    >
-                      Light
-                    </button>
-                    <button
-                      data-testid="navbar-preset-green"
-                      onClick={() => {
-                        updateNavigationBarTitle({ title: "Green Theme" });
-                        updateNavigationBarColors({ backgroundColor: "#10b981", frontColor: "#ffffff" });
-                      }}
-                      className="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
-                    >
-                      Green
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex space-x-2">
-                  <button
-                    data-testid="navbar-home-hide"
-                    onClick={() => updateNavigationBarHomeButton({ homeButton: 'hidden' })}
-                    className="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs"
-                  >
-                    Hide home
-                  </button>
-                  <button
-                    data-testid="navbar-home-auto"
-                    onClick={() => updateNavigationBarHomeButton({ homeButton: 'auto' })}
-                    className="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs"
-                  >
-                    Auto home
-                  </button>
-                  <button
-                    data-testid="navbar-reset"
-                    onClick={() => resetNavigationBar()}
-                    className="flex-1 px-2 py-1.5 bg-surface-100 text-gray-700 rounded text-xs"
-                  >
-                    Reset
-                  </button>
-                </div>
-
-              </div>
-            </div>
-
-
-          </>
-        )}
-
-        {/* Appearance Demo Section */}
-        {currentType === 'appearance' && (
-          <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Appearance APIs</div>
-
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  <code className="text-xs">lx.host.appearance.setPreference()</code> sets the product&apos;s scheme
-                  independently of the host shell; the preference persists per lxapp.
-                </p>
-              </div>
-
-              <div className="p-4 space-y-4">
-                <div className="grid grid-cols-3 gap-1.5" data-testid="ui-appearance">
-                  {(['auto', 'light', 'dark'] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      data-testid={`ui-appearance-${option}`}
-                      data-selected={appearance.preference === option}
-                      onClick={() => setAppearance({ preference: option })}
-                      className={`px-2 py-1.5 rounded text-xs font-medium capitalize border transition-colors ${
-                        appearance.preference === option
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'bg-surface text-gray-700 border-line-300 hover:bg-surface-50'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="rounded-lg bg-surface-50 border border-line-100 divide-y divide-line-100">
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-sm text-gray-500">Preference</span>
-                    <span className="text-sm font-medium text-gray-900" data-testid="ui-appearance-preference">
-                      {appearance.preference}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-sm text-gray-500">Resolved</span>
-                    <span className="text-sm font-medium text-gray-900" data-testid="ui-appearance-resolved">
-                      {appearance.resolved}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  The runtime projects the resolved branch into every page as{' '}
-                  <code>color-scheme</code> plus <code>data-theme</code> on{' '}
-                  <code>&lt;html&gt;</code>. This app&apos;s Tailwind palette is bound to CSS
-                  variables keyed off that attribute, so pages need no per-element dark variants.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* TabBar Demo Section */}
-        {currentType === 'tabbar' && (
-          <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">TabBar APIs</div>
-
-            {/* Visibility Controls */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Visibility Controls</h3>
-                <p className="text-sm text-gray-500 mt-1">Show/hide TabBar and update item text</p>
-              </div>
-              <div className="p-4 space-y-4">
-                <div className="flex space-x-3">
-                  <button
-                    data-testid="tabbar-show"
-                    onClick={async () => {
-                      const result = await revealTabBar();
-                      console.log('Show TabBar:', result);
-                      // Toast at resolve time: the bar must already be visible.
-                      showToastWithParams({ message: 'shown', style: 'success', durationMs: 800 });
-                    }}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Show TabBar
-                  </button>
-                  <button
-                    data-testid="tabbar-hide"
-                    onClick={async () => {
-                      const result = await concealTabBar();
-                      console.log('Hide TabBar:', result);
-                      // Toast at resolve time: the bar must already be gone.
-                      showToastWithParams({ message: 'hidden', style: 'success', durationMs: 800 });
-                    }}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Hide TabBar
-                  </button>
-                </div>
-
-                {/* Item Text Control */}
-                <div className="pt-2 border-t border-line-100">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Update Tab 1 Text
-                  </label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      data-testid="tabbar-item-text"
-                      value={itemText}
-                      onChange={(e) => setItemText(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-line-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter new text"
-                    />
-                    <button
-                      data-testid="tabbar-item-update"
-                      onClick={() => {
-                        const result = updateTabBarItem({ index: 1, text: itemText });
-                        console.log(`Update tab 1 text to "${itemText}":`, result);
-                      }}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      Update
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-
-
-            {/* Red Dot Controls */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Red Dot Controls</h3>
-                <p className="text-sm text-gray-500 mt-1">Show/hide red dot on tab 1</p>
-              </div>
-              <div className="p-4">
-                <div className="flex space-x-3">
-                  <button
-                    data-testid="tabbar-reddot-show"
-                    onClick={() => {
-                      const result = enableTabBarRedDot({ index: 1 });
-                      console.log('Show red dot on tab 1:', result);
-                    }}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Show Red Dot
-                  </button>
-                  <button
-                    data-testid="tabbar-reddot-hide"
-                    onClick={() => {
-                      const result = disableTabBarRedDot({ index: 1 });
-                      console.log('Hide red dot on tab 1:', result);
-                    }}
-                    className="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Hide Red Dot
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Badge Controls */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Badge Controls</h3>
-                <p className="text-sm text-gray-500 mt-1">Set/remove badge on tab 1</p>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Badge Text</label>
-                  <input
-                    type="text"
-                    data-testid="tabbar-badge-input"
-                    value={badgeText}
-                    onChange={(e) => setBadgeText(e.target.value)}
-                    className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter badge text"
-                  />
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    data-testid="tabbar-badge-set"
-                    onClick={() => {
-                      const result = updateTabBarBadge({ index: 1, text: badgeText });
-                      console.log(`Set badge "${badgeText}" on tab 1:`, result);
-                    }}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Set Badge
-                  </button>
-                  <button
-                    data-testid="tabbar-badge-clear"
-                    onClick={() => {
-                      const result = clearTabBarBadge({ index: 1 });
-                      console.log('Remove badge on tab 1:', result);
-                    }}
-                    className="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Remove Badge
-                  </button>
-                </div>
-              </div>
-            </div>
-
-
-
-
-
-
-
-
-          </>
-        )}
-
-        </div>
-      </div>
-    </div>
+        <text data-testid="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
+          {state?.message || 'No message received yet.'}
+        </text>
+      </Section>
+    </Page>
   );
 }

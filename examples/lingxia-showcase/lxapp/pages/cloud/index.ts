@@ -1,5 +1,5 @@
 import { authApi, cloudApi } from "../../shared/lib/provider";
-import { definePage } from '@lingxia/logic';
+import { definePage, lx } from '@lingxia/logic';
 const CLOUD_PAGE_TYPES = {
   AUTH: "auth",
   MQTT: "mqtt",
@@ -165,6 +165,7 @@ export default definePage({
     let mqttStatusUnsubscribe = null as any;
     let mqttLoopId = 0;
     let mqttStarting = false;
+    let functionRequestId = 0;
     let pageActive = false;
     const helpers = {
       async applyPageType(pageType: CloudPageType) {
@@ -280,18 +281,22 @@ export default definePage({
           return;
         }
 
+        const requestId = ++functionRequestId;
         page.update(d => {
           d.functionsStatus = `Calling ${functionName}...`;
           d.functionsLastCall = functionName;
+          d.functionsLastResult = "";
         });
         try {
           const result = await cloudApi().invoke(functionName, payload);
+          if (requestId !== functionRequestId) return;
           page.update(d => {
             d.functionsStatus = `${functionName} succeeded`;
             d.functionsLastCall = functionName;
             d.functionsLastResult = formatJson(result);
           });
         } catch (error) {
+          if (requestId !== functionRequestId) return;
           page.update(d => {
             d.functionsStatus = getErrorMessage(error, `${functionName} failed`);
             d.functionsLastCall = functionName;
@@ -347,6 +352,7 @@ export default definePage({
       },
     };
     const actions = {
+      async goBack() { await lx.nav.back(); },
       async loginInteractive() {
         page.update(d => { d.status = "Starting login..."; });
         try {
@@ -421,15 +427,19 @@ export default definePage({
           return;
         }
         mqttStarting = true;
+        const loopId = ++mqttLoopId;
         helpers.ensureMqttStatusListener();
         page.update(d => { d.mqttStatus = `Subscribing to ${MQTT_SHORT_TOPIC}...`; });
         try {
           const subscription = await cloudApi().mqtt.subscribe(MQTT_SHORT_TOPIC, {
             parse: "auto",
           });
+          // Stop or unload can invalidate a request before its handle arrives.
+          if (loopId !== mqttLoopId) {
+            await subscription.close();
+            return;
+          }
           mqttSubscription = subscription;
-          mqttLoopId += 1;
-          const loopId = mqttLoopId;
           page.update(d => {
             d.mqttStatus = `Subscribed to ${MQTT_SHORT_TOPIC}`;
             d.mqttSubscribed = true;
@@ -437,19 +447,21 @@ export default definePage({
           helpers.refreshMqttStatusSnapshot();
           void helpers.consumeMqtt({ subscription, loopId });
         } catch (error) {
+          if (loopId !== mqttLoopId) return;
           const message = getErrorMessage(error, "MQTT subscribe failed");
           page.update(d => {
             d.mqttStatus = message;
             d.mqttSubscribed = false;
           });
         } finally {
-          mqttStarting = false;
+          if (loopId === mqttLoopId) mqttStarting = false;
         }
       },
       async stopMqttDemo() {
         const subscription = mqttSubscription;
         mqttSubscription = null;
-        mqttLoopId += 1;
+        const loopId = ++mqttLoopId;
+        mqttStarting = false;
         if (!subscription) {
           page.update(d => {
             d.mqttStatus = "Demo subscription is inactive";
@@ -460,6 +472,7 @@ export default definePage({
         }
         try {
           await subscription.close();
+          if (loopId !== mqttLoopId) return;
           page.update(d => {
             d.mqttStatus = "Demo subscription stopped";
             d.mqttSubscribed = false;
@@ -502,15 +515,17 @@ export default definePage({
       },
       async onUnload() {
         pageActive = false;
+        functionRequestId += 1;
         helpers.stopMqttStatusListener();
         const subscription = mqttSubscription;
         mqttSubscription = null;
         mqttLoopId += 1;
+        mqttStarting = false;
         if (subscription) {
           try {
             await subscription.close();
           } catch (_error) {
-            // The page is already gone; cleanup must not write back into its WebView.
+            // The page is already gone; cleanup must not write back into its View.
           }
         }
       },

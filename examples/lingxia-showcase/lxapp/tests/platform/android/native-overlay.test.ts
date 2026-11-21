@@ -104,7 +104,7 @@ test('a confirm-only modal consumes Back and outside taps until confirmed', {
   await app.nav.go({ page: 'ui', params: { type: 'modal' } });
   const current = await app.nav.current();
   const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
-  await page.view.css('#modalShowCancel').click();
+  await page.view.testId('modal-show-cancel').click();
   await page.view.testId('modal-show').click();
   const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK' && node.className === 'android.widget.Button') });
   expect(nodes.some((node) => node.text === 'CANCEL')).toBe(false);

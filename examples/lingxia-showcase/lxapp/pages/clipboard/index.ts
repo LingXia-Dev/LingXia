@@ -42,6 +42,7 @@ export default definePage({
       },
     };
     const actions = {
+      async goBack() { await lx.nav.back(); },
       async writeText(params?: { text?: string }) {
         const text = params?.text ?? "";
         try {
@@ -96,7 +97,7 @@ export default definePage({
           const root = `${lx.fs.userCache}/clipboard-demo`;
           const fixture = `${root}/sample.png`;
           await lx.fs.mkdir(root, { recursive: true });
-          await lx.fs.write(fixture, SAMPLE_PNG, { encoding: "base64" });
+          await lx.fs.write(fixture, SAMPLE_PNG, { encoding: "base64", overwrite: true });
           await lx.clipboard.write({ type: "image", filePath: fixture });
           await helpers.peekTypes();
           page.update(d => { d.statusText = "Wrote sample PNG"; });

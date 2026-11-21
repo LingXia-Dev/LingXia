@@ -27,7 +27,7 @@ test("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automati
     const info = await app.info();
     const pages = await app.pages();
 
-    expect(info.appId).toBe('lingxia-showcase');
+    expect(info.appId).toBe(SHOWCASE_APP_ID);
     expect(typeof info.appName).toBe('string');
     expect(info.pagesCount).toBe(info.pageEntries.length);
     expect(Object.keys(info).some((key) => key.includes('_'))).toBeFalsy();
@@ -79,7 +79,7 @@ test("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003"
       if (root?.content.kind !== 'lxapp') {
         throw new Error(`expected an lxapp root, got ${root?.content.kind ?? 'missing'}`);
       }
-      expect(root.content.appId).toBe('lingxia-showcase');
+      expect(root.content.appId).toBe(SHOWCASE_APP_ID);
     } else {
       expect(layout.mainSwitcher.items.some((item) => item.root)).toBeFalsy();
     }
@@ -89,7 +89,11 @@ test("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003"
     expect(serialized.includes('"active_id"')).toBeFalsy();
   });
 
-test("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID }, async (t) => {
+test("wait for every page element state", {
+  id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID,
+  // The fixture is an element injected into a WebView document; a GPU page needs a View probe.
+  skip: 'needs a GPU page element whose visibility, enabled state and presence Logic can toggle',
+}, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "AUT-004");
 
     const current = await currentPageOrNull(app);

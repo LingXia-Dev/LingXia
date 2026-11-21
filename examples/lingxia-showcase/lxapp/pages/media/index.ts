@@ -430,14 +430,19 @@ export default definePage({
     let previewAbortController = null as AbortController | null;
     // The live compression task, kept off `data`: it is a handle, not state.
     let compressVideoTask = null as CompressVideoTask | null;
+    let compressionEpoch = 0;
+    let disposed = false;
     const helpers = {
+      stopCompression() {
+        compressionEpoch++;
+        const task = compressVideoTask;
+        compressVideoTask = null;
+        task?.cancel();
+      },
       switchMode(params: unknown) {
         const modeKey = resolveModeKey(params);
         const state = createState(modeKey);
         page.update(d => { Object.assign(d, state); });
-
-        const title = getModeTitle(state.mediaType);
-        void page.navigationBar.update({ title });
       },
       async runPreviewSession({
         sources,
@@ -448,6 +453,7 @@ export default definePage({
         startIndex?: number;
         advance?: string;
       }) {
+        if (disposed) return;
         actions.cancelPreviewSession();
         const controller = new AbortController();
         previewAbortController = controller;
@@ -471,6 +477,7 @@ export default definePage({
           d.previewSessionError = "";
         });
 
+        let unsubscribe: (() => void) | undefined;
         try {
           const handle = lx.media.preview(request);
           // Telemetry: log first-paint latency. The showcase doesn't have an
@@ -480,14 +487,14 @@ export default definePage({
             if (outcome.status !== "presented") return;
             const ms = Date.now() - startedAt;
             console.log("[media-demo] presented:", { latencyMs: ms });
-          });
+          }).catch(() => {});
           // Live change stream: know which item the user is looking at, as
           // they swipe / the session auto-advances.
-          const unsubscribe = handle.onChange(({ index, source }) => {
+          unsubscribe = handle.onChange(({ index, source }) => {
             console.log("[media-demo] viewing:", index, source.path);
           });
           const result = await handle.completed;
-          unsubscribe();
+          if (disposed || previewAbortController !== controller) return;
           page.update(d => {
             d.previewSessionBusy = false;
             d.previewSessionResult = result;
@@ -495,6 +502,7 @@ export default definePage({
           });
           return result;
         } catch (error) {
+          if (disposed || previewAbortController !== controller) return;
           const abortLike = error as { name?: string; code?: string } | null;
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
           page.update(d => {
@@ -507,6 +515,7 @@ export default definePage({
           }
           return null;
         } finally {
+          unsubscribe?.();
           if (previewAbortController === controller) {
             previewAbortController = null;
           }
@@ -538,6 +547,7 @@ export default definePage({
       },
     };
     const actions = {
+      async goBack() { await lx.nav.back(); },
       async openSourcePicker() {
         const choice = await pickOption(SOURCE_OPTIONS, page.data.sourceKey);
         if (!choice) {
@@ -942,7 +952,7 @@ export default definePage({
         page.update(d => { d.videoCompressResolution = value; });
       },
       async compressSelectedVideo() {
-        if (page.data.videoCompressBusy) {
+        if (disposed || page.data.videoCompressBusy) {
           return;
         }
         const sourcePath = page.data.thumbnailVideoPath;
@@ -967,19 +977,28 @@ export default definePage({
           d.videoCompressProgress = 0;
         });
 
-        const task = lx.media.compressVideo(sourcePath, payload);
-        compressVideoTask = task;
+        const epoch = ++compressionEpoch;
+        let task: CompressVideoTask | null = null;
         try {
+          task = lx.media.compressVideo(sourcePath, payload);
+          compressVideoTask = task;
+          // Observe rejection immediately even if the progress iterator fails first.
+          const outcome = task.result.then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
           for await (const { progress } of task.progress) {
+            if (disposed || epoch !== compressionEpoch) return;
             page.update(d => { d.videoCompressProgress = Math.round(progress * 100); });
           }
-          const result = await task.result;
+          const settled = await outcome;
+          if (disposed || epoch !== compressionEpoch) return;
+          if (!settled.ok) throw settled.error;
+          const result = settled.value;
           page.update(d => {
             d.videoCompressResult = result;
             d.videoCompressBusy = false;
             d.videoCompressProgress = null;
           });
         } catch (error) {
+          if (disposed || epoch !== compressionEpoch) return;
           const abortLike = error as { name?: string; code?: string } | null;
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
           const message = errorMessage(error, "compressVideo failed");
@@ -991,11 +1010,19 @@ export default definePage({
           });
           lx.ui.toast(isAbort ? "Compression cancelled" : message);
         } finally {
-          compressVideoTask = null;
+          if (compressVideoTask === task) compressVideoTask = null;
         }
       },
       cancelVideoCompress() {
-        compressVideoTask?.cancel();
+        helpers.stopCompression();
+        if (!disposed) {
+          page.update(d => {
+            d.videoCompressBusy = false;
+            d.videoCompressProgress = null;
+            d.videoCompressError = "";
+          });
+          lx.ui.toast("Compression cancelled");
+        }
       },
       async previewCompressedVideo() {
         const path = page.data.videoCompressResult?.path;
@@ -1030,7 +1057,7 @@ export default definePage({
         page.update(d => { d.compressedHeight = value; });
       },
       async compressSelectedImage() {
-        if (page.data.compressing) {
+        if (disposed || page.data.compressing) {
           return;
         }
         const path = page.data.imageInfoResult?.path;
@@ -1057,15 +1084,19 @@ export default definePage({
           d.compressResult = null;
         });
 
+        const epoch = ++compressionEpoch;
         try {
           const result = await lx.media.compressImage(path, payload);
+          if (disposed || epoch !== compressionEpoch) return;
           const resultPath = result.path;
           const info = await lx.media.imageInfo(resultPath);
           const size = await helpers.getFileSize(resultPath);
+          if (disposed || epoch !== compressionEpoch) return;
           page.update(d => {
             d.compressResult = { path: resultPath, width: info.width, height: info.height, type: info.type, size };
           });
         } catch (error) {
+          if (disposed || epoch !== compressionEpoch) return;
           const message = errorMessage(error, "compressImage failed");
           page.update(d => {
             d.compressError = message;
@@ -1073,7 +1104,7 @@ export default definePage({
           });
           lx.ui.toast(message);
         } finally {
-          page.update(d => { d.compressing = false; });
+          if (!disposed && epoch === compressionEpoch) page.update(d => { d.compressing = false; });
         }
       },
       async previewCompressedImage() {
@@ -1123,13 +1154,26 @@ export default definePage({
       },
     };
     return {
+      onUnload() {
+        disposed = true;
+        helpers.stopCompression();
+        actions.cancelPreviewSession();
+      },
       onLoad(options) {
         helpers.switchMode(options?.type);
       },
+      // A tab page loads in the background; `navigationBar.update` patches whichever page is current.
+      onShow() {
+        void page.navigationBar.update({ title: getModeTitle(page.data.mediaType) });
+      },
       onHide() {
+        helpers.stopCompression();
         actions.cancelPreviewSession();
         page.update(d => {
           d.selectedMedia = [];
+          d.videoCompressBusy = false;
+          d.videoCompressProgress = null;
+          d.compressing = false;
           d.previewSessionBusy = false;
         });
       },

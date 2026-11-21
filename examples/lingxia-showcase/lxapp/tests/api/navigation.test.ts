@@ -1,10 +1,17 @@
 import type { PageInfo } from '@lingxia/types/automation';
-import { currentPageOrNull, waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
+import type { PageContract } from '@lingxia/types/page';
+import { currentPageOrNull } from '@lingxia/test/showcase/helpers/page.js';
 import { expect, test, type AnyLogicPage, type TestApp } from '@lingxia/test';
 import { bindFixture, eventually, relaunchFromLogic, specNamespace, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
-import type { ProbeWindow } from '@lingxia/test/showcase/helpers/view.js';
 
+
+/** The device page's section, which its `type` query picks on load. */
+async function deviceSection(app: TestApp, expected: string): Promise<void> {
+  const device = await app.page<PageContract<{ currentType: string }>>({ name: 'device' });
+  await device.view.testId('device-page').waitFor({ timeout: 30_000 });
+  await expect.poll(async () => (await device.data()).currentType).toBe(expected);
+}
 
 async function waitForCurrent(app: TestApp, name: string): Promise<PageInfo> {
   return eventually(
@@ -36,26 +43,17 @@ test("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
 
   await app.nav.go({ page: 'device', params: { type: 'screen' } });
   await waitForCurrent(app, 'device');
-  const device = await app.page({ name: 'device' });
-  await device.view.testId('device-page').waitFor({ timeout: 30_000 });
-  await waitForElementAttribute(
-    device.view,
-    '[data-testid="device-page"]',
-    'data-mode',
-    'screen',
-  );
-  const mode = await device.view.eval(({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
-  expect(mode).toBe('screen');
+  await deviceSection(app, 'screen');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'device']);
 
   const backed = await app.nav.back();
   expect(backed.name).toBe('home');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home']);
 
-  await app.nav.go({ page: 'components' });
-  await app.nav.go({ page: 'picker' }, { replace: true });
-  await waitForCurrent(app, 'picker');
-  expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'picker']);
+  await app.nav.go({ page: 'media' });
+  await app.nav.go({ page: 'wifi' }, { replace: true });
+  await waitForCurrent(app, 'wifi');
+  expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'wifi']);
 
   await app.nav.go({ tab: 'todo' });
   await waitForCurrent(app, 'todo');
@@ -65,17 +63,8 @@ test("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
   // inherit the query from the earlier device visit.
   await app.nav.reset({ page: 'device' });
   await waitForCurrent(app, 'device');
-  // The relaunch opened a new device instance: bind it again.
-  const relaunched = await app.page({ name: 'device' });
-  await relaunched.view.testId('device-page').waitFor({ timeout: 30_000 });
-  await waitForElementAttribute(
-    relaunched.view,
-    '[data-testid="device-page"]',
-    'data-mode',
-    'device',
-  );
-  const defaultMode = await relaunched.view.eval(({ document }) => document.querySelector('[data-testid="device-page"]')?.getAttribute('data-mode'));
-  expect(defaultMode).toBe('device');
+  // The relaunch opened a new device instance, bound afresh.
+  await deviceSection(app, 'device');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
 });
 
@@ -176,14 +165,14 @@ interface ApiPageProbe {
 async function apiPageProbe(app: TestApp): Promise<ApiPageProbe | null> {
   return app.logic.eval(({ pageStack }) => {
     const page = pageStack<AnyLogicPage<{ loadCount?: number }>>()
-      .find((candidate) => candidate.route.includes('/API/'));
+      .find((candidate) => candidate.route.includes('/api/'));
     return page
       ? { loadCount: page.data.loadCount ?? -1, logicMarker: (page as unknown as { __relaunchMarker?: string }).__relaunchMarker ?? null }
       : null;
   });
 }
 
-/** Visit the api tab, then mark its Logic page object and its document. */
+/** Visit the api tab, then mark its Logic page object. */
 async function markWarmApiTab(app: TestApp, marker: string): Promise<PageInfo> {
   await app.nav.reset({ page: 'home' });
   await waitForCurrent(app, 'home');
@@ -193,14 +182,9 @@ async function markWarmApiTab(app: TestApp, marker: string): Promise<PageInfo> {
     describe: 'the api tab to run onLoad once',
   });
   await app.logic.eval(({ pageStack }, marker) => {
-    const page = pageStack().find((candidate) => candidate.route.includes('/API/'));
+    const page = pageStack().find((candidate) => candidate.route.includes('/api/'));
     // A marker on the page object itself: a fresh instance will not carry it.
     (page as unknown as { __relaunchMarker?: string }).__relaunchMarker = marker;
-    return true;
-  }, marker);
-  const api = await app.page({ name: 'api' });
-  await api.view.eval(({ window }, marker) => {
-    (window as ProbeWindow).__relaunchMarker = marker;
     return true;
   }, marker);
   // Leave it warm off the stack: switchTab keeps tab pages alive.
@@ -228,8 +212,6 @@ async function expectFreshApiTab(app: TestApp, stale: PageInfo, landed?: PageInf
   expect(probe).toEqual({ loadCount: 1, logicMarker: null });
   const api = await app.page({ name: 'api' });
   expect(api.instanceId).toBe(current.instanceId);
-  const windowMarker = await api.view.eval(({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
-  expect(windowMarker).toBe(null);
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['api']);
 }
 
@@ -258,16 +240,13 @@ test("relaunch onto a warm tab page opens a fresh instance", {
 
   await t.step('a warm tab that was not the target starts over too', async () => {
     await markWarmApiTab(app, 'other-target');
-    await app.nav.reset({ page: 'components' });
-    await waitForCurrent(app, 'components');
+    await app.nav.reset({ page: 'device' });
+    await waitForCurrent(app, 'device');
     await app.nav.go({ tab: 'api' });
     await waitForCurrent(app, 'api');
     const probe = await eventually(() => apiPageProbe(app), (value) => value !== null && value.loadCount > 0, {
       describe: 'the api tab to run onLoad again',
     });
     expect(probe).toEqual({ loadCount: 1, logicMarker: null });
-    const api = await app.page({ name: 'api' });
-    const windowMarker = await api.view.eval(({ window }) => (window as ProbeWindow).__relaunchMarker ?? null);
-    expect(windowMarker).toBe(null);
   });
 });

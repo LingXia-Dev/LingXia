@@ -1,6 +1,7 @@
+import type { ServerMessage, ClientCommand } from "../../shared/channel-types";
+import { definePage, lx } from '@lingxia/logic';
 // ChannelHandle is injected by the runtime — no import needed.
 // The type is declared here locally for readability.
-import { definePage } from '@lingxia/logic';
 interface ChannelHandle<TSend = unknown, TReceive = unknown> {
   send(payload: TSend): void;
   close(code?: string, reason?: string): void;
@@ -15,27 +16,6 @@ interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 // The View can send commands ("subscribe") to change the watched symbol.
 // This demonstrates bidirectional channel communication using ch.on().
 // ---------------------------------------------------------------------------
-
-export interface TickerUpdate {
-  type: 'tick';
-  symbol: string;
-  price: number;
-  change: number;
-  timestamp: number;
-}
-
-export interface TickerInit {
-  type: 'init';
-  symbols: string[];
-  active: string;
-}
-
-export type ServerMessage = TickerInit | TickerUpdate;
-
-export interface ClientCommand {
-  type: 'subscribe';
-  symbol: string;
-}
 
 const SYMBOLS: Record<string, { base: number; volatility: number }> = {
   'AAPL':  { base: 189.5,  volatility: 2.5 },
@@ -55,6 +35,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
+      async goBack() { await lx.nav.back(); },
       tickerSession(
         _params: Record<string, unknown>,
         ch: ChannelHandle<ServerMessage, ClientCommand>,
@@ -105,6 +86,7 @@ export default definePage({
         ch.on('close', () => {
           if (timer) clearInterval(timer);
           timer = null;
+          page.update(d => { d.connected = false; });
         });
       },
     };

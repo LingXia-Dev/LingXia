@@ -1,20 +1,5 @@
-import { definePage } from '@lingxia/logic';
-export interface ChartData {
-  kind: 'bar' | 'line' | 'pie';
-  title: string;
-  series: { label: string; value: number }[];
-}
-
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  chart?: ChartData;
-}
-
-export type ChatChunk =
-  | { type: 'token'; token: string }
-  | { type: 'artifact'; chart: ChartData };
+import type { ChartData, Message, ChatChunk, SendMessage } from "../../shared/stream-types";
+import { definePage, lx } from '@lingxia/logic';
 
 interface MockScenario {
   text: string;
@@ -122,8 +107,9 @@ const SCENARIOS: MockScenario[] = [
   },
 ];
 
-async function* mockChatStream(): AsyncGenerator<ChatChunk, void> {
-  const scenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+async function* mockChatStream(kind?: string): AsyncGenerator<ChatChunk, void> {
+  const choices = ['bar', 'line', 'pie'].includes(kind || '') ? SCENARIOS.filter(item => item.chart?.kind === kind) : SCENARIOS;
+  const scenario = choices[Math.floor(Math.random() * choices.length)];
 
   await new Promise<void>((r) => setTimeout(r, 350 + Math.random() * 450));
 
@@ -145,7 +131,8 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async *onSend(params: { text: string }): AsyncGenerator<ChatChunk, void> {
+      async goBack() { await lx.nav.back(); },
+      async *onSend(params: SendMessage): AsyncGenerator<ChatChunk, void> {
         const text = (params?.text ?? '').trim();
         if (!text || page.data.isStreaming) return;
 
@@ -163,7 +150,7 @@ export default definePage({
         let chartData: ChartData | undefined;
 
         try {
-          for await (const chunk of mockChatStream()) {
+          for await (const chunk of mockChatStream(params.chartKind)) {
             if (chunk.type === 'token') accumulated += chunk.token;
             if (chunk.type === 'artifact') chartData = chunk.chart;
             yield chunk;

@@ -1,501 +1,212 @@
-import { useLxHost, useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, ErrorState, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
 
-export default function SystemPage() {
-  const { data, actions } = useLxPage();
-  const { os } = useLxHost();
-  const bannerAvailable = os === 'macOS' || os === 'Windows';
-  const {
-    getBaseInfo,
-    getSystemSetting,
-    toggleAutostart,
-    refreshAutostart,
-    refreshCacheSize,
-    clearCache,
-    refreshNotification,
-    showNotification,
-    cancelNotification,
-    setNotificationTarget,
-    refreshBanner,
-    setBannerBackground,
-    showBannerToast,
-    showBannerPrompt,
-    dismissBanner,
-  } = actions;
-  const {
-    currentType = 'appBaseInfo',
-    appBaseInfo = null,
-    displayLanguage = '',
-    systemSetting = null,
-    autostartSupported = false,
-    autostartEnabled = null,
-    autostartError = '',
-    cacheBytes = null,
-    cacheFreedBytes = null,
-    cacheBusy = false,
-    cacheError = '',
-    cacheNotice = '',
-    notificationSupported = false,
-    notificationPermission = '',
-    notificationLastId = '',
-    notificationTarget = 'activate',
-    notificationError = '',
-    bannerSupported = false,
-    bannerLast = '',
-    bannerError = '',
-    bannerBusy = false,
-    bannerBackground = 'system',
-  } = data;
-
-  return (
-    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100" data-testid="system-page" data-mode={currentType}>
-      <div className="px-4 py-6">
-        {currentType === 'appBaseInfo' && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">app.getBaseInfo</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
-                  <span className="text-2xl">🧭</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Get app identity (OS, product, versions) plus the language it renders in</div>
-                </div>
-                <button
-                  data-testid="system-base-info"
-                  onClick={getBaseInfo}
-                  className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-                >
-                  Get Info
-                </button>
-              </div>
-
-              {appBaseInfo && (
-                <div className="p-5" data-testid="system-base-result">
-                  <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-                      <h4 className="text-sm font-semibold text-gray-700">Result</h4>
-                    </div>
-                    <InfoRow label="Display Language" value={displayLanguage} />
-                    <InfoRow label="OS" value={appBaseInfo.os} />
-                    <InfoRow label="Product Name" value={appBaseInfo.productName} />
-                    <InfoRow label="Product Version" value={appBaseInfo.version} />
-                    <InfoRow label="SDK Version" value={appBaseInfo.sdkVersion} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-        {currentType === 'systemSetting' && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">getSystemSetting</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-emerald-50 to-teal-50">
-                  <span className="text-2xl">⚙️</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Fetch System Setting</div>
-                  <div className="text-xs text-gray-500 mt-0.5">WiFi, location, and Bluetooth toggles</div>
-                </div>
-                <button
-                  data-testid="system-setting-info"
-                  onClick={getSystemSetting}
-                  className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-                >
-                  Get Info
-                </button>
-              </div>
-
-              {systemSetting && (
-                <div className="p-5" data-testid="system-setting-result">
-                  <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="w-1 h-4 bg-emerald-500 rounded-full"></span>
-                      <h4 className="text-sm font-semibold text-gray-700">Result</h4>
-                    </div>
-                    <InfoRow label="WiFi Enabled" value={formatBool(systemSetting.wifiEnabled)} />
-                    <InfoRow label="Location Enabled" value={formatBool(systemSetting.locationEnabled)} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-        {currentType === 'autostart' && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">app.autostart</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-amber-50 to-orange-50">
-                  <span className="text-2xl">🚀</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Launch at Startup</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {autostartSupported
-                      ? 'Register this app as a login / startup item'
-                      : 'Not available on this platform'}
-                  </div>
-                </div>
-                {autostartSupported && (
-                  <button
-                    onClick={toggleAutostart}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
-                      autostartEnabled ? 'bg-emerald-500' : 'bg-surface-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow transition-transform duration-200 ${
-                        autostartEnabled ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                )}
-              </div>
-
-              <div className="p-5">
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-1 h-4 bg-amber-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
-                  </div>
-                  <InfoRow label="Supported" value={formatBool(autostartSupported)} />
-                  <InfoRow
-                    label="Enabled (OS)"
-                    value={autostartEnabled === null ? '--' : formatBool(autostartEnabled)}
-                  />
-                  {autostartError && <InfoRow label="Error" value={autostartError} />}
-                  <div className="pt-3">
-                    <button
-                      onClick={refreshAutostart}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Re-read OS State
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        {currentType === 'notification' && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">app.notification</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div
-              data-testid="system-notification-panel"
-              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
-            >
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-violet-50 to-purple-50">
-                  <span className="text-2xl">🔔</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Local Notifications</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {notificationSupported
-                      ? 'Post and cancel a local banner — Control app only'
-                      : 'Not available on this host'}
-                  </div>
-                </div>
-                {notificationSupported && (
-                  <button
-                    onClick={showNotification}
-                    className="px-4 py-2 text-xs font-medium bg-violet-500 hover:bg-violet-600 text-white rounded-lg transition-colors"
-                  >
-                    Show
-                  </button>
-                )}
-              </div>
-
-              <div className="p-5">
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-1 h-4 bg-violet-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">Tap target</h4>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    <code>page</code> is navigateTo. <code>route</code> is a host-registered
-                    native location. Neither needs a product URL.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { value: 'activate', label: 'activate' },
-                      { value: 'native', label: 'route → native' },
-                      { value: 'page', label: 'page → this page' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        data-testid={`system-notification-target-${option.value}`}
-                        onClick={() => setNotificationTarget(option.value)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                          notificationTarget === option.value
-                            ? 'bg-violet-500 text-white'
-                            : 'bg-surface-100 hover:bg-surface-200 text-gray-700'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-1 h-4 bg-violet-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
-                  </div>
-                  <InfoRow label="Supported" value={formatBool(notificationSupported)} />
-                  <InfoRow label="Permission" value={notificationPermission || '--'} />
-                  <InfoRow label="Last id" value={notificationLastId || '--'} />
-                  {notificationError && <InfoRow label="Error" value={notificationError} />}
-                  <div className="pt-3 flex gap-2">
-                    <button
-                      onClick={refreshNotification}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Re-read Permission
-                    </button>
-                    <button
-                      onClick={cancelNotification}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        {currentType === 'banner' && bannerAvailable && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">app.banner</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div
-              data-testid="system-banner-panel"
-              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
-            >
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-rose-50 to-orange-50">
-                  <span className="text-2xl">🪧</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Desktop Banner</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {bannerSupported
-                      ? 'Toast and Prompt show a native card at the window top-right'
-                      : 'Not available on this host'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 space-y-3">
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
-                  </div>
-                  <InfoRow label="Supported" value={formatBool(bannerSupported)} />
-                  <InfoRow
-                    label="Last result"
-                    value={bannerLast || '--'}
-                    testId="system-banner-last"
-                  />
-                  {bannerError && <InfoRow label="Error" value={bannerError} />}
-                  <div className="pt-3">
-                    <button
-                      data-testid="system-banner-reread"
-                      onClick={() => refreshBanner()}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Re-read support
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">Show</h4>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card.
-                    Dismiss is off until a card is up.
-                  </p>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'].map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => setBannerBackground(value)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                          bannerBackground === value
-                            ? 'bg-rose-500 text-white'
-                            : 'bg-surface-100 hover:bg-surface-200 text-gray-700'
-                        }`}
-                      >
-                        {value}
-                      </button>
-                    ))}
-                  </div>
-                  {bannerSupported && (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        data-testid="system-banner-toast"
-                        onClick={showBannerToast}
-                        disabled={bannerBusy}
-                        className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-                      >
-                        Toast
-                      </button>
-                      <button
-                        data-testid="system-banner-prompt"
-                        onClick={() => showBannerPrompt()}
-                        disabled={bannerBusy}
-                        className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-                      >
-                        Prompt
-                      </button>
-                      <button
-                        data-testid="system-banner-dismiss"
-                        onClick={() => dismissBanner()}
-                        disabled={!bannerBusy}
-                        className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        {currentType === 'cache' && (
-          <>
-            <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">app.cache</h1>
-              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-            </div>
-
-            <div
-              data-testid="system-cache-panel"
-              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
-            >
-              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-sky-50 to-blue-50">
-                  <span className="text-2xl">🧹</span>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-800 font-semibold">Product Cache</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Reclaimable product cache — home lxapp only
-                  </div>
-                </div>
-                <button
-                  onClick={clearCache}
-                  disabled={cacheBusy}
-                  className="px-4 py-2 text-xs font-medium bg-sky-500 hover:bg-sky-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-                >
-                  {cacheBusy ? 'Clearing…' : 'Clear'}
-                </button>
-              </div>
-
-              <div className="p-5">
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="w-1 h-4 bg-sky-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
-                  </div>
-                  <InfoRow label="Reclaimable (estimate)" value={formatBytes(cacheBytes)} />
-                  <InfoRow label="Last Freed (estimate)" value={formatBytes(cacheFreedBytes)} />
-                  {cacheNotice && <InfoRow label="Result" value={cacheNotice} />}
-                  {cacheError && <InfoRow label="Error" value={cacheError} />}
-                  <div className="pt-3 text-xs text-gray-500">
-                    Running apps retain their private caches. Use their menu to clear
-                    cache and restart. Estimates exclude WebView cache.
-                  </div>
-                  <div className="pt-3">
-                    <button
-                      onClick={refreshCacheSize}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Re-read Size
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function formatBytes(value: number | null): string {
-  if (typeof value !== 'number') {
-    return '--';
-  }
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let size = value / 1024;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
+const titles: Record<string, string> = {
+  appBaseInfo: 'app.getBaseInfo',
+  systemSetting: 'getSystemSetting',
+  autostart: 'app.autostart',
+  notification: 'app.notification',
+  banner: 'app.banner',
+  cache: 'app.cache',
+};
+const yesNo = (value: unknown) => (value == null ? '--' : value ? 'Yes' : 'No');
+function bytes(value: unknown): string {
+  if (typeof value !== 'number') return '--';
+  if (value < 1024) return `${value} B`;
+  let size = value / 1024,
+    unit = 0;
+  while (size >= 1024 && unit < 2) {
     size /= 1024;
-    unit += 1;
+    unit++;
   }
-  return `${size.toFixed(1)} ${units[unit]}`;
+  return `${size.toFixed(1)} ${['KB', 'MB', 'GB'][unit]}`;
 }
+const targets = [
+  { value: 'activate', label: 'activate' },
+  { value: 'native', label: 'route → native' },
+  { value: 'page', label: 'page → this page' },
+];
+const backgrounds = ['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'].map(value => ({ value, label: value }));
 
-interface InfoRowProps {
-  label: string;
-  value?: string;
-  testId?: string;
-}
-
-function InfoRow({ label, value, testId }: InfoRowProps) {
-  const display = value || '--';
+export function render({ data, actions, env }: View) {
+  const type = String(data.currentType || 'appBaseInfo');
+  const base = (data.appBaseInfo || {}) as Record<string, unknown>;
+  const setting = (data.systemSetting || {}) as Record<string, unknown>;
+  const desktop = env.os === 'macos' || env.os === 'windows';
   return (
-    <div className="flex justify-between items-center py-3 border-b border-line-200 last:border-b-0">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span
-        data-testid={testId}
-        className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg"
-      >
-        {display}
-      </span>
-    </div>
+    <Page testId="system-page" data={{ 'data-mode': type }}>
+      <text data-testid="system-mode-title" className="text-2xl font-light text-center">
+        {titles[type]}
+      </text>
+      {type === 'appBaseInfo' && (
+        <Section
+          testId="system-base-result"
+          title="Fetch App Base Info"
+          description="App identity (OS, product, versions) plus the language it renders in"
+          action={
+            <Button testId="system-base-info" onClick={() => actions.getBaseInfo()}>
+              Get Info
+            </Button>
+          }
+        >
+          {!!data.appBaseInfo && (
+            <InfoList>
+              <InfoRow label="Display Language" value={data.displayLanguage} testId="system-base-language" />
+              <InfoRow label="OS" value={base.os} testId="system-base-os" />
+              <InfoRow label="Product Name" value={base.productName} testId="system-base-productName" />
+              <InfoRow label="Product Version" value={base.version} testId="system-base-version" />
+              <InfoRow label="SDK Version" value={base.sdkVersion} testId="system-base-sdkVersion" />
+            </InfoList>
+          )}
+        </Section>
+      )}
+      {type === 'systemSetting' && (
+        <Section
+          testId="system-setting-result"
+          title="Fetch System Setting"
+          description="WiFi, location, and Bluetooth toggles"
+          action={
+            <Button testId="system-setting-info" onClick={() => actions.getSystemSetting()}>
+              Get Info
+            </Button>
+          }
+        >
+          {!!data.systemSetting && (
+            <InfoList>
+              <InfoRow label="WiFi Enabled" value={yesNo(setting.wifiEnabled)} testId="system-settings-wifiEnabled" />
+              <InfoRow label="Location Enabled" value={yesNo(setting.locationEnabled)} testId="system-settings-locationEnabled" />
+            </InfoList>
+          )}
+        </Section>
+      )}
+      {type === 'autostart' && (
+        <Section
+          title="Launch at Startup"
+          description={data.autostartSupported ? 'Register this app as a login / startup item' : 'Not available on this platform'}
+          action={
+            data.autostartSupported ? (
+              <switch
+                data-testid="system-autostart-toggle"
+                aria-label="Launch at startup"
+                value={!!data.autostartEnabled}
+                onChange={() => actions.toggleAutostart()}
+              />
+            ) : null
+          }
+        >
+          <InfoList>
+            <InfoRow label="Supported" value={yesNo(data.autostartSupported)} testId="system-autostart-status" />
+            <InfoRow label="Enabled (OS)" value={yesNo(data.autostartEnabled)} />
+          </InfoList>
+          <ErrorState error={data.autostartError ? String(data.autostartError) : null} />
+          <Button variant="secondary" size="sm" testId="system-autostart-refresh" onClick={() => actions.refreshAutostart()}>
+            Re-read OS State
+          </Button>
+        </Section>
+      )}
+      {type === 'cache' && (
+        <Section
+          testId="system-cache-panel"
+          title="Product Cache"
+          description="Reclaimable product cache - home lxapp only"
+          action={
+            <Button size="sm" testId="system-cache-clear" disabled={!!data.cacheBusy} onClick={() => actions.clearCache()}>
+              {data.cacheBusy ? 'Clearing...' : 'Clear'}
+            </Button>
+          }
+        >
+          <InfoList>
+            <InfoRow label="Reclaimable (estimate)" value={bytes(data.cacheBytes)} testId="system-cache-size" />
+            <InfoRow label="Last Freed (estimate)" value={bytes(data.cacheFreedBytes)} />
+            {!!data.cacheNotice && <InfoRow label="Result" value={data.cacheNotice} testId="system-cache-status" />}
+          </InfoList>
+          <ErrorState testId="system-cache-error" error={data.cacheError ? String(data.cacheError) : null} />
+          <text className="text-xs text-muted">Running apps keep their private caches; estimates exclude WebView cache.</text>
+          <Button variant="secondary" size="sm" testId="system-cache-refresh" disabled={!!data.cacheBusy} onClick={() => actions.refreshCacheSize()}>
+            Re-read Size
+          </Button>
+        </Section>
+      )}
+      {type === 'notification' && (
+        <Section
+          title="Local Notifications"
+          description={data.notificationSupported ? 'Post and cancel a local banner - Control app only' : 'Not available on this host'}
+          action={
+            data.notificationSupported ? (
+              <Button size="sm" testId="system-notification-show" onClick={() => actions.showNotification()}>
+                Show
+              </Button>
+            ) : null
+          }
+        >
+          <text className="text-xs text-muted">
+            page is navigateTo. route is a host-registered native location. Neither needs a product URL.
+          </text>
+          <Segmented
+            testId="system-notification-target"
+            value={String(data.notificationTarget || 'activate')}
+            options={targets}
+            onChange={value => actions.setNotificationTarget(value)}
+          />
+          <InfoList>
+            <InfoRow label="Supported" value={yesNo(data.notificationSupported)} />
+            <InfoRow label="Permission" value={data.notificationPermission} testId="system-notification-status" />
+            <InfoRow label="Last id" value={data.notificationLastId} testId="system-notification-result" />
+          </InfoList>
+          <ErrorState error={data.notificationError ? String(data.notificationError) : null} />
+          <view className="grid gap-2 grid-cols-2">
+            <Button variant="secondary" size="sm" testId="system-notification-refresh" onClick={() => actions.refreshNotification()}>
+              Re-read Permission
+            </Button>
+            <Button variant="secondary" size="sm" testId="system-notification-cancel" onClick={() => actions.cancelNotification()}>
+              Cancel
+            </Button>
+          </view>
+        </Section>
+      )}
+      {type === 'banner' && desktop && (
+        <Section
+          testId="system-banner-panel"
+          title="Desktop Banner"
+          description={data.bannerSupported ? 'Toast and Prompt show a native card at the window top-right' : 'Not available on this host'}
+        >
+          <InfoList>
+            <InfoRow label="Supported" value={yesNo(data.bannerSupported)} />
+            <InfoRow label="Last result" value={data.bannerLast} testId="system-banner-last" />
+          </InfoList>
+          <ErrorState error={data.bannerError ? String(data.bannerError) : null} />
+          <Button variant="secondary" size="sm" testId="system-banner-reread" onClick={() => actions.refreshBanner()}>
+            Re-read support
+          </Button>
+          <text className="text-xs text-muted">Toast auto-dismisses. Prompt waits for Allow / Deny on the card.</text>
+          <Segmented
+            testId="system-banner-background"
+            value={String(data.bannerBackground || 'system')}
+            options={backgrounds}
+            onChange={value => actions.setBannerBackground(value)}
+          />
+          {!!data.bannerSupported && (
+            <view className="grid gap-2 grid-cols-3">
+              <Button size="sm" testId="system-banner-toast" disabled={!!data.bannerBusy} onClick={() => actions.showBannerToast()}>
+                Toast
+              </Button>
+              <Button size="sm" testId="system-banner-prompt" disabled={!!data.bannerBusy} onClick={() => actions.showBannerPrompt()}>
+                Prompt
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                testId="system-banner-dismiss"
+                disabled={!data.bannerBusy}
+                onClick={() => actions.dismissBanner()}
+              >
+                Dismiss
+              </Button>
+            </view>
+          )}
+        </Section>
+      )}
+    </Page>
   );
-}
-
-function formatBool(value: boolean | undefined): string {
-  if (value === undefined || value === null) {
-    return '--';
-  }
-  return value ? 'Yes' : 'No';
 }

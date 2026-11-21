@@ -4,5 +4,6 @@
       "default": "Leave guard",
       "zh-CN": "离开确认"
     }
-  }
+  },
+  "pageOrientation": "auto"
 }

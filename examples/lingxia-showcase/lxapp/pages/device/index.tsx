@@ -1,446 +1,184 @@
-import React from 'react';
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { useLocal, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
-export default function DevicePage() {
-  const { data, actions } = useLxPage();
-  const {
-    getDeviceInfo,
-    getScreenInfo,
-    vibrateShort,
-    vibrateLong,
-    makePhoneCall,
-    getNetworkInfo,
-    startNetworkChangeListen,
-    stopNetworkChangeListen,
-    setOrientationPortrait,
-    setOrientationLandscape,
-    startDeviceOrientationListen,
-    stopDeviceOrientationListen,
-    clearOrientationEvents,
-  } = actions;
+const titles: Record<string, string> = {
+  device: 'Device information',
+  screen: 'Screen information',
+  vibrate: 'Device vibration',
+  dial: 'Phone call',
+  networkType: 'Network type',
+  localIP: 'Local IP addresses',
+  networkStatus: 'Network status listener',
+  orientation: 'Device orientation',
+};
+const yesNo = (value: unknown) => (value === undefined ? '--' : value ? 'Yes' : 'No');
+const number = (value: unknown, suffix = '') =>
+  typeof value === 'number' && Number.isFinite(value) ? `${Number.isInteger(value) ? value : value.toFixed(2)}${suffix}` : '--';
 
-  const {
-    currentType = 'device',
-    deviceInfo = null,
-    screenInfo = null,
-    networkInfo = null,
-    networkChange = null,
-    networkListening = false,
-    orientationListening = false,
-    deviceOrientationValue = '--',
-    orientationEvents = [],
-    orientationLock = '--',
-  } = data;
-  const orientationEventLines = Array.isArray(orientationEvents) ? orientationEvents : [];
-  const [phoneNumber, setPhoneNumber] = React.useState('');
-
-  React.useEffect(() => {
-    setPhoneNumber('');
-  }, [currentType]);
-
-  const handleDial = React.useCallback(async () => {
-    const trimmed = phoneNumber.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    try {
-      await makePhoneCall({ phoneNumber: trimmed });
-    } catch (error) {
-      console.error('makePhoneCall failed:', error);
-    }
-  }, [phoneNumber, makePhoneCall]);
-
-  const renderDeviceInfoSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Device Information</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
-            <span className="text-2xl">📱</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Get Device Information</div>
-            <div className="text-xs text-gray-500 mt-0.5">Brand, model, and OS version</div>
-          </div>
-          <button
-            data-testid="device-get-info"
-            onClick={getDeviceInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-          >
-            Get Info
-          </button>
-        </div>
-
-        {deviceInfo && (
-          <div className="p-5" data-testid="device-info-result">
-            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-                <h4 className="text-sm font-semibold text-gray-700">Device Information</h4>
-              </div>
-              <div className="space-y-0">
-                <InfoRow label="Brand" value={deviceInfo.brand} />
-                <InfoRow label="Market Name" value={deviceInfo.marketName || deviceInfo.model} />
-                <InfoRow label="Model" value={deviceInfo.model} />
-                <InfoRow label="OS Name" value={deviceInfo.osName} />
-                <InfoRow label="OS Version" value={deviceInfo.osVersion} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const renderScreenInfoSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Screen Information</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-purple-50 to-pink-50">
-            <span className="text-2xl">🖥️</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Get Screen Information</div>
-            <div className="text-xs text-gray-500 mt-0.5">Screen dimensions and scale</div>
-          </div>
-          <button
-            data-testid="device-screen-get-info"
-            onClick={getScreenInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-          >
-            Get Info
-          </button>
-        </div>
-
-        {screenInfo && (
-          <div className="p-5" data-testid="device-screen-result">
-            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
-                <h4 className="text-sm font-semibold text-gray-700">Screen Information</h4>
-              </div>
-              <div className="space-y-0">
-                <InfoRow label="Width" value={formatNumber(screenInfo.width)} suffix="px" />
-                <InfoRow label="Height" value={formatNumber(screenInfo.height)} suffix="px" />
-                <InfoRow label="Scale" value={formatNumber(screenInfo.scale)} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const renderVibrationSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Device Vibration</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-green-50 to-emerald-50">
-              <span className="text-xl">📳</span>
-            </div>
-            <div>
-              <div className="text-sm text-gray-800 font-semibold">Trigger Vibration</div>
-              <div className="text-xs text-gray-500 mt-0.5">Test short or long vibration</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={vibrateShort}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
+export function render({ data, actions }: View) {
+  const phone = useLocal('phone', '');
+  const requested = String(data.currentType ?? 'device');
+  const type = titles[requested] ? requested : 'device';
+  const info = (data.deviceInfo ?? {}) as Record<string, unknown>;
+  const screen = (data.screenInfo ?? {}) as Record<string, unknown>;
+  const network = (data.networkInfo ?? {}) as Record<string, unknown>;
+  const changed = (data.networkChange ?? {}) as Record<string, unknown>;
+  const events = (data.orientationEvents ?? []) as string[];
+  return (
+    <Page testId="device-page" data={{ 'data-mode': type }}>
+      <text data-testid="device-mode-title" className="text-2xl font-light text-center">
+        {titles[type]}
+      </text>
+      {type === 'device' && (
+        <Section
+          title="Get device information"
+          description="Brand, model and OS version"
+          action={
+            <Button testId="device-get-info" onClick={() => actions.getDeviceInfo()}>
+              Get info
+            </Button>
+          }
+        >
+          {!!data.deviceInfo && (
+            <InfoList testId="device-info-result">
+              <InfoRow label="Brand" value={info.brand} />
+              <InfoRow label="Market name" value={info.marketName || info.model} />
+              <InfoRow label="Model" value={info.model} testId="device-info-model" />
+              <InfoRow label="OS name" value={info.osName} testId="device-info-osName" />
+              <InfoRow label="OS version" value={info.osVersion} />
+            </InfoList>
+          )}
+        </Section>
+      )}
+      {type === 'screen' && (
+        <Section
+          title="Get screen information"
+          description="Screen dimensions and scale"
+          action={
+            <Button testId="device-screen-get-info" onClick={() => actions.getScreenInfo()}>
+              Get info
+            </Button>
+          }
+        >
+          {!!data.screenInfo && (
+            <InfoList testId="device-screen-result">
+              <InfoRow label="Width" value={number(screen.width, 'px')} testId="device-screen-width" />
+              <InfoRow label="Height" value={number(screen.height, 'px')} />
+              <InfoRow label="Scale" value={number(screen.scale)} testId="device-screen-scale" />
+            </InfoList>
+          )}
+        </Section>
+      )}
+      {type === 'networkType' && (
+        <Section
+          title="Get network type"
+          description="Wi-Fi, mobile data, Ethernet or offline"
+          action={
+            <Button testId="device-network-get-info" onClick={() => actions.getNetworkInfo()}>
+              Get info
+            </Button>
+          }
+        >
+          <InfoList testId="device-network-result">
+            <InfoRow label="Connected" value={yesNo(network.isConnected)} />
+            <InfoRow label="Network type" value={network.networkType} testId="device-network-type" />
+          </InfoList>
+        </Section>
+      )}
+      {type === 'localIP' && (
+        <Section
+          title="Get local IP addresses"
+          description="IPv4 and IPv6 on the active network"
+          action={
+            <Button testId="device-network-get-info" onClick={() => actions.getNetworkInfo()}>
+              Get IP
+            </Button>
+          }
+        >
+          <InfoList testId="device-network-result">
+            <InfoRow label="IPv4" value={network.ipv4} testId="device-ipv4" />
+            <InfoRow label="IPv6" value={network.ipv6} testId="device-ipv6" />
+          </InfoList>
+        </Section>
+      )}
+      {type === 'networkStatus' && (
+        <Section title="Network status listener" description="Report connectivity changes as they happen">
+          <view className="grid gap-3 grid-cols-2">
+            <Button testId="device-network-listen-start" onClick={() => actions.startNetworkChangeListen()}>
+              Start listening
+            </Button>
+            <Button variant="secondary" testId="device-network-listen-stop" onClick={() => actions.stopNetworkChangeListen()}>
+              Stop listening
+            </Button>
+          </view>
+          <InfoList testId="device-network-status">
+            <InfoRow label="Listening" value={data.networkListening ? 'Yes' : 'No'} testId="device-network-listening" />
+            <InfoRow label="Connected" value={yesNo(changed.isConnected)} />
+            <InfoRow label="Network type" value={changed.networkType} />
+            <InfoRow label="IPv4" value={changed.ipv4} />
+            <InfoRow label="IPv6" value={changed.ipv6} />
+          </InfoList>
+        </Section>
+      )}
+      {type === 'vibrate' && (
+        <Section title="Trigger vibration" description="Try a short or long vibration">
+          <view className="grid gap-3 grid-cols-2">
+            <Button testId="device-vibrate-short" onClick={() => actions.vibrateShort()}>
               Short
-            </button>
-            <button
-              onClick={vibrateLong}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
+            </Button>
+            <Button variant="secondary" testId="device-vibrate-long" onClick={() => actions.vibrateLong()}>
               Long
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  const renderDialSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Phone Call</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-orange-50 to-red-50">
-              <span className="text-xl">📞</span>
-            </div>
-            <div>
-              <div className="text-sm text-gray-800 font-semibold">Dial Phone Number</div>
-              <div className="text-xs text-gray-500 mt-0.5">Initiate a native dialer call</div>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <input
-              type="tel"
-              inputMode="tel"
-              value={phoneNumber}
-              onChange={(event) => setPhoneNumber(event.target.value)}
-              className="w-full px-4 py-3 text-sm border border-line-200 rounded-xl bg-surface focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              placeholder="Enter phone number"
-            />
-            <button
-              onClick={handleDial}
-              className="w-full py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Call
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  const renderNetworkTypeSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Network Type</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-cyan-50 to-sky-50">
-            <span className="text-2xl">🌐</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Get Network Type</div>
-            <div className="text-xs text-gray-500 mt-0.5">none / unknown / wifi / 2g / 3g / 4g / 5g / ethernet</div>
-          </div>
-          <button
-            data-testid="device-network-get-info"
-            onClick={getNetworkInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            </Button>
+          </view>
+        </Section>
+      )}
+      {type === 'dial' && (
+        <Section title="Dial a phone number" description="Open the native phone dialer">
+          <Field testId="device-phone-number" label="Phone number" bind={phone} type="tel" placeholder="Enter phone number" />
+          <Button
+            testId="device-phone-call"
+            disabled={!phone.value.trim()}
+            onClick={() => actions.makePhoneCall({ phoneNumber: phone.value.trim() })}
           >
-            Get Info
-          </button>
-        </div>
-
-        <div className="p-5" data-testid="device-network-result">
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <InfoRow label="Connected" value={networkInfo?.isConnected === undefined ? '--' : (networkInfo.isConnected ? 'Yes' : 'No')} />
-            <InfoRow label="Network Type" value={networkInfo?.networkType || '--'} />
-          </div>
-        </div>
-      </div>
-    </>
+            Call
+          </Button>
+        </Section>
+      )}
+      {type === 'orientation' && (
+        <Section title="Lock and follow orientation" description="Choose an orientation and listen for changes">
+          <view className="grid gap-3 grid-cols-2">
+            <Button testId="device-orientation-portrait" onClick={() => actions.setOrientationPortrait()}>
+              Lock portrait
+            </Button>
+            <Button testId="device-orientation-landscape" onClick={() => actions.setOrientationLandscape()}>
+              Lock landscape
+            </Button>
+            <Button variant="secondary" testId="device-orientation-listen-start" onClick={() => actions.startDeviceOrientationListen()}>
+              Start listening
+            </Button>
+            <Button variant="secondary" testId="device-orientation-listen-stop" onClick={() => actions.stopDeviceOrientationListen()}>
+              Stop listening
+            </Button>
+          </view>
+          <InfoList>
+            <InfoRow label="Listening" value={data.orientationListening ? 'Yes' : 'No'} />
+            <InfoRow label="Lock target" value={data.orientationLock} testId="device-orientation-lock" />
+            <InfoRow label="Current value" value={data.deviceOrientationValue} testId="device-orientation-value" />
+          </InfoList>
+          <view className="flex-row items-center justify-between gap-3">
+            <text className="text-sm font-semibold">Orientation events</text>
+            <Button variant="ghost" size="sm" testId="device-orientation-clear" onClick={() => actions.clearOrientationEvents()}>
+              Clear logs
+            </Button>
+          </view>
+          <scroll data-testid="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">
+            <text data-testid="device-orientation-events" className="text-xs break-all whitespace-pre-line">
+              {events.join('\n') || '--'}
+            </text>
+          </scroll>
+        </Section>
+      )}
+    </Page>
   );
-
-  const renderLocalIPSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Local IP Addresses</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-teal-50 to-emerald-50">
-            <span className="text-2xl">📡</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Get Local IPs (IPv4 + IPv6)</div>
-            <div className="text-xs text-gray-500 mt-0.5">Current active network addresses</div>
-          </div>
-          <button
-            data-testid="device-network-get-info"
-            onClick={getNetworkInfo}
-            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-linear-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-          >
-            Get IP
-          </button>
-        </div>
-
-        <div className="p-5" data-testid="device-network-result">
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <InfoRow label="IPv4" value={networkInfo?.ipv4?.length ? networkInfo.ipv4 : '--'} />
-            <InfoRow label="IPv6" value={networkInfo?.ipv6?.length ? networkInfo.ipv6 : '--'} />
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  const renderNetworkStatusSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Network Status Listener</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              data-testid="device-network-listen-start"
-              onClick={startNetworkChangeListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Start Listen
-            </button>
-            <button
-              data-testid="device-network-listen-stop"
-              onClick={stopNetworkChangeListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Stop Listen
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4" data-testid="device-network-status">
-            <InfoRow label="Listening" value={networkListening ? 'Yes' : 'No'} />
-            <InfoRow label="Connected" value={networkChange?.isConnected === undefined ? '--' : (networkChange.isConnected ? 'Yes' : 'No')} />
-            <InfoRow label="Network Type" value={networkChange?.networkType || '--'} />
-            <InfoRow label="IPv4" value={networkChange?.ipv4?.length ? networkChange.ipv4 : '--'} />
-            <InfoRow label="IPv6" value={networkChange?.ipv6?.length ? networkChange.ipv6 : '--'} />
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  const renderOrientationSection = () => (
-    <>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-light text-gray-800 mb-2">Device Orientation</h1>
-        <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-violet-50 to-indigo-50">
-              <span className="text-xl">🧭</span>
-            </div>
-            <div>
-              <div className="text-sm text-gray-800 font-semibold">setDeviceOrientation / onDeviceOrientationChange</div>
-              <div className="text-xs text-gray-500 mt-0.5">Lock orientation and listen device orientation changes</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={setOrientationPortrait}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Lock Portrait
-            </button>
-            <button
-              onClick={setOrientationLandscape}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Lock Landscape
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={startDeviceOrientationListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Start Listen
-            </button>
-            <button
-              onClick={stopDeviceOrientationListen}
-              className="py-3 text-sm font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
-            >
-              Stop Listen
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <InfoRow label="Listening" value={orientationListening ? 'Yes' : 'No'} />
-            <InfoRow label="Lock Target" value={orientationLock || '--'} />
-            <InfoRow label="Current Value" value={deviceOrientationValue || '--'} />
-          </div>
-
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-700">Orientation Events</h4>
-              <button
-                onClick={clearOrientationEvents}
-                className="px-3 py-1.5 text-xs font-medium transition-all duration-200 bg-linear-to-r from-surface-600 to-surface-500 hover:from-surface-500 hover:to-surface-600 text-white rounded-lg shadow-sm active:scale-[0.98]"
-              >
-                Clear Logs
-              </button>
-            </div>
-            <div className="text-xs text-gray-700 bg-surface border border-line-200 rounded-lg p-3 max-h-56 overflow-auto whitespace-pre-wrap break-all">
-              {orientationEventLines.length ? orientationEventLines.join('\n') : '--'}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  return (
-    <div className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100" data-testid="device-page" data-mode={currentType}>
-      <div className="px-4 py-6">
-        {currentType === 'device' && renderDeviceInfoSection()}
-        {currentType === 'screen' && renderScreenInfoSection()}
-        {currentType === 'vibrate' && renderVibrationSection()}
-        {currentType === 'dial' && renderDialSection()}
-        {currentType === 'networkType' && renderNetworkTypeSection()}
-        {currentType === 'localIP' && renderLocalIPSection()}
-        {currentType === 'networkStatus' && renderNetworkStatusSection()}
-        {currentType === 'orientation' && renderOrientationSection()}
-
-        {!['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus', 'orientation'].includes(currentType) && renderDeviceInfoSection()}
-      </div>
-    </div>
-  );
-}
-
-interface InfoRowProps {
-  label: string;
-  value?: string | number | string[];
-  suffix?: string;
-}
-
-function InfoRow({ label, value, suffix }: InfoRowProps) {
-  const display = value === undefined || value === null || value === '' ? '--' : value;
-  const text = suffix && display !== '--' ? `${display}${suffix}` : display;
-  const textContent = Array.isArray(text) ? text.join('\n') : String(text);
-  return (
-    <div className="flex justify-between items-start gap-3 py-3 border-b border-line-200 last:border-b-0">
-      <span className="text-sm text-gray-600 shrink-0">{label}</span>
-      <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg text-right max-w-[72%] whitespace-pre-wrap break-all">
-        {textContent}
-      </span>
-    </div>
-  );
-}
-
-function formatNumber(value: number | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '--';
-  }
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }

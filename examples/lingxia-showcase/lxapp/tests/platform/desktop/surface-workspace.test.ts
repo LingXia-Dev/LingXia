@@ -1,4 +1,5 @@
 import type { TestApp, TestView } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import { expect, test, type Fixture } from '@lingxia/test';
 import type {
   AutomationShellPin,
@@ -15,6 +16,8 @@ import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { attachShot } from '@lingxia/test/showcase/helpers/poll.js';
 import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers/view.js';
 import type { AppSurface } from '@lingxia/types';
+
+test.configure({ skip: notDesktop });
 
 function isLocalizedSettingsLabel(name: string): boolean {
   const trimmed = name.trim();
@@ -862,7 +865,7 @@ async function selectRootHomeFromGuest(
   await desktop.pointer.click({ at: rootRowPoint });
   await waitForValue(async () => {
     const candidate = await app.surfaceLayout();
-    return candidate.activeMainId === 'lingxia-showcase' ? true : undefined;
+    return candidate.activeMainId === SHOWCASE_APP_ID ? true : undefined;
   }, 'root workspace selected from its collapsed row');
   const homePagePoint = showcaseHomePagePoint(host, pinCount);
   await desktop.pointer.move({ at: homePagePoint });
@@ -1465,7 +1468,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         ? layout
         : undefined;
     }, `${platform} compact Chat overlay`);
-    expect(compactOverlay.activeMainId).toBe('lingxia-showcase');
+    expect(compactOverlay.activeMainId).toBe(SHOWCASE_APP_ID);
     expect(compactOverlay.mains.includes('lingxia-showcase-web')).toBeFalsy();
     expect(switcherIds(compactOverlay).includes('lingxia-showcase-web')).toBeFalsy();
 
@@ -1498,7 +1501,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         ? layout
         : undefined;
     }, `${platform} expanded Chat aside`);
-    expect(docked.activeMainId).toBe('lingxia-showcase');
+    expect(docked.activeMainId).toBe(SHOWCASE_APP_ID);
     host = await ensureHostForeground(desktop, host);
     await waitForValue(
       async () => platform === 'macos'
@@ -1764,7 +1767,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
       });
       overlayLayout = await waitForValue(chatAside, 'footer Chat aside after openDeclared');
     }
-    expect(overlayLayout.activeMainId).toBe('lingxia-showcase');
+    expect(overlayLayout.activeMainId).toBe(SHOWCASE_APP_ID);
     expect(overlayLayout.mains.includes('lingxia-showcase-web')).toBeFalsy();
     expect(switcherIds(overlayLayout).includes('lingxia-showcase-web')).toBeFalsy();
     expect(overlayLayout.asideSlots.find((slot) => (
@@ -1834,7 +1837,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
         ? layout
         : undefined;
     }, 'expanded docked Chat layout');
-    expect(dockedLayout.activeMainId).toBe('lingxia-showcase');
+    expect(dockedLayout.activeMainId).toBe(SHOWCASE_APP_ID);
 
     const chatWindow = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2349,7 +2352,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.sizeClass === 'expanded'
-        && candidate.activeMainId === 'lingxia-showcase'
+        && candidate.activeMainId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
     }, 'expanded main baseline');
@@ -2388,7 +2391,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
       ));
       return candidate.sizeClass === 'expanded' && slot ? candidate : undefined;
     }, 'declared Chat right aside');
-    expect(declaredAside.activeMainId).toBe('lingxia-showcase');
+    expect(declaredAside.activeMainId).toBe(SHOWCASE_APP_ID);
     expect(switcherIds(declaredAside).includes('lingxia-showcase-web')).toBeFalsy();
 
     const declaredAsideWindow = await waitForDesktopWindow(
@@ -2446,7 +2449,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return !containsSurface(candidate, 'lingxia-showcase-web')
-        && candidate.activeMainId === 'lingxia-showcase'
+        && candidate.activeMainId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
     }, 'closed promoted Chat workspace');
@@ -2597,8 +2600,8 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.currentPage?.startsWith('pages/home/index')
-        && candidate.activeMainId === 'lingxia-showcase'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        && candidate.activeMainId === SHOWCASE_APP_ID
+        && candidate.mainSwitcher.activeSurfaceId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
     }, 'root workspace selected from pinned Chat');
@@ -2649,8 +2652,8 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return !containsSurface(candidate, 'lingxia-showcase-web')
-        && candidate.activeMainId === 'lingxia-showcase'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        && candidate.activeMainId === SHOWCASE_APP_ID
+        && candidate.mainSwitcher.activeSurfaceId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
     }, 'native Chat close removed its workspace and selected root');
@@ -2770,12 +2773,12 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     const afterSidebarClick = await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.currentPage?.startsWith('pages/home/index')
-        && candidate.activeMainId === 'lingxia-showcase'
-        && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
+        && candidate.activeMainId === SHOWCASE_APP_ID
+        && candidate.mainSwitcher.activeSurfaceId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
     }, 'responsive sidebar after pinned Chat context menu');
-    expect(afterSidebarClick.activeMainId).toBe('lingxia-showcase');
+    expect(afterSidebarClick.activeMainId).toBe(SHOWCASE_APP_ID);
     expect(afterSidebarClick.mains.includes('lingxia-showcase-web')).toBeTruthy();
     expect(switcherIds(afterSidebarClick).includes('lingxia-showcase-web')).toBeTruthy();
     expect(afterSidebarClick.asideSlots.some((slot) => (

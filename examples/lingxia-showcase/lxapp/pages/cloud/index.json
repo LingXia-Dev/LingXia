@@ -1,5 +1,6 @@
 {
   "navigationStyle": "default",
+  "pageOrientation": "auto",
   "navigationBar": {
     "title": {
       "default": "Cloud",

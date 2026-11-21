@@ -1,137 +1,56 @@
-import React from 'react';
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { useLocal, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
-export default function SurfacePage() {
-  const { data, actions } = useLxPage();
-  const { logSurfaceMessage, hideSelf, closeSelf } = actions;
-  const queryString = data.queryString ?? '';
-  const showCount = data.showCount ?? 0;
-  const hideCount = data.hideCount ?? 0;
-  const lastLifecycle = data.lastLifecycle ?? 'onLoad';
-  const inboundCount = data.inboundCount ?? 0;
-  const lastInbound = data.lastInbound ?? '';
-  const [message, setMessage] = React.useState('');
-  // The counter survives hide() → show() round-trips because the page mount
-  // is preserved. After close() the page is destroyed and the counter resets,
-  // which is the visible difference between hide and close.
-  const [counter, setCounter] = React.useState(0);
-
-  const handleSend = React.useCallback(async () => {
-    const text = message.trim();
-    if (!text) {
-      return;
-    }
-
-    try {
-      await logSurfaceMessage({ message: text });
-      setMessage('');
-    } catch (error) {
-      console.error('logSurfaceMessage failed:', error);
-    }
-  }, [message, logSurfaceMessage]);
-
+export function render({ data, actions }: View) {
+  const count = useLocal('counter', 0);
+  const message = useLocal('message', '');
+  const send = async () => {
+    await actions.logSurfaceMessage({ message: message.value.trim() });
+    message.set('');
+  };
   return (
-    <div
-      data-testid="surface-page"
-      className="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6"
-    >
-      <div className="w-full max-w-md space-y-6">
-        <header>
-          <h1 className="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Inspect the query string and send a message to the opener.
-          </p>
-        </header>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">Query String</div>
-          <div className="font-mono text-sm text-gray-800 break-words">
-            {queryString || '(none)'}
-          </div>
-        </section>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">Page lifecycle</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-surface-50 rounded-md px-3 py-2">
-              <div className="text-xs text-gray-500">onShow</div>
-              <div data-testid="surface-show-count" className="font-mono text-base text-gray-900">
-                {showCount}
-              </div>
-            </div>
-            <div className="bg-surface-50 rounded-md px-3 py-2">
-              <div className="text-xs text-gray-500">onHide</div>
-              <div className="font-mono text-base text-gray-900">{hideCount}</div>
-            </div>
-          </div>
-          <div className="text-xs text-gray-500">
-            Last event: <span className="font-mono text-gray-800">{lastLifecycle}</span>
-          </div>
-        </section>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">In-page counter</div>
-          <div className="font-mono text-2xl text-gray-900">{counter}</div>
-          <div className="text-xs text-gray-500">
-            Hide preserves this counter; close resets it on re-open.
-          </div>
-          <button
-            type="button"
-            onClick={() => setCounter((value) => value + 1)}
-            className="w-full h-10 text-sm font-medium rounded-md bg-surface-200 hover:bg-surface-300 text-gray-900 transition-colors"
-          >
-            Increment
-          </button>
-        </section>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">From opener</div>
-          <div className="text-xs text-gray-500">
-            Received: <span data-testid="surface-inbound-count" className="font-mono text-gray-800">{inboundCount}</span>
-          </div>
-          <div data-testid="surface-inbound" className="font-mono text-sm text-gray-800 break-words">
-            {lastInbound || '(none)'}
-          </div>
-        </section>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">Message</div>
-          <input
-            className="w-full px-3 py-2 rounded-md bg-surface border border-line-300 text-sm text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            placeholder="Message to parent page"
-            data-controlled-value={message}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
-          <button
-            type="button"
-            data-testid="surface-send-message"
-            onClick={handleSend}
-            className="w-full h-10 text-sm font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-          >
-            Send then close
-          </button>
-        </section>
-
-        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
-          <div className="text-xs uppercase text-gray-500 tracking-wide">Self actions</div>
-          <button
-            type="button"
-            onClick={() => hideSelf?.()}
-            className="w-full h-10 text-sm font-medium rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors"
-          >
-            Hide (parent can show again)
-          </button>
-          <button
-            type="button"
-            onClick={() => closeSelf?.()}
-            className="w-full h-10 text-sm font-medium rounded-md bg-rose-500 hover:bg-rose-600 text-white transition-colors"
-          >
-            Close (destroys this page)
-          </button>
-        </section>
-      </div>
-    </div>
+    <Page testId="surface-page" scrollId="surface-scroll" intro="Inspect the query string and send a message to the opener.">
+      <Section title="Query string">
+        <text data-testid="surface-query" className="font-mono text-sm">
+          {String(data.queryString || '(none)')}
+        </text>
+      </Section>
+      <Section title="Page lifecycle">
+        <InfoList>
+          <InfoRow label="onShow" value={String(data.showCount || 0)} testId="surface-show-count" />
+          <InfoRow label="onHide" value={String(data.hideCount || 0)} testId="surface-hide-count" />
+          <InfoRow label="Last event" value={data.lastLifecycle || 'onLoad'} testId="surface-lifecycle" />
+        </InfoList>
+      </Section>
+      <Section title="In-page counter" description="Hide preserves this counter; close resets it on re-open.">
+        <text data-testid="surface-counter" className="font-mono text-2xl">
+          {String(count.value)}
+        </text>
+        <Button variant="secondary" testId="surface-increment" onClick={() => count.set(count.value + 1)}>
+          Increment
+        </Button>
+      </Section>
+      <Section title="From opener">
+        <InfoRow label="Received" value={String(data.inboundCount || 0)} testId="surface-inbound-count" />
+        <text data-testid="surface-inbound" className="font-mono text-sm">
+          {String(data.lastInbound || '(none)')}
+        </text>
+      </Section>
+      <Section title="Message">
+        <Field testId="surface-message" data={{ 'data-controlled-value': message.value }} label="Message to parent page" bind={message} placeholder="Message to parent page" />
+        <Button testId="surface-send-message" disabled={!message.value.trim()} onClick={send}>
+          Send then close
+        </Button>
+      </Section>
+      <Section title="Self actions">
+        <Button variant="secondary" testId="surface-hide" onClick={() => actions.hideSelf()}>
+          Hide (parent can show again)
+        </Button>
+        <Button variant="destructive" testId="surface-close" onClick={() => actions.closeSelf()}>
+          Close (destroys this page)
+        </Button>
+      </Section>
+    </Page>
   );
 }

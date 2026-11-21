@@ -1,4 +1,5 @@
 import { expect, test, type Fixture } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 
 /**
@@ -10,7 +11,7 @@ import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-test.configure({ skip: httpBase && !selectedGate ? undefined : 'needs --arg httpBase; not in a gate run' });
+test.configure({ skip: notDesktop ?? (httpBase && !selectedGate ? undefined : 'needs --arg httpBase; not in a gate run') });
 
 const FORM_URL = `${httpBase}/browser/form.html`;
 

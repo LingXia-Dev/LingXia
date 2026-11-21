@@ -1,108 +1,47 @@
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
 // Enough rows to scroll on a phone, so a pull below the top scrolls instead.
 const ROWS = Array.from({ length: 24 }, (_, i) => i + 1);
 
-export default function PullDownRefreshPage() {
-  const { data, actions } = useLxPage();
-  const { startRefresh, stopRefresh } = actions;
-
-  const {
-    refreshCount = 0,
-    lastRefreshTime = null,
-    isRefreshing = false,
-  } = data;
-
+export function render({ data, actions }: View) {
+  const refreshing = Boolean(data.isRefreshing);
   return (
-    <div className="min-h-screen bg-surface-100" data-testid="pull-refresh-page">
-      <div className="px-4 py-6 pb-12 space-y-4">
-
-        {/* Header Info Card */}
-        <div className="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-          <div className="px-4 py-5 text-center">
-            <div className="w-12 h-12 mx-auto mb-3 text-blue-500 dark:text-blue-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-            </div>
-            <div className="text-base text-gray-900 font-medium mb-2">
-              Pull Down Refresh Demo
-            </div>
-            <div className="text-sm text-gray-500">
-              Pull down on this page to trigger refresh, or use the buttons below to control it programmatically.
-            </div>
-          </div>
-        </div>
-
-        {/* Status Card */}
-        <div className="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-line-100">
-            <h3 className="text-base font-medium text-gray-900">Refresh Status</h3>
-          </div>
-          <div className="px-4 py-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Status</span>
-              <span data-testid="pull-refresh-status" className={`text-sm font-medium ${isRefreshing ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
-                {isRefreshing ? 'Refreshing...' : 'Idle'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Refresh Count</span>
-              <span data-testid="pull-refresh-count" className="text-sm font-medium text-gray-900">{refreshCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Last Refresh</span>
-              <span className="text-sm font-medium text-gray-900">
-                {lastRefreshTime || 'Never'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* API Controls */}
-        <div className="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-line-100">
-            <h3 className="text-base font-medium text-gray-900">API Controls</h3>
-            <p className="text-sm text-gray-500 mt-1">Control refresh programmatically</p>
-          </div>
-          <div className="p-4 space-y-3">
-            <button
-              data-testid="pull-refresh-start"
-              onClick={startRefresh}
-              disabled={isRefreshing}
-              className={`w-full py-3 px-4 rounded-lg text-sm font-medium transition-colors ${
-                isRefreshing
-                  ? 'bg-surface-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
-              }`}
-            >
-              page.refresh()
-            </button>
-            <button
-              data-testid="pull-refresh-stop"
-              onClick={stopRefresh}
-              className="w-full bg-surface-500 hover:bg-surface-600 text-white py-3 px-4 rounded-lg text-sm font-medium transition-colors"
-            >
-              Finish refresh
-            </button>
-          </div>
-        </div>
-
-        {/* Sample rows */}
-        <div className="bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-line-100">
-            <h3 className="text-base font-medium text-gray-900">Sample Rows</h3>
-            <p className="text-sm text-gray-500 mt-1">Scroll the page: a pull refreshes only from the top</p>
-          </div>
+    <Page
+      testId="pull-refresh-page"
+      intro="Pull down on this page to trigger refresh, or use the buttons below to control it programmatically."
+    >
+      <text data-testid="pull-refresh-title" className="text-xs text-muted text-center">
+        Pull down to refresh
+      </text>
+      <Section title="Refresh Status">
+        <InfoList>
+          <view className="flex-row items-center justify-between gap-3 py-2.5">
+            <text className="text-sm text-muted">Status</text>
+            <text data-testid="pull-refresh-status" className={refreshing ? 'text-sm font-medium text-accent' : 'text-sm font-medium text-success'}>
+              {refreshing ? 'Refreshing...' : 'Idle'}
+            </text>
+          </view>
+          <InfoRow label="Refresh Count" value={String(data.refreshCount ?? 0)} testId="pull-refresh-count" />
+          <InfoRow label="Last Refresh" value={data.lastRefreshTime || 'Never'} testId="pull-refresh-time" />
+        </InfoList>
+      </Section>
+      <Section title="API Controls" description="Control refresh programmatically">
+        <Button testId="pull-refresh-start" disabled={refreshing} onClick={() => actions.startRefresh()}>
+          page.refresh()
+        </Button>
+        <Button variant="secondary" testId="pull-refresh-stop" onClick={() => actions.stopRefresh()}>
+          Finish refresh
+        </Button>
+      </Section>
+      <Section title="Sample Rows" description="Scroll the page: a pull refreshes only from the top">
+        <InfoList>
           {ROWS.map((row) => (
-            <div key={row} data-testid="pull-refresh-row" className="px-4 py-3 border-b border-line-100 text-sm text-gray-700">
-              Row {row}
-            </div>
+            <text key={String(row)} data-testid="pull-refresh-row" className="text-sm py-2.5">Row {row}</text>
           ))}
-        </div>
-
-      </div>
-    </div>
+        </InfoList>
+      </Section>
+    </Page>
   );
 }

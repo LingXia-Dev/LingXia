@@ -1,9 +1,9 @@
 {
+  "pageOrientation": "landscape",
   "navigationBar": {
     "title": {
       "default": "WiFi",
       "zh-CN": "WiFi"
     }
-  },
-  "pageOrientation": "landscape"
+  }
 }

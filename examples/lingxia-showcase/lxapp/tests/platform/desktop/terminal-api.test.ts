@@ -1,4 +1,5 @@
 import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
@@ -14,7 +15,7 @@ type TerminalProbeStates = Record<string, TerminalProbeState | undefined>;
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: notDesktop ?? (selectedGate ? 'a --arg gate run selects only its gate' : undefined) });
 
 /**
  * `lx.host.terminal` exists only inside the host-bundled Terminal Settings lxapp.

@@ -1,598 +1,253 @@
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, EmptyState, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 
-type TenantLike = {
-  tenantId?: string;
-  tenantName?: string;
-  displayName?: string;
-  logoUrl?: string;
-};
+type Data = Record<string, any>;
+type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
+type Pane = { data: Data; actions: Actions };
+type Tenant = { tenantId?: string; tenantName?: string; displayName?: string; shortName?: string; logoUrl?: string };
+type User = { id?: string; name?: string; avatar?: string };
 
-type UserLike = {
-  id?: string;
-  name?: string;
-  avatar?: string;
-};
-
-type CloudPageType = 'auth' | 'mqtt' | 'functions';
-
-type PageData = {
-  type?: CloudPageType;
-  status?: string;
-  tenant?: TenantLike | null;
-  user?: UserLike | null;
-  tenants?: TenantLike[];
-
-  mqttStatus?: string;
-  mqttRuntimeState?: string;
-  mqttLastError?: string;
-  mqttSubscribed?: boolean;
-  mqttTopicFilter?: string;
-  mqttMessageCount?: number;
-  mqttLastTopic?: string;
-  mqttLastPayload?: string;
-  mqttLastReceivedAt?: string;
-
-  functionsStatus?: string;
-  functionsAvailable?: string[];
-  functionsLastCall?: string;
-  functionsLastResult?: string;
-};
-
-type PageActions = {
-  loginInteractive: () => void | Promise<void>;
-  addTenant: () => void | Promise<void>;
-  logoutCurrentTenant: () => void | Promise<void>;
-  activateTenant: (params: { tenantId: string }) => void | Promise<void>;
-  startMqttDemo: () => void | Promise<void>;
-  stopMqttDemo: () => void | Promise<void>;
-  callNamedFunction: (params: { name: string }) => void | Promise<void>;
-};
-
-function getTenantId(tenant: TenantLike | null | undefined): string {
-  return tenant?.tenantId || '';
+export function render({ data, actions }: View) {
+  const pane = { data: data as Data, actions: actions as Actions };
+  if (data.type === 'mqtt') return <Mqtt {...pane} />;
+  if (data.type === 'functions') return <Functions {...pane} />;
+  return <Auth {...pane} />;
 }
 
-function getTenantName(tenant: TenantLike | null | undefined): string {
-  return tenant?.displayName || tenant?.tenantName || tenant?.tenantId || 'Unknown tenant';
-}
-
-function getTenantLogoUrl(tenant: TenantLike | null | undefined): string {
-  return tenant?.logoUrl || '';
-}
-
-function getTenantShortName(tenant: TenantLike | null | undefined): string {
-  return tenant?.shortName || '';
-}
-
-function mqttStateColor(state: string): string {
-  switch (state) {
-    case 'connected': return 'text-emerald-600 dark:text-emerald-400';
-    case 'connecting':
-    case 'reconnecting': return 'text-amber-600 dark:text-amber-400';
-    case 'disconnected':
-    case 'error': return 'text-red-600 dark:text-red-400';
-    default: return 'text-gray-600';
-  }
-}
-
-function mqttStateDot(state: string): string {
-  switch (state) {
-    case 'connected': return 'bg-emerald-500';
-    case 'connecting':
-    case 'reconnecting': return 'bg-amber-500';
-    case 'disconnected':
-    case 'error': return 'bg-red-500';
-    default: return 'bg-surface-400';
-  }
-}
-
-function authStatusColor(status: string): string {
+const tenantName = (tenant: Tenant) => tenant.displayName || tenant.tenantName || tenant.tenantId || 'Unknown tenant';
+const tone = (status: string) => {
   const lower = status.toLowerCase();
-  if (lower.includes('failed') || lower.includes('error')) return 'text-red-600 dark:text-red-400 bg-red-50';
-  if (lower.includes('succeeded') || lower === 'ready') return 'text-emerald-700 dark:text-emerald-400 bg-emerald-50';
-  if (lower.includes('...') || lower.includes('starting') || lower.includes('switching') || lower.includes('logging')) return 'text-amber-700 dark:text-amber-400 bg-amber-50';
-  return 'text-gray-800 bg-blue-50';
+  if (lower.includes('failed') || lower.includes('error')) return 'text-danger';
+  if (lower.includes('succeeded') || lower === 'ready') return 'text-success';
+  return ['...', 'starting', 'switching', 'logging'].some(word => lower.includes(word)) ? 'text-warning' : 'text-text';
+};
+
+function Avatar({ src }: { src?: string }) {
+  return src ? <image src={src} alt="" className="w-8 h-8 shrink-0 rounded-full border border-line bg-surface object-cover" /> : null;
 }
 
-function CloudAuthView({
-  status,
-  tenant,
-  user,
-  tenants,
-  loginInteractive,
-  addTenant,
-  logoutCurrentTenant,
-  activateTenant,
-}: {
-  status: string;
-  tenant: TenantLike | null;
-  user: UserLike | null;
-  tenants: TenantLike[];
-  loginInteractive: () => void | Promise<void>;
-  addTenant: () => void | Promise<void>;
-  logoutCurrentTenant: () => void | Promise<void>;
-  activateTenant: (params: { tenantId: string }) => void | Promise<void>;
-}) {
-  const activeTenantId = getTenantId(tenant);
-
+function Code({ testId, children }: { testId: string; children: string }) {
   return (
-    <>
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-sky-50 to-cyan-50">
-              <span className="text-xl">C</span>
-            </div>
-            <div>
-              <div className="text-sm text-gray-800 font-semibold">Cloud Authentication</div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  Login returns the active identity; the home lxapp manages identity list, activation and logout.
-                </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {/* Login is the unauthenticated entry; once an identity is active
-                it silently refreshes, so hide it in favor of Add Identity. */}
-            {!tenant ? (
-              <button
-                data-testid="cloud-login"
-                onClick={loginInteractive}
-                className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
-              >
-                Interactive Login
-              </button>
-            ) : null}
-            <button
-              data-testid="cloud-add-identity"
-              onClick={addTenant}
-              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
-            >
-              Add Identity
-            </button>
-            <button
-              data-testid="cloud-logout"
-              onClick={logoutCurrentTenant}
-              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-linear-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
-            >
-              Logout Current Tenant
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-indigo-50">
-            <span className="text-2xl">S</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Current State</div>
-            <div className="text-xs text-gray-500 mt-0.5">Latest cloud auth snapshot from the runtime</div>
-          </div>
-        </div>
-        <div className="p-5">
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
-              <h4 className="text-sm font-semibold text-gray-700">Status</h4>
-            </div>
-            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
-              <span className="text-sm text-gray-600">Status</span>
-              <span data-testid="cloud-auth-status" className={`text-sm font-semibold px-3 py-1 rounded-lg text-right ${authStatusColor(status)}`}>{status}</span>
-            </div>
-            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
-              <span className="text-sm text-gray-600">Active Tenant</span>
-              <div className="flex items-center gap-3 px-3 py-2 bg-blue-50 rounded-lg">
-                {getTenantLogoUrl(tenant) ? (
-                  <img
-                    src={getTenantLogoUrl(tenant)}
-                    alt={getTenantName(tenant)}
-                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
-                  />
-                ) : null}
-                <span className="text-sm font-semibold text-gray-800 text-right">
-                  {tenant ? getTenantName(tenant) : 'No active tenant'}
-                </span>
-                {getTenantShortName(tenant) ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:text-blue-400">
-                    {getTenantShortName(tenant)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex justify-between items-center py-3 border-b border-line-200 gap-4">
-              <span className="text-sm text-gray-600">Active User</span>
-              <div className="flex items-center gap-3 px-3 py-2 bg-emerald-50 rounded-lg">
-                {user?.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name || ''}
-                    className="w-8 h-8 rounded-full border border-white shadow-sm bg-surface object-cover"
-                  />
-                ) : null}
-                <span className="text-sm font-semibold text-gray-800 text-right">
-                  {user?.name || 'Not signed in'}
-                </span>
-                {user?.id ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:text-emerald-400">
-                    {user.id}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-purple-50 to-pink-50">
-            <span className="text-2xl">T</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-gray-800 font-semibold">Tenants</div>
-            <div className="text-xs text-gray-500 mt-0.5">Activate or remove identities returned by lx.auth.list()</div>
-          </div>
-          <div className="text-xs text-gray-500">{tenants.length}</div>
-        </div>
-        <div className="p-5">
-          {tenants.length === 0 ? (
-            <div className="text-sm text-gray-500">No tenants yet. Run interactive login first.</div>
-          ) : (
-            <div className="space-y-3">
-              {tenants.map((item, index) => {
-                const tenantId = getTenantId(item);
-                const isActive = tenantId !== '' && tenantId === activeTenantId;
-                return (
-                  <button
-                    key={`${tenantId || 'tenant'}-${index}`}
-                    disabled={!tenantId || isActive}
-                    onClick={() => tenantId && activateTenant({ tenantId })}
-                    className={`w-full p-4 rounded-xl border text-left transition-colors ${
-                      isActive
-                        ? 'border-sky-200 bg-sky-50'
-                        : 'border-line-200 bg-surface hover:border-emerald-200 hover:bg-emerald-50/30'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {getTenantLogoUrl(item) ? (
-                          <img
-                            src={getTenantLogoUrl(item)}
-                            alt={getTenantName(item)}
-                            className="w-10 h-10 rounded-full border border-line-200 bg-surface object-cover shrink-0"
-                          />
-                        ) : null}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-800">{getTenantName(item)}</span>
-                            {getTenantShortName(item) ? (
-                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-100 text-gray-600">
-                                {getTenantShortName(item)}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="mt-1 text-xs text-gray-500 break-all">{tenantId || 'Missing tenantId'}</div>
-                        </div>
-                      </div>
-                      <div className="text-xs px-2 py-1 rounded-full bg-surface-100 text-gray-600">
-                        {isActive ? 'Active' : tenantId ? 'Switch' : 'Unavailable'}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
+    <text data-testid={testId} className="p-3 rounded-lg bg-surface-sunken text-text text-xs font-mono break-all whitespace-pre-wrap">
+      {children}
+    </text>
   );
 }
 
-function CloudMqttView({
-  mqttStatus,
-  mqttRuntimeState,
-  mqttLastError,
-  mqttSubscribed,
-  mqttTopicFilter,
-  mqttMessageCount,
-  mqttLastTopic,
-  mqttLastPayload,
-  mqttLastReceivedAt,
-  startMqttDemo,
-  stopMqttDemo,
-}: {
-  mqttStatus: string;
-  mqttRuntimeState: string;
-  mqttLastError: string;
-  mqttSubscribed: boolean;
-  mqttTopicFilter: string;
-  mqttMessageCount: number;
-  mqttLastTopic: string;
-  mqttLastPayload: string;
-  mqttLastReceivedAt: string;
-  startMqttDemo: () => void | Promise<void>;
-  stopMqttDemo: () => void | Promise<void>;
-}) {
+function Auth({ data, actions }: Pane) {
+  const tenant = data.tenant as Tenant | null;
+  const user = data.user as User | null;
+  const tenants = (data.tenants || []) as Tenant[];
+  const status = String(data.status || 'Idle');
   return (
-    <>
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-line-100">
-          <div className="text-sm text-gray-800 font-semibold">Runtime Connection</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            MQTT runtime status for the shared cloud session.
-          </div>
-        </div>
-        <div className="p-5">
-          <div className="grid gap-2 rounded-xl bg-sky-50/70 p-4 text-xs text-gray-600">
-            <div className="flex items-center justify-between gap-3">
-              <span>Connection state</span>
-              <span className="flex items-center gap-1.5">
-                <span className={`inline-block w-2 h-2 rounded-full ${mqttStateDot(mqttRuntimeState)}`} />
-                <span className={`font-mono font-semibold ${mqttStateColor(mqttRuntimeState)}`}>{mqttRuntimeState}</span>
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span>Last error</span>
-              <span className={`font-mono text-right ${mqttLastError ? 'text-red-600 dark:text-red-400' : 'text-gray-800'}`}>{mqttLastError || '-'}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-line-100">
-          <div className="text-sm text-gray-800 font-semibold">Topic Subscription</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            Manage the demo topic subscription and inspect how many messages this page has received.
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="rounded-xl border border-line-200 bg-emerald-50/60 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Topic</div>
-                <div className="mt-2 font-mono text-sm text-gray-900 break-all">{mqttTopicFilter}</div>
-              </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${mqttSubscribed ? 'bg-emerald-100 text-emerald-700 dark:text-emerald-400' : 'bg-surface-100 text-gray-500'}`}>
-                {mqttSubscribed ? 'active' : 'inactive'}
-              </span>
-            </div>
-            <div data-testid="cloud-mqtt-status" className="mt-3 text-sm font-semibold text-gray-800">{mqttStatus}</div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button
-                data-testid="cloud-subscribe"
-                onClick={startMqttDemo}
-                disabled={mqttSubscribed}
-                className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
-                  mqttSubscribed
-                    ? 'bg-surface-100 text-gray-400'
-                    : 'bg-linear-to-r from-emerald-600 to-emerald-500 text-white'
-                }`}
-              >
-                Subscribe
-              </button>
-              <button
-                data-testid="cloud-unsubscribe"
-                onClick={stopMqttDemo}
-                disabled={!mqttSubscribed}
-                className={`py-3 text-sm font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] ${
-                  mqttSubscribed
-                    ? 'bg-linear-to-r from-rose-600 to-rose-500 text-white'
-                    : 'bg-surface-100 text-gray-400'
-                }`}
-              >
-                Unsubscribe
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-2 rounded-xl bg-surface p-4 text-xs text-gray-600 border border-line-200">
-            <div className="flex items-center justify-between gap-3">
-              <span>Subscription state</span>
-              <span className={`font-mono font-semibold ${mqttSubscribed ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500'}`}>
-                {mqttSubscribed ? 'active' : 'inactive'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span>Messages received</span>
-              <span className="font-mono text-gray-800">{mqttMessageCount}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-line-100">
-          <div className="text-sm text-gray-800 font-semibold">Latest Message</div>
-          <div className="text-xs text-gray-500 mt-0.5">Incoming message data is written back through setData.</div>
-        </div>
-        <div className="p-5">
-          {mqttMessageCount === 0 ? (
-            <div className="rounded-xl border border-dashed border-line-300 bg-surface-50 p-6 text-sm text-gray-500">
-              No message yet. Publish one to the topic above.
-            </div>
-          ) : (
-            <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-              <div className="grid gap-3 text-sm">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Topic</div>
-                  <div className="mt-1 font-mono text-gray-800 break-all">{mqttLastTopic}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Received at</div>
-                  <div className="mt-1 text-gray-800">{mqttLastReceivedAt}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Payload</div>
-                  <pre className="mt-1 rounded-lg bg-slate-900 text-slate-100 p-3 text-xs whitespace-pre-wrap break-all">
-                    {mqttLastPayload || '(empty payload)'}
-                  </pre>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function CloudFunctionsView({
-  functionsStatus,
-  functionsAvailable,
-  functionsLastCall,
-  functionsLastResult,
-  callNamedFunction,
-}: {
-  functionsStatus: string;
-  functionsAvailable: string[];
-  functionsLastCall: string;
-  functionsLastResult: string;
-  callNamedFunction: (params: { name: string }) => void | Promise<void>;
-}) {
-  return (
-    <>
-      <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-line-100">
-          <div className="text-sm text-gray-800 font-semibold">Current LxApp Functions</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            These sample calls use `lx.cloud.invoke(...)` for the current lxapp. They are demo actions, not a runtime-discovered manifest list.
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="rounded-xl border border-line-200 bg-indigo-50/60 p-4">
-            <div className="text-xs uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Status</div>
-            <div data-testid="cloud-functions-status" className="mt-2 text-sm font-semibold text-gray-800">{functionsStatus}</div>
-            {functionsAvailable.length === 0 ? null : (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {functionsAvailable.map((name) => (
-                  <button
-                    key={name}
-                    data-testid="cloud-function" data-function={name}
-                    onClick={() => callNamedFunction({ name })}
-                    className="px-4 py-2 rounded-xl text-sm font-medium bg-linear-to-r from-sky-600 to-sky-500 text-white"
-                  >
-                    Call {name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="rounded-xl border border-line-200 bg-surface-50 p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Demo Functions</div>
-            {functionsAvailable.length === 0 ? (
-              <div className="mt-2 text-sm text-gray-500">
-                No demo functions are configured for this page.
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {functionsAvailable.map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center rounded-full bg-surface border border-line-200 px-3 py-1 text-xs font-mono text-gray-700"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-        <div className="px-5 py-5 border-b border-line-100">
-          <div className="text-sm text-gray-800 font-semibold">Last Result</div>
-          <div className="text-xs text-gray-500 mt-0.5">Most recent cloud function invocation output.</div>
-        </div>
-        <div className="p-5">
-          <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Function</div>
-            <div className="mt-2 text-sm font-semibold text-gray-800">{functionsLastCall || '-'}</div>
-            <div className="mt-4 text-xs uppercase tracking-wide text-gray-500">Result</div>
-            <pre className="mt-2 rounded-lg bg-slate-900 text-slate-100 p-3 text-xs whitespace-pre-wrap break-all min-h-[96px]">
-              {functionsLastResult || '(no result yet)'}
-            </pre>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-export default function CloudPage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-  const {
-    loginInteractive,
-    addTenant,
-    logoutCurrentTenant,
-    activateTenant,
-    startMqttDemo,
-    stopMqttDemo,
-    callNamedFunction,
-  } = actions;
-  const {
-    type = 'auth',
-    status = 'Idle',
-    tenant = null,
-    user = null,
-    tenants = [],
-    mqttStatus = 'Idle',
-    mqttRuntimeState = 'idle',
-    mqttLastError = '',
-    mqttSubscribed = false,
-    mqttTopicFilter = 'demo/mqtt',
-    mqttMessageCount = 0,
-    mqttLastTopic = '',
-    mqttLastPayload = '',
-    mqttLastReceivedAt = '',
-    functionsStatus = 'Idle',
-    functionsAvailable = [],
-    functionsLastCall = '',
-    functionsLastResult = '',
-  } = data;
-
-  return (
-    <div data-testid="cloud-page" data-mode={type} className="min-h-screen bg-linear-to-br from-surface-50 to-surface-100">
-      <div className="px-4 py-6">
-        {type === 'mqtt' ? (
-          <CloudMqttView
-            mqttStatus={mqttStatus}
-            mqttRuntimeState={mqttRuntimeState}
-            mqttLastError={mqttLastError}
-            mqttSubscribed={mqttSubscribed}
-            mqttTopicFilter={mqttTopicFilter}
-            mqttMessageCount={mqttMessageCount}
-            mqttLastTopic={mqttLastTopic}
-            mqttLastPayload={mqttLastPayload}
-            mqttLastReceivedAt={mqttLastReceivedAt}
-            startMqttDemo={startMqttDemo}
-            stopMqttDemo={stopMqttDemo}
-          />
-        ) : type === 'functions' ? (
-          <CloudFunctionsView
-            functionsStatus={functionsStatus}
-            functionsAvailable={functionsAvailable}
-            functionsLastCall={functionsLastCall}
-            functionsLastResult={functionsLastResult}
-            callNamedFunction={callNamedFunction}
-          />
-        ) : (
-          <CloudAuthView
-            status={status}
-            tenant={tenant}
-            user={user}
-            tenants={tenants}
-            loginInteractive={loginInteractive}
-            addTenant={addTenant}
-            logoutCurrentTenant={logoutCurrentTenant}
-            activateTenant={activateTenant}
-          />
+    <Page
+      testId="cloud-page"
+      data={{ 'data-mode': 'auth' }}
+      intro="Login returns the active identity; the home lxapp manages identity list, activation and logout."
+    >
+      <view className="grid gap-3 grid-cols-2">
+        {!tenant && (
+          <Button testId="cloud-login" onClick={() => actions.loginInteractive()}>
+            Interactive Login
+          </Button>
         )}
-      </div>
-    </div>
+        <Button variant="secondary" testId="cloud-add-identity" onClick={() => actions.addTenant()}>
+          Add Identity
+        </Button>
+        <Button variant="destructive" testId="cloud-logout" onClick={() => actions.logoutCurrentTenant()}>
+          Logout Current Tenant
+        </Button>
+      </view>
+      <Section title="Current State" description="Latest cloud auth snapshot from the runtime">
+        <InfoList>
+          <view className="flex-row items-center justify-between gap-4 py-2.5">
+            <text className="text-sm text-muted">Status</text>
+            <text data-testid="cloud-auth-status" className={`text-sm font-semibold text-right ${tone(status)}`}>
+              {status}
+            </text>
+          </view>
+          <view className="flex-row items-center gap-3 py-2.5">
+            <text className="grow basis-0 text-sm text-muted">Active Tenant</text>
+            <Avatar src={tenant?.logoUrl} />
+            <view className="items-end gap-1">
+              <text data-testid="cloud-current-tenant" className="text-sm font-semibold text-right">
+                {tenant ? tenantName(tenant) : 'No active tenant'}
+              </text>
+              {!!tenant?.shortName && (
+                <text data-testid="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-accent-soft text-xs font-semibold text-accent">
+                  {tenant.shortName}
+                </text>
+              )}
+            </view>
+          </view>
+          <view className="flex-row items-center gap-3 py-2.5">
+            <text className="grow basis-0 text-sm text-muted">Active User</text>
+            <Avatar src={user?.avatar} />
+            <view className="items-end gap-1">
+              <text data-testid="cloud-current-user" className="text-sm font-semibold text-right">
+                {user?.name || 'Not signed in'}
+              </text>
+              {!!user?.id && (
+                <text data-testid="cloud-user-id" className="text-xs text-muted break-all">
+                  {user.id}
+                </text>
+              )}
+            </view>
+          </view>
+        </InfoList>
+      </Section>
+      <Section
+        title="Tenants"
+        description="Activate or remove identities returned by lx.auth.list()"
+        action={
+          <text data-testid="cloud-tenants-count" className="text-xs text-muted">
+            {String(tenants.length)}
+          </text>
+        }
+      >
+        {!tenants.length && <EmptyState testId="cloud-identities-empty" icon="cloud" title="No tenants yet" message="Run interactive login first." />}
+        {tenants.map((item, index) => {
+          const active = !!item.tenantId && item.tenantId === tenant?.tenantId;
+          const state = active ? 'Active' : item.tenantId ? 'Switch' : 'Unavailable';
+          return (
+            <button
+              key={`${item.tenantId || 'tenant'}-${index}`}
+              data-testid={`cloud-activate-${item.tenantId || index}`}
+              disabled={!item.tenantId || active}
+              onClick={() => actions.activateTenant({ tenantId: item.tenantId })}
+              className={
+                active
+                  ? 'p-4 rounded-xl border border-line bg-accent-soft text-text text-left'
+                  : 'p-4 rounded-xl border border-line bg-surface text-text text-left active:bg-surface-sunken'
+              }
+            >
+              <view className="flex-row items-center gap-3">
+                <Avatar src={item.logoUrl} />
+                <view className="grow basis-0 min-w-0 gap-1">
+                  <text className="text-sm font-semibold">{tenantName(item)}</text>
+                  {!!item.shortName && <text className="text-xs font-semibold text-muted">{item.shortName}</text>}
+                  <text className="text-xs text-muted break-all">{item.tenantId || 'Missing tenantId'}</text>
+                </view>
+                <text className="px-2 py-1 rounded-full bg-surface-sunken text-xs text-muted">{state}</text>
+              </view>
+            </button>
+          );
+        })}
+      </Section>
+    </Page>
+  );
+}
+
+function Mqtt({ data, actions }: Pane) {
+  const state = String(data.mqttRuntimeState || 'idle');
+  const connected = state === 'connected';
+  const waiting = state === 'connecting' || state === 'reconnecting';
+  const failed = state === 'disconnected' || state === 'error';
+  const color = connected ? 'text-success' : waiting ? 'text-warning' : failed ? 'text-danger' : 'text-muted';
+  const dot = connected ? 'bg-success' : waiting ? 'bg-warning' : failed ? 'bg-danger' : 'bg-line-strong';
+  const active = !!data.mqttSubscribed;
+  return (
+    <Page testId="cloud-page" data={{ 'data-mode': 'mqtt' }}>
+      <Section title="Runtime Connection" description="MQTT runtime status for the shared cloud session.">
+        <view className="flex-row items-center justify-between gap-3">
+          <text className="text-xs text-muted">Connection state</text>
+          <view className="flex-row items-center gap-1.5">
+            <view className={`w-2 h-2 rounded-full ${dot}`} />
+            <text data-testid="cloud-mqtt-state" className={`font-mono text-xs font-semibold ${color}`}>
+              {state}
+            </text>
+          </view>
+        </view>
+        <view className="flex-row items-start justify-between gap-3">
+          <text className="shrink-0 text-xs text-muted">Last error</text>
+          <text
+            data-testid="cloud-mqtt-error"
+            className={
+              data.mqttLastError
+                ? 'grow basis-0 min-w-0 text-right font-mono text-xs break-all text-danger'
+                : 'grow basis-0 min-w-0 text-right font-mono text-xs break-all'
+            }
+          >
+            {String(data.mqttLastError || '-')}
+          </text>
+        </view>
+      </Section>
+      <Section
+        title="Topic Subscription"
+        description="Manage the demo topic subscription and inspect how many messages this page has received."
+        action={
+          <text
+            className={
+              active
+                ? 'px-2.5 py-1 rounded-full bg-success-soft text-xs font-semibold text-success'
+                : 'px-2.5 py-1 rounded-full bg-surface-sunken text-xs font-semibold text-muted'
+            }
+          >
+            {active ? 'active' : 'inactive'}
+          </text>
+        }
+      >
+        <text className="text-xs text-muted uppercase">Topic</text>
+        <text data-testid="cloud-mqtt-topic" className="font-mono text-sm break-all">
+          {String(data.mqttTopicFilter || 'demo/mqtt')}
+        </text>
+        <text data-testid="cloud-mqtt-status" className="text-sm font-semibold">
+          {String(data.mqttStatus || 'Idle')}
+        </text>
+        <view className="grid gap-3 grid-cols-2">
+          <Button testId="cloud-subscribe" disabled={active} onClick={() => actions.startMqttDemo()}>
+            Subscribe
+          </Button>
+          <Button variant="destructive" testId="cloud-unsubscribe" disabled={!active} onClick={() => actions.stopMqttDemo()}>
+            Unsubscribe
+          </Button>
+        </view>
+        <InfoList>
+          <InfoRow label="Subscription state" value={active ? 'active' : 'inactive'} testId="cloud-mqtt-active" />
+          <InfoRow label="Messages received" value={String(data.mqttMessageCount || 0)} testId="cloud-mqtt-count" />
+        </InfoList>
+      </Section>
+      <Section title="Latest Message" description="Incoming message data is written back through setData.">
+        {!data.mqttMessageCount ? (
+          <EmptyState testId="cloud-mqtt-empty" icon="cloud" title="No message yet" message="Publish one to the topic above." />
+        ) : (
+          <view className="gap-3">
+            <InfoList>
+              <InfoRow label="Topic" value={data.mqttLastTopic} testId="cloud-mqtt-last-topic" />
+              <InfoRow label="Received at" value={data.mqttLastReceivedAt} testId="cloud-mqtt-received-at" />
+            </InfoList>
+            <Code testId="cloud-mqtt-payload">{String(data.mqttLastPayload || '(empty payload)')}</Code>
+          </view>
+        )}
+      </Section>
+    </Page>
+  );
+}
+
+function Functions({ data, actions }: Pane) {
+  const names = (data.functionsAvailable || []) as string[];
+  return (
+    <Page testId="cloud-page" data={{ 'data-mode': 'functions' }}>
+      <Section
+        title="Current LxApp Functions"
+        description="These sample calls use lx.cloud.invoke(...) for the current lxapp. They are demo actions, not a runtime-discovered manifest list."
+      >
+        <InfoRow label="Status" value={data.functionsStatus || 'Idle'} testId="cloud-functions-status" />
+        {!names.length ? (
+          <EmptyState testId="cloud-functions-empty" icon="cloud" title="No demo functions" message="None are configured for this page." />
+        ) : (
+          <view className="flex-row flex-wrap gap-2">
+            {names.map(name => (
+              <Button key={name} testId={`cloud-function-${name}`} onClick={() => actions.callNamedFunction({ name })}>{`Call ${name}`}</Button>
+            ))}
+          </view>
+        )}
+      </Section>
+      <Card>
+        <InfoRow label="Function" value={data.functionsLastCall || '-'} testId="cloud-functions-last-call" />
+        <Code testId="cloud-functions-result">{String(data.functionsLastResult || '(no result yet)')}</Code>
+      </Card>
+    </Page>
   );
 }

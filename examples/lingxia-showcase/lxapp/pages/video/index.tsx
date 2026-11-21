@@ -1,118 +1,163 @@
-import React from 'react';
-import '../../tailwind.css';
+import { List, useVideo, type View } from '@lingxia/view';
+import { VideoControls } from '@liulidesign/core/VideoControls';
+import '../../theme/index.css';
+import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
+import { VIDEO_LABELS } from '../../shared/video-labels';
 
-// MDN's compact CC0 demo supports byte-range playback.
-const DEMO_VIDEO = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-const SEEK_STEP_SECONDS = 10;
+const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
+// Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.
+const rows = Array.from({ length: 24 }, (_, index) => ({ id: String(index), clip: index % 3 === 1 ? clips[(index / 3) % 2 | 0] : null }));
+const items = Object.freeze([{ id: 'hero', clip: null }, { id: 'portrait', clip: null }, { id: 'quality', clip: null }, { id: 'public', clip: null }, { id: 'stream', clip: null }, ...rows]);
+const sources = [{ src: 'public/video/q360.mp4', label: '360p' }, { src: 'public/video/q720.mp4', label: '720p' }];
 
-export default function App() {
-  const videoRef = React.useRef<HTMLVideoElement | null>(null);
-  const [eventLog, setEventLog] = React.useState('Ready');
-  const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
-
-  const play = () => {
-    void videoRef.current?.play().catch((error: unknown) => {
-      setEventLog(`Play failed: ${error instanceof Error ? error.message : String(error)}`);
-    });
-  };
-  const pause = () => videoRef.current?.pause();
-  const stop = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.pause();
-    video.currentTime = 0;
-    setEventLog('Stopped');
-  };
-  const seekBy = (seconds: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-    const max = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
-    video.currentTime = Math.min(max, Math.max(0, video.currentTime + seconds));
-  };
-  const fullscreen = () => {
-    void videoRef.current?.requestFullscreen?.().catch(() => setEventLog('Fullscreen unavailable'));
-  };
-
+// A tall clip: full screen keeps a phone upright instead of turning it.
+function Portrait() {
+  const video = useVideo('portrait');
   return (
-    <div className="bg-surface-100 min-h-screen" data-testid="video-page">
-      <div className="px-4 py-4 space-y-3 pb-6">
-        <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-gray-900">HTML Video</div>
-          <div data-testid="video-event" className="bg-surface-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
-            {eventLog}
-          </div>
-        </div>
+    <view className="gap-2">
+      <view className="items-center">
+        <video data-testid="video-portrait" player={video} src="public/video/portrait.mp4" muted loop aria-label="Portrait clip" className="w-36 rounded-xl" />
+      </view>
+      {/* Under the clip at full width: beside it the bar ran out of room for full screen. */}
+      <VideoControls player={video} labels={VIDEO_LABELS} variant="bar" data-testid="video-portrait-controls" />
+    </view>
+  );
+}
 
-        <div className="bg-black rounded-xl overflow-hidden">
-          <video
-            ref={videoRef}
-            id="video-player"
-            data-testid="video-element"
-            src={DEMO_VIDEO}
-            controls
-            playsInline
-            preload="metadata"
-            className="block w-full bg-black"
-            style={{ aspectRatio: '16 / 9' }}
-            onPlaying={() => setEventLog('Playing')}
-            onPause={() => setEventLog('Paused')}
-            onEnded={() => setEventLog('Ended')}
-            onWaiting={() => setEventLog('Buffering...')}
-            onError={() => setEventLog('Playback error')}
-            onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-            onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-          />
-        </div>
+function Hero({ actions }: { actions: View['actions'] }) {
+  const hero = useVideo('hero');
+  return (
+    <view className="gap-2">
+      {/* Unsized: a full-width 16:9 box. */}
+      <video data-testid="video-hero" player={hero} src={clips[0]} autoPlay muted loop aria-label="Test pattern" className="rounded-2xl" />
+      <view className="flex-row items-center justify-between gap-3">
+        <text data-testid="video-hero-state" className="text-muted">
+          {hero.paused ? 'paused' : 'playing'} · {hero.currentTime.toFixed(1)}s / {(hero.duration ?? 0).toFixed(1)}s
+        </text>
+        <button
+          data-testid="video-hero-toggle"
+          aria-label={hero.paused ? 'Play' : 'Pause'}
+          onClick={() => (hero.paused ? hero.play() : hero.pause())}
+          className="px-4 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken"
+        >
+          <text>{hero.paused ? 'Play' : 'Pause'}</text>
+        </button>
+      </view>
+      <view className="flex-row gap-2">
+        <button data-testid="video-hero-logic-pause" onClick={() => actions.pauseHero()} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
+          <text>Pause from Logic</text>
+        </button>
+        <button data-testid="video-hero-logic-play" onClick={() => actions.playHero()} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
+          <text>Play from Logic</text>
+        </button>
+      </view>
+    </view>
+  );
+}
 
-        <div className="bg-surface/80 rounded-2xl shadow-lg border border-white/20 p-5">
-          <div className="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Playback Controls</div>
-          <div data-testid="video-progress" className="mb-4 text-center font-mono text-xs text-gray-500">
-            {currentTime.toFixed(1)} / {duration.toFixed(1)} s
-          </div>
-          <div className="flex items-center justify-center gap-3 flex-wrap">
+// Two files of one clip: a switch keeps the position and never shows black.
+function Quality({ actions }: { actions: View['actions'] }) {
+  const video = useVideo('quality');
+  return (
+    <view className="gap-2">
+      <video data-testid="video-quality" player={video} sources={sources} autoPlay muted loop aria-label="Quality test" className="rounded-2xl" />
+      <view className="flex-row items-center justify-between gap-2">
+        <text data-testid="video-quality-state" className="text-muted">
+          {video.quality} · {video.videoHeight}p · {video.currentTime.toFixed(1)}s
+        </text>
+        <view className="flex-row gap-2">
+          {['auto', ...video.qualities].map(quality => (
             <button
-              onClick={() => seekBy(-SEEK_STEP_SECONDS)}
-              className="px-4 py-2.5 rounded-xl bg-surface-100 text-sm font-medium text-gray-700 active:scale-95"
+              key={quality}
+              data-testid={`video-quality-${quality}`}
+              aria-pressed={video.quality === quality}
+              onClick={() => video.setQuality(quality)}
+              className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent-solid text-on-accent-solid' : 'px-3 py-2 rounded-xl bg-surface text-text'}
             >
-              -{SEEK_STEP_SECONDS}s
+              <text>{quality}</text>
             </button>
-            <button
-              data-testid="video-play"
-              onClick={play}
-              className="px-4 py-2.5 rounded-xl bg-green-500 text-sm font-medium text-white active:scale-95"
-            >
-              Play
-            </button>
-            <button
-              data-testid="video-pause"
-              onClick={pause}
-              className="px-4 py-2.5 rounded-xl bg-surface-900 text-sm font-medium text-white active:scale-95"
-            >
-              Pause
-            </button>
-            <button
-              data-testid="video-stop"
-              onClick={stop}
-              className="px-4 py-2.5 rounded-xl bg-red-50 text-sm font-medium text-red-600 active:scale-95"
-            >
-              Stop
-            </button>
-            <button
-              onClick={() => seekBy(SEEK_STEP_SECONDS)}
-              className="px-4 py-2.5 rounded-xl bg-surface-100 text-sm font-medium text-gray-700 active:scale-95"
-            >
-              +{SEEK_STEP_SECONDS}s
-            </button>
-            <button
-              onClick={fullscreen}
-              className="px-4 py-2.5 rounded-xl bg-indigo-50 text-sm font-medium text-indigo-600 active:scale-95"
-            >
-              Fullscreen
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+          ))}
+        </view>
+      </view>
+      <button data-testid="video-quality-logic-360p" onClick={() => actions.qualityFromLogic({ quality: '360p' })} className="px-3 py-2 rounded-xl bg-surface text-text active:bg-surface-sunken">
+        <text>360p from Logic</text>
+      </button>
+    </view>
+  );
+}
+
+function PublicQuality() {
+  const video = useVideo('public');
+  return (
+    <view className="gap-2">
+      <video data-testid="video-public" player={video} sources={PUBLIC_VIDEO} autoPlay muted loop aria-label="Big Buck Bunny" className="rounded-2xl" />
+      <text data-testid="video-public-state" className="text-muted">
+        {video.quality} · {video.videoHeight}p · {video.qualities.join('/')}{video.error ? ` · ${video.error.code}` : ''}
+      </text>
+      <view className="flex-row flex-wrap gap-2">
+        {['auto', ...video.qualities].map(quality => (
+          <button
+            key={quality}
+            data-testid={`video-public-${quality}`}
+            aria-pressed={video.quality === quality}
+            onClick={() => video.setQuality(quality)}
+            className={video.quality === quality ? 'px-3 py-2 rounded-xl bg-accent-solid text-on-accent-solid' : 'px-3 py-2 rounded-xl bg-surface text-text'}
+          >
+            <text>{quality}</text>
+          </button>
+        ))}
+      </view>
+    </view>
+  );
+}
+
+function Stream() {
+  const video = useVideo('stream');
+  return (
+    <view className="gap-2">
+      <video data-testid="video-stream" player={video} src={PUBLIC_STREAM} autoPlay muted loop aria-label="HLS test" className="rounded-2xl" />
+      <text data-testid="video-stream-state" className="text-muted">
+        {video.quality} · {video.videoHeight}p · {video.qualities.join('/')} · {video.currentTime.toFixed(1)}s{video.error ? ` · ${video.error.code}` : ''}
+      </text>
+      <view className="flex-row flex-wrap gap-2">
+        {['auto', ...video.qualities].map(quality => (
+          <button key={quality} data-testid={`video-stream-${quality}`} onClick={() => video.setQuality(quality)} className="px-3 py-2 rounded-xl bg-surface text-text">
+            <text>{quality}</text>
+          </button>
+        ))}
+      </view>
+    </view>
+  );
+}
+
+export function render({ actions }: View) {
+  return (
+    <page>
+      <List
+        items={items}
+        getKey={row => row.id}
+        className="gap-3 p-4"
+        renderItem={row =>
+          row.id === 'hero' ? (
+            <Hero actions={actions} />
+          ) : row.id === 'portrait' ? (
+            <Portrait />
+          ) : row.id === 'quality' ? (
+            <Quality actions={actions} />
+          ) : row.id === 'public' ? (
+            <PublicQuality />
+          ) : row.id === 'stream' ? (
+            <Stream />
+          ) : row.clip ? (
+            <view data-testid={`video-row-${row.id}`} className="grid *:col-start-1 *:row-start-1 w-full aspect-video rounded-2xl overflow-hidden bg-surface-sunken">
+              <video src={row.clip} autoPlay muted loop className="w-full h-full object-cover" />
+              <text className="self-end p-3 text-text font-semibold">Row {row.id} · overlay above video</text>
+            </view>
+          ) : (
+            <view className="flex-row h-16 items-center px-4 rounded-xl bg-surface"><text>Row {row.id}</text></view>
+          )
+        }
+      />
+    </page>
   );
 }

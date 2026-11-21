@@ -1,12 +1,10 @@
 {
-  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2020"],
-    "types": [],
-    // The suite pulls its backlog registry from a plain `.mjs` module.
-    "allowJs": true,
-    "checkJs": false
+    "target": "ES2020", "module": "ESNext", "moduleResolution": "bundler",
+    "lib": ["ES2020"], "strict": true, "noEmit": true, "skipLibCheck": true, "types": [],
+    "resolveJsonModule": true,
+    // The backlog registry is a plain `.mjs` module.
+    "allowJs": true, "checkJs": false
   },
-  "include": ["**/*.ts"],
-  "exclude": []
+  "include": ["**/*.ts"]
 }

@@ -36,7 +36,9 @@ test('hop to the bundled chat lxapp and back', {
   const lifecycle = () => app.logic.eval(({ appInstance }) => {
     const instance = appInstance() as unknown as { state: typeof appState } | null;
     if (!instance) throw new Error('App instance missing');
-    return instance.state.lifecycle;
+    // The counts only: the last launch options are not JSON.
+    const { lastShow: _lastShow, ...counts } = instance.state.lifecycle;
+    return counts;
   });
 
   const currentApp = async (): Promise<string> => (await manager.current()).appId;

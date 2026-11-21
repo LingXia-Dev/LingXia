@@ -1,9 +1,12 @@
 import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 import type { PreviewMediaHandle } from '@lingxia/types';
+
+test.configure({ skip: notDesktop });
 
 /** What the probes keep on Logic's `globalThis` under their spec's key. */
 interface PreviewSession {

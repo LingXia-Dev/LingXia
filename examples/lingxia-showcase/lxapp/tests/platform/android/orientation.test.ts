@@ -23,7 +23,10 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   const { app, namespace, defer } = bindFixture(t, 'ANDROID-ORIENTATION-001');
   await app.nav.reset({ page: 'home' });
   const page = await app.page({ name: 'home' });
-  const dimensions = () => page.view.eval(({ window }) => ({ width: window.innerWidth, height: window.innerHeight }));
+  const dimensions = async () => {
+    const { width, height } = await page.view.viewport();
+    return { width, height };
+  };
   const initial = await dimensions();
   const original: Orientation = initial.width > initial.height ? 'landscape' : 'portrait';
   defer(async () => {

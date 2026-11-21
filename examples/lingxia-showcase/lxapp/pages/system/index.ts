@@ -1,4 +1,11 @@
-import { definePage, lx, type HostInfo, type HostTarget, type SystemSettingInfo } from '@lingxia/logic';
+import {
+  definePage,
+  lx,
+  type HostInfo,
+  type HostTarget,
+  type SystemSettingInfo,
+  type PageLoadOptions,
+} from '@lingxia/logic';
 
 export default definePage({
   data: {
@@ -27,7 +34,30 @@ export default definePage({
     bannerActiveId: '',
   },
   setup(page) {
+    // An action switching section loads the page again.
+    async function load(options: PageLoadOptions = {}) {
+      console.log('System page onLoad options:', options);
+      const { type = 'appBaseInfo' } = (options || {}) as { type?: string };
+      if (type !== page.data.currentType) {
+        page.update(d => { d.currentType = type; });
+      }
+      if (type === 'autostart') {
+        await actions.refreshAutostart();
+      }
+      if (type === 'cache') {
+        await actions.refreshCacheSize();
+      }
+      if (type === 'notification') {
+        await actions.refreshNotification();
+      }
+      if (type === 'banner') {
+        actions.refreshBanner();
+      }
+    }
+
     const actions = {
+      async goBack() { await lx.nav.back(); },
+      async selectSection({ type }: { type: string }) { await load({ type }); },
       async getBaseInfo() {
         try {
           const info = lx.host.info;
@@ -366,25 +396,7 @@ export default definePage({
       },
     };
     return {
-      async onLoad(options = {}) {
-        console.log('System page onLoad options:', options);
-        const { type = 'appBaseInfo' } = (options || {}) as { type?: string };
-        if (type !== page.data.currentType) {
-          page.update(d => { d.currentType = type; });
-        }
-        if (type === 'autostart') {
-          await actions.refreshAutostart();
-        }
-        if (type === 'cache') {
-          await actions.refreshCacheSize();
-        }
-        if (type === 'notification') {
-          await actions.refreshNotification();
-        }
-        if (type === 'banner') {
-          actions.refreshBanner();
-        }
-      },
+      onLoad: load,
       onShow() {
         console.log('System page onShow');
         // The user can flip the login item in System Settings / Task Manager

@@ -95,9 +95,6 @@ export default {
     { "api": "CompressVideoTask.cancel", "mode": "automated", "owner": "MEDIA-PROCESS-CANCEL-001" },
     { "api": "Storage.get", "mode": "automated", "owner": "TODO-001" },
     { "api": "Storage.set", "mode": "automated", "owner": "TODO-001" },
-    { "api": "Storage.delete", "mode": "automated", "owner": "LOGIC-003" },
-    { "api": "Storage.has", "mode": "automated", "owner": "LOGIC-003" },
-    { "api": "Storage.info", "mode": "automated", "owner": "LOGIC-003" },
     { "api": "PageSurface.close", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.kind", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.realized", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
@@ -106,6 +103,12 @@ export default {
     { "api": "PageSurface.onClose", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.show", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.hide", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
-    { "api": "PageSurface.onMessage", "mode": "automated", "owner": "DESKTOP-SURFACE-MESSAGE-001", "targets": ["windows", "macos"] }
+    { "api": "PageSurface.onMessage", "mode": "automated", "owner": "DESKTOP-SURFACE-MESSAGE-001", "targets": ["windows", "macos"] },
+    { "api": "PageSurface.opened", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
+    { "api": "PageSurface.send", "mode": "automated", "owner": "DESKTOP-SURFACE-POST-001", "targets": ["windows", "macos"] },
+    { "api": "lx.device.info.osName", "mode": "automated", "owner": "LOGIC-001" },
+    { "api": "VideoContext.pause", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
+    { "api": "VideoContext.play", "mode": "automated", "owner": "VIDEO-LOGIC-001" },
+    { "api": "VideoContext.setQuality", "mode": "automated", "owner": "VIDEO-QUALITY-001" }
   ]
 };

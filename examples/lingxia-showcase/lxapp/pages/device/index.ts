@@ -1,4 +1,11 @@
-import { definePage, lx, type DeviceInfo, type NetworkInfo, type ScreenInfo } from '@lingxia/logic';
+import {
+  definePage,
+  lx,
+  type DeviceInfo,
+  type NetworkInfo,
+  type ScreenInfo,
+  type PageLoadOptions,
+} from '@lingxia/logic';
 import { errorMessage } from "../../shared/lib/errors";
 export default definePage({
   data: {
@@ -32,7 +39,26 @@ export default definePage({
         });
       },
     };
+    // An action switching section loads the page again.
+    async function load(options: PageLoadOptions = {}) {
+      console.log("Device page onLoad options:", options);
+
+      const { type: requested = "device" } = (options || {}) as { type?: string };
+      const type = requested === "phone" ? "dial"
+        : requested === "network" ? "networkType"
+        : requested;
+      if (type !== page.data.currentType) {
+        page.update(d => { d.currentType = type; });
+      }
+    }
+
     const actions = {
+      async goBack() { await lx.nav.back(); },
+      async selectSection({ type }: { type: string }) {
+        actions.stopNetworkChangeListen();
+        actions.stopDeviceOrientationListen();
+        await load({ type });
+      },
       // Get device information
       async getDeviceInfo() {
         try {
@@ -169,14 +195,7 @@ export default definePage({
       },
     };
     return {
-      async onLoad(options = {}) {
-        console.log("Device page onLoad options:", options);
-
-        const { type = "device" } = (options || {}) as { type?: string };
-        if (type !== page.data.currentType) {
-          page.update(d => { d.currentType = type; });
-        }
-      },
+      onLoad: load,
       onShow() {
         console.log("Device page onShow");
       },

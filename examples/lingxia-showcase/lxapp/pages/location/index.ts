@@ -7,6 +7,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
+      async goBack() { await lx.nav.back(); },
       async getLocation() {
         if (page.data.isLoading) {
           return;

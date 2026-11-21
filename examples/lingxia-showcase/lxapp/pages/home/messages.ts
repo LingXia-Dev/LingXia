@@ -3,8 +3,10 @@ import type { DisplayLanguage } from "../../shared/display-language";
 const enUS = {
   tagline: "Lightweight Application Framework",
   namePlaceholder: "Enter your name",
+  nameLabel: "Name",
   sayHello: "Say Hello",
   sending: "Sending...",
+  sendFailed: "Could not send your greeting. Please try again.",
   defaultGreeting: "This is from the app's shared state",
   greetHello: "👋 Hello {name}! (#{count})",
   greetFrom: "🌍 Greetings from appservice powered by Rust and JS engine",
@@ -26,8 +28,10 @@ const catalogs = {
   "zh-CN": {
     tagline: "轻量应用框架",
     namePlaceholder: "输入你的名字",
+    nameLabel: "姓名",
     sayHello: "打个招呼",
     sending: "发送中...",
+    sendFailed: "问候未能发送，请重试。",
     defaultGreeting: "来自 App 的共享状态",
     greetHello: "👋 你好，{name}！(#{count})",
     greetFrom: "🌍 来自 Rust 与 JS 引擎驱动的 App Service",

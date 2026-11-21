@@ -2,14 +2,15 @@ import { errorMessage } from "../../shared/lib/errors";
 import {
   definePage,
   lx,
-  type ActionSheetResult,
   type PageSurface,
-  type ToastHandle,
-  type ToastOptions,
+  type OverlaySurfaceSizeValue,
   type SurfaceEdge,
   type SurfaceErrorCode,
-  type NavigationBarPatch,
   type SurfaceFloatPosition,
+  type ActionSheetResult,
+  type ToastHandle,
+  type ToastOptions,
+  type NavigationBarPatch,
   type TabBarItemPatch,
 } from '@lingxia/logic';
 
@@ -22,8 +23,8 @@ type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
 /** What the View sends when it asks for a demo surface. */
 interface DemoSurfaceConfig {
   verb?: string;
-  width?: number;
-  height?: number;
+  width?: OverlaySurfaceSizeValue;
+  height?: OverlaySurfaceSizeValue;
   url?: string;
   appId?: string;
   page?: string;
@@ -32,7 +33,6 @@ interface DemoSurfaceConfig {
   /** Window decoration. Ignored unless `verb` is `window`. */
   chrome?: "system" | "full";
 }
-
 
 // The type is erased at compile time. `SURFACE_ERROR_CODES` is a runtime export
 // of the same package, and importing that would leave an external module in the
@@ -121,22 +121,18 @@ export default definePage({
       { label: "Center", value: "center" },
       { label: "Bottom", value: "bottom" },
     ] as { label: string; value: NonNullable<ToastOptions["position"]> }[],
-    surfaceDemo: {
-      message: "",
-      // True when a surface is currently open (visible or hidden). The hide/show
-      // buttons are only meaningful while a surface exists; closing tears it
-      // down and resets this flag.
-      active: false,
-      visible: false,
-    },
+    surfaceDemo: { message: "", active: false, visible: false },
     chromeError: "",
     appearance: { preference: "auto", resolved: "light" },
   },
   setup(thisPage) {
     // The toast the "hide" button dismisses.
     let lastToast: ToastHandle | undefined;
+    let stopWatchingAppearance = null as (() => void) | null;
     let asideTabIndex = 0;
+    let surfaceOffs = [] as (() => void)[];
     const helpers = {
+      stopSurfaceObservers() { for (const off of surfaceOffs) off(); surfaceOffs = []; },
       // The log lives in `data`, so it only ever shows the current instance's
       // events — hide/show repeat within one instance, unload ends it.
       record(event: string) {
@@ -174,7 +170,7 @@ export default definePage({
       async openDemoSurface(
         verb: DemoSurfaceVerb,
         cfg: DemoSurfaceConfig,
-        size: { width?: number; height?: number },
+        size: { width?: OverlaySurfaceSizeValue; height?: OverlaySurfaceSizeValue },
       ) {
         if (verb === "lxapp") {
           // Compose another lxapp into the aside slot — home-lxapp privilege, so
@@ -200,6 +196,7 @@ export default definePage({
             size,
           });
         }
+        helpers.stopSurfaceObservers();
         await helpers.releaseDemoSurfaceKey(DEMO_PAGE_SURFACE_KEY);
         if (verb === "window") {
           // `full` runs the page to the window edge and keeps system min/max/close
@@ -208,22 +205,26 @@ export default definePage({
           const wantsFull = cfg.chrome !== "system"
             && lx.supports('surface.window.fullChrome');
           const chrome = wantsFull ? ("full" as const) : ("system" as const);
-          return lx.surface.openPage("surface", {
+          const window = lx.surface.openPage("surface", {
             as: "window",
             chrome,
             key: DEMO_PAGE_SURFACE_KEY,
             size,
           });
+          await window.opened;
+          return window;
         }
-        return lx.surface.openPage("surface", {
+        const float = lx.surface.openPage("surface", {
           as: "float",
           position: cfg.position ?? "center",
           key: DEMO_PAGE_SURFACE_KEY,
           size,
         });
+        await float.opened;
+        return float;
       },
       observeDemoPageSurface(surface: PageSurface) {
-        surface.onMessage((payload) => {
+        surfaceOffs.push(surface.onMessage((payload) => {
           // Messages from the surface page no longer auto-close it — that would
           // defeat the show/hide demo.
           const message =
@@ -232,10 +233,10 @@ export default definePage({
               : payload;
           const text = typeof message === "string" ? message : JSON.stringify(message);
           thisPage.update(d => { d.surfaceDemo.message = `Message: ${text}`; });
-        });
+        }));
         // Both opener-side and page-side toggles flow through these events, so the
         // parent UI stays in sync even when the surface hides itself.
-        surface.onShow((event) => {
+        surfaceOffs.push(surface.onShow((event) => {
           thisPage.update(d => {
             d.surfaceDemo = {
               ...thisPage.data.surfaceDemo,
@@ -243,8 +244,8 @@ export default definePage({
               message: `Shown (source=${event.source})`,
             };
           });
-        });
-        surface.onHide((event) => {
+        }));
+        surfaceOffs.push(surface.onHide((event) => {
           thisPage.update(d => {
             d.surfaceDemo = {
               ...thisPage.data.surfaceDemo,
@@ -252,8 +253,8 @@ export default definePage({
               message: `Hidden (source=${event.source})`,
             };
           });
-        });
-        surface.onClose((event) => {
+        }));
+        surfaceOffs.push(surface.onClose((event) => {
           const currentMessage = thisPage.data.surfaceDemo?.message || "";
           const closeMessage = `Closed: ${event.reason}`;
           thisPage.update(d => {
@@ -266,7 +267,7 @@ export default definePage({
               visible: false,
             };
           });
-        });
+        }));
       },
       // NavigationBar API functions
       async runChromeUpdate(label: string, update: () => Promise<boolean | void>) {
@@ -402,7 +403,7 @@ export default definePage({
           return;
         }
 
-        const size: { width?: number; height?: number } = {};
+        const size: { width?: OverlaySurfaceSizeValue; height?: OverlaySurfaceSizeValue } = {};
         if (cfg.width) size.width = cfg.width;
         if (cfg.height) size.height = cfg.height;
 
@@ -489,6 +490,10 @@ export default definePage({
           console.warn("surface.close failed:", error);
         }
       },
+      sendToSurface({ message }: { message: string }) {
+        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+        if (surface?.kind === "page") surface.send({ message });
+      },
       // Show modal with custom parameters
       async showModalWithParams(params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {
         const title = params.title ?? "Alert";
@@ -560,14 +565,18 @@ export default definePage({
         );
       },
       revealTabBar() {
-        return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ visibility: "visible" }),
-        );
+        return helpers.runChromeUpdate("Tab bar update", async () => {
+          const result = await lx.app.tabBar.update({ visibility: "visible" });
+          actions.showToastWithParams({ message: "shown", style: "success", durationMs: 800 });
+          return result;
+        });
       },
       concealTabBar() {
-        return helpers.runChromeUpdate("Tab bar update", () =>
-          lx.app.tabBar.update({ visibility: "hidden" }),
-        );
+        return helpers.runChromeUpdate("Tab bar update", async () => {
+          const result = await lx.app.tabBar.update({ visibility: "hidden" });
+          actions.showToastWithParams({ message: "hidden", style: "success", durationMs: 800 });
+          return result;
+        });
       },
       updateTabBarItem(options: TabBarItemPatch) {
         console.log("updateTabBarItem called with:", options);
@@ -589,6 +598,8 @@ export default definePage({
         const title = NAV_TITLE_MAP[type] || "User Interface";
         actions.updateNavigationBarTitle({ title });
 
+        stopWatchingAppearance?.();
+        stopWatchingAppearance = lx.host.appearance.watch(() => helpers.syncAppearance());
         helpers.syncAppearance();
 
         // Instance identity: a fresh tag per entry proves that leaving ends the
@@ -622,6 +633,9 @@ export default definePage({
         helpers.record("onHide");
       },
       onUnload() {
+        helpers.stopSurfaceObservers();
+        stopWatchingAppearance?.();
+        stopWatchingAppearance = null;
         helpers.record("onUnload");
       },
       actions,

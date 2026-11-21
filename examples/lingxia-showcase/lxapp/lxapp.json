@@ -1,12 +1,24 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.6.15",
+  "version": "1.7.0",
   "minRuntime": "0.30.0",
   "pages": [
     {
       "name": "home",
       "path": "pages/home/index"
+    },
+    {
+      "name": "media",
+      "path": "pages/media/index"
+    },
+    {
+      "name": "cloud",
+      "path": "pages/cloud/index"
+    },
+    {
+      "name": "bridge-repro",
+      "path": "pages/bridge-repro/index"
     },
     {
       "name": "surface",
@@ -17,36 +29,40 @@
       "path": "pages/feedback/index"
     },
     {
-      "name": "api",
-      "path": "pages/API/index"
+      "name": "leaveGuard",
+      "path": "pages/leaveguard/index"
     },
     {
-      "name": "cloud",
-      "path": "pages/cloud/index"
+      "name": "todo",
+      "path": "pages/todo/index"
     },
     {
       "name": "video",
       "path": "pages/video/index"
     },
     {
-      "name": "media",
-      "path": "pages/media/index"
+      "name": "clipboard",
+      "path": "pages/clipboard/index"
     },
     {
-      "name": "ui",
-      "path": "pages/ui/index"
+      "name": "share",
+      "path": "pages/share/index"
+    },
+    {
+      "name": "api",
+      "path": "pages/api/index"
     },
     {
       "name": "device",
       "path": "pages/device/index"
     },
     {
-      "name": "wifi",
-      "path": "pages/wifi/index"
-    },
-    {
       "name": "system",
       "path": "pages/system/index"
+    },
+    {
+      "name": "wifi",
+      "path": "pages/wifi/index"
     },
     {
       "name": "location",
@@ -57,34 +73,6 @@
       "path": "pages/file/index"
     },
     {
-      "name": "share",
-      "path": "pages/share/index"
-    },
-    {
-      "name": "clipboard",
-      "path": "pages/clipboard/index"
-    },
-    {
-      "name": "components",
-      "path": "pages/components/index"
-    },
-    {
-      "name": "pullToRefresh",
-      "path": "pages/pulltorefresh/index"
-    },
-    {
-      "name": "todo",
-      "path": "pages/todo/index"
-    },
-    {
-      "name": "picker",
-      "path": "pages/picker/index"
-    },
-    {
-      "name": "navigator",
-      "path": "pages/navigator/index"
-    },
-    {
       "name": "stream",
       "path": "pages/stream/index"
     },
@@ -93,26 +81,114 @@
       "path": "pages/channel/index"
     },
     {
-      "name": "swiper",
-      "path": "pages/swiper/index"
+      "name": "ui",
+      "path": "pages/ui/index"
     },
     {
-      "name": "bridge-repro",
-      "path": "pages/bridge-repro/index"
+      "name": "pullToRefresh",
+      "path": "pages/pulltorefresh/index"
     },
     {
-      "name": "spec-embedded",
-      "path": "pages/spec-embedded/index"
+      "name": "view",
+      "path": "pages/view/index"
     },
     {
-      "name": "leaveGuard",
-      "path": "pages/leaveguard/index"
+      "name": "view-drawing",
+      "path": "pages/view-drawing/index"
+    },
+    {
+      "name": "view-media",
+      "path": "pages/view-media/index"
+    },
+    {
+      "name": "view-controls",
+      "path": "pages/view-controls/index"
+    },
+    {
+      "name": "view-layout",
+      "path": "pages/view-layout/index"
+    },
+    {
+      "name": "view-text",
+      "path": "pages/view-text/index"
+    },
+    {
+      "name": "view-input",
+      "path": "pages/view-input/index"
+    },
+    {
+      "name": "view-gestures",
+      "path": "pages/view-gestures/index"
+    },
+    {
+      "name": "view-pointer",
+      "path": "pages/view-pointer/index"
+    },
+    {
+      "name": "view-overlays",
+      "path": "pages/view-overlays/index"
+    },
+    {
+      "name": "view-scrolling",
+      "path": "pages/view-scrolling/index"
+    },
+    {
+      "name": "view-accessibility",
+      "path": "pages/view-accessibility/index"
+    },
+    {
+      "name": "view-motion",
+      "path": "pages/view-motion/index"
+    },
+    {
+      "name": "view-appearance",
+      "path": "pages/view-appearance/index"
+    },
+    {
+      "name": "motion-target",
+      "path": "pages/motion-target/index"
+    },
+    {
+      "name": "view-screen",
+      "path": "pages/view-screen/index"
+    },
+    {
+      "name": "perf-lab",
+      "path": "pages/perf-lab/index"
+    },
+    {
+      "name": "perf-target",
+      "path": "pages/perf-target/index"
+    },
+    {
+      "name": "spec-orphan",
+      "path": "pages/spec-orphan/index"
+    },
+    {
+      "name": "spec-fault",
+      "path": "pages/spec-fault/index"
+    },
+    {
+      "name": "spec-stall",
+      "path": "pages/spec-stall/index"
+    },
+    {
+      "name": "spec-break",
+      "path": "pages/spec-break/index"
+    },
+    {
+      "name": "spec-video",
+      "path": "pages/spec-video/index"
+    },
+    {
+      "name": "spec-webview",
+      "path": "pages/spec-webview/index"
     }
   ],
   "tabBar": {
     "presentation": "immersive",
     "style": {
-      "foregroundColor": "#999999",
+      "foregroundColor": "#858585",
       "selectedForegroundColor": "#1677ff"
     },
     "items": [
@@ -122,7 +198,7 @@
           "zh-CN": "首页"
         },
         "page": "home",
-        "iconPath": "public/home.png"
+        "iconPath": "public/tab-home.svg"
       },
       {
         "text": {
@@ -130,15 +206,23 @@
           "zh-CN": "接口"
         },
         "page": "api",
-        "iconPath": "public/api.png"
+        "iconPath": "public/tab-api.svg"
       },
       {
         "text": {
-          "default": "Components",
-          "zh-CN": "组件"
+          "default": "View Lab",
+          "zh-CN": "实验室"
         },
-        "page": "components",
-        "iconPath": "public/component.png"
+        "page": "view",
+        "iconPath": "public/tab-lab.svg"
+      },
+      {
+        "text": {
+          "default": "Perf",
+          "zh-CN": "性能"
+        },
+        "page": "perf-lab",
+        "iconPath": "public/tab-perf.svg"
       },
       {
         "text": {
@@ -146,26 +230,7 @@
           "zh-CN": "待办"
         },
         "page": "todo",
-        "iconPath": "public/todo.png"
-      },
-      {
-        "text": {
-          "default": "Media",
-          "zh-CN": "媒体"
-        },
-        "page": "media",
-        "iconPath": "public/component.png"
-      },
-      {
-        "text": {
-          "default": "Device",
-          "zh-CN": "设备"
-        },
-        "page": "device",
-        "iconPath": "public/api.png",
-        "showOn": [
-          "mobile"
-        ]
+        "iconPath": "public/tab-todo.svg"
       },
       {
         "text": {
@@ -173,7 +238,7 @@
           "zh-CN": "窗口"
         },
         "page": "surface",
-        "iconPath": "public/home.png",
+        "iconPath": "public/tab-surface.svg",
         "showOn": [
           "desktop"
         ]

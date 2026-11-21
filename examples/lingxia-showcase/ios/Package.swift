@@ -27,6 +27,11 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources")
+            ],
+            // GPU pages present through wgpu's Metal backend.
+            linkerSettings: [
+                .linkedFramework("Metal"),
+                .linkedFramework("QuartzCore"),
             ]
         ),
     ]

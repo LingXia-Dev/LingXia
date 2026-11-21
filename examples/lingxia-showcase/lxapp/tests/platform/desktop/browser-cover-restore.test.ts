@@ -1,10 +1,13 @@
 import { waitForCurrentPage } from '@lingxia/test/showcase/helpers/page.js';
+import { notDesktop } from './only.js';
 import { expect, test, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '@lingxia/test/showcase/helpers/poll.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import type { DesktopDriver, DesktopWindowInfo } from '@lingxia/types/automation';
 import type { TestApp } from '@lingxia/test';
+
+test.configure({ skip: notDesktop });
 
 /// Showcase sidebar actions besides the host's typed Settings: Downloads in
 /// the header, five footer actions.
@@ -293,7 +296,7 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
       () => app.surfaceLayout(),
       (snapshot) => snapshot.activeMainId === snapshot.mainSwitcher.rootSurfaceId,
       { describe: 'root main to become active after closes', timeoutMs: 15_000 });
-    expect(layout.mains.includes('lingxia-showcase')).toBeTruthy();
+    expect(layout.mains.includes(SHOWCASE_APP_ID)).toBeTruthy();
 
     const after = await eventually(renderedBodyLength, (length) => length > 0, {
       describe: 'restored home page to have rendered body text',

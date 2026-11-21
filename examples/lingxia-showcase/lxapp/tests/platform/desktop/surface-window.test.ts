@@ -1,4 +1,5 @@
 import { expect, test, type Fixture, type TestApp, type TestView } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import type { Automation, DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
@@ -147,7 +148,7 @@ function newSurfaceWindow(
     ))[0];
 }
 
-test.configure({ skip: selectedGate ? 'a --arg gate run selects only its gate' : undefined });
+test.configure({ skip: notDesktop ?? (selectedGate ? 'a --arg gate run selects only its gate' : undefined) });
 
 test('native close disposes a secondary window in the dock and tray host', {
   id: 'DESKTOP-SURFACE-NATIVE-CLOSE-001',
@@ -200,6 +201,7 @@ test('open a page window with system chrome and with full chrome', {
     'lx.supports',
     'PageSurface.kind',
     'PageSurface.realized',
+    'PageSurface.opened',
     'PageSurface.key',
     'PageSurface.alive',
     'PageSurface.visible',

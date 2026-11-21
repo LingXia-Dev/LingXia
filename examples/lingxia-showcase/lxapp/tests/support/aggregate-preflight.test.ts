@@ -18,6 +18,7 @@ test("match the aggregate entry to the running platform", { id: "TARGET-001", co
 
   const pages = await app.pages();
   expect(pages.length).toBeGreaterThan(0);
-  expect(pages.every(({ path }) => path.toLocaleLowerCase().endsWith('.tsx')))
+  // A GPU page's path names its built View bundle.
+  expect(pages.every(({ path }) => path.toLocaleLowerCase().endsWith('/index.js')))
     .toBeTruthy();
 });

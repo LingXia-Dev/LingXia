@@ -1,241 +1,117 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useLxPage, useLxStream } from '@lingxia/react';
-import type { BootstrapData, BootstrapProbe, Tick } from './index';
-import '../../tailwind.css';
+import { useLocal, useRequest, useStream, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, Page } from '../../shared/ui';
 
-interface AuditState {
-  last: number;
-  received: number;
-  gaps: string[];
-  firstAtMs: number | null;
-}
+type BootstrapProbe = { nonce: number; viewSentAt: number; logicReceivedAt: number; bootstrapMarker: string };
+type Tick = { seq: number; ts: number };
+type Actions = {
+  onBootstrapProbe(params: { nonce: number; viewSentAt: number }): Promise<BootstrapProbe>;
+  onTicks(): import('@lingxia/view').Stream<Tick, void>;
+  onEcho(params: { n: number }): Promise<{ n: number; ts: number }>;
+};
+type Data = { bootstrapMarker?: string; logicLoadedAt?: number };
+type Audit = { last: number; received: number; gaps: string[]; firstAtMs: number | null };
 
-const INITIAL_AUDIT: AuditState = { last: 0, received: 0, gaps: [], firstAtMs: null };
-const BOOTSTRAP_TIMEOUT_MS = 5000;
+const verdictClass = (value: string) =>
+  `px-4 py-3 rounded-lg text-lg font-bold ${value === 'PASS' ? 'bg-success text-on-success' : value === 'FAIL' ? 'bg-danger text-on-danger' : 'bg-surface-sunken text-text'}`;
 
-function logicReadyTiming(logicLoadedAt: number, viewStartedAt: number): string {
-  const offset = logicLoadedAt - viewStartedAt;
-  return offset <= 0 ? 'preloaded' : `${offset} ms after view`;
-}
-
-function isBridgeReady(): boolean {
-  const bridge = (window as unknown as {
-    LingXiaBridge?: { isReady?: () => boolean };
-  }).LingXiaBridge;
-  return bridge?.isReady?.() === true;
-}
-
-function forceReconnect(): boolean {
-  const fn = (window as unknown as Record<string, unknown>).__lxForceDownstreamReconnect;
-  if (typeof fn !== 'function') return false;
-  (fn as () => void)();
-  return true;
-}
-
-export default function BridgeReproPage() {
-  const viewStartedAt = useRef(Date.now()).current;
-  const { data, actions } = useLxPage<BootstrapData, {
-    onBootstrapProbe: (p: { nonce: number; viewSentAt: number }) => Promise<BootstrapProbe>;
-    onTicks: () => AsyncGenerator<Tick, void>;
-    onEcho: (p: { n: number }) => { n: number; ts: number };
-  }>();
-
-  const [bridgeReady, setBridgeReady] = useState(isBridgeReady);
-  const [probe, setProbe] = useState<BootstrapProbe | null>(null);
-  const [probeError, setProbeError] = useState<string | null>(null);
-  const [deadlineReached, setDeadlineReached] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [reconnects, setReconnects] = useState(0);
-  const [echoLog, setEchoLog] = useState<string>('');
-  const echoSeq = useRef(0);
-
-  const ticks = useLxStream<typeof actions.onTicks, AuditState>(actions.onTicks, {
-    manual: true,
-    initial: INITIAL_AUDIT,
-    reduce: (acc, tick) => {
-      const gaps = [...acc.gaps];
-      // A restarted generator begins at 1 again; only flag intra-run gaps.
-      if (acc.last > 0 && tick.seq > acc.last + 1) {
-        gaps.push(`${acc.last + 1}..${tick.seq - 1}`);
-      }
-      return {
-        last: tick.seq,
-        received: acc.received + 1,
-        gaps,
-        firstAtMs: acc.firstAtMs ?? Date.now() - viewStartedAt,
-      };
+export function render({ data, actions }: View<Actions, Data>) {
+  const started = useLocal('started', Date.now());
+  const echoNumber = useLocal('echo-number', 0);
+  const echoLog = useLocal('echo-log', 'echo: -');
+  const echoPending = useLocal('echo-pending', false);
+  const probe = useRequest('bootstrap', actions.onBootstrapProbe, { nonce: 1, viewSentAt: started.value });
+  const audit = useLocal<Audit>('audit', { last: 0, received: 0, gaps: [], firstAtMs: null });
+  const ticks = useStream('ticks', actions.onTicks, {
+    onData(tick) {
+      const previous = audit.value;
+      const gaps =
+        previous.last > 0 && tick.seq !== previous.last + 1 ? [...previous.gaps.slice(-31), `${previous.last} → ${tick.seq}`] : previous.gaps;
+      audit.set({ last: tick.seq, received: previous.received + 1, gaps, firstAtMs: previous.firstAtMs ?? Date.now() - started.value });
     },
   });
-
-  useEffect(() => {
-    let active = true;
-    const poll = window.setInterval(() => {
-      if (active) setBridgeReady(isBridgeReady());
-    }, 50);
-    const deadline = window.setTimeout(() => {
-      if (active) setDeadlineReached(true);
-    }, BOOTSTRAP_TIMEOUT_MS);
-
-    const runProbe = async () => {
-      try {
-        const result = await actions.onBootstrapProbe({ nonce: 1, viewSentAt: viewStartedAt });
-        if (active) setProbe(result);
-      } catch (error) {
-        if (active) setProbeError(String((error as Error)?.message ?? error));
-      }
-    };
-
-    void runProbe();
-
-    return () => {
-      active = false;
-      window.clearInterval(poll);
-      window.clearTimeout(deadline);
-    };
-  }, [actions]);
-
-  // Watch for stream death: LxStream surfaces errors via the hook's error field.
-  useEffect(() => {
-    if (ticks.error) setStreamError(String((ticks.error as Error)?.message ?? ticks.error));
-  }, [ticks.error]);
-
-  // Drop and reconnect the downstream exactly as WebKit does when it replaces
-  // the streaming fetch. The reconnect resumes from the last seq, so a sound
-  // transport loses nothing; on the pre-fix transport the stream dies instead.
-  const reconnect = () => {
-    if (!forceReconnect()) {
-      setEchoLog('reconnect hook unavailable (non-Apple transport)');
-      return;
-    }
-    setReconnects((n) => n + 1);
-  };
-
-  const echo = async () => {
-    const n = ++echoSeq.current;
-    const t0 = Date.now();
-    try {
-      const r = await actions.onEcho({ n });
-      setEchoLog(`echo #${r.n} ok in ${Date.now() - t0}ms`);
-    } catch (e) {
-      setEchoLog(`echo #${n} FAILED: ${String((e as Error)?.message ?? e)}`);
-    }
-  };
-
-  const audit = ticks.data ?? INITIAL_AUDIT;
   const snapshotReady = data.bootstrapMarker === 'initial logic snapshot received';
-  const bootstrapPassed = bridgeReady && snapshotReady && probe !== null;
-  const bootstrapFailed = probeError !== null || (deadlineReached && !bootstrapPassed);
-  const bootstrapVerdict = bootstrapPassed ? 'PASS' : bootstrapFailed ? 'FAIL' : 'WAITING';
-  const bootstrapColor =
-    bootstrapVerdict === 'PASS'
-      ? 'bg-green-600'
-      : bootstrapVerdict === 'FAIL'
-        ? 'bg-red-600'
-        : 'bg-surface-400';
-
-  const streamFailed = audit.gaps.length > 0 || streamError !== null;
-  const streamVerdict = audit.received === 0 ? 'WAITING' : streamFailed ? 'FAIL' : 'PASS';
-  const streamColor =
-    streamVerdict === 'PASS'
-      ? 'bg-green-600'
-      : streamVerdict === 'FAIL'
-        ? 'bg-red-600'
-        : 'bg-surface-400';
-
+  const passed = snapshotReady && probe.value?.nonce === 1 && probe.value.bootstrapMarker === data.bootstrapMarker;
+  const echo = async () => {
+    if (echoPending.value) return;
+    const n = echoNumber.value + 1,
+      sent = Date.now();
+    echoNumber.set(n);
+    echoPending.set(true);
+    try {
+      const result = await actions.onEcho({ n });
+      echoLog.set(result.n === n ? `echo #${n} ok in ${Date.now() - sent}ms` : `echo #${n} FAILED: nonce mismatch`);
+    } catch (error) {
+      echoLog.set(`echo #${n} FAILED: ${String(error)}`);
+    } finally {
+      echoPending.set(false);
+    }
+  };
+  const bootstrapVerdict = passed ? 'PASS' : probe.error ? 'FAIL' : 'WAITING';
+  const streamVerdict = audit.value.gaps.length || ticks.error ? 'FAIL' : audit.value.received ? 'PASS' : 'WAITING';
+  const loaded = Number(data.logicLoadedAt);
   return (
-    <div
-      data-testid="bridge-repro-page"
-      data-automation-contract="bridge-v1"
-      className="min-h-screen p-4 space-y-3 text-sm"
-    >
-      <div
-        className={`rounded-lg px-4 py-3 text-white font-bold text-lg ${bootstrapColor}`}
-        id="bootstrap-verdict"
-        data-testid="bootstrap-verdict"
-      >
-        Bootstrap: {bootstrapVerdict}
-      </div>
-
-      <div className="bg-surface rounded-lg p-4 space-y-1">
-        <div id="bootstrap-ready">bridge ready: {bridgeReady ? 'yes' : 'no'}</div>
-        <div id="bootstrap-snapshot">initial snapshot: {snapshotReady ? 'yes' : 'no'}</div>
-        <div id="bootstrap-probe">
-          logic call:{' '}
-          {probe
-            ? `yes (${probe.logicReceivedAt - probe.viewSentAt} ms)`
-            : probeError
-              ? `FAILED: ${probeError}`
-              : 'waiting'}
-        </div>
-        <div id="bootstrap-logic-loaded">
-          logic ready:{' '}
-          {snapshotReady ? logicReadyTiming(data.logicLoadedAt, viewStartedAt) : '-'}
-        </div>
-        <div className="text-gray-500 text-xs">Restart the lxapp to repeat.</div>
-      </div>
-
-      <div
-        className={`rounded-lg px-4 py-3 text-white font-bold text-lg ${streamColor}`}
-        id="stream-verdict" data-testid="stream-verdict"
-      >
-        Stream: {streamVerdict}
-      </div>
-
-      <div className="bg-surface rounded-lg p-4 space-y-1">
-        <div id="stat-received" data-testid="stat-received">received: {audit.received}</div>
-        <div id="stat-last">last seq: {audit.last}</div>
-        <div id="stat-first">first tick after: {audit.firstAtMs ?? '-'} ms</div>
-        <div id="stat-gaps" data-testid="stat-gaps" className={audit.gaps.length ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
-          gaps: {audit.gaps.length ? audit.gaps.join(', ') : 'none'}
-        </div>
-        <div id="stat-error" data-testid="stat-error" className={streamError ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
-          stream error: {streamError ?? 'none'}
-        </div>
-        <div id="stat-reconnects">reconnects: {reconnects}</div>
-        <div id="stat-echo" data-testid="stat-echo">{echoLog || 'echo: -'}</div>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          id="btn-reconnect"
-          onClick={reconnect}
-          className="flex-1 bg-red-500 text-white rounded-lg py-3 font-semibold active:opacity-70"
-        >
+    <Page testId="bridge-repro-page" data={{ 'data-automation-contract': 'bridge-v1' }}>
+      <text data-testid="bootstrap-verdict" className={verdictClass(bootstrapVerdict)}>{`Bootstrap: ${bootstrapVerdict}`}</text>
+      <Card className="p-4 gap-1">
+        <text data-testid="bootstrap-ready" className="text-sm">{`bridge ready: ${probe.value ? 'yes' : 'no'}`}</text>
+        <text data-testid="bootstrap-snapshot" className="text-sm">{`initial snapshot: ${snapshotReady ? 'yes' : 'no'}`}</text>
+        <text data-testid="bootstrap-probe" className="text-sm">
+          {probe.value
+            ? `logic call: yes (${probe.value.logicReceivedAt - probe.value.viewSentAt} ms)`
+            : probe.error
+              ? `logic call: FAILED: ${probe.error.message}`
+              : 'logic call: waiting'}
+        </text>
+        <text data-testid="bootstrap-logic-loaded" className="text-sm">
+          {snapshotReady ? `logic ready: ${loaded <= started.value ? 'preloaded' : `${loaded - started.value} ms after view`}` : 'logic ready: -'}
+        </text>
+        <text className="text-xs text-muted">Restart the lxapp to repeat.</text>
+      </Card>
+      <text data-testid="stream-verdict" className={verdictClass(streamVerdict)}>{`Stream: ${streamVerdict}`}</text>
+      <Card className="p-4 gap-1">
+        <text data-testid="stat-received" className="text-sm">{`received: ${audit.value.received}`}</text>
+        <text data-testid="stat-last" className="text-sm">{`last seq: ${audit.value.last}`}</text>
+        <text data-testid="stat-first" className="text-sm">{`first tick after: ${audit.value.firstAtMs ?? '-'} ms`}</text>
+        <text
+          data-testid="stat-gaps"
+          className={audit.value.gaps.length ? 'text-sm font-semibold text-danger' : 'text-sm'}
+        >{`gaps: ${audit.value.gaps.join(', ') || 'none'}`}</text>
+        <text
+          data-testid="stat-error"
+          className={ticks.error ? 'text-sm font-semibold text-danger' : 'text-sm'}
+        >{`stream error: ${ticks.error?.message || 'none'}`}</text>
+        <text data-testid="stat-reconnects" className="text-sm">
+          reconnects: 0
+        </text>
+        <text data-testid="stat-echo" className="text-sm">
+          {echoLog.value}
+        </text>
+      </Card>
+      <view className="grid gap-2 grid-cols-2">
+        <Button variant="destructive" testId="btn-reconnect" onClick={() => echoLog.set('reconnect hook unavailable (GPU transport)')}>
           Reconnect
-        </button>
-        <button
-          id="btn-echo" data-testid="btn-echo"
-          onClick={echo}
-          className="flex-1 bg-blue-500 text-white rounded-lg py-3 font-semibold active:opacity-70"
-        >
+        </Button>
+        <Button testId="btn-echo" disabled={echoPending.value} onClick={echo}>
           Echo
-        </button>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          id="btn-restart" data-testid="btn-restart"
+        </Button>
+        <Button
+          variant="secondary"
+          testId="btn-restart"
           onClick={() => {
-            setStreamError(null);
+            audit.set({ last: 0, received: 0, gaps: [], firstAtMs: null });
             ticks.start();
           }}
-          className="flex-1 bg-surface-700 text-white rounded-lg py-3 font-semibold active:opacity-70"
         >
-          {audit.received === 0 ? 'Start stream' : 'Restart stream'}
-        </button>
-        <button
-          id="btn-stop" data-testid="btn-stop"
-          onClick={() => ticks.cancel()}
-          className="bg-surface-500 px-5 text-white rounded-lg py-3 font-semibold active:opacity-70"
-        >
+          {audit.value.received ? 'Restart stream' : 'Start stream'}
+        </Button>
+        <Button variant="secondary" testId="btn-stop" onClick={() => ticks.cancel()}>
           Stop
-        </button>
-      </div>
-
-      <p className="text-gray-500 text-xs leading-relaxed">
-        Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out
-        while the long stream occupies AppService; try it while idle.
-      </p>
-    </div>
+        </Button>
+      </view>
+      <text className="text-xs text-muted">
+        Start the stream, then reconnect. Any gap or bridge error fails the check. Echo may time out while the long stream occupies AppService.
+      </text>
+    </Page>
   );
 }

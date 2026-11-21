@@ -1,4 +1,5 @@
 {
+  "pageOrientation": "auto",
   "navigationBar": {
     "title": {
       "default": "Bridge Repro",

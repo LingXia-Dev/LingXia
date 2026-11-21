@@ -1,7 +1,10 @@
 import { expect, test } from '@lingxia/test';
+import { notDesktop } from './only.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
 import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
+
+test.configure({ skip: notDesktop });
 
 /**
  * `lx.clipboard` is the system clipboard, not a runtime-private buffer. The

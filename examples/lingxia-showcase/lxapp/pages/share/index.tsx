@@ -1,107 +1,62 @@
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { useLocal, type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Page, Section } from '../../shared/ui';
 
-type PageData = {
-  statusText?: string;
-  selectedImagePath?: string;
-  selectedFilePath?: string;
-};
-
-type PageActions = {
-  shareText(): void;
-  shareCurrentPage(): void;
-  chooseImage(): void;
-  shareSelectedImage(): void;
-  chooseFile(): void;
-  shareSelectedFile(): void;
-};
-
-function PathText({ value }: { value?: string }) {
-  return (
-    <div className="mt-2 rounded bg-surface-50 px-3 py-2 text-xs text-gray-500 break-all">
-      {value || 'No selection'}
-    </div>
+export function render({ data, actions }: View) {
+  const busy = useLocal('share-busy', false);
+  const failure = useLocal('share-error', '');
+  const run = async (action: () => Promise<unknown>) => {
+    if (busy.value) return;
+    busy.set(true);
+    failure.set('');
+    try {
+      await action();
+    } catch {
+      failure.set('Unable to open sharing. Please try again.');
+    } finally {
+      busy.set(false);
+    }
+  };
+  const path = (value: unknown) => (
+    <text className="px-3 py-2 rounded-lg bg-surface-sunken text-xs text-muted break-all">{String(value || 'No selection')}</text>
   );
-}
-
-export default function SharePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
-  const {
-    shareText,
-    shareCurrentPage,
-    chooseImage,
-    shareSelectedImage,
-    chooseFile,
-    shareSelectedFile,
-  } = actions;
-
   return (
-    <div className="min-h-screen bg-surface-100 overflow-y-auto">
-      <div className="px-3 py-3 pb-12 space-y-3">
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-4 border-b border-line-100">
-            <div className="text-base text-gray-900 font-medium">Share</div>
-            <div className="text-xs text-gray-500 mt-1">lx.share opens the native system share sheet.</div>
-          </div>
-          <div className="px-4 py-3 text-sm text-gray-700">{data?.statusText || 'Ready'}</div>
-        </div>
-
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-4 border-b border-line-100">
-            <div className="text-sm text-gray-900 font-medium">Text</div>
-            <div className="text-xs text-gray-500 mt-1">Some receivers reject text-only shares.</div>
-          </div>
-          <div className="px-4 py-4">
-            <button onClick={shareText} className="w-full py-3 rounded-lg bg-blue-500 text-white font-medium">
-              Share Text
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-4 border-b border-line-100">
-            <div className="text-sm text-gray-900 font-medium">Page</div>
-            <div className="text-xs text-gray-500 mt-1">Share the current page as an AppLink URL.</div>
-          </div>
-          <div className="px-4 py-4">
-            <button onClick={shareCurrentPage} className="w-full py-3 rounded-lg bg-blue-500 text-white font-medium">
-              Share Current Page
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-4 border-b border-line-100">
-            <div className="text-sm text-gray-900 font-medium">Image</div>
-            <div className="text-xs text-gray-500 mt-1">Choose or capture an image, then share it as an attachment.</div>
-            <PathText value={data?.selectedImagePath} />
-          </div>
-          <div className="px-4 py-4 grid grid-cols-2 gap-3">
-            <button onClick={chooseImage} className="py-3 rounded-lg bg-surface-900 text-white font-medium">
-              Choose Image
-            </button>
-            <button onClick={shareSelectedImage} className="py-3 rounded-lg bg-blue-500 text-white font-medium">
-              Share Image
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-lg shadow-sm">
-          <div className="px-4 py-4 border-b border-line-100">
-            <div className="text-sm text-gray-900 font-medium">File</div>
-            <div className="text-xs text-gray-500 mt-1">Pick an image, PDF, or other document before sharing it.</div>
-            <PathText value={data?.selectedFilePath} />
-          </div>
-          <div className="px-4 py-4 grid grid-cols-2 gap-3">
-            <button onClick={chooseFile} className="py-3 rounded-lg bg-surface-900 text-white font-medium">
-              Choose File
-            </button>
-            <button onClick={shareSelectedFile} className="py-3 rounded-lg bg-blue-500 text-white font-medium">
-              Share File
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Page intro="lx.share opens the native system share sheet.">
+      <text data-testid="share-status" className={failure.value ? 'text-sm text-center text-danger' : 'text-sm text-center'}>
+        {failure.value || String(data.statusText || 'Ready')}
+      </text>
+      <Section title="Text" description="Some receivers reject text-only shares.">
+        <Button testId="share-text" disabled={busy.value} onClick={() => run(() => actions.shareText())}>
+          Share Text
+        </Button>
+      </Section>
+      <Section title="Page" description="Share the current page as an AppLink URL.">
+        <Button testId="share-page" disabled={busy.value} onClick={() => run(() => actions.shareCurrentPage())}>
+          Share Current Page
+        </Button>
+      </Section>
+      <Section title="Image" description="Choose or capture an image, then share it as an attachment.">
+        {path(data.selectedImagePath)}
+        <view className="grid gap-3 grid-cols-2">
+          <Button variant="secondary" testId="share-choose-image" disabled={busy.value} onClick={() => run(() => actions.chooseImage())}>
+            Choose Image
+          </Button>
+          <Button testId="share-image" disabled={busy.value} onClick={() => run(() => actions.shareSelectedImage())}>
+            Share Image
+          </Button>
+        </view>
+      </Section>
+      <Section title="File" description="Pick an image, PDF, or other document before sharing it.">
+        {path(data.selectedFilePath)}
+        <view className="grid gap-3 grid-cols-2">
+          <Button variant="secondary" testId="share-choose-file" disabled={busy.value} onClick={() => run(() => actions.chooseFile())}>
+            Choose File
+          </Button>
+          <Button testId="share-file" disabled={busy.value} onClick={() => run(() => actions.shareSelectedFile())}>
+            Share File
+          </Button>
+        </view>
+      </Section>
+    </Page>
   );
 }

@@ -1,116 +1,70 @@
-import React from 'react';
-import { useLxPage } from '@lingxia/react';
-import '../../tailwind.css';
+import { type View } from '@lingxia/view';
+import '../../theme/index.css';
+import { Button, Card, Icon, Page } from '../../shared/ui';
 
-export default function LocationPage() {
-  // Use LingXia hook to get data and functions
-  const { data, actions } = useLxPage();
-  const { getLocation, clearLocation } = actions;
-  const { location = null, locationError = '', isLoading = false } = data;
+type Location = { longitude?: number; latitude?: number; accuracy?: number; altitude?: number; speed?: number };
+function coordinate(value: number | undefined, latitude: boolean) {
+  if (value == null || !Number.isFinite(value)) return '--';
+  const absolute = Math.abs(value),
+    degrees = Math.floor(absolute),
+    minutes = Math.floor((absolute - degrees) * 60);
+  const hemisphere = latitude ? (value >= 0 ? 'N' : 'S') : value >= 0 ? 'E' : 'W';
+  return `${hemisphere}: ${degrees}°${String(minutes).padStart(2, '0')}'`;
+}
+const decimal = (value: number | undefined, digits: number, suffix = '') =>
+  value == null || !Number.isFinite(value) ? '--' : `${value.toFixed(digits)}${suffix}`;
 
-  React.useEffect(() => {
-    document.body.className = 'location-page';
-    return () => {
-      document.body.className = '';
-    };
-  }, []);
-
-  const formatCoordinate = (
-    value: number | null | undefined,
-    axis: 'latitude' | 'longitude'
-  ) => {
-    if (value === null || value === undefined) {
-      return '--';
-    }
-
-    const absolute = Math.abs(value);
-    const degrees = Math.floor(absolute);
-    const minutes = Math.floor((absolute - degrees) * 60);
-    const direction = axis === 'latitude'
-      ? value >= 0 ? 'N' : 'S'
-      : value >= 0 ? 'E' : 'W';
-
-    return `${direction}: ${degrees}°${minutes.toString().padStart(2, '0')}'`;
-  };
-
+export function render({ data, actions }: View) {
+  const location = data.location as Location | null;
+  const details = location
+    ? [
+        ['Longitude', decimal(location.longitude, 6)],
+        ['Latitude', decimal(location.latitude, 6)],
+        ['Accuracy', decimal(location.accuracy, 1, 'm')],
+        ['Altitude', decimal(location.altitude, 1, 'm')],
+        ['Speed', decimal(location.speed, 1, 'm/s')],
+      ]
+    : [];
   return (
-    <div className="min-h-screen bg-surface-100">
-      <div className="px-4 py-6">
-        
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-light text-gray-800 mb-2">getLocation</h1>
-          <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
-        </div>
-
-        {/* Location Display */}
-        <div className="bg-surface rounded-lg shadow-sm p-6 mb-8">
-          <div className="text-center">
-            <div className="text-gray-600 mb-4">Current Location</div>
-            
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                <span className="ml-3 text-gray-600">Getting location...</span>
-              </div>
-            ) : location ? (
-              <div className="space-y-4">
-                <div className="text-2xl font-light text-gray-800">
-                  {formatCoordinate(location.longitude, 'longitude')}{' '}
-                  {formatCoordinate(location.latitude, 'latitude')}
-                </div>
-                
-                {/* Location Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 text-sm">
-                  <div className="text-center">
-                    <div className="text-gray-500">Longitude</div>
-                    <div className="font-medium">{location.longitude?.toFixed(6) || '--'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500">Latitude</div>
-                    <div className="font-medium">{location.latitude?.toFixed(6) || '--'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500">Accuracy</div>
-                    <div className="font-medium">{location.accuracy ? `${location.accuracy.toFixed(1)}m` : '--'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500">Altitude</div>
-                    <div className="font-medium">{location.altitude ? `${location.altitude.toFixed(1)}m` : '--'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500">Speed</div>
-                    <div className="font-medium">{location.speed ? `${location.speed.toFixed(1)}m/s` : '--'}</div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className={`py-8 ${locationError ? 'text-red-500 dark:text-red-400' : 'text-gray-500'}`}>
-                {locationError || 'No location data available'}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="space-y-3">
-          <button
-            onClick={getLocation}
-            disabled={isLoading}
-            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-surface-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
-          >
-            {isLoading ? 'Getting Location...' : 'Get Location'}
-          </button>
-          
-          <button
-            onClick={clearLocation}
-            className="w-full bg-surface hover:bg-surface-50 text-gray-700 font-medium py-4 px-6 rounded-lg border border-line-300 transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-
-      </div>
-    </div>
+    <Page>
+      <Card testId="location-card" className="p-6 gap-4 items-center">
+        <text className="text-base text-muted">Current Location</text>
+        {data.isLoading ? (
+          <view className="flex-row items-center gap-3 py-8">
+            <Icon name="location" className="w-8 h-8 text-accent" />
+            <text data-testid="location-status" className="text-base text-muted">
+              Getting location...
+            </text>
+          </view>
+        ) : location ? (
+          <view data-testid="location-result" className="w-full gap-4 items-center">
+            <text
+              data-testid="location-coordinate"
+              className="text-2xl font-light"
+            >{`${coordinate(location.longitude, false)} ${coordinate(location.latitude, true)}`}</text>
+            <view className="grid w-full gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {details.map(([label, value]) => (
+                <view key={label} className="items-center gap-1">
+                  <text className="text-sm text-muted">{label}</text>
+                  <text data-testid={`location-${label.toLowerCase()}`} className="text-sm font-medium">
+                    {value}
+                  </text>
+                </view>
+              ))}
+            </view>
+          </view>
+        ) : (
+          <text data-testid="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
+            {String(data.locationError || 'No location data available')}
+          </text>
+        )}
+      </Card>
+      <Button testId="location-get" disabled={!!data.isLoading} onClick={() => actions.getLocation()}>
+        {data.isLoading ? 'Getting Location...' : 'Get Location'}
+      </Button>
+      <Button variant="secondary" testId="location-clear" disabled={!!data.isLoading} onClick={() => actions.clearLocation()}>
+        Clear
+      </Button>
+    </Page>
   );
 }
