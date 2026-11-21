@@ -24,7 +24,7 @@ With no registry provider and no env, guests are unrestricted (public network
 and every privilege class). To constrain named apps:
 
 ```sh
-LINGXIA_RUNNER_LXAPP_PERMISSIONS='{"lingxia-chat":{"domains":["www.deepseek.com"]}}' lingxia dev
+LINGXIA_RUNNER_LXAPP_PERMISSIONS='{"lingxia-showcase-web":{"domains":["www.deepseek.com"]}}' lingxia dev
 ```
 
 Each entry takes `{"domains": [...], "privileges": [...]}`. An omitted field
