@@ -8,7 +8,7 @@ Things inside things, opened in place. Status: preview.
 import { TreeList } from '@liulidesign/core/TreeList';
 ```
 
-TreeList shows nested nodes as rows set in by their depth: folders and files, the sections of a document. A branch carries a chevron and opens or closes in place; any row can be the selected one. The app keeps the selection, and may keep the open branches too. For one level of destinations in groups, use NavList.
+TreeList shows nested nodes as rows set in by their depth: folders and files, the sections of a document. A branch carries a chevron and opens or closes in place; any row can be the selected one. A row can carry a second line, a count, and content of its own at the end; `hasLineGuides` draws a hairline down from each open branch beside its children. The app keeps the selection, and may keep the open branches too. For one level of destinations in groups, use NavList.
 
 ## Examples
 
@@ -73,6 +73,69 @@ export function Outline() {
 }
 ```
 
+### Line guides
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TreeList, type TreeNode } from '@liulidesign/core/TreeList';
+
+const outline: TreeNode[] = [
+  { id: 'intro', label: 'Introduction' },
+  { id: 'setup', label: 'Setting up', children: [
+    { id: 'install', label: 'Install' },
+    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },
+  ] },
+  { id: 'publish', label: 'Publishing' },
+];
+
+/** The outline with guides: a hairline runs down from each open branch beside its children. */
+export function Guides() {
+  const current = useLocal<string | null>('section', 'state');
+  return (
+    <TreeList
+      label="Contents"
+      items={outline}
+      value={current.value}
+      onChange={id => current.set(id)}
+      defaultOpenBranches={['setup', 'first']}
+      hasLineGuides
+      data-testid="guides"
+    />
+  );
+}
+```
+
+### A second line, and content at the end
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Badge } from '@liulidesign/core/Badge';
+import { Said } from '../example';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { TreeList, type TreeNode } from '@liulidesign/core/TreeList';
+
+/** Rows with a second line, and the row's own content at the end: a status, a button with its own action. */
+export function Described() {
+  const current = useLocal<string | null>('current', 'cart');
+  return (
+    <Said>
+      {say => {
+        const project: TreeNode[] = [
+          { id: 'src', label: 'src', icon: 'folder', description: 'The app\'s source', children: [
+            { id: 'cart', label: 'cart.ts', icon: 'file', description: 'Edited 2 minutes ago', endContent: <Badge label="Changed" tone="warning" size="sm" /> },
+            { id: 'pay', label: 'pay.ts', icon: 'file', description: 'Edited yesterday' },
+          ] },
+          { id: 'tests', label: 'tests', icon: 'folder', description: '14 files', endContent: <IconButton label="Run the tests" icon="play" size="sm" variant="ghost" onClick={() => say('Ran the tests')} data-testid="run" />, children: [] },
+        ];
+        return (
+          <TreeList label="Project" items={project} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['src']} hasLineGuides data-testid="project" />
+        );
+      }}
+    </Said>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -84,6 +147,7 @@ export function Outline() {
 | `openBranches` | `readonly string[]` |  | The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. |
 | `onOpenBranchesChange` | `((ids: readonly string[]) => void)` |  | Runs with the open branches' ids after a press opens or closes one. |
 | `defaultOpenBranches` | `readonly string[]` | `[]` | The branches open at first, when `openBranches` is not given. |
+| `hasLineGuides` | `boolean` | `false` | Hairlines down from each open branch's chevron beside its children, so deep levels read at a glance. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -96,14 +160,17 @@ export function Outline() {
 | chevron | `<vector>` | no | On a branch; it turns when the branch opens. A leaf keeps its width empty. |
 | icon | `<vector>` | no | An icon before the label; not read. |
 | label | `<text>` | yes | The node's name, cut short with an ellipsis. |
+| description | `<text>` | no | A second line under the label, muted and cut short. |
 | end | `<text>` | no | A count or a size at the end of the row. |
+| endContent | `<view>` | no | The node's own content after the count: a Badge, an IconButton. The row then carries the fill around it and its button. |
+| guide | `<view>` | no | With `hasLineGuides`: a hairline centred under a parent's chevron, down its children. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `treeListRecipe` from `@liulidesign/core/TreeList/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -117,7 +184,9 @@ export function Outline() {
 - Enter or Space: Selects the row; on a branch it also opens or closes it.
 - Press target: md 36 px.
 - Each row is a tree item that reports its level, whether it is selected, and on a branch whether it is open.
-- A row with `endText` is read as "label, end text".
+- A row with `endText` is read as "label, end text"; a `description` is read as its description.
+- End content is not part of the row's button: a button in it is its own Tab stop with its own name.
+- Guides are drawn only; the level each row reports already says where it sits.
 - The selected row is told apart by its fill and its weight.
 
 | Contrast | Pair | Minimum | Light | Dark |

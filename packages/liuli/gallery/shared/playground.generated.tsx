@@ -5048,6 +5048,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "label",
         "required": true,
         "kind": "text"
+      },
+      {
+        "name": "hasLineGuides",
+        "required": false,
+        "kind": "boolean"
       }
     ],
     "fixed": [

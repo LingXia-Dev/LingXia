@@ -26,3 +26,25 @@ test('Folders: pressing a branch opens it and selects it; each level steps in', 
   screen.press(screen.getByTestId('folders-notes'));
   assert.deepEqual(rows(screen).map(row => row.testId), ['folders-notes', 'folders-shared', 'folders-archive']);
 });
+
+test('Guides: a hairline down each open branch\'s chevron column, stopping at its last child', async () => {
+  const screen = await renderExample('TreeList/TreeList', 'Guides');
+  const guides = id => screen.getByTestId(`guides-${id}`).children.filter(node => node.props.accessibilityHidden === 1 && node.props.position === 'absolute');
+  const at = guide => JSON.stringify(guide.props).match(/\d+\.5/)?.[0];
+  assert.deepEqual(['intro', 'install', 'first', 'layout', 'state', 'publish'].map(id => guides(id).map(at)), [[], ['15.5'], ['15.5'], ['35.5'], ['35.5'], []]);
+  const bottom = id => guides(id)[0].props.insetBottom ?? guides(id)[0].props.bottom;
+  assert.deepEqual([bottom('install'), bottom('first'), bottom('layout'), bottom('state')], [-2, 0, -2, 0], 'through the gap, except under a last child');
+});
+
+test('Described: a second line read as the row\'s description; end content beside the row\'s button, with its own action', async () => {
+  const screen = await renderExample('TreeList/TreeList', 'Described');
+  const cart = screen.getByTestId('project-cart');
+  assert.equal(cart.props.accessibilityLabel, 'cart.ts');
+  assert.ok(screen.queryAll(node => node.text === 'Edited 2 minutes ago').length === 1);
+  assert.ok(cart.props.ariaDescribedBy, 'the description is linked');
+  const item = screen.queryAll(node => node.children?.includes?.(cart))[0];
+  assert.deepEqual([item.tag, item.props.background], ['column', 'accent-soft'], 'the row carries the selected fill');
+  screen.press(screen.getByTestId('run'));
+  screen.getByText('Ran the tests');
+});
+
