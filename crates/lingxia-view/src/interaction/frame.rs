@@ -249,12 +249,9 @@ impl PresentedFrame {
     }
 }
 
-/// An open dialog: every host lifts the page above its bars while one shows.
+/// An open modal dialog: every host lifts the page above its bars while one shows.
 pub fn has_open_dialog(frame: &PresentedFrame) -> bool {
-    frame
-        .nodes
-        .iter()
-        .any(|node| matches!(node.role.as_deref(), Some("dialog" | "alertdialog")) && visible(node))
+    frame.nodes.iter().any(|node| node.modal && visible(node))
 }
 
 pub fn visible(node: &NodeSnapshot) -> bool {

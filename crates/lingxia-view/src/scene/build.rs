@@ -94,7 +94,7 @@ impl Renderer {
                     }),
             );
         }
-        // A dialog in the top layer is modal: assistive tech reaches only it and its containers.
+        // A modal dialog in the top layer: assistive tech reaches only it and its containers.
         let in_top_layer = |mut at: Option<usize>| {
             while let Some(index) = at {
                 if records[index].number(field::TOP_LAYER).is_some() {
@@ -105,10 +105,8 @@ impl Renderer {
             false
         };
         if let Some(modal) = (0..records.len()).rev().find(|&index| {
-            matches!(
-                records[index].string(field::ROLE),
-                Some("dialog" | "alertdialog")
-            ) && !hidden[index]
+            records[index].number(field::MODAL) == Some(1.0)
+                && !hidden[index]
                 && in_top_layer(Some(index))
         }) {
             let mut around = vec![false; records.len()];
@@ -1486,6 +1484,7 @@ impl Renderer {
                     drag_snapshot(source, record, [bounds[2], bounds[3]], directions[index])
                 }),
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
+                modal: record.number(field::MODAL) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 touch_target_none: record.string(field::TOUCH_TARGET) == Some("none"),
                 panel: record.tag != tag::BUTTON

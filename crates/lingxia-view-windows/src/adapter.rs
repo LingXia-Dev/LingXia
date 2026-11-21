@@ -607,10 +607,11 @@ impl HostEvents for WindowsAdapter {
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
         *self.feedback.lock().unwrap_or_else(|p| p.into_inner()) = Some(frame.feedback);
         // An exiting dialog still covers the page until its exit ends.
-        let open = frame.frame.nodes.iter().any(|node| {
-            node.role.as_deref() == Some("dialog")
-                && lingxia_view::interaction::frame::visible(node)
-        });
+        let open = frame
+            .frame
+            .nodes
+            .iter()
+            .any(|node| node.modal && lingxia_view::interaction::frame::visible(node));
         let modal = open || (self.modal.load(Ordering::Relaxed) && frame.metrics.ghosts > 0);
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.shell.top_layer(self.token, modal);

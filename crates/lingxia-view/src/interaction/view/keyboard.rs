@@ -191,10 +191,8 @@ impl ViewInteraction {
         }
         for node in &frame.nodes {
             let popover = node.panel
-                && !matches!(
-                    node.role.as_deref(),
-                    Some("dialog" | "menu" | "alertdialog")
-                )
+                && !node.modal
+                && node.role.as_deref() != Some("menu")
                 && frame::visible(node);
             if popover
                 && !self

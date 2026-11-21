@@ -115,6 +115,10 @@ pub struct NodeSnapshot {
     /// A top-layer box that takes close requests (a dialog, an auto popover).
     #[serde(skip)]
     pub close_request: bool,
+    /// A modal dialog: an open `<dialog>`, or a popover dialog with `aria-modal`. Focus stays
+    /// inside, the rest of the page leaves semantics, and the host lifts the page over its bars.
+    #[serde(skip)]
+    pub modal: bool,
     /// A dialog backdrop whose opacity follows how much of its dragged panel is on screen.
     #[serde(skip)]
     pub drag_scrim: bool,

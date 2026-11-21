@@ -322,6 +322,43 @@ fn an_alertdialog_is_modal_like_a_dialog() {
 }
 
 #[test]
+fn a_popover_dialog_is_non_modal_unless_aria_modal_says_so() {
+    let page = |modal: &str| {
+        frame(&format!(
+            "h('page',{{}},h('button',{{'data-testid':'behind',onClick(){{}}}},'Behind'),h('view',{{id:'p',popover:true,open:true,role:'dialog','aria-label':'Filters','data-testid':'p'{modal}}},h('button',{{'data-testid':'apply',onClick(){{}}}},'Apply')))"
+        ))
+    };
+    let plain = page("");
+    let dialog = semantic(&plain, "p").unwrap();
+    assert_eq!(
+        (dialog.role, dialog.name.as_str()),
+        (Role::Dialog, "Filters")
+    );
+    assert!(
+        semantic(&plain, "behind").is_some(),
+        "the page stays readable"
+    );
+    assert!(
+        !crate::interaction::frame::has_open_dialog(&plain),
+        "no lift"
+    );
+    assert_eq!(
+        crate::interaction::keyboard::active_dialog(&plain),
+        None,
+        "Tab may leave"
+    );
+
+    let modal = page(",'aria-modal':true");
+    assert!(
+        semantic(&modal, "behind").is_none(),
+        "the page behind is hidden"
+    );
+    assert!(crate::interaction::frame::has_open_dialog(&modal));
+    let index = modal.nodes.iter().position(|n| n.test_id == "p");
+    assert_eq!(crate::interaction::keyboard::active_dialog(&modal), index);
+}
+
+#[test]
 fn composite_roles_project_with_positions_checked_states_and_tree_levels() {
     let frame = frame(
         "h('page',{},h('view',{role:'tablist','aria-label':'Sections','data-testid':'tabs'},h('button',{role:'tab','aria-selected':false,onClick(){},'data-testid':'tab-a'},'Overview'),h('button',{role:'tab','aria-selected':true,onClick(){},'data-testid':'tab-b'},'Details')),h('view',{role:'tabpanel','aria-label':'Details','data-testid':'panel'},h('text',{},'Body')),h('view',{role:'radiogroup','aria-label':'Size','data-testid':'size'},h('button',{role:'radio','aria-checked':false,onClick(){}},'S'),h('button',{role:'radio','aria-checked':true,onClick(){},'data-testid':'m'},'M')),h('view',{role:'toolbar','aria-label':'Format','data-testid':'bar'},h('button',{onClick(){}},'Bold')),h('view',{role:'tree','aria-label':'Files','data-testid':'tree'},h('button',{role:'treeitem','aria-level':1,'aria-expanded':true,onClick(){}},'src'),h('button',{role:'treeitem','aria-level':2,onClick(){}},'a.rs'),h('button',{role:'treeitem','aria-level':2,onClick(){},'data-testid':'b'},'b.rs'),h('button',{role:'treeitem','aria-level':1,onClick(){},'data-testid':'docs'},'docs')),h('view',{role:'menu','aria-label':'View'},h('button',{role:'menuitemcheckbox','aria-checked':true,onClick(){},'data-testid':'wrap'},'Wrap'),h('button',{role:'menuitemradio','aria-checked':false,onClick(){},'data-testid':'zoom'},'Zoom')))",

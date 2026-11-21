@@ -522,6 +522,7 @@ fn an_open_dialog_can_be_dismissed_as_escape_would() {
     layer.close_request = true;
     let mut dialog = node("layer/panel", "column", [0.0, 100.0, 100.0, 100.0]);
     dialog.role = Some("dialog".into());
+    dialog.modal = true;
     dialog.accessibility_label = Some("Filters".into());
     present(&mut interaction, vec![layer, dialog], 1);
     let id = interaction.semantics().unwrap().ids.id(1).unwrap();

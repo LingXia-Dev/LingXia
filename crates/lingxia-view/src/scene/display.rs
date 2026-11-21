@@ -171,14 +171,12 @@ impl DisplayList {
         }
     }
 
-    /// The host lifts the page over its chrome: a shown dialog, or its exit ghost. A popover
-    /// stays under the chrome; a dialog's backdrop hides the chrome anyway.
+    /// The host lifts the page over its chrome: a shown modal dialog, or its exit ghost. A
+    /// popover, a non-modal dialog included, stays under the chrome.
     pub fn top_layer_open(&self) -> bool {
-        self.nodes.iter().any(|node| {
-            matches!(node.role.as_deref(), Some("dialog" | "alertdialog"))
-                && node.visible_bounds[2] > 0.0
-                && node.visible_bounds[3] > 0.0
-        })
+        self.nodes
+            .iter()
+            .any(|node| node.modal && node.visible_bounds[2] > 0.0 && node.visible_bounds[3] > 0.0)
     }
 
     /// Draw the host's bar snapshots in their slots under the top layer; `rect` is in surface

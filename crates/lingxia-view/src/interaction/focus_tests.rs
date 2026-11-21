@@ -15,6 +15,7 @@ fn button(identity: &str, y: f32) -> NodeSnapshot {
 fn dialog(identity: &str) -> NodeSnapshot {
     let mut node = node(identity, "column", [0.0, 200.0, 300.0, 200.0]);
     node.role = Some("dialog".into());
+    node.modal = true;
     node
 }
 

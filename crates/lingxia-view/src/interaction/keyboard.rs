@@ -64,12 +64,12 @@ pub fn candidate(
         && (super::frame::visible(node) || revealable(node))
 }
 
-/// The open dialog keyboard focus stays inside: the last visible `role="dialog"`.
+/// The open dialog keyboard focus stays inside: the last visible modal one.
 pub fn active_dialog(frame: &PresentedFrame) -> Option<usize> {
-    frame.nodes.iter().rposition(|node| {
-        matches!(node.role.as_deref(), Some("dialog" | "alertdialog"))
-            && super::frame::visible(node)
-    })
+    frame
+        .nodes
+        .iter()
+        .rposition(|node| node.modal && super::frame::visible(node))
 }
 
 /// The topmost open dialog or menu: opening one from the keyboard moves focus into it.
