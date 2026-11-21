@@ -1159,6 +1159,21 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "hasLineNumbers",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "startLineNumber",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "isDiff",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "isSelectable",
         "required": false,
         "kind": "boolean"

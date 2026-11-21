@@ -34,6 +34,31 @@ export function Plain() {
   return <CodeBlock code={response} label="Example response" data-testid="response" />;
 }
 
+const excerpt = `export function total(items: readonly Item[]) {
+  let sum = 0;
+  for (const item of items) sum += item.price * item.count;
+  return Math.round(sum * 100) / 100;
+}`;
+
+/** An excerpt with its numbers in the file, two lines marked. */
+export function Numbered() {
+  return <CodeBlock code={excerpt} label="total in cart.ts" title="cart.ts" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid="numbered" />;
+}
+
+const change = `--- a/cart.ts
++++ b/cart.ts
+@@ -42,4 +42,4 @@
+   let sum = 0;
+   for (const item of items)
+-    sum += item.price;
++    sum += item.price * item.count;
+   return Math.round(sum * 100) / 100;`;
+
+/** A change as a unified diff: each sign in its own column, added and removed lines tinted. */
+export function Diff() {
+  return <CodeBlock code={change} label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
+}
+
 /** In a sentence: a file name and a value to type exactly. */
 export function InSentence() {
   return (

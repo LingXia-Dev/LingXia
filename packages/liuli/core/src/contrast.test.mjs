@@ -42,7 +42,7 @@ test('pairs on roles the engine derives wait for the resolved palette', t => {
 });
 
 /** Pairs that clear their minimum by under 0.1: a palette nudge can tip them, so each is named. */
-const tight = new Set(['Item: chevron (light)', 'Toast: action (dark)']);
+const tight = new Set(['Code: a sign and number on a removed line (light)', 'Item: chevron (light)', 'Toast: action (dark)']);
 
 test('the tight pairs are named and still clear their minimum', () => {
   const near = [];
