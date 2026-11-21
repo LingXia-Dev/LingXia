@@ -104,6 +104,9 @@ export class GpuPageModel {
   textMenu: GpuFrameTextMenu | null = null;
   handles: GpuSelectionHandles | null = null;
   webViews: GpuWebViewMount[] = [];
+  /** Web views being pictured, and those asked before their `Web` attached. */
+  picturing: Set<string> = new Set();
+  unattachedPictures: Set<string> = new Set();
   topLayer: boolean = false;
   /** The bar-snapshot generation the frame on screen draws; 0 when none. */
   chromeSnapshot: number = 0;
@@ -136,6 +139,9 @@ export type GpuPageListener = (page: GpuPageModel) => void;
  * hosts a `GpuPage` for a page's webtag in place of its WebView.
  */
 export class GpuPages {
+  /** ArkWeb errors: the controller has no `Web` yet; the snapshot cannot be taken yet. */
+  private static readonly WEB_NOT_ATTACHED = 17100001;
+  private static readonly WEB_NOT_ENABLED = 17100004;
   private static pages: Map<number, GpuPageModel> = new Map();
   private static created: GpuPageListener[] = [];
   private static disposed: GpuPageListener[] = [];
@@ -325,34 +331,64 @@ export class GpuPages {
       return;
     }
     for (const id of ids) {
-      const mount = page.webViews.find((m: GpuWebViewMount) => m.webId === id);
-      const controller = mount ? WebViewManager.getController(mount.webTag) : undefined;
-      if (!mount || !controller) {
-        continue;
+      GpuPages.pictureWebView(page, id, 0);
+    }
+  }
+
+  /** A web view's `Web` attached: take the pictures asked before it could. */
+  static webViewAttached(page: GpuPageModel, webTag: string): void {
+    const mount = page.webViews.find((m: GpuWebViewMount) => m.webTag === webTag);
+    if (mount && page.unattachedPictures.delete(mount.webId)) {
+      GpuPages.pictureWebView(page, mount.webId, 0);
+    }
+  }
+
+  private static pictureWebView(page: GpuPageModel, id: string, attempt: number): void {
+    if (page.picturing.has(id)) {
+      return;
+    }
+    const mount = page.webViews.find((m: GpuWebViewMount) => m.webId === id);
+    const controller = mount ? WebViewManager.getController(mount.webTag) : undefined;
+    if (!mount || !controller) {
+      return;
+    }
+    page.picturing.add(id);
+    const failed = (code: number, why: string) => {
+      page.picturing.delete(id);
+      if (code === GpuPages.WEB_NOT_ATTACHED) {
+        // The native web view loads before ArkUI builds its `Web`.
+        page.unattachedPictures.add(id);
+      } else if (code === GpuPages.WEB_NOT_ENABLED && attempt < 4) {
+        setTimeout(() => GpuPages.pictureWebView(page, id, attempt + 1), 250 * (attempt + 1));
+      } else {
+        LxLog.w(TAG, `web view picture ${id}: ${why}`);
       }
-      try {
-        controller.webPageSnapshot({ id: id, size: { width: mount.bounds[2], height: mount.bounds[3] } },
-          (err: BusinessError, result: webview.SnapshotResult) => {
-            const pixelMap = result?.imagePixelMap;
-            if ((err && err.code !== 0) || !pixelMap) {
-              return;
-            }
-            const packer = image.createImagePacker();
-            const opts: image.PackingOption = { format: 'image/png', quality: 100 };
-            packer.packing(pixelMap, opts, (packErr: BusinessError | null, buffer: ArrayBuffer) => {
-              try {
-                if (!packErr || packErr.code === 0) {
-                  gpuPageWebViewPicture(page.token, id, buffer);
-                }
-              } finally {
-                try { packer.release(); } catch (_) {}
-                try { pixelMap.release(); } catch (_) {}
+    };
+    try {
+      controller.webPageSnapshot({ id: id, size: { width: mount.bounds[2], height: mount.bounds[3] } },
+        (err: BusinessError, result: webview.SnapshotResult) => {
+          const pixelMap = result?.imagePixelMap;
+          if ((err && err.code !== 0) || !pixelMap) {
+            failed(err?.code ?? 0, `${err?.code} ${err?.message}`);
+            return;
+          }
+          const packer = image.createImagePacker();
+          const opts: image.PackingOption = { format: 'image/png', quality: 100 };
+          packer.packing(pixelMap, opts, (packErr: BusinessError | null, buffer: ArrayBuffer) => {
+            page.picturing.delete(id);
+            try {
+              if (!packErr || packErr.code === 0) {
+                LxLog.d(TAG, `web view picture ${id}: ${buffer.byteLength} bytes`);
+                gpuPageWebViewPicture(page.token, id, buffer);
               }
-            });
+            } finally {
+              try { packer.release(); } catch (_) {}
+              try { pixelMap.release(); } catch (_) {}
+            }
           });
-      } catch (e) {
-        LxLog.w(TAG, `web view picture ${id}: ${e}`);
-      }
+        });
+    } catch (e) {
+      failed((e as BusinessError).code ?? 0, `${e}`);
     }
   }
 

@@ -4,7 +4,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common, Configuration, EnvironmentCallback } from '@kit.AbilityKit';
 import { accessibility } from '@kit.AccessibilityKit';
 import { Lingxia } from '../app/Lingxia';
-import { GpuFeedback, GpuPageModel, GpuRecovery, GpuSelectionHandles, GpuWebViewMount } from './GpuPages';
+import { GpuFeedback, GpuPageModel, GpuPages, GpuRecovery, GpuSelectionHandles, GpuWebViewMount } from './GpuPages';
 import { GpuFrameTextMenu, GpuFrameTextMenuTargetKinds } from './generated/GpuFrame';
 import { HostOverlays } from '../lxapp/HostOverlays';
 import { localizedString } from '../app/DisplayLanguageResources';
@@ -207,6 +207,7 @@ struct GpuWebSlot {
           renderClip: this.hasRadius(this.findMount()),
           renderHitTest: this.shown(this.findMount()) ? HitTestMode.Default : HitTestMode.None,
           yieldsPan: (dx: number, dy: number): boolean => this.yieldsPan(dx, dy),
+          onAttached: (): void => GpuPages.webViewAttached(this.page, this.webTag),
         })
       }
       .position(this.innerPosition(this.findMount()))
