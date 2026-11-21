@@ -81,3 +81,28 @@ export function requestResource(state) {
     dispose() { mounted = false; ticket++; },
   };
 }
+
+// One action called from handlers: the latest call owns `pending` and `error`; `run` never rejects.
+export function actionResource(state) {
+  let definition, mounted = false, ticket = 0, snapshot = state.value;
+  const update = patch => { snapshot = { ...snapshot, ...patch }; state.set(snapshot); };
+  return {
+    get state() { return snapshot; },
+    async run(...params) {
+      if (params.length > 1) throw Error('UI_ACTION: expected at most one JSON payload');
+      if (!mounted || !definition.action) return undefined;
+      const current = ++ticket;
+      update({ pending: true, error: null });
+      try {
+        const value = await definition.action(...params);
+        if (mounted && current === ticket) update({ pending: false });
+        return value;
+      } catch (error) {
+        if (mounted && current === ticket) update({ pending: false, error: resourceError(error) });
+        return undefined;
+      }
+    },
+    commit(next) { definition = next; mounted = true; },
+    dispose() { mounted = false; ticket++; },
+  };
+}

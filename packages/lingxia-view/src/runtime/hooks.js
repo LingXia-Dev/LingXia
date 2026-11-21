@@ -1,7 +1,7 @@
 import { applyPatch, immutable, shared } from './data.js';
 import { render, page, outsideRender } from './state.js';
 import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
-import { streamResource, requestResource } from './resources.js';
+import { actionResource, streamResource, requestResource } from './resources.js';
 import { channelResource } from './channel-resource.js';
 import { noteRead, noteView } from './memo.js';
 import { classesReadTheme } from '../style/classes.js';
@@ -126,6 +126,26 @@ export function useRequest(name, action, ...params) {
     get value() { return resource.state.value; },
     get error() { return resource.state.error; },
     reload: guard('request reload', resource.reload),
+  });
+}
+
+/** `useAction(action)` keys by call order in the component; `useAction(name, action)` by name. */
+export function useAction(...args) {
+  if (args.length < 1 || args.length > 2) throw Error('UI_ACTION: useAction takes (action) or (name, action)');
+  if (!render.active || render.scope === null) throw Error('UI_SCOPE: useAction outside render');
+  let name = args[0];
+  if (args.length === 1) {
+    const counts = render.candidate.actionOrder ??= new Map();
+    const order = counts.get(render.scope) ?? 0;
+    counts.set(render.scope, order + 1);
+    name = `#${order}`;
+  }
+  const target = pageAction(args[args.length - 1], 'UI_ACTION', 'call');
+  const resource = own(name, { pending: false, error: null }, 'action', 'UI_ACTION', actionResource, { action: target?.action });
+  return Object.freeze({
+    get pending() { return resource.state.pending; },
+    get error() { return resource.state.error; },
+    run: guard('action run', resource.run),
   });
 }
 

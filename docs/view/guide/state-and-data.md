@@ -84,6 +84,15 @@ A cell of JSON state that belongs to the component instance ([Pages and componen
   description is rejected with a `UI_*` error) discards it, and the page keeps its last good state.
 - Named cells in custom hooks take a namespace: ``useLocal(`${name}/draft`, '')``.
 
+## `useAction(action)`
+
+One action called from handlers, with its state: `run(payload?)` calls it; `pending` is true while the
+latest call is in flight; `error` is its `{ code, message }` failure, or `null`. `run` resolves to the
+result, or `undefined` on failure, and never rejects, so it can be the handler itself:
+`<button onClick={save.run} disabled={save.pending}>`. A second use of one action in a component takes a
+name: `useAction('retry', actions.save)`. An action is also a handler by itself (`onClick={actions.pick}`);
+then a failure goes to the page log.
+
 ## `useRequest(name, action, params?)`
 
 Calls a unary action after the frame that declares it commits, and again whenever `params` (compared as

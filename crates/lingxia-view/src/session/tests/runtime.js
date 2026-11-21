@@ -40,6 +40,7 @@
     takeLowered: () => takeLowered,
     takeMovedAnchors: () => takeMovedAnchors,
     takeThrown: () => takeThrown,
+    useAction: () => useAction,
     useBox: () => useBox,
     useChannel: () => useChannel,
     useId: () => useId,
@@ -2647,6 +2648,40 @@
       }
     };
   }
+  function actionResource(state) {
+    let definition, mounted = false, ticket = 0, snapshot = state.value;
+    const update = (patch) => {
+      snapshot = { ...snapshot, ...patch };
+      state.set(snapshot);
+    };
+    return {
+      get state() {
+        return snapshot;
+      },
+      async run(...params) {
+        if (params.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
+        if (!mounted || !definition.action) return void 0;
+        const current = ++ticket;
+        update({ pending: true, error: null });
+        try {
+          const value = await definition.action(...params);
+          if (mounted && current === ticket) update({ pending: false });
+          return value;
+        } catch (error) {
+          if (mounted && current === ticket) update({ pending: false, error: resourceError(error) });
+          return void 0;
+        }
+      },
+      commit(next) {
+        definition = next;
+        mounted = true;
+      },
+      dispose() {
+        mounted = false;
+        ticket++;
+      }
+    };
+  }
 
   // src/runtime/channel-resource.js
   function channelResource(state, report2) {
@@ -3412,6 +3447,29 @@
         return resource.state.error;
       },
       reload: guard("request reload", resource.reload)
+    });
+  }
+  function useAction(...args) {
+    var _a;
+    if (args.length < 1 || args.length > 2) throw Error("UI_ACTION: useAction takes (action) or (name, action)");
+    if (!render.active || render.scope === null) throw Error("UI_SCOPE: useAction outside render");
+    let name = args[0];
+    if (args.length === 1) {
+      const counts = (_a = render.candidate).actionOrder ?? (_a.actionOrder = /* @__PURE__ */ new Map());
+      const order = counts.get(render.scope) ?? 0;
+      counts.set(render.scope, order + 1);
+      name = `#${order}`;
+    }
+    const target = pageAction(args[args.length - 1], "UI_ACTION", "call");
+    const resource = own(name, { pending: false, error: null }, "action", "UI_ACTION", actionResource, { action: target?.action });
+    return Object.freeze({
+      get pending() {
+        return resource.state.pending;
+      },
+      get error() {
+        return resource.state.error;
+      },
+      run: guard("action run", resource.run)
     });
   }
   function useStream(name, action, options2 = {}) {

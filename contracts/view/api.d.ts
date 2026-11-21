@@ -137,6 +137,19 @@ export interface RequestResource<T> {
 }
 export declare function useRequest<P extends [] | [unknown?], R>(name: string, action: (...params: P) => Promise<R>, ...params: P): RequestResource<R>;
 
+export interface ActionResource<P extends unknown[], R> {
+  /** The latest `run` is in flight. */
+  readonly pending: boolean;
+  /** The latest `run`'s failure, or `null`; cleared when the next one starts. */
+  readonly error: ResourceError | null;
+  /** Call the action; resolves to its result, or `undefined` when it failed (see `error`). Usable as a handler. */
+  run(...params: P): Promise<ReadonlyData<R> | undefined>;
+}
+/** One action called from handlers, with its busy and failed state; keyed by call order in the component. */
+export declare function useAction<P extends [] | [unknown?], R>(action: (...params: P) => Promise<R>): ActionResource<P, R>;
+/** `useAction` keyed by `name`, for a second use of one action in a component. */
+export declare function useAction<P extends [] | [unknown?], R>(name: string, action: (...params: P) => Promise<R>): ActionResource<P, R>;
+
 export interface StreamResource<P extends unknown[], R> {
   readonly status: "idle" | "streaming" | "completed" | "canceled" | "failed";
   readonly error: ResourceError | null;
