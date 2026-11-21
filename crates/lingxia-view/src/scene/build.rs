@@ -1459,7 +1459,8 @@ impl Renderer {
                 None => (bounds, visible_bounds),
             };
             // A run drops its box styles, so a focused link rings its line pieces here, where
-            // pictures of the page see the ring too.
+            // pictures of the page see the ring too: 2 px clear of each piece's text box, so it
+            // misses tall letters and the underline, with the theme's small control corners.
             if !link_group.is_empty()
                 && self.focus_visible
                 && focused_identity.as_deref() == identities.get(index).map(String::as_str)
@@ -1468,9 +1469,9 @@ impl Renderer {
                     commands.push(Paint::Border {
                         corners: None,
                         color: palette.role(Role::Focus),
-                        bounds: [rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0],
+                        bounds: [rx - 4.0, ry - 4.0, rw + 8.0, rh + 8.0],
                         widths: [2.0; 4],
-                        radius: 4.0,
+                        radius: self.control_radius + 2.0,
                         style: crate::scene::border::LineStyle::Solid,
                     });
                 }

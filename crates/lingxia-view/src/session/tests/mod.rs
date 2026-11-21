@@ -2107,6 +2107,33 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
         rings(&display) >= 2,
         "the wrapped link rings each line piece"
     );
+    // Each ring stands 2 px clear of its piece's text box, its inner corners the theme's
+    // small control radius.
+    let pieces = display
+        .nodes
+        .iter()
+        .find(|n| n.test_id == "l")
+        .unwrap()
+        .hit_rects
+        .clone();
+    let small = crate::protocol::scales::Scales::builtin().control_radius();
+    for paint in &display.commands {
+        if let crate::scene::paint::Paint::Border {
+            color,
+            bounds,
+            widths,
+            radius,
+            ..
+        } = paint
+            && *color == focus
+        {
+            assert!(
+                pieces.iter().any(|[x, y, w, h]| *bounds == [x - 4.0, y - 4.0, w + 8.0, h + 8.0]),
+                "{bounds:?} around one of {pieces:?}"
+            );
+            assert_eq!((*widths, *radius), ([2.0; 4], small + 2.0));
+        }
+    }
     assert!(page.set_control_focus_visible(Some(&id), false));
     let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
     assert_eq!(rings(&display), 0, "a pointer-moved focus shows no ring");

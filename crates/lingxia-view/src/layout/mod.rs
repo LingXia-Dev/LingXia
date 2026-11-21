@@ -51,6 +51,8 @@ pub struct Renderer {
     pub(crate) webviews: crate::scene::webview::WebViews,
     /// Whether `focused` shows: false when a pointer moved it, so no indicator ring.
     pub(crate) focus_visible: bool,
+    /// The theme's small control radius (`radius.sm`), which a focused link's ring takes.
+    pub(crate) control_radius: f32,
 }
 
 #[cfg(test)]
@@ -95,6 +97,7 @@ impl Default for Renderer {
             videos,
             webviews,
             focus_visible: true,
+            control_radius: crate::protocol::scales::Scales::builtin().control_radius(),
         }
     }
 }

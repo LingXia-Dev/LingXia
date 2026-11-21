@@ -142,6 +142,7 @@ impl ViewSession {
             self.input_records = Some(rescaled);
         }
         self.wire.borrow_mut().set_scales(scales.clone())?;
+        self.renderer.control_radius = scales.control_radius();
         self.scales = scales;
         self.paint_records = None;
         self.renderer.clear_text_cache();

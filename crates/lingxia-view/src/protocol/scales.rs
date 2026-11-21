@@ -148,6 +148,16 @@ impl Scales {
         Ok(Scales { revision, slots })
     }
 
+    /// The small control radius rings around text take.
+    pub fn control_radius(&self) -> f32 {
+        self.named("radius.sm").unwrap_or(4.0) as f32
+    }
+
+    /// The value of the slot named `name` (`radius.sm`).
+    pub fn named(&self, name: &str) -> Option<f64> {
+        self.number(SCALES.iter().position(|(slot, _)| *slot == name)?)
+    }
+
     fn number(&self, slot: usize) -> Option<f64> {
         match self.slots.get(slot) {
             Some(Slot::Number(value)) => Some(*value),
