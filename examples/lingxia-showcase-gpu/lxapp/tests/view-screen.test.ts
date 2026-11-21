@@ -62,8 +62,9 @@ test('a pinned environment reaches the readout: still motion reads as reduced, t
   covers: ['view:environment'], start: openDemo('screen'),
 }, async (t) => {
   await t.app.view.environment({ theme: 'dark', still: true, contrast: 'high' });
-  await expect.poll(() => state(t, 'lab-env-reduced-motion')).toBe('reduce');
-  expect(await state(t, 'lab-env-theme')).toBe('dark');
+  // The run may already be still, so wait on the theme, which the pin does change.
+  await expect.poll(() => state(t, 'lab-env-theme')).toBe('dark');
+  expect(await state(t, 'lab-env-reduced-motion')).toBe('reduce');
   expect(await state(t, 'lab-env-contrast')).toBe('high');
   await t.app.view.environment({ theme: 'light', still: false, contrast: 'standard' });
   await expect.poll(() => state(t, 'lab-env-theme')).toBe('light');
