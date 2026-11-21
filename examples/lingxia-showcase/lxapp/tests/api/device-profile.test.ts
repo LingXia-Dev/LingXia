@@ -67,7 +67,7 @@ test('accept both device orientations and reject an unknown one', {
   const supported = ORIENTATION_SUPPORT[os] ?? true;
   defer(async () => {
     // Removing the lock hands each page its own `pageOrientation` back.
-    await app.logic.eval(({ lx }) => { lx.device.orientation.set('auto'); return true; }).catch(() => undefined);
+    await app.logic.eval(({ lx }) => { lx.device.orientation.unlock(); return true; }).catch(() => undefined);
   });
 
   const result = await app.logic.eval(({ lx }) => {
@@ -80,7 +80,10 @@ test('accept both device orientations and reject an unknown one', {
     return {
       landscape: attempt('landscape'),
       portrait: attempt('portrait'),
-      unlock: attempt('auto'),
+      unlock: (() => {
+        try { lx.device.orientation.unlock(); return { ok: true }; }
+        catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
+      })(),
       invalid: attempt('sideways'),
     };
   });

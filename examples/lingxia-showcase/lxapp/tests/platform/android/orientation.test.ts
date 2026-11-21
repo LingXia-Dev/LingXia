@@ -35,7 +35,7 @@ test('rotate the Android viewport and deliver events only to live listeners', {
       states[key]?.offRemoved();
       states[key]?.offLive();
       delete states[key];
-      lx.device.orientation.set('auto');
+      lx.device.orientation.unlock();
     }, namespace);
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });

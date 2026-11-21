@@ -1252,7 +1252,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3700"
+      "source": "src/generated/logic.ts:3705"
     },
     {
       "path": "lx.automation",
@@ -1688,14 +1688,14 @@
       "kind": "function",
       "entry": "global",
       "summary": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.",
-      "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. With it removed, each page's own setting applies again.",
+      "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. `unlock()` removes it.",
       "signatures": [
         {
-          "text": "set(orientation: DeviceOrientation | 'auto'): void",
+          "text": "set(orientation: DeviceOrientation): void",
           "parameters": [
             {
               "name": "orientation",
-              "type": "DeviceOrientation | 'auto'",
+              "type": "DeviceOrientation",
               "required": true
             }
           ],
@@ -1715,6 +1715,24 @@
       },
       "examples": [],
       "source": "src/generated/logic.ts:3571"
+    },
+    {
+      "path": "lx.device.orientation.unlock",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Remove the lock `set` placed: each page's `pageOrientation`, then the app's default, applies again.",
+      "description": "Remove the lock `set` placed: each page's `pageOrientation`, then the\napp's default, applies again.",
+      "signatures": [
+        {
+          "text": "unlock(): void",
+          "parameters": [],
+          "returns": "void"
+        }
+      ],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:3576"
     },
     {
       "path": "lx.device.orientation.watch",
@@ -1747,7 +1765,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3576"
+      "source": "src/generated/logic.ts:3581"
     },
     {
       "path": "lx.device.screen",
@@ -3351,7 +3369,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3720"
+      "source": "src/generated/logic.ts:3725"
     },
     {
       "path": "lx.host.tray.onClick",
@@ -3382,7 +3400,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3716"
+      "source": "src/generated/logic.ts:3721"
     },
     {
       "path": "lx.host.tray.setIcon",
@@ -3406,7 +3424,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3707"
+      "source": "src/generated/logic.ts:3712"
     },
     {
       "path": "lx.host.tray.setMenu",
@@ -3433,7 +3451,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3711"
+      "source": "src/generated/logic.ts:3716"
     },
     {
       "path": "lx.host.tray.setTitle",
@@ -3457,7 +3475,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3709"
+      "source": "src/generated/logic.ts:3714"
     },
     {
       "path": "lx.host.tray.show",
@@ -3475,7 +3493,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3718"
+      "source": "src/generated/logic.ts:3723"
     },
     {
       "path": "lx.media",
@@ -4127,7 +4145,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3763"
+      "source": "src/generated/logic.ts:3768"
     },
     {
       "path": "lx.network.wifi.current",
@@ -4147,7 +4165,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3767"
+      "source": "src/generated/logic.ts:3772"
     },
     {
       "path": "lx.network.wifi.list",
@@ -4167,7 +4185,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3765"
+      "source": "src/generated/logic.ts:3770"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -4200,7 +4218,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3769"
+      "source": "src/generated/logic.ts:3774"
     },
     {
       "path": "lx.network.wifi.start",
@@ -4218,7 +4236,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3756"
+      "source": "src/generated/logic.ts:3761"
     },
     {
       "path": "lx.network.wifi.stop",
@@ -4236,7 +4254,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3758"
+      "source": "src/generated/logic.ts:3763"
     },
     {
       "path": "lx.openExternal",
@@ -4345,7 +4363,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3617"
+      "source": "src/generated/logic.ts:3622"
     },
     {
       "path": "lx.pick.directory",
@@ -4385,7 +4403,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3600"
+      "source": "src/generated/logic.ts:3605"
     },
     {
       "path": "lx.pick.file",
@@ -4416,7 +4434,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3586"
+      "source": "src/generated/logic.ts:3591"
     },
     {
       "path": "lx.pick.files",
@@ -4447,7 +4465,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3591"
+      "source": "src/generated/logic.ts:3596"
     },
     {
       "path": "lx.pick.media",
@@ -4477,7 +4495,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3609"
+      "source": "src/generated/logic.ts:3614"
     },
     {
       "path": "lx.share",
@@ -4538,7 +4556,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3644"
+      "source": "src/generated/logic.ts:3649"
     },
     {
       "path": "lx.shell.getApp",
@@ -4568,7 +4586,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3628"
+      "source": "src/generated/logic.ts:3633"
     },
     {
       "path": "lx.shell.getDeclared",
@@ -4606,7 +4624,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3634"
+      "source": "src/generated/logic.ts:3639"
     },
     {
       "path": "lx.shell.openBuiltin",
@@ -4635,7 +4653,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3636"
+      "source": "src/generated/logic.ts:3641"
     },
     {
       "path": "lx.shell.setAppDisplay",
@@ -4661,7 +4679,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3642"
+      "source": "src/generated/logic.ts:3647"
     },
     {
       "path": "lx.shell.sidebarActions",
@@ -4704,7 +4722,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3671"
+      "source": "src/generated/logic.ts:3676"
     },
     {
       "path": "lx.shell.sidebarActions.replace",
@@ -4739,7 +4757,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3658"
+      "source": "src/generated/logic.ts:3663"
     },
     {
       "path": "lx.shell.sidebarActions.update",
@@ -4781,7 +4799,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3666"
+      "source": "src/generated/logic.ts:3671"
     },
     {
       "path": "lx.storage",
@@ -4881,7 +4899,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3688"
+      "source": "src/generated/logic.ts:3693"
     },
     {
       "path": "lx.surface.openApp",
@@ -4920,7 +4938,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3680"
+      "source": "src/generated/logic.ts:3685"
     },
     {
       "path": "lx.surface.openDeclared",
@@ -4959,7 +4977,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3686"
+      "source": "src/generated/logic.ts:3691"
     },
     {
       "path": "lx.surface.openPage",
@@ -5054,7 +5072,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3678"
+      "source": "src/generated/logic.ts:3683"
     },
     {
       "path": "lx.ui",
@@ -5095,7 +5113,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3732"
+      "source": "src/generated/logic.ts:3737"
     },
     {
       "path": "lx.ui.alert",
@@ -5121,7 +5139,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3734"
+      "source": "src/generated/logic.ts:3739"
     },
     {
       "path": "lx.ui.confirm",
@@ -5147,7 +5165,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3736"
+      "source": "src/generated/logic.ts:3741"
     },
     {
       "path": "lx.ui.toast",
@@ -5181,7 +5199,7 @@
       "examples": [
         "lx.ui.toast('Saved', { tone: 'success' });\nconst busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });\nbusy.dismiss();"
       ],
-      "source": "src/generated/logic.ts:3746"
+      "source": "src/generated/logic.ts:3751"
     },
     {
       "path": "lxAppUnavailableReason",
@@ -8728,7 +8746,7 @@
       "description": "Feature contracts generated from the runtime registry.",
       "text": "\"app.appUse\" | \"app.autostart\" | \"app.banner\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.notification\" | \"app.proxy\" | \"app.selfUpdate\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\" | \"terminal\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3776"
+      "source": "src/generated/logic.ts:3781"
     },
     {
       "name": "LxFile",
@@ -9463,10 +9481,10 @@
       "fields": [
         {
           "name": "set",
-          "type": "(orientation: DeviceOrientation | \"auto\") => void",
+          "type": "(orientation: DeviceOrientation) => void",
           "required": true,
           "summary": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.",
-          "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. With it removed, each page's own setting applies again.",
+          "description": "Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.\nThe lock beats every page's `pageOrientation`; only a full-screen video\nbeats the lock. `unlock()` removes it.",
           "tags": {
             "throws": [
               {
@@ -9475,6 +9493,13 @@
               }
             ]
           }
+        },
+        {
+          "name": "unlock",
+          "type": "() => void",
+          "required": true,
+          "summary": "Remove the lock `set` placed: each page's `pageOrientation`, then the app's default, applies again.",
+          "description": "Remove the lock `set` placed: each page's `pageOrientation`, then the\napp's default, applies again."
         },
         {
           "name": "watch",

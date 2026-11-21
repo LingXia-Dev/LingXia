@@ -54,24 +54,32 @@ fn current_orientation(lxapp: &LxApp) -> &'static str {
     })
 }
 
-/// Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.
+/// Lock this lxapp to `portrait` or `landscape`.
 ///
 /// The lock beats every page's `pageOrientation`; only a full-screen video
-/// beats the lock. With it removed, each page's own setting applies again.
+/// beats the lock. `unlock()` removes it.
 ///
 /// @throws {E_INVALID_ARG} Any other value.
 fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
     let lock = match orientation.as_str() {
-        "auto" => None,
         "portrait" | "landscape" => OrientationConfig::from_label(&orientation),
         _ => {
             return Err(js_invalid_parameter_error(format!(
-                "Invalid orientation value: {orientation} (expected portrait, landscape or auto)"
+                "Invalid orientation value: {orientation} (expected portrait or landscape)"
             )));
         }
     };
+    apply_orientation_lock(&ctx, lock)
+}
 
-    let lxapp = LxApp::from_ctx(&ctx)?;
+/// Remove the lock `set` placed: each page's `pageOrientation`, then the
+/// app's default, applies again.
+fn unlock_device_orientation(ctx: JSContext) -> JSResult<()> {
+    apply_orientation_lock(&ctx, None)
+}
+
+fn apply_orientation_lock(ctx: &JSContext, lock: Option<OrientationConfig>) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
     lxapp.set_app_orientation(lock);
 
     lxapp
@@ -122,7 +130,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace OrientationApi = crate::namespace::orientation(ctx)?;
-        fn set(ts_params = "orientation: DeviceOrientation | 'auto'", ts_return = "void") = set_device_orientation;
+        fn set(ts_params = "orientation: DeviceOrientation", ts_return = "void") = set_device_orientation;
+        fn unlock(ts_return = "void") = unlock_device_orientation;
         fn watch(
             ts_params = "callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions",
             ts_return = "() => void"

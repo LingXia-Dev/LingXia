@@ -3565,10 +3565,15 @@ declare global {
     /**
      * Lock this lxapp to `portrait` or `landscape`; `auto` removes the lock.
      * The lock beats every page's `pageOrientation`; only a full-screen video
-     * beats the lock. With it removed, each page's own setting applies again.
+     * beats the lock. `unlock()` removes it.
      * @throws {E_INVALID_ARG} Any other value.
      */
-    set(orientation: DeviceOrientation | 'auto'): void;
+    set(orientation: DeviceOrientation): void;
+    /**
+     * Remove the lock `set` placed: each page's `pageOrientation`, then the
+     * app's default, applies again.
+     */
+    unlock(): void;
     /**
      * Delivers the orientation in effect before returning, then each change: the
      * lock (not how the device is held), or the screen's shape when unlocked.

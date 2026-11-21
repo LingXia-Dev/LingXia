@@ -492,7 +492,7 @@ Each page's `index.json`:
 All keys are optional. `navigationStyle: "custom"` draws no native bar; on
 mobile the capsule stays over the page's header.
 `pageOrientation` (`portrait`, `landscape`, `auto`) applies until
-`lx.device.orientation.set()` locks the app; `set('auto')` removes the lock.
+`lx.device.orientation.set()` locks the app; `unlock()` hands it back.
 
 ### Localized labels and titles
 

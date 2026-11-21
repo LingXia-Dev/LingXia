@@ -6105,6 +6105,23 @@ mod manifest_reload_tests {
         (temp, app, detail)
     }
 
+    #[test]
+    fn unlocking_orientation_hands_a_page_without_its_own_back_to_the_app_default() {
+        let (_temp, app, detail) = popped_fixture("gpu");
+        let path = detail.path();
+        app.set_app_orientation(OrientationConfig::from_label("landscape"));
+        assert_eq!(
+            app.get_page_orientation(&path).mode,
+            crate::PageOrientation::Landscape
+        );
+        app.set_app_orientation(None);
+        assert_eq!(
+            app.get_page_orientation(&path),
+            OrientationConfig::default(),
+            "the unlock removes the lock; it does not force sensor rotation"
+        );
+    }
+
     fn live(app: &LxApp, page: &PageInstance) -> bool {
         app.get_page_by_instance_id_str(&page.instance_id_string())
             .is_some()
