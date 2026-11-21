@@ -2736,6 +2736,12 @@ async fn open_surface(
             let page_inner = page_surface.borrow::<JSSurface>()?;
             *page_inner.peer.borrow_mut() = Some(surface.clone());
         }
+        // `openPage` stamped its handle before this page existed.
+        for field in ["kind", "realized", "key"] {
+            if let Some(value) = read_optional_string(&surface, field)? {
+                page_surface.set(field, value)?;
+            }
+        }
         page_surface_for_close = Some(page_surface);
     }
     let surface_for_close = surface.clone();
