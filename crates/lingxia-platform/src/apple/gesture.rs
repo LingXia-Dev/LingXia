@@ -1137,7 +1137,12 @@ mod ios {
 
     pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], PlatformError> {
         on_main(move || {
-            let view = page_view(&target)? as *mut AnyObject;
+            // Reading a size needs no touch injection: a window target is the key window,
+            // in the points chrome bounds and chrome taps use.
+            let view = match target {
+                GestureTarget::Window { .. } => key_window().ok_or("no key window")?,
+                _ => page_view(&target)? as *mut AnyObject,
+            };
             let bounds: CGRect = unsafe { msg_send![view, bounds] };
             Ok([0.0, 0.0, bounds.size.width, bounds.size.height])
         })
