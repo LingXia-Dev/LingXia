@@ -152,6 +152,104 @@ pub(crate) fn place(
     ([x - natural[0], y - natural[1]], side)
 }
 
+/// The value of an inset that puts an edge on the anchor's centre line.
+pub(crate) const ANCHOR_CENTER: &str = "anchor(center)";
+
+/// An absolutely positioned box inside an anchored popover with an inset at `anchor(center)`:
+/// its edge on the anchor's centre line once the popover is placed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct AnchorInset {
+    /// The anchored popover it sits in.
+    pub popover: usize,
+    /// Per axis, the edge of the containing padding box the inset was laid out from, as
+    /// laid out: a zero inset there, which composition moves to the centre line.
+    pub base: [Option<f32>; 2],
+}
+
+impl AnchorInset {
+    /// `record`'s, when it is absolutely positioned inside an anchored popover (`popover`
+    /// finds the nearest one above `index`) and an inset names `anchor(center)`;
+    /// `padding_box` is its containing block's (left, top, right, bottom).
+    pub(crate) fn of(
+        record: &crate::protocol::Record,
+        rtl: bool,
+        popover: impl Fn(usize) -> Option<usize>,
+        index: usize,
+        padding_box: impl Fn() -> Option<[f32; 4]>,
+    ) -> Option<Self> {
+        use crate::protocol::field;
+        let centred = |id: usize| record.string(id) == Some(ANCHOR_CENTER);
+        let side = |physical, left| {
+            crate::layout::style::side(
+                record,
+                physical,
+                field::INSET_INLINE_START,
+                field::INSET_INLINE_END,
+                left,
+                rtl,
+            )
+        };
+        let [left, right] = [
+            side(field::INSET_LEFT, true),
+            side(field::INSET_RIGHT, false),
+        ];
+        let (top, bottom) = (field::INSET_TOP, field::INSET_BOTTOM);
+        if ![left, right, top, bottom].into_iter().any(centred)
+            || !matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
+        {
+            return None;
+        }
+        let popover = popover(index)?;
+        let [l, t, r, b] = padding_box()?;
+        let pick = |start: usize, end: usize, low: f32, high: f32| {
+            if centred(start) {
+                Some(low)
+            } else if centred(end) {
+                Some(high)
+            } else {
+                None
+            }
+        };
+        Some(Self {
+            popover,
+            base: [pick(left, right, l, r), pick(top, bottom, t, b)],
+        })
+    }
+
+    /// The translation (subtracted from layout) that moves a box laid out at `laid` onto the
+    /// anchor's `centre` line, keeping it inside the popover's straight edge: at least the
+    /// corner `radius` from each corner. `translation` is its parent's.
+    pub(crate) fn resolve(
+        &self,
+        laid: [f32; 4],
+        mut translation: [f32; 2],
+        centre: [f32; 2],
+        popover: [f32; 4],
+        radius: f32,
+    ) -> [f32; 2] {
+        for axis in 0..2 {
+            let Some(base) = self.base[axis] else {
+                continue;
+            };
+            let (start, size, extent) = (laid[axis], laid[axis + 2], popover[axis + 2]);
+            let mut shift = centre[axis] - (base - translation[axis]);
+            let at = start - translation[axis] + shift;
+            let (low, high) = (
+                popover[axis] + radius,
+                popover[axis] + extent - radius - size,
+            );
+            let kept = if low <= high {
+                at.clamp(low, high)
+            } else {
+                popover[axis] + (extent - size) / 2.0
+            };
+            shift += kept - at;
+            translation[axis] -= shift;
+        }
+        translation
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Align, Area, LogicalSide, Side, place};

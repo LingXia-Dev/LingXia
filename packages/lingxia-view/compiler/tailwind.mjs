@@ -630,6 +630,11 @@ function lowered(prop, key, value) {
     case 'basis': return value === 'auto' ? 'auto' : dimension(value);
     case 'margin': return value === 'auto' ? 'auto' : number(value, true);
     case 'inset': {
+      // `anchor(center)` puts this edge on the centre line of the anchor of the popover it sits in.
+      if (/^anchor\(/.test(value)) {
+        if (/^anchor\(\s*center\s*\)$/.test(value)) return 'anchor(center)';
+        unsupported(`inset ${value} (only anchor(center) is supported, on an absolutely positioned element inside an anchored popover)`);
+      }
       const lowered = dimension(value);
       if (typeof lowered === 'string' && !lowered.endsWith('%')) unsupported(`unsupported inset: ${value}`);
       return lowered;

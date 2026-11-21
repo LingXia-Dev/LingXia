@@ -602,7 +602,8 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                 "UI_STYLE: invalid margin",
             ),
             "inset" => ensure(
-                length_or_percent(value, true).is_some(),
+                length_or_percent(value, true).is_some()
+                    || value.as_str() == Some(crate::scene::anchor::ANCHOR_CENTER),
                 "UI_STYLE: invalid inset",
             ),
             "state-style" => focus_style(value).map(drop),

@@ -379,12 +379,12 @@ export interface Style {
   marginInlineEnd?: number | "auto";
   position?: "relative" | "absolute" | "fixed" | "sticky";
   inset?: number | `${number}%`;
-  top?: number | `${number}%`;
-  right?: number | `${number}%`;
-  bottom?: number | `${number}%`;
-  left?: number | `${number}%`;
-  insetInlineStart?: number | `${number}%`;
-  insetInlineEnd?: number | `${number}%`;
+  top?: number | `${number}%` | "anchor(center)";
+  right?: number | `${number}%` | "anchor(center)";
+  bottom?: number | `${number}%` | "anchor(center)";
+  left?: number | `${number}%` | "anchor(center)";
+  insetInlineStart?: number | `${number}%` | "anchor(center)";
+  insetInlineEnd?: number | `${number}%` | "anchor(center)";
   zIndex?: number;
   positionArea?: "bottom span-inline-end" | "bottom span-inline-start" | "bottom" | "top span-inline-end" | "top span-inline-start" | "top" | "inline-end span-block-end" | "inline-end span-block-start" | "inline-end" | "inline-start span-block-end" | "inline-start span-block-start" | "inline-start";
   flexGrow?: number;

@@ -79,6 +79,8 @@ pub(crate) struct RetainedLayout {
     /// The node a popover sits against, by identity, and the popover's margin (top, right,
     /// bottom, left); composition places it below or above.
     pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area, [f32; 4])>>,
+    /// Insets at `anchor(center)`, resolved once their popover is placed.
+    pub(crate) anchor_insets: Vec<Option<crate::scene::anchor::AnchorInset>>,
     /// The surface less the bars and keyboard over it: an anchored popover stays inside.
     pub(crate) unobscured: [f32; 4],
     pub(crate) backdrops: Vec<Option<(f32, f32)>>,
@@ -316,6 +318,7 @@ impl RetainedLayout {
                 next.transforms.push(old.transforms[index]);
                 next.stickies.push(None);
                 next.anchors.push(None);
+                next.anchor_insets.push(None);
                 next.backdrops.push(old.backdrops[index]);
                 next.masks.push(old.masks[index].clone());
                 next.blurs.push(old.blurs[index]);
@@ -449,6 +452,8 @@ impl RetainedLayout {
         let mut nodes = self.nodes.clone();
         let mut translations: Vec<[f32; 2]> = vec![[0.0; 2]; count];
         let mut flipped = HashMap::new();
+        // The centre of each placed popover's anchor, for `anchor(center)` insets inside it.
+        let mut anchor_centres: Vec<Option<[f32; 2]>> = vec![None; count];
         let mut clips = vec![[0.0f32; 4]; count];
         let mut commands = Vec::new();
         let mut rounded: Vec<Vec<ClipSnapshot>> = vec![Vec::new(); count];
@@ -593,9 +598,14 @@ impl RetainedLayout {
                     .unwrap_or_default();
                 natural[0] -= translation[0] + tx;
                 natural[1] -= translation[1] + ty;
+                let target_box = anchor_box(&nodes, &self.parents, target);
+                anchor_centres[index] = Some([
+                    target_box[0] + target_box[2] / 2.0,
+                    target_box[1] + target_box[3] / 2.0,
+                ]);
                 let ([dx, dy], side) = crate::scene::anchor::place(
                     natural,
-                    anchor_box(&nodes, &self.parents, target),
+                    target_box,
                     self.unobscured,
                     *area,
                     *margin,
@@ -604,6 +614,25 @@ impl RetainedLayout {
                     flipped.insert(self.nodes[index].identity.to_string(), area.logical(side));
                 }
                 translation = [translation[0] - dx, translation[1] - dy];
+            }
+            if let Some(inset) = &self.anchor_insets[index]
+                && let Some(centre) = anchor_centres[inset.popover]
+            {
+                // The popover is composed already: it is an ancestor.
+                let popover = &nodes[inset.popover];
+                let radius = popover.radii.map_or(popover.radius, |radii| {
+                    radii
+                        .iter()
+                        .flatten()
+                        .fold(popover.radius, |a, b| a.max(*b))
+                });
+                translation = inset.resolve(
+                    self.nodes[index].bounds,
+                    translation,
+                    centre,
+                    popover.bounds,
+                    radius,
+                );
             }
             // A drag element sits at its offset, its whole subtree with it.
             if let Some(drag) = &self.nodes[index].drag {

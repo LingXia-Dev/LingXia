@@ -27,33 +27,39 @@ export function BesideDemo() {
 }
 
 // A callout clear of its anchor by its own margin, on either side; a translate moves it after placement.
+// Its caret faces the target after any flip and stays on the target's centre line when the
+// callout is pushed in from the screen edge, as it is for the target at the edge.
 export function GapDemo() {
   const side = useLocal<'none' | 'below' | 'above'>('lab-gap-side', 'none');
   const nudged = useLocal('lab-gap-nudged', false);
+  const edge = useLocal('lab-gap-edge', false);
   const t = useSay();
   const toggle = (next: 'below' | 'above') => () => side.set(side.value === next ? 'none' : next);
   const below = side.value !== 'above';
+  const caret = 'absolute start-[anchor(center)] -ms-1.5 size-3 rotate-45 bg-text opacity-0';
   return (
     <>
-      <view className="flex-row gap-2">
+      <view className="flex-row flex-wrap gap-2">
         <Button testId="lab-gap-below" size="sm" variant="secondary" onClick={toggle('below')}>{t(labels.gapBelow)}</Button>
         <Button testId="lab-gap-above" size="sm" variant="secondary" onClick={toggle('above')}>{t(labels.gapAbove)}</Button>
         <Button testId="lab-gap-nudge" size="sm" variant="secondary" onClick={() => nudged.set(!nudged.value)}>{t(labels.gapNudge)}</Button>
+        <Button testId="lab-gap-edge" size="sm" variant="secondary" onClick={() => edge.set(!edge.value)}>{t(labels.gapEdge)}</Button>
       </view>
-      <view className="h-40 items-center justify-center">
-        <view id="lab-gap-target" data-testid="lab-gap-target" className="px-4 py-2 rounded-lg border border-line-strong">
+      <view className="h-40 justify-center">
+        <view id="lab-gap-target" data-testid="lab-gap-target" className="self-center px-4 py-2 rounded-lg border border-line-strong">
           <text className="text-sm">{t(labels.gapTarget)}</text>
         </view>
+        <view id="lab-gap-corner" data-testid="lab-gap-corner" className="self-start size-8 rounded-full border border-line-strong"/>
       </view>
-      <view id="lab-gap-note" popover="manual" anchor="lab-gap-target" open={side.value !== 'none'} role="tooltip" data-testid="lab-gap-note"
+      <view id="lab-gap-note" popover="manual" anchor={edge.value ? 'lab-gap-corner' : 'lab-gap-target'} open={side.value !== 'none'} role="tooltip" data-testid="lab-gap-note"
         onToggle={next => { if (!next) side.set('none'); }} style={{ positionArea: below ? 'bottom' : 'top' }}
         className={`w-48 rounded-lg bg-text p-3 ${below ? 'mt-3' : 'mb-3'} ${nudged.value ? (below ? 'translate-y-2' : '-translate-y-2') : ''}`}>
         <text className="text-xs text-surface">{t(labels.gapNote)}</text>
-        {/* One caret per edge; each shows only on the side the callout ended on, flip or not. */}
-        <view data-testid="lab-gap-caret-up" className="absolute -top-1.5 left-1/2 -ml-1.5 size-3 rotate-45 bg-text opacity-0 side-bottom:opacity-100"/>
-        <view data-testid="lab-gap-caret-down" className="absolute -bottom-1.5 left-1/2 -ml-1.5 size-3 rotate-45 bg-text opacity-0 side-top:opacity-100"/>
+        {/* One caret per edge, on the target's centre line; each shows only on the side the callout ended on. */}
+        <view data-testid="lab-gap-caret-up" className={`${caret} -top-1.5 side-bottom:opacity-100`}/>
+        <view data-testid="lab-gap-caret-down" className={`${caret} -bottom-1.5 side-top:opacity-100`}/>
       </view>
-      <Readout testId="lab-gap-state" state={`side=${side.value} nudged=${nudged.value}`}>{t(readouts.gap(side.value, nudged.value))}</Readout>
+      <Readout testId="lab-gap-state" state={`side=${side.value} nudged=${nudged.value} edge=${edge.value}`}>{t(readouts.gap(side.value, nudged.value))}</Readout>
     </>
   );
 }

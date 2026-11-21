@@ -47,29 +47,40 @@ test('a callout sits its margin clear of its anchor above or below, and a transl
   const centred = (anchor: { x: number; width: number }, box: { x: number; width: number }) => near(box.x + box.width / 2, anchor.x + anchor.width / 2);
 
   await view.testId('lab-gap-below').click();
-  await expect(state).toHaveAttribute('data-state', 'side=below nudged=false');
+  await expect(state).toHaveAttribute('data-state', 'side=below nudged=false edge=false');
   let [anchor, box] = [await target.boundingBox(), await note.boundingBox()];
   // Under the target by its 12 pt margin, unless the screen's bottom flips it over with the same gap.
   expect(near(box.y, anchor.y + anchor.height + 12) || near(box.y + box.height, anchor.y - 12)).toBe(true);
   expect(centred(anchor, box)).toBe(true);
 
   await view.testId('lab-gap-nudge').click();
-  await expect(state).toHaveAttribute('data-state', 'side=below nudged=true');
+  await expect(state).toHaveAttribute('data-state', 'side=below nudged=true edge=false');
   const nudged = await note.boundingBox();
   expect(near(nudged.y - box.y, 8)).toBe(true);
 
   await view.testId('lab-gap-nudge').click();
   await view.testId('lab-gap-above').click();
-  await expect(state).toHaveAttribute('data-state', 'side=above nudged=false');
+  await expect(state).toHaveAttribute('data-state', 'side=above nudged=false edge=false');
   [anchor, box] = [await target.boundingBox(), await note.boundingBox()];
   expect(near(box.y + box.height, anchor.y - 12) || near(box.y, anchor.y + anchor.height + 12)).toBe(true);
   expect(centred(anchor, box)).toBe(true);
-  // Both carets ride the callout's edges, centred on it; `side-*:` shows the one facing the box.
-  for (const [id, edge] of [['lab-gap-caret-up', box.y], ['lab-gap-caret-down', box.y + box.height]] as const) {
-    const caret = await view.testId(id).boundingBox();
-    expect(near(caret.y + caret.height / 2, edge)).toBe(true);
-    expect(near(caret.x + caret.width / 2, box.x + box.width / 2)).toBe(true);
-  }
+  // Both carets ride the callout's edges on the target's centre line; `side-*:` shows the one facing it.
+  const carets = async (anchor: { x: number; width: number }, box: { x: number; y: number; width: number; height: number }) => {
+    for (const [id, edge] of [['lab-gap-caret-up', box.y], ['lab-gap-caret-down', box.y + box.height]] as const) {
+      const caret = await view.testId(id).boundingBox();
+      expect(near(caret.y + caret.height / 2, edge)).toBe(true);
+      expect(near(caret.x + caret.width / 2, anchor.x + anchor.width / 2)).toBe(true);
+    }
+  };
+  await carets(anchor, box);
+
+  // Pointed at the circle by the screen edge: the callout is pushed in, its caret stays on the circle.
+  await view.testId('lab-gap-edge').click();
+  await expect(state).toHaveAttribute('data-state', 'side=above nudged=false edge=true');
+  const corner = await view.testId('lab-gap-corner').boundingBox();
+  box = await note.boundingBox();
+  expect(centred(corner, box)).toBe(false);
+  await carets(corner, box);
 });
 
 test('a parent checkbox reads mixed while some of its boxes are checked, and a tap checks them all', { covers: ['view:checkbox'], start: openDemo('partly') }, async (t) => {

@@ -99,6 +99,10 @@ fn margin(record: &Record, field: usize) -> LengthPercentageAuto {
 
 /// `offset` moves a length inset in from the containing edge.
 fn inset(record: &Record, field: usize, offset: f32) -> LengthPercentageAuto {
+    // Composition moves an `anchor(center)` edge onto the anchor once the popover is placed.
+    if record.string(field) == Some(crate::scene::anchor::ANCHOR_CENTER) {
+        return length(0.0);
+    }
     record
         .fields
         .iter()

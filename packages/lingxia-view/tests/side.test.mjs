@@ -33,3 +33,14 @@ test('side-* variants refuse layout, as checked: does', async () => {
     assert.throws(() => describe(popover('side-top:mb-2'), {}), /UI_STYLE: side-top: supports paint properties only, not marginBottom/);
   } finally { configureClasses([]); }
 });
+
+test('anchor(center) is an inset value; other anchor() forms are refused at compile time', async () => {
+  const rules = await compileUtilities(new Set(['start-[anchor(center)]', 'top-[anchor(center)]', 'left-[anchor(start)]']));
+  const rule = name => rules.find(entry => entry.name === name);
+  assert.deepEqual(rule('start-[anchor(center)]').style, { insetInlineStart: 'anchor(center)' });
+  assert.deepEqual(rule('top-[anchor(center)]').style, { top: 'anchor(center)' });
+  assert.match(rule('left-[anchor(start)]').error.message, /only anchor\(center\) is supported/);
+  const caret = byTestId(rendered(() => h('page', {}, h('view', { id: 'a' }), h('view', { id: 'tip', popover: 'manual', open: true, anchor: 'a' },
+    h('view', { 'data-testid': 'caret', style: { position: 'absolute', left: 'anchor(center)', top: -6 } })))), 'caret').props;
+  assert.equal(caret.insetLeft, 'anchor(center)');
+});

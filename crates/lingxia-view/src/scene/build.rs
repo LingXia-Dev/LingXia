@@ -154,6 +154,7 @@ impl Renderer {
         let mut selectable_count = 0;
         let mut stickies = Vec::with_capacity(records.len());
         let mut anchors = Vec::with_capacity(records.len());
+        let mut anchor_insets = Vec::with_capacity(records.len());
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
         let transforms = records
@@ -354,6 +355,31 @@ impl Renderer {
                     [m.top, m.right, m.bottom, m.left],
                 )
             }));
+            anchor_insets.push(crate::scene::anchor::AnchorInset::of(
+                record,
+                directions[index],
+                |at| {
+                    let mut at = at;
+                    loop {
+                        at = parents[at]?;
+                        if anchors[at].is_some() {
+                            return Some(at);
+                        }
+                    }
+                },
+                index,
+                || {
+                    let parent = parents[index]?;
+                    let (x, y) = origins[parent];
+                    let layout = tree.layout(ids[parent]).ok()?;
+                    Some([
+                        x + layout.border.left,
+                        y + layout.border.top,
+                        x + layout.size.width - layout.border.right,
+                        y + layout.size.height - layout.border.bottom,
+                    ])
+                },
+            ));
             stickies.push((record.string(field::POSITION) == Some("sticky")).then(|| {
                 let rtl = directions[index];
                 let side = |physical, left| {
@@ -478,7 +504,10 @@ impl Renderer {
                     )
                     && !clip_text
                     && record.string(field::BACKGROUND).is_some()
-                    && !record.fields.iter().any(|(id, _)| *id == field::PRESSED_STYLE);
+                    && !record
+                        .fields
+                        .iter()
+                        .any(|(id, _)| *id == field::PRESSED_STYLE);
                 if default_press
                     && record.number(field::ENABLED) != Some(0.0)
                     && pressed_identity.as_deref() == identities.get(index).map(String::as_str)
@@ -1915,6 +1944,7 @@ impl Renderer {
             parents,
             stickies,
             anchors,
+            anchor_insets,
             transforms: transforms
                 .iter()
                 .zip(&collapsed)

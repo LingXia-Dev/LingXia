@@ -796,7 +796,7 @@
           break;
         case "inset": {
           const amount = percent(value) !== void 0 ? percent(value) : value;
-          length(name, amount, { signed: true });
+          if (value !== "anchor(center)") length(name, amount, { signed: true });
           for (const side of [key].flat()) out[side] = value;
           break;
         }

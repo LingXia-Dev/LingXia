@@ -24,12 +24,12 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `marginInlineEnd` | `number \| "auto"` | `margin-inline-end` |  | all but `<span>` `<link>` |
 | `position` | `"relative" \| "absolute" \| "fixed" \| "sticky"` | `position` |  | all but `<span>` `<link>` |
 | `inset` | `` number \| `${number}%` `` |  |  | all but `<span>` `<link>` |
-| `top` | `` number \| `${number}%` `` | `top` |  | all but `<span>` `<link>` |
-| `right` | `` number \| `${number}%` `` | `right` |  | all but `<span>` `<link>` |
-| `bottom` | `` number \| `${number}%` `` | `bottom` |  | all but `<span>` `<link>` |
-| `left` | `` number \| `${number}%` `` | `left` |  | all but `<span>` `<link>` |
-| `insetInlineStart` | `` number \| `${number}%` `` | `inset-inline-start` |  | all but `<span>` `<link>` |
-| `insetInlineEnd` | `` number \| `${number}%` `` | `inset-inline-end` |  | all but `<span>` `<link>` |
+| `top` | `` number \| `${number}%` \| "anchor(center)" `` | `top` |  | all but `<span>` `<link>` |
+| `right` | `` number \| `${number}%` \| "anchor(center)" `` | `right` |  | all but `<span>` `<link>` |
+| `bottom` | `` number \| `${number}%` \| "anchor(center)" `` | `bottom` |  | all but `<span>` `<link>` |
+| `left` | `` number \| `${number}%` \| "anchor(center)" `` | `left` |  | all but `<span>` `<link>` |
+| `insetInlineStart` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-start` |  | all but `<span>` `<link>` |
+| `insetInlineEnd` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-end` |  | all but `<span>` `<link>` |
 | `zIndex` | `number` | `z-index` |  | all but `<span>` `<link>` |
 | `positionArea` | `"bottom span-inline-end" \| "bottom span-inline-start" \| "bottom" \| "top span-inline-end" \| "top span-inline-start" \| "top" \| "inline-end span-block-end" \| "inline-end span-block-start" \| "inline-end" \| "inline-start span-block-end" \| "inline-start span-block-start" \| "inline-start"` | `position-area` |  | all but `<span>` `<link>` |
 | `flexGrow` | `number` | `flex-grow` |  | all but `<span>` `<link>` |

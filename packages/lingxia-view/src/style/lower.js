@@ -299,7 +299,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         break;
       case 'inset': {
         const amount = percent(value) !== undefined ? percent(value) : value;
-        length(name, amount, { signed: true });
+        if (value !== 'anchor(center)') length(name, amount, { signed: true });
         for (const side of [key].flat()) out[side] = value;
         break;
       }
