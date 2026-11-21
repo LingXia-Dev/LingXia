@@ -32,6 +32,8 @@ export const numberInputRecipe = {
   stepper: {
     base: 'items-center justify-center self-stretch text-muted transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:inset-ring-2 focus-visible:inset-ring-focus disabled:text-faint',
     size: { sm: 'w-8', md: 'w-10', lg: 'w-12' } satisfies Record<FieldSize, string>,
+    /** The stepper at the box's end: its outer corners follow the box's, inside its 1 px border, so its focus ring meets the curve. */
+    end: 'rounded-e-[calc(var(--radius-control)-1px)]',
   },
   stepperIcon: {
     base: 'size-4',

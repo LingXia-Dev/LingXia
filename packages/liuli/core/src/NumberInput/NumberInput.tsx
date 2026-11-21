@@ -161,7 +161,7 @@ export function NumberInput(props: NumberInputProps) {
                 disabled={isDisabled || (current !== null && max !== undefined && current >= max)}
                 onClick={() => nudge(1)}
                 data-testid={testId && `${testId}-increment`}
-                className={cx(r.stepper.base, r.stepper.size[size])}
+                className={cx(r.stepper.base, r.stepper.size[size], r.stepper.end)}
               >
                 <Glyph name="add" className={r.stepperIcon.base} />
               </button>
