@@ -16,9 +16,10 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_PUSHBUTTON, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetParent, HMENU,
-    HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW, RegisterClassW, SWP_NOACTIVATE, SendMessageW,
-    SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_COMMAND, WM_ERASEBKGND,
-    WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW, RegisterClassW, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_COMMAND, WM_ERASEBKGND, WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{HSTRING, w};
 
@@ -108,7 +109,8 @@ pub(crate) fn show(
             WINDOW_EX_STYLE(0),
             class,
             None,
-            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+            // Shown once its buttons are in: a reader never meets the message alone.
+            WS_CHILD | WS_CLIPSIBLINGS,
             0,
             0,
             0,
@@ -189,6 +191,12 @@ pub(crate) fn show(
         });
     }
     layout(page);
+    if let Some(window) = PANELS.with(|panels| panels.borrow().get(&page).map(|p| p.window)) {
+        // SAFETY: this thread's panel.
+        unsafe {
+            let _ = ShowWindow(HWND(window as *mut _), SW_SHOWNOACTIVATE);
+        }
+    }
     if failure.covers_page()
         && let Some(page) = view::page_for(page)
     {
