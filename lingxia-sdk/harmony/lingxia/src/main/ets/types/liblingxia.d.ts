@@ -22,7 +22,8 @@ declare module 'liblingxia.so' {
   export interface CurrentLxApp {
     appid: string;
     path: string;
-    session_id: number;
+    /** napi-ohos exports `#[napi(object)]` fields in camelCase. */
+    sessionId: number;
   }
 
   export type BrowserNavigationPolicyDecision = 'in_webview' | 'open_external' | 'deny';

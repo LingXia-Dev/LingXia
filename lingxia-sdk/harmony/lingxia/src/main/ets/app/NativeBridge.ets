@@ -221,8 +221,8 @@ class NativeBridge {
         if (parsedOwnerSessionId !== null) {
           return parsedOwnerSessionId;
         }
-        if (current && current.appid === resolvedOwnerAppId && Number(current.session_id) > 0) {
-          return Number(current.session_id);
+        if (current && current.appid === resolvedOwnerAppId && Number(current.sessionId) > 0) {
+          return Number(current.sessionId);
         }
         return resolvedOwnerAppId ? Number(getLxappSessionId(resolvedOwnerAppId)) : 0;
       })();

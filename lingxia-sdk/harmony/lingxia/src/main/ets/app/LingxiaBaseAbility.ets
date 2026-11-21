@@ -191,7 +191,7 @@ export class LingxiaBaseAbility extends UIAbility {
         return;
       }
 
-      const sessionId: number = Math.trunc(Number(current.session_id));
+      const sessionId: number = Math.trunc(Number(current.sessionId));
       if (!Number.isFinite(sessionId) || sessionId <= 0) {
         return;
       }

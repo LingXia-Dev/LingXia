@@ -554,7 +554,7 @@ export struct LxAppNavigation {
       // Get next LxApp from Rust stack and open it
       const currentLxApp: CurrentLxApp = getCurrentLxapp();
       if (currentLxApp.appid && currentLxApp.appid.length > 0) {
-        this.openLxAppWithSession(currentLxApp.appid, currentLxApp.path, currentLxApp.session_id);
+        this.openLxAppWithSession(currentLxApp.appid, currentLxApp.path, currentLxApp.sessionId);
       } else {
         hilog.info(DOMAIN, TAG, `No more LxApps in Rust stack - showing empty state`);
         // No apps left in stack - hide modal but keep home visible
