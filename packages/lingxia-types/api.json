@@ -1738,8 +1738,8 @@
       "path": "lx.device.orientation.watch",
       "kind": "watcher",
       "entry": "global",
-      "summary": "Delivers the lock in effect (the configured orientation, not how the device is held) before returning, then each change.",
-      "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held) before returning, then each change.",
+      "summary": "Delivers the lock in effect (the configured orientation, not how the device is held), or the screen's shape when unlocked, before returning, then each change.",
+      "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held), or the screen's shape when unlocked, before returning, then each change.",
       "signatures": [
         {
           "text": "watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void",
@@ -9677,8 +9677,8 @@
           "name": "watch",
           "type": "(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions) => () => void",
           "required": true,
-          "summary": "Delivers the lock in effect (the configured orientation, not how the device is held) before returning, then each change.",
-          "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held) before returning, then each change."
+          "summary": "Delivers the lock in effect (the configured orientation, not how the device is held), or the screen's shape when unlocked, before returning, then each change.",
+          "description": "Delivers the lock in effect (the configured orientation, not how the device\nis held), or the screen's shape when unlocked, before returning, then each change."
         }
       ],
       "source": "src/generated/logic.ts:1615"

@@ -1,6 +1,7 @@
 //! Display and screen orientation APIs.
 
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
+use lingxia_platform::traits::device::Device;
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{
     LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler_token,
@@ -64,7 +65,7 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
 }
 
 /// Delivers the lock in effect (the configured orientation, not how the device
-/// is held) before returning, then each change.
+/// is held), or the screen's shape when unlocked, before returning, then each change.
 fn on_device_orientation_change(
     ctx: JSContext,
     callback: JSFunc,
@@ -80,8 +81,15 @@ fn on_device_orientation_change(
             lxapp.get_page_orientation(&current_path)
         };
 
-        let value = normalize_orientation_value(current.to_label())
-            .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable"))?;
+        // `auto` locks nothing, so the screen's current shape is the answer.
+        let value = normalize_orientation_value(current.to_label()).unwrap_or_else(|| {
+            let screen = lxapp.runtime.screen_info();
+            if screen.width > screen.height {
+                ORIENTATION_LANDSCAPE
+            } else {
+                ORIENTATION_PORTRAIT
+            }
+        });
 
         let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
 

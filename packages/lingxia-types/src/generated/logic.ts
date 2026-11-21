@@ -3594,7 +3594,7 @@ declare global {
     set(orientation: DeviceOrientation): void;
     /**
      * Delivers the lock in effect (the configured orientation, not how the device
-     * is held) before returning, then each change.
+     * is held), or the screen's shape when unlocked, before returning, then each change.
      */
     watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void;
   }
