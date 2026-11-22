@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { collectClassUsage } from './class-usage.mjs';
+import { collectClassUsage, elementKind, enclosingTags } from './class-usage.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
 import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
@@ -19,7 +19,7 @@ import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { elements, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
+import { elements, kindOf, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
 import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
@@ -63,7 +63,7 @@ async function readRecord(path) {
 }
 const common = new Set(commonProps);
 const editors = new Set(['input', 'textarea']);
-const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link', 'slider']);
+const controls = new Set(['button', 'checkbox', 'switch', 'radio', 'link', 'link-box', 'slider']);
 const focusables = new Set([...editors, ...controls, 'select', 'slider']);
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider', 'webview']);
@@ -77,7 +77,7 @@ export function acceptsProp(tag, key) {
 
 export function styleProblem(tag, name) {
   if (!has(styleTable, name) || styleTable[name].internal) return `UI_STYLE: unknown style property ${name}`;
-  if (!elements[tag].style.includes(name)) return `UI_STYLE: ${name} is not supported on <${tag}>${appliesTo(name)}`;
+  if (!kindOf(tag).style.includes(name)) return `UI_STYLE: ${name} is not supported on <${kindOf(tag).of ?? tag}>${appliesTo(name)}`;
 }
 
 const position = (file, node) => {
@@ -155,6 +155,14 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const intrinsic = has(elements, tag) && !elements[tag].component;
       const problem = intrinsic && unnamed(tag, node, file);
       if (problem) report(node, problem);
+      if (tag === 'link') {
+        const named = name => node.attributes.properties.some(prop => ts.isJsxSpreadAttribute(prop) || prop.name.getText(file) === name);
+        if (!named('to') && !named('onClick') && !named('popoverTarget') && !named('interestFor')) report(node, 'UI_LINK: a <link> needs to or onClick');
+        const around = enclosingTags(node);
+        const text = around.findIndex(name => name === 'text');
+        if (elementKind(node) === 'link-box' && around.slice(0, text < 0 ? undefined : text).includes('link'))
+          report(node, 'UI_LINK: a block link cannot sit inside another block link');
+      }
       if (!intrinsic) report(node, `UI_TAG: unsupported tag <${tag}>${tag === 'list' ? '; use <List> from @lingxia/view' : tagHint(tag)}`);
       else for (const prop of node.attributes.properties) {
         if (ts.isJsxSpreadAttribute(prop)) {
@@ -175,7 +183,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
           if (!ts.isPropertyAssignment(entry) && !ts.isShorthandPropertyAssignment(entry)) continue;
           const name = entry.name.getText(file).replace(/['"]/g, '');
           if (name === 'animation') report(entry, 'UI_ANIMATION: inline animation is not supported; use animate-* utilities');
-          else { const problem = styleProblem(tag, name); if (problem) report(entry, problem); }
+          else { const problem = styleProblem(elementKind(node), name); if (problem) report(entry, problem); }
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
           const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
           if (colorIssue) report(entry, colorIssue);
@@ -287,7 +295,7 @@ function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
   }
   if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
-  if (!has(elements, tag) || rule.when?.children) return [];
+  if (!kindOf(tag) || rule.when?.children) return [];
   // A part's properties were checked when it compiled; it needs a control that draws it.
   if (rule.when?.part) {
     const { part, checked } = rule.when;
@@ -302,7 +310,7 @@ function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
     ...(rule.numeric ? ['fontVariantNumeric'] : []),
     ...(rule.shadow ? ['boxShadow'] : []), ...(rule.backdrop ? ['backdropFilter'] : [])];
   const state = rule.when?.state;
-  const unsupported = props.find(prop => !elements[tag].style.includes(prop));
+  const unsupported = props.find(prop => !kindOf(tag).style.includes(prop));
   const problems = unsupported ? [classElementProblem(name, unsupported, tag)] : [];
   const flexOnly = grid && !Object.keys(rule.when ?? {}).length && gridRefuses(props);
   if (flexOnly) problems.push(gridProblem(name, flexOnly));
@@ -311,7 +319,7 @@ function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
   if (state === 'active' && !controls.has(tag)) problems.push(`UI_CLASS_ELEMENT: ${name} needs a control; <${tag}> is never pressed`);
   const layout = state && state !== 'disabled' ? props.filter(prop => !styleTable[prop]?.paint) : [];
   if (layout.length) problems.push(`UI_CLASS_ELEMENT: ${name}: ${state} styles change paint only, not ${layout.join(', ')}`);
-  if (state === 'disabled' && !has(elements[tag].props, 'disabled')) problems.push(`UI_CLASS_ELEMENT: ${name} needs a disableable element, not <${tag}>`);
+  if (state === 'disabled' && !has(kindOf(tag).props, 'disabled')) problems.push(`UI_CLASS_ELEMENT: ${name} needs a disableable element, not <${tag}>`);
   return problems;
 }
 

@@ -1,4 +1,4 @@
-import { elements } from '../generated/contract.js';
+import { elements, blocks } from '../generated/contract.js';
 
 const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
   'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'gridTemplateRows', 'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow']);
@@ -42,7 +42,7 @@ export function classElementProblem(name, prop, tag) {
   if (prop === 'justifyItems' && layouts.has(tag)) hint = '; on a flex element center with items-center justify-center';
   else if (container.has(prop) && !layouts.has(tag)) hint = '; layout classes go on the element that holds it';
   else hint = appliesTo(prop);
-  return `UI_CLASS_ELEMENT: ${name} does not apply to <${tag}>${hint}`;
+  return `UI_CLASS_ELEMENT: ${name} does not apply to <${blocks[tag]?.of ?? tag}>${hint}`;
 }
 
 /** `; it applies to <a>, <b>` when only a few elements render `prop`, else nothing. */

@@ -21,7 +21,7 @@ pub mod tag {
     pub const RADIO_OPTION: usize = 13;
     pub const SEARCH: usize = 14;
     pub const SLIDER: usize = 15;
-    pub const RESERVED_16: usize = 16;
+    pub const LINK_BOX: usize = 16;
     pub const RESERVED_17: usize = 17;
     pub const PLOT: usize = 18;
     pub const VECTOR: usize = 19;
@@ -317,7 +317,7 @@ pub mod field {
     pub const SIDE_END_STYLE: usize = 279;
 }
 
-pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "reserved-16", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
+pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
 
 /// Wire name and value kind, indexed by field id.
 pub const FIELDS: &[(&str, &str)] = &[
@@ -793,7 +793,7 @@ pub const TAG_ADMISSION: &[TagAdmission] = &[
     TagAdmission { children: Children::Text, content: false, parent: Some(tag::RADIO), root: false, keyed: true, requires: &[field::CHECKED] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
-    TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
+    TagAdmission { children: Children::Content, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: false, parent: None, root: false, keyed: false, requires: &[] },
     TagAdmission { children: Children::None, content: true, parent: None, root: false, keyed: false, requires: &[] },
@@ -868,8 +868,8 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER, tag::SELECT, tag::LINK]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK, tag::LINK_BOX]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::RADIO_OPTION, tag::SEARCH, tag::SLIDER, tag::SELECT, tag::LINK, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
@@ -901,7 +901,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::SWITCH, tag::RADIO_OPTION]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO, tag::WEBVIEW, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::LINK, tag::COLUMN, tag::PAGE, tag::TEXT, tag::SELECT, tag::VIDEO, tag::WEBVIEW, tag::LIST, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
@@ -963,7 +963,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::LIST]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::PAGE, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::PAGE, tag::BUTTON, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::IMAGE]), parent: None },
@@ -985,7 +985,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::LINK, tag::SLIDER]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::LINK, tag::SLIDER, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
@@ -1062,7 +1062,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO, tag::WEBVIEW]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO, tag::WEBVIEW, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL]), parent: None },
@@ -1083,17 +1083,17 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::LINK, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO, tag::WEBVIEW]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::TEXT, tag::BUTTON, tag::LINK, tag::SCROLL, tag::LIST, tag::IMAGE, tag::INPUT, tag::TEXTAREA, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SEARCH, tag::SLIDER, tag::PLOT, tag::VECTOR, tag::PAGE, tag::SELECT, tag::VIDEO, tag::WEBVIEW, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SLIDER, tag::LINK, tag::SELECT, tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::CHECKBOX, tag::SWITCH, tag::RADIO, tag::SLIDER, tag::LINK, tag::SELECT, tag::INPUT, tag::TEXTAREA, tag::SEARCH, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
-    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK, tag::LINK_BOX]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::LINK_BOX]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: Some(&[tag::SLIDER]), parent: None },
@@ -1114,7 +1114,7 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::CHECKBOX, tag::BUTTON, tag::COLUMN]), parent: None },
-    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::LINK, tag::TEXT]), parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::BUTTON, tag::LINK, tag::TEXT, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: Some(&[tag::COLUMN]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },

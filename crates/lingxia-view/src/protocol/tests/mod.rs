@@ -168,6 +168,19 @@ fn composed_buttons_validate_names_and_descendants_on_the_wire() {
 }
 
 #[test]
+fn a_block_link_holds_controls_but_never_another_block_link() {
+    let card = |inner: u64| {
+        json!([
+            16, -1, "", "card", "", 1, 8, 1, inner, 0, "", "inner", "Like", 1, 8, 2
+        ])
+    };
+    assert_eq!(decode(card(3).as_array().unwrap()).unwrap().len(), 2);
+    let nested = card(16);
+    let error = decode(nested.as_array().unwrap()).unwrap_err();
+    assert!(error.contains("UI_LINK"), "{error}");
+}
+
+#[test]
 fn composed_checkboxes_validate_names_and_descendants_on_the_wire() {
     let valid = json!([
         10,

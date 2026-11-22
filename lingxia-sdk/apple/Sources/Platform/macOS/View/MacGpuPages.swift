@@ -498,10 +498,11 @@ final class GpuPageView: NSView {
         case 124: 4
         case 115: 5
         case 119: 6
-        case 36, 76, 49: 7
+        case 36, 76: 7
         case 53: 8
         case 116: 9
         case 121: 10
+        case 49: 11
         // A printable character reaches the View's pickers (time digits, a select's type-ahead).
         default: event.charactersIgnoringModifiers?.unicodeScalars.first.map { 0x1_0000 + Int64($0.value) }
         }

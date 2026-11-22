@@ -43,7 +43,8 @@ fn key(name: &str) -> Result<(super::Key, bool), String> {
         "ArrowRight" => Key::Right,
         "Home" => Key::Home,
         "End" => Key::End,
-        "Enter" | " " | "Space" => Key::Activate,
+        "Enter" => Key::Activate,
+        " " | "Space" => Key::Space,
         "Escape" => Key::Escape,
         "PageUp" => Key::PageUp,
         "PageDown" => Key::PageDown,
@@ -66,7 +67,7 @@ fn control_ancestor(frame: &super::PresentedFrame, node: usize) -> Option<usize>
         .filter(|(_, candidate)| {
             matches!(
                 candidate.tag,
-                "button" | "checkbox" | "switch" | "radio" | "link" | "select"
+                "button" | "checkbox" | "switch" | "radio" | "link" | "link-box" | "select"
             ) && target.starts_with(&format!("{}/", candidate.identity))
         })
         .max_by_key(|(_, candidate)| candidate.identity.len())

@@ -336,8 +336,10 @@ function validateAuthor(schema) {
     for (const target of [entry.wire].flat())
       if (!keys.has(target)) throw Error(`schema.json: style ${name} lowers to unknown field ${target}`);
   for (const [name, element] of Object.entries(schema.elements)) {
-    if (!schema.tags.includes(element.wire) || element.wire.startsWith('reserved-')) throw Error(`schema.json: element ${name} uses unknown tag ${element.wire}`);
-    elementStyle(schema, element);
+    for (const form of [element, element.block].filter(Boolean)) {
+      if (!schema.tags.includes(form.wire) || form.wire.startsWith('reserved-')) throw Error(`schema.json: element ${name} uses unknown tag ${form.wire}`);
+      elementStyle(schema, form);
+    }
   }
 }
 
@@ -347,9 +349,11 @@ function authoring(schema, api) {
   const lines = [];
   for (const [name, element] of Object.entries(schema.elements)) {
     const type = pascal(name);
-    const keys = elementStyle(schema, element).filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
+    // An element with a block form (`<link>` outside `<text>`) takes either form's style and children.
+    const styleKeys = new Set([element, element.block].filter(Boolean).flatMap(form => elementStyle(schema, form)));
+    const keys = [...styleKeys].filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
-    const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.children];
+    const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.block?.children ?? element.children];
     const props = Object.entries(element.props).map(([prop, entry]) => `${/^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop)}${entry.required ? '' : '?'}: ${entry.type};`);
     const base = `Omit<Props, "style" | "children"> & { style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
     const binding = element.binding;
@@ -419,6 +423,10 @@ function contract(schema, common) {
     ...(element.binding ? { binding: element.binding } : {}),
     ...(element.component ? { component: element.component.name } : {}),
   }]));
+  // A block form is an element kind of its own, never written as JSX: `<link>` outside `<text>`.
+  const blocks = Object.fromEntries(Object.entries(schema.elements).filter(([, element]) => element.block).map(([name, element]) => [element.block.wire, {
+    wire: element.block.wire, children: element.block.children, style: elementStyle(schema, element.block), props: elements[name].props, of: name,
+  }]));
   const style = Object.fromEntries(Object.entries(schema.style).map(([name, entry]) => [name, {
     lower: entry.lower, wire: entry.wire, ...(entry.paint ? { paint: true } : {}), ...(entry.internal ? { internal: true } : {}),
   }]));
@@ -437,6 +445,9 @@ function contract(schema, common) {
   };
   return `${header}// Element admission and the author-style lowering table.
 export const elements = ${JSON.stringify(elements)};
+export const blocks = ${JSON.stringify(blocks)};
+/** An element or block kind by name. */
+export const kindOf = name => Object.hasOwn(elements, name) ? elements[name] : blocks[name];
 export const style = ${JSON.stringify(style)};
 /** Page-wide bounds native decode enforces too. */
 export const limits = ${JSON.stringify(schema.limits)};

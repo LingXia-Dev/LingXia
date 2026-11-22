@@ -1026,7 +1026,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static final int CHAR_BASE = 0x10000;
     static int key(int code, int unicode) {
         for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == code) return i;
-        if (code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER) return 7;
+        if (code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER) return 7;
+        // Space presses a control but not a link.
+        if (code == KeyEvent.KEYCODE_SPACE) return 11;
         // Dismisses the View's own overlays; Back keeps its navigation meaning.
         if (code == KeyEvent.KEYCODE_ESCAPE) return 8;
         if (code == KeyEvent.KEYCODE_PAGE_UP) return 9;

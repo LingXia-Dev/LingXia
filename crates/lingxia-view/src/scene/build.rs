@@ -818,6 +818,7 @@ impl Renderer {
                 let label_y = if matches!(
                     record.tag,
                     tag::BUTTON
+                        | tag::LINK_BOX
                         | tag::INPUT
                         | tag::CHECKBOX
                         | tag::SWITCH
@@ -1519,7 +1520,7 @@ impl Renderer {
                 modal: record.number(field::MODAL) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 touch_target_none: record.string(field::TOUCH_TARGET) == Some("none"),
-                panel: record.tag != tag::BUTTON
+                panel: !matches!(record.tag, tag::BUTTON | tag::LINK_BOX)
                     && record
                         .parent
                         .is_some_and(|p| records[p].number(field::TOP_LAYER).is_some()),
@@ -1851,7 +1852,10 @@ impl Renderer {
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
                 // Semantics read the authored text; transforms and truncation are paint-only.
-                text: if matches!(record.tag, tag::BUTTON | tag::CHECKBOX | tag::SWITCH) {
+                text: if matches!(
+                    record.tag,
+                    tag::BUTTON | tag::LINK_BOX | tag::CHECKBOX | tag::SWITCH
+                ) {
                     record
                         .string(field::ACCESSIBILITY_LABEL)
                         .or_else(|| groups.names.get(&index).map(String::as_str))

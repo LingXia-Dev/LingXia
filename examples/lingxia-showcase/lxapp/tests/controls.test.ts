@@ -116,3 +116,21 @@ test('a popover opens from a List row that names it by a useId id', { covers: ['
   await expect(view.testId('lab-choices-menu')).toBeVisible();
   await expect(view.testId('lab-choices-menu')).toContainText('menu for beta');
 });
+
+// A block link: the card opens a page; the button inside it keeps its own press.
+test('a card that is a link opens its page, and the button in it keeps its own press', { covers: ['view:link'], start: openDemo('blockLink') }, async (t) => {
+  const view = t.app.view;
+  const app = t.app;
+  const state = view.testId('lab-block-link-state');
+  await expect(view.getByRole('link', { name: /Harbour at dusk/ })).toHaveCount(1);
+  await view.testId('lab-block-link-like').click();
+  await expect(state).toHaveAttribute('data-state', 'liked=true');
+  expect((await app.nav.current()).name).toBe('view-controls');
+  await view.testId('lab-block-link-card').press('Enter');
+  await expect.poll(async () => (await app.nav.current()).name).toBe('motion-target');
+  await app.nav.back();
+  await expect.poll(async () => (await app.nav.current()).name).toBe('view-controls');
+  await view.testId('lab-block-link-card').click();
+  await expect.poll(async () => (await app.nav.current()).name).toBe('motion-target');
+  await app.nav.back();
+});

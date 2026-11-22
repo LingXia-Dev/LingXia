@@ -59,6 +59,10 @@ delete button. A press goes to the innermost control under the finger, and only 
 pressed; the row activates when the press lands on its other content. Assistive technology sees the row
 and each inner control as separate nodes, and the row's name leaves the inner controls' text out.
 
+A `<link>` outside `<text>` is a block link, composed the same way: a card that navigates with `to`,
+holding a button that does its own thing. It shows pressed, hover and the focus ring on the whole card,
+is announced as a link, and Enter opens it (Space does not, as on the web).
+
 ```tsx
 import { useLocal } from '@lingxia/view';
 
@@ -220,7 +224,7 @@ See [Overlays](overlays.md): where they draw against the host bars, closing, she
 A tap goes to the topmost control under the finger, in paint order (`z-*` and `order` included).
 Non-interactive boxes do not block it: a decoration drawn over a button lets taps through to the button.
 A point outside an ancestor's `overflow-hidden` clip hits nothing in that subtree. Transformed controls
-hit-test their transformed shape; a `<link>` responds only on its own line pieces. `opacity-0` content is
+hit-test their transformed shape; a `<link>` in text responds only on its own line pieces, a block link on its whole box. `opacity-0` content is
 still hit; use `hidden` to remove a control.
 
 A tap on a control that changed between frames still reaches it when only its handler changed; if its
@@ -228,7 +232,9 @@ geometry or content changed, the tap is dropped rather than delivered to the wro
 
 ## Keyboard
 
-A hardware keyboard moves focus between controls in tree order and draws a focus ring. A radio group
+A hardware keyboard moves focus between controls in tree order and draws a focus ring. Enter and
+Space press the focused control, toggle a checkbox or switch, and choose a radio option; on a link only
+Enter does, as on the web, and in a text field Space is a space. A radio group
 is one stop: its selected option, or its first enabled one. Inside a `role="menu"`, the up and down
 arrows move between its items and wrap, Home and End go to the first and last, and a typed letter
 moves to the next item whose name starts with it. Specs check focus with `toBeFocused()`.

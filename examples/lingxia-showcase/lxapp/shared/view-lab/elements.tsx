@@ -453,8 +453,34 @@ export const mediaDemos = {
   plot: PlotDemo,
   progress: ProgressDemo,
 };
+// The card navigates; the button inside it is its own control and keeps the press to itself.
+export function BlockLinkDemo() {
+  const liked = useLocal('block-link-liked', false);
+  const t = useSay();
+  return (
+    <>
+      <link data-testid="lab-block-link-card" to={{ page: 'motion-target' }}
+        className="flex-row items-center gap-3 p-3 rounded-xl bg-surface-raised border border-line transition-colors duration-150 hover:bg-surface-sunken active:bg-accent-soft focus-visible:ring-2 focus-visible:ring-accent">
+        <view className="w-12 h-12 rounded-lg bg-accent-solid items-center justify-center">
+          <Icon name="media" className="w-6 h-6 text-on-accent-solid" />
+        </view>
+        <view className="flex-1 gap-0.5">
+          <text className="text-sm font-semibold">{t(labels.cardTitle)}</text>
+          <text className="text-xs text-muted">{t(labels.cardLine)}</text>
+        </view>
+        <button data-testid="lab-block-link-like" aria-pressed={liked.value} onClick={() => liked.set(!liked.value)}
+          className={`px-3 h-9 rounded-full text-xs font-semibold active:opacity-70 ${liked.value ? 'bg-accent-solid text-on-accent-solid' : 'bg-surface-sunken'}`}>
+          {t(liked.value ? labels.liked : labels.like)}
+        </button>
+      </link>
+      <Readout testId="lab-block-link-state" state={`liked=${liked.value}`}>{t(readouts.liked(liked.value))}</Readout>
+    </>
+  );
+}
+
 export const controlDemos = {
   controls: ControlsDemo,
+  blockLink: BlockLinkDemo,
   select: SelectDemo,
   shared: SharedDemo,
   pieces: PiecesDemo,

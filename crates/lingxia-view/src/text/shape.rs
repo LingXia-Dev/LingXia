@@ -167,6 +167,7 @@ impl Renderer {
             record.tag,
             tag::TEXT
                 | tag::BUTTON
+                | tag::LINK_BOX
                 | tag::INPUT
                 | tag::TEXTAREA
                 | tag::CHECKBOX

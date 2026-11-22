@@ -86,6 +86,7 @@ export function render({ data, actions }: View) {
   runs take text paint only; links are accent + underline by default. `<link to={{ page: 'detail', params }}>`
   navigates without an action: `to` takes `lx.nav.go` targets or `{ back: n }`, type-checked against the page registry (`replace` swaps the current page); a link to the current page does nothing, and a refused target reports like a failed action. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
+- Outside `<text>`, `<link>` is a block link: a card of any content with `<button>`'s classes, role link; a button inside keeps its own press, Enter opens it, Space does not. Block links do not nest; every `<link>` needs `to` or `onClick` (`UI_LINK`).
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.

@@ -20,6 +20,7 @@ pub(crate) fn interactive(tag: usize) -> bool {
         tag,
         tag::BUTTON
             | tag::LINK
+            | tag::LINK_BOX
             | tag::CHECKBOX
             | tag::SWITCH
             | tag::RADIO
@@ -49,7 +50,7 @@ pub(crate) fn control_groups(records: &[Record]) -> Result<ControlGroups, String
             .and_then(|parent| {
                 if matches!(
                     records[parent].tag,
-                    tag::BUTTON | tag::CHECKBOX | tag::SWITCH
+                    tag::BUTTON | tag::LINK_BOX | tag::CHECKBOX | tag::SWITCH
                 ) {
                     Some(parent)
                 } else {

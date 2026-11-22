@@ -21,10 +21,11 @@ extension GpuPageView {
         case .keyboardRightArrow: 4
         case .keyboardHome: 5
         case .keyboardEnd: 6
-        case .keyboardReturnOrEnter, .keypadEnter, .keyboardSpacebar: 7
+        case .keyboardReturnOrEnter, .keypadEnter: 7
         case .keyboardEscape: 8
         case .keyboardPageUp: 9
         case .keyboardPageDown: 10
+        case .keyboardSpacebar: 11
         default: characters.unicodeScalars.first.map { 0x1_0000 + Int64($0.value) }
         }
     }

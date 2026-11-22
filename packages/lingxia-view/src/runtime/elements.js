@@ -1,5 +1,5 @@
 import { pressChange, changeEnd, pressEnd } from './press.js';
-import { elements, admission, limits, commonProps } from '../generated/contract.js';
+import { elements, kindOf, admission, limits, commonProps } from '../generated/contract.js';
 import { resolveClasses, classGeneration } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
@@ -31,7 +31,7 @@ const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'],
 
 const common = new Set(commonProps);
 const semanticStates = { pressed: 'statePressed', selected: 'stateSelected', expanded: 'stateExpanded', busy: 'stateBusy', invalid: 'stateInvalid', required: 'stateRequired', checked: 'stateChecked' };
-const accepts = (field, tag) => admission.fields[field].includes(elements[tag].wire);
+const accepts = (field, tag) => admission.fields[field].includes(kindOf(tag).wire);
 // An older host would refuse a field it lacks; an accessibility-only (ignorable) one is left out instead.
 const ignorable = new Set(ignorableFields);
 const warned = new Set();
@@ -252,7 +252,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   // A disabled editor without `disabled:` classes still reads as disabled: muted roles over its classes.
   const muted = disabled && !classes?.disabled && fieldTags.has(tag) ? disabledField : undefined;
   const base = disabled && classes?.disabled ? classes.disabled : classes?.base;
-  const stray = base && Object.keys(base).find(key => !elements[tag].style.includes(key) && !(props.style && key in props.style));
+  const stray = base && Object.keys(base).find(key => !kindOf(tag).style.includes(key) && !(props.style && key in props.style));
   if (stray) throw Error(classElementProblem(authoredClass(props.className, stray, env), stray, tag));
   const author = mergeStyle(direction, tag === 'video' ? videoBacking : undefined, extra, base, every, muted, props.style);
   const flexOnly = author?.display === 'grid' && base && gridRefuses(Object.keys(base).filter(key => !(props.style && key in props.style)));
@@ -415,7 +415,11 @@ function ariaProps(props) {
 const dragProps = ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'];
 function resolveElement(tag, original, children, identity, depth, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}${tagHint(tag)}`);
-  const element = elements[tag];
+  // Outside <text> a <link> is a block link: a pressable box of any content.
+  const block = tag === 'link' && !parent.inText;
+  const kind = block ? 'link-box' : tag;
+  const element = kindOf(kind);
+  if (block && parent.inBlockLink) throw Error('UI_LINK: a block link cannot sit inside another block link');
   const props = { ...original };
   admit(tag, element, props);
   // `data-testid` names the node for automation; it is not one of the data-* variant attributes.
@@ -437,9 +441,9 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const data = dataOf(props);
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
   const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
-  const style = nodeStyle(tag, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
+  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
   const inline = child => typeof child === 'string' || typeof child === 'number';
-  if ((tag === 'span' || tag === 'link') && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>`);
+  if (tag === 'span' && !parent.inText) throw Error('UI_TEXT: <span> belongs inside <text>');
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
   const composed = element.children === 'content' && flat.some(child => !inline(child));
   const runs = element.children === 'runs' && flat.some(child => !inline(child));
@@ -532,7 +536,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     wire('ariaDescribedBy', ids.join(' '));
   }
   if (props.id !== undefined) {
-    if (tag === 'span' || tag === 'link') throw Error(`UI_ID: <${tag}> is a run of its <text>; put the id on the <text>`);
+    if (tag === 'span' || (tag === 'link' && !block)) throw Error(`UI_ID: <${tag}> is a run of its <text>; put the id on the <text>`);
     if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256 || /\s/.test(props.id)) throw Error('UI_ID: an id is 1..256 characters without spaces');
     wire('elementId', props.id);
   }
@@ -549,6 +553,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       const to = props.to === undefined ? undefined : linkTarget(props.to, props);
+      if (!to && props.onClick === undefined && props.popoverTarget === undefined && props.interestFor === undefined) throw Error('UI_LINK: a <link> needs to or onClick');
       const click = to ? () => requestNavigation(to) : invokerHandler(props, identity, parent.popovers ?? []);
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
@@ -846,6 +851,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         tag, typography: style.typography, direction, extra: position < last ? style.children : undefined, every: style.every,
         sibling: { index: position, count: flat.length },
         inControl: parent.inControl || admission.tags[element.wire].children === 'content',
+        inBlockLink: parent.inBlockLink || block,
         inDialog: parent.inDialog || tag === 'dialog',
         popovers: props[popoverScope] ?? parent.popovers, contexts: parent.contexts,
       });

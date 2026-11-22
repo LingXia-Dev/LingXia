@@ -16,11 +16,13 @@ pub enum Key {
     Escape,
     PageUp,
     PageDown,
+    /// Presses the focused control as `Activate` does, except a link, which only Enter opens.
+    Space,
     /// A printable character: digits into the time picker, letters to a select's type-ahead.
     Char(char),
 }
 
-/// Codes 0..=10 name the keys in declaration order, Tab to PageDown; a printable character
+/// Codes 0..=11 name the keys in declaration order, Tab to Space; a printable character
 /// travels as `CHAR_BASE + its code point`.
 pub const CHAR_BASE: i64 = 0x1_0000;
 
@@ -68,6 +70,7 @@ impl Key {
             8 => Key::Escape,
             9 => Key::PageUp,
             10 => Key::PageDown,
+            11 => Key::Space,
             _ => Key::Char(
                 char::from_u32(u32::try_from(code.checked_sub(CHAR_BASE)?).ok()?)
                     .filter(|c| !c.is_control())?,
@@ -390,6 +393,26 @@ impl ViewInteraction {
         }
         let Some(frame) = self.frame.clone() else {
             return (false, Vec::new());
+        };
+        // As on the web, Space on a link is the platform's (it scrolls), not a press; in an
+        // editor it is text, which reaches the editor through the input method.
+        let key = match key {
+            Key::Space
+                if frame.nodes.iter().any(|node| {
+                    node.input
+                        .as_ref()
+                        .is_some_and(|input| input.edit_token.is_some())
+                }) || self
+                    .keyboard_origin()
+                    .and_then(|index| frame.node(index))
+                    .is_some_and(|node| {
+                        matches!(node.tag, "link" | "link-box") || node.input.is_some()
+                    }) =>
+            {
+                return (false, Vec::new());
+            }
+            Key::Space => Key::Activate,
+            key => key,
         };
         self.origin = super::FocusOrigin::Keyboard;
         // The View's picker takes the keys while it is open: arrows, pages, Return, Escape, digits.

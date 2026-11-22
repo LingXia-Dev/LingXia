@@ -41,6 +41,15 @@ pub(super) fn child(records: &[Record], parent: usize, child: usize) -> Result<(
             ancestor = records[owner].parent;
         }
     }
+    if child == tag::LINK_BOX {
+        let mut ancestor = Some(parent);
+        while let Some(owner) = ancestor {
+            if records[owner].tag == tag::LINK_BOX {
+                return Err("UI_LINK: a block link cannot sit inside another block link".into());
+            }
+            ancestor = records[owner].parent;
+        }
+    }
     Ok(())
 }
 

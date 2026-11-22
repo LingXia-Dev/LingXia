@@ -331,7 +331,7 @@ No element-specific props.
 
 ## `<link>`
 
-Children: text and `<span>` runs; links do not nest. Only inside `<text>`.
+Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Elsewhere, a block link (`link-box`): a pressable box whose children are text, or noninteractive content elements (a composed control), styled like `<button>`; a block link never sits inside another (`UI_LINK`). Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.
 
 | Prop | Type | Required |
 | --- | --- | --- |

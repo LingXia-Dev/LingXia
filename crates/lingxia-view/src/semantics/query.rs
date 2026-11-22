@@ -195,7 +195,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
     let role = semantic.map(|s| s.role);
     let (tag, kind) = match node.tag {
         "button" => ("button", None),
-        "link" => ("a", None),
+        "link" | "link-box" => ("a", None),
         "input" => (
             "input",
             Some(if node.input.as_ref().is_some_and(|i| i.secure) {
@@ -231,7 +231,7 @@ fn virtual_element(node: &NodeSnapshot, semantic: Option<&SemanticNode>) -> Virt
         tag,
         role: role.and_then(aria),
         kind,
-        link: node.tag == "link",
+        link: matches!(node.tag, "link" | "link-box"),
     }
 }
 

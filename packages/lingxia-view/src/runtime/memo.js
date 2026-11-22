@@ -48,7 +48,7 @@ function sameFields(a, b, old, budget) {
   return count === 0;
 }
 
-const contextKeys = ['tag', 'direction', 'inControl', 'inText', 'inLink'];
+const contextKeys = ['tag', 'direction', 'inControl', 'inText', 'inLink', 'inBlockLink'];
 function sameContext(a, b, old) {
   for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
   const budget = { left: compareBudget };

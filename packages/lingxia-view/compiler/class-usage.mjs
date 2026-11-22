@@ -100,6 +100,27 @@ function isCx(checker, callee) {
   return imported === 'cx' && ts.isStringLiteral(module) && module.text === '@lingxia/view';
 }
 
+/** The intrinsic elements around `element`, innermost first, within the function that builds it;
+ * a `.map(item => …)` callback inside JSX is part of that function. */
+export function enclosingTags(element) {
+  const tags = [];
+  let node = (ts.isJsxOpeningElement(element) ? element.parent : element).parent;
+  while (node && !ts.isSourceFile(node)) {
+    if (ts.isJsxElement(node)) tags.push(node.openingElement.tagName.getText());
+    if (ts.isFunctionLike(node) && !(ts.isCallExpression(node.parent) && node.parent.arguments.includes(node))) break;
+    node = node.parent;
+  }
+  return tags;
+}
+
+/** The element kind a tag lowers to: a `<link>` not known to sit in `<text>` is a block link. */
+export function elementKind(element) {
+  const tag = element.tagName.getText();
+  if (tag !== 'link') return tag;
+  const [parent] = enclosingTags(element);
+  return parent === 'text' || parent === 'span' || parent === 'link' ? 'link' : 'link-box';
+}
+
 export function collectClassUsage(file, checker = sourceChecker(file)) {
   const usages = [];
   const record = (expression, tag, focusable) => {
@@ -118,7 +139,7 @@ export function collectClassUsage(file, checker = sourceChecker(file)) {
   const visit = node => {
     if (ts.isJsxAttribute(node) && node.name.getText(file) === 'className' && node.initializer) {
       const expression = ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer;
-      record(expression, node.parent.parent.tagName.getText(file), takesFocus(node.parent));
+      record(expression, elementKind(node.parent.parent), takesFocus(node.parent));
     }
     if (ts.isJsxSpreadAttribute(node)) {
       const attributes = node.parent.properties;
@@ -127,7 +148,7 @@ export function collectClassUsage(file, checker = sourceChecker(file)) {
       if (!overridden) {
         const property = checker.getTypeAtLocation(node.expression).getProperty('className');
         for (const declaration of property?.declarations ?? []) {
-          const tag = node.parent.parent.tagName.getText(file);
+          const tag = elementKind(node.parent.parent);
           if (ts.isPropertyAssignment(declaration)) record(declaration.initializer, tag, true);
           if (ts.isShorthandPropertyAssignment(declaration))
             record(checker.getShorthandAssignmentValueSymbol(declaration)?.valueDeclaration?.initializer, tag, true);

@@ -49,6 +49,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |
 | `UI_LEAVE` | runtime, native | Invalid `useLeaveGuard` call or answer. |
 | `UI_LIMIT` | runtime, native | A page limit was exceeded. |
+| `UI_LINK` | build, runtime, native | A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor`, or a block link (outside `<text>`) inside another. |
 | `UI_LIST` | runtime, native | Invalid list description, keys, anchor or row height. |
 | `UI_LOCAL` | runtime | A duplicate `useLocal` name in one component, or `set` on an unmounted cell. |
 | `UI_LX` | build | `lx` is used in View code; call an action that does it in Logic. |
@@ -80,7 +81,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_SURFACE` | native | The platform surface was lost or resized mid-frame; the host recovers. |
 | `UI_TAG` | build, runtime, native | Not an element of the View language. |
 | `UI_TEST_ID` | native | An invalid `data-testid` reached the native decoder. |
-| `UI_TEXT` | runtime, native | A `<span>`/`<link>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`. |
+| `UI_TEXT` | runtime, native | A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`. |
 | `UI_TIMEOUT` | native | View code exceeded its time budget; the page needs a reload. |
 | `UI_TRANSFORM` | build, native | A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one. |
 | `UI_TRANSITION` | native | An invalid transition definition. |

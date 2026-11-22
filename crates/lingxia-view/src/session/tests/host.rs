@@ -5715,6 +5715,10 @@ mod appearance;
 mod automation_blur;
 #[path = "box_reading.rs"]
 mod box_reading;
+#[path = "block_link.rs"]
+mod block_link;
+#[path = "space_key.rs"]
+mod space_key;
 #[path = "clipped_focus.rs"]
 mod clipped_focus;
 #[path = "close_request.rs"]

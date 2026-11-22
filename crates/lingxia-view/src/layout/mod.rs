@@ -501,6 +501,7 @@ impl Renderer {
                 let label_y = if matches!(
                     record.tag,
                     tag::BUTTON
+                        | tag::LINK_BOX
                         | tag::INPUT
                         | tag::CHECKBOX
                         | tag::SWITCH

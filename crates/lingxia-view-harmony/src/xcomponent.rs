@@ -462,9 +462,9 @@ fn key(host: &pages::Host, page: i64, input: *mut sys::ArkUI_UIInputEvent) {
         return;
     };
     // An open editor takes typing through the input method; Tab still moves focus. A key its
-    // page listed in `onKeyDown` goes to the page first; Space is text there, not Enter.
+    // page listed in `onKeyDown` goes to the page first.
     if view_key != Key::Tab && crate::ime::editing(page) {
-        if !shift && code != 2050 && host.editor_key(view_key) {
+        if !shift && host.editor_key(view_key) {
             // SAFETY: as above.
             unsafe { sys::OH_ArkUI_KeyEvent_SetConsumed(input, true) };
         }
@@ -487,7 +487,8 @@ fn view_key(code: i32, unicode: u32, shift: bool) -> Option<Key> {
         2015 => Key::Right,
         2081 => Key::Home,
         2082 => Key::End,
-        2016 | 2050 | 2054 | 2119 => Key::Activate,
+        2016 | 2054 | 2119 => Key::Activate,
+        2050 => Key::Space,
         2070 => Key::Escape,
         2068 => Key::PageUp,
         2069 => Key::PageDown,

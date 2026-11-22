@@ -1,5 +1,5 @@
 import { declaredFamily } from '../runtime/fonts.js';
-import { elements, style as table } from '../generated/contract.js';
+import { kindOf, style as table } from '../generated/contract.js';
 import { fieldOptions, field } from '../generated/wire.js';
 import { limits, options, scales, scaledFields, scaleDefaults } from '../generated/contract.js';
 import { normalizeRing, normalizeShadows } from './shadow.js';
@@ -63,7 +63,7 @@ export function mergeStyle(direction, ...layers) {
 
 /** Throws unless every property is a known style that `tag` renders. */
 export function admitStyle(tag, style) {
-  const accepted = elements[tag].style;
+  const accepted = kindOf(tag).style;
   for (const name of Object.keys(style)) {
     if (!has(table, name)) throw Error(`UI_STYLE: unknown style property ${name}`);
     if (!accepted.includes(name)) throw Error(`UI_STYLE: ${name} is not supported on <${tag}>${appliesTo(name)}`);

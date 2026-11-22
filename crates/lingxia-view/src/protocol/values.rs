@@ -385,7 +385,11 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
                         && !s.contains('\0')
                         && !(matches!(
                             tag,
-                            tag::BUTTON | tag::CHECKBOX | tag::SWITCH | tag::WEBVIEW
+                            tag::BUTTON
+                                | tag::LINK_BOX
+                                | tag::CHECKBOX
+                                | tag::SWITCH
+                                | tag::WEBVIEW
                         ) && s.trim().is_empty())
                 }),
                 "UI_PROP: invalid accessibility label",

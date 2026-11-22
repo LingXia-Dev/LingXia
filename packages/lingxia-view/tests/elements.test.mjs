@@ -434,12 +434,30 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.equal(rendered(() => h('text', {}, 'plain ', 'text')).text, 'plain text');
   throwsOn(() => h('view', {}, h('span', {}, 'loose')), /UI_TEXT: <span> belongs inside <text>/);
   assert.equal(rendered(() => h('button', {}, h('text', {}, 'Read ', h('link', { onClick() {} }, 'terms')))).tag, 'button');
-  throwsOn(() => h('text', {}, h('link', {}, h('link', {}, 'x'))), /UI_TEXT: links do not nest/);
+  throwsOn(() => h('text', {}, h('link', { onClick() {} }, h('link', { onClick() {} }, 'x'))), /UI_TEXT: links do not nest/);
   const pieces = rendered(() => h('text', {}, h('link', { onClick() {}, 'aria-label': 'Terms' }, 'the ', h('span', { style: { fontWeight: 700 } }, 'terms')))).children;
   assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);
   assert.equal(pieces[0].props.onClick, pieces[1].props.onClick);
   throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);
   throwsOn(() => h('text', {}, Array.from({ length: 257 }, (_, i) => h('span', { key: String(i) }, 'x'))), /UI_TEXT: more than 256 runs/);
+});
+
+test('a link outside text is a block link: a pressable box of any content', () => {
+  let opened = 0;
+  const card = rendered(() => h('view', {}, h('link', { onClick: () => opened++, style: { padding: 12, gap: 4 }, 'aria-label': 'Open' },
+    h('text', {}, 'Title'), h('button', { onClick() {} }, 'Like')))).children[0];
+  assert.equal(card.tag, 'link-box');
+  assert.deepEqual(card.children.map(child => child.tag), ['text', 'button']);
+  assert.equal(typeof card.props.onClick, 'number');
+  assert.equal(card.props.accessibilityLabel, 'Open');
+  throwsOn(() => h('view', {}, h('link', { onClick() {} }, h('view', {}, h('link', { onClick() {} }, h('text', {}, 'x'))))),
+    /UI_LINK: a block link cannot sit inside another block link/);
+  // A run link inside a block link's text is its own action.
+  assert.equal(rendered(() => h('link', { onClick() {} }, h('text', {}, 'See ', h('link', { onClick() {} }, 'terms')))).tag, 'link-box');
+  throwsOn(() => h('view', {}, h('link', {}, h('text', {}, 'x'))), /UI_LINK: a <link> needs to or onClick/);
+  throwsOn(() => h('text', {}, h('link', {}, 'x')), /UI_LINK: a <link> needs to or onClick/);
+  throwsOn(() => h('text', {}, h('link', { onClick() {}, style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <link>/);
+  throwsOn(() => h('link', { onClick() {} }, h('scroll', {})), /UI_BUTTON: a scroll or list cannot sit inside a pressable control/);
 });
 
 test('accessibility roles, heading levels, hidden subtrees and live regions are bounded props', () => {

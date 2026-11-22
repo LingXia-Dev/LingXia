@@ -411,7 +411,7 @@ impl Projection<'_> {
             return None;
         }
         // Links act like buttons: focusable, named by their text, clicked to activate.
-        let button = matches!(node.tag, "button" | "link");
+        let button = matches!(node.tag, "button" | "link" | "link-box");
         let check = node.checked.is_some();
         let input = node.input.as_ref();
         let select = node.select.as_ref();
@@ -443,7 +443,7 @@ impl Projection<'_> {
             } else {
                 Role::CheckBox
             }
-        } else if node.tag == "link" {
+        } else if matches!(node.tag, "link" | "link-box") {
             Role::Link
         } else if let Some(role) = node.role.as_deref().filter(|role| {
             !button

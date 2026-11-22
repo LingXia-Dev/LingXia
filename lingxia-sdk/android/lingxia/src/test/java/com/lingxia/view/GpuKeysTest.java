@@ -12,6 +12,7 @@ public class GpuKeysTest {
         assertEquals(8, GpuView.key(KeyEvent.KEYCODE_ESCAPE, 0));
         assertEquals(9, GpuView.key(KeyEvent.KEYCODE_PAGE_UP, 0));
         assertEquals(10, GpuView.key(KeyEvent.KEYCODE_PAGE_DOWN, 0));
+        assertEquals(11, GpuView.key(KeyEvent.KEYCODE_SPACE, ' '));
         assertEquals(-1, GpuView.key(KeyEvent.KEYCODE_BACK, 0));
         // A printable character reaches the View's pickers.
         assertEquals(GpuView.CHAR_BASE + 'a', GpuView.key(KeyEvent.KEYCODE_A, 'a'));

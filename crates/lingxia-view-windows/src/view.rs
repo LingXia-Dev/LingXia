@@ -439,10 +439,11 @@ fn handle(
                 VK_RIGHT => 4,
                 VK_HOME => 5,
                 VK_END => 6,
-                VK_RETURN | VK_SPACE => 7,
+                VK_RETURN => 7,
                 VK_ESCAPE => 8,
                 VK_PRIOR => 9,
                 VK_NEXT => 10,
+                VK_SPACE => 11,
                 _ => return None,
             };
             let handled = key(page, code, lparam);

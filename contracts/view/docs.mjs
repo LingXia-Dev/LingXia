@@ -64,9 +64,11 @@ async function elements(schema) {
     out.push(`## \`<${shown(schema, name)}>\``, '');
     // A run may hold runs, but a link never holds another link.
     const children = element.children === 'runs' && element.wire === 'link' ? 'text and `<span>` runs; links do not nest' : childKinds[element.children];
-    const facts = [`Children: ${children}.`];
+    const facts = [element.block ? `Inside ${code(`<${parents[element.wire]}>`)}, a run: children ${children}.` : `Children: ${children}.`];
     if (element.wire !== name) facts.push(`Renders as ${code(element.wire)}.`);
-    if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
+    if (element.block) facts.push(`Elsewhere, a block link (${code(element.block.wire)}): a pressable box whose children are ${childKinds[element.block.children]}, styled like \`<button>\`; a block link never sits inside another (\`UI_LINK\`).`);
+    else if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
+    if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.');
     if (admission.root) facts.push('The page root.');
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
     if (name === 'scroll' || element.wire === 'list' || name === 'webview') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
@@ -498,7 +500,8 @@ const errorNotes = {
   UI_SURFACE: 'The platform surface was lost or resized mid-frame; the host recovers.',
   UI_TAG: 'Not an element of the View language.',
   UI_TEST_ID: 'An invalid `data-testid` reached the native decoder.',
-  UI_TEXT: 'A `<span>`/`<link>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`.',
+  UI_LINK: 'A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor`, or a block link (outside `<text>`) inside another.',
+  UI_TEXT: 'A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`.',
   UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
   UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one.',
   UI_TRANSITION: 'An invalid transition definition.',
