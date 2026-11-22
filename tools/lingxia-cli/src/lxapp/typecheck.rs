@@ -44,7 +44,11 @@ function wrap(config) {
   if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
   const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
   const options = parsed.options;
-  const compilerOptions = { tsBuildInfoFile: `./${name}.tsbuildinfo`, rootDir: rel(options.rootDir ?? path.dirname(config)) };
+  const compilerOptions = { tsBuildInfoFile: `./${name}.tsbuildinfo` };
+  // Only where tsc has a root: a composite project's defaults to its config directory, which the
+  // wrapper's location would otherwise move. Sources linked in from outside must stay legal.
+  const rootDir = options.rootDir ?? (options.composite ? path.dirname(config) : undefined);
+  if (rootDir) compilerOptions.rootDir = rel(rootDir);
   if (!options.noEmit) {
     compilerOptions.outDir = `./${name}.out`;
     if (options.declarationDir) compilerOptions.declarationDir = `./${name}.out`;

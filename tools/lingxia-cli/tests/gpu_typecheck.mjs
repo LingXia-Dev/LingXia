@@ -142,6 +142,28 @@ try {
   fs.writeFileSync(rootConfig, solution);
 }
 
+// Sources from outside the project, linked in (a source-distributed package) or path-mapped for its
+// types (as the Liuli gallery maps `@lingxia/view`), type-check and build: no `rootDir` narrowing.
+const shared = path.join(work, 'shared');
+fs.mkdirSync(shared);
+fs.writeFileSync(path.join(shared, 'format.ts'), 'export type Label = string;\nexport const label = (n: number): Label => `#${n}`;\n');
+const linked = path.join(app, 'linked');
+fs.symlinkSync(shared, linked, 'dir');
+fs.writeFileSync(rootConfig, JSON.stringify({
+  compilerOptions: { target: 'ES2020', module: 'ESNext', moduleResolution: 'bundler', strict: true, skipLibCheck: true,
+    noEmit: true, paths: { '@shared/*': ['../shared/*'] }, types: ['@lingxia/types', '@lingxia/types/logic-globals'] },
+  include: ['lxapp.ts', 'pages/**/index.ts'],
+}));
+fs.writeFileSync(logic, `import { label as linkedLabel } from '../../linked/format';\nimport type { Label } from '@shared/format';\n${logicSource}\nexport const labels: Label[] = [linkedLabel(1)];\n`);
+try {
+  assert.match(ok(cli, ['check'], app), /no problems/);
+  ok(cli, ['build', '--release'], app);
+} finally {
+  fs.writeFileSync(rootConfig, solution);
+  fs.writeFileSync(logic, logicSource);
+  fs.rmSync(linked);
+}
+
 for (const dir of lxapps) missingBase(path.resolve(dir));
 
 fs.rmSync(root, { recursive: true, force: true });
