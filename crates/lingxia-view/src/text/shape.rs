@@ -217,95 +217,104 @@ impl Renderer {
             return Some(cached);
         }
         let shaped = {
-            let breaks = crate::text::breaks::overrides(text);
-            let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
-            builder.set_line_break_override(breaks.as_deref());
-            // `dir="auto"` editors follow their first strong character; others the box.
-            builder.set_base_direction(if record.string(field::DIRECTION) == Some("auto") {
-                parley::BaseDirection::Auto
-            } else if style.rtl {
-                parley::BaseDirection::Rtl
-            } else {
-                parley::BaseDirection::Ltr
-            });
-            builder.push_default(StyleProperty::FontSize(font_size));
-            builder.push_default(optical_size(font_size));
-            builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
-            builder.push_default(StyleProperty::FontStyle(if italic {
-                FontStyle::Italic
-            } else {
-                FontStyle::Normal
-            }));
-            if matches!(record.tag, tag::INPUT | tag::SEARCH) || style.nowrap {
-                builder.push_default(StyleProperty::TextWrapMode(parley::TextWrapMode::NoWrap));
-            }
-            builder.push_default(StyleProperty::OverflowWrap(match overflow_wrap {
-                1 => parley::OverflowWrap::BreakWord,
-                2 => parley::OverflowWrap::Anywhere,
-                _ => parley::OverflowWrap::Normal,
-            }));
-            builder.push_default(StyleProperty::WordBreak(match word_break {
-                1 => parley::WordBreak::BreakAll,
-                2 => parley::WordBreak::KeepAll,
-                _ => parley::WordBreak::Normal,
-            }));
-            builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
-            if !style.features.is_empty() {
-                builder.push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
-            }
-            builder.push_default(StyleProperty::Locale(self.locale));
-            builder.push_default(Self::font_stack(&self.font_faces, &style.family));
-            if let Some(height) = line_height {
-                builder.push_default(StyleProperty::LineHeight(LineHeight::Absolute(height)));
-            }
-            for (position, (range, run)) in runs.iter().enumerate() {
-                let range = range.clone();
-                builder.push(
-                    StyleProperty::FontSize(self.text_scale.map(run.size)),
-                    range.clone(),
-                );
-                builder.push(optical_size(self.text_scale.map(run.size)), range.clone());
-                builder.push(
-                    StyleProperty::FontWeight(FontWeight::new(run.weight)),
-                    range.clone(),
-                );
-                builder.push(
-                    StyleProperty::FontStyle(if run.italic {
-                        FontStyle::Italic
-                    } else {
-                        FontStyle::Normal
-                    }),
-                    range.clone(),
-                );
-                builder.push(
-                    Self::font_stack(&self.font_faces, &run.family),
-                    range.clone(),
-                );
-                if run.letter_spacing != style.letter_spacing {
-                    let ratio = if run.size > 0.0 {
-                        self.text_scale.map(run.size) / run.size
-                    } else {
-                        1.0
-                    };
+            let mut shape = |rung| {
+                let breaks = crate::text::breaks::overrides(text, rung);
+                let mut builder = self.text.ranged_builder(&mut self.fonts, text, 1.0, true);
+                builder.set_line_break_override(breaks.as_deref());
+                // `dir="auto"` editors follow their first strong character; others the box.
+                builder.set_base_direction(if record.string(field::DIRECTION) == Some("auto") {
+                    parley::BaseDirection::Auto
+                } else if style.rtl {
+                    parley::BaseDirection::Rtl
+                } else {
+                    parley::BaseDirection::Ltr
+                });
+                builder.push_default(StyleProperty::FontSize(font_size));
+                builder.push_default(optical_size(font_size));
+                builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
+                builder.push_default(StyleProperty::FontStyle(if italic {
+                    FontStyle::Italic
+                } else {
+                    FontStyle::Normal
+                }));
+                if matches!(record.tag, tag::INPUT | tag::SEARCH) || style.nowrap {
+                    builder.push_default(StyleProperty::TextWrapMode(parley::TextWrapMode::NoWrap));
+                }
+                builder.push_default(StyleProperty::OverflowWrap(match overflow_wrap {
+                    1 => parley::OverflowWrap::BreakWord,
+                    2 => parley::OverflowWrap::Anywhere,
+                    _ => parley::OverflowWrap::Normal,
+                }));
+                builder.push_default(StyleProperty::WordBreak(match word_break {
+                    1 => parley::WordBreak::BreakAll,
+                    2 => parley::WordBreak::KeepAll,
+                    _ => parley::WordBreak::Normal,
+                }));
+                builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+                if !style.features.is_empty() {
+                    builder
+                        .push_default(StyleProperty::FontFeatures(style.features.as_str().into()));
+                }
+                builder.push_default(StyleProperty::Locale(self.locale));
+                builder.push_default(Self::font_stack(&self.font_faces, &style.family));
+                if let Some(height) = line_height {
+                    builder.push_default(StyleProperty::LineHeight(LineHeight::Absolute(height)));
+                }
+                for (position, (range, run)) in runs.iter().enumerate() {
+                    let range = range.clone();
                     builder.push(
-                        StyleProperty::LetterSpacing(run.letter_spacing * ratio),
+                        StyleProperty::FontSize(self.text_scale.map(run.size)),
                         range.clone(),
                     );
-                }
-                if run.features != style.features {
+                    builder.push(optical_size(self.text_scale.map(run.size)), range.clone());
                     builder.push(
-                        StyleProperty::FontFeatures(run.features.as_str().into()),
+                        StyleProperty::FontWeight(FontWeight::new(run.weight)),
                         range.clone(),
                     );
+                    builder.push(
+                        StyleProperty::FontStyle(if run.italic {
+                            FontStyle::Italic
+                        } else {
+                            FontStyle::Normal
+                        }),
+                        range.clone(),
+                    );
+                    builder.push(
+                        Self::font_stack(&self.font_faces, &run.family),
+                        range.clone(),
+                    );
+                    if run.letter_spacing != style.letter_spacing {
+                        let ratio = if run.size > 0.0 {
+                            self.text_scale.map(run.size) / run.size
+                        } else {
+                            1.0
+                        };
+                        builder.push(
+                            StyleProperty::LetterSpacing(run.letter_spacing * ratio),
+                            range.clone(),
+                        );
+                    }
+                    if run.features != style.features {
+                        builder.push(
+                            StyleProperty::FontFeatures(run.features.as_str().into()),
+                            range.clone(),
+                        );
+                    }
+                    // The brush names the run, so glyph runs split where paint changes.
+                    builder.push(StyleProperty::Brush(position as u16 + 1), range);
                 }
-                // The brush names the run, so glyph runs split where paint changes.
-                builder.push(StyleProperty::Brush(position as u16 + 1), range);
-            }
-            let mut layout = builder.build(text);
-            layout.break_all_lines(None);
+                let mut layout = builder.build(text);
+                layout.break_all_lines(None);
+                layout
+            };
+            use crate::text::breaks::Rung;
+            let layout = shape(Rung::At);
+            // Lines that still overflow take this one, with the address's dots open too.
+            let spans = crate::text::breaks::email_spans(text);
+            let fallback = (!spans.is_empty()).then(|| (shape(Rung::Dots), spans));
             match key {
-                Some(key) => self.text_cache.insert(key, layout),
-                None => crate::text::cache::ShapedText::owned(layout),
+                Some(key) => self.text_cache.insert(key, layout, fallback),
+                None => crate::text::cache::ShapedText::owned(layout, fallback),
             }
         };
         self.text_time += started.elapsed();

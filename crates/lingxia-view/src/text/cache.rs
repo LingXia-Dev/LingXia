@@ -61,10 +61,17 @@ fn lines_of(width: Option<f32>, align: Option<Alignment>) -> Lines {
     )
 }
 
+/// The layout with an address's later breaks open, and each address's `@` and end (bytes).
+type Fallback = Arc<(TextLayout, Vec<(usize, usize)>)>;
+
 /// A shaped text, shared with the cache until a caller changes it.
 #[derive(Clone)]
 pub(crate) struct ShapedText {
     layout: Arc<TextLayout>,
+    /// For text holding an email address: the layout as shaped, and the same text with the
+    /// address's later breaks open, both unbroken; the second is used at a width where the
+    /// first's lines still overflow.
+    fallback: Option<(Arc<TextLayout>, Fallback)>,
     /// The cache entry it was shaped as; its line breaks are cached under it.
     shape: Option<u64>,
     lines: Option<Lines>,
@@ -78,9 +85,14 @@ impl std::ops::Deref for ShapedText {
 }
 
 impl ShapedText {
-    pub(crate) fn owned(layout: TextLayout) -> Self {
+    pub(crate) fn owned(
+        layout: TextLayout,
+        fallback: Option<(TextLayout, Vec<(usize, usize)>)>,
+    ) -> Self {
+        let layout = Arc::new(layout);
         Self {
-            layout: Arc::new(layout),
+            fallback: fallback.map(|fallback| (layout.clone(), Arc::new(fallback))),
+            layout,
             shape: None,
             lines: None,
         }
@@ -103,6 +115,7 @@ impl ShapedText {
 
 struct Entry {
     layout: Arc<TextLayout>,
+    fallback: Option<Fallback>,
     id: u64,
     used: u64,
 }
@@ -125,13 +138,22 @@ impl TextCache {
         entry.used = self.next;
         Some(ShapedText {
             layout: entry.layout.clone(),
+            fallback: entry
+                .fallback
+                .clone()
+                .map(|fallback| (entry.layout.clone(), fallback)),
             shape: Some(entry.id),
             lines: Some(lines_of(None, None)),
         })
     }
 
     /// Cache `layout`, unbroken lines (`break_all_lines(None)`) already applied.
-    pub(crate) fn insert(&mut self, key: Key, layout: TextLayout) -> ShapedText {
+    pub(crate) fn insert(
+        &mut self,
+        key: Key,
+        layout: TextLayout,
+        fallback: Option<(TextLayout, Vec<(usize, usize)>)>,
+    ) -> ShapedText {
         while self.entries.len() >= MAX_ENTRIES || self.text_bytes + key.text.len() > MAX_TEXT_BYTES
         {
             let Some(oldest) = self
@@ -148,16 +170,19 @@ impl TextCache {
         }
         self.next += 1;
         let layout = Arc::new(layout);
+        let fallback = fallback.map(Arc::new);
         self.text_bytes += key.text.len();
         self.entries.insert(
             key,
             Entry {
                 layout: layout.clone(),
+                fallback: fallback.clone(),
                 id: self.next,
                 used: self.next,
             },
         );
         ShapedText {
+            fallback: fallback.map(|fallback| (layout.clone(), fallback)),
             layout,
             shape: Some(self.next),
             lines: Some(lines_of(None, None)),
@@ -182,10 +207,23 @@ impl TextCache {
             text.layout = hit.clone();
             return;
         }
-        let layout = Arc::make_mut(&mut text.layout);
-        layout.break_all_lines(width);
+        if let Some((shaped, fallback)) = &text.fallback {
+            // Both start from their shaped layouts, so the choice depends on the width alone
+            // and a box animating its width never flips between them.
+            let mut layout = Arc::unwrap_or_clone(shaped.clone());
+            layout.break_all_lines(width);
+            if let Some(width) = width
+                && overflows(&layout, width)
+            {
+                layout = fallback.0.clone();
+                break_at_addresses(&mut layout, width, &fallback.1);
+            }
+            text.layout = Arc::new(layout);
+        } else {
+            Arc::make_mut(&mut text.layout).break_all_lines(width);
+        }
         if let Some(align) = align {
-            layout.align(align, AlignmentOptions::default());
+            Arc::make_mut(&mut text.layout).align(align, AlignmentOptions::default());
         }
         if let Some(id) = text.shape {
             if self.broken.len() >= MAX_BROKEN {
@@ -222,6 +260,66 @@ impl TextCache {
     }
 }
 
+/// Whether a line's content, hanging whitespace aside, is wider than `width`.
+fn overflows(layout: &TextLayout, width: f32) -> bool {
+    layout.lines().any(|line| {
+        let metrics = line.metrics();
+        metrics.advance - metrics.hanging_advance > width + 0.01
+    })
+}
+
+/// Breaks `layout` at `width`, but where an address's domain would run on past a line that also
+/// holds its local part, ends that line before the `@` instead: each part stays whole as long as
+/// it fits alone.
+fn break_at_addresses(layout: &mut TextLayout, width: f32, spans: &[(usize, usize)]) {
+    let mut caps: Vec<(usize, f32)> = Vec::new();
+    for _ in 0..=spans.len() {
+        let mut breaker = layout.break_lines();
+        breaker.state_mut().set_layout_max_advance(width);
+        let mut line = 0;
+        loop {
+            let cap = caps
+                .iter()
+                .find(|(at, _)| *at == line)
+                .map_or(width, |(_, cap)| *cap);
+            breaker.state_mut().set_line_max_advance(cap);
+            match breaker.break_next() {
+                None => break,
+                Some(parley::YieldData::InlineBoxBreak(_)) => {
+                    let x = breaker.state().line_x();
+                    breaker.state_mut().append_inline_box_to_line(x, 0.0, 0.0);
+                }
+                Some(_) => line += 1,
+            }
+        }
+        breaker.finish();
+        match split_address(layout, spans) {
+            Some((line, cap)) if !caps.iter().any(|(at, _)| *at == line) => caps.push((line, cap)),
+            _ => return,
+        }
+    }
+}
+
+/// The first line holding an address's local part and `@` whose domain goes on to the next
+/// line, and the advance from that line's start to the `@`.
+fn split_address(layout: &TextLayout, spans: &[(usize, usize)]) -> Option<(usize, f32)> {
+    for (index, line) in layout.lines().enumerate() {
+        let range = line.text_range();
+        for &(at, end) in spans {
+            if at > range.start && at < range.end && range.end < end {
+                let mut advance = 0.0;
+                let mut cluster = parley::Cluster::from_byte_index(layout, range.start)?;
+                while cluster.text_range().start < at {
+                    advance += cluster.advance();
+                    cluster = cluster.next_logical()?;
+                }
+                return Some((index, advance + 0.01));
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,7 +340,7 @@ mod tests {
         let mut cache = TextCache::default();
         let layout = Layout::default();
         let layout = || layout.clone();
-        cache.insert(key("label"), layout());
+        cache.insert(key("label"), layout(), None);
         assert!(cache.get(&key("label")).is_some());
         for changed in [
             Key::new(
@@ -348,7 +446,7 @@ mod tests {
             assert!(cache.get(&changed.unwrap()).is_none());
         }
         for i in 0..200 {
-            cache.insert(key(&format!("{i:04}{}", "x".repeat(2000))), layout());
+            cache.insert(key(&format!("{i:04}{}", "x".repeat(2000))), layout(), None);
         }
         assert!(cache.entries.len() <= MAX_ENTRIES && cache.text_bytes <= MAX_TEXT_BYTES);
         assert!(cache.get(&key("label")).is_none());
@@ -368,10 +466,10 @@ mod tests {
         assert!(cache.entries.is_empty());
         assert_eq!(cache.text_bytes, 0);
         for i in 0..MAX_ENTRIES {
-            cache.insert(key(&i.to_string()), layout());
+            cache.insert(key(&i.to_string()), layout(), None);
         }
         assert!(cache.get(&key("0")).is_some());
-        cache.insert(key("new"), layout());
+        cache.insert(key("new"), layout(), None);
         assert_eq!(cache.entries.len(), MAX_ENTRIES);
         assert!(cache.get(&key("0")).is_some());
         assert!(cache.get(&key("1")).is_none());
@@ -391,14 +489,14 @@ mod tests {
         )
         .unwrap();
         let mut cache = TextCache::default();
-        let mut first = cache.insert(key.clone(), Layout::default());
+        let mut first = cache.insert(key.clone(), Layout::default(), None);
         cache.break_lines(&mut first, Some(100.0), Some(parley::Alignment::Center));
         let mut again = cache.get(&key).unwrap();
         cache.break_lines(&mut again, Some(100.0), Some(parley::Alignment::Center));
         assert!(Arc::ptr_eq(&first.layout, &again.layout));
         cache.break_lines(&mut again, Some(80.0), Some(parley::Alignment::Center));
         assert!(!Arc::ptr_eq(&first.layout, &again.layout));
-        let mut owned = ShapedText::owned(Layout::default());
+        let mut owned = ShapedText::owned(Layout::default(), None);
         cache.break_lines(&mut owned, Some(100.0), None);
         assert_eq!(
             cache.broken.len(),

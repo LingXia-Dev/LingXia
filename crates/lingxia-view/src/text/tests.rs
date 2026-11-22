@@ -808,7 +808,7 @@ fn mid_word_breaks(lines: &[String]) -> Vec<(char, char)> {
 }
 
 #[test]
-fn a_long_address_breaks_after_the_at_and_before_a_dot_never_mid_word() {
+fn a_long_address_breaks_before_the_at_and_before_a_domain_dot_never_mid_word() {
     let email = "ana.maria.lopez@example-mail.com";
     let text = format!("Write to {email} today");
     let mut counts = Vec::new();
@@ -816,22 +816,74 @@ fn a_long_address_breaks_after_the_at_and_before_a_dot_never_mid_word() {
         let lines = wrapped_lines(&text, width);
         assert_eq!(lines.concat(), text, "{width}");
         for (end, next) in mid_word_breaks(&lines) {
+            assert!(next == '@' || next == '.', "{width}: {lines:?}");
             assert!(
-                matches!(end, '@' | '-') || next == '.',
-                "{width}: {lines:?}"
+                next == '@' || lines.iter().any(|line| line.starts_with('@')),
+                "a dot breaks only once the @ has: {width}: {lines:?}"
             );
-        }
-        if width == 120.0 {
-            assert!(
-                mid_word_breaks(&lines)
-                    .iter()
-                    .any(|&(end, next)| end == '@' || next == '.'),
-                "the address itself breaks: {lines:?}"
-            );
+            let _ = end;
         }
         counts.push(lines.len());
     }
     assert!(counts[0] > 3 && counts[5] == 1, "{counts:?}");
+}
+
+#[test]
+fn an_address_keeps_its_parts_whole_until_one_alone_does_not_fit() {
+    // Narrowing the box walks the rungs in order: whole, split before the @, then also before
+    // the domain's dot; never the dot before the @.
+    let mut seen: Vec<Vec<String>> = Vec::new();
+    let mut width = 200.0;
+    while width >= 40.0 {
+        let lines = wrapped_lines("ana@example.com", width);
+        assert_eq!(lines.concat(), "ana@example.com", "{width}");
+        if seen.last() != Some(&lines) {
+            seen.push(lines);
+        }
+        width -= 1.0;
+    }
+    assert_eq!(
+        seen[..3],
+        [
+            vec!["ana@example.com".to_owned()],
+            vec!["ana".to_owned(), "@example.com".to_owned()],
+            vec!["ana".to_owned(), "@example".to_owned(), ".com".to_owned()],
+        ],
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn an_address_breaks_the_same_way_whenever_its_box_returns_to_a_width() {
+    // One page whose box follows the viewport, as a box animating its width does.
+    let source = crate::session::tests::source(
+        "function render(){return h('view',{},h('text',{style:{userSelect:'text',fontSize:16,width:'100%'}},'Mail ana@example.com now'))}",
+    );
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let mut lines_at = |width: u16| {
+        let display = page.layout(width, 400, 1.0).unwrap();
+        let paragraph = display
+            .retained
+            .selectables
+            .iter()
+            .flatten()
+            .next()
+            .unwrap();
+        paragraph
+            .layout
+            .lines()
+            .map(|line| paragraph.text[line.text_range()].to_owned())
+            .collect::<Vec<_>>()
+    };
+    for width in [70, 95, 130] {
+        let first = lines_at(width);
+        for other in [200, 60, width, 110, width] {
+            let lines = lines_at(other);
+            if other == width {
+                assert_eq!(lines, first, "{width}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -850,5 +902,5 @@ fn a_long_url_breaks_after_slashes_and_before_dots() {
     }
     // A two-letter domain ending is not left alone on its line: it moves with its name.
     let lines = wrapped_lines("ana@example.co", 100.0);
-    assert_eq!(lines, ["ana@", "example.co"]);
+    assert_eq!(lines, ["ana", "@example.co"]);
 }
