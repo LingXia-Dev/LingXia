@@ -206,6 +206,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Empty the draft when the message has been taken, and keep it when sending fails.
 - Do: Say in `placeholder` who or what it goes to: "Message Kai".
 - Do: Give `onStop` when what is sent can be stopped, such as a reply being written.
+- Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.send(); if (!ok) draft.focus();`.
 - Don't: Use it for a long text with a title; that is a form with a TextArea.
 - Don't: Disable it without saying why; give `disabledMessage`.
 

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Bound, Plain, Search, Adornments, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Checking, ReadOnly, Disabled } from '../../core/src/TextInput/TextInput.examples';
+import { Bound, Plain, Search, Adornments, SignIn, ShareLink, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Checking, ReadOnly, Disabled } from '../../core/src/TextInput/TextInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,12 @@ export function Content() {
         </Stage>
         <Stage caption={"A currency sign, a web address start and a unit; the last field is marked optional"}>
           <Adornments />
+        </Stage>
+        <Stage caption={"Signing in: the password field shows its text on request"}>
+          <SignIn />
+        </Stage>
+        <Stage caption={"A copy button inside the box"}>
+          <ShareLink />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

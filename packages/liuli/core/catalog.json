@@ -8141,9 +8141,9 @@
       ],
       "gaps": [
         {
-          "missing": "Validation when the user leaves a field.",
-          "needs": "focus and blur events on editors",
-          "today": "Validate on change or on submit."
+          "missing": "Validation when the user leaves a field, for editors other than TextInput.",
+          "needs": "focus and blur events passed through by every editor",
+          "today": "TextInput takes `onBlur`; validate the others on change or on submit."
         }
       ],
       "playground": {
@@ -17740,7 +17740,7 @@
           "name": "type",
           "type": "\"email\" | \"number\" | \"password\" | \"search\" | \"tel\" | \"text\"",
           "required": false,
-          "description": "`search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`.",
+          "description": "`search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. `password` hides the text and adds a button that shows it.",
           "default": "'text'"
         },
         {
@@ -17825,10 +17825,28 @@
           "description": "Fixed text inside the box after the value: a unit such as \"kg\" or \"%\". Read with the description."
         },
         {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "A node inside the box after the value and any suffix, such as a small IconButton. The clear and show-password buttons come after it."
+        },
+        {
           "name": "onSubmit",
           "type": "((value: string) => void)",
           "required": false,
           "description": "The keyboard's action key, or Enter."
+        },
+        {
+          "name": "onFocus",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Runs when the editor takes focus."
+        },
+        {
+          "name": "onBlur",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Runs when the editor loses focus: the moment to check a value the person has finished typing."
         },
         {
           "name": "className",
@@ -17856,6 +17874,7 @@
         "searchIcon": "vector",
         "adornment": "text",
         "input": "input",
+        "end": "view",
         "clear": "button",
         "clearIcon": "vector"
       },
@@ -17960,13 +17979,23 @@
           "name": "ReadOnly",
           "title": "Read-only",
           "source": "import { unused } from '../example';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** A value to read and copy, not to change. */\nexport function ReadOnly() {\n  return <TextInput value=\"C-204188\" onChange={unused} label=\"Customer ID\" description=\"Set when the account was opened.\" isReadOnly data-testid=\"iban\" />;\n}"
+        },
+        {
+          "name": "SignIn",
+          "title": "A password, shown on request, and focus back on it after a failed sign-in",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** Signing in: the password hides what is typed until its button shows it, and a failed sign-in moves focus back to it. */\nexport function SignIn() {\n  const email = useLocal('email', 'ana@example.com');\n  const password = useLocal('password', '');\n  const checked = useLocal('checked', '');\n  const failed = useLocal('failed', false);\n  const signIn = () => {\n    const ok = password.value.length >= 8;\n    failed.set(!ok);\n    if (!ok) password.focus();\n  };\n  return (\n    <view className=\"gap-4\">\n      <TextInput\n        bind={email}\n        label=\"Email\"\n        type=\"email\"\n        autoComplete=\"email\"\n        autoCapitalize=\"none\"\n        enterKeyHint=\"next\"\n        onBlur={() => checked.set(email.value)}\n        status={checked.value !== '' && !checked.value.includes('@') ? { type: 'error', message: 'Add the part after @, such as example.com.' } : undefined}\n        data-testid=\"sign-in-email\"\n      />\n      <TextInput\n        bind={password}\n        label=\"Password\"\n        type=\"password\"\n        autoComplete=\"current-password\"\n        enterKeyHint=\"go\"\n        onSubmit={signIn}\n        status={failed.value ? { type: 'error', message: 'Passwords here are at least 8 characters.' } : undefined}\n        data-testid=\"password\"\n      />\n      <Button label=\"Sign in\" variant=\"primary\" width=\"content\" onClick={signIn} data-testid=\"sign-in\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "ShareLink",
+          "title": "A button inside the box, after the value",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** A link to share: read-only, with a copy button inside the box. */\nexport function ShareLink() {\n  const copied = useLocal('copied', false);\n  return (\n    <TextInput\n      value=\"https://notes.example.com/s/q8Hk2\"\n      onChange={unused}\n      label=\"Link\"\n      description={copied.value ? 'Copied.' : 'Anyone with the link can read the note.'}\n      isReadOnly\n      endContent={<IconButton icon=\"copy\" label=\"Copy link\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy-link\" />}\n      data-testid=\"share-link\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "Validation on leaving the field; dirty tracking.",
-          "needs": "focus and blur events on editors",
-          "today": "Validate as the value changes, or on submit."
+          "missing": "Dirty tracking.",
+          "needs": "a record of the value the field started with",
+          "today": "Keep the starting value beside the draft and compare."
         },
         {
           "missing": "Read-only text that can still be selected and copied.",
@@ -18043,6 +18072,14 @@
             {
               "name": "Adornments",
               "title": "A currency sign, a web address start and a unit; the last field is marked optional"
+            },
+            {
+              "name": "SignIn",
+              "title": "Signing in: the password field shows its text on request"
+            },
+            {
+              "name": "ShareLink",
+              "title": "A copy button inside the box"
             }
           ],
           "sizes": [

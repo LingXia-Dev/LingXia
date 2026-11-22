@@ -46,6 +46,7 @@ export const doc: ComponentDoc = {
       'Always pass `resultsLabel` once there is text, including when nothing matches.',
       'Hide the results line with `isResultsLabelHidden` only when the list under the field already shows the count.',
       'Keep the field where it is while results change, so typing is never interrupted.',
+      'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `query.focus()`.',
       'At large text, give the field a line of its own rather than squeezing it beside a button, where it shrinks to its magnifier.',
     ],
     dont: [

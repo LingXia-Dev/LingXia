@@ -1,5 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
+import { Button } from '../Button/Button';
+import { IconButton } from '../IconButton/IconButton';
 import { TextInput } from './TextInput';
 
 /** Bound to a View-local cell: no Logic round trip per keystroke. */
@@ -106,4 +108,59 @@ export function Checking() {
 /** A value to read and copy, not to change. */
 export function ReadOnly() {
   return <TextInput value="C-204188" onChange={unused} label="Customer ID" description="Set when the account was opened." isReadOnly data-testid="iban" />;
+}
+
+/** Signing in: the password hides what is typed until its button shows it, and a failed sign-in moves focus back to it. */
+export function SignIn() {
+  const email = useLocal('email', 'ana@example.com');
+  const password = useLocal('password', '');
+  const checked = useLocal('checked', '');
+  const failed = useLocal('failed', false);
+  const signIn = () => {
+    const ok = password.value.length >= 8;
+    failed.set(!ok);
+    if (!ok) password.focus();
+  };
+  return (
+    <view className="gap-4">
+      <TextInput
+        bind={email}
+        label="Email"
+        type="email"
+        autoComplete="email"
+        autoCapitalize="none"
+        enterKeyHint="next"
+        onBlur={() => checked.set(email.value)}
+        status={checked.value !== '' && !checked.value.includes('@') ? { type: 'error', message: 'Add the part after @, such as example.com.' } : undefined}
+        data-testid="sign-in-email"
+      />
+      <TextInput
+        bind={password}
+        label="Password"
+        type="password"
+        autoComplete="current-password"
+        enterKeyHint="go"
+        onSubmit={signIn}
+        status={failed.value ? { type: 'error', message: 'Passwords here are at least 8 characters.' } : undefined}
+        data-testid="password"
+      />
+      <Button label="Sign in" variant="primary" width="content" onClick={signIn} data-testid="sign-in" />
+    </view>
+  );
+}
+
+/** A link to share: read-only, with a copy button inside the box. */
+export function ShareLink() {
+  const copied = useLocal('copied', false);
+  return (
+    <TextInput
+      value="https://notes.example.com/s/q8Hk2"
+      onChange={unused}
+      label="Link"
+      description={copied.value ? 'Copied.' : 'Anyone with the link can read the note.'}
+      isReadOnly
+      endContent={<IconButton icon="copy" label="Copy link" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy-link" />}
+      data-testid="share-link"
+    />
+  );
 }

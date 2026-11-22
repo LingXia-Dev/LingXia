@@ -49,6 +49,7 @@ export const doc: ComponentDoc = {
       'Empty the draft when the message has been taken, and keep it when sending fails.',
       'Say in `placeholder` who or what it goes to: "Message Kai".',
       'Give `onStop` when what is sent can be stopped, such as a reply being written.',
+      'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.send(); if (!ok) draft.focus();`.',
     ],
     dont: [
       'Use it for a long text with a title; that is a form with a TextArea.',

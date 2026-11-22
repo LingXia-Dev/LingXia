@@ -1,6 +1,6 @@
 import type { FieldSize, FieldStatusType } from '../Field/Field';
 
-export const textInputParts = { box: 'view', icon: 'view', searchIcon: 'vector', adornment: 'text', input: 'input', clear: 'button', clearIcon: 'vector' } as const;
+export const textInputParts = { box: 'view', icon: 'view', searchIcon: 'vector', adornment: 'text', input: 'input', end: 'view', clear: 'button', clearIcon: 'vector' } as const;
 
 /**
  * An editor keeps a 3:1 boundary (`line-strong`) so it never reads as a button. The box draws the border, so a leading icon and the clear button sit inside it, and on any focus
@@ -38,6 +38,11 @@ export const textInputRecipe = {
     /** Matches the Button label at each size. */
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },
+  /** `endContent`: its own size, centred in the box. */
+  end: {
+    base: 'shrink-0 flex-row items-center gap-1',
+  },
+  /** The clear and show-password buttons. */
   clear: {
     base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },

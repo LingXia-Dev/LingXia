@@ -43,6 +43,7 @@ export const doc: ComponentDoc = {
       'On a dense desktop screen wrap the form in a DensityProvider with `compact` (from `@liulidesign/core/density`): every control built on Field defaults to its small size, and one that sets `size` keeps it.',
       'Pass every prop Field hands the control on to the control element.',
       'Say what to fix in a status message, not only that something is wrong.',
+      'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell its editor is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.',
       'At large text, a long label wraps with the optional mark and info button on its first line; keep the label to a few words.',
     ],
     dont: [
@@ -53,9 +54,9 @@ export const doc: ComponentDoc = {
   examples: [{ name: 'WrappedSelect', title: 'Wrapping a primitive select' }, { name: 'Info', title: 'A note behind an info button' }],
   gaps: [
     {
-      missing: 'Validation when the user leaves a field.',
-      needs: 'focus and blur events on editors',
-      today: 'Validate on change or on submit.',
+      missing: 'Validation when the user leaves a field, for editors other than TextInput.',
+      needs: 'focus and blur events passed through by every editor',
+      today: 'TextInput takes `onBlur`; validate the others on change or on submit.',
     },
   ],
   playground: { props: { label: 'Billing period', description: 'You can change it later.' }, fixture: true },

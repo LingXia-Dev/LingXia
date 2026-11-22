@@ -45,6 +45,9 @@ export const doc: ComponentDoc = {
       'Bind to useLocal for drafts; send the value to Logic on submit, not on every keystroke.',
       'Set type, inputMode, autoComplete and enterKeyHint so the right keyboard and autofill appear.',
       'Explain the fix in the status message.',
+      'Check a value the person has finished typing in `onBlur`, not on every keystroke.',
+      'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.',
+      'To change what is typed as it is typed, such as upper-casing a code, control the field: `value={code.value} onChange={next => code.set(next.toUpperCase())}`.',
     ],
     dont: [
       'Leave out label because a placeholder is shown; use isLabelHidden when the label must not be drawn.',
@@ -58,12 +61,14 @@ export const doc: ComponentDoc = {
     { name: 'Disabled', title: 'Disabled, with the reason' },
     { name: 'Checking', title: 'Checking what was typed' },
     { name: 'ReadOnly', title: 'Read-only' },
+    { name: 'SignIn', title: 'A password, shown on request, and focus back on it after a failed sign-in' },
+    { name: 'ShareLink', title: 'A button inside the box, after the value' },
   ],
   gaps: [
     {
-      missing: 'Validation on leaving the field; dirty tracking.',
-      needs: 'focus and blur events on editors',
-      today: 'Validate as the value changes, or on submit.',
+      missing: 'Dirty tracking.',
+      needs: 'a record of the value the field started with',
+      today: 'Keep the starting value beside the draft and compare.',
     },
     {
       missing: 'Read-only text that can still be selected and copied.',
@@ -89,6 +94,8 @@ export const doc: ComponentDoc = {
         { name: 'Plain', title: 'Label and placeholder' },
         { name: 'Search', title: 'Search, with a clear button' },
         { name: 'Adornments', title: 'A currency sign, a web address start and a unit; the last field is marked optional' },
+        { name: 'SignIn', title: 'Signing in: the password field shows its text on request' },
+        { name: 'ShareLink', title: 'A copy button inside the box' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [

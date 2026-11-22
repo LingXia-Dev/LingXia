@@ -71,6 +71,12 @@
   "@liuli.clear": {
     "defaultMessage": "清除"
   },
+  "@liuli.hidePassword": {
+    "defaultMessage": "隐藏密码"
+  },
+  "@liuli.showPassword": {
+    "defaultMessage": "显示密码"
+  },
   "@liuli.next": {
     "defaultMessage": "下一步"
   },

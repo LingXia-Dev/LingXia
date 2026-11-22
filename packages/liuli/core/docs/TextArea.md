@@ -175,6 +175,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use it when the answer may run past one line: a note, a comment, a reason.
 - Do: Set `rows` to the length you expect, so the box says how much to write.
 - Do: Use enterKeyHint="send" for a chat or reply box, so Return sends and Shift+Return adds a line.
+- Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.
 - Don't: Use it for a name, an email or a code; use TextInput.
 - Don't: Let it grow without a `maxRows` in a sheet or a short screen; the keyboard covers the rest.
 

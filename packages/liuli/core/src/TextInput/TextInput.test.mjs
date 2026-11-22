@@ -104,3 +104,36 @@ test('ReadOnly: read-only on a sunken box, with no clear button', async () => {
   const input = (await renderExample('TextInput/TextInput', 'ReadOnly')).getByTestId('iban');
   assert.deepEqual([input.props.readOnly, input.parent.props.background, input.parent.children.length], [1, 'surface-sunken', 1]);
 });
+
+test('SignIn: the password hides its text until its button shows it, and the button names what it will do', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'SignIn');
+  const reveal = () => screen.getByTestId('password-reveal');
+  assert.equal(screen.getByTestId('password').props.secure, 1);
+  assert.equal(reveal().props.accessibilityLabel, 'Show password');
+  screen.press(reveal());
+  assert.notEqual(screen.getByTestId('password').props.secure, 1);
+  assert.equal(reveal().props.accessibilityLabel, 'Hide password');
+  screen.press(reveal());
+  assert.equal(screen.getByTestId('password').props.secure, 1);
+  assert.equal(screen.queryAll(node => node.testId === 'sign-in-email-reveal').length, 0, 'only a password field has one');
+});
+
+test('SignIn: onBlur reaches the app, which checks the email once the person leaves it', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'SignIn');
+  screen.type(screen.getByTestId('sign-in-email'), 'ana');
+  assert.equal(screen.queryAll(node => node.text === 'Add the part after @, such as example.com.').length, 0);
+  screen.blur(screen.getByTestId('sign-in-email'));
+  assert.equal(screen.queryAll(node => node.text === 'Add the part after @, such as example.com.').length, 1);
+});
+
+test('ShareLink: endContent sits inside the box after the value', async () => {
+  const screen = await renderExample('TextInput/TextInput', 'ShareLink');
+  const input = screen.getByTestId('share-link');
+  const box = input.parent;
+  const copy = screen.getByTestId('copy-link');
+  let at = copy;
+  while (at.parent !== box) at = at.parent;
+  assert.ok(box.children.indexOf(at) > box.children.indexOf(input));
+  screen.press(copy);
+  assert.equal(screen.queryAll(node => node.text === 'Copied.').length, 1);
+});

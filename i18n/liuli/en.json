@@ -95,6 +95,14 @@
     "defaultMessage": "Clear",
     "description": "Button that empties a text field."
   },
+  "@liuli.hidePassword": {
+    "defaultMessage": "Hide password",
+    "description": "Button in a password field that hides the typed password again."
+  },
+  "@liuli.showPassword": {
+    "defaultMessage": "Show password",
+    "description": "Button in a password field that shows the typed password as text."
+  },
   "@liuli.next": {
     "defaultMessage": "Next",
     "description": "Tour button to the next step."

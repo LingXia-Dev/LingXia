@@ -45,6 +45,7 @@ export const doc: ComponentDoc = {
       'Use it when the answer may run past one line: a note, a comment, a reason.',
       'Set `rows` to the length you expect, so the box says how much to write.',
       'Use enterKeyHint="send" for a chat or reply box, so Return sends and Shift+Return adds a line.',
+      'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.',
     ],
     dont: [
       'Use it for a name, an email or a code; use TextInput.',

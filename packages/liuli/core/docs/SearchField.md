@@ -152,6 +152,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Always pass `resultsLabel` once there is text, including when nothing matches.
 - Do: Hide the results line with `isResultsLabelHidden` only when the list under the field already shows the count.
 - Do: Keep the field where it is while results change, so typing is never interrupted.
+- Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `query.focus()`.
 - Do: At large text, give the field a line of its own rather than squeezing it beside a button, where it shrinks to its magnifier.
 - Don't: Use it to choose one value for a form; that is a Combobox.
 - Don't: Clear the text when a search finds nothing; let the person edit it.

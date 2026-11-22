@@ -123,6 +123,78 @@ export function ReadOnly() {
 }
 ```
 
+### A password, shown on request, and focus back on it after a failed sign-in
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** Signing in: the password hides what is typed until its button shows it, and a failed sign-in moves focus back to it. */
+export function SignIn() {
+  const email = useLocal('email', 'ana@example.com');
+  const password = useLocal('password', '');
+  const checked = useLocal('checked', '');
+  const failed = useLocal('failed', false);
+  const signIn = () => {
+    const ok = password.value.length >= 8;
+    failed.set(!ok);
+    if (!ok) password.focus();
+  };
+  return (
+    <view className="gap-4">
+      <TextInput
+        bind={email}
+        label="Email"
+        type="email"
+        autoComplete="email"
+        autoCapitalize="none"
+        enterKeyHint="next"
+        onBlur={() => checked.set(email.value)}
+        status={checked.value !== '' && !checked.value.includes('@') ? { type: 'error', message: 'Add the part after @, such as example.com.' } : undefined}
+        data-testid="sign-in-email"
+      />
+      <TextInput
+        bind={password}
+        label="Password"
+        type="password"
+        autoComplete="current-password"
+        enterKeyHint="go"
+        onSubmit={signIn}
+        status={failed.value ? { type: 'error', message: 'Passwords here are at least 8 characters.' } : undefined}
+        data-testid="password"
+      />
+      <Button label="Sign in" variant="primary" width="content" onClick={signIn} data-testid="sign-in" />
+    </view>
+  );
+}
+```
+
+### A button inside the box, after the value
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** A link to share: read-only, with a copy button inside the box. */
+export function ShareLink() {
+  const copied = useLocal('copied', false);
+  return (
+    <TextInput
+      value="https://notes.example.com/s/q8Hk2"
+      onChange={unused}
+      label="Link"
+      description={copied.value ? 'Copied.' : 'Anyone with the link can read the note.'}
+      isReadOnly
+      endContent={<IconButton icon="copy" label="Copy link" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy-link" />}
+      data-testid="share-link"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -144,7 +216,7 @@ export function ReadOnly() {
 | `hasClear` | `boolean` | `false` | A button that empties the text, shown while there is text. |
 | `clearLabel` | `string` |  | The clear button's accessible name. Defaults to "Clear" in the page's language. |
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
-| `type` | `"email" \| "number" \| "password" \| "search" \| "tel" \| "text"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. |
+| `type` | `"email" \| "number" \| "password" \| "search" \| "tel" \| "text"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. `password` hides the text and adds a button that shows it. |
 | `inputMode` | `"decimal" \| "email" \| "numeric" \| "tel" \| "text"` |  |  |
 | `autoComplete` | `AutoComplete` |  |  |
 | `enterKeyHint` | `"done" \| "enter" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  | The label of the keyboard's action key; `onSubmit` runs on it. |
@@ -158,7 +230,10 @@ export function ReadOnly() {
 | `startContent` | `Child` |  | A node in the icon's place, such as a spinner; wins over `startIcon`. |
 | `prefix` | `string` |  | Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. |
 | `suffix` | `string` |  | Fixed text inside the box after the value: a unit such as "kg" or "%". Read with the description. |
+| `endContent` | `Child` |  | A node inside the box after the value and any suffix, such as a small IconButton. The clear and show-password buttons come after it. |
 | `onSubmit` | `((value: string) => void)` |  | The keyboard's action key, or Enter. |
+| `onFocus` | `(() => void)` |  | Runs when the editor takes focus. |
+| `onBlur` | `(() => void)` |  | Runs when the editor loses focus: the moment to check a value the person has finished typing. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |
 | `data-testid` | `string` |  | On the editor. |
@@ -205,6 +280,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Bind to useLocal for drafts; send the value to Logic on submit, not on every keystroke.
 - Do: Set type, inputMode, autoComplete and enterKeyHint so the right keyboard and autofill appear.
 - Do: Explain the fix in the status message.
+- Do: Check a value the person has finished typing in `onBlur`, not on every keystroke.
+- Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.
+- Do: To change what is typed as it is typed, such as upper-casing a code, control the field: `value={code.value} onChange={next => code.set(next.toUpperCase())}`.
 - Don't: Leave out label because a placeholder is shown; use isLabelHidden when the label must not be drawn.
 - Don't: Use type="number" for codes, phone numbers or card numbers; use inputMode="numeric".
 
@@ -212,7 +290,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| Validation on leaving the field; dirty tracking. | focus and blur events on editors | Validate as the value changes, or on submit. |
+| Dirty tracking. | a record of the value the field started with | Keep the starting value beside the draft and compare. |
 | Read-only text that can still be selected and copied. | readOnly on editors | Show the value as selectable text instead. |
 | Moving focus to the next field from code when the app owns the value. | a focus handle for controlled editors | Bound fields chain with enterKeyHint="next" or cell.focus(). |
 

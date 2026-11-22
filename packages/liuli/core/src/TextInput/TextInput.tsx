@@ -1,4 +1,4 @@
-import { cx, useId, type AutoComplete, type Child, type Local } from '@lingxia/view';
+import { cx, useId, useLocal, type AutoComplete, type Child, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
@@ -38,7 +38,7 @@ export type TextInputClear =
 export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear & {
   /** A hint shown while empty; never a substitute for `label`. */
   placeholder?: string;
-  /** `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. @default 'text' */
+  /** `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. `password` hides the text and adds a button that shows it. @default 'text' */
   type?: 'text' | 'password' | 'email' | 'number' | 'tel' | 'search';
   inputMode?: 'text' | 'numeric' | 'decimal' | 'tel' | 'email';
   autoComplete?: AutoComplete;
@@ -62,8 +62,14 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
   prefix?: string;
   /** Fixed text inside the box after the value: a unit such as "kg" or "%". Read with the description. */
   suffix?: string;
+  /** A node inside the box after the value and any suffix, such as a small IconButton. The clear and show-password buttons come after it. */
+  endContent?: Child;
   /** The keyboard's action key, or Enter. */
   onSubmit?: (value: string) => void;
+  /** Runs when the editor takes focus. */
+  onFocus?: () => void;
+  /** Runs when the editor loses focus: the moment to check a value the person has finished typing. */
+  onBlur?: () => void;
   /** Classes for the field column. */
   className?: string;
   /** Classes for the bordered box. */
@@ -77,14 +83,16 @@ export function TextInput(props: TextInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength, isReadOnly = false, isLoading = false,
-    startIcon, startContent, prefix, suffix, onSubmit, className, controlClassName, 'data-testid': testId,
+    startIcon, startContent, prefix, suffix, endContent, onSubmit, onFocus, onBlur, className, controlClassName, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const text = props.bind ? props.bind.value : props.value;
   // The platform search field draws its own magnifier at its own size and colour, so search is a
   // plain editor with Liuli's icon.
   const isSearch = type === 'search';
-  const editorType = isSearch ? undefined : type;
+  const isPassword = type === 'password';
+  const revealed = useLocal('revealed', false);
+  const editorType = isSearch || (isPassword && revealed.value) ? undefined : type;
   const keyHint = enterKeyHint ?? (isSearch ? 'search' : undefined);
   const leading = startContent ?? (startIcon !== undefined || isSearch ? <Glyph name={startIcon ?? 'search'} className={r.searchIcon.base} /> : undefined);
   const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
@@ -131,6 +139,8 @@ export function TextInput(props: TextInputProps) {
               aria-busy={isLoading || undefined}
               disabled={control.disabled}
               onSubmit={onSubmit}
+              onFocus={onFocus}
+              onBlur={onBlur}
               className={inputClass}
             />
           ) : (
@@ -155,14 +165,28 @@ export function TextInput(props: TextInputProps) {
               aria-busy={isLoading || undefined}
               disabled={control.disabled}
               onSubmit={onSubmit}
+              onFocus={onFocus}
+              onBlur={onBlur}
               className={inputClass}
             />
           )}
           {suffix !== undefined && <text id={suffixId} className={cx(r.adornment.base, r.input.size[size])}>{suffix}</text>}
+          {endContent !== undefined && <view className={r.end.base}>{endContent}</view>}
           {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
           {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
             <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} className={r.clear.base}>
               <Glyph name="close" className={r.clearIcon.base} />
+            </button>
+          )}
+          {isPassword && (
+            <button
+              aria-label={liuliText(revealed.value ? '@liuli.hidePassword' : '@liuli.showPassword')}
+              onClick={() => revealed.set(!revealed.value)}
+              disabled={isDisabled}
+              data-testid={testId !== undefined ? `${testId}-reveal` : undefined}
+              className={r.clear.base}
+            >
+              <Glyph name={revealed.value ? 'hidden' : 'visible'} className={r.clearIcon.base} />
             </button>
           )}
         </view>
