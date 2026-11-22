@@ -205,6 +205,8 @@ fn is_ignored_file_name(name: &str) -> bool {
         || name.ends_with(".swo")
         || name.ends_with(".tmp")
         || name.ends_with(".map")
+        // The build's own type-check writes it; watching it rebuilds forever.
+        || name.ends_with(".tsbuildinfo")
         || name == ".DS_Store"
 }
 
@@ -1098,6 +1100,7 @@ mod tests {
             ".dist.building-42/pages/home/index.js"
         )));
         assert!(is_ignored_path(Path::new(".dist.previous-42/logic.js")));
+        assert!(is_ignored_path(Path::new("tsconfig.tsbuildinfo")));
         assert!(!is_ignored_path(Path::new("pages/home/index.tsx")));
         assert!(!is_ignored_path(Path::new("lxapp.json")));
         assert!(!is_ignored_path(Path::new("pages/home/index.json")));
