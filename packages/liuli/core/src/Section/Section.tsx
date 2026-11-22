@@ -25,7 +25,7 @@ export function Section({ title, description, action, headingLevel = 2, children
           <text role="heading" headingLevel={headingLevel} className={cx(r.title.base, r.title.level[headingLevel])}>{title}</text>
           {description !== undefined && <text className={r.description.base}>{description}</text>}
         </view>
-        {action !== undefined && <view className={r.action.base}>{action}</view>}
+        {action !== undefined && <view className={cx(r.action.base, r.action.level[headingLevel])}>{action}</view>}
       </view>
       {children}
     </view>

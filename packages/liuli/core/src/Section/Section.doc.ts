@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
     { part: 'root', required: true, description: 'The heading and the content, a fixed distance apart.' },
     { part: 'title', required: true, description: 'The heading, at `headingLevel`.' },
     { part: 'description', required: false, description: 'A line under the heading.' },
-    { part: 'action', required: false, description: 'At the end of the heading\'s line.' },
+    { part: 'action', required: false, description: 'At the end of the title\'s first line, centred on it, however the title or its line wrap.' },
   ],
   accessibility: {
     pattern: null,

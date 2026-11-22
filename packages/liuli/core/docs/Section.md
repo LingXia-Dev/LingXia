@@ -76,7 +76,7 @@ export function Nested() {
 | root | `<view>` | yes | The heading and the content, a fixed distance apart. |
 | title | `<text>` | yes | The heading, at `headingLevel`. |
 | description | `<text>` | no | A line under the heading. |
-| action | `<view>` | no | At the end of the heading's line. |
+| action | `<view>` | no | At the end of the title's first line, centred on it, however the title or its line wrap. |
 
 ## What an app may override
 
