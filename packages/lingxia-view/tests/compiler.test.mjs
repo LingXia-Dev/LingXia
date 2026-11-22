@@ -168,7 +168,8 @@ test('bind and snapIndex on one element fail the build; either alone passes', ()
   clean('const a = <scroll snapIndex={i} onSnapChange={g}/>;');
   clean('const a = <view drag="y" bind={c} aria-label="S"/>;');
   clean('const a = <scroll {...rest} snapIndex={i}/>;');
-  clean('const a = <scroll bind={controlled ? undefined : c} snapIndex={controlled ? i : undefined}/>;');
+  assert.deepEqual(audit('const a = <scroll snapIndex={i}/>;', 'page.tsx'), ['page.tsx:1:19: UI_PROP: snapIndex controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself']);
+  clean('const a = <scroll bind={controlled ? undefined : c} snapIndex={controlled ? i : undefined} onSnapChange={controlled ? g : undefined}/>;');
   assert.deepEqual(audit('const a = <scroll bind={c} snapIndex={1}/>;', 'page.tsx').map(problem => problem.split(': ').slice(1).join(': ')), [
     'UI_PROP: bind and snapIndex both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange',
     'UI_PROP: snapIndex and bind both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange',

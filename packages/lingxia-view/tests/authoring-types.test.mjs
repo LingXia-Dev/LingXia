@@ -57,3 +57,29 @@ test("a link's target is checked against the project's page registry", () => {
     getCurrentDirectory: () => '', getCanonicalFileName: value => value, getNewLine: () => '\n',
   }));
 });
+
+test('tsc blames the trait a mistake breaks, not another trait of the element', () => {
+  const filename = fileURLToPath(new URL('./fixtures/trait-mistakes.tsx', import.meta.url));
+  const program = ts.createProgram([filename], {
+    strict: true, noEmit: true, types: [], target: ts.ScriptTarget.ES2020,
+    module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    jsx: ts.JsxEmit.Preserve,
+  });
+  const reasons = new Map(ts.getPreEmitDiagnostics(program).map(diagnostic => {
+    const name = diagnostic.file.text.slice(0, diagnostic.start).match(/(?:const|function) (\w+)[^\n]*$/)[1];
+    return [name, ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').split('\n').slice(-2).join(' ').trim()];
+  }));
+  for (const [name, reason] of [
+    ['open', /^Type .* is not assignable to type .*Property 'popover' is missing in type .* but required in type '\{ popover: true \| "auto" \| "hint";/],
+    ['manualClose', /^Types of property 'onCloseRequest' are incompatible\. +Type '\(\) => false' is not assignable to type 'undefined'\.$/],
+    ['undragged', /Property 'drag' is missing in type .* but required in type '\{ drag: "x" \| "y";/],
+    ['deaf', /Property 'snapIndex' is missing in type .* but required in type '\{ snapIndex: number;/],
+    ['deafDrag', /Property 'snapIndex' is missing in type .* but required in type '\{ snapIndex: number;/],
+    ['Both', /^Types of property 'snapIndex' are incompatible\. +Type 'number' is not assignable to type 'undefined'\.$/],
+    ['actions', /Property 'drag' is missing in type .* but required in type '\{ drag: "x" \| "y";/],
+    ['openAndSnap', /Property 'popover' is missing in type .* but required in type '\{ popover: true/],
+    ['closeAndSnap', /Property 'drag' is missing in type .* but required in type '\{ drag: "x" \| "y";/],
+    ['unheard', /Property 'onSnapChange' is missing in type .* but required in type '\{ snapIndex: number; onSnapChange: /],
+  ]) assert.match(reasons.get(name) ?? 'no error', reason, name);
+  assert.equal(reasons.size, 10);
+});

@@ -97,7 +97,9 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error dragSnapPoints needs drag.
   const undragged = <view aria-label="Sheet" dragSnapPoints={[0, 100]}/>;
   const pager = (at: number, go: (index: number) => void) => <scroll snapIndex={at} onSnapChange={go}/>;
-  const detent = (at: number) => <view drag="y" dragSnapPoints={[0, 200]} snapIndex={at} aria-label="Sheet"/>;
+  const detent = (at: number, go: (index: number) => void) => <view drag="y" dragSnapPoints={[0, 200]} snapIndex={at} onSnapChange={go} aria-label="Sheet"/>;
+  // @ts-expect-error snapIndex needs onSnapChange.
+  const unheard = <scroll snapIndex={0}/>;
   // @ts-expect-error bind and snapIndex both set the snap index.
   const both = (cell: Local<number>) => <scroll bind={cell} snapIndex={0}/>;
   // @ts-expect-error onSnapChange comes with snapIndex.

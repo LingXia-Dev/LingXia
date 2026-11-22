@@ -392,6 +392,7 @@ export function rules(schema, common) {
       (out.prop[member] ??= []).push({ on: entry.on, without: others, error: entry.error.replace('{prop}', member).replace('{other}', others.join(' or ')) });
       for (const companion of entry.with?.[member] ?? [])
         (out.prop[companion] ??= []).push({ on: entry.on, with: [member], error: entry.companion.replace('{prop}', companion) });
+      if (entry.with?.[member]) (out.prop[member] ??= []).push({ on: entry.on, with: entry.with[member], error: entry.needs.replace('{prop}', member) });
     }
   }
   for (const [name, list] of Object.entries(prop)) {
@@ -424,16 +425,18 @@ function traitUnion(element, entry) {
   const absent = `{ ${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${props.map(prop => `${propName(prop)}?: never;`).join(' ')} }`;
   const forms = entry.forms ?? [{ values: null }];
   const present = forms.map(form => `{ ${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${props.map(prop => form.without?.[prop] ? `${propName(prop)}?: never;` : member(prop, own(prop))).join(' ')} }`);
-  return `(${[absent, ...present].join(' | ')})`;
+  // Absent last and the widest form just before it: TypeScript blames the last member a
+  // mistake comes closest to, so `open` alone asks for `popover`, not for `popover="manual"`.
+  return `(${[...present.reverse(), absent].join(' | ')})`;
 }
 
-/** `(none set) | (one member per prop, the others never)`; a member's companions come with it. */
+/** `(one member per prop with its companions, the others never) | (none set)`. */
 function exclusiveUnion(element, entry) {
   const companions = prop => entry.with?.[prop] ?? [];
   const never = props => props.map(prop => `${propName(prop)}?: never;`).join(' ');
   const all = [...entry.props, ...entry.props.flatMap(companions)];
-  const one = prop => `{ ${member(prop, { ...element.props[prop], required: true })} ${companions(prop).map(other => member(other, element.props[other])).join(' ')} ${never(all.filter(other => other !== prop && !companions(prop).includes(other)))} }`;
-  return `(${[`{ ${never(all)} }`, ...entry.props.map(one)].join(' | ')})`;
+  const one = prop => `{ ${member(prop, { ...element.props[prop], required: true })} ${companions(prop).map(other => member(other, { ...element.props[other], required: true })).join(' ')} ${never(all.filter(other => other !== prop && !companions(prop).includes(other)))} }`;
+  return `(${[...entry.props.map(one).reverse(), `{ ${never(all)} }`].join(' | ')})`;
 }
 
 /** The roles `<tag>` may carry: every role whose rules all admit it. */

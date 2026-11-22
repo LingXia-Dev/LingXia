@@ -126,8 +126,9 @@ test('snapIndex with onSnapChange drives a snapping scroll and a drag detent fro
   assert.deepEqual(heard.slice(1), [['drag', 0]]);
 
   for (const [props, pattern] of [
-    [{ snapIndex: -1 }, /snapIndex is a snap point index/],
+    [{ snapIndex: -1, onSnapChange: () => {} }, /snapIndex is a snap point index/],
     [{ snapIndex: 0, bind: { value: 0 } }, /bind and snapIndex both set the snap index/],
     [{ onSnapChange: () => {} }, /onSnapChange reports the snap index you pass in snapIndex/],
+    [{ snapIndex: 0 }, /snapIndex controls the position, so it needs onSnapChange/],
   ]) assert.throws(() => render(() => h('page', {}, h('scroll', props))), pattern);
 });
