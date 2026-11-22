@@ -2,7 +2,7 @@ use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
 use lingxia_app_context::{AppEnv, ServiceEnvSnapshot, ServiceEnvSwitch};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use rong::{IntoJSObject, JSContext, JSResult};
+use rong::{IntoJSObject, JSContext, JSObject, JSResult};
 
 /// The service environment the app runs against now and after its next launch.
 #[derive(Debug, Clone, IntoJSObject)]
@@ -27,7 +27,7 @@ struct HostServiceEnvState {
     can_switch: bool,
 }
 
-/// What `lx.host.setServiceEnv` saved, and whether the app is exiting to apply it.
+/// What `lx.host.serviceEnv.set` saved, and whether the app is exiting to apply it.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvSwitchResult {
     /// The environments after the switch.
@@ -105,15 +105,28 @@ fn state_from_snapshot(snapshot: ServiceEnvSnapshot) -> HostServiceEnvState {
     }
 }
 
+/// The service environment (`dev` or `prod`) the host app talks to. Control app only.
+fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &super::app_namespace(ctx)?, "serviceEnv")
+}
+
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    register_property(ctx)?;
     register_api(ctx)
 }
 
 rong::js_api! {
-    fn register_api(ctx) {
+    fn register_property(ctx) {
         namespace HostAppApi = super::app_namespace(ctx)?;
-        fn serviceEnv = service_env;
-        fn setServiceEnv(
+        const serviceEnv: "HostServiceEnvApi" = namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_api(ctx) {
+        namespace HostServiceEnvApi = namespace(ctx)?;
+        fn get = service_env;
+        fn set(
             ts_params = "env: HostAppEnv",
             ts_return = "HostServiceEnvSwitchResult"
         ) = set_service_env;

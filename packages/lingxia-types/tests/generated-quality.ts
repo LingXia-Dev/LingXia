@@ -84,9 +84,9 @@ const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
 const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
 // Control-only is a run-time refusal, not an absent member (rule 2).
 const cacheSize: Promise<number> = lx.host.cache.size();
-const notifyPermission: Promise<PermissionState> = lx.device.permission('notifications');
+const notifyPermission: Promise<PermissionState> = lx.device.permission.get('notifications');
 // @ts-expect-error only the four named permissions
-void lx.device.permission('microphone');
+void lx.device.permission.get('microphone');
 const hostOs: HostOs = lx.host.info.os;
 const deviceOs: HostOs = lx.device.info.osName;
 const showArgs: AppLifecycleEventArgs = { source: "lxapp", reason: "switch_back", path: "pages/home/index" };

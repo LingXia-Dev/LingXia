@@ -1,4 +1,4 @@
-//! The name and icon an lxapp set for itself with `lx.shell.setAppDisplay`.
+//! The name and icon an lxapp set for itself with `lx.shell.appDisplay.update`.
 //!
 //! Kept per app and per service env next to the registry's answer, which it
 //! outranks. Icons live under app data, not beside registry artwork: the
@@ -23,7 +23,7 @@ const MAX_ICON_SIDE: u32 = 4096;
 const MAX_ICON_DECODE_BYTES: u64 = MAX_ICON_SIDE as u64 * MAX_ICON_SIDE as u64 * 8;
 const ICON_DIR: &str = "display-icons";
 
-/// One key of a `setAppDisplay` patch.
+/// One key of an `appDisplay.update` patch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldPatch<T> {
     Keep,
@@ -116,6 +116,11 @@ pub(crate) fn icon_path(appid: &str) -> Option<String> {
     let file = current(appid)?.icon_file?;
     let path = icon_dir()?.join(file);
     path.is_file().then(|| path.to_string_lossy().into_owned())
+}
+
+/// What `appid` set for itself: its name, and whether its own icon is on disk.
+pub fn own(appid: &str) -> (Option<String>, bool) {
+    (name(appid), icon_path(appid).is_some())
 }
 
 /// Apply `patch` to `appid`. `Ok(false)` when the result equals what is

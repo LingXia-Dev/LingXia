@@ -8,7 +8,9 @@ use lingxia_shell::{
 };
 use lxapp::app_display::{self, AppDisplayPatch, FieldPatch};
 use lxapp::{register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
+use rong::{
+    IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -314,7 +316,7 @@ fn settled(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promise> {
     Promise::from_future(ctx, None, async move { result })
 }
 
-const SET_APP_DISPLAY: &str = "lx.shell.setAppDisplay";
+const SET_APP_DISPLAY: &str = "lx.shell.appDisplay.update";
 
 /// Change the name and icon the host shows for the calling app. Only the
 /// Control app may call this API. Resolves once stored; the host repaints only
@@ -473,6 +475,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
     register_shell_api(ctx)?;
+    register_app_display_property(ctx)?;
+    register_app_display_api(ctx)?;
     register_sidebar_actions_property(ctx)?;
     register_sidebar_actions_api(ctx)
 }
@@ -487,12 +491,58 @@ rong::js_api! {
 rong::js_api! {
     fn register_shell_api(ctx) {
         namespace ShellApi = shell_namespace(ctx)?;
-        fn setAppDisplay(
+        fn activate(ts_return = "void") = activate;
+    }
+}
+
+rong::js_api! {
+    fn register_app_display_property(ctx) {
+        namespace ShellApi = shell_namespace(ctx)?;
+        const appDisplay: "AppDisplayApi" = app_display_namespace(ctx)?;
+    }
+}
+
+/// The name and icon the host shows for the calling app. Control app only.
+fn app_display_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    crate::namespace::child(ctx, &shell_namespace(ctx)?, "appDisplay")
+}
+
+rong::js_api! {
+    fn register_app_display_api(ctx) {
+        namespace AppDisplayApi = app_display_namespace(ctx)?;
+        fn get(ts_return = "Promise<AppDisplay>") = get_app_display;
+        fn update(
             ts_params = "patch: AppDisplayPatch",
             ts_return = "Promise<void>"
         ) = set_app_display;
-        fn activate(ts_return = "void") = activate;
     }
+}
+
+/// What the calling app set for itself; `null` and `false` mean the host's default.
+#[derive(Debug, Clone, IntoJSObject)]
+struct AppDisplay {
+    /// The name it set, or `null` for the default.
+    #[ts_type = "string | null"]
+    name: JSValue,
+    /// Whether it set its own icon.
+    icon: bool,
+}
+
+/// What this app set with `update`: its name, and whether it set an icon. Control app only.
+///
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+async fn get_app_display(ctx: JSContext) -> JSResult<AppDisplay> {
+    let invocation = authorization::require(&ctx, LogicRoute::ShellAppDisplayGet)?;
+    let appid = invocation.lxapp().appid.clone();
+    let (name, icon) = tokio::task::spawn_blocking(move || app_display::own(&appid))
+        .await
+        .map_err(|err| js_internal_error(format!("lx.shell.appDisplay.get failed: {err}")))?;
+    // Always present: an `Option` field would be left off instead of `null`.
+    let name = match name {
+        Some(name) => JSValue::from_rust(&ctx, name),
+        None => JSValue::null(&ctx),
+    };
+    Ok(AppDisplay { name, icon })
 }
 
 /// Bring the product window forward without navigating. Control app only.

@@ -175,8 +175,8 @@ two put ingress and outbound in opposite lock orders.
 
 ## Attention routes
 
-`lx.host.notification.*`, `lx.host.banner.*`, `lx.device.permission` and
-`lx.device.requestPermission` are the direct routes a guest reaches. They are `AppSessionOnly`, and the
+`lx.host.notification.*`, `lx.host.banner.*`, `lx.device.permission.get` and
+`lx.device.permission.request` are the direct routes a guest reaches. They are `AppSessionOnly`, and the
 handler then scopes the effect by `AttentionScope`, derived from the session
 class, never from a payload:
 

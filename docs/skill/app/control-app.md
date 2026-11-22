@@ -41,7 +41,7 @@ These act on the product, not on the calling lxapp:
 - `lx.host.autostart.*`
 - `lx.host.displayLanguage` / `lx.host.appearance`: the product's preference, with
   `set`; guests get `E_PERMISSION_DENIED` ([Product settings](../lxapp/core.md#product-settings))
-- `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`
+- `lx.shell.*`: sidebar actions, `appDisplay.get()/update()`, `activate()`
 - `lx.surface.app(appId)` / `lx.surface.declared(id)` to find a live app or declared surface
 - `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
   `edge`: other lxapps are refused at run time

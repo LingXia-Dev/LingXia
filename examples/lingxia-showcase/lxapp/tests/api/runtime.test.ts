@@ -93,7 +93,7 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
       calls: {
         terminal: await outcome(() => lx.host.terminal.settings.get()),
         autostart: await outcome(() => lx.host.autostart.isEnabled()),
-        notification: await outcome(() => lx.device.permission('notifications')),
+        notification: await outcome(() => lx.device.permission.get('notifications')),
         banner: await outcome(() => lx.host.banner.dismiss('lx-capability-probe')),
       },
       cache: await outcome(() => lx.host.cache.size()),

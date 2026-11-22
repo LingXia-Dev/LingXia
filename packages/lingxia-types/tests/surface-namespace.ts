@@ -240,12 +240,12 @@ export type ShellSidebarGate = [
 // clear are accepted.
 async function appDisplayPatchClears(): Promise<void> {
   const brand = Math.random() > 0.5 ? { name: "Acme", icon: "public/acme.png" } : undefined;
-  await lx.shell.setAppDisplay({ name: brand?.name, icon: brand?.icon });
-  await lx.shell.setAppDisplay({ name: null });
+  await lx.shell.appDisplay.update({ name: brand?.name, icon: brand?.icon });
+  await lx.shell.appDisplay.update({ name: null });
   // @ts-expect-error the patch takes no other keys
-  await lx.shell.setAppDisplay({ title: "Acme" });
+  await lx.shell.appDisplay.update({ title: "Acme" });
   // @ts-expect-error the icon is a path, not image data
-  await lx.shell.setAppDisplay({ icon: new Uint8Array(1) });
+  await lx.shell.appDisplay.update({ icon: new Uint8Array(1) });
 }
 
 export type AppDisplayGate = [typeof appDisplayPatchClears];

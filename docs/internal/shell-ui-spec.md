@@ -1228,7 +1228,7 @@ Shell chrome always has exactly one writer:
   equivalent `lingxia::shell()` facade.
 - Both facades MUST share the state machines and errors of §2 and this
   section. The writer declares sidebar actions (§4.5), sets the name and icon
-  the shell shows for its own app (`lx.shell.setAppDisplay`, ranked above the
+  the shell shows for its own app (`lx.shell.appDisplay.update`, ranked above the
   registry and `lxapp.json`, kept per service env), and, under
   `frameless + controls: content`, drives window controls
   (minimize/maximize/close/state); in other modes window-control calls fail

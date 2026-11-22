@@ -383,6 +383,9 @@ declare global {
     /** The host app's identity: OS, product name and version, runtime version. */
     readonly info: Readonly<HostInfo>;
 
+    /** The service environment the app talks to, now and after its next launch. Control app only. */
+    readonly serviceEnv: HostServiceEnvApi;
+
     /**
      * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.
      * @supports host.tray
@@ -422,6 +425,9 @@ declare global {
 
     /** Screen orientation: read it and follow it; a page locks it with `page.orientation`. */
     readonly orientation: OrientationApi;
+
+    /** Device permissions: read one without prompting, or ask for it. */
+    readonly permission: PermissionApi;
   }
 
   /** `lx.clipboard`: the system clipboard: text, images, and what it holds. */
@@ -434,6 +440,12 @@ declare global {
   interface PickApi {}
   /** `lx.app.tabBar`: this lxapp's tab bar: items, badges and visibility. */
   interface TabBarApi {}
+  /** `lx.device.permission`: read a device permission without prompting, or ask for it. */
+  interface PermissionApi {}
+  /** `lx.host.serviceEnv`: the service environment the app talks to; Control app only. */
+  interface HostServiceEnvApi {}
+  /** `lx.shell.appDisplay`: the name and icon the host shows for this app; Control app only. */
+  interface AppDisplayApi {}
   /** `lx.ui`: the system's own dialogs, sheets and toasts. */
   interface UiApi {}
   /** `lx.network.wifi`: scan, join and follow Wi-Fi networks; the radio starts on the first call. */
@@ -442,6 +454,9 @@ declare global {
   interface ShellApi {
     /** The action rows the desktop sidebar shows for this lxapp. */
     readonly sidebarActions: ShellSidebarActionsApi;
+
+    /** The name and icon the host shows for this app. Control app only. */
+    readonly appDisplay: AppDisplayApi;
   }
 
   /** `lx.fs`: read and write files under this lxapp's managed `lx://` paths. */

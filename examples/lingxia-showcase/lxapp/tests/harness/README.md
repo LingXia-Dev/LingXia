@@ -39,10 +39,8 @@ deterministic fixture instead of the public internet.
   `build_user_cache_download_request` (`crates/lingxia-transfer/src/download/
   manager.rs`) hardcodes `mime_type: None` and the manager only ever propagates
   the *caller's* hint, so that branch is dead. A download whose URL has no file
-  extension fails with "download response requires Content-Type or a URL file
-  extension" — an error that names a path which never works, reported as
-  `E_NETWORK` / "Server error" when the server answered 200. Hence `/file/<name>`
-  alongside `/bytes`.
+  extension lands as `.bin` with type `application/octet-stream`. Hence
+  `/file/<name>` alongside `/bytes`.
 - The Android runner starts this fixture and reverses its port through adb;
   transfer, media, and browser cases run without a separately managed server.
   The Windows runner still requires a supplied fixture.

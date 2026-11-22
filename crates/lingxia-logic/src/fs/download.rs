@@ -819,15 +819,16 @@ fn finalize_download_result(
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::internal(format!("create temp dir failed: {e}"))
         })?;
-        let ext = download_extension(source_url, result.mime_type.as_deref()).ok_or_else(|| {
-            cleanup_staging_file(&result.temp_path);
-            DownloadFailureReason::Network {
-                code: 5000,
-                message: "download response requires Content-Type or a URL file extension"
-                    .to_string(),
-                status: None,
-            }
-        })?;
+        // A body that names no type is still the bytes asked for: keep it as opaque data.
+        let (ext, mime_type) = match download_extension(source_url, result.mime_type.as_deref()) {
+            Some(ext) => (ext, result.mime_type),
+            None => (
+                "bin".to_string(),
+                result
+                    .mime_type
+                    .or_else(|| Some("application/octet-stream".to_string())),
+            ),
+        };
         let mut filename = unique_temp_download_name(source_url, &result.temp_path, result.size);
         filename.push('.');
         filename.push_str(&ext);
@@ -846,7 +847,7 @@ fn finalize_download_result(
         return Ok(DownloadCompletion {
             path: temp_path,
             path_kind: DownloadPathKind::Temp,
-            mime_type: result.mime_type,
+            mime_type,
             size: result.size,
         });
     };
@@ -1749,6 +1750,41 @@ mod tests {
         assert!(result.is_err());
         assert!(!staging.exists());
         assert_eq!(std::fs::read(&target).expect("final remains"), b"successor");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_untyped_download_without_an_extension_lands_as_opaque_data() {
+        let root = test_temp_dir("untyped-download");
+        let staging = root.join("staging/task-1");
+        std::fs::create_dir_all(staging.parent().unwrap()).expect("create staging dir");
+        std::fs::write(&staging, b"bytes").expect("write staging");
+
+        let completion = finalize_download_result(
+            &root,
+            &root,
+            &root,
+            "https://example.com/bytes?n=5",
+            None,
+            user_cache::UserCacheDownloadResult {
+                temp_path: staging.clone(),
+                file_name: "bytes".to_string(),
+                mime_type: None,
+                size: 5,
+            },
+        )
+        .expect("an untyped body is kept");
+
+        assert_eq!(completion.path_kind, DownloadPathKind::Temp);
+        assert_eq!(
+            completion.path.extension().and_then(|ext| ext.to_str()),
+            Some("bin")
+        );
+        assert_eq!(
+            completion.mime_type.as_deref(),
+            Some("application/octet-stream")
+        );
+        assert_eq!(std::fs::read(&completion.path).expect("read"), b"bytes");
         let _ = std::fs::remove_dir_all(&root);
     }
 

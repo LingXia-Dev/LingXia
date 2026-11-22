@@ -386,6 +386,9 @@ declare global {
     /** The host app's identity: OS, product name and version, runtime version. */
     readonly info: Readonly<HostInfo>;
 
+    /** The service environment the app talks to, now and after its next launch. Control app only. */
+    readonly serviceEnv: HostServiceEnvApi;
+
     /**
      * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.
      * @supports host.tray
@@ -425,6 +428,9 @@ declare global {
 
     /** Screen orientation: read it and follow it; a page locks it with `page.orientation`. */
     readonly orientation: OrientationApi;
+
+    /** Device permissions: read one without prompting, or ask for it. */
+    readonly permission: PermissionApi;
   }
 
   /** `lx.clipboard`: the system clipboard: text, images, and what it holds. */
@@ -437,6 +443,12 @@ declare global {
   interface PickApi {}
   /** `lx.app.tabBar`: this lxapp's tab bar: items, badges and visibility. */
   interface TabBarApi {}
+  /** `lx.device.permission`: read a device permission without prompting, or ask for it. */
+  interface PermissionApi {}
+  /** `lx.host.serviceEnv`: the service environment the app talks to; Control app only. */
+  interface HostServiceEnvApi {}
+  /** `lx.shell.appDisplay`: the name and icon the host shows for this app; Control app only. */
+  interface AppDisplayApi {}
   /** `lx.ui`: the system's own dialogs, sheets and toasts. */
   interface UiApi {}
   /** `lx.network.wifi`: scan, join and follow Wi-Fi networks; the radio starts on the first call. */
@@ -445,6 +457,9 @@ declare global {
   interface ShellApi {
     /** The action rows the desktop sidebar shows for this lxapp. */
     readonly sidebarActions: ShellSidebarActionsApi;
+
+    /** The name and icon the host shows for this app. Control app only. */
+    readonly appDisplay: AppDisplayApi;
   }
 
   /** `lx.fs`: read and write files under this lxapp's managed `lx://` paths. */
@@ -752,7 +767,7 @@ export type AppConfig = {
 };
 
 /**
- * What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+ * What `lx.shell.appDisplay.update` changes. Each key it carries is set;
  * `undefined`, `null` or `''` restores the default, and a key left out
  * keeps its value.
  */
@@ -1505,9 +1520,8 @@ export type HostAppApi = globalThis.HostAppApi;
  * the generated `app.json`. Missing `env` is treated as `'prod'`.
  * This is the immutable host build axis: package-id suffix, publish
  * token, signed App Link entitlements, and self-update channel.
- * In-app App Link hosts follow {@link HostAppApi.serviceEnv} on
- * the next launch. The mutable service environment is
- * {@link HostAppApi.setServiceEnv}. It is **not** the
+ * In-app App Link hosts follow `lx.host.serviceEnv` on the next
+ * launch; `lx.host.serviceEnv.set` changes it. It is **not** the
  * lxapp publish channel (`LxAppReleaseType`:
  * `'release' | 'draft'`). Default channel is `release` and can be
  * overridden when opening an lxapp.
@@ -1779,7 +1793,7 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
  * local API, every call fails `E_NOT_SUPPORTED`; ask
  * `lx.supports('host.notification')` first.
  * Declaring the capability never prompts; permission runs on
- * `lx.device.requestPermission('notifications')` or the first `show()`
+ * `lx.device.permission.request('notifications')` or the first `show()`
  * that reaches the OS.
  * Every lxapp may call it. The Control app speaks for the product; a
  * guest lxapp speaks only for itself: its ids are its own (it cannot
@@ -2104,7 +2118,7 @@ export type PageResult =
         reason: 'user' | 'opener' | 'reclaimed' | 'app_closed';
     };
 
-/** A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for. */
+/** A permission `lx.device.permission.get` reads and `lx.device.permission.request` asks for. */
 export type PermissionName = 'location' | 'camera' | 'photos' | 'notifications';
 
 /** A permission's state: `prompt` means the person has not been asked yet. */
@@ -3457,6 +3471,14 @@ export type WifiConnectedInfo = WifiInfo & {
  */
 export type WindowChrome = 'system' | 'full';
 
+/** What the calling app set for itself; `null` and `false` mean the host's default. */
+export interface AppDisplay {
+  /** The name it set, or `null` for the default. */
+  name: string | null;
+  /** Whether it set its own icon. */
+  icon: boolean;
+}
+
 /** This lxapp's identity and the role it runs in. */
 export interface AppInfo {
   /** This lxapp's id. */
@@ -3540,7 +3562,7 @@ export interface HostServiceEnvState {
   canSwitch: boolean;
 }
 
-/** What `lx.host.setServiceEnv` saved, and whether the app is exiting to apply it. */
+/** What `lx.host.serviceEnv.set` saved, and whether the app is exiting to apply it. */
 export interface HostServiceEnvSwitchResult {
   /** The environments after the switch. */
   state: HostServiceEnvState;
@@ -3640,6 +3662,24 @@ export interface LxFile {
 }
 
 declare global {
+  interface AppDisplayApi {
+    /**
+     * What this app set with `update`: its name, and whether it set an icon. Control app only.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    get(): Promise<AppDisplay>;
+    /**
+     * Change the name and icon the host shows for the calling app. Only the
+     * Control app may call this API. Resolves once stored; the host repaints only
+     * when a value changed, so calling it on every launch is cheap.
+     * @throws {E_INVALID_ARG} A patch that is not an object, or an unknown field.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    update(patch: AppDisplayPatch): Promise<void>;
+  }
+}
+
+declare global {
   interface ClipboardApi {
     /**
      * Replace the clipboard with Unicode text; `''` is text, not `clear()`. No
@@ -3706,29 +3746,7 @@ declare global {
     readonly orientation: OrientationApi;
     /** Read the screen geometry and pixel ratio this host reports. */
     screen(): ScreenInfo;
-    /**
-     * Read a permission's state without prompting, to decide before showing a
-     * button that would prompt.
-     * @example
-     * ```ts
-     * if (await lx.device.permission('notifications') === 'prompt') showEnableButton();
-     * ```
-     * @supports host.notification
-     * @throws {E_INVALID_ARG} A name outside `PermissionName`.
-     * @throws {E_NOT_SUPPORTED} `location`, `camera` or `photos`, which no host reports yet; `notifications` where the host does not declare them.
-     */
-    permission(name: PermissionName): Promise<PermissionState>;
-    /**
-     * Ask for a permission. Prompts where the OS has a prompt and the person has
-     * not answered; otherwise resolves the current setting. Rejects when the
-     * prompt is left unanswered.
-     * @permission notifications
-     * @supports host.notification
-     * @throws {E_INVALID_ARG} A name outside `PermissionName`.
-     * @throws {E_PERMISSION_DENIED} A guest lxapp asks while it is not on screen, or a second time this launch.
-     * @throws {E_NOT_SUPPORTED} `location`, `camera` or `photos`, which no host asks for yet; `notifications` where the host does not declare them.
-     */
-    requestPermission(name: PermissionName): Promise<'granted' | 'denied'>;
+    readonly permission: PermissionApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback, options?: SignalOptions): () => void;
     /** Subscribes to key-up events and returns the unsubscribe fn. */
@@ -3843,15 +3861,7 @@ declare global {
      * @throws {E_INTERNAL} The window could not be captured.
      */
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
-    /** The running and next-launch service environments. Control app only. */
-    serviceEnv(): HostServiceEnvState;
-    /**
-     * Save `env` for next launch and request exit; nothing to do when it is
-     * already running. A dev build cannot switch. Control app only. Save failures
-     * throw before exit. If `exitRequested` is false and `exitError` is set, ask
-     * the user to close and reopen the app.
-     */
-    setServiceEnv(env: HostAppEnv): HostServiceEnvSwitchResult;
+    readonly serviceEnv: HostServiceEnvApi;
     readonly update: HostUpdateApi;
     readonly env: HostAppEnv;
     readonly info: Readonly<HostInfo>;
@@ -3864,6 +3874,20 @@ declare global {
      */
     exit(): void;
     readonly tray: TrayApi;
+  }
+}
+
+declare global {
+  interface HostServiceEnvApi {
+    /** The running and next-launch service environments. Control app only. */
+    get(): HostServiceEnvState;
+    /**
+     * Save `env` for next launch and request exit; nothing to do when it is
+     * already running. A dev build cannot switch. Control app only. Save failures
+     * throw before exit. If `exitRequested` is false and `exitError` is set, ask
+     * the user to close and reopen the app.
+     */
+    set(env: HostAppEnv): HostServiceEnvSwitchResult;
   }
 }
 
@@ -4117,6 +4141,34 @@ declare global {
 }
 
 declare global {
+  interface PermissionApi {
+    /**
+     * Read a permission's state without prompting, to decide before showing a
+     * button that would prompt.
+     * @example
+     * ```ts
+     * if (await lx.device.permission.get('notifications') === 'prompt') showEnableButton();
+     * ```
+     * @supports host.notification
+     * @throws {E_INVALID_ARG} A name outside `PermissionName`.
+     * @throws {E_NOT_SUPPORTED} `location`, `camera` or `photos`, which no host reports yet; `notifications` where the host does not declare them.
+     */
+    get(name: PermissionName): Promise<PermissionState>;
+    /**
+     * Ask for a permission. Prompts where the OS has a prompt and the person has
+     * not answered; otherwise resolves the current setting. Rejects when the
+     * prompt is left unanswered.
+     * @permission notifications
+     * @supports host.notification
+     * @throws {E_INVALID_ARG} A name outside `PermissionName`.
+     * @throws {E_PERMISSION_DENIED} A guest lxapp asks while it is not on screen, or a second time this launch.
+     * @throws {E_NOT_SUPPORTED} `location`, `camera` or `photos`, which no host asks for yet; `notifications` where the host does not declare them.
+     */
+    request(name: PermissionName): Promise<'granted' | 'denied'>;
+  }
+}
+
+declare global {
   interface PickApi {
     /**
      * Picks one file. Resolves `{ status: 'canceled' }` only when the user
@@ -4197,16 +4249,9 @@ declare global {
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
-    /**
-     * Change the name and icon the host shows for the calling app. Only the
-     * Control app may call this API. Resolves once stored; the host repaints only
-     * when a value changed, so calling it on every launch is cheap.
-     * @throws {E_INVALID_ARG} A patch that is not an object, or an unknown field.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-     */
-    setAppDisplay(patch: AppDisplayPatch): Promise<void>;
     /** Bring the product window forward without navigating. Control app only. */
     activate(): void;
+    readonly appDisplay: AppDisplayApi;
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 }

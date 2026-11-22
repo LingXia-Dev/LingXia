@@ -48,6 +48,7 @@ pub(crate) enum LogicRoute {
     SurfaceApp,
     SurfaceDeclared,
     ShellSetAppDisplay,
+    ShellAppDisplayGet,
     ShellOpenHostTerminalSettings,
     ShellActivate,
     TerminalSettingsGet,
@@ -107,6 +108,7 @@ impl LogicRoute {
         Self::SurfaceApp,
         Self::SurfaceDeclared,
         Self::ShellSetAppDisplay,
+        Self::ShellAppDisplayGet,
         Self::ShellOpenHostTerminalSettings,
         Self::ShellActivate,
         Self::TerminalSettingsGet,
@@ -168,6 +170,7 @@ impl LogicRoute {
             | Self::SurfaceApp
             | Self::SurfaceDeclared
             | Self::ShellSetAppDisplay
+            | Self::ShellAppDisplayGet
             | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             Self::DevicePermission
@@ -197,8 +200,8 @@ impl LogicRoute {
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::AppExit => "lx.host.exit",
-            Self::AppServiceEnv => "lx.host.serviceEnv",
-            Self::AppSetServiceEnv => "lx.host.setServiceEnv",
+            Self::AppServiceEnv => "lx.host.serviceEnv.get",
+            Self::AppSetServiceEnv => "lx.host.serviceEnv.set",
             Self::AppBadgeSet => "lx.host.badge.set",
             Self::AppBadgeClear => "lx.host.badge.clear",
             Self::AppCacheSize => "lx.host.cache.size",
@@ -216,8 +219,8 @@ impl LogicRoute {
             Self::AppAutostartIsEnabled => "lx.host.autostart.isEnabled",
             Self::AppAutostartEnable => "lx.host.autostart.enable",
             Self::AppAutostartDisable => "lx.host.autostart.disable",
-            Self::DevicePermission => "lx.device.permission",
-            Self::DeviceRequestPermission => "lx.device.requestPermission",
+            Self::DevicePermission => "lx.device.permission.get",
+            Self::DeviceRequestPermission => "lx.device.permission.request",
             Self::AppNotificationShow => "lx.host.notification.show",
             Self::AppNotificationCancel => "lx.host.notification.cancel",
             Self::AppNotificationCancelAll => "lx.host.notification.cancelAll",
@@ -234,7 +237,8 @@ impl LogicRoute {
             Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
             Self::SurfaceApp => "lx.surface.app",
             Self::SurfaceDeclared => "lx.surface.declared",
-            Self::ShellSetAppDisplay => "lx.shell.setAppDisplay",
+            Self::ShellSetAppDisplay => "lx.shell.appDisplay.update",
+            Self::ShellAppDisplayGet => "lx.shell.appDisplay.get",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
             Self::ShellActivate => "lx.shell.activate",
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
@@ -631,7 +635,7 @@ mod tests {
             || route.name().starts_with("lx.host.banner.")
             || matches!(
                 route.name(),
-                "lx.device.permission" | "lx.device.requestPermission"
+                "lx.device.permission.get" | "lx.device.permission.request"
             )
     }
 
@@ -645,8 +649,8 @@ mod tests {
         assert_eq!(
             attention,
             [
-                "lx.device.permission",
-                "lx.device.requestPermission",
+                "lx.device.permission.get",
+                "lx.device.permission.request",
                 "lx.host.notification.show",
                 "lx.host.notification.cancel",
                 "lx.host.notification.cancelAll",

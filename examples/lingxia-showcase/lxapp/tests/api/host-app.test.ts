@@ -284,8 +284,8 @@ test('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
     'lx.host.notification',
-    'lx.device.permission',
-    'lx.device.requestPermission',
+    'lx.device.permission.get',
+    'lx.device.permission.request',
     'lx.host.notification.show',
     'lx.host.notification.cancel',
     'lx.host.notification.cancelAll',
@@ -299,10 +299,10 @@ test('request permission and replace local notifications by id', {
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     const n = lx.host.notification;
-    const permission = await lx.device.permission('notifications');
+    const permission = await lx.device.permission.get('notifications');
     // A pending OS prompt has nobody to answer it here, so only ask when
     // the answer is already known.
-    const requested = permission === 'prompt' ? null : await lx.device.requestPermission('notifications');
+    const requested = permission === 'prompt' ? null : await lx.device.permission.request('notifications');
     let immediate = null;
     try {
       immediate = await n.show({
@@ -499,7 +499,7 @@ test('show a frontmost notification unless told to suppress it', {
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
     const n = lx.host.notification;
-    const permission = await lx.device.permission('notifications');
+    const permission = await lx.device.permission.get('notifications');
     const base = { id: 'automation-frontmost', title: 'LingXia automation', target: { page: 'system' }, silent: true };
     // Posting needs permission; without it the OS refusal stands in for `posted`.
     const show = async (whenFrontmost?: 'banner' | 'system' | 'suppress') => {
@@ -891,20 +891,20 @@ test('declare, patch, and retract runtime sidebar actions atomically', {
 
 test('set and restore the name and icon the host shows for this app', {
   id: 'HOSTAPP-APP-DISPLAY-001',
-  covers: ['lx.shell.setAppDisplay'],
+  covers: ['lx.shell.appDisplay.update', 'lx.shell.appDisplay.get'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-APP-DISPLAY-001');
   // The choice persists across launches; restore the defaults however the spec ends.
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.shell.setAppDisplay({ name: null, icon: null }); } catch {}
+      try { await lx.shell.appDisplay.update({ name: null, icon: null }); } catch {}
       return true;
     });
   });
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const setDisplay = lx.shell.setAppDisplay as (patch: unknown) => Promise<void>;
+    const setDisplay = lx.shell.appDisplay.update as (patch: unknown) => Promise<void>;
     const attempt = async (patch: unknown) => {
       try {
         await setDisplay(patch);
@@ -916,9 +916,11 @@ test('set and restore the name and icon the host shows for this app', {
     const packageName = lx.app.info.name;
     const set = await attempt({ name: '  Showcase Brand  ', icon: 'public/showcase-icon.png' });
     const again = await attempt({ name: 'Showcase Brand', icon: 'public/showcase-icon.png' });
+    const afterSet = await lx.shell.appDisplay.get();
     return {
       set,
       again,
+      afterSet,
       svg: await attempt({ icon: 'public/showcase-icon.svg' }),
       nameAfterSet: lx.app.info.name === packageName,
       empty: await attempt({}),
@@ -930,6 +932,7 @@ test('set and restore the name and icon the host shows for this app', {
       traversal: await attempt({ icon: '../a.png' }),
       notImage: await attempt({ icon: 'lxapp.json' }),
       blankClears: await attempt({ name: '   ', icon: '' }),
+      afterClear: await lx.shell.appDisplay.get(),
     };
   });
   expect(result.set.ok).toBeTruthy();
@@ -942,7 +945,9 @@ test('set and restore the name and icon the host shows for this app', {
   ]) {
     expect(refused).toEqual({ ok: false, code: 'E_INVALID_ARG' });
   }
+  expect(result.afterSet).toEqual({ name: 'Showcase Brand', icon: true });
   expect(result.blankClears.ok).toBeTruthy();
+  expect(result.afterClear).toEqual({ name: null, icon: false });
 });
 
 test('refuse to move the root main out of main', {

@@ -208,7 +208,7 @@ rong::js_api! {
         /// local API, every call fails `E_NOT_SUPPORTED`; ask
         /// `lx.supports('host.notification')` first.
         /// Declaring the capability never prompts; permission runs on
-        /// `lx.device.requestPermission('notifications')` or the first `show()`
+        /// `lx.device.permission.request('notifications')` or the first `show()`
         /// that reaches the OS.
         ///
         /// Every lxapp may call it. The Control app speaks for the product; a
@@ -1191,7 +1191,7 @@ rong::js_api! {
         /// - `tabBarNotDeclared` with `E_INVALID_STATE`
         type LxErrorReason = r###"'userCanceled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'clipboardPermissionDenied' | 'locationServicesDisabled' | 'refreshNotEnabled' | 'networkUnavailable' | 'serverErrorStatus' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiSystemError' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound' | 'placementUnsupported' | 'appOpenInOtherRole' | 'appUnderMaintenance' | 'appSuspended' | 'tabAlreadyOpen' | 'stackFull' | 'revisionOutdated' | 'appClosed' | 'pageUnloaded' | 'tabBarNotDeclared'"###;
 
-        /// A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for.
+        /// A permission `lx.device.permission.get` reads and `lx.device.permission.request` asks for.
         type PermissionName = r###"'location' | 'camera' | 'photos' | 'notifications'"###;
 
         /// A permission's state: `prompt` means the person has not been asked yet.
@@ -1314,9 +1314,8 @@ rong::js_api! {
         ///
         /// This is the immutable host build axis: package-id suffix, publish
         /// token, signed App Link entitlements, and self-update channel.
-        /// In-app App Link hosts follow {@link HostAppApi.serviceEnv} on
-        /// the next launch. The mutable service environment is
-        /// {@link HostAppApi.setServiceEnv}. It is **not** the
+        /// In-app App Link hosts follow `lx.host.serviceEnv` on the next
+        /// launch; `lx.host.serviceEnv.set` changes it. It is **not** the
         /// lxapp publish channel (`LxAppReleaseType`:
         /// `'release' | 'draft'`). Default channel is `release` and can be
         /// overridden when opening an lxapp.
@@ -2176,7 +2175,7 @@ true
     edge?: SurfaceEdge;
 }"###;
 
-        /// What `lx.shell.setAppDisplay` changes. Each key it carries is set;
+        /// What `lx.shell.appDisplay.update` changes. Each key it carries is set;
         /// `undefined`, `null` or `''` restores the default, and a key left out
         /// keeps its value.
         type AppDisplayPatch = r###"{

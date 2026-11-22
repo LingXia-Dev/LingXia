@@ -188,7 +188,7 @@ export default definePage({
         }
         try {
           // Reading must not prompt; `show` asks when it needs to.
-          const permission = await lx.device.permission('notifications');
+          const permission = await lx.device.permission.get('notifications');
           page.update(d => {
             d.notificationSupported = true;
             d.notificationPermission = permission;

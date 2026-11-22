@@ -63,7 +63,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-/// Notification permission for `lx.device.permission`, in Permissions API words:
+/// Notification permission for `lx.device.permission.get`, in Permissions API words:
 /// the platforms' `default` is `prompt`.
 fn permission_state(platform: String) -> String {
     if platform == "default" {
@@ -88,7 +88,7 @@ fn require_notifications(ctx: &JSContext, member: &str) -> JSResult<()> {
 
 pub(crate) async fn notification_permission(ctx: JSContext) -> JSResult<String> {
     let invocation = authorization::require(&ctx, LogicRoute::DevicePermission)?;
-    require_notifications(&ctx, "lx.device.permission")?;
+    require_notifications(&ctx, "lx.device.permission.get")?;
     let runtime = invocation.lxapp().runtime.clone();
     spawn_blocking(move || runtime.notification_permission())
         .await
@@ -101,7 +101,7 @@ pub(crate) async fn notification_permission(ctx: JSContext) -> JSResult<String> 
 /// OS has an answer every caller just reads it.
 pub(crate) async fn request_notification_permission(ctx: JSContext) -> JSResult<String> {
     let invocation = authorization::require(&ctx, LogicRoute::DeviceRequestPermission)?;
-    require_notifications(&ctx, "lx.device.requestPermission")?;
+    require_notifications(&ctx, "lx.device.permission.request")?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
     if AttentionScope::of(&invocation).owner().is_some() {
@@ -110,7 +110,7 @@ pub(crate) async fn request_notification_permission(ctx: JSContext) -> JSResult<
         if current != "default" {
             return Ok(permission_state(current));
         }
-        guest_prompt::claim(&app, "lx.device.requestPermission")?;
+        guest_prompt::claim(&app, "lx.device.permission.request")?;
     }
     spawn_blocking(move || runtime.notification_request_permission())
         .await

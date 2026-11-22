@@ -113,7 +113,6 @@ const HOST_APP_API = [
   'notification',
   'screenshot',
   'serviceEnv',
-  'setServiceEnv',
   'terminal',
   'tray',
   'update',
@@ -151,7 +150,6 @@ const DEVICE_API = [
   'onKeyUp',
   'orientation',
   'permission',
-  'requestPermission',
   'screen',
   'systemSettings',
 ] as const;
@@ -167,7 +165,10 @@ const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const CONPTY_API = ['install', 'setEnabled', 'status'] as const;
 const SURFACE_NAMESPACE_API = ['app', 'declared', 'get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
-const SHELL_API = ['activate', 'openBuiltin', 'setAppDisplay', 'sidebarActions'] as const;
+const SHELL_API = ['activate', 'appDisplay', 'openBuiltin', 'sidebarActions'] as const;
+const APP_DISPLAY_API = ['get', 'update'] as const;
+const HOST_SERVICE_ENV_API = ['get', 'set'] as const;
+const PERMISSION_API = ['get', 'request'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
 const TRAY_API = ['menu', 'onClick', 'update'] as const;
 const TRAY_MENU_API = ['replace'] as const;
@@ -400,7 +401,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'badge', 'displayLanguage', 'env', 'info', 'tray', 'update'],
+    properties: ['appearance', 'badge', 'displayLanguage', 'env', 'info', 'serviceEnv', 'tray', 'update'],
+  },
+  {
+    name: 'lx.host.serviceEnv',
+    layer: 'logic',
+    expression: 'lx.host.serviceEnv',
+    members: HOST_SERVICE_ENV_API,
   },
   {
     name: 'lx.host.update',
@@ -488,7 +495,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.device',
     members: DEVICE_API,
-    properties: ['info', 'orientation'],
+    properties: ['info', 'orientation', 'permission'],
+  },
+  {
+    name: 'lx.device.permission',
+    layer: 'logic',
+    expression: 'lx.device.permission',
+    members: PERMISSION_API,
   },
   {
     name: 'lx.device.orientation',
@@ -578,6 +591,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.shell.sidebarActions',
     members: SHELL_SIDEBAR_ACTIONS_API,
+  },
+  {
+    name: 'lx.shell.appDisplay',
+    layer: 'logic',
+    expression: 'lx.shell.appDisplay',
+    members: APP_DISPLAY_API,
   },
   { name: 'lx.host.tray', layer: 'logic', expression: 'lx.host.tray', members: TRAY_API, properties: ['menu'] },
   { name: 'lx.host.tray.menu', layer: 'logic', expression: 'lx.host.tray.menu', members: TRAY_MENU_API },
@@ -899,6 +918,9 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<TerminalPreviewController, typeof TERMINAL_PREVIEW_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
+  AssertTrue<Exact<ShellApi['appDisplay'], typeof APP_DISPLAY_API>>,
+  AssertTrue<Exact<HostAppApi['serviceEnv'], typeof HOST_SERVICE_ENV_API>>,
+  AssertTrue<Exact<DeviceApi['permission'], typeof PERMISSION_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
   AssertTrue<Exact<TrayMenuApi, typeof TRAY_MENU_API>>,
   AssertTrue<Exact<HostUpdateApi, typeof HOST_UPDATE_API>>,
@@ -988,6 +1010,9 @@ type RuntimeSurfaceTypes = {
   'lx.surface': SurfaceApi;
   'lx.shell': ShellApi;
   'lx.shell.sidebarActions': ShellApi['sidebarActions'];
+  'lx.shell.appDisplay': ShellApi['appDisplay'];
+  'lx.host.serviceEnv': HostAppApi['serviceEnv'];
+  'lx.device.permission': DeviceApi['permission'];
   'lx.host.badge': BadgeApi;
   'lx.host.tray': TrayApi;
   'lx.host.tray.menu': TrayMenuApi;

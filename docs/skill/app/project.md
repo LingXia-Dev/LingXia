@@ -233,7 +233,7 @@ service server. A prod build can switch
 service servers at runtime; package id, icon, and signed App Link entitlements
 stay with the build env. Read the build env with `lx.host.env` (JS) or
 `lingxia::app::env()` (Rust), and the running service env with
-`lx.host.serviceEnv()` (JS) or `lingxia::app::service_env()` (Rust).
+`lx.host.serviceEnv.get()` (JS) or `lingxia::app::service_env()` (Rust).
 
 ## `features`
 
@@ -465,7 +465,7 @@ same object.
 
 ### App name and icon
 
-`await lx.shell.setAppDisplay({ name, icon })` sets what the sidebar, switcher
+`await lx.shell.appDisplay.update({ name, icon })` sets what the sidebar, switcher
 and pins show for the Control app, above the registry and `lxapp.json`; it is
 kept per service env and dropped on uninstall. `icon` is a bundled or `lx://`
 PNG, JPEG, WebP or SVG ≤ 1 MiB (rasters ≤ 4096 px; SVG content is not

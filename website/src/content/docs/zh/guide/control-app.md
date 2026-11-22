@@ -33,7 +33,7 @@ await appearance.set('dark')
 
 - `lx.host.exit()`、`lx.host.badge.*`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
 - `lx.host.displayLanguage` / `lx.host.appearance` —— 产品偏好的 `get` / `set`
-- `lx.shell.*` —— `sidebarActions`、`setAppDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
+- `lx.shell.*` —— `sidebarActions`、`appDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
 
 每个 lxapp 从 `lx.app.language` 与 `lx.app.appearance`（`get` / `watch`）读取自己实际的语言与配色，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。
 

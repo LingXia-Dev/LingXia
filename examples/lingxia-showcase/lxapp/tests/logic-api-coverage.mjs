@@ -33,7 +33,7 @@ export default {
     { "api": "lx.host.appearance.set", "mode": "automated", "owner": "UI-APPEARANCE-001" },
     { "api": "lx.device.info", "mode": "automated", "owner": "DEVICE-001" },
     { "api": "lx.device.screen", "mode": "automated", "owner": "DEVICE-001" },
-    { "api": "lx.device.permission", "mode": "automated", "owner": "HOSTAPP-NOTIFICATION-001" },
+    { "api": "lx.device.permission.get", "mode": "automated", "owner": "HOSTAPP-NOTIFICATION-001" },
     { "api": "lx.device.haptics", "mode": "automated", "owner": "DEVICE-ABSENT-001", "targets": ["windows", "macos"] },
     { "api": "lx.network.status.get", "mode": "automated", "owner": "DEVICE-002" },
     { "api": "lx.network.status.watch", "mode": "external-fixture", "owner": "PEND-NET-FIRE-001" },
