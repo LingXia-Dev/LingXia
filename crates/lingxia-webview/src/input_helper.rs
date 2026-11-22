@@ -92,6 +92,13 @@ pub(crate) fn new_eval_token(request_id: u64) -> String {
 /// call here to route the result back to native code; platforms that natively
 /// await (iOS/macOS via `callAsyncJavaScript:`) pass `None` and read the
 /// envelope from the function's return value.
+/// The text of a caught `e`. A bridge rejection is a plain `{code, message}`
+/// object, which `String(e)` would report as `[object Object]`.
+const ERROR_TEXT: &str = "(e && e.stack ? String(e.stack) : e && typeof e === 'object' \
+    ? (typeof e.message === 'string' ? (typeof e.code === 'string' ? e.code + ': ' : '') + e.message \
+    : (function () { try { return JSON.stringify(e); } catch (_) { return String(e); } })()) \
+    : String(e))";
+
 pub(crate) fn build_async_eval_body(src: &str, resolve_call: Option<&str>) -> String {
     let inner_await = if looks_like_function_body(src) {
         format!("await (async () => {{ {src} }})()")
@@ -108,7 +115,7 @@ pub(crate) fn build_async_eval_body(src: &str, resolve_call: Option<&str>) -> St
            const __lxV = {inner_await}; \
            __lxR = JSON.stringify({{ok:true, value: __lxV === undefined ? null : __lxV}}); \
          }} catch (e) {{ \
-           __lxR = JSON.stringify({{ok:false, error: String(e && e.stack ? e.stack : e)}}); \
+           __lxR = JSON.stringify({{ok:false, error: {ERROR_TEXT}}}); \
          }} \
          {envelope_then_finish}"
     )
@@ -131,7 +138,7 @@ pub(crate) fn build_sync_eval_script(src: &str) -> String {
              var __lxV = {inner}; \
              return JSON.stringify({{ok:true, value: __lxV === undefined ? null : __lxV}}); \
            }} catch (e) {{ \
-             return JSON.stringify({{ok:false, error: String(e && e.stack ? e.stack : e)}}); \
+             return JSON.stringify({{ok:false, error: {ERROR_TEXT}}}); \
            }} \
          }})()"
     )
@@ -214,6 +221,17 @@ mod tests {
         let body = build_async_eval_body("await lx.foo()", Some("Bridge.resolve('r0', __lxR)"));
         assert!(body.contains("Bridge.resolve('r0', __lxR);"));
         assert!(!body.contains("return __lxR;"));
+    }
+
+    #[test]
+    fn a_rejected_object_is_described_by_its_code_and_message() {
+        for script in [
+            build_async_eval_body("1", None),
+            build_sync_eval_script("1"),
+        ] {
+            assert!(script.contains("e.code + ': ' : '') + e.message"));
+            assert!(!script.contains("String(e && e.stack ? e.stack : e)"));
+        }
     }
 
     #[test]
