@@ -118,3 +118,38 @@ test("unmount aborts the signal before onUnload and stops the page's timers", as
   await new Promise<void>(resolve => setTimeout(() => resolve(), 20));
   assert.equal(trace.filter(entry => entry === "tick").length, ticks);
 });
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(() => resolve(), ms));
+
+test("a timer the test started while a page is mounted survives unmount", async () => {
+  const mounted = await mount(kindsPage, { lx: createLxMock() });
+  const done = sleep(30);
+  await mounted.unmount();
+  await done;
+});
+
+test("unmounting one page leaves another page's interval running", async () => {
+  trace.length = 0;
+  const lx = createLxMock();
+  const a = await mount(kindsPage, { lx });
+  const b = await mount(kindsPage, { lx });
+  try {
+    a.actions.poll("a");
+    b.actions.poll("b");
+    await a.unmount();
+    const before = trace.filter(entry => entry === "b").length;
+    await sleep(30);
+    assert.equal(trace.filter(entry => entry === "b").length > before, true);
+  } finally {
+    await b.unmount();
+  }
+});
+
+test("a timer an action starts after an await stops at unmount", async () => {
+  trace.length = 0;
+  const mounted = await mount(kindsPage, { lx: createLxMock() });
+  await mounted.actions.later();
+  await mounted.unmount();
+  await sleep(40);
+  assert.equal(trace.includes("late"), false);
+});

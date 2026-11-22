@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import { LxError } from "@lingxia/types/error";
 import { lx as importedLx, setLx } from "./node.js";
@@ -43,21 +44,51 @@ function releaseLx(token) {
   }
 }
 
-// Timers started while a page is mounted, so unmount can stop them as the page's work ends.
+// A timer belongs to the page whose setup, hook or action started it, followed through `await`
+// by async context; one started from the test body or another page is not this page's.
 const realTimers = { setTimeout, clearTimeout, setInterval, clearInterval };
+const owner = new AsyncLocalStorage();
+const forget = (id) => {
+  for (const token of live) token.timers.delete(id);
+};
 function trackTimers() {
   if (globalThis.setTimeout !== realTimers.setTimeout) return;
-  const track = (start) => (...args) => {
-    const id = start(...args);
-    for (const token of live) token.timers.add(id);
+  globalThis.setTimeout = (fn, ...rest) => {
+    const token = owner.getStore();
+    if (!token || typeof fn !== "function") return realTimers.setTimeout(fn, ...rest);
+    const id = realTimers.setTimeout((...args) => {
+      token.timers.delete(id);
+      fn(...args);
+    }, ...rest);
+    token.timers.add(id);
     return id;
   };
-  globalThis.setTimeout = track(realTimers.setTimeout);
-  globalThis.setInterval = track(realTimers.setInterval);
+  globalThis.setInterval = (...args) => {
+    const id = realTimers.setInterval(...args);
+    owner.getStore()?.timers.add(id);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    forget(id);
+    realTimers.clearTimeout(id);
+  };
+  globalThis.clearInterval = (id) => {
+    forget(id);
+    realTimers.clearInterval(id);
+  };
 }
 function untrackTimers() {
   if (live.size > 0) return;
   Object.assign(globalThis, realTimers);
+}
+
+// An async generator's body runs on each `next`, in the caller's context; run it in the page's.
+function owned(token, value) {
+  if (!value || typeof value.next !== "function" || typeof value[Symbol.asyncIterator] !== "function") {
+    return value;
+  }
+  const step = (method) => (...args) => owner.run(token, () => value[method](...args));
+  return { next: step("next"), return: step("return"), throw: step("throw"), [Symbol.asyncIterator]() { return this; } };
 }
 
 let mounted = 0;
@@ -69,6 +100,8 @@ export async function mount(definition, options = {}) {
   const scope = Object.create(globalThis);
   scope.globalThis = scope;
   Object.defineProperty(scope, "lx", { get: () => importedLx });
+  // The runtime's own setData batching keeps the real timers and clears its timer at unload.
+  Object.assign(scope, realTimers);
   scope.PageSvc = class {
     constructor(config) {
       this.config = config;
@@ -101,24 +134,30 @@ export async function mount(definition, options = {}) {
   const release = () => {
     if (unmounted) return;
     unmounted = true;
-    svc?._cancelPendingSetData();
-    for (const id of token.timers) {
-      realTimers.clearTimeout(id);
-      realTimers.clearInterval(id);
+    try {
+      svc?._cancelPendingSetData();
+      for (const id of token.timers) {
+        realTimers.clearTimeout(id);
+        realTimers.clearInterval(id);
+      }
+    } finally {
+      token.timers.clear();
+      releaseLx(token);
+      untrackTimers();
     }
-    releaseLx(token);
-    untrackTimers();
   };
   const hook = async (key, ...args) => {
     const fn = svc.config[key];
-    if (typeof fn === "function") await fn.apply(svc, args);
+    if (typeof fn === "function") await owner.run(token, () => fn.apply(svc, args));
   };
 
   try {
     const path = `pages/${name}/index`;
     const instanceId = `mount-${++mounted}`;
     scope.__registerDefinedPage(path, definition);
-    svc = scope.__LX_CREATE_PAGE__(path, path, instanceId, false, JSON.stringify({ name, params }));
+    svc = owner.run(token, () =>
+      scope.__LX_CREATE_PAGE__(path, path, instanceId, false, JSON.stringify({ name, params })),
+    );
     await hook("onLoad", params);
     await hook("onShow");
     await hook("onReady");
@@ -130,7 +169,7 @@ export async function mount(definition, options = {}) {
   // Called as the page wrote them, so a sync action stays sync and an async generator streams.
   const actions = {};
   for (const [key, fn] of Object.entries(svc.config.actions || {})) {
-    actions[key] = (...args) => fn.apply(undefined, args);
+    actions[key] = (...args) => owned(token, owner.run(token, () => fn.apply(undefined, args)));
   }
   return {
     get data() {
@@ -142,9 +181,9 @@ export async function mount(definition, options = {}) {
     hide: () => hook("onHide"),
     async unmount() {
       if (unmounted) return;
-      // As the runtime does: the signal aborts just before `onUnload`.
-      svc._abortLifetime();
       try {
+        // As the runtime does: the signal aborts just before `onUnload`.
+        svc._abortLifetime();
         await hook("onUnload");
       } finally {
         release();

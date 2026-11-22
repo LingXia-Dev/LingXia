@@ -28,6 +28,13 @@ export default definePage({
             trace.push("count closed");
           }
         },
+        poll(tag: string) {
+          setInterval(() => trace.push(tag), 5);
+        },
+        async later() {
+          await Promise.resolve();
+          setTimeout(() => trace.push("late"), 15);
+        },
         video() {
           return page.video("v");
         },
