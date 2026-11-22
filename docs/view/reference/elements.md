@@ -40,7 +40,7 @@ Styles each element accepts are in [styles.md](styles.md).
 
 ## `<view>`
 
-Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`).
+Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ Children: text, `<span>` and `<link>` runs.
 
 ## `<button>`
 
-Children: text, or noninteractive content elements (a composed control).
+Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -274,7 +274,7 @@ Two values: `values={[lower, upper]}` with `thumbLabels={[name, name]}` makes a 
 
 ## `<dialog>`
 
-Children: any elements and text. Renders as `column`.
+Children: any elements and text. Renders as `column`. `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |

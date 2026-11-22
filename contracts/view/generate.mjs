@@ -370,8 +370,9 @@ export function rules(schema, common) {
   // A trait's props need its key, and a form of the key may refuse some: the same rules as any prop's.
   for (const [name, entry] of Object.entries(trait)) {
     known(`trait.${name}`, entry.on);
-    for (const tag of entry.on) for (const member of [entry.key, ...entry.props])
-      if (!schema.elements[tag].props[member]) throw Error(`schema.json: rules.trait.${name}: <${tag}> has no prop ${member}`);
+    // The key is on every element of the trait; a member an element lacks is simply not there.
+    for (const tag of entry.on) if (!schema.elements[tag].props[entry.key]) throw Error(`schema.json: rules.trait.${name}: <${tag}> has no prop ${entry.key}`);
+    for (const member of entry.props) if (!entry.on.some(tag => schema.elements[tag].props[member])) throw Error(`schema.json: rules.trait.${name}: no element has ${member}`);
     out.trait[name] = entry;
     for (const member of entry.props) {
       const derived = [{ on: entry.on, with: [entry.key], error: entry.error.replace('{prop}', member) }];
@@ -406,9 +407,10 @@ const member = (prop, entry) => `${propName(prop)}${entry.required ? '' : '?'}: 
 function traitUnion(element, entry) {
   const own = prop => element.props[prop];
   const keyType = own(entry.key).type;
-  const absent = `{ ${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${entry.props.map(prop => `${propName(prop)}?: never;`).join(' ')} }`;
+  const props = entry.props.filter(own);
+  const absent = `{ ${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${props.map(prop => `${propName(prop)}?: never;`).join(' ')} }`;
   const forms = entry.forms ?? [{ values: null }];
-  const present = forms.map(form => `{ ${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${entry.props.map(prop => form.without?.[prop] ? `${propName(prop)}?: never;` : member(prop, own(prop))).join(' ')} }`);
+  const present = forms.map(form => `{ ${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${props.map(prop => form.without?.[prop] ? `${propName(prop)}?: never;` : member(prop, own(prop))).join(' ')} }`);
   return `(${[absent, ...present].join(' | ')})`;
 }
 

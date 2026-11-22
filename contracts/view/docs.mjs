@@ -72,7 +72,7 @@ async function elements(schema) {
     if (run) facts.push(`${element.block ? 'As a run it' : 'It'} takes, of the props every element takes, only ${run.filter(prop => prop !== 'children').map(code).join(', ')}; the rest go on its \`<text>\` (\`UI_PROP\`).`);
     for (const trait of Object.values(rules(schema).trait).filter(entry => entry.on.includes(name))) {
       const refused = (trait.forms ?? []).flatMap(form => Object.keys(form.without ?? {}).map(prop => `${code(prop)} not with ${form.values.map(value => code(`${trait.key}=${JSON.stringify(value)}`)).join(' or ')}`));
-      facts.push(`${trait.props.map(code).join(', ')} need ${code(trait.key)}${refused.length ? `; ${refused.join('; ')}` : ''}: tsc and the build refuse them otherwise (\`UI_PROP\`).`);
+      facts.push(`${trait.props.filter(prop => element.props[prop]).map(code).join(', ')} need ${code(trait.key)}${refused.length ? `; ${refused.join('; ')}` : ''}: tsc and the build refuse them otherwise (\`UI_PROP\`).`);
     }
     if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.');
     if (admission.root) facts.push('The page root.');

@@ -414,7 +414,6 @@ function ariaProps(props) {
   if (state) props.accessibilityState = state;
 }
 
-const dragProps = ['dragSnapPoints', 'bind', 'onDragStart', 'onDragEnd'];
 function resolveElement(tag, original, children, identity, depth, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}${tagHint(tag)}`);
   // Outside <text> a <link> is a block link: a pressable box of any content.
@@ -464,10 +463,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
   if (props.drag !== undefined) dragElement(tag, props, wire, on, style.release);
-  else for (let i = 0; i < dragProps.length; i++) {
-    const key = dragProps[i];
-    if (props[key] !== undefined && !element.binding && !(key === 'bind' && tag === 'scroll')) throw Error(`UI_PROP: ${key} belongs to an element with drag`);
-  }
   // A snapping scroll's `bind`: the index of the snap point it rests on, two-way.
   if (tag === 'scroll' && props.bind !== undefined) {
     const cell = props.bind, bound = cellOf(cell);
@@ -1036,7 +1031,7 @@ function dragElement(tag, props, wire, on, release) {
   const { drag: axis, dragSnapPoints: points = [0], bind: cell, onDragStart, onDragEnd } = props;
   if (axis !== 'x' && axis !== 'y') throw Error('UI_PROP: drag is "x" or "y"');
   if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints ||
-      points.some(point => typeof point === 'number' ? !Number.isFinite(point) || Math.abs(point) > 16384
+      points.some(point => typeof point === 'number' ? !Number.isFinite(point) || Math.abs(point) > limits.styleNumber
         : typeof point !== 'string' || !dragPoint.test(point) || Math.abs(parseFloat(point)) > 1000))
     throw Error(`UI_PROP: dragSnapPoints are 1..${limits.dragSnapPoints} offsets in px or %`);
   if (tag !== 'dialog' && tag !== 'button' && !props.accessibilityLabel)

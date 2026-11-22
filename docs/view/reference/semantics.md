@@ -53,6 +53,11 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `closeAfter` | on `<view>`: `closeAfter belongs to a popover; add popover` |
 | `anchor` | on `<view>`: `anchor belongs to a popover; add popover` |
 | `onCloseRequest` | on `<view>`: `onCloseRequest belongs to a popover; add popover` · on `<view>`: `onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one` |
+| `dragSnapPoints` | on `<view>`, `<button>`, `<dialog>`: `dragSnapPoints belongs to an element with drag; add drag="x" or drag="y"` |
+| `bind` | on `<view>`, `<button>`, `<dialog>`: `bind belongs to an element with drag; add drag="x" or drag="y"` |
+| `onDragStart` | on `<view>`, `<button>`, `<dialog>`: `onDragStart belongs to an element with drag; add drag="x" or drag="y"` |
+| `onDragEnd` | on `<view>`, `<button>`, `<dialog>`: `onDragEnd belongs to an element with drag; add drag="x" or drag="y"` |
+| `aria-actions` | on `<view>`, `<button>`, `<dialog>`: `aria-actions belongs to an element with drag; add drag="x" or drag="y"` |
 | `aria-activedescendant` | `aria-activedescendant belongs on an <input> or <textarea>` |
 | `aria-valuenow` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `aria-valuemin` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
@@ -65,7 +70,6 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `aria-checked` | `aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate` · `aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked` |
 | `aria-modal` | `aria-modal belongs on a popover with role="dialog"` · `a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"` |
 | `onPage` | `onPage belongs to a <view role="grid">` |
-| `aria-actions` | `aria-actions belongs to an element with drag` |
 | `keepOpen` | `keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"` |
 
 ## All exposed roles

@@ -742,7 +742,8 @@
     },
     "trait": {
       "popover": {"key": "popover", "on": ["view"], "props": ["open", "onToggle", "closeAfter", "anchor", "onCloseRequest"], "error": "{prop} belongs to a popover; add popover",
-        "forms": [{"values": [true, "auto", "hint"]}, {"values": ["manual"], "without": {"onCloseRequest": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one"}}]}
+        "forms": [{"values": [true, "auto", "hint"]}, {"values": ["manual"], "without": {"onCloseRequest": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one"}}]},
+      "drag": {"key": "drag", "on": ["view", "button", "dialog"], "props": ["dragSnapPoints", "bind", "onDragStart", "onDragEnd", "aria-actions"], "error": "{prop} belongs to an element with drag; add drag=\"x\" or drag=\"y\""}
     },
     "run": {
       "span": ["style", "className", "key", "data-testid", "dir", "children"],
@@ -761,7 +762,6 @@
       "aria-checked": [{"value": "mixed", "role": ["menuitemcheckbox"], "error": "aria-checked=\"mixed\" goes on role=\"menuitemcheckbox\"; a <checkbox> takes indeterminate"}, {"role": ["radio", "menuitemcheckbox", "menuitemradio"], "error": "aria-checked goes on role=\"radio\", \"menuitemcheckbox\" or \"menuitemradio\"; a checkbox has its own checked"}],
       "aria-modal": [{"role": ["dialog", "alertdialog"], "error": "aria-modal belongs on a popover with role=\"dialog\""}, {"value": false, "tags": ["view"], "error": "a <dialog> is always modal; a non-modal dialog is a popover with role=\"dialog\""}],
       "onPage": [{"tags": ["view"], "role": ["grid"], "error": "onPage belongs to a <view role=\"grid\">"}],
-      "aria-actions": [{"with": ["drag"], "error": "aria-actions belongs to an element with drag"}],
       "keepOpen": [{"role": ["menuitem", "menuitemcheckbox", "menuitemradio"], "error": "keepOpen belongs on a menu item: role=\"menuitem\", \"menuitemcheckbox\" or \"menuitemradio\""}]
     }
   }

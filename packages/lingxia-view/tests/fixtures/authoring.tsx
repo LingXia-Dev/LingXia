@@ -93,6 +93,9 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const unpopped = <view open onToggle={(open: boolean) => {}}/>;
   // @ts-expect-error nothing but your code closes a manual popover, so it hears no close request.
   const manualClose = <view popover="manual" onCloseRequest={() => false}/>;
+  const sheet2 = <view drag="y" dragSnapPoints={[0, '50%']} aria-label="Sheet" aria-actions="close" onDragEnd={({ index }) => {}}/>;
+  // @ts-expect-error dragSnapPoints needs drag.
+  const undragged = <view aria-label="Sheet" dragSnapPoints={[0, 100]}/>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.
