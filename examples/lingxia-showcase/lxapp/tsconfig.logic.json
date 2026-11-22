@@ -1,20 +1,13 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "lib": ["ES2020"],
-    "types": ["@lingxia/types", "@lingxia/types/logic-globals"]
-  },
+  "extends": "./.lingxia/tsconfig.logic.json",
   "include": [
     "lxapp.ts",
     "logic/**/*.ts",
     "pages/**/*.ts",
     "shared/display-language.ts",
+    "shared/*-types.ts",
     "shared/lib/**/*.ts",
-    ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"
+    ".lingxia/types/**/*.d.ts",
+    ".lingxia/logic-types/**/*.d.ts"
   ]
 }

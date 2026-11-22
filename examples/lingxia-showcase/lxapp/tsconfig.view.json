@@ -1,0 +1,10 @@
+{
+  "extends": "./.lingxia/tsconfig.view.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "paths": { "@lingxia/view": ["../../../packages/lingxia-view/src/index.d.ts"] }
+  },
+  "include": ["pages/**/*.tsx", "shared/**/*.tsx", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", ".lingxia/types/**/$types.ts"],
+  "exclude": ["shared/lib/**", "shared/display-language.ts"],
+  "references": [{ "path": "./tsconfig.logic.json" }]
+}
