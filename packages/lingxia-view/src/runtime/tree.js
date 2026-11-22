@@ -4,7 +4,7 @@ import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
 import { validInputText } from './data.js';
-import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
+import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
@@ -229,6 +229,10 @@ const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' &
   : kind === 'text' ? validInputText(value)
   : kind === 'check' ? value === undefined || typeof value === 'boolean' : value === undefined;
 
+const where = ({ site }) => site
+  ? `${site[0]} of <${site[1]}${typeof site[2] === 'string' ? ` data-testid="${site[2]}"` : ''}>` : 'A handler';
+const messageOf = error => error instanceof Error ? `${error.name === 'Error' ? '' : `${error.name}: `}${error.message}` : String(error);
+
 export function dispatch(handle, value) {
   outsideRender('dispatch');
   const entry = page.callbacks.get(handle);
@@ -237,12 +241,19 @@ export function dispatch(handle, value) {
   try {
     const epoch = actionEpochNow();
     const result = entry.kind === 'void' ? entry.callback() : entry.callback(value);
-    if (result && typeof result.then === 'function') Promise.resolve(result).catch(error => { if (hasActionEpoch(epoch)) report(error); });
+    if (result && typeof result.then === 'function') Promise.resolve(result).catch(thrown => {
+      if (!hasActionEpoch(epoch)) return;
+      const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;
+      if (entry.isolated) report(message); else failHandler(message);
+    });
     return true;
   } catch (thrown) {
     const error = sited(thrown);
+    if (error instanceof Error && entry.site) error.message = `UI_HANDLER: ${where(entry)} threw: ${error.message}`;
+    // The writes of the turn that threw are discarded; the page keeps its last state.
     page.updates.clear();
-    if (!entry.isolated) throw error;
+    if (!entry.isolated && loudFailures()) throw error;
+    if (!entry.isolated) { report(error instanceof Error ? error.message : String(error)); return true; }
     for (const [cell, kept] of previous) page.updates.set(cell, kept);
     report(error);
     return true;

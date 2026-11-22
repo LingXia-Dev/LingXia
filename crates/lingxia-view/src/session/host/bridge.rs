@@ -34,6 +34,7 @@ pub(super) fn update<A: PlatformAdapter>(
     session: &mut ViewSession,
     update: StateUpdate,
 ) -> Result<BridgeUpdate, String> {
+    session.take_handler_failure()?;
     let mut messages = update.outbound;
     messages.extend(session.take_action_requests()?);
     let connection = inner.lifecycle.connection();
@@ -58,6 +59,10 @@ impl<A: PlatformAdapter> Inner<A> {
     /// Logic actions a changed View queued; `None` for standalone pages.
     pub(super) fn drained(&self, session: &mut ViewSession) -> Result<Drained, String> {
         if !self.logic {
+            session.take_handler_failure()?;
+            for error in session.take_action_errors()? {
+                self.adapter.warn(&error);
+            }
             return Ok(None);
         }
         let update = update(

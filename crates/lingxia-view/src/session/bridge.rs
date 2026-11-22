@@ -328,6 +328,35 @@ impl ViewSession {
         })
     }
 
+    /// Tells the runtime whether handler failures are loud, when that changed.
+    pub(crate) fn send_loudness(&self) -> Result<(), String> {
+        if self.loud_sent.get() == Some(self.loud) {
+            return Ok(());
+        }
+        let call = format!("__lingxiaSetLoudFailures({})", self.loud);
+        self.execute(|| {
+            self.context
+                .eval::<()>(Source::from_bytes(call.as_bytes()))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        self.loud_sent.set(Some(self.loud));
+        Ok(())
+    }
+
+    /// An event handler's promise that rejected, as the error its sync throw would have been.
+    pub fn take_handler_failure(&self) -> Result<(), String> {
+        let failure: String = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes("__lingxiaTakeHandlerFailure()"))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        if failure.is_empty() {
+            Ok(())
+        } else {
+            Err(failure)
+        }
+    }
+
     /// Call page action `name` with `payload` as the View would; its outcome arrives through
     /// [`Self::take_automation_results`] once Logic answers.
     pub fn automation_action(

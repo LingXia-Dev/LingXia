@@ -8,7 +8,7 @@ export { useWebView } from './runtime/webview.js';
 export { useBox } from './runtime/box.js';
 export { reveal } from './runtime/reveal.js';
 export { useLocal, useView, useId, useAction, useRequest, useStream, useChannel, useLeaveGuard, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
-export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, requestLeave } from './runtime/actions.js';
+export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave } from './runtime/actions.js';
 export { measureFrames } from './runtime/frames.js';
 export { configureClasses } from './style/classes.js';
 export { registerCatalogues } from './runtime/i18n.js';

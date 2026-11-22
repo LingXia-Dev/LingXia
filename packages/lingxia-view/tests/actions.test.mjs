@@ -1,6 +1,6 @@
 ﻿import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {configureActions, createView, takeActionRequests, receiveActionResponse, reset, describe, h, dispatch, takeActionErrors} from '../src/internal.js';
+import {configureActions, createView, takeActionRequests, receiveActionResponse, reset, describe, h, dispatch, takeActionErrors, takeHandlerFailure, setLoudFailures} from '../src/internal.js';
 const catalog={__names:['increment'],__modes:{increment:'call'}};
 test('actions preserve LegacyV2 payloads and settle responses exactly once', async()=>{
   configureActions(catalog);
@@ -38,12 +38,15 @@ test('catalog and render validation reject invalid modes, payloads and side effe
 });
 test('async event failures are reported without poisoning subsequent events',async()=>{
   configureActions(catalog);
-  const buffer=describe(()=>h('button',{onClick:async()=>{throw Error('failed click');}},'go'),{});
-  const handle=buffer[7];assert.equal(dispatch(handle),true);
-  await Promise.resolve();await Promise.resolve();
-  assert.deepEqual(takeActionErrors(),['Error: failed click']);
-  assert.equal(dispatch(handle),true);reset();await Promise.resolve();await Promise.resolve();
-  assert.deepEqual(takeActionErrors(),[]);
+  const buffer=describe(()=>h('button',{'data-testid':'go',onClick:async()=>{throw Error('failed click');}},'go'),{});
+  const handle=buffer[7];
+  const flush=async()=>{for(let i=0;i<4;i++) await Promise.resolve();};
+  assert.equal(dispatch(handle),true);assert.equal(dispatch(handle),true);await flush();
+  // Once, as a sync throw would have failed the page once.
+  assert.equal(takeHandlerFailure(),'UI_HANDLER: onClick of <button data-testid="go"> rejected: failed click');
+  assert.equal(takeHandlerFailure(),'');assert.deepEqual(takeActionErrors(),[]);
+  assert.equal(dispatch(handle),true);reset();await flush();
+  assert.equal(takeHandlerFailure(),'');
 });
 test('pending action limits and malformed replies cannot lose a live request',async()=>{
   configureActions(catalog);const {actions}=createView({},{});
@@ -85,4 +88,18 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{symbol:'MSFT'});
   assert.throws(()=>channels.open('ticker',{at:1n}),{message:'UI_CHANNEL: ticker payload field at is not JSON (bigint)'});
   assert.deepEqual(takeActionRequests(),[]);reset();
+});
+test('quiet, a failed handler is logged with its site and the page carries on',async()=>{
+  configureActions(catalog);setLoudFailures(false);
+  const flush=async()=>{for(let i=0;i<4;i++) await Promise.resolve();};
+  try {
+    const later=describe(()=>h('button',{'data-testid':'go',onClick:async()=>{throw Error('offline');}},'go'),{});
+    assert.equal(dispatch(later[7]),true);await flush();
+    assert.equal(takeHandlerFailure(),'');
+    assert.deepEqual(takeActionErrors(),['UI_HANDLER: onClick of <button data-testid="go"> rejected: offline']);
+    const now=describe(()=>h('button',{'data-testid':'go',onClick:()=>{throw Error('offline');}},'go'),{});
+    assert.equal(dispatch(now[7]),true);
+    const [logged]=takeActionErrors();
+    assert.ok(logged.startsWith('UI_HANDLER: onClick of <button data-testid="go"> threw: offline'),logged);
+  } finally { setLoudFailures(true);reset(); }
 });

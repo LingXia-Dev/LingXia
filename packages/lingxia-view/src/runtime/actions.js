@@ -22,6 +22,14 @@ export function report(error) {
   if (actionErrors.length < 32) actionErrors.push(String(error).slice(0, 2048));
 }
 
+// Loud (a dev build or under automation): the first handler that failed after it returned
+// fails the page, as a throw from it would. Quiet: it is logged and the page stays.
+let handlerFailure = '', loud = true;
+export function setLoudFailures(on) { loud = on === true; }
+export function loudFailures() { return loud; }
+export function failHandler(message) { if (loud) handlerFailure ||= message.slice(0, 2048); else report(message); }
+export function takeHandlerFailure() { const result = handlerFailure; handlerFailure = ''; return result; }
+
 export const leaveGuards = createLeaveGuards(callLeaveHost, report);
 
 /** The current catalog; Views capture it when created. */
@@ -47,7 +55,7 @@ export function cancelActions() {
   }
 }
 
-export function resetActions() { cancelActions(); actionErrors = []; }
+export function resetActions() { cancelActions(); actionErrors = []; handlerFailure = ''; }
 
 function admit(what) {
   if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);

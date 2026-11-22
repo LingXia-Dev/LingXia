@@ -5732,6 +5732,8 @@ mod failed_first_frame;
 mod failed_page;
 #[path = "fixed_in_popover.rs"]
 mod fixed_in_popover;
+#[path = "handler_failure.rs"]
+mod handler_failure;
 #[path = "hover_pin.rs"]
 mod hover_pin;
 #[path = "list_name.rs"]

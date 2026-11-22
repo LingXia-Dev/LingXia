@@ -75,7 +75,7 @@ const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
 const boxTags = new Set(['view', 'text', 'vector', 'plot', 'scroll']);
 const editorKeys = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Home', 'End', 'PageUp', 'PageDown']);
 const pointerTags = new Set(['view', 'button', 'vector']), pointerAxes = new Set(['x', 'y', 'both']);
-const callbackOf = (callback, kind = 'void', isolated = false, press = undefined) => ({ callback, kind, isolated, press });
+const callbackOf = (callback, kind = 'void', isolated = false, press = undefined, site = undefined) => ({ callback, kind, isolated, press, site });
 
 const dataProp = /^data-[a-z][a-z0-9-]*$/;
 
@@ -457,7 +457,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const result = { tag: tag === 'input' && props.type === 'search' ? 'search' : element.wire, element: tag, props, fields: style.fields, states: style.states, typography: style.typography,
     identity, text: leaf ? flat.join('') : '', wire: [], handlers: [], children: [] };
   const wire = (key, value) => { if (!dropped(key)) result.wire.push([key, value]); };
-  const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated)]);
+  const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated, undefined, [key, tag, props.testId])]);
   if (disabled) wire('enabled', 0);
   // Authored data-* props reach automation (getAttribute, [data-x] selectors), never semantics.
   if (data) wire('dataAttributes', JSON.stringify(data));

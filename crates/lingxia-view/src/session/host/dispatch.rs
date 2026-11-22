@@ -640,6 +640,7 @@ impl<A: PlatformAdapter> Inner<A> {
 
     /// Run queued input against `session`, oldest first. Worker only.
     pub(super) fn run_input(self: &Arc<Self>, session: &mut ViewSession) -> InputRun<A> {
+        self.set_loudness(session);
         let queued: Vec<_> = self
             .input
             .lock()

@@ -88,7 +88,13 @@ There are no effects and no lifecycle callbacks in the View. Side effects happen
 in Logic. A handler may act after an `await` too: await the action, then act on its answer
 (`cell.focus()`, `.set`, `reveal`); see [after a server error](inputs-and-forms.md#after-a-server-error).
 The handler's closure keeps the `data` of the render that made it, so the action must answer for itself
-(its result says whether it passed) rather than the handler reading `data` afterwards. `render` is synchronous: no Suspense, `lazy`, async components, portals or error boundaries.
+(its result says whether it passed) rather than the handler reading `data` afterwards.
+A handler that throws or rejects fails the page in a `lingxia dev` build and under test, so it cannot
+be missed; a shipped app logs it with the element and handler (`UI_HANDLER: onClick of <button data-testid="save">
+rejected: …`) and the page stays. A synchronous throw discards the writes of that turn; an async handler's
+writes made before it failed have already been drawn and stay. `useAction`'s `run` answers `{ ok: false }`
+instead of rejecting, so the handler handles the failure; a bare `await actions.save(form)` rejects —
+handle it or it is reported. `render` is synchronous: no Suspense, `lazy`, async components, portals or error boundaries.
 A render that throws keeps the previous frame on screen ([Diagnostics](diagnostics.md)).
 
 ## Components and JSX

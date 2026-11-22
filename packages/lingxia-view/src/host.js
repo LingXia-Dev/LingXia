@@ -2,7 +2,7 @@ import { releasePress } from './runtime/press.js';
 import { render as rendering, page } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext, envReads, envOf } from './runtime/hooks.js';
-import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
+import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay, cancelSheets } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity, hasPicker } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
@@ -44,7 +44,7 @@ export function publishHost(render, catalog) {
     __lingxiaPrepareWindows: prepareWindows, __lingxiaTakeMovedAnchors: takeMovedAnchors, __lingxiaCommit: commit, __lingxiaDiscard: discard,
     __lingxiaReset: reset, __lingxiaDispatch: dispatch, __lingxiaCreateView: createView, __lingxiaSyncData: syncData,
     __lingxiaConfigureActions: configureActions, __lingxiaTakeViewEvents: takeViewEvents,
-    __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors,
+    __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors, __lingxiaTakeHandlerFailure: takeHandlerFailure, __lingxiaSetLoudFailures: setLoudFailures,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaReleasePress: releasePress, __lingxiaRequestLeave: requestLeave,
     __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,

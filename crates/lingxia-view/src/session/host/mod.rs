@@ -372,6 +372,9 @@ struct Inner<A: PlatformAdapter> {
     worker: Arc<ViewWorker>,
     lifecycle: Lifecycle,
     logic: bool,
+    /// An automation request has reached this page: its handler failures are loud from then
+    /// on. Only a build with automation, or a dev session, can send one.
+    automation_attached: std::sync::atomic::AtomicBool,
     /// Worker only: this page's context in the worker's isolate.
     page: Mutex<Option<ViewPageId>>,
     /// Worker only: the connection whose state the session holds, which lags the lifecycle's
@@ -652,6 +655,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 worker,
                 lifecycle: Lifecycle::new(logic),
                 logic,
+                automation_attached: Default::default(),
                 page: Mutex::new(None),
                 session_connection: Default::default(),
                 input: Mutex::new(Default::default()),
@@ -1579,6 +1583,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         request: &serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         use crate::interaction::view::AutomationAct;
+        self.inner
+            .automation_attached
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let css = request["css"].as_str().unwrap_or_default();
         let index = request["index"].as_u64().map(|i| i as usize);
         // No frame is coming from a page that stalled or sits under recovery chrome: a caller
@@ -2049,7 +2056,12 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let main = self.inner.main();
         main.failure
             .as_ref()
-            .filter(|failure| main.stalled_at.is_some() || failure.covers_page())
+            // A handler that failed loudly fails the spec that drove it, though its frame stays.
+            .filter(|failure| {
+                main.stalled_at.is_some()
+                    || failure.covers_page()
+                    || failure.error.starts_with("UI_HANDLER")
+            })
             .map(failure_answer)
     }
 
@@ -2113,6 +2125,14 @@ impl<A: PlatformAdapter> Inner<A> {
         }
     }
 
+    /// Worker only: whether `session`'s handler failures fail the page, from before its next job.
+    fn set_loudness(&self, session: &mut ViewSession) {
+        let attached = self
+            .automation_attached
+            .load(std::sync::atomic::Ordering::Relaxed);
+        session.loud = crate::session::loud_failures(attached);
+    }
+
     /// Run `job` on the worker against this page's session, then `done` on the
     /// main thread with its result, or `None` when `guard` went stale first.
     fn work<R: Send + 'static>(
@@ -2139,7 +2159,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let id = (*inner.page.lock().unwrap_or_else(|p| p.into_inner()))
                         .ok_or("UI_SESSION: page not loaded")?;
-                    job(&inner, app.page(id)?)
+                    let session = app.page(id)?;
+                    inner.set_loudness(session);
+                    job(&inner, session)
                 }))
                 .unwrap_or_else(|panic| Err(panics::describe(panic)))
             });

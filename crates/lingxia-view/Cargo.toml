@@ -8,8 +8,10 @@ description = "Experimental LingXia UI language and headless renderer"
 [features]
 default = []
 gpu = ["dep:vello_gpu", "dep:glifo", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-metal", "dep:ash"]
+# `lingxia dev` builds: a failed event handler fails the page instead of being logged.
+dev = []
 # Dev sessions only: swap a page module in place, keeping its state.
-hot-swap = []
+hot-swap = ["dev"]
 
 [dependencies]
 serde = { workspace = true, features = ["rc"] }

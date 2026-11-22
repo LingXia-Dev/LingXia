@@ -490,6 +490,7 @@ const errorNotes = {
   UI_ID: 'Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page.',
   UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
   UI_GRID: 'An invalid grid track list or line.',
+  UI_HANDLER: 'An event handler threw or its promise rejected; it fails the page in a dev build or under automation, and is logged elsewhere.',
   UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
   UI_VIDEO: 'Invalid `<video>` source.',
   UI_WEBVIEW: 'Invalid `<webview>` source, session handle, label or callback.',

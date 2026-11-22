@@ -54,6 +54,9 @@ pub struct ViewSession {
     #[cfg_attr(not(feature = "hot-swap"), allow(dead_code))]
     console: Option<crate::engine::console::ConsoleSink>,
     poisoned: Cell<bool>,
+    /// See [`loud_failures`]; `loud_sent` is what the runtime was last told.
+    pub(crate) loud: bool,
+    loud_sent: Cell<Option<bool>>,
     /// The next frame is the module's first since it loaded or was swapped in: it also warms
     /// the engine, so it gets the warm-up budget.
     warm: Cell<bool>,
@@ -187,6 +190,12 @@ pub(crate) const NOT_READY: &str = "UI_STATE: waiting for first snapshot";
 pub(crate) const PANIC: &str = "UI_RENDER: native panic";
 /// A frame asked to build ahead while two frames already wait under it.
 pub(crate) const AHEAD_REFUSED: &str = "UI_ANIMATION: two frames already wait for presentation";
+
+/// Whether a handler's throw or rejection fails the page (a dev build, or a host under
+/// automation) instead of being logged while the page stays.
+pub fn loud_failures(automation_attached: bool) -> bool {
+    cfg!(feature = "dev") || automation_attached
+}
 
 /// The CPU-time budget for one View evaluation; unoptimized builds get a multiple.
 pub(crate) fn eval_budget() -> Duration {
@@ -339,6 +348,8 @@ impl ViewSession {
             }
         };
         Ok(Self {
+            loud: loud_failures(false),
+            loud_sent: Cell::new(None),
             context,
             _runtime: runtime,
             renderer,

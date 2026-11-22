@@ -36,8 +36,10 @@
     reset: () => reset,
     reveal: () => reveal,
     seedLowered: () => seedLowered,
+    setLoudFailures: () => setLoudFailures,
     takeActionErrors: () => takeActionErrors,
     takeActionRequests: () => takeActionRequests,
+    takeHandlerFailure: () => takeHandlerFailure,
     takeLowered: () => takeLowered,
     takeMovedAnchors: () => takeMovedAnchors,
     takeThrown: () => takeThrown,
@@ -283,12 +285,12 @@
     const match = typeof value === "string" && /^([a-z0-9-]+)(?:\/(\d{1,3}))?$/.exec(value);
     return Boolean(match) && names.has(match[1]) && (match[2] === void 0 || Number(match[2]) <= 100);
   }
-  function colorProblem(value, where = "a page colour") {
+  function colorProblem(value, where2 = "a page colour") {
     if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
-    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
+    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where2} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
   }
-  function wireColorProblem(value, where) {
-    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where);
+  function wireColorProblem(value, where2) {
+    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where2);
   }
   function seriesProblem(value) {
     return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
@@ -2535,6 +2537,23 @@
   function report(error) {
     if (actionErrors.length < 32) actionErrors.push(String(error).slice(0, 2048));
   }
+  var handlerFailure = "";
+  var loud = true;
+  function setLoudFailures(on) {
+    loud = on === true;
+  }
+  function loudFailures() {
+    return loud;
+  }
+  function failHandler(message) {
+    if (loud) handlerFailure || (handlerFailure = message.slice(0, 2048));
+    else report(message);
+  }
+  function takeHandlerFailure() {
+    const result = handlerFailure;
+    handlerFailure = "";
+    return result;
+  }
   var leaveGuards = createLeaveGuards(callLeaveHost, report);
   function currentActions() {
     return { actions, channels };
@@ -2563,6 +2582,7 @@
   function resetActions() {
     cancelActions();
     actionErrors = [];
+    handlerFailure = "";
   }
   function admit(what) {
     if (pendingActions.size + activeChannels.size >= 256 || requests.length >= 256) throw Error(`UI_LIMIT: too many pending ${what}`);
@@ -4920,7 +4940,7 @@
   var editorKeys = /* @__PURE__ */ new Set(["ArrowUp", "ArrowDown", "Enter", "Escape", "Home", "End", "PageUp", "PageDown"]);
   var pointerTags = /* @__PURE__ */ new Set(["view", "button", "vector"]);
   var pointerAxes = /* @__PURE__ */ new Set(["x", "y", "both"]);
-  var callbackOf = (callback, kind = "void", isolated = false, press = void 0) => ({ callback, kind, isolated, press });
+  var callbackOf = (callback, kind = "void", isolated = false, press = void 0, site = void 0) => ({ callback, kind, isolated, press, site });
   var dataProp = /^data-[a-z][a-z0-9-]*$/;
   function dataOf(props) {
     let data;
@@ -5288,7 +5308,7 @@
     const wire = (key, value) => {
       if (!dropped(key)) result.wire.push([key, value]);
     };
-    const on = (key, callback, kind2, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind2, isolated)]);
+    const on = (key, callback, kind2, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind2, isolated, void 0, [key, tag, props.testId])]);
     if (disabled) wire("enabled", 0);
     if (data) wire("dataAttributes", JSON.stringify(data));
     if (props.dir !== void 0) wire("direction", props.dir);
@@ -6696,6 +6716,8 @@
     wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
+  var where = ({ site }) => site ? `${site[0]} of <${site[1]}${typeof site[2] === "string" ? ` data-testid="${site[2]}"` : ""}>` : "A handler";
+  var messageOf = (error) => error instanceof Error ? `${error.name === "Error" ? "" : `${error.name}: `}${error.message}` : String(error);
   function dispatch(handle2, value) {
     outsideRender("dispatch");
     const entry = page.callbacks.get(handle2);
@@ -6704,14 +6726,22 @@
     try {
       const epoch2 = actionEpochNow();
       const result = entry.kind === "void" ? entry.callback() : entry.callback(value);
-      if (result && typeof result.then === "function") Promise.resolve(result).catch((error) => {
-        if (hasActionEpoch(epoch2)) report(error);
+      if (result && typeof result.then === "function") Promise.resolve(result).catch((thrown) => {
+        if (!hasActionEpoch(epoch2)) return;
+        const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;
+        if (entry.isolated) report(message);
+        else failHandler(message);
       });
       return true;
     } catch (thrown) {
       const error = sited(thrown);
+      if (error instanceof Error && entry.site) error.message = `UI_HANDLER: ${where(entry)} threw: ${error.message}`;
       page.updates.clear();
-      if (!entry.isolated) throw error;
+      if (!entry.isolated && loudFailures()) throw error;
+      if (!entry.isolated) {
+        report(error instanceof Error ? error.message : String(error));
+        return true;
+      }
       for (const [cell2, kept2] of previous) page.updates.set(cell2, kept2);
       report(error);
       return true;
@@ -6776,6 +6806,8 @@
       __lingxiaTakeViewEvents: takeViewEvents,
       __lingxiaReceiveActionResponse: receiveActionResponse,
       __lingxiaTakeActionErrors: takeActionErrors,
+      __lingxiaTakeHandlerFailure: takeHandlerFailure,
+      __lingxiaSetLoudFailures: setLoudFailures,
       __lingxiaHasLocalUpdates: hasLocalUpdates,
       __lingxiaReleasePress: releasePress,
       __lingxiaRequestLeave: requestLeave,

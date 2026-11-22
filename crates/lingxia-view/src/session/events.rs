@@ -120,11 +120,13 @@ impl ViewSession {
             Some(value) => format!("__lingxiaDispatch({handle},{value})"),
             None => format!("__lingxiaDispatch({handle})"),
         };
+        self.send_loudness()?;
         let ran: bool = self.execute(|| {
             self.context
                 .eval(Source::from_bytes(call.as_bytes()))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
         })?;
+        self.take_handler_failure()?;
         if pressed.is_some() {
             // The control repaints with its own value whether or not the page re-renders.
             self.input_dirty = true;

@@ -2007,6 +2007,7 @@ fn a_handler_that_throws_reports_its_own_message() {
         "function render(){return h('button',{onClick:()=>{missingHelper('x')},style:{height:40}},'run')}",
     );
     let mut page = ViewSession::new(&module).unwrap();
+    page.loud = true;
     let frame = page.layout(200, 200, 1.0).unwrap();
     let run = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
     let error = page.click(page.generation(), run).unwrap_err();
