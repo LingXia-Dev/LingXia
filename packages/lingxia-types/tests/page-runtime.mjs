@@ -170,6 +170,10 @@ assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail'], ['go
 run('navs.length = 0');
 await run(`__lxNavForView({ page: 'detail', params: { id: '9' }, replace: true }, herePage)`);
 assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail', { replace: true }, false]]));
+// A replace to where the page already is reloads it.
+run('navs.length = 0');
+await run(`__lxNavForView({ page: 'detail', params: { id: '7' }, replace: true }, herePage)`);
+assert.equal(run('JSON.stringify(navs)'), JSON.stringify([['go', 'detail', { replace: true }, false]]));
 
 // Actions are dispatched from their own map: no name is reserved, and `this` is undefined.
 run(`globalThis.closed = 0;
