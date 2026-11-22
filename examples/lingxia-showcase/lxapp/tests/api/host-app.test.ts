@@ -72,6 +72,8 @@ test('set and clear the host app badge without leaving one behind', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
+  // Android has no badge surface; HOSTAPP-BADGE-003 covers the refusal.
+  if (!await app.logic.eval(({ lx }) => !!lx.supports('host.badge'))) return;
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
       try { await lx.host.badge.clear(); } catch {} return true;
