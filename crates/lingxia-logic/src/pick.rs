@@ -32,6 +32,79 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_pick_property(ctx)
 }
 
+/// Run a system picker until it answers or `signal` aborts. An abort rejects `E_ABORT` at once;
+/// the picker stays until the person closes it, and what it returns then is dropped, with the
+/// copies it made in the app's temp area deleted. An already-aborted signal rejects first.
+pub(crate) async fn abortable<T: 'static>(
+    ctx: &JSContext,
+    signal: Option<JSObject>,
+    work: impl std::future::Future<Output = JSResult<T>> + 'static,
+    discard: impl FnOnce(T) + 'static,
+) -> JSResult<T> {
+    use futures::future::{Either, select};
+    let Some(signal) = signal else {
+        return work.await;
+    };
+    crate::task_object::validate_abort_signal(Some(&signal))?;
+    if signal.get::<_, bool>("aborted")? {
+        return Err(crate::task_object::abort_error());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::cell::RefCell::new(Some(tx));
+    let on_abort = rong::JSFunc::new(ctx, move || {
+        if let Some(tx) = tx.borrow_mut().take() {
+            let _ = tx.send(());
+        }
+    })?;
+    let options = JSObject::new(ctx);
+    options.set("once", true)?;
+    let add: rong::JSFunc = signal.get("addEventListener")?;
+    add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+    let running = rong::spawn_local(work);
+    let outcome = match select(running, rx).await {
+        Either::Left((done, _)) => {
+            done.unwrap_or_else(|error| Err(js_internal_error(format!("pick failed: {error}"))))
+        }
+        Either::Right((_, running)) => {
+            drop(rong::spawn_local(async move {
+                if let Ok(Ok(late)) = running.await {
+                    discard(late);
+                }
+            }));
+            Err(crate::task_object::abort_error())
+        }
+    };
+    let remove: rong::JSFunc = signal.get("removeEventListener")?;
+    let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    outcome
+}
+
+/// Delete the files of a pick nobody waits for any more.
+pub(crate) fn discard_files(app: &lxapp::LxApp, files: impl IntoIterator<Item = PickedFile>) {
+    let paths = files
+        .into_iter()
+        .filter_map(|file| app.resolve_accessible_path(&file.path).ok());
+    remove_copies(&app.temp_dir, paths);
+}
+
+/// Delete the paths inside `temp_dir`, the copies a picker made; a file the person picked in
+/// place is theirs and stays.
+pub(crate) fn remove_copies(
+    temp_dir: &Path,
+    paths: impl IntoIterator<Item = std::path::PathBuf>,
+) -> Vec<std::path::PathBuf> {
+    // Compare real paths: a `..` or a symlinked prefix (macOS `/var` → `/private/var`) must not
+    // pass or fail the prefix test by spelling.
+    let Ok(temp_dir) = temp_dir.canonicalize() else {
+        return Vec::new();
+    };
+    paths
+        .into_iter()
+        .filter_map(|path| path.canonicalize().ok())
+        .filter(|path| path.starts_with(&temp_dir) && std::fs::remove_file(path).is_ok())
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub(crate) struct PickedFile {
     pub(crate) path: String,
@@ -258,7 +331,100 @@ fn sniff_extension(path: &Path) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rong::{JSEngine, Source};
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::time::Duration;
+
+    fn signal(ctx: &JSContext, aborted: bool) -> JSObject {
+        ctx.eval(Source::from_bytes(format!(
+            "globalThis.signal = {{ aborted: {aborted}, listeners: [], \
+             addEventListener(_, f) {{ this.listeners.push(f); }}, \
+             removeEventListener(_, f) {{ this.listeners = this.listeners.filter(g => g !== f); }} }}"
+        )))
+        .unwrap()
+    }
+
+    fn on_local<T>(work: impl std::future::Future<Output = T>) -> T {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&runtime, work)
+    }
+
+    #[test]
+    fn an_aborted_signal_rejects_before_the_picker_opens() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let opened = Rc::new(RefCell::new(false));
+        let seen = opened.clone();
+        let work = async move {
+            *seen.borrow_mut() = true;
+            Ok(1)
+        };
+        let result = on_local(abortable(&ctx, Some(signal(&ctx, true)), work, |_| {}));
+        assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
+        assert!(!*opened.borrow());
+    }
+
+    #[test]
+    fn an_abort_rejects_at_once_and_drops_the_later_answer() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let (answer, answered) = tokio::sync::oneshot::channel::<u32>();
+        let dropped = Rc::new(RefCell::new(Vec::new()));
+        let into = dropped.clone();
+        let work = async move { Ok(answered.await.unwrap()) };
+        on_local(async {
+            let call = abortable(&ctx, Some(signal(&ctx, false)), work, move |late| {
+                into.borrow_mut().push(late)
+            });
+            let (result, ()) = futures::join!(call, async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let _: rong::JSValue = ctx
+                    .eval(Source::from_bytes(
+                        "signal.aborted = true; signal.listeners.slice().forEach(f => f());",
+                    ))
+                    .unwrap();
+            });
+            assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
+            assert!(
+                dropped.borrow().is_empty(),
+                "the picker has not answered yet"
+            );
+            answer.send(7).unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        });
+        assert_eq!(*dropped.borrow(), vec![7]);
+        let listeners: i32 = ctx
+            .eval(Source::from_bytes("signal.listeners.length"))
+            .unwrap();
+        assert_eq!(listeners, 0);
+    }
+
+    #[test]
+    fn only_the_pickers_copies_are_deleted() {
+        let temp = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let copy = temp.path().join("IMG_1.jpg");
+        let original = elsewhere.path().join("mine.jpg");
+        std::fs::write(&copy, b"x").unwrap();
+        std::fs::write(&original, b"x").unwrap();
+        let escape = temp
+            .path()
+            .join("..")
+            .join(elsewhere.path().file_name().unwrap())
+            .join("mine.jpg");
+        let real_copy = copy.canonicalize().unwrap();
+        let deleted = remove_copies(temp.path(), [copy.clone(), original.clone(), escape]);
+        assert_eq!(deleted, vec![real_copy]);
+        assert!(!copy.exists());
+        assert!(
+            original.exists(),
+            "a `..` out of the temp dir is not a copy"
+        );
+    }
 
     #[test]
     fn type_follows_the_name_not_the_platform() {

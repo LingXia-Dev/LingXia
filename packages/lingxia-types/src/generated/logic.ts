@@ -654,7 +654,7 @@ export type ActionSheetOptions = {
     }[];
     /** `'danger'` draws the items as destructive. */
     tone?: 'default' | 'danger';
-    /** Aborting it closes the sheet, and the call rejects. */
+    /** Aborting it closes the sheet, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 };
 
@@ -688,7 +688,7 @@ export type AlertOptions = {
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
-    /** Aborting it closes the dialog, and the call rejects. */
+    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 };
 
@@ -1101,6 +1101,8 @@ export type CanceledResult = {
 export type CaptureOptions = CameraOptions & {
     /** A photo or a video. */
     type: 'image' | 'video';
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 };
 
 export type ClipboardApi = globalThis.ClipboardApi;
@@ -1263,7 +1265,7 @@ export type ConfirmOptions = {
     confirmText?: string;
     /** Label of the declining button. */
     cancelText?: string;
-    /** Aborting it closes the dialog, and the call rejects. */
+    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 };
 
@@ -2119,6 +2121,8 @@ export type PickCodeOptions = {
     onlyFromCamera?: boolean;
     /** Symbologies to read; every one when absent. */
     formats?: readonly ('bar_code' | 'qr_code' | 'datamatrix' | 'pdf417')[];
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 };
 
 /** Result of `lx.pick.code`. `format` is the symbology that was read. */
@@ -2138,6 +2142,8 @@ export type PickDirectoryOptions = {
      * @platform Android, HarmonyOS phones and tablets: only a directory in lxapp storage, which opens the in-app chooser.
      */
     defaultPath?: string;
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 };
 
 /** Result of `lx.pick.directory`. */
@@ -2159,6 +2165,8 @@ export type PickFileOptions = {
      * file picker. When omitted, the platform system file picker is used.
      */
     defaultPath?: string;
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 };
 
 /** Result of `lx.pick.file` and `lx.pick.capture`: one file. */
@@ -2203,6 +2211,8 @@ export type PickMediaOptions = {
     types?: readonly ('image' | 'video')[];
     /** How the camera records when the person takes the camera route; unused for the library. */
     camera?: CameraOptions;
+    /** Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 };
 
 /** Where `lx.pick.media` may get media: the photo library or the camera. */
@@ -4117,6 +4127,7 @@ declare global {
      * if (picked.status === 'ok') await attach(picked.file.path);
      * ```
      * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+     * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
      */
     file(options?: PickFileOptions): Promise<PickFileResult>;
@@ -4124,6 +4135,7 @@ declare global {
      * Picks one or more files. Resolves `{ status: 'canceled' }` only when the
      * user dismisses the picker, otherwise `{ status: 'ok', files }`.
      * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+     * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
      */
     files(options?: PickFileOptions): Promise<PickFilesResult>;
@@ -4135,6 +4147,7 @@ declare global {
      * @platform Android, HarmonyOS phones and tablets: no system folder picker, so only a `defaultPath` in lxapp storage works.
      * @supports pick.directory
      * @throws {E_NOT_SUPPORTED} No system folder picker and `defaultPath` is not in lxapp storage.
+     * @throws {E_ABORT} `signal` aborted.
      */
     directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     /**
@@ -4147,6 +4160,7 @@ declare global {
      * @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
      * @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
      * such a host opens the library without asking.
+     * @throws {E_ABORT} `signal` aborted; the source sheet is closed.
      * @throws {E_INTERNAL} The picker failed or returned an invalid payload.
      */
     media(options?: PickMediaOptions): Promise<PickFilesResult>;
@@ -4158,6 +4172,7 @@ declare global {
      * @supports pick.camera
      * @throws {E_INVALID_ARG} A `type` other than `'image'` or `'video'`.
      * @throws {E_NOT_SUPPORTED} The host cannot capture, such as on Windows.
+     * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The camera failed or returned an invalid payload.
      */
     capture(options: CaptureOptions): Promise<PickFileResult>;
@@ -4167,6 +4182,7 @@ declare global {
      * completed scan resolves `{ status: 'ok', value, format }`; nothing is opened,
      * so pass an app link to `lx.nav.go` yourself. Rejects when scanning fails or the host returns an invalid payload.
      * @throws {E_INVALID_ARG} An unknown entry in `formats`.
+     * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The scanner failed or returned an invalid payload.
      */
     code(options?: PickCodeOptions): Promise<PickCodeResult>;

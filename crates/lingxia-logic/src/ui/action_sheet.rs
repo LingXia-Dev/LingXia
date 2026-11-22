@@ -98,9 +98,7 @@ async fn show_action_sheet(
     }
     let item_list: Vec<String> = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let work = action_sheet(&lxapp, item_list, item_color);
-    let selection =
-        super::dismissable(&ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await?;
+    let selection = action_sheet(&ctx, &lxapp, item_list, item_color, signal).await?;
     let Some(index) = selection else {
         return canceled(&ctx);
     };
@@ -117,8 +115,20 @@ async fn show_action_sheet(
 }
 
 /// Every action sheet goes through here, the app's and the runtime's own (a media source
-/// choice): a test run watching the app records it, or answers it once its spec queued answers.
+/// choice): a test run watching the app records it, or answers it once its spec queued answers,
+/// and an aborted `signal` takes it down.
 pub(crate) async fn action_sheet(
+    ctx: &JSContext,
+    lxapp: &Arc<LxApp>,
+    item_list: Vec<String>,
+    item_color: Option<String>,
+    signal: Option<JSObject>,
+) -> Result<Option<usize>, RongJSError> {
+    let work = hooked_action_sheet(lxapp, item_list, item_color);
+    super::dismissable(ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await
+}
+
+async fn hooked_action_sheet(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
     item_color: Option<String>,

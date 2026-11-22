@@ -884,6 +884,8 @@ rong::js_api! {
      * @platform Android, HarmonyOS phones and tablets: only a directory in lxapp storage, which opens the in-app chooser.
      */
     defaultPath?: string;
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 }"###;
 
         /// One file the user picked. `path` is opaque: never parse it; pass it
@@ -940,6 +942,8 @@ rong::js_api! {
      * file picker. When omitted, the platform system file picker is used.
      */
     defaultPath?: string;
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 }"###;
 
         /// Result of `lx.pick.file` and `lx.pick.capture`: one file.
@@ -982,6 +986,8 @@ rong::js_api! {
     types?: readonly ('image' | 'video')[];
     /** How the camera records when the person takes the camera route; unused for the library. */
     camera?: CameraOptions;
+    /** Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 }"###;
 
         /// Where `lx.pick.media` may get media: the photo library or the camera.
@@ -1002,6 +1008,8 @@ rong::js_api! {
         type CaptureOptions = r###"CameraOptions & {
     /** A photo or a video. */
     type: 'image' | 'video';
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 }"###;
 
         /// Representations the runtime can round-trip. Closed union.
@@ -1738,6 +1746,8 @@ rong::js_api! {
     onlyFromCamera?: boolean;
     /** Symbologies to read; every one when absent. */
     formats?: readonly ('bar_code' | 'qr_code' | 'datamatrix' | 'pdf417')[];
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    signal?: AbortSignal;
 }"###;
 
         /// Result of `lx.pick.code`. `format` is the symbology that was read.
@@ -1859,7 +1869,7 @@ true
     }[];
     /** `'danger'` draws the items as destructive. */
     tone?: 'default' | 'danger';
-    /** Aborting it closes the sheet, and the call rejects. */
+    /** Aborting it closes the sheet, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 }"###;
 
@@ -1871,7 +1881,7 @@ true
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
-    /** Aborting it closes the dialog, and the call rejects. */
+    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 }"###;
         /// A confirmation dialog always permits declining.
@@ -1886,7 +1896,7 @@ true
     confirmText?: string;
     /** Label of the declining button. */
     cancelText?: string;
-    /** Aborting it closes the dialog, and the call rejects. */
+    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
     signal?: AbortSignal;
 }"###;
         /// The toast `lx.ui.toast` returned.

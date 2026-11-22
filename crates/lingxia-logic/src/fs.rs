@@ -165,6 +165,7 @@ struct JSPickFileOptions {
     filters: Option<Vec<JSFileDialogFilter>>,
     #[js_name = "defaultPath"]
     default_path: Option<String>,
+    signal: Option<JSObject>,
 }
 
 #[derive(FromJSObject, Clone, Default)]
@@ -172,6 +173,7 @@ struct JSPickFileOptions {
 struct JSPickDirectoryOptions {
     #[js_name = "defaultPath"]
     default_path: Option<String>,
+    signal: Option<JSObject>,
 }
 
 #[derive(Default, FromJSObject)]
@@ -412,6 +414,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
 /// ```
 ///
 /// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+/// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     let picked = run_file_picker(&ctx, options.0.unwrap_or_default(), false).await?;
@@ -425,6 +428,7 @@ async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSRe
 /// user dismisses the picker, otherwise `{ status: 'ok', files }`.
 ///
 /// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+/// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
 async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
     match run_file_picker(&ctx, options.0.unwrap_or_default(), true).await? {
@@ -465,18 +469,25 @@ async fn run_file_picker(
         })
         .collect();
 
-    let result = lingxia_service::file::pick_file(
-        &*lxapp.runtime,
-        PickFileRequest {
-            multiple,
-            filters,
-            title: None,
-            default_path,
-            owner: lxapp.dialog_owner(),
-        },
-    )
-    .await
-    .map_err(|e| js_error_from_platform_error(&e))?;
+    let request = PickFileRequest {
+        multiple,
+        filters,
+        title: None,
+        default_path,
+        owner: lxapp.dialog_owner(),
+    };
+    let app = lxapp.clone();
+    let work = async move {
+        lingxia_service::file::pick_file(&*app.runtime, request)
+            .await
+            .map_err(|e| js_error_from_platform_error(&e))
+    };
+    let temp_dir = lxapp.temp_dir.clone();
+    let result = crate::pick::abortable(ctx, opts.signal, work, move |late| {
+        let paths = late.entries.into_iter().map(|entry| entry.path.into());
+        crate::pick::remove_copies(&temp_dir, paths);
+    })
+    .await?;
 
     if result.canceled {
         return Ok(None);
@@ -518,6 +529,7 @@ async fn run_file_picker(
 /// @platform Android, HarmonyOS phones and tablets: no system folder picker, so only a `defaultPath` in lxapp storage works.
 /// @supports pick.directory
 /// @throws {E_NOT_SUPPORTED} No system folder picker and `defaultPath` is not in lxapp storage.
+/// @throws {E_ABORT} `signal` aborted.
 async fn pick_directory(
     ctx: JSContext,
     options: Optional<JSPickDirectoryOptions>,
@@ -532,16 +544,18 @@ async fn pick_directory(
         .transpose()?
         .filter(|path| !path.is_empty());
 
-    let result = lingxia_service::file::pick_directory(
-        &*lxapp.runtime,
-        PickDirectoryRequest {
-            title: None,
-            default_path,
-            owner: lxapp.dialog_owner(),
-        },
-    )
-    .await
-    .map_err(|e| js_error_from_platform_error(&e))?;
+    let request = PickDirectoryRequest {
+        title: None,
+        default_path,
+        owner: lxapp.dialog_owner(),
+    };
+    let app = lxapp.clone();
+    let work = async move {
+        lingxia_service::file::pick_directory(&*app.runtime, request)
+            .await
+            .map_err(|e| js_error_from_platform_error(&e))
+    };
+    let result = crate::pick::abortable(&ctx, opts.signal.clone(), work, |_| {}).await?;
 
     if result.canceled {
         return canceled(&ctx);

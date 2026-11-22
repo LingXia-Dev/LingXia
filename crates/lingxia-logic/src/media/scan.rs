@@ -12,6 +12,7 @@ struct JSScanOptions {
     #[js_name = "onlyFromCamera"]
     only_from_camera: Option<bool>,
     formats: Option<Vec<String>>,
+    signal: Option<JSObject>,
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -35,6 +36,7 @@ rong::js_api! {
 /// so pass an app link to `lx.nav.go` yourself. Rejects when scanning fails or the host returns an invalid payload.
 ///
 /// @throws {E_INVALID_ARG} An unknown entry in `formats`.
+/// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The scanner failed or returned an invalid payload.
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -47,7 +49,10 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
         only_from_camera,
     };
 
-    let data = match lingxia_service::media::scan_code(&*lxapp.runtime, request).await {
+    let app = lxapp.clone();
+    let work = async move { Ok(lingxia_service::media::scan_code(&*app.runtime, request).await) };
+    let scanned = crate::pick::abortable(&ctx, opts.signal.clone(), work, |_| {}).await?;
+    let data = match scanned {
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the scanner";
         // every other platform error stays a rejection.

@@ -46,6 +46,7 @@ rong::js_api! {
 /// @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
 /// @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
 /// such a host opens the library without asking.
+/// @throws {E_ABORT} `signal` aborted; the source sheet is closed.
 /// @throws {E_INTERNAL} The picker failed or returned an invalid payload.
 async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
     let opts = options.0.unwrap_or_default();
@@ -53,27 +54,25 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
     let mode = parse_pick_mode(opts.types)?;
     let camera = CameraSettings::from_media_option(opts.camera)?;
     let routes = media_routes(&sources, mode, camera_available(&ctx))?;
+    let signal = opts.signal.clone();
     let route = if routes.len() > 1 {
-        match choose_route(&ctx, &routes).await? {
+        match choose_route(&ctx, &routes, signal.clone()).await? {
             Some(route) => route,
             None => return canceled(&ctx),
         }
     } else {
         routes[0]
     };
-    let picked = match route {
-        Route::Library => {
-            run_pick(
-                &ctx,
-                MediaSource::Album,
-                mode,
-                opts.count.unwrap_or(9),
-                CameraSettings::default(),
-            )
-            .await?
-        }
-        Route::Camera(mode) => run_pick(&ctx, MediaSource::Camera, mode, 1, camera).await?,
+    let (source, mode, count, camera) = match route {
+        Route::Library => (
+            MediaSource::Album,
+            mode,
+            opts.count.unwrap_or(9),
+            CameraSettings::default(),
+        ),
+        Route::Camera(mode) => (MediaSource::Camera, mode, 1, camera),
     };
+    let picked = abortable_pick(&ctx, signal, source, mode, count, camera).await?;
     match picked {
         Some(files) => crate::pick::files_result(&ctx, &files),
         None => canceled(&ctx),
@@ -129,14 +128,18 @@ fn media_routes(
 }
 
 /// The host-drawn sheet; its labels and Cancel come from the SDK catalogue. `None` on dismiss.
-async fn choose_route(ctx: &JSContext, routes: &[Route]) -> JSResult<Option<Route>> {
+async fn choose_route(
+    ctx: &JSContext,
+    routes: &[Route],
+    signal: Option<JSObject>,
+) -> JSResult<Option<Route>> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let split = routes.len() > 2 || !routes.contains(&Route::Library);
     let labels = routes
         .iter()
         .map(|route| t(route_label(*route, split)))
         .collect();
-    let chosen = crate::ui::action_sheet(&lxapp, labels, None).await?;
+    let chosen = crate::ui::action_sheet(ctx, &lxapp, labels, None, signal).await?;
     Ok(chosen.and_then(|index| routes.get(index).copied()))
 }
 
@@ -158,6 +161,7 @@ fn route_label(route: Route, split: bool) -> I18nKey {
 /// @supports pick.camera
 /// @throws {E_INVALID_ARG} A `type` other than `'image'` or `'video'`.
 /// @throws {E_NOT_SUPPORTED} The host cannot capture, such as on Windows.
+/// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The camera failed or returned an invalid payload.
 async fn pick_capture(ctx: JSContext, options: JSCaptureOptions) -> JSResult<JSObject> {
     let mode = parse_capture_kind(&options.kind)?;
@@ -165,11 +169,29 @@ async fn pick_capture(ctx: JSContext, options: JSCaptureOptions) -> JSResult<JSO
         return Err(camera_unavailable("pick.capture"));
     }
     let camera = CameraSettings::new(options.facing, options.max_duration_ms);
-    let picked = run_pick(&ctx, MediaSource::Camera, mode, 1, camera).await?;
+    let picked = abortable_pick(&ctx, options.signal, MediaSource::Camera, mode, 1, camera).await?;
     match picked.and_then(|files| files.into_iter().next()) {
         Some(file) => crate::pick::file_result(&ctx, &file),
         None => canceled(&ctx),
     }
+}
+
+/// `run_pick` until `signal` aborts; a later answer's copies are deleted.
+async fn abortable_pick(
+    ctx: &JSContext,
+    signal: Option<JSObject>,
+    source: MediaSource,
+    mode: PickMediaMode,
+    max_count: u32,
+    camera: CameraSettings,
+) -> JSResult<Option<Vec<crate::pick::PickedFile>>> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let owned = ctx.clone();
+    let work = async move { run_pick(&owned, source, mode, max_count, camera).await };
+    crate::pick::abortable(ctx, signal, work, move |late| {
+        crate::pick::discard_files(&lxapp, late.into_iter().flatten())
+    })
+    .await
 }
 
 /// `None` when the person dismissed the picker or camera.

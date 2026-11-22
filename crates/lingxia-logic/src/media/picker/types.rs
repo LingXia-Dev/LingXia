@@ -9,6 +9,7 @@ pub(super) struct JSPickMediaOptions {
     pub(super) count: Option<u32>,
     pub(super) types: Option<Vec<String>>,
     pub(super) camera: Option<JSObject>,
+    pub(super) signal: Option<JSObject>,
 }
 
 #[derive(FromJSObject, Clone)]
@@ -19,6 +20,7 @@ pub(super) struct JSCaptureOptions {
     pub(super) facing: Option<String>,
     #[js_name = "maxDurationMs"]
     pub(super) max_duration_ms: Option<f64>,
+    pub(super) signal: Option<JSObject>,
 }
 
 #[derive(Deserialize, Serialize, Hash, Clone)]
