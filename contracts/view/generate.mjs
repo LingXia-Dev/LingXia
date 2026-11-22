@@ -348,11 +348,11 @@ const tagList = tags => tags.map(tag => `${/^[aeiou]/.test(tag) ? 'an' : 'a'} <$
 
 /** schema.json `rules` with every default message filled in: what the runtime, the compiler and the docs read. */
 export function rules(schema, common) {
-  const { role = {}, elementRole = {}, prop = {}, run = {} } = schema.rules ?? {};
+  const { role = {}, elementRole = {}, prop = {}, run = {}, trait = {} } = schema.rules ?? {};
   const kinds = new Set([...Object.keys(schema.elements), ...Object.values(schema.elements).filter(element => element.block).map(element => element.block.wire)]);
   const known = (where, tags) => { for (const tag of tags ?? []) if (!kinds.has(tag)) throw Error(`schema.json: rules.${where} names unknown element ${tag}`); };
   const roles = new Set(schema.options.role);
-  const out = { role: {}, elementRole: {}, prop: {}, run: {} };
+  const out = { role: {}, elementRole: {}, prop: {}, run: {}, trait: {} };
   const rolesKnown = (where, list) => { for (const name of list ?? []) if (!roles.has(name)) throw Error(`schema.json: rules.${where} names unknown role ${name}`); };
   for (const [name, list] of Object.entries(role)) {
     if (!roles.has(name)) throw Error(`schema.json: rules.role names unknown role ${name}`);
@@ -367,16 +367,29 @@ export function rules(schema, common) {
     out.elementRole[tag] = rule;
   }
   const props = new Set([...(common ?? []), ...Object.values(schema.elements).flatMap(element => Object.keys(element.props))]);
+  // A trait's props need its key, and a form of the key may refuse some: the same rules as any prop's.
+  for (const [name, entry] of Object.entries(trait)) {
+    known(`trait.${name}`, entry.on);
+    for (const tag of entry.on) for (const member of [entry.key, ...entry.props])
+      if (!schema.elements[tag].props[member]) throw Error(`schema.json: rules.trait.${name}: <${tag}> has no prop ${member}`);
+    out.trait[name] = entry;
+    for (const member of entry.props) {
+      const derived = [{ on: entry.on, with: [entry.key], error: entry.error.replace('{prop}', member) }];
+      for (const form of entry.forms ?? []) if (form.without?.[member])
+        derived.push({ on: entry.on, not: { [entry.key]: form.values }, error: form.without[member] });
+      (out.prop[member] ??= []).push(...derived);
+    }
+  }
   for (const [name, list] of Object.entries(prop)) {
     if (common && !props.has(name)) throw Error(`schema.json: rules.prop names unknown prop ${name}`);
-    out.prop[name] = list.map(rule => {
+    (out.prop[name] ??= []).push(...list.map(rule => {
       for (const part of [rule, ...(rule.any ?? [])]) {
         known(`prop.${name}`, [...(part.tags ?? []), ...(part.on ?? [])]);
         rolesKnown(`prop.${name}`, part.role);
       }
       if (!rule.error) throw Error(`schema.json: rules.prop.${name} needs an error that names the fix`);
       return rule;
-    });
+    }));
   }
   for (const [tag, list] of Object.entries(run)) {
     if (schema.elements[tag]?.children !== 'runs') throw Error(`schema.json: rules.run.${tag} is not a run element`);
@@ -384,6 +397,19 @@ export function rules(schema, common) {
     out.run[tag] = list;
   }
   return out;
+}
+
+const propName = prop => /^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop);
+const member = (prop, entry) => `${propName(prop)}${entry.required ? '' : '?'}: ${entry.type};`;
+
+/** `(without the key: its props never) | (one member per form of the key)`. */
+function traitUnion(element, entry) {
+  const own = prop => element.props[prop];
+  const keyType = own(entry.key).type;
+  const absent = `{ ${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${entry.props.map(prop => `${propName(prop)}?: never;`).join(' ')} }`;
+  const forms = entry.forms ?? [{ values: null }];
+  const present = forms.map(form => `{ ${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${entry.props.map(prop => form.without?.[prop] ? `${propName(prop)}?: never;` : member(prop, own(prop))).join(' ')} }`);
+  return `(${[absent, ...present].join(' | ')})`;
 }
 
 /** The roles `<tag>` may carry: every role whose rules all admit it. */
@@ -404,7 +430,6 @@ function authoring(schema, api) {
     const keys = [...styleKeys].filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
     const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.block?.children ?? element.children];
-    const props = Object.entries(element.props).map(([prop, entry]) => `${/^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop)}${entry.required ? '' : '?'}: ${entry.type};`);
     // A run with no block form takes only its run props, so `<span id>` fails in tsc; a `<link>`
     // may be a block link, which takes them all, so its run props are checked at build.
     const runOnly = table.run[name] && !element.block ? common.filter(prop => !table.run[name].includes(prop) && prop !== 'style' && prop !== 'children') : [];
@@ -414,7 +439,12 @@ function authoring(schema, api) {
       `export type ${type}Role = ${allowed.length ? allowed.map(entry => JSON.stringify(entry)).join(' | ') : 'never'};`);
     const role = narrowed ? `role?: ${type}Role; ` : '';
     const omitted = ['style', 'children', ...(narrowed ? ['role'] : []), ...runOnly];
-    const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
+    // A trait's key and props move out of the flat props into a union: without the key they are `never`.
+    const traits = Object.values(table.trait).filter(entry => entry.on.includes(name));
+    const traitProps = new Set(traits.flatMap(entry => [entry.key, ...entry.props]));
+    const flat = Object.entries(element.props).filter(([prop]) => !traitProps.has(prop)).map(([prop, entry]) => member(prop, entry));
+    const unions = traits.map(entry => traitUnion(element, entry)).join(' & ');
+    const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children}${flat.length ? '; ' + flat.join(' ') : ''} }${unions ? ` & ${unions}` : ''}`;
     const binding = element.binding;
     if (binding) {
       const payload = binding.type === 'string' ? 'string' : `ReadonlyData<${binding.type}>`;

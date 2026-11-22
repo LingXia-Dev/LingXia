@@ -48,6 +48,11 @@ A literal combination that breaks one of these fails the build; a computed one f
 
 | Prop | Needs |
 | --- | --- |
+| `open` | on `<view>`: `open belongs to a popover; add popover` |
+| `onToggle` | on `<view>`: `onToggle belongs to a popover; add popover` |
+| `closeAfter` | on `<view>`: `closeAfter belongs to a popover; add popover` |
+| `anchor` | on `<view>`: `anchor belongs to a popover; add popover` |
+| `onCloseRequest` | on `<view>`: `onCloseRequest belongs to a popover; add popover` · on `<view>`: `onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one` |
 | `aria-activedescendant` | `aria-activedescendant belongs on an <input> or <textarea>` |
 | `aria-valuenow` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `aria-valuemin` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
@@ -62,11 +67,6 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `onPage` | `onPage belongs to a <view role="grid">` |
 | `aria-actions` | `aria-actions belongs to an element with drag` |
 | `keepOpen` | `keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"` |
-| `open` | on `<view>`: `open belongs to a popover; add popover` |
-| `onToggle` | on `<view>`: `onToggle belongs to a popover; add popover` |
-| `closeAfter` | on `<view>`: `closeAfter belongs to a popover; add popover` |
-| `anchor` | on `<view>`: `anchor belongs to a popover; add popover` |
-| `onCloseRequest` | on `<view>`: `onCloseRequest belongs to a popover; add popover` · `onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one` |
 
 ## All exposed roles
 

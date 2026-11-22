@@ -87,6 +87,12 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const runId = <text><span id="x">b</span></text>;
   // @ts-expect-error a run carries no role of its own.
   const runRole = <text><span role="heading">b</span></text>;
+  const menu = <view id="m" popover open onToggle={(open: boolean) => {}} anchor="b" onCloseRequest={() => false}/>;
+  const note = <view id="n" popover="manual" open closeAfter={3000}/>;
+  // @ts-expect-error open and onToggle need popover.
+  const unpopped = <view open onToggle={(open: boolean) => {}}/>;
+  // @ts-expect-error nothing but your code closes a manual popover, so it hears no close request.
+  const manualClose = <view popover="manual" onCloseRequest={() => false}/>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.
