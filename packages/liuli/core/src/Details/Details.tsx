@@ -1,5 +1,5 @@
 import { createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
-import type { IconName } from '../Icon/names';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { detailsRecipe as r } from './Details.recipe';
@@ -19,8 +19,8 @@ export interface DetailsProps {
   label: string;
   /** A second, quieter line under the label: what is inside. */
   description?: string;
-  /** An icon before the label, by name; not read. */
-  startIcon?: IconName;
+  /** An icon before the label, by name or as a definition; not read. */
+  startIcon?: IconRef;
   /** The body, which exists only while open. */
   children: Child;
   /** Identifies the row in an exclusive `DetailsGroup`. */

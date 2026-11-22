@@ -40,7 +40,8 @@ const checker = program.getTypeChecker();
 const choiceValues = new Map();
 const sizeOrder = ['xs', 'sm', 'md', 'lg', 'xl'];
 function literalChoices(type) {
-  const members = (type.isUnion() ? type.types : [type]).filter(member => !(member.flags & ts.TypeFlags.Undefined));
+  // An icon prop also takes a definition, an object; its names are still the choices.
+  const members = (type.isUnion() ? type.types : [type]).filter(member => !(member.flags & ts.TypeFlags.Undefined) && !(member.flags & ts.TypeFlags.Object));
   if (members.length < 2 || !members.every(member => member.isStringLiteral())) return null;
   const values = members.map(member => member.value).sort();
   // Sizes in their order, any other value (an icon's `inline`) after them.

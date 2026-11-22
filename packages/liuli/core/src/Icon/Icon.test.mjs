@@ -124,3 +124,31 @@ test('a component draws its own marks from the set in use: a provided set redraw
   assert.notDeepEqual(marks('plain'), marks('themed'));
   assert.deepEqual(marks('button'), ['M12 11v2']);
 });
+
+test('an icon prop takes a definition as Icon does, drawn as given whatever set is in use', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { IconButton } from '@liulidesign/core/IconButton';
+    import { TextInput } from '@liulidesign/core/TextInput';
+    import { IconSetProvider } from '@liulidesign/core/Icon';
+    const brand = { paths: ['M4 4h16v16h-16z'] };
+    const dot = { paths: ['M12 11v2'] };
+    export function render() {
+      return (
+        <page>
+          <IconSetProvider icons={{ add: dot }}>
+            <view>
+              <Button label="Open" startIcon={brand} endIcon="add" data-testid="button" />
+              <IconButton label="Open" icon={brand} data-testid="icon-button" />
+              <TextInput value="" onChange={() => {}} label="Site" startIcon={brand} data-testid="input" />
+            </view>
+          </IconSetProvider>
+        </page>
+      );
+    }
+  `);
+  const marks = node => screen.queryAll(n => n.tag === 'vector' && JSON.stringify(n).length > 0).filter(n => { let at = n; while (at && at !== node) at = at.parent; return at === node; }).map(n => drawing(n).paths[0].d);
+  assert.deepEqual(marks(screen.getByTestId('button')), ['M4 4h16v16h-16z', 'M12 11v2']);
+  assert.deepEqual(marks(screen.getByTestId('icon-button')), ['M4 4h16v16h-16z']);
+  assert.deepEqual(marks(screen.getByTestId('input').parent), ['M4 4h16v16h-16z']);
+});

@@ -1,6 +1,6 @@
 import { cx, reveal, useId, useLocal, useView } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { commandPaletteRecipe as r } from './CommandPalette.recipe';
@@ -12,7 +12,7 @@ export interface CommandItem {
   label: string;
   /** A second line: where it leads, what it changes. */
   description?: string;
-  icon?: IconName;
+  icon?: IconRef;
   /** Quiet text at the end of the row: a shortcut, a kind. Read after the label. */
   endText?: string;
   /** @default false */

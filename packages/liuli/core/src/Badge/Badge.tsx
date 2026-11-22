@@ -1,6 +1,6 @@
 import { cx } from '@lingxia/view';
 import type { Hue } from '../hue';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { badgeRecipe as r } from './Badge.recipe';
 import { dataOf } from '../internal/data';
@@ -35,8 +35,8 @@ export type BadgeProps = BadgeLook & {
   label: string;
   /** @default 'md' */
   size?: BadgeSize;
-  /** An icon from the set, before the label; hidden from assistive tech. */
-  startIcon?: IconName;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  startIcon?: IconRef;
   className?: string;
   'data-testid'?: string;
 };

@@ -1,5 +1,5 @@
 import { createContext, cx, useContext, useId, useLocal, type Child } from '@lingxia/view';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { settleFlag } from '../internal/settle';
@@ -25,10 +25,10 @@ export interface ButtonProps {
   variant?: ButtonVariant;
   /** In a ButtonGroup the group's size, unless set here. @default 'md' */
   size?: ButtonSize;
-  /** An icon before the label, by name; hidden from assistive tech, since the label names the button. */
-  startIcon?: IconName;
+  /** An icon before the label, by name or as a definition; hidden from assistive tech, since the label names the button. */
+  startIcon?: IconRef;
   /** An icon after the label: a chevron for a button that opens something, an arrow for one that goes on. */
-  endIcon?: IconName;
+  endIcon?: IconRef;
   /** Draws `startIcon` alone in a square; `label` stays the accessible name. For a named icon button use IconButton. @default false */
   isIconOnly?: boolean;
   /** Drawn after the label: a count, a shortcut hint. Hidden from assistive tech. */

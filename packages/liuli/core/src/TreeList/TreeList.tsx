@@ -1,5 +1,5 @@
 import { cx, useId, useLocal, type Child } from '@lingxia/view';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { treeListRecipe as r } from './TreeList.recipe';
 import { dataOf } from '../internal/data';
@@ -8,8 +8,8 @@ export interface TreeNode {
   /** Identifies the node: what `value` and `onChange` carry, and `<testid>-<id>` on its row. Unique in the tree. */
   id: string;
   label: string;
-  /** An icon before the label, by name. */
-  icon?: IconName;
+  /** An icon before the label, by name or as a definition. */
+  icon?: IconRef;
   /** A second line under the label: a path, a summary. Read as the row's description. */
   description?: string;
   /** Quiet text at the end of the row: a count, a size. Read after the label. */

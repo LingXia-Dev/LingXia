@@ -1,7 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { Hue } from '../hue';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { tokenRecipe as r } from './Token.recipe';
 import { dataOf } from '../internal/data';
@@ -20,8 +20,8 @@ export type TokenRemove =
 export type TokenProps = TokenRemove & {
   /** What the token stands for: a person, a tag, a filter. */
   label: string;
-  /** An icon before the label, by name. */
-  startIcon?: IconName;
+  /** An icon before the label, by name or as a definition. */
+  startIcon?: IconRef;
   /** A category's colour, one of the theme's eight hues: the pill takes the hue's soft fill, with a dot (or the icon) in the hue. */
   hue?: Hue;
   /** Makes the label a button: opens the thing, or toggles a filter. */

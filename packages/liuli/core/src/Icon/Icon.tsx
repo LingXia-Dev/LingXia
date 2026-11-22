@@ -8,6 +8,9 @@ import { dataOf } from '../internal/data';
 export type { IconDefinition, IconSet } from './definition';
 export { iconNames, type IconName } from './names';
 
+/** An icon prop's value: a name from the set in use, or a definition drawn as given, as `Icon` takes in `name` or `icon`. */
+export type IconRef = IconName | IconDefinition;
+
 export type IconSize = 'sm' | 'md' | 'lg' | 'inline';
 
 export type IconSource =

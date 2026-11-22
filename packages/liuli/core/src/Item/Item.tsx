@@ -1,6 +1,6 @@
 import { childrenToArray, createContext, cx, useContext, useId, useLocal, type Child } from '@lingxia/view';
 import { useDensity } from '../density';
-import type { IconName } from '../Icon/names';
+import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
@@ -36,7 +36,7 @@ export interface ItemSwipeAction {
   key: string;
   /** Drawn under the icon, and what a screen reader offers as the row's action. */
   label: string;
-  icon?: IconName;
+  icon?: IconRef;
   /** @default 'neutral' */
   tone?: ItemSwipeTone;
   /** Runs after the row has closed. */
@@ -55,8 +55,8 @@ export type ItemProps = ItemAction & {
   description?: string;
   /** Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. */
   startContent?: Child;
-  /** An icon before the text, by name, in a quiet tinted square: for rows that name a place or a kind. Not read. */
-  startIcon?: IconName;
+  /** An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. */
+  startIcon?: IconRef;
   /** After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. */
   endContent?: Child;
   /** The row's height and padding. By default the ItemList's, else `comfortable`. */

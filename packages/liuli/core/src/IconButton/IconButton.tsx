@@ -1,14 +1,14 @@
 import { cx, useContext } from '@lingxia/view';
 import { Button, ButtonGroupContext, type ButtonSize, type ButtonVariant, type ButtonEdge } from '../Button/Button';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { registerPressable } from '../internal/trigger';
 import { iconButtonRecipe as r } from './IconButton.recipe';
 
 export interface IconButtonProps {
   /** The accessible name: what pressing it does ("Delete note"). Not drawn, so it is never optional. */
   label: string;
-  /** The icon, by name. */
-  icon: IconName;
+  /** The icon, by name or as a definition. */
+  icon: IconRef;
   /** In a ButtonGroup the group's variant, unless set here. Quiet by default: an icon button is rarely the main action. @default 'ghost' */
   variant?: ButtonVariant;
   /** 32, 40 or 48 points square. In a ButtonGroup the group's size, unless set here. @default 'md' */

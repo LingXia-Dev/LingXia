@@ -1,7 +1,7 @@
 import { cx, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize, type FieldStatusType } from '../Field/Field';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from './Glyph';
 import { dataOf } from './data';
 
@@ -29,7 +29,7 @@ interface PickerRecipe {
 
 export type PickerFieldProps = FieldOwnProps & PickerBinding & {
   type: 'date' | 'time';
-  icon: IconName;
+  icon: IconRef;
   recipe: PickerRecipe;
   placeholder?: string;
   min?: string;

@@ -2,7 +2,7 @@ import { cx, useId, useLocal, type AutoComplete, type Child, type Local } from '
 import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
@@ -54,8 +54,8 @@ export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear &
   isReadOnly?: boolean;
   /** A spinner at the end of the box while the app checks or fetches the value; the field reports busy and stays editable. @default false */
   isLoading?: boolean;
-  /** An icon from the set inside the box, before the text, 16 px in the muted colour. Replaces the search magnifier. */
-  startIcon?: IconName;
+  /** An icon by name from the set, or a definition, inside the box, before the text, 16 px in the muted colour. Replaces the search magnifier. */
+  startIcon?: IconRef;
   /** A node in the icon's place, such as a spinner; wins over `startIcon`. */
   startContent?: Child;
   /** Fixed text inside the box before the value, as the app writes it: "$", "https://". Read with the description. */

@@ -1,6 +1,6 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
 import type { ButtonSize } from '../Button/Button';
-import type { IconName } from '../Icon/Icon';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
@@ -40,8 +40,8 @@ export interface DropdownMenuItemProps {
   label: string;
   /** A second line, read as the item's description. */
   description?: string;
-  /** An icon from the set, before the label; hidden from assistive tech. */
-  icon?: IconName;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  icon?: IconRef;
   /** Runs on choice; the menu then closes. */
   onClick: () => void;
   /** @default false */
@@ -280,8 +280,8 @@ function CheckableItem(props: {
 export interface DropdownMenuSubmenuProps {
   /** The item's text, and the submenu's accessible name. */
   label: string;
-  /** An icon from the set, before the label; hidden from assistive tech. */
-  icon?: IconName;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  icon?: IconRef;
   /** The submenu's items. One level only: a submenu holds no submenu. */
   children: Child;
   /** @default false */
