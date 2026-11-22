@@ -1,10 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// AtomicU64 backs browser tab-sync/presentation generations and shell-created
-// terminal workspace identities.
-#[cfg(any(feature = "browser-runtime", feature = "terminal-runtime"))]
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
@@ -31,7 +27,7 @@ use lingxia_shell::{
 };
 use lingxia_surface::{
     Edge, LayoutPresentationPlan, SizeClass, SlotKind, SurfaceIcon, SurfaceSwitcherItem,
-    SurfaceSwitcherSnapshot, SwitcherContentKind,
+    SurfaceSwitcherSnapshot, SwitcherContentKind, SwitcherForm,
 };
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -567,9 +563,9 @@ struct SidebarUiState {
     collapsed: bool,
     /// Sidebar shown as an icon-only rail (the macOS first-collapse state).
     icon_rail: bool,
-    /// Explicit reveal while the adaptive medium projection would otherwise
-    /// cap the sidebar at an icon rail. Reset on the next size-class crossing.
-    medium_expanded: bool,
+    /// Explicit reveal while the 820 DIP budget would otherwise cap the
+    /// sidebar at an icon rail. Reset on the next size-class crossing.
+    rail_overridden: bool,
     items_collapsed: bool,
     main_scroll_offset: i32,
     footer_action_scroll_row: usize,
@@ -583,7 +579,7 @@ static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = Once
 
 /// The group's live state, seeded from what the user last settled on.
 ///
-/// Only their own rail choice is restored; `medium_expanded` and the scroll
+/// Only their own rail choice is restored; `rail_overridden` and the scroll
 /// offsets are per-session, and the adaptive rail is re-derived from the window
 /// every launch. Startup writes to this state before the shell store is open —
 /// the size-class reset among others — so an entry can exist before it can be
@@ -648,7 +644,7 @@ pub(crate) fn set_sidebar_drag_width(width: i32, done: bool) {
     let clamped = logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
     update_sidebar_ui_state(&group, |state| {
         state.collapsed = false;
-        state.medium_expanded = !rail;
+        state.rail_overridden = true;
         state.icon_rail = rail;
         state.seeded = true;
     });
@@ -873,19 +869,53 @@ fn resolved_shell_size_class(fallback: Option<&LxApp>) -> SizeClass {
         .and_then(|owner| owner.surface_derived_layout())
         .or_else(|| fallback.and_then(LxApp::surface_derived_layout))
         .map(|plan| plan.size_class)
-        .unwrap_or(SizeClass::Expanded)
+        .unwrap_or(SizeClass::Regular)
+}
+
+/// The window's last logical (DIP) content width, as f64 bits; 0 until the first `WM_SIZE`.
+static SHELL_LOGICAL_WIDTH: AtomicU64 = AtomicU64::new(0);
+
+fn resolved_shell_budget_requires_rail(fallback: Option<&LxApp>) -> bool {
+    shell_owner_appid()
+        .and_then(|appid| lxapp::try_get(&appid))
+        .and_then(|owner| owner.surface_derived_layout())
+        .or_else(|| fallback.and_then(LxApp::surface_derived_layout))
+        .is_some_and(|plan| sidebar_budget_requires_rail(&plan))
+}
+
+/// The core reports a switcher form only with several mains, but this sidebar also carries
+/// tabBar items and shell entries, so the 820 DIP budget is checked here too: the window
+/// minus its docked side asides.
+fn sidebar_budget_requires_rail(plan: &LayoutPresentationPlan) -> bool {
+    if plan.switcher_form == SwitcherForm::Rail {
+        return true;
+    }
+    let width = f64::from_bits(SHELL_LOGICAL_WIDTH.load(Ordering::Acquire));
+    if width <= 0.0 {
+        return false;
+    }
+    let docked: f64 = plan
+        .aside_slots
+        .iter()
+        .filter(|slot| slot.visible && !slot.overlay && !slot.collapsed)
+        .filter(|slot| !matches!(slot.edge, Some(Edge::Top | Edge::Bottom)))
+        .map(|_| f64::from(super::chrome::ATTACHED_PANEL_WIDTH_DIP))
+        .sum();
+    width - docked < lingxia_surface::SIDEBAR_EXPAND_MIN_FREE_WIDTH
 }
 
 /// Push the host window's logical (DIP) content width into the shell-owner
 /// app's adaptive surface graph so the size class - and therefore the aside
-/// projection (Compact overlay / Medium 1 / Expanded 3) - tracks the real window. Without
-/// this the graph stays at its seed width (permanently Medium), so a second
-/// aside evicts the first even on a wide window. Called from the host's
+/// projection (compact overlay / regular docked) - tracks the real window. Without
+/// this the graph stays at its seed width, so a second aside evicts the first
+/// even on a wide window. Called from the host's
 /// `WM_SIZE`.
 pub(crate) fn update_surface_width(logical_width: f64) {
     if logical_width <= 0.0 {
         return;
     }
+    let previous_budget = resolved_shell_budget_requires_rail(None);
+    SHELL_LOGICAL_WIDTH.store(logical_width.to_bits(), Ordering::Release);
     if let Some(appid) = shell_owner_appid() {
         let group_appid = preferred_sidebar_group_appid(
             shell_owner_appid(),
@@ -904,7 +934,7 @@ pub(crate) fn update_surface_width(logical_width: f64) {
             .map(|plan| plan.size_class);
         if previous_size_class != resolved_size_class {
             update_sidebar_ui_state(&group_appid, |state| {
-                state.medium_expanded = false;
+                state.rail_overridden = false;
             });
         }
 
@@ -921,7 +951,7 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         // the width crossed a breakpoint, rebuild its cached chrome first;
         // otherwise that pass combines the new surface projection with the
         // previous size class's sidebar/phone bar until another shell event.
-        if size_class_changed {
+        if size_class_changed || resolved_shell_budget_requires_rail(None) != previous_budget {
             sync_shell_layout(&appid);
         }
     }
@@ -2580,11 +2610,13 @@ fn build_tab_bar_layout(
     // guest's own tabBar position — a mobile lxapp must not collapse the
     // desktop sidebar into a phone strip.
     let requested_position = tabbar_position(&switcher_app.appid);
+    let budget_requires_rail = resolved_shell_budget_requires_rail(Some(switcher_app));
     let (position, force_icon_rail, show_shell_entries) = adaptive_tabbar_projection(
         requested_position,
         size_class,
         device_framed && frame_status_bar_height > 0,
-        ui_state.medium_expanded,
+        budget_requires_rail,
+        ui_state.rail_overridden,
     );
     if !show_shell_entries {
         // Compact projects only the active lxapp's own tabbar at the bottom.
@@ -2746,7 +2778,8 @@ fn adaptive_tabbar_projection(
     requested: WindowsShellTabBarPosition,
     size_class: SizeClass,
     device_framed: bool,
-    medium_expanded: bool,
+    budget_requires_rail: bool,
+    budget_expanded_by_user: bool,
 ) -> (WindowsShellTabBarPosition, bool, bool) {
     match size_class {
         SizeClass::Compact
@@ -2759,9 +2792,10 @@ fn adaptive_tabbar_projection(
             (requested, true, true)
         }
         SizeClass::Compact => (WindowsShellTabBarPosition::Bottom, false, false),
-        SizeClass::Medium
+        SizeClass::Regular
             if !device_framed
-                && !medium_expanded
+                && budget_requires_rail
+                && !budget_expanded_by_user
                 && matches!(
                     requested,
                     WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -2769,37 +2803,39 @@ fn adaptive_tabbar_projection(
         {
             (requested, true, true)
         }
-        SizeClass::Medium | SizeClass::Expanded => (requested, false, true),
+        SizeClass::Regular => (requested, false, true),
     }
 }
 
 /// User toggle is two-state: expanded <-> icon rail. Fully hidden sidebars are
 /// controlled by content-driven auto-hide only.
 fn toggle_sidebar(appid: &str) {
-    let size_class = shell_owner_appid()
+    let (size_class, budget_requires_rail) = shell_owner_appid()
         .and_then(|owner| lxapp::try_get(&owner))
         .and_then(|app| app.surface_derived_layout())
-        .map(|plan| plan.size_class)
-        .unwrap_or(SizeClass::Expanded);
+        .map(|plan| (plan.size_class, sidebar_budget_requires_rail(&plan)))
+        .unwrap_or((SizeClass::Regular, false));
     update_sidebar_ui_state(appid, |state| {
-        toggle_sidebar_projection(state, size_class);
+        toggle_sidebar_projection(state, size_class, budget_requires_rail);
     });
     sync_shell_layout(appid);
 }
 
-fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
+fn toggle_sidebar_projection(
+    state: &mut SidebarUiState,
+    size_class: SizeClass,
+    budget_requires_rail: bool,
+) {
     if size_class == SizeClass::Compact {
         return;
     }
     state.collapsed = false;
-    if size_class == SizeClass::Medium {
-        // Medium is already projected as a rail, so the toggle reveals the full
-        // sidebar for this session rather than choosing a width to remember.
-        let currently_expanded = state.medium_expanded && !state.icon_rail;
-        state.medium_expanded = !currently_expanded;
+    if budget_requires_rail {
+        let currently_expanded = state.rail_overridden && !state.icon_rail;
+        state.rail_overridden = !currently_expanded;
         state.icon_rail = false;
     } else {
-        state.medium_expanded = false;
+        state.rail_overridden = false;
         state.icon_rail = !state.icon_rail;
         // The user has now chosen, so nothing may seed over it later.
         state.seeded = true;
@@ -6211,6 +6247,9 @@ fn surface_menu_entry(
             ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
+            SurfaceMenuBuiltinAction::MoveToAside => {
+                (lingxia_logic::i18n::t(I18nKey::SurfaceMoveToAside), None)
+            }
             SurfaceMenuBuiltinAction::Rename => {
                 (lingxia_logic::i18n::t(I18nKey::SurfaceRename), None)
             }
@@ -8945,46 +8984,51 @@ mod tests {
         use WindowsShellTabBarPosition::{Bottom, Left, Right};
 
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Expanded, false, false),
+            adaptive_tabbar_projection(Left, SizeClass::Regular, false, false, false),
             (Left, false, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Right, SizeClass::Medium, false, false),
+            adaptive_tabbar_projection(Right, SizeClass::Regular, false, true, false),
             (Right, true, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Compact, false, false),
+            adaptive_tabbar_projection(Left, SizeClass::Regular, false, true, true),
+            (Left, false, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Compact, false, false, false),
             (Left, true, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Compact, true, false),
+            adaptive_tabbar_projection(Left, SizeClass::Compact, true, false, false),
             (Bottom, false, false)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Bottom, SizeClass::Medium, true, false),
+            adaptive_tabbar_projection(Bottom, SizeClass::Regular, true, true, false),
             (Bottom, false, true)
-        );
-        assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Medium, false, true),
-            (Left, false, true)
         );
 
         let mut state = SidebarUiState::default();
-        toggle_sidebar_projection(&mut state, SizeClass::Medium);
-        assert!(state.medium_expanded);
+        toggle_sidebar_projection(&mut state, SizeClass::Regular, false);
+        assert!(state.icon_rail);
+        toggle_sidebar_projection(&mut state, SizeClass::Regular, false);
         assert!(!state.icon_rail);
-        toggle_sidebar_projection(&mut state, SizeClass::Medium);
-        assert!(!state.medium_expanded);
-        assert!(!state.icon_rail);
+
+        let mut budgeted = SidebarUiState::default();
+        toggle_sidebar_projection(&mut budgeted, SizeClass::Regular, true);
+        assert!(budgeted.rail_overridden);
+        assert!(!budgeted.icon_rail);
+        toggle_sidebar_projection(&mut budgeted, SizeClass::Regular, true);
+        assert!(!budgeted.rail_overridden);
 
         let mut compact = SidebarUiState {
             icon_rail: true,
             seeded: true,
             ..SidebarUiState::default()
         };
-        toggle_sidebar_projection(&mut compact, SizeClass::Compact);
+        toggle_sidebar_projection(&mut compact, SizeClass::Compact, false);
         assert!(compact.icon_rail);
-        assert!(!compact.medium_expanded);
+        assert!(!compact.rail_overridden);
     }
 
     #[test]

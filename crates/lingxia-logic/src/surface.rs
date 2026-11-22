@@ -2506,13 +2506,13 @@ struct JSSurfaceContext {
 
 /// Adaptive context derived from this lxapp presentation's actual viewport.
 fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
-    use lingxia_surface::ContentSizeClass;
+    use lingxia_surface::SizeClass;
     let (width, height, viewport_class) = lxapp.surface_viewport().unwrap_or_else(|| {
         // No measured viewport yet: report the shell band, with zero dimensions.
         let size_class = lxapp
             .surface_derived_layout()
-            .map(|layout| layout.size_class.to_content())
-            .unwrap_or(ContentSizeClass::Compact);
+            .map(|layout| layout.size_class)
+            .unwrap_or(SizeClass::Compact);
         (0.0, 0.0, size_class)
     });
     JSSurfaceContext {
@@ -2560,11 +2560,6 @@ pub(crate) fn can_dock(lxapp: &LxApp) -> bool {
     !lxapp.aside_browser_is_compact()
 }
 
-/// Compact has no dock region. A URL aside therefore uses the native in-app
-/// browser's aside projection instead of the generic URL-surface presenter.
-/// Treat an unavailable layout as compact: mobile hosts can receive an open
-/// before their first measured viewport, and showing desktop surface chrome in
-/// that interval is the more disruptive fallback.
 /// Open a URL as an in-app browser tab; `aside` selects compact aside chrome.
 /// Returns `{ tabId }` when the host named the tab, otherwise null so the
 /// handle reports `scope: 'group'`.

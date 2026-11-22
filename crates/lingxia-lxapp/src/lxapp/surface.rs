@@ -32,7 +32,7 @@ struct SurfaceViewportContext {
     session_id: u64,
     width: f64,
     height: f64,
-    size_class: lingxia_surface::ContentSizeClass,
+    size_class: lingxia_surface::SizeClass,
 }
 
 /// The surface graph is per-WINDOW, not per-lxapp. The graph and its single
@@ -940,6 +940,15 @@ impl WindowSurfaceController {
         Some(successor)
     }
 
+    /// Report physical hinge/crease geometry for the window.
+    fn set_hinge(&self, hinge: Option<lingxia_surface::HingeRect>) -> bool {
+        let changed = self.manager.lock().unwrap().set_hinge(hinge);
+        if changed {
+            self.commit();
+        }
+        changed
+    }
+
     fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -1025,7 +1034,10 @@ impl WindowSurfaceController {
         parts: lingxia_shell::SurfaceMenuParts,
         rows: &[lingxia_shell::MainRow],
     ) -> Option<lingxia_shell::SurfaceMenuSnapshot> {
-        let snapshot = self.manager.lock().unwrap().switcher_snapshot();
+        let (snapshot, size_class) = {
+            let manager = self.manager.lock().unwrap();
+            (manager.switcher_snapshot(), manager.size_class())
+        };
         let index = snapshot
             .items
             .iter()
@@ -1036,6 +1048,7 @@ impl WindowSurfaceController {
                 revision: snapshot.revision,
                 surface_id: item.surface_id.clone(),
                 closable: item.closable,
+                movable_to_aside: size_class == lingxia_surface::SizeClass::Regular,
                 renameable: item.renameable,
                 title_overridden: item.title_overridden,
                 has_other_closable: snapshot
@@ -1615,6 +1628,13 @@ fn execute_surface_menu_intent(
     let mut removed_surface_ids = Vec::new();
     let accepted = match intent.action {
         lingxia_shell::SurfaceMenuAction::Switcher { action } => match action {
+            lingxia_shell::SurfaceMenuBuiltinAction::MoveToAside => {
+                item.closable
+                    && manager.demote_main_to_aside(
+                        &intent.surface_id,
+                        Some(lingxia_surface::Edge::Right),
+                    )
+            }
             lingxia_shell::SurfaceMenuBuiltinAction::Rename => intent
                 .value
                 .as_deref()
@@ -2848,6 +2868,11 @@ impl LxApp {
         ) = previous_startup;
     }
 
+    /// Report physical display hinge/crease geometry for the primary window.
+    pub fn set_surface_hinge(&self, hinge: Option<lingxia_surface::HingeRect>) -> bool {
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_hinge(hinge)
+    }
+
     pub fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
@@ -3000,6 +3025,39 @@ impl LxApp {
                 removed_surface_ids: Vec::new(),
                 snapshot: self.surface_switcher_snapshot(),
             });
+        }
+        if matches!(
+            &intent.action,
+            lingxia_shell::SurfaceMenuAction::Switcher {
+                action: lingxia_shell::SurfaceMenuBuiltinAction::MoveToAside
+            }
+        ) {
+            let snapshot = self.surface_switcher_snapshot();
+            let closable = snapshot
+                .items
+                .iter()
+                .find(|item| item.surface_id == intent.surface_id)
+                .is_some_and(|item| item.closable);
+            let target_app = (snapshot.revision == intent.revision && closable)
+                .then(|| self.main_surface_content(&intent.surface_id))
+                .flatten()
+                .and_then(|content| match content {
+                    lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => {
+                        crate::try_get(&app_id)
+                    }
+                    _ => None,
+                });
+            if let Some(app) = target_app {
+                let accepted = app.demote_main_to_aside("").is_ok();
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: Vec::new(),
+                    snapshot: self.surface_switcher_snapshot(),
+                });
+            }
+            if snapshot.revision != intent.revision || !closable {
+                return Some(HostSurfaceMenuExecution::rejected(snapshot));
+            }
         }
         if let lingxia_shell::SurfaceMenuAction::Lxapp { action } = &intent.action {
             let action = *action;
@@ -3434,7 +3492,7 @@ impl LxApp {
             let previous = viewports
                 .get(&self.appid)
                 .filter(|context| context.session_id == self.session_id());
-            let size_class = lingxia_surface::ContentSizeClass::resolve(
+            let size_class = lingxia_surface::SizeClass::resolve(
                 previous.map(|context| context.size_class),
                 width,
                 lingxia_surface::DEFAULT_HYSTERESIS,
@@ -3461,7 +3519,7 @@ impl LxApp {
         changed
     }
 
-    pub fn surface_viewport(&self) -> Option<(f64, f64, lingxia_surface::ContentSizeClass)> {
+    pub fn surface_viewport(&self) -> Option<(f64, f64, lingxia_surface::SizeClass)> {
         SURFACE_VIEWPORTS
             .get()
             .and_then(|viewports| viewports.lock().ok())
@@ -3523,7 +3581,7 @@ impl LxApp {
             self.surface_derived_layout()
                 .as_ref()
                 .map(|layout| layout.size_class),
-            Some(SizeClass::Medium) | Some(SizeClass::Expanded)
+            Some(SizeClass::Regular)
         )
     }
 

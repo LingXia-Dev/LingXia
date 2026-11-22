@@ -611,13 +611,21 @@ impl SurfaceGraph {
 
     /// Two-axis derivation: produce the platform-agnostic `DerivedLayout`.
     pub fn derive_layout(&self, size_class: SizeClass) -> DerivedLayout {
+        self.derive_layout_for_width(size_class, crate::layout::SIDEBAR_EXPAND_MIN_FREE_WIDTH)
+    }
+
+    /// Width-aware derivation: in `Regular`, expand the left sidebar only when
+    /// `free_width` (window width minus visible horizontal aside width) is at
+    /// least `SIDEBAR_EXPAND_MIN_FREE_WIDTH` (`820 dp`), otherwise collapse to
+    /// the `56 dp` icon rail to preserve a `600 dp` regular main pane.
+    pub fn derive_layout_for_width(&self, size_class: SizeClass, free_width: f64) -> DerivedLayout {
         let main_count = self.mains().len();
         let aside_count = self.asides().len();
-        let switcher_form = if size_class != SizeClass::Compact && main_count > 1 {
-            match size_class {
-                SizeClass::Expanded => SwitcherForm::Sidebar,
-                SizeClass::Medium => SwitcherForm::Rail,
-                SizeClass::Compact => SwitcherForm::None,
+        let switcher_form = if size_class == SizeClass::Regular && main_count > 1 {
+            if free_width >= crate::layout::SIDEBAR_EXPAND_MIN_FREE_WIDTH {
+                SwitcherForm::Sidebar
+            } else {
+                SwitcherForm::Rail
             }
         } else {
             SwitcherForm::None
@@ -625,8 +633,7 @@ impl SurfaceGraph {
 
         let split_form = if aside_count > 0 {
             match size_class {
-                SizeClass::Expanded => SplitForm::Split,
-                SizeClass::Medium => SplitForm::Collapsible,
+                SizeClass::Regular => SplitForm::Split,
                 // compact has no side-by-side: asides present full-screen.
                 SizeClass::Compact => SplitForm::FullScreen,
             }
@@ -651,11 +658,10 @@ impl SurfaceGraph {
     pub(crate) fn presentation_plan(
         &self,
         size_class: SizeClass,
-        width: f64,
+        window_width: f64,
+        workspace_width: f64,
         policy: &crate::arbitrate::Policy,
     ) -> LayoutPresentationPlan {
-        let derived = self.derive_layout(size_class);
-
         let asides: Vec<PlanAside> = self
             .asides()
             .iter()
@@ -666,7 +672,60 @@ impl SurfaceGraph {
                 preferred_size: s.placement.preferred_size,
             })
             .collect();
-        let aside_slots = self.aside_slots_admitted(size_class, width, policy);
+        let aside_slots = self.aside_slots_admitted(size_class, workspace_width, policy);
+        let visible_aside_width: f64 = aside_slots
+            .iter()
+            .filter(|slot| {
+                slot.visible
+                    && !slot.collapsed
+                    && !slot.overlay
+                    && !matches!(
+                        slot.edge,
+                        Some(crate::model::Edge::Top) | Some(crate::model::Edge::Bottom)
+                    )
+            })
+            .map(|slot| {
+                slot.active_child
+                    .as_deref()
+                    .and_then(|id| self.get(id))
+                    .and_then(|surface| surface.placement.preferred_size)
+                    .unwrap_or(360.0)
+                    .max(policy.aside_min_width)
+            })
+            .sum();
+        let free_width = (window_width - visible_aside_width).max(0.0);
+        let derived = self.derive_layout_for_width(size_class, free_width);
+
+        let unified_aside_slot = (!asides.is_empty()).then(|| {
+            let tabs: Vec<SurfaceId> = asides.iter().map(|a| a.id.clone()).collect();
+            let active_tab = self
+                .focused_surface_id
+                .as_ref()
+                .filter(|id| tabs.contains(id))
+                .cloned()
+                .or_else(|| {
+                    aside_slots
+                        .iter()
+                        .find(|slot| slot.visible && !slot.collapsed)
+                        .and_then(|slot| slot.active_child.clone())
+                })
+                .or_else(|| tabs.last().cloned());
+            let any_visible = aside_slots.iter().any(|slot| slot.visible);
+            let all_collapsed =
+                !aside_slots.is_empty() && aside_slots.iter().all(|slot| slot.collapsed);
+            let any_overlay = aside_slots.iter().any(|slot| slot.visible && slot.overlay);
+            let any_maximized = aside_slots
+                .iter()
+                .any(|slot| slot.visible && slot.maximized);
+            crate::layout::PlanUnifiedAsideSlot {
+                tabs,
+                active_tab,
+                visible: any_visible,
+                overlay: any_overlay || size_class == SizeClass::Compact,
+                collapsed: all_collapsed,
+                maximized: any_maximized,
+            }
+        });
 
         LayoutPresentationPlan {
             sequence: 0,
@@ -688,6 +747,7 @@ impl SurfaceGraph {
             ),
             asides,
             aside_slots,
+            unified_aside_slot,
             // Floats are popups above the layout and are valid at every size
             // class (no compact gating), so they always appear in the plan. Each
             // carries the float's render-relevant `FloatSpec`; a float surface
@@ -708,6 +768,7 @@ impl SurfaceGraph {
                 })
                 .collect(),
             tree: derived.layout_tree,
+            hinge: None,
         }
     }
 

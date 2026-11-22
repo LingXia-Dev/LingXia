@@ -122,6 +122,7 @@ surface:
   close: "关闭标签页"
   close_others: "关闭其他"
   close_after: "关闭下方"
+  move_to_aside: "移到侧边栏"
 
 # 商店渠道的宿主更新提示（自动流程 + Android SDK 弹窗）
 update:

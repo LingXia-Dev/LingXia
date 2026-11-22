@@ -124,9 +124,6 @@ enters the main window's surface graph.
 - An explicit `as` may migrate an existing non-root Surface between supported
   roles. Migration preserves provider state and runtime identity; it never
   clones the Surface. The stable root main cannot migrate away from `main`.
-- Runtime ids stay inside the shell. Logic addresses a live Surface by
-  identity — appId, declaration id and key, or its own page/URL key — and the
-  handle it gets back is the same object for the Surface's whole life.
 - `page` content MUST NOT be an aside. For a companion panel, use a separate
   lxapp, a native capability, or a URL; auxiliary UI internal to an app belongs
   in the app's own layout.
@@ -184,7 +181,7 @@ Main is special:
 - `show()` on a main is equivalent to selecting its tab;
 - when the user switches tabs, the shell MAY turn the previous main hidden; but
   a main handle does not support explicit `hide()` — such a call MUST fail with
-  `E_SURFACE_ROLE_LOCKED`, guaranteeing there is always a selected main;
+  `E_NOT_SUPPORTED`, guaranteeing there is always a selected main;
 - the first admitted main is a stable root and ordinary close MUST reject it;
 - the window close button never closes the root: on macOS it hides the window
   and the Dock icon restores it, tray or not; on Windows it hides the window
@@ -227,14 +224,9 @@ independent by default.
 | `E_INVALID_ARG` | Invalid field, combination, URL, or size |
 | `E_PERMISSION_DENIED` | Caller lacks permission |
 | `E_NOT_FOUND` | appId, page, URL target, or declaration does not exist |
-| `E_NOT_SUPPORTED` | Platform or current window mode does not support the operation |
-| `E_CAPABILITY_MISSING` | The declaration's provider lacks a capability the request needs, e.g. keyed instances |
+| `E_NOT_SUPPORTED` | Platform, capability, or current window mode does not support the operation |
 | `E_SURFACE_CONFLICT` | The same logical content is already live under an incompatible role/presentation |
-| `E_SURFACE_ROLE_LOCKED` | The role forbids the operation: hiding a main, closing the stable root, or moving it out of main |
 | `E_SURFACE_CLOSED` | Operation on a destroyed handle |
-
-`data.code` carries the finer `SurfaceErrorCode`; external callers also read
-it for open refusals (`maintain` / `suspended`).
 
 ### 2.4 Open pipeline
 
@@ -257,98 +249,50 @@ reuse, or lifecycle semantics.
 
 ## 3. Adaptive layout
 
-### 3.1 Two size-class scopes
+### 3.1 Unified two-band `SizeClass` (`compact` | `regular`)
 
-Shell and content share the compact width boundary. They MUST use different
-vocabularies: the shell answers how many chrome regions fit; content answers
-whether this surface has room for a non-compact layout. `regular` is not
-desktop.
+Shell and content share **one** vocabulary and **one** width threshold across all
+platforms (phone, foldable, tri-fold, tablet, desktop):
 
-**Shell size class** is computed from the full client-area width of the main
-window and drives sidebar and aside arbitration:
-
-| Shell size class | Available width |
-|---|---|
-| `compact` | `< 600 dp/pt` |
-| `medium` | `600–840 dp/pt` |
-| `expanded` | `> 840 dp/pt` |
-
-**Content size class** is computed per surface from its actual viewport width
-and is the only size class content sees: the View's `env` (with the viewport
-in pixels) and Logic's `page.env` (size class and `canDock` only; Logic is
-called when one of them flips, never on a resize):
-
-`canDock` separately reports whether the window has a dock region right now:
-true when the shell size class is Medium or Expanded, false when it is Compact
-or before a layout is available. It is not inferred from the content size
-class, and it does not say where this content is shown. Host docking changes
-emit context events even when the content viewport dimensions have not changed.
-
-| Content size class | Available width |
-|---|---|
-| `compact` | `< 600 dp/pt` |
-| `regular` | `≥ 600 dp/pt` |
-
-- Content `regular` covers both shell `medium` and shell `expanded` viewports.
-  Content MUST NOT expose `medium` or `expanded`; those names are shell
-  admission classes, not page layouts.
-- Authors MUST branch content `sizeClass` at most once: `compact` versus
-  `regular`. Spacing, columns, and wrapping inside `regular` use CSS or
-  container queries plus the raw `width` / `height`. A product MUST NOT ship a
-  third View for fold, tablet, or the shell's medium band. Host form is a
-  separate input (`isMobile()` / `isDesktop()`); see §3.2.
-- The two scopes MUST NOT be conflated; a narrow aside inside an expanded
-  shell can legitimately receive a compact content size class.
-- Shell breakpoints use 24 dp/pt hysteresis at both 600 and 840: upgrading
-  requires crossing `boundary + 24`, downgrading requires dropping below
-  `boundary - 24`.
-- Content hysteresis applies only at 600. Crossing 840 MUST NOT change the
-  content `sizeClass`; `width` and `height` still update.
-
-### 3.2 Degradation matrix
-
-Window size class and host form are independent inputs. Resizing a desktop
-window into the compact class MUST NOT turn its navigation into a mobile
-projection. Mobile hosts — phone, tablet, and phone/tablet Runner — use the
-device-compact column because of their host form, not merely because their
-width is below 600.
-
-| Region | expanded desktop | medium desktop | compact desktop | device compact |
-|---|---|---|---|---|
-| sidebar | full | icon rail | icon rail | hidden |
-| main | main area | main area | main area | full screen |
-| aside | up to 2 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
-| float | popover / overlay | popover / overlay | popover / overlay | bottom sheet / popover |
-| standalone window | supported | supported | supported | rejected |
-
-Content size class and host form are likewise independent. Tablets and
-foldable phones are mobile. Unfolding a foldable MUST NOT change host form;
-it MAY flip the content size class when the inner viewport crosses 600.
-
-| | mobile host | desktop host |
+| Size class | Available width | Hysteresis |
 |---|---|---|
-| content `compact` | folded phone; pad OS split under 600 | narrow desktop window; desktop chrome stays |
-| content `regular` | unfolded fold, tablet | desktop workspace |
+| `compact` | `< 600 dp/pt` | `±24 dp/pt` at `600` |
+| `regular` | `≥ 600 dp/pt` | `±24 dp/pt` at `600` |
 
-- Content MUST NOT treat `regular` as desktop. A desktop workspace View is
-  `regular` **and** a desktop host.
-- Content MUST NOT expose a third size class for fold or tablet. Two-pane on
-  a handheld is `regular` + mobile, done with CSS or a product View.
-- Fold hinge, tabletop posture, and dual-screen regions are out of scope for
-  size class; width classes do not describe them.
+- There is no `medium` or `expanded` band and no separate `ContentSizeClass`
+  enum. Both shell chrome (`lingxia-surface`) and page environments
+  (`view.env.sizeClass`, `regular:` style variant) use `compact | regular`.
+- Sidebar expansion in `regular` is governed by a physical width budget rather
+  than a third size class: when `free_width = window_width - visible_aside_width ≥ 820 dp`
+  (`220 dp` sidebar + `600 dp` `regular` main pane) and not manually collapsed,
+  the sidebar expands to `220 dp`; otherwise it auto-collapses to a `56 dp`
+  icon rail to preserve a `regular` two-pane main area.
+- Reopening an already-live non-root surface via API focuses it in its current
+  role (`FocusedExistingRole`) instead of overriding a user's drag-chosen
+  main/aside placement.
+- Bidirectional role migration is symmetric: dragging an aside tab onto the
+  sidebar promotes it to `main` (`promote_aside_to_main`); dragging a non-root
+  main to the right half or invoking `SurfaceMenuBuiltinAction::MoveToAside`
+  demotes it into the right aside slot (`demote_main_to_aside`).
+- Platform Pin boundary: desktop hosts (macOS / Windows) retain the `4×2` Pin
+  grid; mobile hosts (iOS / Android / HarmonyOS, including foldables and pads)
+  render live switchers only and omit host-level sidebar Pins.
 
-A tablet (pad) is a mobile host. Its typical viewport is content `regular`;
-an OS split that leaves a column under 600 is content `compact`. Host form
-does not change.
+### 3.2 Projection matrix
 
-The shell on pad MUST use the device-compact column: no sidebar, full-screen
-main, overlay asides. `is_pad` MUST only change compact tab-strip capacity
-(declaration cap instead of five slots). It MUST NOT set `isDesktop()`, MUST
-NOT reuse the desktop medium or expanded column, and MUST NOT present pins,
-an icon rail, or docked multi-aside chrome. Pad extra width belongs to
-content two-pane. A future pad-only projection, if any, is a distinct
-`is_pad` skin (for example a nav rail and at most one docked aside), not
-`HostClass::Desktop`.
+| Region | `regular` (`≥ 600 dp`) | `compact` (`< 600 dp`) |
+|---|---|---|
+| sidebar | `220 dp` expanded when `free_width ≥ 820 dp`, else `56 dp` icon rail (hidden when single main without tabBar) | `0 dp` (drawer `[◧ N]` when `> 1` live instances) |
+| main | main area (no top-right capsule) | full screen |
+| aside | docked multi-tab panel (snaps to vertical `HingeRect` when present); collapsible to right-edge ear `‹ N` | full-screen overlay above main; collapses to right-edge ear `‹ N` |
+| main `tabBar` | child rows in expanded sidebar, or `188 dp` floating `SidebarRailPagePanel` from `56 dp` rail | bottom `56 dp` tab bar |
+| float | popover / overlay | bottom sheet / popover |
+| standalone window | desktop only | rejected |
+
+Foldable half-opened tabletop posture (`hinge.orientation == 'horizontal' && hinge.posture == 'half-opened'`)
+is delivered verbatim in `view.env.hinge` without host half-screen cropping so
+page-level `<Split>` components can place primary content on the upper leaf and
+secondary content on the lower leaf.
 
 ### 3.3 Sizing and admission
 
@@ -418,29 +362,14 @@ crammed in the moment the window crosses 840.
   switching belongs to its slot's header tabs (§4.6), structurally identical to
   the browser aside's title tabs. A sidebar list of "open asides" is abolished
   behavior.
-- **Dropping an aside tab on the sidebar promotes it to a main**, and the
-  tab's menu offers the same move as *Open in Main Area* (§4.6). The same live
+- **Dropping an aside tab on the sidebar promotes it to a main.** The same live
   content moves: an lxapp keeps its Logic, page stack, and WebViews (one
   `onHide`/`onShow` pair, no restart); a URL tab becomes a main-browser tab with
   the same tab id and document. The new main is appended to the switcher and
   selected; the aside slot loses that child. Only a main can be pinned, so an
   aside reaches the Pins through this step. URL-callback and ephemeral tabs
-  belong to their opener and are not draggable.
-- **Dragging a sidebar group onto the main's trailing edge moves it into the
-  side panel**, and the group menu's **Open in Side Panel** does the same:
-  the live lxapp main leaves the switcher (its neighbour becomes active) and
-  joins the panel slot at that edge, keeping Logic, page stack and WebViews
-  (`demote_main_to_aside`, the mirror of the promotion). The drop band is
-  the trailing 72–96pt of the main area; macOS tints it while a group hovers.
-  Windows cannot paint over the main's WebView there, so the drag chip is its
-  only feedback.
-  The root main never moves. Implemented on macOS and Windows; other
-  platforms have no sidebar.
-- A move holds the lxapp's open guard, so it never interleaves with an open,
-  a restart, or another move of that app. A drag or menu move runs on the UI
-  thread and never waits for the guard (an open holding it may be waiting on
-  that thread): while it is held, the gesture is refused. A refused move
-  restores the app's region only if a close has not cleared it meanwhile.
+  belong to their opener and are not draggable. There is no reverse drag.
+  Implemented on macOS and Windows; other platforms have no sidebar.
 - While the main window has tabs, exactly one tab MUST be selected.
 - lxapp, browser, and native mains interleave in stable graph order; pins and
   sidebar actions stay fixed, outside the main navigation scroll region.
@@ -661,26 +590,20 @@ Declaration model (owned by the single runtime writer, §7.2):
   resource resolver before native projection. Native absolute paths, network
   URLs, and parent traversal are rejected. The portable asset profile is a
   square, transparent, monochrome SVG or PNG designed for a 16-point visual.
-  An SVG is a template: hosts draw its shape in the shell's muted text colour,
-  dimmed while disabled, so it follows theme and contrast. A PNG draws as
-  authored.
+  Hosts may tint it to match shell theme and disabled state.
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
-  `lx.surface.openDeclared(id, options?)`, a dynamic business app with
-  `lx.surface.openApp(appId, options?)`, or performs app navigation with
-  `lx.nav.go({ app: ... })`.
+  `lx.shell.openDeclared(id, options?)`, a dynamic business app with
+  `lx.shell.openApp(appId, { as, ... })`, or performs app navigation with
+  `lx.navigateToApp({ appId: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
   bad item leaves the previous generation intact. Single-item patches may
   update label/icon/value/disabled state and are validated against the whole
   patched generation. A `value` key present in a patch sets it; `undefined`,
   `null`, or `''` clears it (presence is the own key, since `{ value:
-  brand?.name }` must clear). Removing an entry, or clearing with
-  `replace([])`, is an atomic transformation of the same generation, not a
-  separate mutation protocol.
-- `replace`, `update` and `remove` commit at call time, in call order, and
-  return a promise; a refused generation or unknown id rejects it rather than
-  throwing.
+  brand?.name }` must clear). Removing or clearing entries are atomic
+  transformations of the same generation, not separate mutation protocols.
 - Callback registration is generation-scoped: replacing or removing an item
   unregisters its previous callback.
 - Sidebar actions are runtime-scoped because callbacks are not serializable. The
@@ -814,41 +737,20 @@ Sidebar peek:
 
 ### 4.6 Aside slots
 
-The aside region is fixed at two slots. Users think in "things beside my
-main", not in rendering engines, so everything the shell can show in one
-container shares one region:
+The aside region is fixed at three slots, grouped by rendering engine:
 
 | Slot | Content | Multi-content behavior |
 |---|---|---|
-| panel | lxapps (different appIds) and URL tabs, mixed | One header strip in open order; one instance per appId; API URLs reuse by first URL |
-| native | Different declaration instances (terminal) | Header tabs; the default instance plus keyed instances when supported |
-
-The `lxapp` and `browser` spellings are accepted by the slot APIs as names
-for the `panel` slot they merged into.
+| lxapp | Different appIds | Header tabs; one instance per appId |
+| browser | URL tabs | Title tabs; API URLs reuse by first URL |
+| native | Different declaration instances | Header tabs; the default instance plus keyed instances when supported |
 
 - Slot tab switching performs hide/show and preserves content state; only an
   explicit close destroys the current content.
-- A collapsed slot that still holds content leaves a handle at its edge: a
-  slim tongue (12×56pt, vertically centred, flush with the window edge, its
-  top and bottom sloped 8pt; on Windows in a strip the main gives up) in the
-  separator colour, accent on hover, with no icon — at that width nothing is
-  legible and the tooltip names the content. It reads as a pull-out tab of
-  the edge itself: larger than a hairline, lighter than a card. Clicking it
-  restores the slot. Opening or focusing a child still restores it too.
-- A slot with content that has no room to dock beside the main (a narrow
-  window) is never silently absent: an explicit open shows it as an overlay,
-  and while it stays hidden it keeps the same edge handle, whose click shows
-  it as an overlay again. Widening the window docks it. A slot whose children
-  were all hidden by their app has no handle, and a handle never reveals a
-  hidden child.
-- Dragging a shell element to a drop target (an aside tab to the sidebar, a
-  sidebar group to the main's edge) keeps the plain arrow cursor and shows
-  the element's name on a translucent chip under the pointer (macOS: the
-  drag snapshot; Windows: a click-through layered chip), never the four-way
-  move cursor or a "not allowed" sign while crossing the window.
-- On Windows the collapsed handle sits flush with the window edge, inside
-  the resize border; a press on it restores the panel rather than resizing
-  the window.
+- A collapsed slot that still holds content leaves a slim handle at its edge
+  (macOS: a pill in the window gap; Windows: a strip the main gives up);
+  clicking it restores the slot. Opening or focusing a child still restores
+  it too.
 - Collapsing a slot hides it without closing anything. The lxapp child it was
   showing receives page `onHide`; restoring the slot with that child still
   active delivers `onShow`. Logic and the WebView stay alive throughout.
@@ -860,33 +762,20 @@ for the `panel` slot they merged into.
   sidebar promotes it, §4.2); under pressure they drop
   text before icons, then become a scrollable strip — tabs never shrink into
   unrecognizable slivers.
-- **A docked slot always shows its header strip, including at one content.**
-  The strip is the slot's management surface (switching, closing, the tab
-  menu and drag-out live there); hiding it at n=1 removes those affordances
-  and causes a region jump when the second content arrives. At one content
-  the strip reads as a plain panel header — icon, name, "···", ✕ — with no
-  chip fill, hover wash or divider, since there is nothing to pick among; it
-  turns into tab chips at the same height when a sibling arrives. The two
-  slots are mechanically identical, only their content kinds differ.
+- **A docked slot always shows its tab strip, including at one content.** The
+  strip is the slot's management surface (switching and closing live there);
+  hiding it at n=1 removes the close affordance and causes a region jump when
+  the second content arrives. The three slots are mechanically identical, only
+  their content kinds differ.
 - **Slot tab visuals are one component**: every slot's header tabs use the same
   tab component and metrics (Chrome-style title tab: flared outline, bottom
   aligned, hover wash, adjacent separators), with icon + title + close button.
   lxapp tabs show the lxapp icon and name, browser tabs the favicon and page
   title. Slots MUST NOT each paint their own style.
-- **The slot tab strip carries no create entries and no strip-level menu**
-  (no "+", no strip "···"): the strip only switches and closes. Content enters
-  a slot elsewhere — the open API, sidebar action entries, the sidebar browser
-  "+".
-- **Every tab has one menu, reached two ways**: a per-tab "···" button (room
-  always reserved; shown on hover, or always on the single-content header)
-  and right-click on the tab. Both open the same menu, so the actions are
-  discoverable without knowing to right-click or drag. The menu holds, in
-  order: the content's identity header; **Open in Main Area** (exactly what
-  dropping the tab on the sidebar does, §4.2; absent on URL-callback and
-  ephemeral tabs); the content's own section (a browser tab's page actions —
-  bookmark, pin, copy link, open externally; an lxapp's MoreActions); then
-  **Close**. Collapse and Maximize are slot controls already on the strip and
-  stay out of the menu. The two kinds differ only in that middle section.
+- **The slot tab strip carries no create/menu entries** (no "+", no "···"):
+  the strip only switches and closes. Content enters a slot elsewhere — the
+  open API, sidebar action entries, the sidebar browser "+"; page-level actions live
+  in the tab's context menu.
 - Maximizing an aside covers only the main area and toggles back on the next
   click; it does not change the role. The core owns the state (one maximized
   slot per window at most; the plan marks it `maximized` and also `overlay`,
@@ -915,9 +804,8 @@ for the `panel` slot they merged into.
   the sidebar.
 - Keyboard Back (macOS Backspace) acts on the page stack of the region that
   has focus: an aside page pops its own stack, never the main's.
-- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the side panel slot or
-  restores it (a slot with no room to dock comes back as an overlay, as from
-  its handle), wherever focus is (a page, shell chrome, a native panel);
+- Cmd+Option+\ (Windows Ctrl+Alt+\) collapses the lxapp aside slot or
+  restores it, wherever focus is (a page, shell chrome, a native panel);
   focus moves into the aside page when it returns and back to the main when
   it goes. Escape in a maximized aside's page, or in the shell, takes the
   aside back to its dock; it never collapses the aside.
@@ -933,9 +821,8 @@ for the `panel` slot they merged into.
   page's title, else its page name.
 - Browser "open in main browser" promotes and closes only the **current URL
   tab**; other browser-aside tabs stay. Closing the last tab closes the slot.
-- A browser tab active in the side panel offers history navigation and
-  refresh in a bar under the slot strip; its title tab, menu and close are
-  the strip's. It MUST NOT offer address editing or user-created tabs; a
+- A desktop browser slot offers history navigation, refresh, title tabs, and
+  slot dismissal. It MUST NOT offer address editing or user-created tabs; a
   skin MAY expose the current URL as read-only when space permits.
 
 ### 4.7 Window chrome
@@ -1092,12 +979,10 @@ semantics every language surface MUST share.
 
 - The selector is the method, not a field: `openDeclared` takes a declaration
   id, `openApp` an appId, `openPage` a page name, `openUrl` a URL. Provider
-  kinds such as YAML `lxapp` and `native` are not JS selectors. Every opener
-  lives on `lx.surface`, by subject. The calls that change shared composition —
-  `openApp`, and `openDeclared` with `key`, `as` or `edge` — are the Control
-  app's and are refused for other sessions at run time; the namespace is not
-  the privilege.
-- `lx.surface.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
+  kinds such as YAML `lxapp` and `native` are not JS selectors. Composition —
+  choosing `as`, or opening another lxapp — lives on `lx.shell`; an lxapp's own
+  presentations live on `lx.surface`.
+- `lx.shell.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
   multiple instances; currently this is supported by instantiable native
@@ -1113,11 +998,11 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.surface.openApp(appId, { as?, page?, params?, channel?, targetVersion?,
-  edge? }?)` ensures a dynamic business-app Surface: it creates, focuses or
-  migrates one and does not require a YAML declaration. `as` is `main` or
-  `aside`; omitted, a live app keeps its role and a closed one opens in main.
-  A float lxapp must be host-declared and opened with
+- `lx.shell.openApp(appId, { as, page?, query?, channel?, targetVersion?,
+  edge? })` creates or focuses a dynamic business-app Surface and
+  does not require a YAML declaration. `as` is required because the caller is
+  creating shell composition rather than using declaration defaults; it is
+  `main` or `aside`. A float lxapp must be host-declared and opened with
   `{ surface }` so its tray anchor, dismissal policy, and presentation contract
   exist. `page` is the configured page name; full routes are not JS API input.
   `query`, `channel`, and `targetVersion` are optional startup inputs, and
@@ -1131,21 +1016,11 @@ semantics every language surface MUST share.
   or its page stack; a `page` or `query` on that call is delivered to its Logic
   as App `onShow` (`reason: 'switch_back'`, `path`, `query`). A notification or
   menu `app` target that names an lxapp docked as an aside brings that aside
-  back and delivers the same way, instead of failing to take main. An `as`
-  naming the other role migrates the live app in place — the same move as a
-  sidebar drop or Pin (§4.2): Logic, page stack and WebViews survive, and
-  `page` / `query` still arrive as App `onShow`. The stable root main rejects
-  with `E_SURFACE_ROLE_LOCKED`; an app live only inside another Surface's app
-  navigation rejects with `E_SURFACE_CONFLICT`; a host that cannot move a live
-  app (iOS, Android, HarmonyOS) rejects with `E_NOT_SUPPORTED` before any state
-  changes. An invalid `page` or a `channel` other than the live one rejects
-  before the move, leaving the app where it was.
+  back and delivers the same way, instead of failing to take main. A live
+  main/aside role change through the API fails with `E_SURFACE_CONFLICT`;
+  close it before reopening in the other role. Only the user promotes a live
+  aside to main (sidebar drop or Pin, §4.2).
   It returns a lifecycle handle and, when main, owns an independent switcher item.
-- One live lxapp Surface has one handle, an `AppSurface`. `openApp`,
-  `lx.shell.getApp(appId)` (declared or not), and `openDeclared` /
-  `getDeclared` of the declaration that shows it (an lxapp declaration's id is
-  its appId) all return that same object; a declaration whose app is not live
-  returns `undefined` from `getDeclared`.
 - `lx.surface.openPage(page, options?)` opens the caller's own page as a float
   or standalone window. `lx.surface.openUrl(url, options?)` opens browser
   content; a URL without `as` becomes a main browser tab.
@@ -1170,16 +1045,16 @@ semantics every language surface MUST share.
 
 #### 7.1.1 App navigation versus App Surfaces
 
-`lx.nav.go({ app })` and `openSurface` solve different navigation levels:
+`navigateToApp` and `openSurface` solve different navigation levels:
 
 | Operation | Changes | Main switcher item | Back behavior | Result |
 |---|---|---|---|---|
-| `lx.nav.go({ app, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.nav.leaveApp()` pops to the previous app | `Promise<void>` |
-| `lx.surface.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
-| `lx.surface.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | the app's `AppSurface` |
+| `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
+| `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
+| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | `DeclaredSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
-`lx.nav.go({ app })`: the former is a parallel shell workspace with its own runtime
+`navigateToApp`: the former is a parallel shell workspace with its own runtime
 id, switcher lifecycle, role, and handle; the latter is sequential navigation
 inside the already-selected Surface and never creates or moves a shell item.
 The active app at the top of a navigation stack may change, but the owning
@@ -1194,27 +1069,22 @@ Surface, navigation fails with
 
 ### 7.2 Handles, messaging, and context
 
-- An open returns a handle bound to the runtime id, carrying the live
-  `realized` placement, visibility, and liveness, with show/hide/close and
-  lifecycle events per §2.1 (`onShow`/`onHide` carry `source`, `onClose`
-  `reason`). The runtime id is not exposed: `lx.shell.getApp(appId)`,
-  `lx.shell.getDeclared(id, key?)` and `lx.surface.get(key)` (the caller's
-  own pages and URLs) return the same handle object again. Automation reads
-  each runtime id's owner from `surfaceLayout().identities`. URL mains return
-  no handle. A medium/expanded URL aside uses
+- An open returns a handle bound to the runtime id, carrying role,
+  presentation, visibility, and liveness, with show/hide/close and lifecycle
+  events per §2.1. URL mains return no handle. A medium/expanded URL aside uses
   the generic surface graph and returns a tab-scoped visibility handle; its
   compact projection is owned by browser chrome and returns no handle.
 - lxapp and page surfaces support instance-bound messaging: messages address a
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
-- Content reads its context: content size class `compact` | `regular` and
-  `canDock` — whether the window has a dock region right now, never where the
-  content is shown; content is not told its own role or edge. The View also
-  gets the viewport in pixels on every change. Logic reads it per page
-  (`page.env`) and `page.env.watch` fires only when the size class or `canDock`
-  flips, never on a resize. Crossing the shell's 840 boundary MUST NOT by
-  itself change content `sizeClass`.
+- Content can subscribe to its surface context (content size class
+  `compact` | `regular`, viewport dimensions, and `canDock` — whether the
+  window has a dock region right now, never where the content is shown;
+  content is not told its own role or edge); the subscription fires
+  once immediately with the current value, then only on actual change.
+  Crossing the shell's 840 boundary MUST NOT by itself change content
+  `sizeClass`.
 
 ### 7.3 Shell writer
 
@@ -1226,9 +1096,7 @@ Shell chrome always has exactly one writer:
 - On a native-only host there is no home Logic; host Rust uses the semantically
   equivalent `lingxia::shell()` facade.
 - Both facades MUST share the state machines and errors of §2 and this
-  section. The writer declares sidebar actions (§4.5), sets the name and icon
-  the shell shows for its own app (`lx.shell.setAppDisplay`, ranked above the
-  registry and `lxapp.json`, kept per service env), and, under
+  section. The writer declares sidebar actions (§4.5) and, under
   `frameless + controls: content`, drives window controls
   (minimize/maximize/close/state); in other modes window-control calls fail
   with `E_NOT_SUPPORTED`.
@@ -1331,7 +1199,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Area | Status |
 |---|---|
 | Declaration-first JS open specs | Landed in generated types and runtime: `{ surface }`, `{ appId }`, `{ page }`, and `{ url }`; legacy `{ lxapp }` and `{ native }` selectors are rejected |
-| Aside slot model, unified slot tab chrome | Landed and live-verified (two slots: side panel + native; mixed lxapp/browser tabs; strip visible at n=1; per-tab "···"/right-click menu) |
+| Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
 | Sidebar/tabbar parity | 148 (macOS) / 184 (Windows) width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
@@ -1364,8 +1232,8 @@ lowercase keys). Synonyms are not allowed.
 | YAML provider content | `lxapp / page / url / native` | not exposed as provider selectors | `ContentKey` enum | render |
 | open selector | `surface / app_id / page / url` | `surface / appId / page / url` | typed open-spec variants | native, lxapp |
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
-| runtime id | `surface_id` | not exposed to Logic; automation `surfaceLayout().identities` keys | `SurfaceId` | — |
-| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app }) / nav.leaveApp` | same roots | navigateToLxApp, openApp |
+| runtime id | `surface_id` | `handle.id` | `SurfaceId` | — |
+| app navigation | `navigate_to_app / navigate_back_app` | `navigateToApp / navigateBackApp` | same roots | navigateToLxApp, openApp |
 | session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | never conflated with runtime id |
 | role | `role` | `SurfaceRole` | `SurfaceRole` | mode, kind |
 | presentation | `presentation` | `SurfacePresentation` | `Presentation` | form, style |

@@ -30,6 +30,7 @@ pub fn browser_tab_menu(rows: &[MainRow], tab_id: &str) -> Option<SurfaceMenuSna
             has_other_closable: false,
             has_closable_before: false,
             has_closable_after: false,
+            movable_to_aside: false,
         }
         .with_rows(rows),
         browser_tab_menu_parts(

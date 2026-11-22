@@ -5,90 +5,70 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::SurfaceId;
 
-/// Shell available-width band. Aligned to Material breakpoints and computed
-/// from the full client-area width, not the physical screen. `Ord` follows
-/// the declared order (Compact < Medium < Expanded). Content sees
-/// [`ContentSizeClass`] instead.
+/// Unified available-width band for both shell and content.
+/// Compact `< 600 dp`, Regular `>= 600 dp` (with `±24 dp` hysteresis).
+/// `Ord` follows the declared order (`Compact < Regular`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
     Compact,
-    Medium,
-    Expanded,
+    Regular,
 }
 
-/// Compact `< 600`, Medium `600..=840`, Expanded `> 840`.
+/// Compact `< 600`, Regular `>= 600`.
 pub const COMPACT_MAX: f64 = 600.0;
-pub const MEDIUM_MAX: f64 = 840.0;
 /// Default hysteresis margin to avoid breakpoint thrashing.
 pub const DEFAULT_HYSTERESIS: f64 = 24.0;
+/// Expanded left sidebar width in logical dp/pt.
+pub const SIDEBAR_EXPANDED_WIDTH: f64 = 220.0;
+/// Collapsed icon rail width in logical dp/pt.
+pub const SIDEBAR_RAIL_WIDTH: f64 = 56.0;
+/// Minimum free width (`window_width - visible_aside_width`) required to keep
+/// the expanded sidebar without squeezing the main pane below `600 dp`.
+pub const SIDEBAR_EXPAND_MIN_FREE_WIDTH: f64 = SIDEBAR_EXPANDED_WIDTH + COMPACT_MAX;
+
+/// Physical fold posture reported by the host platform's window manager.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DevicePosture {
+    Flat,
+    HalfOpened,
+}
+
+/// Orientation of a physical display hinge/crease.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HingeOrientation {
+    Vertical,
+    Horizontal,
+}
+
+/// Physical hinge/crease geometry intersecting a window or page canvas,
+/// in local logical dp/pt coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HingeRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub orientation: HingeOrientation,
+    pub posture: DevicePosture,
+}
 
 impl SizeClass {
     pub fn from_width(width: f64) -> Self {
         if width < COMPACT_MAX {
             SizeClass::Compact
-        } else if width <= MEDIUM_MAX {
-            SizeClass::Medium
         } else {
-            SizeClass::Expanded
+            SizeClass::Regular
         }
     }
 
     /// Resolve with hysteresis: only switch class when `width` clears the
-    /// boundary by `margin`, otherwise keep `prev` (prevents edge flicker).
+    /// `600 dp` boundary by `margin`, otherwise keep `prev` (prevents edge flicker).
     pub fn resolve(prev: Option<SizeClass>, width: f64, margin: f64) -> Self {
         let raw = SizeClass::from_width(width);
-        let Some(prev) = prev else { return raw };
-        if prev == raw {
-            return prev;
-        }
-        // Only an adjacent transition shares a hysteresis boundary. A jump
-        // across two classes must converge immediately.
-        let boundary =
-            match (prev, raw) {
-                (SizeClass::Compact, SizeClass::Medium)
-                | (SizeClass::Medium, SizeClass::Compact) => Some(COMPACT_MAX),
-                (SizeClass::Medium, SizeClass::Expanded)
-                | (SizeClass::Expanded, SizeClass::Medium) => Some(MEDIUM_MAX),
-                _ => None,
-            };
-        if boundary.is_some_and(|boundary| (width - boundary).abs() < margin) {
-            prev
-        } else {
-            raw
-        }
-    }
-
-    /// Author-facing content class: shell `medium` and `expanded` collapse to
-    /// `regular`.
-    pub fn to_content(self) -> ContentSizeClass {
-        ContentSizeClass::from(self)
-    }
-}
-
-/// Viewport band exposed to lxapp content via the View `env` and Logic `page.env`.
-/// Compact `< 600`; Regular `≥ 600`. Shell `medium`/`expanded` are not
-/// distinct values here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ContentSizeClass {
-    Compact,
-    Regular,
-}
-
-impl ContentSizeClass {
-    pub fn from_width(width: f64) -> Self {
-        if width < COMPACT_MAX {
-            ContentSizeClass::Compact
-        } else {
-            ContentSizeClass::Regular
-        }
-    }
-
-    /// Hysteresis only at the compact boundary. Crossing 840 must not flip
-    /// this class.
-    pub fn resolve(prev: Option<Self>, width: f64, margin: f64) -> Self {
-        let raw = Self::from_width(width);
         let Some(prev) = prev else { return raw };
         if prev == raw {
             return prev;
@@ -102,17 +82,8 @@ impl ContentSizeClass {
 
     pub fn as_str(self) -> &'static str {
         match self {
-            ContentSizeClass::Compact => "compact",
-            ContentSizeClass::Regular => "regular",
-        }
-    }
-}
-
-impl From<SizeClass> for ContentSizeClass {
-    fn from(value: SizeClass) -> Self {
-        match value {
-            SizeClass::Compact => ContentSizeClass::Compact,
-            SizeClass::Medium | SizeClass::Expanded => ContentSizeClass::Regular,
+            SizeClass::Compact => "compact",
+            SizeClass::Regular => "regular",
         }
     }
 }
@@ -299,6 +270,24 @@ pub struct PlanAsideSlot {
     pub maximized: bool,
 }
 
+/// Single-column unified multi-tab aside slot merging lxapp, browser, and native
+/// asides in open order (used by adaptive shells on foldable, pad, and desktop).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanUnifiedAsideSlot {
+    /// Tab order = open order across all aside kinds.
+    pub tabs: Vec<SurfaceId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_tab: Option<SurfaceId>,
+    pub visible: bool,
+    #[serde(default)]
+    pub overlay: bool,
+    #[serde(default)]
+    pub collapsed: bool,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
 impl LayoutPresentationPlan {
     /// Whether a skin that last applied the plan with `last_applied` should
     /// apply this one. Commits are applied in sequence order: a plan is never
@@ -367,10 +356,17 @@ pub struct LayoutPresentationPlan {
     /// stays for skins that have not migrated yet.
     #[serde(default)]
     pub aside_slots: Vec<PlanAsideSlot>,
+    /// Unified single-column multi-tab aside slot merging all live aside kinds
+    /// in open order for responsive shells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unified_aside_slot: Option<PlanUnifiedAsideSlot>,
     /// Floats currently open: popups above the layout (never in the tree),
     /// each carrying its render-relevant `FloatSpec` semantics.
     pub floats: Vec<PlanFloat>,
     /// The full authoritative layout tree (ids only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tree: Option<LayoutTree>,
+    /// Physical hinge/crease geometry intersecting the window, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hinge: Option<HingeRect>,
 }

@@ -34,6 +34,8 @@ pub struct SurfaceManager {
     maximized_slot: Option<crate::SlotKind>,
     /// Sequence of the last plan handed out by [`Self::commit_plan`].
     plan_sequence: u64,
+    /// Physical hinge/crease geometry reported by the host window manager.
+    hinge: Option<crate::layout::HingeRect>,
 }
 
 impl SurfaceManager {
@@ -55,6 +57,7 @@ impl SurfaceManager {
             overlay_fallback_surface_id: None,
             maximized_slot: None,
             plan_sequence: 0,
+            hinge: None,
         }
     }
 
@@ -66,6 +69,16 @@ impl SurfaceManager {
     }
     pub fn width(&self) -> f64 {
         self.width
+    }
+    pub fn hinge(&self) -> Option<crate::layout::HingeRect> {
+        self.hinge
+    }
+    pub fn set_hinge(&mut self, hinge: Option<crate::layout::HingeRect>) -> bool {
+        if self.hinge == hinge {
+            return false;
+        }
+        self.hinge = hinge;
+        true
     }
 
     fn workspace_width(&self) -> f64 {
@@ -617,7 +630,10 @@ impl SurfaceManager {
 
     /// Derive the platform-agnostic layout output at the current size.
     pub fn derive(&self) -> DerivedLayout {
-        self.graph.derive_layout(self.size_class)
+        let mut derived = self.graph.derive_layout(self.size_class);
+        // The graph alone does not know the window; the plan measures the sidebar budget.
+        derived.switcher_form = self.presentation_plan().switcher_form;
+        derived
     }
 
     /// The plan to present now, stamped with the next commit sequence. Build
@@ -636,9 +652,13 @@ impl SurfaceManager {
     /// admission respects both the size-class ceiling and the physical fit at
     /// the current width (§3.3).
     pub fn presentation_plan(&self) -> LayoutPresentationPlan {
-        let mut plan =
-            self.graph
-                .presentation_plan(self.size_class, self.workspace_width(), &self.policy);
+        let mut plan = self.graph.presentation_plan(
+            self.size_class,
+            self.width,
+            self.workspace_width(),
+            &self.policy,
+        );
+        plan.hinge = self.hinge;
         plan.main_switcher = self.switcher_snapshot();
         if self.size_class == SizeClass::Compact {
             for slot in plan.aside_slots.iter_mut().filter(|slot| slot.visible) {
@@ -671,6 +691,26 @@ impl SurfaceManager {
             slot.maximized = true;
             slot.overlay = true;
         }
+        // Keep unified_aside_slot in sync with overlay-fallback & maximize mutations.
+        if let Some(unified) = plan.unified_aside_slot.as_mut() {
+            unified.visible = plan.aside_slots.iter().any(|slot| slot.visible);
+            unified.collapsed =
+                !plan.aside_slots.is_empty() && plan.aside_slots.iter().all(|slot| slot.collapsed);
+            unified.overlay = self.size_class == SizeClass::Compact
+                || plan
+                    .aside_slots
+                    .iter()
+                    .any(|slot| slot.visible && slot.overlay);
+            unified.maximized = plan
+                .aside_slots
+                .iter()
+                .any(|slot| slot.visible && slot.maximized);
+            if let Some(id) = self.overlay_fallback_surface_id.as_ref()
+                && unified.tabs.contains(id)
+            {
+                unified.active_tab = Some(id.clone());
+            }
+        }
         plan
     }
 }
@@ -701,7 +741,7 @@ mod tests {
         // (a click on main), the slot is hidden.
         m.set_width(700.0);
         m.set_sidebar_width(184.0);
-        assert_eq!(m.size_class(), SizeClass::Medium);
+        assert_eq!(m.size_class(), SizeClass::Regular);
         m.set_active_main("home");
         let hidden = m.presentation_plan();
         let slot = hidden
@@ -739,7 +779,7 @@ mod tests {
     #[test]
     fn open_then_derive_on_expanded() {
         let mut m = SurfaceManager::new(1200.0);
-        assert_eq!(m.size_class(), SizeClass::Expanded);
+        assert_eq!(m.size_class(), SizeClass::Regular);
         assert_eq!(m.open(main_s("home")), Decision::Accepted);
         assert_eq!(
             m.open(aside_s("assistant", Edge::Right)),
@@ -1115,7 +1155,7 @@ mod tests {
         // Both widths are Expanded. After the full sidebar is allocated, only
         // one horizontal slot fits at a 900-wide client area.
         assert!(!manager.set_width(900.0));
-        assert_eq!(manager.size_class(), SizeClass::Expanded);
+        assert_eq!(manager.size_class(), SizeClass::Regular);
         assert_eq!(
             manager
                 .presentation_plan()
@@ -1248,7 +1288,7 @@ mod tests {
         let mut m = SurfaceManager::new(1200.0);
         // small nudge that stays expanded → no change reported.
         assert!(!m.set_width(900.0));
-        assert_eq!(m.size_class(), SizeClass::Expanded);
+        assert_eq!(m.size_class(), SizeClass::Regular);
         // drop to phone width → flips to compact.
         assert!(m.set_width(390.0));
         assert_eq!(m.size_class(), SizeClass::Compact);
@@ -1334,5 +1374,51 @@ mod tests {
 
         assert_eq!(m.switcher_snapshot().revision, revision);
         assert_eq!(m.graph().role_of("home"), Some(Role::Main));
+    }
+
+    #[test]
+    fn demoting_non_root_main_moves_it_to_aside_and_preserves_root() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(main_s("orders"));
+        m.set_active_main("orders");
+
+        // Root cannot be demoted.
+        assert!(!m.demote_main_to_aside("home", Some(Edge::Right)));
+        assert_eq!(m.graph().role_of("home"), Some(Role::Main));
+
+        // Non-root main moves cleanly into the right aside slot.
+        assert!(m.demote_main_to_aside("orders", Some(Edge::Right)));
+        assert_eq!(m.graph().role_of("orders"), Some(Role::Aside));
+        assert_eq!(m.graph().active_main_id.as_deref(), Some("home"));
+        assert!(
+            m.presentation_plan()
+                .aside_slots
+                .iter()
+                .any(|slot| slot.children.contains(&"orders".to_string()))
+        );
+        assert!(m.graph().is_valid());
+    }
+
+    #[test]
+    fn sidebar_auto_collapses_to_rail_when_free_width_is_below_820() {
+        // 784dp unfolded foldable: Regular (< 820 free width) -> 56dp Rail.
+        let mut m = SurfaceManager::new(784.0);
+        m.open(main_s("home"));
+        m.open(main_s("chat"));
+        assert_eq!(m.size_class(), SizeClass::Regular);
+        assert_eq!(m.presentation_plan().switcher_form, SwitcherForm::Rail);
+
+        // 1024dp Pad without aside: free_width 1024 >= 820 -> expanded Sidebar.
+        m.set_width(1024.0);
+        assert_eq!(m.presentation_plan().switcher_form, SwitcherForm::Sidebar);
+
+        // Opening a 360dp right aside on 1024dp Pad leaves 664 < 820 -> auto-collapses to Rail.
+        m.open(aside_s("orders", Edge::Right));
+        assert_eq!(m.presentation_plan().switcher_form, SwitcherForm::Rail);
+
+        // Widening to 1280dp desktop leaves 920 >= 820 -> expands Sidebar again.
+        m.set_width(1280.0);
+        assert_eq!(m.presentation_plan().switcher_form, SwitcherForm::Sidebar);
     }
 }

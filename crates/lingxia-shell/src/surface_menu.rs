@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SurfaceMenuBuiltinAction {
+    MoveToAside,
     Rename,
     ResetTitle,
     /// Closes a tab-like row: "Close Tab".
@@ -217,6 +218,8 @@ pub struct SurfaceMenuContext {
     pub revision: u64,
     pub surface_id: String,
     pub closable: bool,
+    /// The surface can dock as an aside here: false in compact, where an aside covers the main.
+    pub movable_to_aside: bool,
     pub renameable: bool,
     pub title_overridden: bool,
     pub has_other_closable: bool,
@@ -278,6 +281,12 @@ pub fn compose_surface_menu_parts(
     }
 
     let mut management = Vec::new();
+    if context.closable && context.movable_to_aside {
+        management.push(SurfaceMenuItem::built_in(
+            SurfaceMenuBuiltinAction::MoveToAside,
+            SurfaceMenuItemRole::Normal,
+        ));
+    }
     if context.renameable {
         management.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::Rename,
@@ -380,6 +389,7 @@ mod tests {
                 revision: 7,
                 surface_id: "home".into(),
                 closable: false,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: true,
@@ -415,6 +425,7 @@ mod tests {
                 revision: 9,
                 surface_id: "terminal".into(),
                 closable: true,
+                movable_to_aside: false,
                 renameable: true,
                 title_overridden: true,
                 has_other_closable: true,
@@ -447,6 +458,7 @@ mod tests {
                 revision: 10,
                 surface_id: "middle".into(),
                 closable: true,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: true,
@@ -483,6 +495,7 @@ mod tests {
                 revision: 3,
                 surface_id: "home".into(),
                 closable: false,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: false,
@@ -529,6 +542,7 @@ mod tests {
                 has_other_closable: true,
                 has_closable_before: true,
                 has_closable_after: true,
+                movable_to_aside: false,
             },
             SurfaceMenuParts {
                 content: vec![vec![SurfaceMenuItem::lxapp(
@@ -589,6 +603,7 @@ mod tests {
             has_other_closable: false,
             has_closable_before: false,
             has_closable_after: false,
+            movable_to_aside: false,
         }
         .with_rows(&rows);
         assert!(context.has_other_closable);

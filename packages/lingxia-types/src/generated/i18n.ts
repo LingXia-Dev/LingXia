@@ -172,6 +172,7 @@ export const I18N_KEYS = [
   "surface_close",
   "surface_close_after",
   "surface_close_others",
+  "surface_move_to_aside",
   "surface_rename",
   "surface_reset_title",
   "tabbar_more",

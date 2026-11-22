@@ -326,8 +326,11 @@ pub(super) const SHELL_TEXT_POINT_SIZE: i32 = 9;
 
 pub(super) const SHELL_TEXT_WEIGHT: i32 = 400;
 
+/// A docked left/right aside's width; the sidebar budget subtracts it too.
+pub(super) const ATTACHED_PANEL_WIDTH_DIP: i32 = 380;
+
 pub(super) fn attached_panel_width() -> i32 {
-    crate::dpi::px(380)
+    crate::dpi::px(ATTACHED_PANEL_WIDTH_DIP)
 }
 
 pub(super) fn attached_panel_bottom_height() -> i32 {
@@ -464,6 +467,14 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
             return client;
         };
         compute_chrome_rects(client, layout).content
+    }
+
+    fn bottom_tab_bar(&self, layout: &WindowsWindowLayout) -> bool {
+        shell_layout(layout).is_none_or(|layout| {
+            layout.tab_bar.as_ref().is_some_and(|tabbar| {
+                tabbar.visible && matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+            })
+        })
     }
 
     fn attached_layout(

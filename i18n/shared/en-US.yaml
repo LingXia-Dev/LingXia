@@ -122,6 +122,7 @@ surface:
   close: "Close Tab"
   close_others: "Close Others"
   close_after: "Close Below"
+  move_to_aside: "Move to Aside"
 
 # Store-channel host update prompt (auto-flow + Android SDK dialog)
 update:
