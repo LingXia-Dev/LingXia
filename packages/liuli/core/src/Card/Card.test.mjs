@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Variants: a plain view with the container radius, not a control', async () => {
   const screen = await renderExample('Card/Card', 'Variants');
@@ -25,7 +25,8 @@ test('Choice: the cards are a radio group named by its label; pressing one check
   assert.equal(group.props.accessibilityLabel, 'Plan');
   assert.equal(card('monthly').tag, 'button');
   assert.equal(card('monthly').props.role, 'radio');
-  assert.equal(card('yearly').props.accessibilityLabel, 'Yearly, €40 a year');
+  assert.equal(card('yearly').props.accessibilityLabel, 'Yearly');
+  assert.deepEqual(described(screen, card('yearly')), ['€40 a year']);
   assert.equal(card('monthly').props.stateChecked, 1);
   assert.equal(card('yearly').props.stateChecked, 0);
   assert.equal(card('monthly').props.stateSelected, undefined);
@@ -63,4 +64,12 @@ test('Floating: the raised surface under the raised shadow, with a fainter edge'
   const card = (await renderExample('Card/Card', 'Floating')).getByTestId('floating');
   assert.deepEqual([card.props.background, card.props.borderColor], ['surface-raised', 'text/8']);
   assert.equal(JSON.parse(card.props.boxShadow)[1].blur, 24);
+});
+
+test('Choice: a card is named by its plan and described by its price', async () => {
+  const screen = await renderExample('Card/Card', 'Choice');
+  const card = screen.queryAll(node => node.testId?.startsWith('plan-'))[0];
+  assert.equal(described(screen, card).length, 1);
+  assert.notEqual(described(screen, card)[0], '');
+  assert.ok(!card.props.accessibilityLabel.includes(described(screen, card)[0]), 'the price is the description, not part of the name');
 });

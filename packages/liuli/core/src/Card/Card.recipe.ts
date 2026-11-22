@@ -1,6 +1,6 @@
 import type { CardPadding, CardVariant } from './Card';
 
-export const cardParts = { root: 'view', group: 'view' } as const;
+export const cardParts = { root: 'view', description: 'text', group: 'view' } as const;
 
 /** Card classes. ClickableCard lands the same root classes on a `button`, plus `pressable`. */
 export const cardRecipe = {
@@ -25,6 +25,10 @@ export const cardRecipe = {
     selected: 'border-accent ring-1 ring-accent',
   },
   /** ClickableCardGroup's radio group; the caller's className lays the cards out. */
+  /** ClickableCard's `description`: read after the name, never drawn; the card's content shows it. */
+  description: {
+    base: 'sr-only',
+  },
   group: {
     base: 'gap-3',
   },

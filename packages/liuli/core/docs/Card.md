@@ -101,7 +101,8 @@ export function Choice() {
         <ClickableCard
           key={item.id}
           value={item.id}
-          label={`${item.name}, ${item.price}`}
+          label={item.name}
+          description={item.price}
           className="grow basis-0"
           data-testid={`plan-${item.id}`}
         >
@@ -134,6 +135,7 @@ export function Choice() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 | `label` (required) | `string` |  | The accessible name: a short summary of the card, since its content is not read separately. |
+| `description` | `string` |  | Read after the name, not drawn: the detail the card shows that the name leaves out, such as a price or a count. |
 | `isDisabled` | `boolean` | `false` |  |
 | `onClick` | `(() => void) \| (() => void)` |  | Runs after the group's choice. |
 | `isSelected` | `boolean` | `false` | Marks the card as the chosen one among several; reported as selected. |
@@ -172,7 +174,7 @@ export function Choice() {
 
 - Pattern: button.
 - Name: label.
-- Description: none.
+- Description: description (ClickableCard).
 - States: selected (from isSelected (ClickableCard)); checked (from the group's value or bind (ClickableCard in a ClickableCardGroup)); disabled (from isDisabled (ClickableCard)).
 - Up / Left, Down / Right: In a ClickableCardGroup: the previous or next card, chosen on arrival..
 - Card is not a control; its content is read in order. The button pattern applies to ClickableCard.

@@ -94,7 +94,7 @@ import { Said } from '../example';
 import { Item } from '@liulidesign/core/Item';
 import { Badge } from '@liulidesign/core/Badge';
 
-/** In a pressable row the end content is not read, so the status is repeated in the description. */
+/** In a pressable row the badge is read after the second line, as part of the row's description. */
 export function InARow() {
   return (
     <Said>
@@ -102,7 +102,7 @@ export function InARow() {
         <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
           <Item
             label="Invoice 2041"
-            description="Overdue, due 3 May"
+            description="Due 3 May"
             endContent={<Badge label="Overdue" tone="danger" size="sm" />}
             hasChevron
             onClick={() => say('Opened Invoice 2041')}
@@ -191,7 +191,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Say the status in the label; the colour only repeats it.
 - Do: Keep one solid badge per view at most.
-- Do: In a pressable Item, repeat the status in the row description; the end content is not read there.
+- Do: In a pressable Item the badge is read after the row's second line, so the second line need not repeat it.
 - Do: At large text, the pill grows taller with its label; keep the label to a word or two.
 - Don't: Make a badge pressable; use a Button or a row.
 - Don't: Use a badge for a count on an icon; that needs its own placement and name.

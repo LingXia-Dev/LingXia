@@ -54,7 +54,8 @@ export function Choice() {
         <ClickableCard
           key={item.id}
           value={item.id}
-          label={`${item.name}, ${item.price}`}
+          label={item.name}
+          description={item.price}
           className="grow basis-0"
           data-testid={`plan-${item.id}`}
         >

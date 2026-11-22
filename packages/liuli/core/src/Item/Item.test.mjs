@@ -184,3 +184,24 @@ test('a flush list has no border, corners or fill of its own; a list otherwise h
   assert.deepEqual(edge(screen.getByTestId('framed')), [1, 14, 'surface']);
   assert.deepEqual(edge(screen.getByTestId('flush')), [undefined, undefined, undefined]);
 });
+
+test('Selection: a pressable row is named by its label and described by its end value, which is not read twice', async () => {
+  const screen = await renderExample('Item/Item', 'Selection');
+  const row = screen.queryAll(node => node.testId?.startsWith('mailbox-') && described(screen, node).length > 0)[0];
+  assert.ok(row, 'a mailbox with a count');
+  const [value] = described(screen, row);
+  assert.match(value, /^\d+$/);
+  const end = screen.queryAll(node => node.props.elementId === row.props.ariaDescribedBy.split(' ').at(-1))[0];
+  assert.equal(end.props.accessibilityHidden, 1, 'the value is read as the description, not as a node of its own');
+});
+
+test('the second line comes first, then the end value; a value alone is the whole description', async () => {
+  const screen = await renderPage(`
+    import { Item, ItemList } from '@liulidesign/core/Item';
+    export function render() {
+      return <page><ItemList label="Network"><Item label="Fixed addresses" description="Kept for these devices" endContent={<text>1 device</text>} onClick={() => {}} data-testid="fixed" /><Item label="Fixed addresses" endContent={<text>1 device</text>} onClick={() => {}} data-testid="value-only" /></ItemList></page>;
+    }
+  `);
+  assert.deepEqual(described(screen, screen.getByTestId('fixed')), ['Kept for these devices', '1 device']);
+  assert.deepEqual(described(screen, screen.getByTestId('value-only')), ['1 device'], 'a value alone: "Fixed addresses, 1 device"');
+});

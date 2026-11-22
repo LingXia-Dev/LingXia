@@ -267,7 +267,7 @@ export function Compact() {
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `startIcon` | `IconRef` |  | An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. |
-| `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. |
+| `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. On a pressable row its text is read after the second line, as the row's description. |
 | `density` | `ItemDensity` |  | The row's height and padding. By default the ItemList's, else `comfortable`. |
 | `swipeActions` | `readonly ItemSwipeAction[]` |  | Up to three actions behind the row's end, shown by dragging the row toward its start. A screen reader offers them as the row's actions; with a keyboard the arrow keys open the row. |
 | `className` | `string` |  |  |
@@ -329,7 +329,7 @@ export function Compact() {
 
 - Pattern: button.
 - Name: label.
-- Description: description, or disabledMessage while disabled.
+- Description: description, or disabledMessage while disabled, then then the text of endContent, on a pressable row.
 - States: disabled (from isDisabled); selected (from isSelected).
 - Left and Right: On a row with `swipeActions`: opens and closes the row; Tab then reaches the actions.
 - Press target: md 40 px, lg 48 px.
@@ -369,7 +369,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.
 - Don't: Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.
 - Don't: Use a row for a single action; that is a Button.
-- Don't: Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.
+- Don't: Repeat the end value in `description`; on a pressable row it is read after the second line, so it would be said twice.
 
 ## Not yet
 

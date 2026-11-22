@@ -53,7 +53,7 @@ export function Sizes() {
   );
 }
 
-/** In a pressable row the end content is not read, so the status is repeated in the description. */
+/** In a pressable row the badge is read after the second line, as part of the row's description. */
 export function InARow() {
   return (
     <Said>
@@ -61,7 +61,7 @@ export function InARow() {
         <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
           <Item
             label="Invoice 2041"
-            description="Overdue, due 3 May"
+            description="Due 3 May"
             endContent={<Badge label="Overdue" tone="danger" size="sm" />}
             hasChevron
             onClick={() => say('Opened Invoice 2041')}

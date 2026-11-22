@@ -36,7 +36,7 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'button',
     name: 'label',
-    description: ['description, or disabledMessage while disabled'],
+    description: ['description, or disabledMessage while disabled', 'then the text of endContent, on a pressable row'],
     states: [{ state: 'disabled', from: 'isDisabled' }, { state: 'selected', from: 'isSelected' }],
     keyboard: [
       { keys: 'Left and Right', effect: 'On a row with `swipeActions`: opens and closes the row; Tab then reaches the actions' },
@@ -79,7 +79,7 @@ export const doc: ComponentDoc = {
     dont: [
       'Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.',
       'Use a row for a single action; that is a Button.',
-      'Rely on the end value alone on a pressable row; it is not read, so repeat it in `description` when it matters.',
+      'Repeat the end value in `description`; on a pressable row it is read after the second line, so it would be said twice.',
     ],
   },
   examples: [

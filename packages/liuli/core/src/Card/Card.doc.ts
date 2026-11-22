@@ -21,7 +21,7 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'button',
     name: 'label',
-    description: [],
+    description: ['description (ClickableCard)'],
     states: [
       { state: 'selected', from: 'isSelected (ClickableCard)' },
       { state: 'checked', from: 'the group\'s value or bind (ClickableCard in a ClickableCardGroup)' },

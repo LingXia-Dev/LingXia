@@ -765,7 +765,7 @@
         {
           "name": "InARow",
           "title": "At the end of a row",
-          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the end content is not read, so the status is repeated in the description. */\nexport function InARow() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item\n            label=\"Invoice 2041\"\n            description=\"Overdue, due 3 May\"\n            endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n            hasChevron\n            onClick={() => say('Opened Invoice 2041')}\n            data-testid=\"invoice\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the badge is read after the second line, as part of the row's description. */\nexport function InARow() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item\n            label=\"Invoice 2041\"\n            description=\"Due 3 May\"\n            endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n            hasChevron\n            onClick={() => say('Opened Invoice 2041')}\n            data-testid=\"invoice\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -2622,6 +2622,12 @@
             "description": "The accessible name: a short summary of the card, since its content is not read separately."
           },
           {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "Read after the name, not drawn: the detail the card shows that the name leaves out, such as a price or a count."
+          },
+          {
             "name": "isDisabled",
             "type": "boolean",
             "required": false,
@@ -2702,12 +2708,15 @@
       },
       "parts": {
         "root": "view",
+        "description": "text",
         "group": "view"
       },
       "accessibility": {
         "pattern": "button",
         "name": "label",
-        "description": [],
+        "description": [
+          "description (ClickableCard)"
+        ],
         "states": [
           {
             "state": "selected",
@@ -2764,7 +2773,7 @@
         {
           "name": "Choice",
           "title": "Choosing one card of several",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */\nexport function Choice() {\n  const plan = useLocal<string | null>('plan', 'monthly');\n  return (\n    <ClickableCardGroup label=\"Plan\" bind={plan} className=\"flex-row\" data-testid=\"plans\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          value={item.id}\n          label={`${item.name}, ${item.price}`}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </ClickableCardGroup>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */\nexport function Choice() {\n  const plan = useLocal<string | null>('plan', 'monthly');\n  return (\n    <ClickableCardGroup label=\"Plan\" bind={plan} className=\"flex-row\" data-testid=\"plans\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          value={item.id}\n          label={item.name}\n          description={item.price}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </ClickableCardGroup>\n  );\n}"
         }
       ],
       "gaps": [
@@ -9674,7 +9683,7 @@
           "name": "endContent",
           "type": "Child",
           "required": false,
-          "description": "After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button."
+          "description": "After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. On a pressable row its text is read after the second line, as the row's description."
         },
         {
           "name": "density",
@@ -9813,7 +9822,8 @@
         "pattern": "button",
         "name": "label",
         "description": [
-          "description, or disabledMessage while disabled"
+          "description, or disabledMessage while disabled",
+          "then the text of endContent, on a pressable row"
         ],
         "states": [
           {

@@ -57,7 +57,7 @@ export type ItemProps = ItemAction & {
   startContent?: Child;
   /** An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. */
   startIcon?: IconRef;
-  /** After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. */
+  /** After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. On a pressable row its text is read after the second line, as the row's description. */
   endContent?: Child;
   /** The row's height and padding. By default the ItemList's, else `comfortable`. */
   density?: ItemDensity;
@@ -84,6 +84,7 @@ export function Item(props: ItemProps) {
   const baseId = useId();
   const open = useLocal('open', 0);
   const descriptionId = `${baseId}-description`;
+  const valueId = `${baseId}-value`;
   const isDisabled = props.isDisabled ?? false;
   const help = isDisabled && props.disabledMessage !== undefined ? props.disabledMessage : description;
   const pressable = props.onClick !== undefined;
@@ -96,7 +97,7 @@ export function Item(props: ItemProps) {
         <text className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected)}>{label}</text>
         {help !== undefined && <text id={pressable ? descriptionId : undefined} className={r.description.base}>{help}</text>}
       </view>
-      {endContent !== undefined && <view aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
+      {endContent !== undefined && <view id={pressable ? valueId : undefined} aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
       {props.hasChevron && <Glyph name="chevron-end" className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
     </>
   );
@@ -105,7 +106,7 @@ export function Item(props: ItemProps) {
   const row = !pressable ? <view data-testid={testId} {...dataOf(props)} className={cx(root, actions.length === 0 && className)}>{content}</view> : (
     <button
       aria-label={label}
-      aria-describedby={describedBy(help !== undefined && descriptionId)}
+      aria-describedby={describedBy(help !== undefined && descriptionId, endContent !== undefined && valueId)}
       aria-selected={props.isSelected}
       disabled={isDisabled}
       onClick={props.onClick}

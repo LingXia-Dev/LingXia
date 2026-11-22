@@ -28,11 +28,11 @@ test('Sizes: heights 20 and 24 at the least, grown by the label at large text; t
   assert.equal(icon.length, 1);
 });
 
-test('InARow: the row is read as its label and description; the badge is drawn only', async () => {
+test('InARow: the row is read as its label, then its second line and the badge', async () => {
   const screen = await renderExample('Badge/Badge', 'InARow');
   const row = screen.getByTestId('invoice');
   assert.equal(row.props.accessibilityLabel, 'Invoice 2041');
-  assert.deepEqual(described(screen, row), ['Overdue, due 3 May']);
+  assert.deepEqual(described(screen, row), ['Due 3 May', 'Overdue']);
 });
 
 test('Tones: info is its own family, soft and solid', async () => {

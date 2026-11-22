@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, type Child, type Local } from '@lingxia/view';
+import { createContext, cx, useContext, useId, type Child, type Local } from '@lingxia/view';
 import { cardRecipe as r } from './Card.recipe';
 import { dataOf } from '../internal/data';
 
@@ -35,6 +35,8 @@ const Group = createContext<GroupState | null>(null);
 export type ClickableCardProps = CardProps & {
   /** The accessible name: a short summary of the card, since its content is not read separately. */
   label: string;
+  /** Read after the name, not drawn: the detail the card shows that the name leaves out, such as a price or a count. */
+  description?: string;
   /** @default false */
   isDisabled?: boolean;
 } & (
@@ -57,6 +59,7 @@ export type ClickableCardProps = CardProps & {
 export function ClickableCard({
   children,
   label,
+  description,
   onClick,
   isSelected = false,
   isDisabled = false,
@@ -69,12 +72,14 @@ export function ClickableCard({
   const group = useContext(Group);
   const asRadio = group !== null && value !== undefined;
   const isChosen = asRadio ? group.chosen === value : isSelected;
+  const descriptionId = `${useId()}-description`;
   return (
     <button
       role={asRadio ? 'radio' : undefined}
       aria-checked={asRadio ? isChosen : undefined}
       aria-selected={!asRadio && isChosen ? true : undefined}
       aria-label={label}
+      aria-describedby={description !== undefined ? descriptionId : undefined}
       disabled={isDisabled || (asRadio && group.isDisabled)}
       onClick={() => {
         if (asRadio) group.choose(value);
@@ -84,6 +89,7 @@ export function ClickableCard({
       className={cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, className)}
     >
       {children}
+      {description !== undefined && <text id={descriptionId} aria-hidden className={r.description.base}>{description}</text>}
     </button>
   );
 }
