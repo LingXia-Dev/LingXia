@@ -25,13 +25,17 @@ impl lingxia::provider::LxAppRegistryProvider for ShowcaseGuestRegistry {
         Result<Option<lingxia::provider::LxAppRegistryInfo>, lingxia::provider::ProviderError>,
     > {
         Box::pin(async move {
-            let domains = match app.appid {
-                "lingxia-showcase-web" => "www.deepseek.com",
-                "app.lingxia.terminal-settings" => "api.nuget.org",
+            // Loopback serves the specs' local fixtures; it is honoured only in a
+            // dev session.
+            let domains: &[&str] = match app.appid {
+                "lingxia-showcase-web" => &["www.deepseek.com", "127.0.0.1"],
+                "app.lingxia.terminal-settings" => &["api.nuget.org"],
                 _ => return Ok(None),
             };
             Ok(Some(lingxia::provider::LxAppRegistryInfo {
-                permissions: Some(lingxia::provider::LxAppPermissions::network([domains])),
+                permissions: Some(lingxia::provider::LxAppPermissions::network(
+                    domains.iter().copied(),
+                )),
                 ..Default::default()
             }))
         })
