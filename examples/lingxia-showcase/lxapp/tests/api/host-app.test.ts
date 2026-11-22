@@ -466,7 +466,7 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
 
 test('show a frontmost notification unless told to suppress it', {
   id: 'HOSTAPP-NOTIFICATION-002',
-  covers: ['lx.host.notification.show', 'lx.host.notification.cancel', 'lx.shell.activate'],
+  covers: ['lx.host.notification.show', 'lx.host.notification.cancel'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-002');
@@ -476,8 +476,22 @@ test('show a frontmost notification unless told to suppress it', {
     });
   });
 
+  const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '';
+  if (DESKTOP_HOSTS.has(platform)) {
+    // Windows may refuse a background process the foreground even when focus
+    // reports success; a click on the title bar is a real user's.
+    const desktop = t.automation.desktop;
+    const host = (await desktop.windows())
+      .filter((window) => window.visible && window.bounds.w >= 320 && window.bounds.h >= 320
+        && (/lingxia/i.test(window.title) || /lingxiademo/i.test(window.process)))
+      .sort((left, right) => right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h)[0];
+    if (host) {
+      await desktop.window.raise({ window: host.id }).catch(() => undefined);
+      await desktop.pointer.click({ at: [host.bounds.x + Math.round(host.bounds.w / 2), host.bounds.y + 12] });
+    }
+  }
+
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    try { lx.shell.activate(); } catch {}
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
     const n = lx.host.notification;
     const permission = await n.permission();
@@ -506,7 +520,6 @@ test('show a frontmost notification unless told to suppress it', {
 
   // Frontmost: desktops show a banner; phones, having none, post it. Only
   // Windows and Android decide frontmost where `system` can reach them.
-  const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '';
   const posts = platform === 'windows' || platform === 'android';
   expect(result).toEqual({
     shown: DESKTOP_HOSTS.has(platform) ? 'presented' : posts ? 'posted' : 'suppressed',
