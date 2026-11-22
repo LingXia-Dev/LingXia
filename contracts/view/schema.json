@@ -715,5 +715,30 @@
     "select": {"wire": "select", "children": "none", "style": ["box", "padding", "text", "textBlock", "editor"], "binding": {"type": "string", "event": "onChange"}, "props": {"options": {"type": "readonly RadioOption[]", "required": true}, "defaultValue": {"type": "string"}, "placeholder": {"type": "string"}, "aria-label": {"type": "string"}, "disabled": {"type": "boolean"}}},
     "video": {"wire": "video", "children": "none", "style": ["box", "media", "imagePlacement"], "props": {"src": {"type": "string"}, "sources": {"type": "readonly VideoSource[]"}, "player": {"type": "Video"}, "poster": {"type": "string"}, "autoPlay": {"type": "boolean"}, "paused": {"type": "boolean"}, "muted": {"type": "boolean"}, "loop": {"type": "boolean"}, "playbackRate": {"type": "number"}, "volume": {"type": "number"}, "aria-label": {"type": "string"}, "onLoadedMetadata": {"type": "(event: VideoMetadata) => void"}, "onPlay": {"type": "() => void"}, "onPlaying": {"type": "() => void"}, "onPause": {"type": "(event: VideoPause) => void"}, "onWaiting": {"type": "() => void"}, "onSeeked": {"type": "(event: { readonly currentTime: number }) => void"}, "onTimeUpdate": {"type": "(event: { readonly currentTime: number }) => void"}, "onEnded": {"type": "() => void"}, "onError": {"type": "(error: VideoError) => void"}, "onRateChange": {"type": "(event: { readonly playbackRate: number }) => void"}, "onVolumeChange": {"type": "(event: { readonly volume: number; readonly muted: boolean }) => void"}, "onQualityChange": {"type": "(event: VideoQualityChange) => void"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}}},
     "webview": {"wire": "webview", "children": "none", "style": ["box"], "props": {"src": {"type": "string"}, "web": {"type": "WebView"}, "aria-label": {"type": "string", "required": true}, "handlesDrags": {"type": "boolean"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}, "onLoad": {"type": "(event: WebViewLoad) => void"}, "onMessage": {"type": "(message: WebViewMessage) => void"}, "onBlocked": {"type": "(event: WebViewBlocked) => void"}, "onError": {"type": "(error: WebViewError) => void"}}}
+  },
+  "rules": {
+    "doc": "Authoring admission the wire does not carry. The runtime, the compiler's static audit, authoring.d.ts and the reference all read it. A rule passes when every condition holds: tags (the element, a <link> outside <text> counting as link-box), role (the authored role, or the element's implied one), with (props present), unless (a prop holding one of these values fails it), value (the rule applies only to that value of its prop). error is the message without its code; the default names the fix.",
+    "role": {
+      "tab": [{"tags": ["button"]}],
+      "radio": [{"tags": ["button"]}],
+      "menuitem": [{"tags": ["button"]}],
+      "menuitemcheckbox": [{"tags": ["button"]}],
+      "menuitemradio": [{"tags": ["button"]}],
+      "treeitem": [{"tags": ["button"]}],
+      "tablist": [{"tags": ["view"]}],
+      "tabpanel": [{"tags": ["view"]}],
+      "radiogroup": [{"tags": ["view"]}],
+      "toolbar": [{"tags": ["view"]}],
+      "tree": [{"tags": ["view"]}],
+      "row": [{"tags": ["view"]}],
+      "combobox": [{"tags": ["input", "button"]}],
+      "spinbutton": [{"tags": ["input"]}],
+      "alertdialog": [{"tags": ["dialog"], "error": "role=\"alertdialog\" goes on a <dialog>"}],
+      "img": [{"tags": ["view", "text"], "with": ["aria-label"], "error": "role=\"img\" goes on a <view> or <text> with an aria-label, which is spoken in place of its content"}],
+      "dialog": [{"tags": ["view"], "with": ["popover"], "error": "role=\"dialog\" goes on a popover <view>, or is the <dialog> element"}]
+    },
+    "elementRole": {
+      "dialog": {"roles": ["alertdialog"], "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
+    }
   }
 }

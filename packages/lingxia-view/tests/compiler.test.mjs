@@ -101,6 +101,29 @@ test('inline styles are CSS-named and checked per element', () => {
   flags('const view = <view style={{animation:null}}/>;', /UI_ANIMATION/);
 });
 
+test('a literal role on the wrong element fails the build with where it goes', () => {
+  clean('const a = <view role="tablist"><button role="tab" onClick={f}>A</button></view>;');
+  clean('const a = <view role={open ? "dialog" : undefined} popover="manual" aria-label="Sheet"/>;');
+  clean('const a = <text role={label ? "img" : undefined} aria-label={label}>★</text>;');
+  clean('const a = <view role={role}/>;');
+  for (const [source, message] of [
+    ['<view role="tab"/>', 'role="tab" belongs on a <button>'],
+    ['<button role="toolbar" onClick={f}>x</button>', 'role="toolbar" belongs on a <view>'],
+    ['<button role="spinbutton" onClick={f}>x</button>', 'role="spinbutton" belongs on an <input>'],
+    ['<text role="combobox">x</text>', 'role="combobox" belongs on an <input> or a <button>'],
+    ['<view role="alertdialog"/>', 'role="alertdialog" goes on a <dialog>'],
+    ['<view role="img"/>', 'role="img" goes on a <view> or <text> with an aria-label'],
+    ['<view role="img" aria-label=" "/>', 'role="img" goes on a <view> or <text> with an aria-label'],
+    ['<view role="dialog" aria-label="x"/>', 'role="dialog" goes on a popover <view>'],
+    ['<dialog role="group" aria-label="x"/>', 'a <dialog> keeps its own role'],
+    ['<view role={wide ? "list" : "tab"}/>', 'role="tab" belongs on a <button>'],
+  ]) {
+    const problems = audit(`const a = ${source};`, 'page.tsx');
+    assert.equal(problems.length, 1, source);
+    assert.ok(problems[0].startsWith(`page.tsx:1:${source.indexOf('role') + 11}: UI_PROP: ${message}`), problems[0]);
+  }
+});
+
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');

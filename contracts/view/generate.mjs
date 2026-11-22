@@ -343,7 +343,39 @@ function validateAuthor(schema) {
   }
 }
 
+// "an <input> or a <button>".
+const tagList = tags => tags.map(tag => `${/^[aeiou]/.test(tag) ? 'an' : 'a'} <${tag}>`).join(' or ');
+
+/** schema.json `rules` with every default message filled in: what the runtime, the compiler and the docs read. */
+export function rules(schema) {
+  const { role = {}, elementRole = {} } = schema.rules ?? {};
+  const kinds = new Set([...Object.keys(schema.elements), ...Object.values(schema.elements).filter(element => element.block).map(element => element.block.wire)]);
+  const known = (where, tags) => { for (const tag of tags ?? []) if (!kinds.has(tag)) throw Error(`schema.json: rules.${where} names unknown element ${tag}`); };
+  const roles = new Set(schema.options.role);
+  const out = { role: {}, elementRole: {} };
+  for (const [name, list] of Object.entries(role)) {
+    if (!roles.has(name)) throw Error(`schema.json: rules.role names unknown role ${name}`);
+    out.role[name] = list.map(rule => {
+      known(`role.${name}`, rule.tags);
+      return { ...rule, error: rule.error ?? `role="${name}" belongs on ${tagList(rule.tags)}` };
+    });
+  }
+  for (const [tag, rule] of Object.entries(elementRole)) {
+    known('elementRole', [tag]);
+    for (const name of rule.roles) if (!roles.has(name)) throw Error(`schema.json: rules.elementRole.${tag} names unknown role ${name}`);
+    out.elementRole[tag] = rule;
+  }
+  return out;
+}
+
+/** The roles `<tag>` may carry: every role whose rules all admit it. */
+function rolesOn(schema, table, tag) {
+  return schema.options.role.filter(name => (table.elementRole[tag]?.roles.includes(name) ?? true)
+    && (table.role[name] ?? []).every(rule => !rule.tags || rule.tags.includes(tag)));
+}
+
 function authoring(schema, api) {
+  const table = rules(schema);
   const style = Object.entries(schema.style).filter(([, entry]) => !entry.internal)
     .map(([name, entry]) => `  ${name}?: ${entry.type};`).join('\n');
   const lines = [];
@@ -355,7 +387,12 @@ function authoring(schema, api) {
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
     const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.block?.children ?? element.children];
     const props = Object.entries(element.props).map(([prop, entry]) => `${/^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop)}${entry.required ? '' : '?'}: ${entry.type};`);
-    const base = `Omit<Props, "style" | "children"> & { style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
+    // A role the rules keep off this element fails in tsc, not at render.
+    const allowed = rolesOn(schema, table, name), narrowed = allowed.length < schema.options.role.length;
+    if (narrowed) lines.push(`/** The roles a \`<${name}>\` takes; reference/elements.md says where the others go. */`,
+      `export type ${type}Role = ${allowed.length ? allowed.map(entry => JSON.stringify(entry)).join(' | ') : 'never'};`);
+    const role = narrowed ? `role?: ${type}Role; ` : '';
+    const base = `Omit<Props, "style" | "children"${narrowed ? ' | "role"' : ''}> & { ${role}style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
     const binding = element.binding;
     if (binding) {
       const payload = binding.type === 'string' ? 'string' : `ReadonlyData<${binding.type}>`;
@@ -461,6 +498,8 @@ export const keywords = ${JSON.stringify(keywords)};
 export const options = ${JSON.stringify(schema.options)};
 /** Props every element accepts, read from \`interface Props\` in contracts/view/api.d.ts. */
 export const commonProps = ${JSON.stringify(common)};
+/** Authoring admission the wire does not carry: where a role goes, and what an element's role allows. */
+export const authoringRules = ${JSON.stringify(rules(schema))};
 /** Colour roles in palette-slot order. */
 export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
 /** Scale slots in wire order: a \`[slot, times, plus]\` reference names one by index. */

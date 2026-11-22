@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { collectClassUsage, elementKind, enclosingTags } from './class-usage.mjs';
+import { admissionProblems } from './admission.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
 import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
@@ -155,6 +156,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const intrinsic = has(elements, tag) && !elements[tag].component;
       const problem = intrinsic && unnamed(tag, node, file);
       if (problem) report(node, problem);
+      if (intrinsic) for (const [at, message] of admissionProblems(node, file)) report(at, message);
       if (tag === 'link') {
         const named = name => node.attributes.properties.some(prop => ts.isJsxSpreadAttribute(prop) || prop.name.getText(file) === name);
         if (!named('to') && !named('onClick') && !named('popoverTarget') && !named('interestFor')) report(node, 'UI_LINK: a <link> needs to or onClick');

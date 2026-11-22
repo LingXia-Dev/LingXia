@@ -4,7 +4,7 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readSchema, elementStyle, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
+import { readSchema, elementStyle, rules, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
 
 const ts = (await loadDependency('typescript')).default;
 const { build } = await loadDependency('esbuild');
@@ -403,13 +403,16 @@ async function environment(schema) {
 
 function semantics(schema) {
   const { roles, liveRegions, actions } = schema.semantics;
-  // `dialog` is the <dialog> element's own role; page code cannot set it.
-  const authored = schema.options.role.filter(role => role !== 'dialog');
+  const authored = schema.options.role, admits = rules(schema);
+  // Where a role goes, from schema.json `rules`; a failing combination stops the build (`UI_PROP`).
+  const where = role => (admits.role[role] ?? []).map(rule => [rule.tags.map(tag => code(`<${tag === 'link-box' ? 'link' : tag}>`)).join(' or '),
+    ...(rule.with ?? []).map(prop => `with ${code(prop)}`)].join(' ')).join('; ') || 'any non-control element';
   const projected = role => role === 'img' ? 'image' : roles.includes(role) ? role : roles.find(name => name.replace(/-/g, '') === role);
   return [header, '# Semantics', '',
     'The accessibility tree the platform adapter exposes. Elements get their role from what they are;',
     'the `role` prop sets one of the authored roles on any non-control element.', '',
-    '## Authored roles', '', table(['`role`', 'Exposed as'], authored.map(role => [code(role), code(projected(role))])), '',
+    '## Authored roles', '', table(['`role`', 'Goes on', 'Exposed as'], authored.map(role => [code(role), where(role), code(projected(role))])), '',
+    ...Object.entries(admits.elementRole).map(([tag, rule]) => `A ${code(`<${tag}>`)} takes only ${list(rule.roles)} (\`UI_PROP\`).`), '',
     '`headingLevel` (1..6) applies only to `role="heading"`.', '',
     '## All exposed roles', '', list(roles), '',
     '## Live regions', '', `\`aria-live\`: ${list(schema.options['live-region'])}. Announced politeness: ${list(liveRegions)}.`, '',

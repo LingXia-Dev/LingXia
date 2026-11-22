@@ -1,5 +1,5 @@
 import { pressChange, changeEnd, pressEnd } from './press.js';
-import { elements, kindOf, admission, limits, commonProps } from '../generated/contract.js';
+import { elements, kindOf, admission, limits, commonProps, authoringRules } from '../generated/contract.js';
 import { resolveClasses, classGeneration } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
@@ -358,6 +358,8 @@ export function resolveNode(node, identity, depth = 0, parent = {}) {
     finally { render.scope = previous; }
   }
   try {
+    // Checked as authored, so a closed popover or dialog fails too; its expanded panel is not re-checked.
+    if (!original[panelMark]) authoredRules(tag, original, parent);
     // An open <dialog> or popover becomes a top-layer box; a closed one renders nothing.
     let expansion = expand(tag, original, children, identity, parent);
     if (expansion === null) return null;
@@ -541,7 +543,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     wire('elementId', props.id);
   }
   if (tag === 'dialog') {
-    if (props.role !== undefined && props.role !== 'alertdialog') throw Error('UI_PROP: a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts');
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
     if (props.ariaModal === false) throw Error('UI_PROP: a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"');
     wire('role', props.role ?? 'dialog');
@@ -937,23 +938,26 @@ function progressValues(role, props, wire, tag) {
   if (text !== undefined) wire('ariaValueText', text);
 }
 
-// Accessibility roles and states any element may declare; controls keep their own role.
-// Composite items take focus and activate, so they are buttons; their containers are views.
-const itemRoles = new Set(['tab', 'radio', 'option', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'treeitem']);
-const containerRoles = new Set(['tablist', 'tabpanel', 'radiogroup', 'toolbar', 'tree', 'row']);
+// schema.json `rules`: where a role goes and what an element's role allows. A prop that is
+// present but empty counts as absent, as an empty aria-label names nothing.
+const present = value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim());
+function authoredRules(tag, props, parent) {
+  if (typeof tag !== 'string' || !has(elements, tag)) return;
+  const kind = tag === 'link' && !parent.inText ? 'link-box' : tag;
+  const { role } = props;
+  if (role === undefined) return;
+  const only = authoringRules.elementRole[kind];
+  if (only && !only.roles.includes(role)) throw Error(`UI_PROP: ${only.error}`);
+  for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
+    if ((rule.tags && !rule.tags.includes(kind)) || rule.with?.some(name => !present(props[name]))) throw Error(`UI_PROP: ${rule.error}`);
+}
+
+// Accessibility states any element may declare; controls keep their own role.
 const checkedRoles = new Set(['radio', 'menuitemcheckbox', 'menuitemradio']);
 function semantics(tag, props, wire) {
   const { role, headingLevel, ariaLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
-    if (role === 'dialog' && (tag !== 'view' || !props[panelMark])) throw Error('UI_PROP: role="dialog" goes on a popover <view>, or is the <dialog> element');
-    if (role === 'alertdialog' && tag !== 'dialog') throw Error('UI_PROP: role="alertdialog" goes on a <dialog>');
     if (!fieldOptions.role.includes(role)) throw Error(`UI_PROP: role must be one of ${fieldOptions.role.join(', ')}`);
-    if (itemRoles.has(role) && role !== 'option' && tag !== 'button') throw Error(`UI_PROP: role="${role}" belongs on a <button>`);
-    if (containerRoles.has(role) && tag !== 'view') throw Error(`UI_PROP: role="${role}" belongs on a <view>`);
-    if (role === 'combobox' && tag !== 'input' && tag !== 'button') throw Error('UI_PROP: role="combobox" belongs on an <input> or a <button>');
-    if (role === 'spinbutton' && tag !== 'input') throw Error('UI_PROP: role="spinbutton" belongs on an <input>');
-    if (role === 'img' && (!['view', 'text'].includes(tag) || typeof props.accessibilityLabel !== 'string' || !props.accessibilityLabel.trim()))
-      throw Error('UI_PROP: role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content');
     // A <dialog> wires its own role.
     if (tag !== 'dialog') wire('role', role);
   }

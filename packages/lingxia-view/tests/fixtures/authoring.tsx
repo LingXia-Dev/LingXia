@@ -1,6 +1,9 @@
-import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type View } from '../../src/index.js';
+import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type ViewProps, type View } from '../../src/index.js';
 
-function Card(props: Props) { return <view {...props}/>; }
+// A role is typed per element, so a component forwarding to a <view> takes ViewProps.
+function Card(props: ViewProps) { return <view {...props}/>; }
+// @ts-expect-error Props carries every role, and a <view> takes only its own.
+function Loose(props: Props) { return <view {...props}/>; }
 export function render(view: View<{ save(value: string): Promise<void> }, { title: string; rows: { text: string }[]; pair: [string, number] }>) {
   const draft = useLocal('draft', '');
   const checked = useLocal('checked', false);
@@ -71,6 +74,16 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const sheet = <view popover="manual" role="dialog" aria-modal aria-label="Sheet"/>;
   // @ts-expect-error roles are a closed set.
   const banner = <view role="banner"/>;
+  const composite = [<button role="tab" onClick={() => {}}>A</button>, <view role="tablist"/>, <input role="combobox" aria-label="City"/>,
+    <dialog role="alertdialog" aria-label="Delete"/>, <text role="img" aria-label="4 of 5">★★★★☆</text>];
+  // @ts-expect-error role="tab" belongs on a <button>.
+  const tabOnView = <view role="tab"/>;
+  // @ts-expect-error role="tablist" belongs on a <view>.
+  const tablistOnButton = <button role="tablist" onClick={() => {}}>x</button>;
+  // @ts-expect-error role="spinbutton" belongs on an <input>.
+  const spinOnText = <text role="spinbutton">1</text>;
+  // @ts-expect-error a <dialog> keeps its own role.
+  const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.
   const state = <button aria-pressed="yes">Go</button>;
   // @ts-expect-error unknown style keys are refused.
