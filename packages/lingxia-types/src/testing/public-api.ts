@@ -117,8 +117,9 @@ const HOST_APP_API = [
 ] as const;
 // `autostart`, `banner`, `cache`, `notification`, and `terminal` are injected
 // only where they apply, so a runtime walk of `lx.host` must not require them.
+type HostAppOptionalMember = 'autostart' | 'banner' | 'cache' | 'notification' | 'terminal';
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
-  (name) =>
+  (name): name is Exclude<(typeof HOST_APP_API)[number], HostAppOptionalMember> =>
     name !== 'autostart' &&
     name !== 'banner' &&
     name !== 'cache' &&
@@ -135,16 +136,18 @@ const NOTIFICATION_API = [
   'show',
 ] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
+/** `Live<T>`: every value that changes. */
+const LIVE_API = ['get', 'watch'] as const;
 const DISPLAY_LANGUAGE_API = ['get', 'preference', 'watch'] as const;
 const APPEARANCE_API = DISPLAY_LANGUAGE_API;
 const PREFERENCE_API = ['get', 'set', 'watch'] as const;
 const HOST_UPDATE_API = ['check', 'claim'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
-const PICK_API = ['code', 'directory', 'file', 'files', 'media'] as const;
+const PICK_API = ['capture', 'code', 'directory', 'file', 'files', 'media'] as const;
 const DEVICE_API = ['haptics', 'info', 'location', 'onKeyDown', 'onKeyUp', 'orientation', 'screen', 'systemSettings'] as const;
-const ORIENTATION_API = ['set', 'unlock', 'watch'] as const;
-const NETWORK_API = ['download', 'status', 'upload', 'watch', 'wifi'] as const;
+const ORIENTATION_API = ['get', 'lock', 'unlock', 'watch'] as const;
+const NETWORK_API = ['download', 'status', 'upload', 'wifi'] as const;
 const WIFI_API = ['connect', 'current', 'list', 'onConnected'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
 const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
@@ -424,6 +427,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host.displayLanguage',
     members: DISPLAY_LANGUAGE_API,
+    properties: ['preference'],
+  },
+  {
+    name: 'lx.host.displayLanguage.preference',
+    layer: 'logic',
+    expression: 'lx.host.displayLanguage.preference',
+    members: PREFERENCE_API,
   },
 
   {
@@ -431,6 +441,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host.appearance',
     members: APPEARANCE_API,
+    properties: ['preference'],
+  },
+  {
+    name: 'lx.host.appearance.preference',
+    layer: 'logic',
+    expression: 'lx.host.appearance.preference',
+    members: PREFERENCE_API,
   },
 
 
@@ -470,7 +487,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.network',
     members: NETWORK_API,
-    properties: ['wifi'],
+    properties: ['status', 'wifi'],
+  },
+  {
+    name: 'lx.network.status',
+    layer: 'logic',
+    expression: 'lx.network.status',
+    members: LIVE_API,
   },
   {
     name: 'lx.network.wifi',
@@ -867,6 +890,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<MoreActionsApi, typeof MORE_ACTIONS_API>>,
   AssertTrue<Exact<AppearanceApi['preference'], typeof PREFERENCE_API>>,
   AssertTrue<Exact<DisplayLanguageApi['preference'], typeof PREFERENCE_API>>,
+  AssertTrue<Exact<NetworkApi['status'], typeof LIVE_API>>,
   AssertTrue<Exact<FileSystemApi, typeof FILE_SYSTEM_API>>,
   AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
@@ -913,4 +937,73 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PageSurface, typeof PAGE_SURFACE_API>>,
   AssertTrue<Exact<Extract<TabSurface, { scope: 'tab' }>, typeof TAB_SURFACE_API>>,
   AssertTrue<Exact<PageHandle, typeof PAGE_HANDLE_API>>,
+];
+
+type FunctionKeys<T> = {
+  [K in StringKey<T>]-?: NonNullable<T[K]> extends (...args: never[]) => unknown ? K : never;
+}[StringKey<T>];
+
+/** The declared type each Logic runtime surface walks. */
+type RuntimeSurfaceTypes = {
+  lx: PublishedLx;
+  'lx.host': HostAppApi;
+  'lx.host.update': HostUpdateApi;
+  'lx.host.autostart': AutostartApi;
+  'lx.host.banner': BannerApi;
+  'lx.host.notification': NotificationApi;
+  'lx.host.cache': AppCacheApi;
+  'lx.host.displayLanguage': DisplayLanguageApi;
+  'lx.host.displayLanguage.preference': DisplayLanguageApi['preference'];
+  'lx.host.appearance': AppearanceApi;
+  'lx.host.appearance.preference': AppearanceApi['preference'];
+  'lx.app.tabBar': TabBarApi;
+  'lx.ui': UiApi;
+  'lx.pick': PickApi;
+  'lx.device': DeviceApi;
+  'lx.device.orientation': OrientationApi;
+  'lx.network': NetworkApi;
+  'lx.network.status': NetworkApi['status'];
+  'lx.network.wifi': WifiApi;
+  'lx.media': MediaApi;
+  'lx.nav': NavApi;
+  'lx.host.terminal': TerminalApi;
+  'lx.host.terminal.settings': TerminalSettingsApi;
+  'lx.host.terminal.colorSchemes': TerminalColorSchemesApi;
+  'lx.host.terminal.fonts': TerminalFontsApi;
+  'lx.host.terminal.windows': NonNullable<TerminalApi['windows']>;
+  'lx.surface': SurfaceApi;
+  'lx.shell': ShellApi;
+  'lx.shell.sidebarActions': ShellApi['sidebarActions'];
+  'lx.host.tray': TrayApi;
+  'lx.host.tray.menu': TrayMenuApi;
+  'lx.fs': FileSystemApi;
+  'lx.clipboard': ClipboardApi;
+  Storage: Storage;
+  'lx.app': LxAppApi;
+  'lx.app.update': LxAppUpdateApi;
+  'lx.app.moreActions': MoreActionsApi;
+};
+
+/**
+ * `surface.member` for each runtime member the shape check would require to be a
+ * function while its declared type is not one (an object such as `preference`
+ * belongs in `properties`).
+ */
+type RuntimeKindMismatch<S> = S extends { name: infer N; members: infer M extends readonly string[] }
+  ? N extends keyof RuntimeSurfaceTypes
+    ? `${N}.${Exclude<
+        Members<M>,
+        (S extends { properties: infer P extends readonly string[] } ? Members<P> : never)
+        | FunctionKeys<RuntimeSurfaceTypes[N]>
+      >}`
+    : never
+  : never;
+type AssertNever<T extends never> = T;
+type RuntimeSurfaceName = (typeof LX_RUNTIME_SURFACES)[number]['name'];
+
+export type LxRuntimeKindGate = [
+  AssertNever<RuntimeKindMismatch<(typeof LX_RUNTIME_SURFACES)[number]>>,
+  // Every Logic surface has a declared type to check against.
+  AssertNever<Exclude<Extract<(typeof LX_RUNTIME_SURFACES)[number], { layer: 'logic' }>['name'], keyof RuntimeSurfaceTypes>>,
+  AssertNever<Exclude<keyof RuntimeSurfaceTypes, RuntimeSurfaceName>>,
 ];

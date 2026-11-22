@@ -19,6 +19,7 @@ import type {
   JsonValue,
   NavigationBarPatch,
   PageLoadOptions,
+  Live,
   PageEnvContext,
   MessageIn,
   MessageOut,
@@ -147,10 +148,7 @@ export interface PageApi<Data, Params, Result, Messages = never> {
    * when `sizeClass` or `canDock` changes (not on every resize), and stops
    * when the page unloads.
    */
-  readonly env: PageEnvContext & {
-    /** Follow the size class: the current value first, then each change. */
-    watch(callback: (env: PageEnvContext) => void, options?: SignalOptions): () => void;
-  };
+  readonly env: Live<PageEnvContext>;
 }
 
 /** Page actions as the View calls them: each resolves to its result. */

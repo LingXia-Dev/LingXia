@@ -51,8 +51,10 @@ Keep that in `tsconfig.logic.json`; the View has its own config, and the root
 - `watch(cb)` delivers the current value, then each change; `on<Event>(cb)`
   delivers events and never replays one. The first `watch` callback can run
   before `watch` returns its unsubscribe.
+- A value that changes (appearance, display language, orientation, network
+  status) is a `Live<T>`: `get()` now, synchronous; `watch(cb)` to follow it.
 - Every subscription returns its unsubscribe and takes `{ signal }`:
-  `lx.network.watch(cb, { signal: page.signal })` ends with the page.
+  `lx.network.status.watch(cb, { signal: page.signal })` ends with the page.
 - A call that waits on the network, a radio or a person takes `signal` instead of
   a timeout (`AbortSignal.timeout(ms)`); abort rejects `E_ABORT`.
 

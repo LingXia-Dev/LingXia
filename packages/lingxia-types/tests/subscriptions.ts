@@ -1,8 +1,8 @@
-import type { Lx } from "../src/index.js";
+import type { AppearancePreference, DeviceOrientation, Live, Lx, NetworkInfo, ResolvedAppearance } from "../src/index.js";
 
 declare const lx: Lx;
 
-const unsubscribeNetwork: () => void = lx.network.watch(() => {});
+const unsubscribeNetwork: () => void = lx.network.status.watch(() => {});
 const unsubscribeWifi: () => void = lx.network.wifi.onConnected(() => {});
 const unsubscribeOrientation: () => void = lx.device.orientation.watch(() => {});
 const unsubscribeKeyDown: () => void = lx.device.onKeyDown(() => {});
@@ -40,8 +40,29 @@ export type SubscriptionGate = [
 
 // Every subscription takes `{ signal }`.
 const lifetime = new AbortController();
-lx.network.watch(() => {}, { signal: lifetime.signal });
+lx.network.status.watch(() => {}, { signal: lifetime.signal });
 lx.host.appearance.watch(() => {}, { signal: lifetime.signal });
 lx.device.orientation.watch(() => {}, { signal: lifetime.signal });
 // @ts-expect-error options carry only a signal
-lx.network.watch(() => {}, { once: true });
+lx.network.status.watch(() => {}, { once: true });
+
+// Every value that changes is one `Live<T>`: `get()` and `watch()` agree on the value type.
+const appearance: Live<ResolvedAppearance> = lx.host.appearance;
+const appearancePreference: Live<AppearancePreference> = lx.host.appearance.preference;
+const language: Live<string> = lx.host.displayLanguage;
+const orientation: Live<DeviceOrientation> = lx.device.orientation;
+const orientationNow: DeviceOrientation = lx.device.orientation.get();
+lx.device.orientation.watch((value: DeviceOrientation) => void value);
+lx.device.orientation.lock('landscape');
+// @ts-expect-error the watcher receives the value itself, not `{ value }`
+lx.device.orientation.watch((event: { value: DeviceOrientation }) => void event);
+// @ts-expect-error locking is `lock`
+lx.device.orientation.set('landscape');
+const network: Live<NetworkInfo> = lx.network.status;
+const networkNow: NetworkInfo = lx.network.status.get();
+// @ts-expect-error status is read with get(), synchronously
+lx.network.status().then(() => {});
+// @ts-expect-error follow connectivity through status.watch
+lx.network.watch(() => {});
+export type NetworkGate = [typeof network, typeof networkNow];
+export type LiveGate = [typeof appearance, typeof appearancePreference, typeof language, typeof orientation, typeof orientationNow];

@@ -116,20 +116,16 @@ export default definePage({
           lx.ui.toast(errorMessage(error, "Request failed"));
         }
       },
-      async getNetworkInfo() {
-        try {
-          const result = await lx.network.status();
-          page.update(d => { d.networkInfo = result || null; });
-        } catch (error) {
-          console.error("Failed to get network info:", error);
-        }
+      getNetworkInfo() {
+        const result = lx.network.status.get();
+        page.update(d => { d.networkInfo = result; });
       },
       startNetworkChangeListen() {
         if (offNetworkChange) {
           return;
         }
-        offNetworkChange = lx.network.watch((info) => {
-          page.update(d => { d.networkChange = info || null; });
+        offNetworkChange = lx.network.status.watch((info) => {
+          page.update(d => { d.networkChange = info; });
         });
         page.update(d => { d.networkListening = true; });
       },
@@ -143,8 +139,8 @@ export default definePage({
       },
       async setOrientationPortrait() {
         try {
-          await lx.device.orientation.set("portrait");
-          page.update(d => { d.orientationLock = "portrait"; });
+          lx.device.orientation.lock("portrait");
+          page.update(d => { d.orientationLock = lx.device.orientation.get(); });
         } catch (error) {
           console.error("Failed to set portrait orientation:", error);
           lx.ui.toast(errorMessage(error, "Request failed"));
@@ -152,8 +148,8 @@ export default definePage({
       },
       async setOrientationLandscape() {
         try {
-          await lx.device.orientation.set("landscape");
-          page.update(d => { d.orientationLock = "landscape"; });
+          lx.device.orientation.lock("landscape");
+          page.update(d => { d.orientationLock = lx.device.orientation.get(); });
         } catch (error) {
           console.error("Failed to set landscape orientation:", error);
           lx.ui.toast(errorMessage(error, "Request failed"));
@@ -165,8 +161,7 @@ export default definePage({
         }
 
         try {
-          offDeviceOrientationChange = lx.device.orientation.watch((event) => {
-            const value = typeof event === "string" ? event : event?.value;
+          offDeviceOrientationChange = lx.device.orientation.watch((value) => {
             helpers.appendOrientationEvent(value);
           });
           page.update(d => { d.orientationListening = true; });

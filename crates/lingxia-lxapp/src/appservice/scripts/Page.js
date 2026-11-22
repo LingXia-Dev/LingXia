@@ -331,11 +331,9 @@
 
     // Size class only. A watcher starts with the current value and goes with the page.
     const env = Object.freeze({
-      get sizeClass() {
-        return native().env().sizeClass;
-      },
-      get canDock() {
-        return native().env().canDock;
+      get() {
+        const current = native().env();
+        return { sizeClass: current.sizeClass, canDock: current.canDock };
       },
       watch(callback, options) {
         if (typeof callback !== "function") {

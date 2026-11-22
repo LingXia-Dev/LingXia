@@ -415,19 +415,20 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
 }
 
 /// Picks one file. Resolves `{ status: 'canceled' }` only when the user
-/// dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
+/// dismisses the picker, otherwise `{ status: 'ok', file }`.
 ///
 /// @example
 /// ```ts
 /// const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });
-/// if (picked.status === 'ok') await attach(picked.files[0].path);
+/// if (picked.status === 'ok') await attach(picked.file.path);
 /// ```
 ///
 /// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
 /// @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
-    match run_file_picker(&ctx, options.0.unwrap_or_default(), false).await? {
-        Some(files) => crate::pick::files_result(&ctx, &files),
+    let picked = run_file_picker(&ctx, options.0.unwrap_or_default(), false).await?;
+    match picked.and_then(|files| files.into_iter().next()) {
+        Some(file) => crate::pick::file_result(&ctx, &file),
         None => canceled(&ctx),
     }
 }

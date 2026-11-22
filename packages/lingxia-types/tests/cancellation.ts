@@ -8,7 +8,9 @@ async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
   (await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error pick.file may have been dismissed
-  (await lx.pick.file()).files;
+  (await lx.pick.file()).file;
+  // @ts-expect-error pick.capture may have been dismissed
+  (await lx.pick.capture({ type: "image" })).file;
   // @ts-expect-error pick.directory may have been dismissed
   (await lx.pick.directory()).directory;
   // @ts-expect-error pick.media may have been dismissed
@@ -23,7 +25,9 @@ async function checkedResultsNarrow(): Promise<string> {
   const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.pick.file();
-  const only: readonly [PickedFile] | null = (file.status === 'canceled') ? null : file.files;
+  const only: PickedFile | null = (file.status === 'canceled') ? null : file.file;
+  const shot = await lx.pick.capture({ type: "video", facing: "front", maxDurationMs: 10_000 });
+  const shotPath: string = (shot.status === 'canceled') ? "" : shot.file.path;
   const files = await lx.pick.files();
   const paths: string[] = (files.status === 'canceled') ? [] : files.files.map(f => f.path);
   const nonEmpty: readonly [PickedFile, ...PickedFile[]] | null = (files.status === 'canceled') ? null : files.files;
@@ -42,7 +46,8 @@ async function checkedResultsNarrow(): Promise<string> {
 
   return [
     index,
-    only?.[0].name,
+    only?.name,
+    shotPath,
     paths.length,
     nonEmpty?.length,
     directoryPath,

@@ -92,6 +92,19 @@ pub(crate) fn files_result(ctx: &JSContext, files: &[PickedFile]) -> JSResult<JS
     Ok(result)
 }
 
+/// `{ status: 'ok', file }`.
+pub(crate) fn file_result(ctx: &JSContext, file: &PickedFile) -> JSResult<JSObject> {
+    let json = serde_json::to_string(file)
+        .map_err(|e| js_internal_error(format!("failed to serialize picked file: {e}")))?;
+    let file: JSValue = json
+        .as_str()
+        .json_to_js_value(ctx)
+        .map_err(|e| js_internal_error(format!("failed to materialize picked file: {e}")))?;
+    let result = completed(ctx)?;
+    result.set("file", file)?;
+    Ok(result)
+}
+
 /// A captured or library item with no file name of its own:
 /// `IMG_20261120_103000.jpg`, `VID_…`, with `_2`, `_3`… within one pick.
 pub(crate) fn generated_media_name(

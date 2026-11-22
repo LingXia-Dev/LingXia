@@ -3,6 +3,7 @@ import {
   definePage,
   lx,
   type PickMediaOptions,
+  type CaptureOptions,
   type PickedFile,
   type CompressVideoTask,
   type CompressImageOptions,
@@ -41,7 +42,6 @@ const DEFAULT_MODE = "Pictures";
 const SOURCE_OPTIONS = [
   { key: "album", label: "Album", request: ["album"] },
   { key: "camera", label: "Camera", request: ["camera"] },
-  { key: "either", label: "Album or Camera", request: ["album", "camera"] },
 ];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
@@ -534,9 +534,7 @@ export default definePage({
         try {
           const result = await lx.pick.media({
             limit: 1,
-            mediaType: [type === "video" ? "video" : "image"],
-            sourceType: ["album", "camera"],
-            camera: "back",
+            types: [type === "video" ? "video" : "image"],
           });
           return (result.status === 'canceled') ? null : result.files[0].path;
         } catch (error) {
@@ -671,19 +669,16 @@ export default definePage({
         const cameraOnly = isCameraOnlySource(sourceOption);
         const countLimit = parsePositiveInt(page.data.countLimit || page.data.countKey);
 
-        const request: PickMediaOptions = {
-          mediaType: resolveMediaTypeTokens(page.data.mediaType),
-          sourceType: (sourceOption?.request as PickMediaOptions["sourceType"]) || ["album"],
-        };
-        if (cameraOnly) {
-          request.limit = 1;
-        } else if (typeof countLimit === "number" && countLimit > 0) {
+        const types = resolveMediaTypeTokens(page.data.mediaType);
+        const request: PickMediaOptions = { types };
+        if (typeof countLimit === "number" && countLimit > 0) {
           request.limit = countLimit;
         }
+        const capture: CaptureOptions = { type: types[0] ?? "image" };
         if (page.data.mediaType === "video") {
           const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
-          if (maxDurationSeconds) request.maxDurationMs = maxDurationSeconds * 1000;
-          if (page.data.cameraKey) request.camera = page.data.cameraKey as PickMediaOptions["camera"];
+          if (maxDurationSeconds) capture.maxDurationMs = maxDurationSeconds * 1000;
+          if (page.data.cameraKey) capture.facing = page.data.cameraKey as CaptureOptions["facing"];
         }
 
         page.update(d => {
@@ -692,11 +687,11 @@ export default definePage({
         });
 
         try {
-          const picked = await lx.pick.media(request);
+          const picked = cameraOnly ? await lx.pick.capture(capture) : await lx.pick.media(request);
           if (picked.status === 'canceled') {
             return;
           }
-          const mapped = mapChosenMedia(picked.files);
+          const mapped = mapChosenMedia("file" in picked ? [picked.file] : picked.files);
           const enrichedList =
             page.data.mediaType === "video"
               ? await enrichVideoItemsWithMetadata(mapped)
@@ -1123,11 +1118,9 @@ export default definePage({
         if (page.data.saveToAlbumBusy) return;
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
-          const result = await lx.pick.media({
-            limit: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
-          });
+          const result = await lx.pick.capture({ type: "image" });
           if (result.status === 'canceled') return;
-          await lx.media.saveToLibrary(result.files[0].path);
+          await lx.media.saveToLibrary(result.file.path);
           lx.ui.toast("Image saved to album", { tone: "success" });
         } catch (error) {
           lx.ui.toast(errorMessage(error, "Failed to save image"));
@@ -1139,11 +1132,9 @@ export default definePage({
         if (page.data.saveToAlbumBusy) return;
         page.update(d => { d.saveToAlbumBusy = true; });
         try {
-          const result = await lx.pick.media({
-            limit: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationMs: 60_000,
-          });
+          const result = await lx.pick.capture({ type: "video", maxDurationMs: 60_000 });
           if (result.status === 'canceled') return;
-          await lx.media.saveToLibrary(result.files[0].path);
+          await lx.media.saveToLibrary(result.file.path);
           lx.ui.toast("Video saved to album", { tone: "success" });
         } catch (error) {
           lx.ui.toast(errorMessage(error, "Failed to save video"));

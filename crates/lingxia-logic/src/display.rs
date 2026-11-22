@@ -30,7 +30,7 @@ fn emit_orientation_change_event(appid: &str, value: &str) {
 #[inline]
 fn should_emit_orientation_event_after_set() -> bool {
     // iOS/Harmony may not deliver a host orientation callback immediately after
-    // orientation.set, so we actively emit one to keep JS state in sync.
+    // orientation.lock, so we actively emit one to keep JS state in sync.
     // Android already emits orientation events from Activity callbacks; emitting
     // again here would create duplicate events.
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
@@ -72,13 +72,20 @@ fn current_orientation(lxapp: &LxApp) -> &'static str {
     })
 }
 
+/// The orientation in effect: the lock (not how the device is held), or the
+/// screen's shape when unlocked.
+fn get_device_orientation(ctx: JSContext) -> JSResult<String> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    Ok(current_orientation(&lxapp).to_string())
+}
+
 /// Lock this lxapp to `portrait` or `landscape`.
 ///
 /// The lock beats every page's `pageOrientation`; only a full-screen video
 /// beats the lock. `unlock()` removes it.
 ///
 /// @throws {E_INVALID_ARG} Any other value.
-fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
+fn lock_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
     let lock = match orientation.as_str() {
         "portrait" | "landscape" => OrientationConfig::from_label(&orientation),
         _ => {
@@ -90,7 +97,7 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
     apply_orientation_lock(&ctx, lock)
 }
 
-/// Remove the lock `set` placed: each page's `pageOrientation`, then the
+/// Remove the lock `lock` placed: each page's `pageOrientation`, then the
 /// app's default, applies again.
 fn unlock_device_orientation(ctx: JSContext) -> JSResult<()> {
     apply_orientation_lock(&ctx, None)
@@ -132,15 +139,13 @@ fn on_device_orientation_change(
         let user = callback.clone();
         let filter = JSFunc::new(&ctx, move |event: JSObject| {
             let reported = event.get::<_, String>("value").unwrap_or_default();
-            if delivered.admit(&reported).is_some() {
-                let _ = user.call::<_, ()>(None, (event,));
+            if let Some(value) = delivered.admit(&reported) {
+                let _ = user.call::<_, ()>(None, (value,));
             }
         })?;
         let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, filter)?;
 
-        let payload = JSObject::new(&ctx);
-        payload.set("value", value)?;
-        let _ = callback.call::<_, ()>(None, (payload,));
+        let _ = callback.call::<_, ()>(None, (value,));
 
         let off_ctx = ctx.clone();
         let unsubscribed = Cell::new(false);
@@ -160,10 +165,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace OrientationApi = crate::namespace::orientation(ctx)?;
-        fn set(ts_params = "orientation: DeviceOrientation", ts_return = "void") = set_device_orientation;
+        fn get(ts_return = "DeviceOrientation") = get_device_orientation;
+        fn lock(ts_params = "orientation: DeviceOrientation", ts_return = "void") = lock_device_orientation;
         fn unlock(ts_return = "void") = unlock_device_orientation;
         fn watch(
-            ts_params = "callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions",
+            ts_params = "callback: (value: DeviceOrientation) => void, options?: SignalOptions",
             ts_return = "() => void"
         ) = on_device_orientation_change;
     }

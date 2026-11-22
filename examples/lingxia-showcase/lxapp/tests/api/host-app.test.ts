@@ -911,7 +911,7 @@ test('read the page size class and release its watcher', {
     first();
     return {
       kinds: [typeof first, typeof second], distinct: first !== second,
-      sizeClass: env.sizeClass, canDock: typeof env.canDock,
+      sizeClass: env.get().sizeClass, canDock: typeof env.get().canDock,
     };
   });
 

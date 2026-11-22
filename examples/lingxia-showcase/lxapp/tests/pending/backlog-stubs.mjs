@@ -43,9 +43,9 @@ export default [
   },
   {
     id: "PEND-MEDIA-PICK-001",
-    title: "pick.media and pick.code pick a real file through the OS panel",
+    title: "pick.media, pick.capture and pick.code pick a real file through the OS panel",
     mode: "external-ui",
-    covers: ["lx.pick.media", "lx.pick.code"],
+    covers: ["lx.pick.media", "lx.pick.capture", "lx.pick.code"],
     reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; media.preview is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
@@ -60,7 +60,7 @@ export default [
     implementedOn: ["android"],
     title: "observe the host physically rotate after setDeviceOrientation",
     mode: "external-ui",
-    covers: ["lx.device.orientation.set"],
+    covers: ["lx.device.orientation.lock"],
     reason: "ANDROID-ORIENTATION-001 observes the real Android viewport rotate; other hosts still need a rotation contract",
   },
   {
@@ -116,7 +116,7 @@ export default [
     id: "PEND-NET-FIRE-001",
     title: "onNetworkChange fires, then unsubscribe is inert",
     mode: "external-fixture",
-    covers: ["lx.network.watch"],
+    covers: ["lx.network.status.watch"],
     reason: "no injected network-change fixture; DEVICE-002 only toggles the listen flag",
   },
   {
@@ -247,7 +247,7 @@ export default [
     id: "PEND-TRUSTED-001",
     title: "trustedDomains allow listed hosts and deny the rest",
     mode: "planned",
-    covers: ["lx.network.status"],
+    covers: ["lx.network.status.get"],
     reason: "no fetch allow/deny contract is registered",
   },
   {

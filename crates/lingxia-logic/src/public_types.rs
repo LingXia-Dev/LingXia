@@ -740,24 +740,15 @@ rong::js_api! {
         /// the system.
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
 
-        /// `lx.host.appearance` — the scheme this lxapp renders in.
-        type AppearanceApi = r###"{
+        /// `lx.host.appearance` — the scheme this lxapp renders in. An lxapp that
+        /// pinned one in its `lxapp.json` reports that; every other lxapp reports
+        /// the product's.
+        type AppearanceApi = r###"Live<ResolvedAppearance> & {
     /**
-     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
-     * `lxapp.json` reports that; every other lxapp reports the product's.
+     * What the user chose for the whole product. Control app only. A system
+     * flip under `'auto'` moves the resolved scheme and leaves this quiet.
      */
-    get(): ResolvedAppearance;
-    /**
-     * Follow it, starting with the current value. Returns an unsubscribe.
-     *
-     * The first callback runs synchronously, before `watch` returns, so the
-     * unsubscribe is not yet bound inside it.
-     */
-    watch(callback: (resolved: ResolvedAppearance) => void, options?: SignalOptions): () => void;
-    /** What the user chose for the whole product. Control app only. */
-    readonly preference: {
-        /** The choice now. */
-        get(): AppearancePreference;
+    readonly preference: Live<AppearancePreference> & {
         /**
          * Pin the product to `'light'` or `'dark'`, or follow the system with
          * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
@@ -765,13 +756,6 @@ rong::js_api! {
          * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
          */
         set(preference: AppearancePreference): Promise<void>;
-        /**
-         * Follow the choice, not what it resolves to: a system flip under `'auto'`
-         * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
-         * current value; that first callback runs synchronously, before
-         * `watch` returns.
-         */
-        watch(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
     };
 }"###;
         /// What the product's language is set to: `'auto'` follows the system,
@@ -779,45 +763,25 @@ rong::js_api! {
         /// autocomplete while still accepting a tag.
         type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
 
-        /// `lx.host.displayLanguage` — the language this lxapp renders in.
-        type DisplayLanguageApi = r###"{
+        /// `lx.host.displayLanguage` — the language this lxapp renders in, as a
+        /// canonical BCP-47 tag. Map it to the catalogs this lxapp ships (its
+        /// `lxapp.json` `languages`) and fall back where it has none; the View's
+        /// `contentLanguage` is this value narrowed to them. Logic follows it
+        /// because the strings it hands to native chrome (titles, tab labels,
+        /// dialog text) are its own and nothing re-renders them.
+        type DisplayLanguageApi = r###"Live<string> & {
     /**
-     * The language in effect right now, as a canonical BCP-47 tag. Map it to
-     * the catalogs this lxapp actually ships and fall back where it has none;
-     * that narrowing is yours, and is not a language setting of its own.
-     * List the languages you ship in `lxapp.json` `languages`; the View's
-     * `contentLanguage` is this value narrowed to them.
+     * What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app
+     * only. A system locale change under `'auto'` moves the language and
+     * leaves this quiet.
      */
-    get(): string;
-    /**
-     * Follow the language, starting with the current value. Returns an
-     * unsubscribe.
-     *
-     * Logic needs this because the strings it hands to native chrome —
-     * navigation bar titles, tab bar labels, modal and action-sheet text — are
-     * the app's own, and nothing re-renders them on its behalf.
-     *
-     * The first callback runs synchronously, before `watch` returns, so the
-     * unsubscribe is not yet bound inside it.
-     */
-    watch(callback: (language: string) => void, options?: SignalOptions): () => void;
-    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
-    readonly preference: {
-        /** The choice now. */
-        get(): DisplayLanguagePreference;
+    readonly preference: Live<DisplayLanguagePreference> & {
         /**
          * Persist the product's language.
          * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
          * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
          */
         set(preference: DisplayLanguagePreference): Promise<void>;
-        /**
-         * Follow the choice, not what it resolves to: a system locale change under
-         * `'auto'` moves the language without moving the preference. Starts with
-         * the current value and returns an unsubscribe; that first callback runs
-         * synchronously, before `watch` returns.
-         */
-        watch(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
     };
 }"###;
 
@@ -961,12 +925,12 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.pick.file`: exactly one file.
+        /// Result of `lx.pick.file` and `lx.pick.capture`: one file.
         type PickFileResult = r###"{
     /** A file was picked. */
     status: 'ok';
-    /** The picked file, alone in a list. */
-    files: readonly [PickedFile];
+    /** The picked file. */
+    file: PickedFile;
 } | CanceledResult"###;
 
         /// Result of `lx.pick.files` and `lx.pick.media`: at least one file.
@@ -979,7 +943,7 @@ rong::js_api! {
     files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult"###;
 
-        /// Options for `lx.pick.media`: how many, which kinds, and from where.
+        /// Options for `lx.pick.media`: how many and which kinds, from the library.
         type PickMediaOptions = r###"{
     /**
      * Most files to return. Where the system picker cannot enforce it
@@ -988,23 +952,22 @@ rong::js_api! {
      */
     limit?: number;
     /**
-     * Kinds to offer. The camera captures one kind, so with `sourceType`
-     * camera name a single entry (macOS excepted).
+     * Kinds to offer.
      * @default ['image', 'video']
      */
-    mediaType?: readonly ('image' | 'video')[];
+    types?: readonly ('image' | 'video')[];
+}"###;
+
+        /// Options for `lx.pick.capture`: what the camera records.
+        type CaptureOptions = r###"{
+    /** A photo or a video. */
+    type: 'image' | 'video';
     /**
-     * Where media comes from; with both, the person chooses first.
-     * @platform Windows: no camera; `camera` is dropped from a pair and a camera-only request rejects.
-     * @default ['album']
-     */
-    sourceType?: readonly ('album' | 'camera')[];
-    /**
-     * Camera facing.
+     * Which camera.
      * @default 'back'
      */
-    camera?: 'back' | 'front';
-    /** Longest video the camera records, in milliseconds; rounded up to whole seconds. */
+    facing?: 'back' | 'front';
+    /** Longest video to record, in milliseconds; rounded up to whole seconds. */
     maxDurationMs?: number;
 }"###;
 
@@ -1174,12 +1137,6 @@ rong::js_api! {
 
         /// The screen's orientation.
         type DeviceOrientation = r###""portrait" | "landscape""###;
-
-        /// What an orientation watcher receives.
-        type DeviceOrientationChangeEvent = r###"{
-    /** The orientation now. */
-    value: DeviceOrientation;
-}"###;
 
         /// Options every download takes: headers and an abort signal.
         type DownloadOptionsBase = r###"{
@@ -1420,14 +1377,15 @@ rong::js_api! {
         type NavTarget = r###"PageTarget | TabTarget | AppTarget | UrlTarget"###;
 
 
-        /// Receives connectivity after each change.
-        type NetworkChangeCallback = r###"(info: NetworkInfo) => void"###;
 
         /// Connectivity right now: whether it is up, its type and addresses.
         type NetworkInfo = r###"{
     /** Any network is usable. */
     isConnected: boolean;
-    /** `'none'` whenever `isConnected` is false. */
+    /**
+     * `'none'` when offline. `'unknown'` with `isConnected: false` means the
+     * platform has not reported yet.
+     */
     networkType: NetworkType;
     /** The primary IPv4 address, at most one; empty when not connected. */
     ipv4: readonly string[];

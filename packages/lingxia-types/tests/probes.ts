@@ -32,8 +32,8 @@ lx.share({ files: ["a"], text: "hello" });
 // A picked result narrows on status before its payload.
 async function picked() {
   const result = await lx.pick.file();
-  // @ts-expect-error files exist only once status is checked
-  result.files;
-  if (result.status === "ok") void result.files;
+  // @ts-expect-error the file exists only once status is checked
+  result.file;
+  if (result.status === "ok") void result.file;
 }
 void picked;

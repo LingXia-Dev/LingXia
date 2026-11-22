@@ -1,26 +1,21 @@
 mod cache;
 mod parser;
-mod source_picker;
 mod types;
 
 use crate::dismissal::{USER_DISMISSED, canceled};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::i18n::js_invalid_parameter_error;
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use cache::ensure_temp_media_path;
 use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use lingxia_service::media::PickMediaMode;
+use lingxia_platform::traits::media_interaction::{CameraFacing, PickMediaMode};
 use lingxia_service::media::{MediaKind, MediaSource, PickMediaRequest};
 use lxapp::LxApp;
-use parser::{parse_camera, parse_pick_mode, parse_sources};
+use parser::{parse_camera, parse_capture_kind, parse_pick_mode};
 use rong::{JSContext, JSObject, JSResult, function::Optional};
 use serde_json::Value;
-use source_picker::present_source_picker;
 use std::fs;
 use std::path::{Path, PathBuf};
-use types::{JSPickMediaOptions, MediaKey};
+use types::{JSCaptureOptions, JSPickMediaOptions, MediaKey};
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)
@@ -33,80 +28,85 @@ rong::js_api! {
             ts_params = "options?: PickMediaOptions",
             ts_return = "Promise<PickFilesResult>"
         ) = pick_media;
+        fn capture(
+            ts_params = "options: CaptureOptions",
+            ts_return = "Promise<PickFileResult>"
+        ) = pick_capture;
     }
 }
 
-/// Picks pictures and videos from the library, or captures one with the camera.
-/// Library items are copied to temp on mobile; desktop returns the user's file.
+/// Picks pictures and videos from the library. Library items are copied to
+/// temp on mobile; desktop returns the user's file.
 ///
-/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-/// completed selection resolves `{ status: 'ok', files }` with at least one
-/// file. Rejects when capture or selection fails, or the host returns an invalid
-/// payload.
+/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker,
+/// otherwise `{ status: 'ok', files }` with at least one file.
+///
+/// @throws {E_INVALID_ARG} A `types` entry other than `'image'` or `'video'`.
+/// @throws {E_INTERNAL} The picker failed or returned an invalid payload.
+async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
+    let opts = options.0.unwrap_or_default();
+    let mode = parse_pick_mode(opts.types)?;
+    let picked = run_pick(
+        &ctx,
+        MediaSource::Album,
+        mode,
+        opts.count.unwrap_or(9),
+        None,
+        None,
+    )
+    .await?;
+    match picked {
+        Some(files) => crate::pick::files_result(&ctx, &files),
+        None => canceled(&ctx),
+    }
+}
+
+/// Takes one photo or records one video with the camera. Resolves
+/// `{ status: 'canceled' }` only when the user dismisses the camera, otherwise
+/// `{ status: 'ok', file }`.
 ///
 /// @supports pick.camera
-/// @throws {E_NOT_SUPPORTED} A camera-only request where the host cannot capture, such as on Windows.
-async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
-    let opts = options.as_ref().cloned().unwrap_or(JSPickMediaOptions {
-        count: None,
-        media_type: None,
-        source_type: None,
-        camera: None,
-        max_duration_ms: None,
-    });
-
-    let mode = parse_pick_mode(opts.media_type)?;
-    let sources = parse_sources(opts.source_type)?;
-    // Windows has no camera capture pipeline; album+camera requests
-    // degrade to the album picker instead of asking for a source that
-    // would only fail. A camera-only request stays as it is, for the
-    // platform to reject with NotSupported.
-    #[cfg(target_os = "windows")]
-    let sources: Vec<MediaSource> = {
-        let filtered: Vec<MediaSource> = sources
-            .iter()
-            .copied()
-            .filter(|source| !matches!(source, MediaSource::Camera))
-            .collect();
-        if filtered.is_empty() {
-            sources
-        } else {
-            filtered
-        }
-    };
-    let selected_source = if sources.len() > 1 {
-        match present_source_picker(&lxapp, &sources).await? {
-            Some(source) => source,
-            None => return canceled(&ctx),
-        }
-    } else {
-        sources.first().copied().unwrap_or(MediaSource::Album)
-    };
-
-    // Windows is excluded so a camera-only request reads as NotSupported,
-    // not as a bad mediaType.
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    if matches!(selected_source, MediaSource::Camera) && matches!(mode, PickMediaMode::Mix) {
-        return Err(js_invalid_parameter_error(
-            "camera source does not support selecting both image and video; specify a single mediaType entry",
-        ));
-    }
-
-    // The platform pickers take whole seconds; round up so a limit never shrinks.
-    let max_duration_seconds = opts
+/// @throws {E_INVALID_ARG} A `type` other than `'image'` or `'video'`.
+/// @throws {E_NOT_SUPPORTED} The host cannot capture, such as on Windows.
+/// @throws {E_INTERNAL} The camera failed or returned an invalid payload.
+async fn pick_capture(ctx: JSContext, options: JSCaptureOptions) -> JSResult<JSObject> {
+    let mode = parse_capture_kind(&options.kind)?;
+    // The platform cameras take whole seconds; round up so a limit never shrinks.
+    let max_duration_seconds = options
         .max_duration_ms
         .filter(|v| !v.is_sign_negative())
         .map(|v| (v / 1000.0).ceil().min(u32::MAX as f64) as u32);
-    let source_types = vec![selected_source];
-
-    let request = PickMediaRequest {
-        max_count: opts.count.unwrap_or(9),
+    let picked = run_pick(
+        &ctx,
+        MediaSource::Camera,
         mode,
-        source_types,
+        1,
         max_duration_seconds,
-        camera_facing: parse_camera(opts.camera),
+        parse_camera(options.facing),
+    )
+    .await?;
+    match picked.and_then(|files| files.into_iter().next()) {
+        Some(file) => crate::pick::file_result(&ctx, &file),
+        None => canceled(&ctx),
+    }
+}
+
+/// `None` when the person dismissed the picker or camera.
+async fn run_pick(
+    ctx: &JSContext,
+    source: MediaSource,
+    mode: PickMediaMode,
+    max_count: u32,
+    max_duration_seconds: Option<u32>,
+    camera_facing: Option<CameraFacing>,
+) -> JSResult<Option<Vec<crate::pick::PickedFile>>> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let request = PickMediaRequest {
+        max_count,
+        mode,
+        source_types: vec![source],
+        max_duration_seconds,
+        camera_facing,
         owner: lxapp.dialog_owner(),
     };
 
@@ -114,7 +114,7 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the picker";
         // every other platform error stays a rejection.
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => return canceled(&ctx),
+        Err(PlatformError::BusinessError(USER_DISMISSED)) => return Ok(None),
         Err(err) => return Err(js_error_from_platform_error(&err)),
     };
 
@@ -243,10 +243,10 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
                 "pick.media invalid payload: every selected entry was unusable",
             ));
         }
-        return canceled(&ctx);
+        return Ok(None);
     }
 
-    crate::pick::files_result(&ctx, &out)
+    Ok(Some(out))
 }
 
 fn file_name_of(path: &Path) -> Option<String> {

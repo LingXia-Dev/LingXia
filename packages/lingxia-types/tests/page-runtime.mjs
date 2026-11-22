@@ -226,6 +226,7 @@ globalThis.__LX_PAGE_NATIVE__ = {
 globalThis.envSeen = [];
 globalThis.envStop = new AbortController();
 dialogPage.env.watch(e => envSeen.push(e.sizeClass), { signal: envStop.signal });`);
+assert.deepEqual(JSON.parse(run('JSON.stringify(dialogPage.env.get())')), { sizeClass: 'compact', canDock: false }, 'get reads the current env');
 assert.deepEqual(JSON.parse(run('JSON.stringify(envSeen)')), ['compact'], 'watch delivers the current value at once');
 run(`envNow = { sizeClass: 'regular', canDock: true }; for (const cb of envSubs) cb(envNow);`);
 assert.deepEqual(JSON.parse(run('JSON.stringify(envSeen)')), ['compact', 'regular']);

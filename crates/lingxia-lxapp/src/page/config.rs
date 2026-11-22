@@ -104,7 +104,7 @@ impl OrientationOverride {
 }
 
 /// An explicit call beats declared configuration: a full-screen video lock,
-/// then the runtime lock from `lx.device.orientation.set`, then the page's
+/// then the runtime lock from `lx.device.orientation.lock`, then the page's
 /// `pageOrientation`, then the app's.
 pub(crate) fn resolve_orientation(
     video: Option<PageOrientation>,

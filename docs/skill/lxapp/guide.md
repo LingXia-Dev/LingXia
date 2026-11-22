@@ -292,7 +292,7 @@ export default definePage({
   data: { online: true },
   setup: page => ({
     onLoad() {
-      lx.network.watch(info => page.update(d => { d.online = info.isConnected; }), { signal: page.signal });
+      lx.network.status.watch(info => page.update(d => { d.online = info.isConnected; }), { signal: page.signal });
     },
   }),
 });

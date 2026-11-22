@@ -123,16 +123,17 @@ const response = await task.result; // { status, ok, headers, text, json() }
 
 ## Picking files
 
-`lx.pick.file()` / `files()` / `media()` resolve
-`{ status: 'ok', files: PickedFile[] }` or `{ status: 'canceled' }`;
+`lx.pick.files()` / `media()` resolve `{ status: 'ok', files: PickedFile[] }`,
+`file()` / `capture()` resolve `{ status: 'ok', file }`, all or `{ status: 'canceled' }`;
 `pick.directory()` resolves `{ directory: { path, name } }` and
 `pick.code()` resolves `{ value, format }`. Each `PickedFile` is
 `{ path, name, size, type }` on every platform: `name` always has an
 extension and `type` is the MIME type derived from it, never the platform's.
 Branch on `type`, not on `path`, which may be a `content://` or native path.
+`media({ types, limit })` picks from the library; `capture({ type, facing, maxDurationMs })` uses the camera.
 
 ```ts
-const r = await lx.pick.media({ mediaType: ['image', 'video'] })
+const r = await lx.pick.media({ types: ['image', 'video'] })
 if (r.status === 'canceled') return
 const videos = r.files.filter(f => f.type.startsWith('video/'))
 ```
@@ -154,7 +155,7 @@ const videos = r.files.filter(f => f.type.startsWith('video/'))
 | | Mobile | Desktop |
 | --- | --- | --- |
 | `pick.file` / `pick.files` | iOS: the system hands over a copy. Android, Harmony: no copy, a session-scoped reference to the original | No copy; the live original, so later edits or deletion show |
-| `pick.media` | Copied into the lxapp temp directory and counted against its temp quota | No copy; the live original |
+| `pick.media` / `pick.capture` | Copied into the lxapp temp directory and counted against its temp quota | No copy; the live original |
 | `pick.directory` | iOS: no copy, a session-scoped grant on the directory. Android, Harmony: see below | No copy; a session-scoped grant on the directory |
 
 `pick.directory` on Android and on HarmonyOS phones and tablets has no usable

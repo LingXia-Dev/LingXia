@@ -1,5 +1,5 @@
 use crate::i18n::js_invalid_parameter_error;
-use lingxia_platform::traits::media_interaction::{CameraFacing, MediaSource, PickMediaMode};
+use lingxia_platform::traits::media_interaction::{CameraFacing, PickMediaMode};
 use rong::JSResult;
 
 pub(super) fn parse_pick_mode(values: Option<Vec<String>>) -> JSResult<PickMediaMode> {
@@ -13,7 +13,7 @@ pub(super) fn parse_pick_mode(values: Option<Vec<String>>) -> JSResult<PickMedia
             "video" => has_video = true,
             other => {
                 return Err(js_invalid_parameter_error(format!(
-                    "pick.media invalid mediaType token \"{}\"",
+                    "pick.media invalid types entry \"{}\"",
                     other
                 )));
             }
@@ -33,32 +33,15 @@ pub(super) fn parse_pick_mode(values: Option<Vec<String>>) -> JSResult<PickMedia
     })
 }
 
-pub(super) fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSource>> {
-    let raw = values.unwrap_or_else(|| vec!["album".to_string()]);
-    let mut out: Vec<MediaSource> = Vec::new();
-
-    for token in raw {
-        let source = match token.to_lowercase().as_str() {
-            "album" => MediaSource::Album,
-            "camera" => MediaSource::Camera,
-            other => {
-                return Err(js_invalid_parameter_error(format!(
-                    "pick.media invalid sourceType token \"{}\"",
-                    other
-                )));
-            }
-        };
-
-        if !out.contains(&source) {
-            out.push(source);
-        }
+/// The one kind `lx.pick.capture` records.
+pub(super) fn parse_capture_kind(value: &str) -> JSResult<PickMediaMode> {
+    match value {
+        "image" => Ok(PickMediaMode::Images),
+        "video" => Ok(PickMediaMode::Videos),
+        other => Err(js_invalid_parameter_error(format!(
+            "pick.capture invalid type \"{other}\" (expected image or video)"
+        ))),
     }
-
-    if out.is_empty() {
-        out.push(MediaSource::Album);
-    }
-
-    Ok(out)
 }
 
 pub(super) fn parse_camera(s: Option<String>) -> Option<CameraFacing> {

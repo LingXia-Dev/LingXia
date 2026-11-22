@@ -113,9 +113,9 @@ function transferShapes(): void {
 async function pickFileShapes(): Promise<void> {
   const single = await lx.pick.file();
   if (single.status !== 'canceled') {
-    const only: readonly [PickedFile] = single.files;
-    // @ts-expect-error pick.file returns exactly one file
-    single.files[1].path;
+    const only: PickedFile = single.file;
+    // @ts-expect-error pick.file returns `file`, not a list
+    single.files;
     void only;
   }
 
@@ -129,6 +129,10 @@ async function pickFileShapes(): Promise<void> {
 
   // @ts-expect-error `multiple` is gone: pick.file is one, pick.files is many
   await lx.pick.file({ multiple: true });
+  // @ts-expect-error the library picker has no camera source; capture is `pick.capture`
+  await lx.pick.media({ sourceType: ["camera"] });
+  // @ts-expect-error capture records one kind
+  await lx.pick.capture({ type: "both" });
 }
 
 // Every task is its result plus one stream of `TransferProgress` that returns the result.

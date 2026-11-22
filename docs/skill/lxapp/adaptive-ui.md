@@ -6,7 +6,7 @@ the user agent, `screen.width`, or a browser media query.
 ## Size class
 
 ```ts
-// View: useLxHost() / env. Logic: page.env (no pixels).
+// View: useLxHost() / env. Logic: page.env.get() (no pixels).
 type SizeContext = {
   canDock: boolean;                  // can `as: 'aside'` dock beside the main right now
   sizeClass: 'compact' | 'regular';
@@ -44,9 +44,9 @@ that only picks a layout needs no Logic subscription. Size spacing and columns
 with CSS and container queries. Older hosts report `compact`, so keep
 `minRuntime` current.
 
-Logic reads `page.env.sizeClass` / `.canDock`, and calls `page.env.watch(cb)`
-only when Logic itself acts on a change. `cb` runs when `sizeClass` or
-`canDock` changes (not on every resize, and not on subscribe); the watcher
+Logic reads `page.env.get()` (`{ sizeClass, canDock }`), and calls
+`page.env.watch(cb)` only when Logic itself acts on a change. `cb` runs at once,
+then when `sizeClass` or `canDock` changes (not on every resize); the watcher
 stops when the page unloads, and the returned function stops it earlier.
 
 ## CSS or separate Views

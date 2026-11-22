@@ -31,9 +31,8 @@ rong::js_api! {
 /// Scans a barcode or QR code with the camera.
 ///
 /// Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-/// completed scan resolves `{ status: 'ok', value, format }`. A value that is an
-/// `/lxapp/` app link also opens that lxapp; other URLs are only returned.
-/// Rejects when scanning fails or the host returns an invalid payload.
+/// completed scan resolves `{ status: 'ok', value, format }`; nothing is opened,
+/// so pass an app link to `lx.nav.go` yourself. Rejects when scanning fails or the host returns an invalid payload.
 ///
 /// @throws {E_INVALID_ARG} An unknown entry in `formats`.
 /// @throws {E_INTERNAL} The scanner failed or returned an invalid payload.
@@ -70,10 +69,6 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
         .and_then(Value::as_str)
         .ok_or_else(|| js_internal_error("pick.code payload missing string `scanType`"))?
         .to_string();
-
-    // Only the `/lxapp/*` namespace auto-opens. A product URL that merely
-    // shares a configured host is returned to the caller, not acted on.
-    let _ = lingxia_service::applink::deliver_lxapp_only(&scan_result);
 
     let result = completed(&ctx)?;
     result.set("value", scan_result)?;

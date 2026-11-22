@@ -37,7 +37,7 @@ export async function rememberedEntry(): Promise<string> {
 }
 
 type SizeClass = 'compact' | 'regular';
-type PageEnv = { readonly sizeClass: SizeClass; watch(callback: (env: { sizeClass: SizeClass }) => void): () => void };
+type PageEnv = { get(): { sizeClass: SizeClass }; watch(callback: (env: { sizeClass: SizeClass }) => void): () => void };
 
 /** Calls `onClass(sizeClass, crossed)` with the class the page opened in, then on every change of it. */
 function watchClass(env: PageEnv, onClass: (sizeClass: SizeClass, crossed: boolean) => void): () => void {
@@ -49,7 +49,7 @@ function watchClass(env: PageEnv, onClass: (sizeClass: SizeClass, crossed: boole
     // Off the caller, which runs inside onLoad, so navigation never starts mid-load.
     setTimeout(() => onClass(sizeClass, crossed), 0);
   };
-  report(env.sizeClass);
+  report(env.get().sizeClass);
   return env.watch(({ sizeClass }) => report(sizeClass));
 }
 

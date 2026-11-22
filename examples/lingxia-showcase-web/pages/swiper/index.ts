@@ -63,13 +63,7 @@ export default definePage({
         if (page.data.busy) return;
         page.update(d => { d.busy = true; });
         try {
-          const result = await lx.pick.media({
-            mediaType,
-            sourceType: ["album", "camera"],
-            limit: count,
-            camera: "back",
-            maxDurationMs: 60_000,
-          });
+          const result = await lx.pick.media({ types: mediaType, limit: count });
           if (result.status === 'canceled') {
             page.update(d => { d.busy = false; });
             return;

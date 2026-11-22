@@ -2880,7 +2880,7 @@ impl LxApp {
         state.orientation_override.unwrap_or_default()
     }
 
-    /// Set the runtime lock `lx.device.orientation.set` applies, or remove it (`None`).
+    /// Set the runtime lock `lx.device.orientation.lock` applies, or remove it (`None`).
     pub fn set_app_orientation(&self, orientation: Option<OrientationConfig>) {
         let orientation =
             orientation.map(|value| OrientationConfig::normalize(value.mode, value.rotation));

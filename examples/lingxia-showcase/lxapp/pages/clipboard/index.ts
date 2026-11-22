@@ -107,11 +107,7 @@ export default definePage({
       },
       async chooseAndWriteImage() {
         try {
-          const picked = await lx.pick.media({
-            limit: 1,
-            mediaType: ["image"],
-            sourceType: ["album", "camera"],
-          });
+          const picked = await lx.pick.media({ limit: 1, types: ["image"] });
           if (picked.status === 'canceled') {
             page.update(d => { d.statusText = "Image picker canceled"; });
             return;

@@ -16,7 +16,7 @@ interface OrientationProbe {
 test('rotate the Android viewport and deliver events only to live listeners', {
   id: 'ANDROID-ORIENTATION-001',
   app: SHOWCASE_APP_ID,
-  covers: ['lx.device.orientation.set', 'lx.device.orientation.watch'],
+  covers: ['lx.device.orientation.lock', 'lx.device.orientation.watch'],
   timeout: 60_000,
   reason: 'requires the Android host orientation implementation',
 }, async (t) => {
@@ -40,7 +40,7 @@ test('rotate the Android viewport and deliver events only to live listeners', {
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {
-    await app.logic.eval(({ lx }, value) => { lx.device.orientation.set(value); }, orientation);
+    await app.logic.eval(({ lx }, value) => { lx.device.orientation.lock(value); }, orientation);
     const size = await t.waitFor(dimensions, {
       until: size => size.width > 0 && size.height > 0 && (size.width > size.height) === (orientation === 'landscape'),
       timeout: 15000,
@@ -50,8 +50,8 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   await rotate('portrait');
   await app.logic.eval(({ lx }, key) => {
     const state: OrientationProbe = { removed: [], live: [], offRemoved: () => {}, offLive: () => {} };
-    state.offRemoved = lx.device.orientation.watch(event => state.removed.push(event.value));
-    state.offLive = lx.device.orientation.watch(event => state.live.push(event.value));
+    state.offRemoved = lx.device.orientation.watch(value => state.removed.push(value));
+    state.offLive = lx.device.orientation.watch(value => state.live.push(value));
     (globalThis as unknown as Record<string, OrientationProbe>)[key] = state;
   }, namespace);
   const events = () => app.logic.eval((_, key) => {

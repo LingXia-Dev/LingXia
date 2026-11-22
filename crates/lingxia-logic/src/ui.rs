@@ -19,8 +19,6 @@ mod tabbar;
 mod toast;
 mod tray;
 
-pub(crate) use action_sheet::present_action_sheet;
-
 /// Pause between dismiss attempts while an aborted dialog's call settles.
 const DISMISS_RETRY: Duration = Duration::from_millis(100);
 /// Dismiss attempts before an aborted dialog stops waiting for its call.

@@ -51,6 +51,18 @@ export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
           ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
           : T;
 
+/** A value that changes. `watch` calls back with the current value at once, then on each change. */
+export interface Live<T> {
+  /** The value now. */
+  get(): T;
+  /**
+   * Follow it, starting with the current value; returns an unsubscribe. The
+   * first callback runs before `watch` returns, so the unsubscribe is not yet
+   * bound inside it.
+   */
+  watch(callback: (value: T) => void, options?: SignalOptions): () => void;
+}
+
 /**
  * Injected by the runtime into methods listed in `stream_handlers` page metadata.
  *
@@ -420,7 +432,7 @@ declare global {
   /** `lx.media`: inspect, compress and preview images and videos. */
   interface MediaApi {}
   /** `lx.device.orientation`: read the screen's orientation, lock it, follow it. */
-  interface OrientationApi {}
+  interface OrientationApi extends Live<DeviceOrientation> {}
   /** `lx.pick`: let the person choose files, a folder, photos and videos, or scan a code. */
   interface PickApi {}
   /** `lx.app.tabBar`: this lxapp's tab bar: items, badges and visibility. */
@@ -447,6 +459,16 @@ declare global {
   interface NetworkApi {
     /** Wi-Fi: scan, connect and follow the connected network. */
     readonly wifi: WifiApi;
+
+    /**
+     * Connectivity: whether it is up, its type and addresses. `get()` returns
+     * the last value the platform reported, with no native round trip.
+     * @example
+     * ```ts
+     * const { isConnected, networkType } = lx.network.status.get();
+     * ```
+     */
+    readonly status: Live<NetworkInfo>;
 
     /**
      * Download over HTTP(S), streamed to disk. Returns the task before the

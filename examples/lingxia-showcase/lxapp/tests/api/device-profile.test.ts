@@ -56,7 +56,7 @@ const ORIENTATION_SUPPORT: Record<string, boolean> = {
 
 test('accept both device orientations and reject an unknown one', {
   id: 'DEVICE-ORIENTATION-001',
-  covers: ['lx.device.orientation.set'],
+  covers: ['lx.device.orientation.lock', 'lx.device.orientation.get'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
@@ -72,13 +72,17 @@ test('accept both device orientations and reject an unknown one', {
 
   const result = await app.logic.eval(({ lx }) => {
     // 'sideways' is not an orientation: the probe passes it on purpose.
-    const setOrientation = lx.device.orientation.set as (value: string) => void;
+    const setOrientation = lx.device.orientation.lock as (value: string) => void;
     const attempt = (value: string): { ok: boolean; code?: string } => {
       try { setOrientation(value); return { ok: true }; }
       catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
     };
+    const landscape = attempt('landscape');
+    // `get` reports the lock itself, so it answers before the window turns.
+    const lockedTo = lx.device.orientation.get();
     return {
-      landscape: attempt('landscape'),
+      landscape,
+      lockedTo,
       portrait: attempt('portrait'),
       unlock: (() => {
         try { lx.device.orientation.unlock(); return { ok: true }; }
@@ -97,6 +101,7 @@ test('accept both device orientations and reject an unknown one', {
     return;
   }
   expect(result.landscape.ok).toBe(true);
+  expect(result.lockedTo).toBe('landscape');
   expect(result.portrait.ok).toBe(true);
   expect(result.unlock.ok).toBe(true);
   expect(result.invalid.ok).toBe(false);

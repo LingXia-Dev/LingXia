@@ -126,8 +126,8 @@ export default definePage({
             return;
           }
 
-          const selectedPath = result.files[0].path;
-          const fileType = detectFileTypeFromPath(result.files[0].name);
+          const selectedPath = result.file.path;
+          const fileType = detectFileTypeFromPath(result.file.name);
           page.update(d => {
             d.chooseFileStatusText = "File selected";
             d.chooseFileSelectedPath = selectedPath;

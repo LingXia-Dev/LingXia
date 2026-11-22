@@ -54,6 +54,18 @@ export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
           ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
           : T;
 
+/** A value that changes. `watch` calls back with the current value at once, then on each change. */
+export interface Live<T> {
+  /** The value now. */
+  get(): T;
+  /**
+   * Follow it, starting with the current value; returns an unsubscribe. The
+   * first callback runs before `watch` returns, so the unsubscribe is not yet
+   * bound inside it.
+   */
+  watch(callback: (value: T) => void, options?: SignalOptions): () => void;
+}
+
 /**
  * Injected by the runtime into methods listed in `stream_handlers` page metadata.
  *
@@ -423,7 +435,7 @@ declare global {
   /** `lx.media`: inspect, compress and preview images and videos. */
   interface MediaApi {}
   /** `lx.device.orientation`: read the screen's orientation, lock it, follow it. */
-  interface OrientationApi {}
+  interface OrientationApi extends Live<DeviceOrientation> {}
   /** `lx.pick`: let the person choose files, a folder, photos and videos, or scan a code. */
   interface PickApi {}
   /** `lx.app.tabBar`: this lxapp's tab bar: items, badges and visibility. */
@@ -450,6 +462,16 @@ declare global {
   interface NetworkApi {
     /** Wi-Fi: scan, connect and follow the connected network. */
     readonly wifi: WifiApi;
+
+    /**
+     * Connectivity: whether it is up, its type and addresses. `get()` returns
+     * the last value the platform reported, with no native round trip.
+     * @example
+     * ```ts
+     * const { isConnected, networkType } = lx.network.status.get();
+     * ```
+     */
+    readonly status: Live<NetworkInfo>;
 
     /**
      * Download over HTTP(S), streamed to disk. Returns the task before the
@@ -778,24 +800,17 @@ export type AppTarget = {
     version?: string;
 };
 
-/** `lx.host.appearance` — the scheme this lxapp renders in. */
-export type AppearanceApi = {
+/**
+ * `lx.host.appearance` — the scheme this lxapp renders in. An lxapp that
+ * pinned one in its `lxapp.json` reports that; every other lxapp reports
+ * the product's.
+ */
+export type AppearanceApi = Live<ResolvedAppearance> & {
     /**
-     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
-     * `lxapp.json` reports that; every other lxapp reports the product's.
+     * What the user chose for the whole product. Control app only. A system
+     * flip under `'auto'` moves the resolved scheme and leaves this quiet.
      */
-    get(): ResolvedAppearance;
-    /**
-     * Follow it, starting with the current value. Returns an unsubscribe.
-     *
-     * The first callback runs synchronously, before `watch` returns, so the
-     * unsubscribe is not yet bound inside it.
-     */
-    watch(callback: (resolved: ResolvedAppearance) => void, options?: SignalOptions): () => void;
-    /** What the user chose for the whole product. Control app only. */
-    readonly preference: {
-        /** The choice now. */
-        get(): AppearancePreference;
+    readonly preference: Live<AppearancePreference> & {
         /**
          * Pin the product to `'light'` or `'dark'`, or follow the system with
          * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
@@ -803,13 +818,6 @@ export type AppearanceApi = {
          * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
          */
         set(preference: AppearancePreference): Promise<void>;
-        /**
-         * Follow the choice, not what it resolves to: a system flip under `'auto'`
-         * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
-         * current value; that first callback runs synchronously, before
-         * `watch` returns.
-         */
-        watch(callback: (preference: AppearancePreference) => void, options?: SignalOptions): () => void;
     };
 };
 
@@ -976,6 +984,19 @@ export type BuiltinSurface = Omit<SurfaceBase, 'close' | 'onClose'> & {
 export type CanceledResult = {
     /** The person dismissed it. */
     status: 'canceled';
+};
+
+/** Options for `lx.pick.capture`: what the camera records. */
+export type CaptureOptions = {
+    /** A photo or a video. */
+    type: 'image' | 'video';
+    /**
+     * Which camera.
+     * @default 'back'
+     */
+    facing?: 'back' | 'front';
+    /** Longest video to record, in milliseconds; rounded up to whole seconds. */
+    maxDurationMs?: number;
 };
 
 export type ClipboardApi = globalThis.ClipboardApi;
@@ -1181,51 +1202,27 @@ export type DeviceApi = globalThis.DeviceApi;
 /** The screen's orientation. */
 export type DeviceOrientation = "portrait" | "landscape";
 
-/** What an orientation watcher receives. */
-export type DeviceOrientationChangeEvent = {
-    /** The orientation now. */
-    value: DeviceOrientation;
-};
-
-/** `lx.host.displayLanguage` — the language this lxapp renders in. */
-export type DisplayLanguageApi = {
+/**
+ * `lx.host.displayLanguage` — the language this lxapp renders in, as a
+ * canonical BCP-47 tag. Map it to the catalogs this lxapp ships (its
+ * `lxapp.json` `languages`) and fall back where it has none; the View's
+ * `contentLanguage` is this value narrowed to them. Logic follows it
+ * because the strings it hands to native chrome (titles, tab labels,
+ * dialog text) are its own and nothing re-renders them.
+ */
+export type DisplayLanguageApi = Live<string> & {
     /**
-     * The language in effect right now, as a canonical BCP-47 tag. Map it to
-     * the catalogs this lxapp actually ships and fall back where it has none;
-     * that narrowing is yours, and is not a language setting of its own.
-     * List the languages you ship in `lxapp.json` `languages`; the View's
-     * `contentLanguage` is this value narrowed to them.
+     * What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app
+     * only. A system locale change under `'auto'` moves the language and
+     * leaves this quiet.
      */
-    get(): string;
-    /**
-     * Follow the language, starting with the current value. Returns an
-     * unsubscribe.
-     *
-     * Logic needs this because the strings it hands to native chrome —
-     * navigation bar titles, tab bar labels, modal and action-sheet text — are
-     * the app's own, and nothing re-renders them on its behalf.
-     *
-     * The first callback runs synchronously, before `watch` returns, so the
-     * unsubscribe is not yet bound inside it.
-     */
-    watch(callback: (language: string) => void, options?: SignalOptions): () => void;
-    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app only. */
-    readonly preference: {
-        /** The choice now. */
-        get(): DisplayLanguagePreference;
+    readonly preference: Live<DisplayLanguagePreference> & {
         /**
          * Persist the product's language.
          * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
          * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
          */
         set(preference: DisplayLanguagePreference): Promise<void>;
-        /**
-         * Follow the choice, not what it resolves to: a system locale change under
-         * `'auto'` moves the language without moving the preference. Starts with
-         * the current value and returns an unsubscribe; that first callback runs
-         * synchronously, before `watch` returns.
-         */
-        watch(callback: (preference: DisplayLanguagePreference) => void, options?: SignalOptions): () => void;
     };
 };
 
@@ -1564,14 +1561,14 @@ export type NavigationBarStylePatch = {
 
 export type NetworkApi = globalThis.NetworkApi;
 
-/** Receives connectivity after each change. */
-export type NetworkChangeCallback = (info: NetworkInfo) => void;
-
 /** Connectivity right now: whether it is up, its type and addresses. */
 export type NetworkInfo = {
     /** Any network is usable. */
     isConnected: boolean;
-    /** `'none'` whenever `isConnected` is false. */
+    /**
+     * `'none'` when offline. `'unknown'` with `isConnected: false` means the
+     * platform has not reported yet.
+     */
     networkType: NetworkType;
     /** The primary IPv4 address, at most one; empty when not connected. */
     ipv4: readonly string[];
@@ -1973,12 +1970,12 @@ export type PickFileOptions = {
     defaultPath?: string;
 };
 
-/** Result of `lx.pick.file`: exactly one file. */
+/** Result of `lx.pick.file` and `lx.pick.capture`: one file. */
 export type PickFileResult = {
     /** A file was picked. */
     status: 'ok';
-    /** The picked file, alone in a list. */
-    files: readonly [PickedFile];
+    /** The picked file. */
+    file: PickedFile;
 } | CanceledResult;
 
 /**
@@ -1993,7 +1990,7 @@ export type PickFilesResult = {
     files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult;
 
-/** Options for `lx.pick.media`: how many, which kinds, and from where. */
+/** Options for `lx.pick.media`: how many and which kinds, from the library. */
 export type PickMediaOptions = {
     /**
      * Most files to return. Where the system picker cannot enforce it
@@ -2002,24 +1999,10 @@ export type PickMediaOptions = {
      */
     limit?: number;
     /**
-     * Kinds to offer. The camera captures one kind, so with `sourceType`
-     * camera name a single entry (macOS excepted).
+     * Kinds to offer.
      * @default ['image', 'video']
      */
-    mediaType?: readonly ('image' | 'video')[];
-    /**
-     * Where media comes from; with both, the person chooses first.
-     * @platform Windows: no camera; `camera` is dropped from a pair and a camera-only request rejects.
-     * @default ['album']
-     */
-    sourceType?: readonly ('album' | 'camera')[];
-    /**
-     * Camera facing.
-     * @default 'back'
-     */
-    camera?: 'back' | 'front';
-    /** Longest video the camera records, in milliseconds; rounded up to whole seconds. */
-    maxDurationMs?: number;
+    types?: readonly ('image' | 'video')[];
 };
 
 /**
@@ -4013,20 +3996,7 @@ declare global {
 declare global {
   interface NetworkApi {
     readonly wifi: WifiApi;
-    /**
-     * Read connectivity right now: whether it is connected, its type, and addresses.
-     * @example
-     * ```ts
-     * const { isConnected, networkType } = await lx.network.status();
-     * ```
-     * @throws {E_INTERNAL} The platform could not report it.
-     */
-    status(): Promise<NetworkInfo>;
-    /**
-     * Delivers the current connectivity, then each change; returns the unsubscribe fn.
-     * The current value is read asynchronously and skipped if a change lands first.
-     */
-    watch(callback: NetworkChangeCallback, options?: SignalOptions): () => void;
+    readonly status: Live<NetworkInfo>;
     download(url: never): never;
     /**
      * Upload a file over HTTP, streamed from disk. `method: 'PUT'` with
@@ -4046,14 +4016,19 @@ declare global {
 declare global {
   interface OrientationApi {
     /**
+     * The orientation in effect: the lock (not how the device is held), or the
+     * screen's shape when unlocked.
+     */
+    get(): DeviceOrientation;
+    /**
      * Lock this lxapp to `portrait` or `landscape`.
      * The lock beats every page's `pageOrientation`; only a full-screen video
      * beats the lock. `unlock()` removes it.
      * @throws {E_INVALID_ARG} Any other value.
      */
-    set(orientation: DeviceOrientation): void;
+    lock(orientation: DeviceOrientation): void;
     /**
-     * Remove the lock `set` placed: each page's `pageOrientation`, then the
+     * Remove the lock `lock` placed: each page's `pageOrientation`, then the
      * app's default, applies again.
      */
     unlock(): void;
@@ -4061,7 +4036,7 @@ declare global {
      * Delivers the orientation in effect before returning, then each change: the
      * lock (not how the device is held), or the screen's shape when unlocked.
      */
-    watch(callback: (event: DeviceOrientationChangeEvent) => void, options?: SignalOptions): () => void;
+    watch(callback: (value: DeviceOrientation) => void, options?: SignalOptions): () => void;
   }
 }
 
@@ -4069,11 +4044,11 @@ declare global {
   interface PickApi {
     /**
      * Picks one file. Resolves `{ status: 'canceled' }` only when the user
-     * dismisses the picker, otherwise `{ status: 'ok', files: [file] }`.
+     * dismisses the picker, otherwise `{ status: 'ok', file }`.
      * @example
      * ```ts
      * const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });
-     * if (picked.status === 'ok') await attach(picked.files[0].path);
+     * if (picked.status === 'ok') await attach(picked.file.path);
      * ```
      * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
      * @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
@@ -4097,22 +4072,29 @@ declare global {
      */
     directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     /**
-     * Picks pictures and videos from the library, or captures one with the camera.
-     * Library items are copied to temp on mobile; desktop returns the user's file.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
-     * completed selection resolves `{ status: 'ok', files }` with at least one
-     * file. Rejects when capture or selection fails, or the host returns an invalid
-     * payload.
-     * @supports pick.camera
-     * @throws {E_NOT_SUPPORTED} A camera-only request where the host cannot capture, such as on Windows.
+     * Picks pictures and videos from the library. Library items are copied to
+     * temp on mobile; desktop returns the user's file.
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker,
+     * otherwise `{ status: 'ok', files }` with at least one file.
+     * @throws {E_INVALID_ARG} A `types` entry other than `'image'` or `'video'`.
+     * @throws {E_INTERNAL} The picker failed or returned an invalid payload.
      */
     media(options?: PickMediaOptions): Promise<PickFilesResult>;
     /**
+     * Takes one photo or records one video with the camera. Resolves
+     * `{ status: 'canceled' }` only when the user dismisses the camera, otherwise
+     * `{ status: 'ok', file }`.
+     * @supports pick.camera
+     * @throws {E_INVALID_ARG} A `type` other than `'image'` or `'video'`.
+     * @throws {E_NOT_SUPPORTED} The host cannot capture, such as on Windows.
+     * @throws {E_INTERNAL} The camera failed or returned an invalid payload.
+     */
+    capture(options: CaptureOptions): Promise<PickFileResult>;
+    /**
      * Scans a barcode or QR code with the camera.
      * Resolves `{ status: 'canceled' }` only when the user dismisses the scanner. A
-     * completed scan resolves `{ status: 'ok', value, format }`. A value that is an
-     * `/lxapp/` app link also opens that lxapp; other URLs are only returned.
-     * Rejects when scanning fails or the host returns an invalid payload.
+     * completed scan resolves `{ status: 'ok', value, format }`; nothing is opened,
+     * so pass an app link to `lx.nav.go` yourself. Rejects when scanning fails or the host returns an invalid payload.
      * @throws {E_INVALID_ARG} An unknown entry in `formats`.
      * @throws {E_INTERNAL} The scanner failed or returned an invalid payload.
      */

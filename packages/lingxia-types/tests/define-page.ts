@@ -86,13 +86,15 @@ export type DefinePageGate = [typeof asContract, typeof counted, typeof params, 
 
 definePage({
   setup(page) {
-    const compact: boolean = page.env.sizeClass === 'compact';
+    const compact: boolean = page.env.get().sizeClass === 'compact';
     const stop: () => void = page.env.watch(({ sizeClass, canDock }) => {
       void sizeClass;
       void canDock;
     });
     // @ts-expect-error pixels stay in the View's env
-    page.env.width;
+    page.env.get().width;
+    // @ts-expect-error the env is read with get()
+    page.env.sizeClass;
     return { onUnload: () => stop(), onLoad: () => void compact };
   },
 });
