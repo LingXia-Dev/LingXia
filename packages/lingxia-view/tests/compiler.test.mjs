@@ -122,6 +122,15 @@ test('a link is a block link outside text, a run inside it, and needs to or onCl
   });
 });
 
+test('one build reports every page with problems, not only the first', async () => {
+  const page = cls => `export function render() { return <view className="${cls}"><text>A</text></view>; }`;
+  await project({ 'a.tsx': page('not-a-utility'), 'ok.tsx': page('p-4'), 'b.tsx': page('also-not-one') }, async root => {
+    const error = await buildPages(root, ['a.tsx', 'ok.tsx', 'b.tsx'], join(root, 'dist')).catch(error => error);
+    assert.match(error.message, /^a.tsx: 1 authoring problem\na.tsx:1:\d+: UI_CLASS_UNKNOWN: not-a-utility/);
+    assert.match(error.message, /\nb.tsx: 1 authoring problem\nb.tsx:1:\d+: UI_CLASS_UNKNOWN: also-not-one/);
+  });
+});
+
 test('class diagnostics separate unknown, unsupported and wrong-element utilities and report all at once', async () => {
   await project({ 'page.tsx': `export function render(view) {
   return <view className="grid-cols-2 not-a-utility transition-[padding]">

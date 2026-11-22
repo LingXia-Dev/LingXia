@@ -64,11 +64,29 @@ pub fn build(
     }
 
     let mut bundler = LogicBundler::new(project);
-    if let Some(app_logic) = app_logic {
-        bundler.add_entry(app_logic, ModuleRole::App)?;
+    // Each entry's refusal is collected, so one build names every page that has one.
+    let mut failures = Vec::new();
+    let entries = app_logic
+        .map(|path| (path, ModuleRole::App))
+        .into_iter()
+        .chain(
+            page_logic_entries
+                .into_iter()
+                .map(|(path, page_path)| (path, ModuleRole::Page { page_path })),
+        );
+    for (path, role) in entries {
+        if let Err(error) = bundler.add_entry(path, role) {
+            // A module abandoned mid-compile is not a cycle for the next entry that imports it.
+            bundler.visiting.clear();
+            let message = format!("{error:#}");
+            // A shared module's refusal reached again through another page is said once.
+            if !failures.contains(&message) {
+                failures.push(message);
+            }
+        }
     }
-    for (logic_path, page_path) in page_logic_entries {
-        bundler.add_entry(logic_path, ModuleRole::Page { page_path })?;
+    if !failures.is_empty() {
+        bail!(failures.join("\n"));
     }
     for page_path in view_only_pages {
         bundler.add_view_only_page(&page_path)?;

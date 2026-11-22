@@ -11,6 +11,8 @@ pub struct BuildOptions {
     pub dev_session: bool,
     pub release: bool,
     pub package: bool,
+    /// Run the project type-check (`--no-typecheck` skips it); a dev session never blocks on it.
+    pub typecheck: bool,
     pub progress: ProgressMode,
 }
 
@@ -28,6 +30,8 @@ impl BuildOptions {
 
         let release = args.iter().any(|arg| arg == "--release");
         let package = args.iter().any(|arg| arg == "--package");
+        let typecheck =
+            !args.iter().any(|arg| arg == "--no-typecheck") && !super::typecheck::skipped();
         if args
             .iter()
             .any(|arg| arg == "--framework" || arg.starts_with("--framework="))
@@ -42,6 +46,7 @@ impl BuildOptions {
             dev_session: false,
             release,
             package,
+            typecheck,
             progress,
         })
     }
@@ -87,7 +92,13 @@ mod tests {
         assert!(!options.dev_session);
         assert!(!options.release);
         assert!(!options.package);
+        assert!(options.typecheck);
         assert_eq!(options.progress, ProgressMode::Task);
+        assert!(
+            !BuildOptions::parse(&args(&["build", "--no-typecheck"]))
+                .unwrap()
+                .typecheck
+        );
     }
 
     #[test]

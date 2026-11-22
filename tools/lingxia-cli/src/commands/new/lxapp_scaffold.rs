@@ -205,9 +205,9 @@ pub(super) fn build_framework_vars(
         }
     };
 
-    // The GPU tsconfig files extend bases the CLI writes into `.lingxia/`.
+    // The GPU tsconfig files extend bases the CLI writes into `.lingxia/`, which `check` writes.
     let fw_scripts = if fw == "gpu" {
-        "\"typecheck\": \"lingxia gen types && tsc -b\",\n    "
+        "\"typecheck\": \"lingxia check\",\n    "
     } else {
         ""
     };
@@ -483,10 +483,7 @@ mod tests {
         }
         let package: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(app.join("package.json")).unwrap()).unwrap();
-        assert_eq!(
-            package["scripts"]["typecheck"],
-            "lingxia gen types && tsc -b"
-        );
+        assert_eq!(package["scripts"]["typecheck"], "lingxia check");
         assert!(!app.join("app.css").exists());
         let ignore = fs::read_to_string(app.join(".gitignore")).unwrap();
         assert!(ignore.contains(".lingxia/*"), "{ignore}");

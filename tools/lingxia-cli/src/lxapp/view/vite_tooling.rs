@@ -372,6 +372,7 @@ mod tests {
             dev_session: false,
             release: false,
             package: false,
+            typecheck: false,
             progress: crate::lxapp::options::ProgressMode::Task,
         }
     }

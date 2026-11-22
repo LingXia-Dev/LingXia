@@ -146,6 +146,8 @@ binaries, add native features or a provider crate, and pick Android ABIs or
 macOS arch. It generates the native client when `lxapp.config.ts` declares
 `native`, and enforces the [View/Logic boundary](../lxapp/guide.md#build).
 Signing setup: [Distribution](./distribution.md#app-signing).
+An lxapp with a root `tsconfig.json` is type-checked (`tsc -b`) and fails the build on errors;
+`--no-typecheck` skips it. `lingxia dev` prints type errors as you save, without holding the reload.
 
 ### iOS Packet Tunnel extensions
 
@@ -155,6 +157,11 @@ product/target named `PacketTunnel`; the CLI embeds it as
 Extension entitlements go in `ios/PacketTunnel/PacketTunnel.entitlements`.
 Device builds need the Network Extension capability and provisioning for app
 and extension.
+
+## `lingxia check`
+
+Lists every problem in an lxapp in one run without building it: type errors, View authoring
+problems such as `UI_LX`, Logic page rules and the tsconfig wiring, as `file:line:col: CODE: message`.
 
 ## `lingxia clean`
 

@@ -8,6 +8,7 @@ mod package;
 mod page_types;
 mod project;
 mod renderer;
+mod typecheck;
 mod view;
 
 use anyhow::Result;
@@ -46,6 +47,28 @@ pub(crate) fn gpu_dev_inputs(
         project.output_dir.clone(),
         serde_json::Value::Object(catalogs),
     ))
+}
+
+pub(crate) fn skip_typecheck() {
+    typecheck::skip();
+}
+
+pub fn check_in_dir(cwd: &Path) -> Result<()> {
+    build::check(cwd)
+}
+
+/// Dev sessions: the project type-check of the lxapp at `dir`, when it has one; `None` when
+/// it does not, else its problems as one report (empty when clean).
+pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
+    typecheck::applies(dir).then(|| {
+        typecheck::run(dir).map(|problems| {
+            if problems.is_empty() {
+                String::new()
+            } else {
+                typecheck::report(&problems)
+            }
+        })
+    })
 }
 
 pub fn run_in_dir_for_dev(args: &[String], cwd: &Path) -> Result<()> {

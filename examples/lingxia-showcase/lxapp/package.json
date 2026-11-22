@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "lingxia build",
-    "typecheck": "lingxia gen types && tsc -b && tsc --noEmit -p tests/tsconfig.json",
+    "typecheck": "lingxia check",
     "test:automation": "lxdev test --preset portable",
     "test:automation:macos": "lxdev test --preset macos",
     "test:automation:windows": "lxdev test --preset windows",

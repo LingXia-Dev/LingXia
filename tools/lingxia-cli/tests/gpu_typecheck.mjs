@@ -1,6 +1,7 @@
 // Run after cargo build -p lingxia-cli and building packages/:
 // node tools/lingxia-cli/tests/gpu_typecheck.mjs <lingxia> [<lxapp> ...]
-// Scaffolds a GPU lxapp and checks its type-check wiring; each extra <lxapp> gets the missing-base check.
+// Scaffolds a GPU lxapp and checks its type-check wiring and `lingxia check` / `build` reporting;
+// each extra <lxapp> gets the missing-base check.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -82,6 +83,30 @@ try {
   assert.match(result.output, /index\.tsx.*Cannot find name 'lx'/, result.output);
 } finally {
   fs.writeFileSync(view, source);
+}
+
+// `check` and `build` list a View type error, a Logic type error and a View refusal in one run.
+assert.match(ok(cli, ['check'], app), /no problems/);
+const logic = path.join(app, 'pages/home/index.ts');
+const logicSource = fs.readFileSync(logic, 'utf8');
+fs.writeFileSync(view, `${source}\nconst viewWrong: number = 'view';\nvoid viewWrong;\nexport const tap = () => lx.ui.toast({ title: 'x' });\n`);
+fs.writeFileSync(logic, `${logicSource}\nconst logicWrong: number = 'logic';\nvoid logicWrong;\n`);
+try {
+  const all = [/pages\/home\/index\.tsx:\d+:\d+: TS2322: Type 'string' is not assignable to type 'number'/,
+    /pages\/home\/index\.ts:\d+:\d+: TS2322: Type 'string' is not assignable to type 'number'/,
+    /pages\/home\/index\.tsx:\d+:\d+: UI_LX: lx is Logic-only/];
+  for (const args of [['check'], ['build']]) {
+    const result = run(cli, args, app);
+    assert.notEqual(result.status, 0, result.output);
+    for (const pattern of all) assert.match(result.output, pattern, `lingxia ${args[0]}\n${result.output}`);
+  }
+  const skipped = run(cli, ['build', '--no-typecheck'], app);
+  assert.notEqual(skipped.status, 0, skipped.output);
+  assert.match(skipped.output, /UI_LX/, skipped.output);
+  assert.doesNotMatch(skipped.output, /TS2322/, skipped.output);
+} finally {
+  fs.writeFileSync(view, source);
+  fs.writeFileSync(logic, logicSource);
 }
 
 for (const dir of lxapps) missingBase(path.resolve(dir));

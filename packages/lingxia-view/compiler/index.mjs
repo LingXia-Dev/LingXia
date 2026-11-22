@@ -439,7 +439,8 @@ async function packageTokens(root, packages, problems) {
 export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
-  const inputs = {}, warnings = [];
+  // Every page's authoring problems are collected, so one build names all of them.
+  const inputs = {}, warnings = [], failures = [];
   const tsconfig = viewTsconfig(root);
   // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
   let warm = true;
@@ -531,7 +532,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     problems.push(...transformed.errors);
     if (problems.length) {
       const lines = report(problems.map(line => packageRelative(root, line)), rel);
-      throw Error(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+      failures.push(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+      continue;
     }
     const perf = await perfWarnings(root, sourceFiles, checker, rulesByName);
     if (perf.length) {
@@ -580,6 +582,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     }
     if (config) await writeAtomic(join(output, `${base}.json`), await readFile(configPath));
   }
+  if (failures.length) throw Error(failures.join('\n'));
   if (Object.keys(inputs).length) {
     const path = join(root, '.lingxia', 'gpu-inputs.json');
     // A page deleted since its last build leaves the record; an edit it shared would plan it again.

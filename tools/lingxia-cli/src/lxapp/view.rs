@@ -1012,6 +1012,7 @@ mod tests {
             dev_session,
             release,
             package: false,
+            typecheck: false,
             progress: crate::lxapp::options::ProgressMode::Plain,
         };
         assert!(super::gpu_dev_build(&options(true, true)));

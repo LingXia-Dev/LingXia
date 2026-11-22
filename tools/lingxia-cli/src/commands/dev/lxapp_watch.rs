@@ -14,9 +14,9 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -380,6 +380,11 @@ fn run_watch(
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
     let mut was_paused = false;
+    // The session's builds skip the type-check; it runs here, after each edit, beside the app.
+    let mut type_checks = TypeChecks::default();
+    for root in &roots {
+        type_checks.schedule(&root.app_id, &root.path);
+    }
     while !stop_flag.load(Ordering::Acquire) {
         let mut applied = false;
         while let Ok(cmd) = commands.try_recv() {
@@ -526,7 +531,11 @@ fn run_watch(
                     if let Some(root) = root
                         && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers, waited)
                     {
+                        type_checks.schedule(&app_id, &root.path);
                         continue;
+                    }
+                    if let Some(root) = root {
+                        type_checks.schedule(&app_id, &root.path);
                     }
                     if reload_one(&state, &app_id, &options) == Reload::Deferred {
                         // A run started while it rebuilt: restart once it ends.
@@ -542,6 +551,60 @@ fn run_watch(
     }
     drop(watcher);
     Ok(())
+}
+
+#[derive(Default)]
+struct TypeCheck {
+    running: bool,
+    again: bool,
+    /// The last report printed, so an edit that changes nothing about the errors stays quiet.
+    last: Option<String>,
+}
+
+/// One background type-check per lxapp; an edit during a run queues exactly one more.
+#[derive(Default)]
+struct TypeChecks(std::collections::BTreeMap<String, Arc<Mutex<TypeCheck>>>);
+
+impl TypeChecks {
+    fn schedule(&mut self, app_id: &str, dir: &Path) {
+        let check = self.0.entry(app_id.to_string()).or_default().clone();
+        {
+            let mut state = check.lock().unwrap_or_else(|poison| poison.into_inner());
+            if state.running {
+                state.again = true;
+                return;
+            }
+            state.running = true;
+        }
+        let (app_id, dir) = (app_id.to_string(), dir.to_path_buf());
+        thread::spawn(move || {
+            loop {
+                let result = crate::lxapp::dev_typecheck(&dir);
+                let mut state = check.lock().unwrap_or_else(|poison| poison.into_inner());
+                match result {
+                    None => {}
+                    Some(Ok(report)) => {
+                        let previous = state.last.replace(report.clone());
+                        if report.is_empty() {
+                            if previous.is_some_and(|previous| !previous.is_empty()) {
+                                println!("  {} {} types clean", "✓".green(), app_id.cyan());
+                            }
+                        } else if previous.as_deref() != Some(report.as_str()) {
+                            println!("  {} {}: {report}", "⚠".yellow(), app_id.cyan());
+                        }
+                    }
+                    Some(Err(error)) => {
+                        state.last = None;
+                        println!("  {} {}: {error:#}", "⚠".yellow(), app_id.cyan());
+                    }
+                }
+                if !std::mem::take(&mut state.again) {
+                    state.running = false;
+                    break;
+                }
+            }
+        });
+    }
 }
 
 /// Swap the GPU pages an edit touched into the running app; false when the

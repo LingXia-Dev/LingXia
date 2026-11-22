@@ -3,6 +3,7 @@ use crate::lxapp::options::{BuildOptions, ProgressMode};
 use crate::lxapp::package;
 use crate::lxapp::page_types;
 use crate::lxapp::project::Project;
+use crate::lxapp::typecheck;
 use crate::lxapp::view::{self, ViewProgress};
 use anyhow::{Result, anyhow};
 use console::style;
@@ -84,6 +85,49 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
     Ok(())
 }
 
+/// `lingxia check`: everything a build refuses and every type error, in one report; the
+/// output is built aside and thrown away.
+pub fn check(cwd: &Path) -> Result<()> {
+    let _preparation = crate::build_prepare::Scope::enter();
+    let project = Project::discover(cwd)?;
+    crate::build_prepare::prepare(&project.root)?;
+    println!();
+    println!(
+        "  {} {}",
+        style("LingXia Check").bold().cyan(),
+        style(project.root.display()).dim()
+    );
+    // Wiring that `tsc -b` cannot follow makes its errors misleading: report it instead of them.
+    let wiring = page_types::generate(&project);
+    let options = BuildOptions {
+        dev_session: false,
+        release: false,
+        package: false,
+        typecheck: wiring.is_ok(),
+        progress: ProgressMode::Plain,
+    };
+    let staging = sibling(&project.output_dir, "checking");
+    if staging.exists() {
+        fs::remove_dir_all(&staging)?;
+    }
+    let checked = Project {
+        output_dir: staging.clone(),
+        ..project.clone()
+    };
+    let built = build_output(&checked, &options, &Reporter::new(ProgressMode::Plain));
+    let _ = fs::remove_dir_all(&staging);
+    let failures: Vec<String> = [wiring.err(), built.err()]
+        .into_iter()
+        .flatten()
+        .map(|error| format!("{error:#}"))
+        .collect();
+    if !failures.is_empty() {
+        return Err(anyhow!(failures.join("\n\n")));
+    }
+    println!("  {} no problems", style("✓").green());
+    Ok(())
+}
+
 /// Build into a staging directory and swap it in whole: a failed build leaves the last good
 /// output in place, which a dev session keeps serving.
 fn build_staged(output_dir: &Path, build: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
@@ -156,12 +200,46 @@ fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) 
         Ok::<_, anyhow::Error>((report, started.elapsed()))
     });
 
-    let (logic_report, logic_duration) = logic_handle
+    // A dev session reports type errors from its watcher instead, without holding the swap.
+    let types_handle = (options.typecheck
+        && !options.dev_session
+        && typecheck::applies(&project.root))
+    .then(|| {
+        let root = project.root.clone();
+        std::thread::spawn(move || typecheck::run(&root))
+    });
+
+    let logic = logic_handle
         .join()
-        .map_err(|_| anyhow!("Logic build thread panicked"))??;
-    let (view_report, view_duration) = view_handle
+        .map_err(|_| anyhow!("Logic build thread panicked"))?;
+    let view = view_handle
         .join()
-        .map_err(|_| anyhow!("View build thread panicked"))??;
+        .map_err(|_| anyhow!("View build thread panicked"))?;
+    let types = types_handle
+        .map(|handle| {
+            handle
+                .join()
+                .map_err(|_| anyhow!("Type check thread panicked"))
+        })
+        .transpose()?;
+    // Every half's problems in one failure, so one run lists all of them.
+    let mut failures = Vec::new();
+    if let Err(error) = &logic {
+        failures.push(format!("{error:#}"));
+    }
+    if let Err(error) = &view {
+        failures.push(format!("{error:#}"));
+    }
+    match &types {
+        Some(Ok(problems)) if !problems.is_empty() => failures.push(typecheck::report(problems)),
+        Some(Err(error)) => failures.push(format!("{error:#}")),
+        _ => {}
+    }
+    if !failures.is_empty() {
+        return Err(anyhow!(failures.join("\n\n")));
+    }
+    let (logic_report, logic_duration) = logic?;
+    let (view_report, view_duration) = view?;
 
     match logic_report.status {
         LogicBuildStatus::Built { output_path } => {

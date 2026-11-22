@@ -360,6 +360,10 @@ session per project and target: starting another takes over the old one.
         /// the cross-compile without the gated API-21 HarmonyOS SDK.
         #[arg(long)]
         native_only: bool,
+
+        /// Skip the lxapp type-check (`tsc -b` at the lxapp root) a build runs
+        #[arg(long)]
+        no_typecheck: bool,
     },
 
     /// Package release artifacts for publishing or delivery
@@ -390,6 +394,18 @@ session per project and target: starting another takes over the old one.
     Publish {
         #[command(flatten)]
         args: PublishArgs,
+    },
+
+    /// Report every problem in an lxapp without building it: type errors and
+    /// everything a build refuses
+    #[command(after_long_help = "\
+Runs the project type-check (`tsc -b` at the lxapp root, after the generated
+types), the tsconfig wiring check, and the build's own refusals (View authoring
+problems, Logic page rules), and prints all of them; exits non-zero on any.
+In a host project, it checks `lxapp/`.")]
+    Check {
+        /// The lxapp directory (default: the current one)
+        dir: Option<std::path::PathBuf>,
     },
 
     /// Remove generated build artifacts
@@ -1058,7 +1074,11 @@ fn run() -> Result<()> {
             msix,
             self_signed,
             native_only,
+            no_typecheck,
         } => {
+            if no_typecheck {
+                lxapp::skip_typecheck();
+            }
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
                 android_abis: platform_options.android_abis,
@@ -1079,6 +1099,19 @@ fn run() -> Result<()> {
                 with_provider: build_options.with_provider,
                 provider_path: build_options.provider_path,
             })?;
+        }
+        Commands::Check { dir } => {
+            let dir = match dir {
+                Some(dir) => dir,
+                None => std::env::current_dir()?,
+            };
+            let hosted = dir.join("lxapp");
+            let dir = if !dir.join("lxapp.json").is_file() && hosted.join("lxapp.json").is_file() {
+                hosted
+            } else {
+                dir
+            };
+            lxapp::check_in_dir(&dir)?;
         }
         Commands::Clean => {
             commands::clean::execute()?;
