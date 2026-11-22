@@ -2109,8 +2109,8 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
         rings(&display) >= 2,
         "the wrapped link rings each line piece"
     );
-    // Each ring stands 2 px clear of its piece's text box, its inner corners the theme's
-    // small control radius.
+    // One ring per line hugs the link's glyphs: 1 pt clear inline, from the ascent to just
+    // under the underline, the space that hangs at the break left out.
     let pieces = display
         .nodes
         .iter()
@@ -2119,25 +2119,59 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
         .hit_rects
         .clone();
     let small = crate::protocol::scales::Scales::builtin().control_radius();
+    let mut boxes = Vec::new();
     for paint in &display.commands {
         if let crate::scene::paint::Paint::Border {
             color,
-            bounds,
+            bounds: [x, y, w, h],
             widths,
             radius,
             ..
         } = paint
             && *color == focus
         {
-            assert!(
-                pieces
-                    .iter()
-                    .any(|[x, y, w, h]| *bounds == [x - 4.0, y - 4.0, w + 8.0, h + 8.0]),
-                "{bounds:?} around one of {pieces:?}"
-            );
             assert_eq!((*widths, *radius), ([2.0; 4], small + 2.0));
+            // The ring's inner edge: what it encloses.
+            boxes.push([x + 2.0, y + 2.0, w - 4.0, h - 4.0]);
         }
     }
+    assert_eq!(boxes.len(), 2, "one ring per line: {boxes:?}");
+    // The exact boxes with the built-in font: "terms of" then "service today".
+    let expected = [
+        [68.38281, 0.0, 42.0, 15.210_938],
+        [-1.0, 16.0, 114.05469, 15.210_938],
+    ];
+    for (inner, expected) in boxes.iter().zip(expected) {
+        assert!(
+            inner
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| (a - b).abs() < 0.01),
+            "{boxes:?}"
+        );
+    }
+    for (inner, piece) in boxes.iter().zip(&pieces) {
+        assert_eq!(
+            inner[0],
+            piece[0] - 1.0,
+            "1 pt clear at the start: {inner:?} {piece:?}"
+        );
+        assert!(
+            inner[1] >= piece[1] && inner[1] + inner[3] <= piece[1] + piece[3],
+            "inside its line on the block axis: {inner:?} {piece:?}"
+        );
+    }
+    // "terms of␠" ends at the break: its ring stops at the "f", a space short of the piece.
+    let first_end = boxes[0][0] + boxes[0][2];
+    assert!(
+        first_end < pieces[0][0] + pieces[0][2] - 2.0,
+        "{boxes:?} {pieces:?}"
+    );
+    assert_eq!(
+        boxes[1][0] + boxes[1][2],
+        pieces[1][0] + pieces[1][2] + 1.0,
+        "1 pt clear at the end of a line with no hanging space"
+    );
     assert!(page.set_control_focus_visible(Some(&id), false));
     let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
     assert_eq!(rings(&display), 0, "a pointer-moved focus shows no ring");

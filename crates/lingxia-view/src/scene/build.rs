@@ -157,6 +157,10 @@ impl Renderer {
         let mut anchor_insets = Vec::with_capacity(records.len());
         let mut run_rects: std::collections::HashMap<usize, Vec<[f32; 4]>> =
             std::collections::HashMap::new();
+        // A link run's glyph box per line, from the ascent to just under the underline and
+        // without whitespace hanging at a break: what its focus ring hugs.
+        let mut ring_rects: std::collections::HashMap<usize, Vec<(usize, [f32; 4])>> =
+            std::collections::HashMap::new();
         let transforms = records
             .iter()
             .map(|record| {
@@ -886,6 +890,41 @@ impl Renderer {
                                     });
                                 }
                                 run_rects.entry(owner).or_default().push(extent);
+                                if records[owner].tag == tag::LINK {
+                                    let font = glyph_run.run().font_metrics();
+                                    let top =
+                                        y + layout.padding.top + label_y + glyph_run.baseline()
+                                            - font.ascent;
+                                    let bottom =
+                                        y + layout.padding.top + label_y + glyph_run.baseline()
+                                            - font.underline_offset
+                                            + font.underline_size.max(1.0 / scale)
+                                            + 1.0;
+                                    let origin = x + layout.padding.left + label_x;
+                                    let (start, end) = if text.is_rtl() {
+                                        (
+                                            metrics.offset + metrics.hanging_advance,
+                                            metrics.offset + metrics.advance,
+                                        )
+                                    } else {
+                                        (
+                                            metrics.offset,
+                                            metrics.offset + metrics.advance
+                                                - metrics.hanging_advance,
+                                        )
+                                    };
+                                    // Never past its own line, so it stays off the one above.
+                                    let (top, bottom) =
+                                        (top.max(extent[1]), bottom.min(extent[1] + extent[3]));
+                                    let left = extent[0].max(origin + start);
+                                    let right = (extent[0] + extent[2]).min(origin + end);
+                                    if right > left {
+                                        ring_rects.entry(owner).or_default().push((
+                                            line_at,
+                                            [left, top, right - left, bottom - top],
+                                        ));
+                                    }
+                                }
                             }
                             let [r, g, b, a] = if owner == index {
                                 [r, g, b, a]
@@ -1503,20 +1542,42 @@ impl Renderer {
                 }
                 None => (bounds, visible_bounds),
             };
-            // A run drops its box styles, so a focused link rings its line pieces here, where
-            // pictures of the page see the ring too: 2 px clear of each piece's text box, so it
-            // misses tall letters and the underline, with the theme's small control corners.
+            // A run drops its box styles, so a focused link rings its glyphs here, where
+            // pictures of the page see the ring too: one ring per line, 1 pt clear of the
+            // glyphs inline and none on the block axis, so it stays off the words around it and
+            // the line above, with the theme's small control corners.
             if !link_group.is_empty()
                 && self.focus_visible
                 && focused_identity.as_deref() == identities.get(index).map(String::as_str)
             {
-                for [rx, ry, rw, rh] in &hit_rects {
+                let mut lines: Vec<(usize, [f32; 4])> = Vec::new();
+                for (line, [rx, ry, rw, rh]) in link_group
+                    .iter()
+                    .flat_map(|member| ring_rects.remove(member).unwrap_or_default())
+                {
+                    match lines.iter_mut().find(|(at, _)| *at == line) {
+                        Some((_, [x, y, w, h])) => {
+                            let (left, top) = (x.min(rx), y.min(ry));
+                            let right = (*x + *w).max(rx + rw);
+                            let bottom = (*y + *h).max(ry + rh);
+                            [*x, *y, *w, *h] = [left, top, right - left, bottom - top];
+                        }
+                        None => lines.push((line, [rx, ry, rw, rh])),
+                    }
+                }
+                const WIDTH: f32 = 2.0;
+                for (_, [rx, ry, rw, rh]) in lines {
                     commands.push(Paint::Border {
                         corners: None,
                         color: palette.role(Role::Focus),
-                        bounds: [rx - 4.0, ry - 4.0, rw + 8.0, rh + 8.0],
-                        widths: [2.0; 4],
-                        radius: self.control_radius + 2.0,
+                        bounds: [
+                            rx - 1.0 - WIDTH,
+                            ry - WIDTH,
+                            rw + 2.0 * (1.0 + WIDTH),
+                            rh + 2.0 * WIDTH,
+                        ],
+                        widths: [WIDTH; 4],
+                        radius: self.control_radius + WIDTH,
                         style: crate::scene::border::LineStyle::Solid,
                     });
                 }
