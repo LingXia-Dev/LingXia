@@ -569,6 +569,8 @@ export type ActionSheetOptions = {
     }[];
     /** `'danger'` draws the items as destructive. */
     tone?: 'default' | 'danger';
+    /** Aborting it closes the sheet, and the call rejects. */
+    signal?: AbortSignal;
 };
 
 /**
@@ -601,6 +603,8 @@ export type AlertOptions = {
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
+    /** Aborting it closes the dialog, and the call rejects. */
+    signal?: AbortSignal;
 };
 
 /** Every surface handle, narrowable by `kind`. */
@@ -1137,6 +1141,8 @@ export type ConfirmOptions = {
     confirmText?: string;
     /** Label of the declining button. */
     cancelText?: string;
+    /** Aborting it closes the dialog, and the call rejects. */
+    signal?: AbortSignal;
 };
 
 /** The network `lx.network.wifi.connect` joins. */
@@ -4236,18 +4242,21 @@ declare global {
      * Resolves `{ status: 'ok', id }` when the user selects an item; `id` identifies the selected item. Resolves `{ status: 'canceled' }` only when the
      * user dismisses the sheet. Rejects when presentation fails or the host returns
      * an invalid selection.
+     * @throws {E_ABORT} `signal` aborted; the sheet is closed.
      * @throws {E_INVALID_ARG} An empty or repeated id, an empty label, no items, or an unknown `tone`.
      * @throws {E_INVALID_STATE} No page can show a sheet now.
      */
     actionSheet(options: ActionSheetOptions): Promise<ActionSheetResult>;
     /**
      * Acknowledgement-only dialog. Resolves when the user dismisses it.
+     * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now.
      * @throws {E_INTERNAL} The dialog could not be shown.
      */
     alert(options: string | AlertOptions): Promise<void>;
     /**
      * Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
+     * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now.
      * @throws {E_INTERNAL} The dialog could not be shown.
      */

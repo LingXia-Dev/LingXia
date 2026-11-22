@@ -205,7 +205,8 @@ A rejection means the operation failed, never that the user said no.
 Dismissable APIs (`lx.ui.actionSheet`, every `lx.pick.*`, `lx.clipboard`
 reads) resolve a result discriminated on `status`; `lx.ui.confirm` resolves
 `false`. `lx.share` reports
-`outcome: 'completed' | 'dismissed' | 'unknown'`.
+`outcome: 'completed' | 'dismissed' | 'unknown'`. Aborting the `signal` of
+`lx.ui.alert` / `confirm` / `actionSheet` closes the dialog and rejects `E_ABORT`.
 
 ```ts
 const scan = await lx.pick.code()

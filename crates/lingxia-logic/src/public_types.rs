@@ -1813,6 +1813,8 @@ true
     }[];
     /** `'danger'` draws the items as destructive. */
     tone?: 'default' | 'danger';
+    /** Aborting it closes the sheet, and the call rejects. */
+    signal?: AbortSignal;
 }"###;
 
         /// An acknowledgement dialog has no cancel button.
@@ -1823,6 +1825,8 @@ true
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
+    /** Aborting it closes the dialog, and the call rejects. */
+    signal?: AbortSignal;
 }"###;
         /// A confirmation dialog always permits declining.
         type ConfirmOptions = r###"{
@@ -1836,6 +1840,8 @@ true
     confirmText?: string;
     /** Label of the declining button. */
     cancelText?: string;
+    /** Aborting it closes the dialog, and the call rejects. */
+    signal?: AbortSignal;
 }"###;
         /// The toast `lx.ui.toast` returned.
         type ToastHandle = r###"{

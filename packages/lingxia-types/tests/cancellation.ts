@@ -64,3 +64,13 @@ export type CancellationGate = [
   typeof checkedResultsNarrow,
   typeof actionSheetHasNoSentinel,
 ];
+
+// Dialogs take a `signal`; a bare-string dialog has nowhere to put one.
+async function dialogsTakeASignal(signal: AbortSignal): Promise<void> {
+  await lx.ui.alert({ title: "Saved", signal });
+  const confirmed: boolean = await lx.ui.confirm({ title: "Delete?", tone: "danger", signal });
+  await lx.ui.actionSheet({ items: [{ id: "a", label: "A" }], signal });
+  // @ts-expect-error a signal is an AbortSignal, not a boolean
+  await lx.ui.confirm({ title: "Delete?", signal: true });
+  void confirmed;
+}

@@ -21,6 +21,7 @@ use std::sync::Arc;
 struct JSActionSheetOptions {
     items: Vec<JSActionItem>,
     tone: Option<String>,
+    signal: Option<JSObject>,
 }
 
 #[derive(FromJSObject)]
@@ -71,13 +72,19 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
 /// user dismisses the sheet. Rejects when presentation fails or the host returns
 /// an invalid selection.
 ///
+/// @throws {E_ABORT} `signal` aborted; the sheet is closed.
 /// @throws {E_INVALID_ARG} An empty or repeated id, an empty label, no items, or an unknown `tone`.
 /// @throws {E_INVALID_STATE} No page can show a sheet now.
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
 ) -> Result<JSObject, RongJSError> {
-    let JSActionSheetOptions { items, tone } = options;
+    let JSActionSheetOptions {
+        items,
+        tone,
+        signal,
+    } = options;
+    crate::task_object::validate_abort_signal(signal.as_ref())?;
     let item_color = super::tone_color(tone.as_deref())?;
     let mut ids = std::collections::HashSet::new();
     for item in &items {
@@ -94,29 +101,33 @@ async fn show_action_sheet(
     // of the user once its spec queued answers. Only this
     // public call: sheets the runtime opens itself (a media source picker)
     // are not the app's dialog.
-    let decision = match lxapp::dialogs::dialog_hook() {
-        Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
-            &lxapp.appid,
-            &ActionSheetShown {
-                items: item_list.clone(),
-            },
-        ),
-        _ => DialogDecision::Present,
-    };
-    let selection = match decision {
-        DialogDecision::Present => {
-            present_action_sheet(&lxapp, item_list, None, item_color).await?
-        }
-        DialogDecision::Draw(id) => {
-            let result = present_action_sheet(&lxapp, item_list, None, item_color).await;
-            if let Some(hook) = lxapp::dialogs::dialog_hook() {
-                hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+    let work = async {
+        let decision = match lxapp::dialogs::dialog_hook() {
+            Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
+                &lxapp.appid,
+                &ActionSheetShown {
+                    items: item_list.clone(),
+                },
+            ),
+            _ => DialogDecision::Present,
+        };
+        match decision {
+            DialogDecision::Present => {
+                present_action_sheet(&lxapp, item_list, None, item_color).await
             }
-            result?
+            DialogDecision::Draw(id) => {
+                let result = present_action_sheet(&lxapp, item_list, None, item_color).await;
+                if let Some(hook) = lxapp::dialogs::dialog_hook() {
+                    hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+                }
+                result
+            }
+            DialogDecision::Answer(selection) => Ok(selection),
+            DialogDecision::Refuse(message) => Err(js_service_unavailable_error(message)),
         }
-        DialogDecision::Answer(selection) => selection,
-        DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
     };
+    let selection =
+        super::dismissable(&ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await?;
     let Some(index) = selection else {
         return canceled(&ctx);
     };

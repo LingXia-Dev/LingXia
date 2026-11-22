@@ -185,11 +185,18 @@ export function waitForNextCall(
       for (;;) {
         if (deadline.expired()) break;
         let window: CallWindowRead;
+        let readStarted: number | undefined;
         try {
-          window = await deadline.call(`${verb} reading calls`, () => read(cursor.after), () => at);
+          window = await deadline.call(`${verb} reading calls`, () => {
+            readStarted = Date.now();
+            return read(cursor.after);
+          }, () => at);
         } catch (error) {
           if (!(error instanceof TimeoutError) || !deadline.expired()) throw error;
-          stalled = true;
+          // Only a read given a full poll interval before the deadline shows the driver stuck;
+          // one started in the last moment was just cut off. Measured against the deadline's
+          // own end, so a late timer does not change the verdict.
+          stalled = readStarted !== undefined && deadline.started + deadline.timeout - readStarted >= interval;
           break;
         }
         // A read that came back after the deadline does not count.

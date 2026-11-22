@@ -195,7 +195,7 @@ pub(crate) struct SignalOptions {
     pub(crate) signal: Option<JSObject>,
 }
 
-fn abort_error() -> rong::RongJSError {
+pub(crate) fn abort_error() -> rong::RongJSError {
     rong::HostError::new(rong::error::E_ABORT, "the call was aborted").into()
 }
 

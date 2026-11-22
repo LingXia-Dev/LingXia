@@ -1,4 +1,10 @@
-use rong::{JSContext, JSObject, JSResult};
+use lxapp::LxApp;
+use rong::{JSContext, JSFunc, JSObject, JSResult};
+use std::cell::RefCell;
+use std::future::Future;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 mod action_sheet;
 mod modal;
@@ -14,6 +20,92 @@ mod toast;
 mod tray;
 
 pub(crate) use action_sheet::present_action_sheet;
+
+/// Pause between dismiss attempts while an aborted dialog's call settles.
+const DISMISS_RETRY: Duration = Duration::from_millis(100);
+/// Dismiss attempts before an aborted dialog stops waiting for its call.
+const DISMISS_ATTEMPTS: u32 = 20;
+
+/// Run a dialog until it settles or `signal` aborts. An abort dismisses it and
+/// rejects `E_ABORT`; dismissing repeats until the call settles, because the abort
+/// can land before the dialog is on screen. An already-aborted signal rejects
+/// before `work` starts; an abort after it settled does nothing.
+async fn dismissable<T, D, F>(
+    ctx: &JSContext,
+    signal: Option<JSObject>,
+    work: impl Future<Output = JSResult<T>>,
+    mut dismiss: D,
+) -> JSResult<T>
+where
+    D: FnMut() -> F,
+    F: Future<Output = ()>,
+{
+    use futures::future::{Either, select};
+    let Some(signal) = signal else {
+        return work.await;
+    };
+    crate::task_object::validate_abort_signal(Some(&signal))?;
+    if signal.get::<_, bool>("aborted")? {
+        return Err(crate::task_object::abort_error());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let on_abort = JSFunc::new(ctx, move || {
+        if let Some(tx) = tx.borrow_mut().take() {
+            let _ = tx.send(());
+        }
+    })?;
+    let options = JSObject::new(ctx);
+    options.set("once", true)?;
+    let add: JSFunc = signal.get("addEventListener")?;
+    add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+    let outcome = {
+        futures::pin_mut!(work);
+        match select(work.as_mut(), rx).await {
+            Either::Left((done, _)) => done,
+            Either::Right(_) => {
+                let mut settled = false;
+                for _ in 0..DISMISS_ATTEMPTS {
+                    dismiss().await;
+                    let pause = tokio::time::sleep(DISMISS_RETRY);
+                    futures::pin_mut!(pause);
+                    if let Either::Left(_) = select(work.as_mut(), pause).await {
+                        settled = true;
+                        break;
+                    }
+                }
+                if !settled {
+                    log::warn!("an aborted dialog did not close; its call is abandoned");
+                }
+                Err(crate::task_object::abort_error())
+            }
+        }
+    };
+    let remove: JSFunc = signal.get("removeEventListener")?;
+    let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    outcome
+}
+
+/// Close the modal and action sheet on screen, natively or in the View that drew them.
+async fn dismiss_dialog(lxapp: Arc<LxApp>) {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let result = lxapp
+        .call_view::<serde_json::Value>("ui.dismissDialog")
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let result = {
+        use lingxia_platform::traits::ui::UserFeedback;
+        lxapp
+            .runtime
+            .dismiss_dialog()
+            .map_err(|error| error.to_string())
+    };
+    if let Err(error) = result {
+        log::warn!("dismissing a dialog failed: {error}");
+    }
+}
 
 /// Feedback shown over the page: toasts, dialogs and action sheets.
 fn ui_namespace(ctx: &JSContext) -> JSResult<JSObject> {
@@ -59,4 +151,236 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     shell::init(ctx)?;
     tray::init(ctx)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod dismiss_tests {
+    use super::dismissable;
+    use crate::dismissal::USER_DISMISSED;
+    use lingxia_platform::error::PlatformError;
+    use lingxia_platform::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
+    use rong::{JSContext, JSEngine, JSObject, JSResult, Source};
+    use std::future::Future;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use tokio::sync::oneshot;
+
+    type Answer = oneshot::Sender<Result<String, PlatformError>>;
+
+    /// A host whose dialog stays up until the user answers or Logic dismisses it.
+    #[derive(Default, Clone)]
+    struct FakeFeedback(Arc<Host>);
+
+    impl std::ops::Deref for FakeFeedback {
+        type Target = Host;
+        fn deref(&self) -> &Host {
+            &self.0
+        }
+    }
+
+    #[derive(Default)]
+    struct Host {
+        on_screen: Mutex<Option<Answer>>,
+        shown: AtomicUsize,
+        dismissed: AtomicUsize,
+        present_after: Mutex<Duration>,
+    }
+
+    impl Host {
+        fn answer(&self, payload: &str) {
+            let answer = self
+                .on_screen
+                .lock()
+                .unwrap()
+                .take()
+                .expect("a dialog on screen");
+            answer.send(Ok(payload.to_string())).unwrap();
+        }
+
+        fn on_screen(&self) -> bool {
+            self.on_screen.lock().unwrap().is_some()
+        }
+    }
+
+    impl UserFeedback for FakeFeedback {
+        fn show_toast(&self, _: ToastOptions) -> Result<(), PlatformError> {
+            Ok(())
+        }
+
+        fn hide_toast(&self) -> Result<(), PlatformError> {
+            Ok(())
+        }
+
+        fn show_modal(
+            &self,
+            _: ModalOptions,
+        ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+            let this = self.clone();
+            async move {
+                let delay = *this.present_after.lock().unwrap();
+                tokio::time::sleep(delay).await;
+                let (answer, settled) = oneshot::channel();
+                *this.on_screen.lock().unwrap() = Some(answer);
+                this.shown.fetch_add(1, Ordering::SeqCst);
+                settled.await.unwrap()
+            }
+        }
+
+        async fn show_action_sheet(
+            &self,
+            _: Vec<String>,
+            _: String,
+            _: String,
+        ) -> Result<String, PlatformError> {
+            Err(PlatformError::NotSupported("sheet".into()))
+        }
+
+        fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+            self.dismissed.fetch_add(1, Ordering::SeqCst);
+            if let Some(answer) = self.on_screen.lock().unwrap().take() {
+                let _ = answer.send(Err(PlatformError::BusinessError(USER_DISMISSED)));
+            }
+            Ok(())
+        }
+    }
+
+    fn options() -> ModalOptions {
+        ModalOptions {
+            title: "Delete?".into(),
+            content: String::new(),
+            show_cancel: true,
+            cancel_text: "Cancel".into(),
+            cancel_color: None,
+            confirm_text: "OK".into(),
+            confirm_color: None,
+        }
+    }
+
+    /// The confirm flow over `feedback`, settling as `modal.rs` reads the host.
+    fn confirm(
+        ctx: &JSContext,
+        feedback: &FakeFeedback,
+        signal: JSObject,
+    ) -> impl Future<Output = JSResult<bool>> {
+        let shown = feedback.show_modal(options());
+        let work = async move {
+            match shown.await {
+                Ok(payload) => Ok(payload.contains("true")),
+                Err(PlatformError::BusinessError(USER_DISMISSED)) => Ok(false),
+                Err(error) => Err(crate::i18n::js_internal_error(error.to_string())),
+            }
+        };
+        let host = feedback.clone();
+        let ctx = ctx.clone();
+        async move {
+            dismissable(&ctx, Some(signal), work, || {
+                let host = host.clone();
+                async move {
+                    let _ = host.dismiss_dialog();
+                }
+            })
+            .await
+        }
+    }
+
+    fn signal(ctx: &JSContext, aborted: bool) -> JSObject {
+        ctx.eval(Source::from_bytes(format!(
+            "globalThis.signal = {{ aborted: {aborted}, listeners: [], \
+             addEventListener(_, f) {{ this.listeners.push(f); }}, \
+             removeEventListener(_, f) {{ this.listeners = this.listeners.filter(g => g !== f); }} }}"
+        )))
+        .unwrap()
+    }
+
+    fn abort(ctx: &JSContext) {
+        let _: rong::JSValue = ctx
+            .eval(Source::from_bytes(
+                "signal.aborted = true; signal.listeners.slice().forEach(f => f());",
+            ))
+            .unwrap();
+    }
+
+    fn listeners(ctx: &JSContext) -> i32 {
+        ctx.eval(Source::from_bytes("signal.listeners.length"))
+            .unwrap()
+    }
+
+    fn run<T>(work: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+            .block_on(work)
+    }
+
+    #[test]
+    fn an_aborted_signal_rejects_before_anything_shows() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        let result = run(confirm(&ctx, &feedback, signal(&ctx, true)));
+        assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
+        assert_eq!(feedback.shown.load(Ordering::SeqCst), 0);
+        assert_eq!(listeners(&ctx), 0);
+    }
+
+    #[test]
+    fn an_abort_while_shown_closes_the_dialog_and_rejects_abort() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        let call = confirm(&ctx, &feedback, signal(&ctx, false));
+        let result = run(async {
+            let (result, ()) = futures::join!(call, async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                assert!(feedback.on_screen());
+                abort(&ctx);
+            });
+            result
+        });
+        assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
+        assert!(!feedback.on_screen(), "no dialog is left");
+        assert_eq!(feedback.dismissed.load(Ordering::SeqCst), 1);
+        assert_eq!(listeners(&ctx), 0);
+    }
+
+    #[test]
+    fn an_abort_before_the_dialog_appears_dismisses_it_once_it_does() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        *feedback.present_after.lock().unwrap() = Duration::from_millis(150);
+        let call = confirm(&ctx, &feedback, signal(&ctx, false));
+        let result = run(async {
+            let (result, ()) = futures::join!(call, async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                abort(&ctx);
+            });
+            result
+        });
+        assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
+        assert_eq!(feedback.shown.load(Ordering::SeqCst), 1);
+        assert!(!feedback.on_screen(), "the late dialog is closed too");
+        assert!(feedback.dismissed.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[test]
+    fn an_abort_after_the_answer_does_nothing() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        let call = confirm(&ctx, &feedback, signal(&ctx, false));
+        let result = run(async {
+            let (result, ()) = futures::join!(call, async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                feedback.answer(r#"{"confirm":true}"#);
+            });
+            result
+        });
+        assert!(result.unwrap());
+        assert_eq!(listeners(&ctx), 0);
+        abort(&ctx);
+        assert_eq!(feedback.dismissed.load(Ordering::SeqCst), 0);
+    }
 }

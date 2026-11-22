@@ -10,7 +10,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::LxApp;
 use lxapp::dialogs::{DialogDecision, ModalShown};
-use rong::{FromJSObject, JSContext, JSResult, JSValue, RongJSError};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, JSValue, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -25,6 +25,7 @@ struct JSDialogOptions {
     confirm_text: Option<String>,
     #[js_name = "cancelText"]
     cancel_text: Option<String>,
+    signal: Option<JSObject>,
 }
 
 struct JSModalOptions {
@@ -37,7 +38,11 @@ struct JSModalOptions {
     confirm_color: Option<String>,
 }
 
-fn dialog_options(value: JSValue, show_cancel: bool) -> JSResult<JSModalOptions> {
+/// The modal to show, and the `signal` that dismisses it.
+fn dialog_options(
+    value: JSValue,
+    show_cancel: bool,
+) -> JSResult<(JSModalOptions, Option<JSObject>)> {
     let options = if value.is_string() {
         JSDialogOptions {
             title: Some(value.to_rust::<String>()?),
@@ -45,12 +50,14 @@ fn dialog_options(value: JSValue, show_cancel: bool) -> JSResult<JSModalOptions>
             tone: None,
             confirm_text: None,
             cancel_text: None,
+            signal: None,
         }
     } else {
         value.to_rust::<JSDialogOptions>()?
     };
+    crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let confirm_color = super::tone_color(options.tone.as_deref())?;
-    Ok(JSModalOptions {
+    let modal = JSModalOptions {
         title: options.title,
         content: options.message,
         show_cancel: Some(show_cancel),
@@ -58,7 +65,8 @@ fn dialog_options(value: JSValue, show_cancel: bool) -> JSResult<JSModalOptions>
         cancel_color: None,
         confirm_text: options.confirm_text,
         confirm_color,
-    })
+    };
+    Ok((modal, options.signal))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -84,8 +92,11 @@ struct ViewModalResult {
 }
 
 /// Resolves true when the user confirmed, false when they dismissed or
-/// canceled. Rejects when presentation fails.
-async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<bool> {
+/// canceled. Rejects when presentation fails, and `E_ABORT` when `signal` aborts.
+async fn show_modal(
+    ctx: JSContext,
+    (options, signal): (JSModalOptions, Option<JSObject>),
+) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
@@ -95,19 +106,21 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<bool> {
         ));
     }
 
-    let confirmed = match watched_modal(&lxapp.appid, &options) {
-        DialogDecision::Present => present_modal(&lxapp, options).await?,
-        DialogDecision::Draw(id) => {
-            let result = present_modal(&lxapp, options).await;
-            if let Some(hook) = lxapp::dialogs::dialog_hook() {
-                hook.modal_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+    let work = async {
+        match watched_modal(&lxapp.appid, &options) {
+            DialogDecision::Present => present_modal(&lxapp, options).await,
+            DialogDecision::Draw(id) => {
+                let result = present_modal(&lxapp, options).await;
+                if let Some(hook) = lxapp::dialogs::dialog_hook() {
+                    hook.modal_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+                }
+                result
             }
-            result?
+            DialogDecision::Answer(confirm) => Ok(confirm),
+            DialogDecision::Refuse(message) => Err(js_service_unavailable_error(message)),
         }
-        DialogDecision::Answer(confirm) => confirm,
-        DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
     };
-    Ok(confirmed)
+    super::dismissable(&ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await
 }
 
 /// A test run watching the app records the modal, or answers it instead
@@ -131,6 +144,7 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.
 ///
+/// @throws {E_ABORT} `signal` aborted; the dialog is closed.
 /// @throws {E_INVALID_STATE} No page can show a dialog now.
 /// @throws {E_INTERNAL} The dialog could not be shown.
 async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
@@ -140,6 +154,7 @@ async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
 
 /// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
 ///
+/// @throws {E_ABORT} `signal` aborted; the dialog is closed.
 /// @throws {E_INVALID_STATE} No page can show a dialog now.
 /// @throws {E_INTERNAL} The dialog could not be shown.
 async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {

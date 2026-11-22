@@ -329,6 +329,38 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
     expect(await noCancel).toBe(true);
   });
 
+  await t.step('abort a confirm with its signal', async () => {
+    type Held = { coverageAbort?: AbortController };
+    const aborted = app.logic.eval(async ({ lx }) => {
+      const controller = new AbortController();
+      (globalThis as Held).coverageAbort = controller;
+      try {
+        await lx.ui.confirm({ title: 'Abort me', signal: controller.signal });
+        return 'settled';
+      } catch (error) {
+        return (error as { code?: string }).code ?? String(error);
+      }
+    });
+    if (overlays === 'dom') {
+      await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    } else {
+      await expect.poll(() => hostShows('Abort me'), { timeout: 30_000 }).toBe(true);
+    }
+    await app.logic.eval(() => {
+      const held = globalThis as Held;
+      const controller = held.coverageAbort;
+      delete held.coverageAbort;
+      controller?.abort();
+    });
+    expect(await aborted).toBe('E_ABORT');
+    // The dialog closes with the call: nothing is left for the user to answer.
+    if (overlays === 'dom') {
+      await expect(ui.view.testId('lx-modal-confirm')).toHaveCount(0, { timeout: 10_000 });
+    } else {
+      await expect.poll(() => hostShows('Abort me'), { timeout: 10_000 }).toBe(false);
+    }
+  });
+
   await t.step('use acknowledgement and boolean dialogs', async () => {
     const alert = app.logic.eval(async ({ lx }) => {
       await lx.ui.alert({ title: 'Notice' });
