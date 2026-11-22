@@ -202,8 +202,8 @@ test('a link is a block link outside text, a run inside it, and needs to or onCl
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');
   clean('const a = <text>{items.map(item => <link key={item} onClick={f}>{item}</link>)}</text>;');
-  flags('const a = <view><link className="p-4"><text>A</text></link></view>;', /UI_LINK: a <link> needs to or onClick/);
-  flags('const a = <text><link>x</link></text>;', /UI_LINK: a <link> needs to or onClick/);
+  flags('const a = <view><link className="p-4"><text>A</text></link></view>;', /UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press/);
+  flags('const a = <text><link>x</link></text>;', /UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press/);
   flags('const a = <link to="/a"><view><link to="/b"><text>B</text></link></view></link>;', /UI_LINK: a block link cannot sit inside another block link/);
   clean('const a = <link to="/a"><text>Read <link to="/b">more</link></text></link>;');
   flags('const a = <text><link to="/t" style={{padding: 4}}>x</link></text>;', /UI_STYLE: padding is not supported on <link>/);

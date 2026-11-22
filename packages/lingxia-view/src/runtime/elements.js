@@ -556,7 +556,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.onClick !== undefined && typeof props.onClick !== 'function') throw Error('UI_PROP: onClick');
       if (props.accessibilityLabel !== undefined) wire('accessibilityLabel', props.accessibilityLabel);
       const to = props.to === undefined ? undefined : linkTarget(props.to, props);
-      if (!to && props.onClick === undefined && props.popoverTarget === undefined && props.interestFor === undefined) throw Error('UI_LINK: a <link> needs to or onClick');
+      if (!to && props.onClick === undefined && props.popoverTarget === undefined && props.interestFor === undefined) throw Error('UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press');
       const click = to ? () => requestNavigation(to) : invokerHandler(props, identity, parent.popovers ?? []);
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);

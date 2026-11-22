@@ -454,8 +454,8 @@ test('a link outside text is a block link: a pressable box of any content', () =
     /UI_LINK: a block link cannot sit inside another block link/);
   // A run link inside a block link's text is its own action.
   assert.equal(rendered(() => h('link', { onClick() {} }, h('text', {}, 'See ', h('link', { onClick() {} }, 'terms')))).tag, 'link-box');
-  throwsOn(() => h('view', {}, h('link', {}, h('text', {}, 'x'))), /UI_LINK: a <link> needs to or onClick/);
-  throwsOn(() => h('text', {}, h('link', {}, 'x')), /UI_LINK: a <link> needs to or onClick/);
+  throwsOn(() => h('view', {}, h('link', {}, h('text', {}, 'x'))), /UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press/);
+  throwsOn(() => h('text', {}, h('link', {}, 'x')), /UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press/);
   throwsOn(() => h('text', {}, h('link', { onClick() {}, style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <link>/);
   throwsOn(() => h('link', { onClick() {} }, h('scroll', {})), /UI_BUTTON: a scroll or list cannot sit inside a pressable control/);
 });

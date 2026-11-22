@@ -5161,7 +5161,7 @@
         if (props.onClick !== void 0 && typeof props.onClick !== "function") throw Error("UI_PROP: onClick");
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
         const to = props.to === void 0 ? void 0 : linkTarget(props.to, props);
-        if (!to && props.onClick === void 0 && props.popoverTarget === void 0 && props.interestFor === void 0) throw Error("UI_LINK: a <link> needs to or onClick");
+        if (!to && props.onClick === void 0 && props.popoverTarget === void 0 && props.interestFor === void 0) throw Error("UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press");
         const click = to ? () => requestNavigation(to) : invokerHandler(props, identity, parent.popovers ?? []);
         interestTrigger(props, identity, parent.popovers ?? []);
         if (props.interestFor !== void 0) wire("interestFor", props.interestFor);

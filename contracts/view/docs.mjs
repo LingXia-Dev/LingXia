@@ -76,7 +76,7 @@ async function elements(schema) {
     }
     for (const group of Object.values(rules(schema).exclusive).filter(entry => entry.on.includes(name)))
       facts.push(`At most one of ${group.props.map(prop => `${code(prop)}${group.with?.[prop] ? ` (and its ${group.with[prop].map(code).join(', ')})` : ''}`).join(' or ')} (\`UI_PROP\`).`);
-    if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.');
+    if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor`, disabled or not: `disabled` only stops the press (`UI_LINK`). Enter activates it; Space does not.');
     if (admission.root) facts.push('The page root.');
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
     if (name === 'scroll' || element.wire === 'list' || name === 'webview') facts.push('Not allowed inside a pressable control (`UI_BUTTON`).');
@@ -516,7 +516,7 @@ const errorNotes = {
   UI_SURFACE: 'The platform surface was lost or resized mid-frame; the host recovers.',
   UI_TAG: 'Not an element of the View language.',
   UI_TEST_ID: 'An invalid `data-testid` reached the native decoder.',
-  UI_LINK: 'A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor`, or a block link (outside `<text>`) inside another.',
+  UI_LINK: 'A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor` (a disabled one too), or a block link (outside `<text>`) inside another.',
   UI_TEXT: 'A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`.',
   UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
   UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one.',

@@ -159,7 +159,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
       if (intrinsic) for (const [at, message] of admissionProblems(node, file)) report(at, message);
       if (tag === 'link') {
         const named = name => node.attributes.properties.some(prop => ts.isJsxSpreadAttribute(prop) || prop.name.getText(file) === name);
-        if (!named('to') && !named('onClick') && !named('popoverTarget') && !named('interestFor')) report(node, 'UI_LINK: a <link> needs to or onClick');
+        if (!named('to') && !named('onClick') && !named('popoverTarget') && !named('interestFor')) report(node, 'UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press');
         const around = enclosingTags(node);
         const text = around.findIndex(name => name === 'text');
         if (elementKind(node) === 'link-box' && around.slice(0, text < 0 ? undefined : text).includes('link'))

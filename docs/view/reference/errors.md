@@ -49,7 +49,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_KEY` | build, runtime, native | A non-string or duplicate sibling key, or a component keyed by its own function name. |
 | `UI_LEAVE` | runtime, native | Invalid `useLeaveGuard` call or answer. |
 | `UI_LIMIT` | runtime, native | A page limit was exceeded. |
-| `UI_LINK` | build, runtime, native | A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor`, or a block link (outside `<text>`) inside another. |
+| `UI_LINK` | build, runtime, native | A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor` (a disabled one too), or a block link (outside `<text>`) inside another. |
 | `UI_LIST` | runtime, native | Invalid list description, keys, anchor or row height. |
 | `UI_LOCAL` | runtime | A duplicate `useLocal` name in one component, or `set` on an unmounted cell. |
 | `UI_LX` | build | `lx` is used in View code; call an action that does it in Logic. |
