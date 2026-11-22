@@ -87,9 +87,10 @@ test('read info, thumbnail, and compress local media', {
     };
   }, httpBase);
 
-  // The clip is a known 160×90, 4s sample — its metadata is exact, not a guess.
-  expect(result.video.width).toBe(160);
-  expect(result.video.height).toBe(90);
+  // The clip is a known 640×360, 4s sample (hardware decoders refuse much smaller
+  // frames) — its metadata is exact, not a guess.
+  expect(result.video.width).toBe(640);
+  expect(result.video.height).toBe(360);
   expect(result.video.durationMs).toBeGreaterThanOrEqual(3_500);
   expect(result.video.durationMs).toBeLessThanOrEqual(4_500);
   expect(result.video.type).toContain('mp4');
