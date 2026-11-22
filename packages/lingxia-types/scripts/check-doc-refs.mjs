@@ -11,8 +11,6 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoDir = resolve(packageDir, "../..");
 const DOC_ROOTS = ["docs/skill", "docs/view"];
 const MAX_PATHS = 25;
-// Files allowed past the cap.
-const OVER_CAP = new Set(["docs/skill/lxapp/lx-api.md"]);
 // `page` means the Logic page only in the skill's authoring docs; tests and View docs use the name for other objects.
 const PAGE_DOCS = /^docs\/skill\/(?!.*testing\.md$)/;
 // Stand-ins a doc writes for "some member": `lx.X(...)`, `lx.foo()`.
@@ -146,7 +144,7 @@ function main() {
         }
       }
       const distinct = new Set(references.map(r => r.path).filter(path => members.has(path)));
-      if (distinct.size > MAX_PATHS && !OVER_CAP.has(name)) {
+      if (distinct.size > MAX_PATHS) {
         problems.push(`${name}: names ${distinct.size} API members (at most ${MAX_PATHS}); point at \`lingxia api\` instead of listing them`);
       }
     }

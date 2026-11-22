@@ -111,7 +111,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
-| `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `isLxError` and every API type | lxapp Logic | [Install typing](./lxapp/lx-api.md#install-typing) |
+| `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `isLxError` and every API type | lxapp Logic | [Install typing](./lxapp/core.md#install-typing) |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
@@ -136,7 +136,7 @@ never add them to a project.
 | Experimental native GPU Views: TSX, Tailwind subset, bindings, compatibility | [lxapp/gpu.md](./lxapp/gpu.md) |
 | Page state, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
 | Native components: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs. In WebView pages, use HTML `<video>` / `<audio>` | [lxapp/components.md](./lxapp/components.md) |
-| Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |
+| Logic runtime: typing, Web globals, product settings, `lx.supports`, errors; look up a member with `lingxia api` | [lxapp/core.md](./lxapp/core.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
 | Files: `lx://` storage, `lx.network.download`, `lx.fs`, `lx.network.upload`, quotas | [lxapp/files.md](./lxapp/files.md) |
 | **Host app** | |
@@ -172,7 +172,7 @@ never add them to a project.
 |---|---|
 | Wrong control app launches / `homeAppId` matches no bundle | [project.md → `app`](./app/project.md#app) |
 | `fetch()` fails from an lxapp | [permissions.md](./native/permissions.md) (host grant; default allow) |
-| Is `fetch` / `setTimeout` / `URL` available in Logic? | [lx-api.md → Web globals](./lxapp/lx-api.md#web-globals) |
+| Is `fetch` / `setTimeout` / `URL` available in Logic? | [core.md → Web globals](./lxapp/core.md#web-globals) |
 | Read/write files | [files.md](./lxapp/files.md) |
 | Surface config rejected (`aside` edge, one `main`, terminal capability) | [project.md → Surfaces](./app/project.md#rules) |
 | `page.update` not reaching the View | [bridge.md → State](./lxapp/bridge.md#state) |
@@ -183,7 +183,7 @@ never add them to a project.
 | iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
 | A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
 | `lxdev test` takes too long / runs unrelated tests | [testing.md → Running](./lxapp/testing.md#running) |
-| TS doesn't know `lx.foo()` / `definePage` | [Install typing](./lxapp/lx-api.md#install-typing) |
+| TS doesn't know `lx.foo()` / `definePage` | [Install typing](./lxapp/core.md#install-typing) |
 | `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [components.md](./lxapp/components.md) |
 | Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
 | `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

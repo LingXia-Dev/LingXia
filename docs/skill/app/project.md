@@ -158,7 +158,7 @@ theme:
   chrome paints it where it borders the page.
 - The native refresh indicator uses `accentColor` (else `mutedForegroundColor`).
 - `defaultAppearance` applies until the user picks a scheme
-  ([product settings](../lxapp/lx-api.md#product-settings)); an lxapp's own
+  ([product settings](../lxapp/core.md#product-settings)); an lxapp's own
   `appearance` overrides both. The embedded browser's chrome and built-in
   pages follow the product scheme too.
 - Lxapp pages do not inherit these colors; they follow `prefers-color-scheme`.
@@ -243,7 +243,7 @@ Browser, terminal, and proxy runtime features come from `capabilities`.
 Build-time integrations (all default off). APIs such as camera request
 permission when called and need no entry here.
 
-- `notifications` — [`lx.host.notification`](../lxapp/lx-api.md#local-notifications)
+- `notifications` — `lx.host.notification`
   and, on iOS/Harmony, push tokens. Declaring never prompts.
 - `browser` — the in-app browser; see [`browser`](#browser).
 - `terminal` — the built-in terminal (desktop); required by `native: terminal`.
@@ -486,7 +486,7 @@ surfaces:
 ```
 
 The runtime tray content (`lx.host.tray.*`) and badge (`lx.host.setBadge`) are
-Control-app APIs: [Badges](../lxapp/lx-api.md#badges).
+Control-app APIs ([Control app](./control-app.md)).
 
 ### Terminal and browser mains
 

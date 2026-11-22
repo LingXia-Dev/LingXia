@@ -336,7 +336,7 @@ expect(reconnect.headers?.['last-event-id']).toBe('e1');
 ```
 
 `Rong.SSE` reconnects after a `drop` with `Last-Event-ID`, served by the next
-answer of the sequence ([consuming SSE](./lx-api.md#web-globals)).
+answer of the sequence ([consuming SSE](./core.md#web-globals)).
 
 ### Scenarios in tests
 

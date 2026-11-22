@@ -34,13 +34,13 @@ are present for every lxapp and refuse a guest at the call.
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`
-- `lx.host.setBadge(...)` and `lx.host.tray.*` ([Badges](../lxapp/lx-api.md#badges))
+- `lx.host.setBadge(...)` and `lx.host.tray.*`
 - `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
 - `lx.host.update.*`, `lx.host.screenshot()`
   — the host app, not your bundle (that is `lx.app.update.onReady`)
 - `lx.host.autostart.*`
 - `lx.host.displayLanguage.preference` / `lx.host.appearance.preference`
-  ([Product settings](../lxapp/lx-api.md#product-settings))
+  ([Product settings](../lxapp/core.md#product-settings))
 - `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`
 - `lx.surface.app(appId)` / `lx.surface.declared(id)` to find a live app or declared surface
 - `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
@@ -49,8 +49,8 @@ These act on the product, not on the calling lxapp:
 Reading the resolved settings (`lx.host.displayLanguage.get()`,
 `lx.host.appearance.get()`) is open to every lxapp.
 
-`lx.host.notification` and `lx.host.banner` are open to every lxapp, scoped to the caller for guests
-([Guest lxapps](../lxapp/lx-api.md#guest-lxapps)).
+`lx.host.notification` and `lx.host.banner` are open to every lxapp, scoped to the caller for guests;
+their declarations list a guest's limits.
 
 ## Control-surface-only calls
 

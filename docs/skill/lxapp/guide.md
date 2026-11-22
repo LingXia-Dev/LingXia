@@ -29,7 +29,7 @@ my-lxapp/
 ```
 
 - `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`, and
-  optional `languages` ([Product settings](./lx-api.md#product-settings)). `appName`
+  optional `languages` ([Product settings](./core.md#product-settings)). `appName`
   is only a fallback; the app registry's name wins. It declares no network
   hosts or privileges: those are [host grants](../native/permissions.md),
   unrestricted by default.
@@ -274,7 +274,7 @@ nothing. It never changes while a window is dragged.
   OS-specific features only. `runner` is `true` in the dev Runner.
 - `displayLanguage` — the product language; `contentLanguage` — it narrowed to
   lxapp.json `languages`, which sets `<html lang>` and `<html dir>`; pick copy by
-  it. See [Product settings](./lx-api.md#product-settings).
+  it. See [Product settings](./core.md#product-settings).
 
 `formFactor`, `os`, and `runner` are fixed for a page's life. A Runner phone
 frame reports `mobile` while `os` names the desktop; switching form factor
@@ -573,7 +573,7 @@ await page.navigationBar.update({ style: null, homeButton: 'auto' });
 
 ### Appearance
 
-Light/dark is a [product setting](./lx-api.md#product-settings). An lxapp whose
+Light/dark is a [product setting](./core.md#product-settings). An lxapp whose
 UI works in only one scheme declares it in `lxapp.json`:
 
 ```json
@@ -627,4 +627,4 @@ capsule, use the CSS variables; never hard-code platform heights:
 - Expecting changes to shared module state to re-render.
 - Pushing a tab page instead of `lx.nav.go({ tab })`.
 - A page subscription without `{ signal: page.signal }`.
-- Missing `@lingxia/logic`: see [Install typing](./lx-api.md#install-typing).
+- Missing `@lingxia/logic`: see [Install typing](./core.md#install-typing).

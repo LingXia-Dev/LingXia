@@ -100,7 +100,7 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 | Agent entrypoint and topic router | [docs/skill/SKILL.md](docs/skill/SKILL.md) |
 | Page authoring, `definePage`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
 | Native components such as `LxPicker`, `LxMediaSwiper` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
-| Logic-side `lx.*` API surface | [docs/skill/lxapp/lx-api.md](docs/skill/lxapp/lx-api.md) |
+| Logic-side `lx.*` API surface | [docs/skill/lxapp/core.md](docs/skill/lxapp/core.md) |
 | Bridge mechanics: page state, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
 | Host project config and `lingxia.yaml` | [docs/skill/app/project.md](docs/skill/app/project.md) |
 | iOS/macOS SDK embedding | [docs/skill/app/apple-sdk.md](docs/skill/app/apple-sdk.md) |

@@ -316,7 +316,7 @@ and both preferences — share one shape: a getter, `watch_*` and `*_changes()`.
 | Value | Read | Follow |
 |---|---|---|
 | foreground (process, not an lxapp) | `is_foreground()` | `watch_foreground` / `foreground_changes` |
-| [display language](../lxapp/lx-api.md#product-settings) | `display_language()` | `watch_display_language` / `display_language_changes` |
+| [display language](../lxapp/core.md#product-settings) | `display_language()` | `watch_display_language` / `display_language_changes` |
 | its preference | `display_language_preference()` | `watch_display_language_preference` / `…_changes` |
 | [light/dark](../lxapp/guide.md#appearance) | `appearance()` | `watch_appearance` / `appearance_changes` |
 | its preference | `appearance_preference()` | `watch_appearance_preference` / `…_changes` |
@@ -354,7 +354,7 @@ activity (push, `JobService`) reads foreground until one starts, and switching
 lxapps fires their `onShow`/`onHide`, not this.
 
 `lingxia::app::banner::show` is the Rust form of the
-[desktop banner](../lxapp/lx-api.md#desktop-banner). It blocks until the card
+desktop banner (`lx.host.banner`). It blocks until the card
 resolves: call it from a blocking worker, and never show a no-timeout prompt on
 the macOS main thread.
 

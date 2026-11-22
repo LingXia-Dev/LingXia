@@ -141,7 +141,7 @@ You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/
 
 - Page authoring (`definePage`, `useLxPage`, events): [`docs/skill/lxapp/guide.md`](./skill/lxapp/guide.md)
 - Native components (`LxPicker`, `LxMediaSwiper`, …): [`docs/skill/lxapp/components.md`](./skill/lxapp/components.md)
-- Logic runtime and typings: [`docs/skill/lxapp/lx-api.md`](./skill/lxapp/lx-api.md)
+- Logic runtime and typings: [`docs/skill/lxapp/core.md`](./skill/lxapp/core.md)
 - Bridge mechanics (page state, stream, channel): [`docs/skill/lxapp/bridge.md`](./skill/lxapp/bridge.md)
 - Host project (`lingxia.yaml`, macOS App UI): [`docs/skill/app/project.md`](./skill/app/project.md)
 - Native Rust (`#[lingxia::native]`, `HostAddon`): [`docs/skill/native/development.md`](./skill/native/development.md)
