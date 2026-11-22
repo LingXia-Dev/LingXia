@@ -252,7 +252,7 @@
   var admission = { "tags": { "column": { "children": "any", "content": true }, "reserved-1": { "children": "none" }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "reserved-4": { "children": "none" }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "content" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "link-box": { "children": "content" }, "reserved-17": { "children": "none" }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" }, "video": { "children": "none", "content": true }, "webview": { "children": "none", "content": true, "requires": ["webSrc", "webSession", "accessibilityLabel"] } }, "fields": { "onClick": ["button", "link", "link-box"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select", "link", "link-box"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image", "video"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "webview", "list", "link-box"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "page", "button", "link-box"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link", "slider", "link-box"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image", "video"], "anchorTo": ["column"], "scrollSnap": ["scroll", "list"], "topLayer": ["column"], "anchorArea": ["column"], "drag": ["column", "button"], "onDragEvent": ["column", "button"], "dragScrim": ["button"], "elementId": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview", "link-box"], "ariaActions": ["column", "button"], "snapStop": ["scroll", "list"], "snapIndex": ["scroll"], "onSnapChange": ["scroll"], "videoSrc": ["video"], "videoPlayer": ["video"], "videoPoster": ["video"], "videoPaused": ["video"], "videoMuted": ["video"], "videoLoop": ["video"], "videoRate": ["video"], "videoVolume": ["video"], "onVideoEvent": ["video"], "videoSources": ["video"], "ariaDescribedBy": ["column", "text", "button", "link", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview", "link-box"], "focusVisibleStyle": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search", "link-box"], "sliderSecondary": ["slider"], "interestFor": ["button", "link", "link-box"], "onPointerEnter": ["column", "button", "link-box"], "onPointerLeave": ["column", "button", "link-box"], "hint": ["column"], "onSliderPress": ["slider"], "closeAfter": ["column"], "displayValue": ["input"], "sizeText": ["input"], "onLayout": ["column", "text", "vector", "plot", "scroll"], "onPointer": ["column", "button", "vector"], "pointerAxis": ["column", "button", "vector"], "onFocus": ["input", "textarea", "search"], "onBlur": ["input", "textarea", "search"], "readOnly": ["input", "textarea", "search"], "keyMap": ["input", "textarea", "search"], "onKeyDown": ["input", "textarea", "search"], "ariaActiveDescendant": ["input", "textarea", "search"], "mixed": ["checkbox", "button", "column"], "onContextMenu": ["column", "button", "link", "text", "link-box"], "onPage": ["column"], "sliderOther": ["slider"], "sliderThumb": ["slider"], "webSrc": ["webview"], "webSession": ["webview"], "onWebEvent": ["webview"], "webHandlesDrags": ["webview"], "onScrollEdge": ["scroll", "list"], "ariaControls": ["input", "button"], "ariaAutocomplete": ["input", "button"], "scaleRefs": ["page"], "defaultValue": ["checkbox", "switch", "slider", "select"], "checkedStyle": ["checkbox", "switch", "radio-option"], "modal": ["column"] } };
   var options = { "snap-stop": ["normal", "always"], "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "slider-thumb": ["lower", "upper"], "overscroll": ["auto", "contain", "none"], "scroll-snap": ["none", "x", "y"], "snap-align": ["none", "start", "center", "end"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time", "decimal"], "auto-complete-mode": ["none", "list"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size", "d"], "user-select": ["none", "text", "all"], "touch-target": ["auto", "none"], "pointer-axis": ["x", "y", "both"] };
   var commonProps = ["style", "className", "key", "data-testid", "dir", "children", "id", "role", "headingLevel", "aria-valuenow", "aria-valuemin", "aria-valuemax", "aria-valuetext", "aria-activedescendant", "aria-controls", "aria-autocomplete", "aria-hidden", "aria-modal", "aria-live", "aria-pressed", "aria-selected", "aria-expanded", "aria-busy", "aria-invalid", "aria-required", "aria-checked", "aria-level", "aria-describedby"];
-  var authoringRules = { "role": { "tab": [{ "tags": ["button"], "error": 'role="tab" belongs on a <button>' }], "radio": [{ "tags": ["button"], "error": 'role="radio" belongs on a <button>' }], "menuitem": [{ "tags": ["button"], "error": 'role="menuitem" belongs on a <button>' }], "menuitemcheckbox": [{ "tags": ["button"], "error": 'role="menuitemcheckbox" belongs on a <button>' }], "menuitemradio": [{ "tags": ["button"], "error": 'role="menuitemradio" belongs on a <button>' }], "treeitem": [{ "tags": ["button"], "error": 'role="treeitem" belongs on a <button>' }], "tablist": [{ "tags": ["view"], "error": 'role="tablist" belongs on a <view>' }], "tabpanel": [{ "tags": ["view"], "error": 'role="tabpanel" belongs on a <view>' }], "radiogroup": [{ "tags": ["view"], "error": 'role="radiogroup" belongs on a <view>' }], "toolbar": [{ "tags": ["view"], "error": 'role="toolbar" belongs on a <view>' }], "tree": [{ "tags": ["view"], "error": 'role="tree" belongs on a <view>' }], "row": [{ "tags": ["view"], "error": 'role="row" belongs on a <view>' }], "combobox": [{ "tags": ["input", "button"], "error": 'role="combobox" belongs on an <input> or a <button>' }], "spinbutton": [{ "tags": ["input"], "error": 'role="spinbutton" belongs on an <input>' }], "alertdialog": [{ "tags": ["dialog"], "error": 'role="alertdialog" goes on a <dialog>' }], "img": [{ "tags": ["view", "text"], "with": ["aria-label"], "error": 'role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content' }], "dialog": [{ "tags": ["view"], "with": ["popover"], "error": 'role="dialog" goes on a popover <view>, or is the <dialog> element' }] }, "elementRole": { "dialog": { "roles": ["alertdialog"], "error": 'a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts' } } };
+  var authoringRules = { "role": { "tab": [{ "tags": ["button"], "error": 'role="tab" belongs on a <button>' }], "radio": [{ "tags": ["button"], "error": 'role="radio" belongs on a <button>' }], "menuitem": [{ "tags": ["button"], "error": 'role="menuitem" belongs on a <button>' }], "menuitemcheckbox": [{ "tags": ["button"], "error": 'role="menuitemcheckbox" belongs on a <button>' }], "menuitemradio": [{ "tags": ["button"], "error": 'role="menuitemradio" belongs on a <button>' }], "treeitem": [{ "tags": ["button"], "error": 'role="treeitem" belongs on a <button>' }], "tablist": [{ "tags": ["view"], "error": 'role="tablist" belongs on a <view>' }], "tabpanel": [{ "tags": ["view"], "error": 'role="tabpanel" belongs on a <view>' }], "radiogroup": [{ "tags": ["view"], "error": 'role="radiogroup" belongs on a <view>' }], "toolbar": [{ "tags": ["view"], "error": 'role="toolbar" belongs on a <view>' }], "tree": [{ "tags": ["view"], "error": 'role="tree" belongs on a <view>' }], "row": [{ "tags": ["view"], "error": 'role="row" belongs on a <view>' }], "combobox": [{ "tags": ["input", "button"], "error": 'role="combobox" belongs on an <input> or a <button>' }], "spinbutton": [{ "tags": ["input"], "error": 'role="spinbutton" belongs on an <input>' }], "alertdialog": [{ "tags": ["dialog"], "error": 'role="alertdialog" goes on a <dialog>' }], "img": [{ "tags": ["view", "text"], "with": ["aria-label"], "error": 'role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content' }], "dialog": [{ "tags": ["view"], "with": ["popover"], "error": 'role="dialog" goes on a popover <view>, or is the <dialog> element' }] }, "elementRole": { "dialog": { "roles": ["alertdialog"], "implied": "dialog", "error": 'a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts' } }, "prop": { "headingLevel": [{ "role": ["heading"], "error": 'headingLevel belongs on role="heading"' }], "aria-level": [{ "role": ["treeitem"], "error": 'aria-level belongs on role="treeitem"' }], "aria-controls": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-autocomplete": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-checked": [{ "value": "mixed", "role": ["menuitemcheckbox"], "error": 'aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate' }, { "role": ["radio", "menuitemcheckbox", "menuitemradio"], "error": 'aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked' }], "aria-modal": [{ "role": ["dialog", "alertdialog"], "error": 'aria-modal belongs on a popover with role="dialog"' }, { "value": false, "tags": ["view"], "error": 'a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"' }], "onPage": [{ "tags": ["view"], "role": ["grid"], "error": 'onPage belongs to a <view role="grid">' }], "aria-actions": [{ "with": ["drag"], "error": "aria-actions belongs to an element with drag" }], "keepOpen": [{ "role": ["menuitem", "menuitemcheckbox", "menuitemradio"], "error": 'keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"' }], "open": [{ "on": ["view"], "with": ["popover"], "error": "open belongs to a popover; add popover" }], "onToggle": [{ "on": ["view"], "with": ["popover"], "error": "onToggle belongs to a popover; add popover" }], "closeAfter": [{ "on": ["view"], "with": ["popover"], "error": "closeAfter belongs to a popover; add popover" }], "anchor": [{ "on": ["view"], "with": ["popover"], "error": "anchor belongs to a popover; add popover" }], "onCloseRequest": [{ "on": ["view"], "with": ["popover"], "error": "onCloseRequest belongs to a popover; add popover" }, { "not": { "popover": ["manual"] }, "error": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one" }] } };
   var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow", "media", "on-media", "surface-overlay", "knob", "success-mark", "warning-mark", "danger-mark", "media-canvas", "info", "on-info", "info-soft", "info-mark", "hue-1", "hue-2", "hue-3", "hue-4", "hue-5", "hue-6", "hue-7", "hue-8", "hue-1-soft", "hue-2-soft", "hue-3-soft", "hue-4-soft", "hue-5-soft", "hue-6-soft", "hue-7-soft", "hue-8-soft", "chart-6", "chart-7", "chart-8", "accent-solid", "on-accent-solid", "danger-solid", "on-danger-solid", "accent-solid-hover", "accent-solid-pressed", "danger-solid-hover", "danger-solid-pressed"];
   var scales = [{ "name": "text.xs", "family": "type" }, { "name": "text.sm", "family": "type" }, { "name": "text.base", "family": "type" }, { "name": "text.lg", "family": "type" }, { "name": "text.xl", "family": "type" }, { "name": "text.2xl", "family": "type" }, { "name": "text.3xl", "family": "type" }, { "name": "text.4xl", "family": "type" }, { "name": "leading.xs", "family": "leading" }, { "name": "leading.sm", "family": "leading" }, { "name": "leading.base", "family": "leading" }, { "name": "leading.lg", "family": "leading" }, { "name": "leading.xl", "family": "leading" }, { "name": "leading.2xl", "family": "leading" }, { "name": "leading.3xl", "family": "leading" }, { "name": "leading.4xl", "family": "leading" }, { "name": "radius.sm", "family": "radius" }, { "name": "radius.DEFAULT", "family": "radius" }, { "name": "radius.md", "family": "radius" }, { "name": "radius.lg", "family": "radius" }, { "name": "radius.xl", "family": "radius" }, { "name": "radius.2xl", "family": "radius" }, { "name": "radius.3xl", "family": "radius" }, { "name": "space", "family": "space" }, { "name": "duration.fast", "family": "duration" }, { "name": "duration.base", "family": "duration" }, { "name": "duration.slow", "family": "duration" }, { "name": "ease.standard", "family": "ease" }, { "name": "ease.enter", "family": "ease" }, { "name": "ease.exit", "family": "ease" }, { "name": "em", "family": "em" }];
   var scaleDefaults = [12, 13, 15, 17, 20, 24, 28, 34, 16, 18, 22, 24, 28, 32, 34, 40, 6, 8, 8, 10, 14, 20, 28, 4, 150, 200, 300, [0, 0, 0.2, 1], [0, 0, 0.2, 1], [0.4, 0, 1, 1], null];
@@ -1344,15 +1344,10 @@
       presence: { starting: { ...fades("starting"), ...classes?.backdrop?.starting }, exit: { ...fades("exit"), ...classes?.backdrop?.exit } }
     };
   }
-  var popoverProps = ["open", "onToggle", "onCloseRequest", "closeAfter", "anchor"];
   function expand(tag, props, children, identity, parent) {
     if (props[panelMark]) return void 0;
     if (tag === "dialog") return dialog(props, children, identity, parent);
     if (popoverTags.has(tag) && props.popover !== void 0 && props.popover !== false) return popover(tag, props, children, identity, parent);
-    if (popoverTags.has(tag)) {
-      for (let i = 0; i < popoverProps.length; i++)
-        if (props[popoverProps[i]] !== void 0) throw Error(`UI_PROP: ${popoverProps[i]} belongs to a popover; add popover`);
-    }
     return void 0;
   }
   function common(props, parent, what) {
@@ -1400,8 +1395,7 @@
     if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
     if (typeof id !== "string" || !id.length || id.length > 256) throw Error("UI_ID: a popover needs an id of 1..256 characters");
     if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
-    if (onCloseRequest !== void 0 && (kind === "manual" || typeof onCloseRequest !== "function"))
-      throw Error("UI_PROP: onCloseRequest takes a function on a popover that is not manual");
+    if (onCloseRequest !== void 0 && typeof onCloseRequest !== "function") throw Error("UI_PROP: onCloseRequest takes a function");
     if (anchorId !== void 0 && (typeof anchorId !== "string" || !anchorId.length || anchorId.length > 256 || /\s/.test(anchorId)))
       throw Error("UI_ID: anchor names an element id");
     if (closeAfter !== void 0 && (kind !== "manual" || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 6e4))
@@ -1525,10 +1519,9 @@
     for (const [id, state] of top.popovers) if (state.kind === "hint" && state.open && !keep2.includes(id)) changed2 = toggle(id, false) || changed2;
     return changed2;
   }
-  var menuItems = /* @__PURE__ */ new Set(["menuitem", "menuitemcheckbox", "menuitemradio"]);
   function invokerHandler(props, identity, scope) {
     const { popoverTarget: target, onClick, role, keepOpen } = props;
-    if (keepOpen !== void 0 && (typeof keepOpen !== "boolean" || !menuItems.has(role))) throw Error("UI_PROP: keepOpen is a boolean on a menu item");
+    if (keepOpen !== void 0 && typeof keepOpen !== "boolean") throw Error("UI_PROP: keepOpen is a boolean");
     if (target !== void 0) {
       if (typeof target !== "string" || !target.length) throw Error("UI_ID: popoverTarget names a popover id");
       collected().invokers.push({ target, identity, scope });
@@ -5110,7 +5103,6 @@
       if (pointerAxis !== "both") wire("pointerAxis", pointerAxis);
     }
     if (props.onPage !== void 0) {
-      if (tag !== "view" || props.role !== "grid") throw Error('UI_PROP: onPage belongs to a <view role="grid">');
       const { onPage } = props;
       if (typeof onPage !== "function") throw Error("UI_PROP: onPage takes a function");
       on("onPage", (direction2) => onPage(direction2), "text");
@@ -5136,7 +5128,6 @@
     }
     if (props["aria-actions"] !== void 0) {
       const ids = typeof props["aria-actions"] === "string" ? props["aria-actions"].trim().split(/\s+/) : [];
-      if (props.drag === void 0) throw Error("UI_PROP: aria-actions belongs to an element with drag");
       if (!ids.length || ids.length > 8 || ids.some((id) => !id || id.length > 256)) throw Error("UI_PROP: aria-actions lists 1..8 element ids");
       wire("ariaActions", ids.join(" "));
     }
@@ -5152,7 +5143,6 @@
     }
     if (tag === "dialog") {
       if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="\u2026"');
-      if (props.ariaModal === false) throw Error('UI_PROP: a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"');
       wire("role", props.role ?? "dialog");
       wire("modal", 1);
     }
@@ -5552,17 +5542,24 @@
     if (text2 !== void 0) wire("ariaValueText", text2);
   }
   var present = (value) => value !== void 0 && value !== false && !(typeof value === "string" && !value.trim());
+  var breaks = (rule, kind, role, props) => rule.tags && !rule.tags.includes(kind) || rule.role && !rule.role.includes(role) || rule.with?.some((name) => !present(props[name])) || rule.not && Object.keys(rule.not).some((name) => rule.not[name].includes(props[name]));
   function authoredRules(tag, props, parent) {
     if (typeof tag !== "string" || !has(elements, tag)) return;
     const kind = tag === "link" && !parent.inText ? "link-box" : tag;
-    const { role } = props;
-    if (role === void 0) return;
     const only = authoringRules.elementRole[kind];
-    if (only && !only.roles.includes(role)) throw Error(`UI_PROP: ${only.error}`);
-    for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
-      if (rule.tags && !rule.tags.includes(kind) || rule.with?.some((name) => !present(props[name]))) throw Error(`UI_PROP: ${rule.error}`);
+    const role = props.role ?? only?.implied;
+    if (props.role !== void 0) {
+      if (only && !only.roles.includes(props.role)) throw Error(`UI_PROP: ${only.error}`);
+      for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
+        if (breaks(rule, kind, role, props)) throw Error(`UI_PROP: ${rule.error}`);
+    }
+    for (const name in authoringRules.prop) {
+      const value = props[name];
+      if (value === void 0) continue;
+      for (const rule of authoringRules.prop[name])
+        if ((!rule.on || rule.on.includes(kind)) && (!("value" in rule) || rule.value === value) && breaks(rule, kind, role, props)) throw Error(`UI_PROP: ${rule.error}`);
+    }
   }
-  var checkedRoles = /* @__PURE__ */ new Set(["radio", "menuitemcheckbox", "menuitemradio"]);
   function semantics(tag, props, wire) {
     const { role, headingLevel, ariaLevel, accessibilityHidden, accessibilityLiveRegion } = props;
     if (role !== void 0) {
@@ -5571,7 +5568,6 @@
     }
     if (props.ariaModal !== void 0) {
       if (typeof props.ariaModal !== "boolean") throw Error("UI_PROP: aria-modal is a boolean");
-      if (tag !== "dialog" && role !== "dialog") throw Error('UI_PROP: aria-modal belongs on a popover with role="dialog"');
       if (tag !== "dialog" && props.ariaModal) wire("modal", 1);
     }
     progressValues(role, props, wire, tag);
@@ -5585,7 +5581,6 @@
       wire("ariaActiveDescendant", idOf("aria-activedescendant"));
     }
     if (props["aria-controls"] !== void 0 || props["aria-autocomplete"] !== void 0) {
-      if (role !== "combobox") throw Error('UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"');
       if (props["aria-controls"] !== void 0) {
         const ids = typeof props["aria-controls"] === "string" ? props["aria-controls"].trim().split(/\s+/) : [];
         if (!ids.length || ids.length > 8 || ids.some((id) => !id || id.length > 256)) throw Error("UI_ID: aria-controls lists 1..8 element ids");
@@ -5597,13 +5592,11 @@
       }
     }
     if (headingLevel !== void 0) {
-      if (role !== "heading" || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
-        throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');
+      if (!Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6) throw Error("UI_PROP: headingLevel is an integer 1..6");
       wire("headingLevel", headingLevel);
     }
     if (ariaLevel !== void 0) {
-      if (role !== "treeitem" || !Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32)
-        throw Error('UI_PROP: aria-level is an integer 1..32 on role="treeitem"');
+      if (!Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32) throw Error("UI_PROP: aria-level is an integer 1..32");
       wire("headingLevel", ariaLevel);
     }
     if (accessibilityHidden !== void 0) {
@@ -5621,13 +5614,11 @@
         if (!has(semanticStates, name)) throw Error(`UI_PROP: accessibilityState.${name}; known: ${Object.keys(semanticStates).join(", ")}`);
         if (value === void 0) continue;
         if (name === "checked" && value === "mixed") {
-          if (role !== "menuitemcheckbox") throw Error('UI_PROP: aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate');
           wire(semanticStates[name], 0);
           wire("mixed", 1);
           continue;
         }
         if (typeof value !== "boolean") throw Error(`UI_PROP: aria-${name} must be boolean`);
-        if (name === "checked" && !checkedRoles.has(role)) throw Error('UI_PROP: aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked');
         wire(semanticStates[name], +value);
       }
     }

@@ -31,27 +31,42 @@ function attributeValues(attribute) {
   return ts.isStringLiteral(value) ? [value.text] : ts.isJsxExpression(value) ? literals(value.expression) : null;
 }
 
-/** The schema `rules` a literal JSX element breaks, as `[node, message]`; unknown values pass. */
+/** The schema `rules` a literal JSX element always breaks, as `[node, message]`; a value the
+ * source does not fix, or one branch that passes, lets the rule through. */
 export function admissionProblems(node, file) {
   const attributes = node.attributes.properties;
   const spread = attributes.some(ts.isJsxSpreadAttribute);
   const named = new Map(attributes.filter(ts.isJsxAttribute).map(attribute => [attribute.name.getText(file), attribute]));
-  // Present unless the source says it is always absent or empty.
+  // The values a prop may take: [undefined] when absent, null when the source does not say.
+  const values = name => named.has(name) ? attributeValues(named.get(name)) : spread ? null : [undefined];
   const present = name => {
-    if (!named.has(name)) return spread;
-    const values = attributeValues(named.get(name));
-    return !values || values.some(value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim()));
+    const list = values(name);
+    return !list || list.some(value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim()));
   };
   const kind = elementKind(node);
+  const only = rules.elementRole[kind];
   const problems = [];
   const role = named.get('role');
+  // null: the source does not fix the role, so no role-gated rule fails.
+  const roles = (values('role') ?? [null]).map(value => value === undefined ? only?.implied : value);
+  const breaks = (rule, value) => (rule.tags && !rule.tags.includes(kind))
+    || (rule.role && value !== null && !rule.role.includes(value))
+    || rule.with?.some(name => !present(name))
+    || (rule.not && Object.keys(rule.not).some(name => { const list = values(name); return list && list.every(item => rule.not[name].includes(item)); }));
   for (const value of (role && attributeValues(role)) ?? []) {
     if (typeof value !== 'string') continue;
-    const only = rules.elementRole[kind];
     if (only && !only.roles.includes(value)) { problems.push([role, `UI_PROP: ${only.error}`]); continue; }
-    const broken = (has(rules.role, value) ? rules.role[value] : [])
-      .find(rule => (rule.tags && !rule.tags.includes(kind)) || rule.with?.some(name => !present(name)));
+    const broken = (has(rules.role, value) ? rules.role[value] : []).find(rule => breaks(rule, value));
     if (broken) problems.push([role, `UI_PROP: ${broken.error}`]);
+  }
+  for (const [name, list] of Object.entries(rules.prop)) {
+    const attribute = named.get(name);
+    const set = attribute && attributeValues(attribute);
+    if (!attribute || (set && set.every(value => value === undefined))) continue;
+    const broken = list.find(rule => (!rule.on || rule.on.includes(kind))
+      && (!('value' in rule) || (set && set.includes(rule.value)))
+      && roles.every(value => breaks(rule, value)));
+    if (broken) problems.push([attribute, `UI_PROP: ${broken.error}`]);
   }
   return problems;
 }

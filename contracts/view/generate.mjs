@@ -347,12 +347,13 @@ function validateAuthor(schema) {
 const tagList = tags => tags.map(tag => `${/^[aeiou]/.test(tag) ? 'an' : 'a'} <${tag}>`).join(' or ');
 
 /** schema.json `rules` with every default message filled in: what the runtime, the compiler and the docs read. */
-export function rules(schema) {
-  const { role = {}, elementRole = {} } = schema.rules ?? {};
+export function rules(schema, common) {
+  const { role = {}, elementRole = {}, prop = {} } = schema.rules ?? {};
   const kinds = new Set([...Object.keys(schema.elements), ...Object.values(schema.elements).filter(element => element.block).map(element => element.block.wire)]);
   const known = (where, tags) => { for (const tag of tags ?? []) if (!kinds.has(tag)) throw Error(`schema.json: rules.${where} names unknown element ${tag}`); };
   const roles = new Set(schema.options.role);
-  const out = { role: {}, elementRole: {} };
+  const out = { role: {}, elementRole: {}, prop: {} };
+  const rolesKnown = (where, list) => { for (const name of list ?? []) if (!roles.has(name)) throw Error(`schema.json: rules.${where} names unknown role ${name}`); };
   for (const [name, list] of Object.entries(role)) {
     if (!roles.has(name)) throw Error(`schema.json: rules.role names unknown role ${name}`);
     out.role[name] = list.map(rule => {
@@ -362,8 +363,18 @@ export function rules(schema) {
   }
   for (const [tag, rule] of Object.entries(elementRole)) {
     known('elementRole', [tag]);
-    for (const name of rule.roles) if (!roles.has(name)) throw Error(`schema.json: rules.elementRole.${tag} names unknown role ${name}`);
+    rolesKnown(`elementRole.${tag}`, [...rule.roles, ...(rule.implied ? [rule.implied] : [])]);
     out.elementRole[tag] = rule;
+  }
+  const props = new Set([...(common ?? []), ...Object.values(schema.elements).flatMap(element => Object.keys(element.props))]);
+  for (const [name, list] of Object.entries(prop)) {
+    if (common && !props.has(name)) throw Error(`schema.json: rules.prop names unknown prop ${name}`);
+    out.prop[name] = list.map(rule => {
+      known(`prop.${name}`, [...(rule.tags ?? []), ...(rule.on ?? [])]);
+      rolesKnown(`prop.${name}`, rule.role);
+      if (!rule.error) throw Error(`schema.json: rules.prop.${name} needs an error that names the fix`);
+      return rule;
+    });
   }
   return out;
 }
@@ -499,7 +510,7 @@ export const options = ${JSON.stringify(schema.options)};
 /** Props every element accepts, read from \`interface Props\` in contracts/view/api.d.ts. */
 export const commonProps = ${JSON.stringify(common)};
 /** Authoring admission the wire does not carry: where a role goes, and what an element's role allows. */
-export const authoringRules = ${JSON.stringify(rules(schema))};
+export const authoringRules = ${JSON.stringify(rules(schema, common))};
 /** Colour roles in palette-slot order. */
 export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
 /** Scale slots in wire order: a \`[slot, times, plus]\` reference names one by index. */

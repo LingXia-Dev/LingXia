@@ -498,7 +498,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   }
   // A grid that pages: PageUp and PageDown ask for the previous or next page (a calendar's month).
   if (props.onPage !== undefined) {
-    if (tag !== 'view' || props.role !== 'grid') throw Error('UI_PROP: onPage belongs to a <view role="grid">');
     const { onPage } = props;
     if (typeof onPage !== 'function') throw Error('UI_PROP: onPage takes a function');
     on('onPage', direction => onPage(direction), 'text');
@@ -527,7 +526,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props['aria-actions'] !== undefined) {
     // The ids of the controls behind a swipe row: assistive tech offers them as the row's own actions.
     const ids = typeof props['aria-actions'] === 'string' ? props['aria-actions'].trim().split(/\s+/) : [];
-    if (props.drag === undefined) throw Error('UI_PROP: aria-actions belongs to an element with drag');
     if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_PROP: aria-actions lists 1..8 element ids');
     wire('ariaActions', ids.join(' '));
   }
@@ -544,7 +542,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   }
   if (tag === 'dialog') {
     if (!props.accessibilityLabel) throw Error('UI_A11Y: <dialog> needs an accessible name; add aria-label="…"');
-    if (props.ariaModal === false) throw Error('UI_PROP: a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"');
     wire('role', props.role ?? 'dialog');
     wire('modal', 1);
   }
@@ -938,22 +935,29 @@ function progressValues(role, props, wire, tag) {
   if (text !== undefined) wire('ariaValueText', text);
 }
 
-// schema.json `rules`: where a role goes and what an element's role allows. A prop that is
-// present but empty counts as absent, as an empty aria-label names nothing.
+// schema.json `rules`: where a role goes, what an element's role allows and what a prop needs.
+// A prop that is present but empty counts as absent, as an empty aria-label names nothing.
 const present = value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim());
+const breaks = (rule, kind, role, props) => (rule.tags && !rule.tags.includes(kind)) || (rule.role && !rule.role.includes(role))
+  || rule.with?.some(name => !present(props[name])) || (rule.not && Object.keys(rule.not).some(name => rule.not[name].includes(props[name])));
 function authoredRules(tag, props, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) return;
   const kind = tag === 'link' && !parent.inText ? 'link-box' : tag;
-  const { role } = props;
-  if (role === undefined) return;
   const only = authoringRules.elementRole[kind];
-  if (only && !only.roles.includes(role)) throw Error(`UI_PROP: ${only.error}`);
-  for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
-    if ((rule.tags && !rule.tags.includes(kind)) || rule.with?.some(name => !present(props[name]))) throw Error(`UI_PROP: ${rule.error}`);
+  const role = props.role ?? only?.implied;
+  if (props.role !== undefined) {
+    if (only && !only.roles.includes(props.role)) throw Error(`UI_PROP: ${only.error}`);
+    for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
+      if (breaks(rule, kind, role, props)) throw Error(`UI_PROP: ${rule.error}`);
+  }
+  for (const name in authoringRules.prop) {
+    const value = props[name];
+    if (value === undefined) continue;
+    for (const rule of authoringRules.prop[name])
+      if ((!rule.on || rule.on.includes(kind)) && (!('value' in rule) || rule.value === value) && breaks(rule, kind, role, props)) throw Error(`UI_PROP: ${rule.error}`);
+  }
 }
 
-// Accessibility states any element may declare; controls keep their own role.
-const checkedRoles = new Set(['radio', 'menuitemcheckbox', 'menuitemradio']);
 function semantics(tag, props, wire) {
   const { role, headingLevel, ariaLevel, accessibilityHidden, accessibilityLiveRegion } = props;
   if (role !== undefined) {
@@ -963,7 +967,6 @@ function semantics(tag, props, wire) {
   }
   if (props.ariaModal !== undefined) {
     if (typeof props.ariaModal !== 'boolean') throw Error('UI_PROP: aria-modal is a boolean');
-    if (tag !== 'dialog' && role !== 'dialog') throw Error('UI_PROP: aria-modal belongs on a popover with role="dialog"');
     if (tag !== 'dialog' && props.ariaModal) wire('modal', 1);
   }
   progressValues(role, props, wire, tag);
@@ -977,7 +980,6 @@ function semantics(tag, props, wire) {
     wire('ariaActiveDescendant', idOf('aria-activedescendant'));
   }
   if (props['aria-controls'] !== undefined || props['aria-autocomplete'] !== undefined) {
-    if (role !== 'combobox') throw Error('UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"');
     if (props['aria-controls'] !== undefined) {
       const ids = typeof props['aria-controls'] === 'string' ? props['aria-controls'].trim().split(/\s+/) : [];
       if (!ids.length || ids.length > 8 || ids.some(id => !id || id.length > 256)) throw Error('UI_ID: aria-controls lists 1..8 element ids');
@@ -989,13 +991,11 @@ function semantics(tag, props, wire) {
     }
   }
   if (headingLevel !== undefined) {
-    if (role !== 'heading' || !Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6)
-      throw Error('UI_PROP: headingLevel is an integer 1..6 on role="heading"');
+    if (!Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6) throw Error('UI_PROP: headingLevel is an integer 1..6');
     wire('headingLevel', headingLevel);
   }
   if (ariaLevel !== undefined) {
-    if (role !== 'treeitem' || !Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32)
-      throw Error('UI_PROP: aria-level is an integer 1..32 on role="treeitem"');
+    if (!Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32) throw Error('UI_PROP: aria-level is an integer 1..32');
     wire('headingLevel', ariaLevel);
   }
   if (accessibilityHidden !== undefined) {
@@ -1014,12 +1014,10 @@ function semantics(tag, props, wire) {
       if (value === undefined) continue;
       // Partly checked: announced as mixed, on a checkbox item only.
       if (name === 'checked' && value === 'mixed') {
-        if (role !== 'menuitemcheckbox') throw Error('UI_PROP: aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate');
         wire(semanticStates[name], 0); wire('mixed', 1);
         continue;
       }
       if (typeof value !== 'boolean') throw Error(`UI_PROP: aria-${name} must be boolean`);
-      if (name === 'checked' && !checkedRoles.has(role)) throw Error('UI_PROP: aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked');
       wire(semanticStates[name], +value);
     }
   }

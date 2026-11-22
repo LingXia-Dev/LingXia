@@ -42,7 +42,26 @@ the `role` prop sets one of the authored roles on any non-control element.
 
 A `<dialog>` takes only `alertdialog` (`UI_PROP`).
 
-`headingLevel` (1..6) applies only to `role="heading"`.
+## Props with conditions
+
+A literal combination that breaks one of these fails the build; a computed one fails at render (`UI_PROP`).
+
+| Prop | Needs |
+| --- | --- |
+| `headingLevel` | `headingLevel belongs on role="heading"` |
+| `aria-level` | `aria-level belongs on role="treeitem"` |
+| `aria-controls` | `aria-controls and aria-autocomplete belong on role="combobox"` |
+| `aria-autocomplete` | `aria-controls and aria-autocomplete belong on role="combobox"` |
+| `aria-checked` | `aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate` · `aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked` |
+| `aria-modal` | `aria-modal belongs on a popover with role="dialog"` · `a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"` |
+| `onPage` | `onPage belongs to a <view role="grid">` |
+| `aria-actions` | `aria-actions belongs to an element with drag` |
+| `keepOpen` | `keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"` |
+| `open` | on `<view>`: `open belongs to a popover; add popover` |
+| `onToggle` | on `<view>`: `onToggle belongs to a popover; add popover` |
+| `closeAfter` | on `<view>`: `closeAfter belongs to a popover; add popover` |
+| `anchor` | on `<view>`: `anchor belongs to a popover; add popover` |
+| `onCloseRequest` | on `<view>`: `onCloseRequest belongs to a popover; add popover` · `onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one` |
 
 ## All exposed roles
 

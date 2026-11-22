@@ -529,7 +529,7 @@ test('composite roles: items on buttons, containers on views, aria-checked and a
     [() => h('view', { role: 'tab' }), /role="tab" belongs on a <button>/],
     [() => h('button', { role: 'tablist', onClick() {} }, 'x'), /role="tablist" belongs on a <view>/],
     [() => h('button', { 'aria-checked': true, onClick() {} }, 'x'), /aria-checked goes on role="radio"/],
-    [() => h('button', { role: 'tab', 'aria-level': 2, onClick() {} }, 'x'), /aria-level is an integer 1..32 on role="treeitem"/],
+    [() => h('button', { role: 'tab', 'aria-level': 2, onClick() {} }, 'x'), /aria-level belongs on role="treeitem"/],
     [() => h('button', { role: 'treeitem', 'aria-level': 40, onClick() {} }, 'x'), /aria-level is an integer 1..32/],
   ]) assert.throws(() => describe(render, {}), pattern);
 });

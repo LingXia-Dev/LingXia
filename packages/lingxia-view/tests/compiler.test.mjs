@@ -124,6 +124,38 @@ test('a literal role on the wrong element fails the build with where it goes', (
   }
 });
 
+test('a prop its role or element cannot carry fails the build with what it needs', () => {
+  clean('const a = <text role="heading" headingLevel={2}>Title</text>;');
+  clean('const a = <text role={level ? "heading" : undefined} headingLevel={level}>Title</text>;');
+  clean('const a = <view role={role} headingLevel={2}/>;');
+  clean('const a = <button role="menuitemcheckbox" aria-checked="mixed" keepOpen onClick={f}>All</button>;');
+  clean('const a = <view id="p" popover="auto" open onToggle={f} onCloseRequest={g} role="dialog" aria-modal aria-label="Sheet"/>;');
+  clean('const a = <dialog aria-label="Done" aria-modal open/>;');
+  clean('const a = <view role="grid" aria-label="Days" onPage={f}/>;');
+  clean('const a = <view popover={kind} onCloseRequest={g}/>;');
+  clean('const a = <view {...rest} open/>;');
+  for (const [source, prop, message] of [
+    ['<text headingLevel={2}>x</text>', 'headingLevel', 'headingLevel belongs on role="heading"'],
+    ['<button role="tab" aria-level={2} onClick={f}>x</button>', 'aria-level', 'aria-level belongs on role="treeitem"'],
+    ['<input aria-label="A" aria-controls="list"/>', 'aria-controls', 'aria-controls and aria-autocomplete belong on role="combobox"'],
+    ['<button role="radio" aria-checked="mixed" onClick={f}>x</button>', 'aria-checked', 'aria-checked="mixed" goes on role="menuitemcheckbox"'],
+    ['<button role="tab" aria-checked={false} onClick={f}>x</button>', 'aria-checked', 'aria-checked goes on role="radio"'],
+    ['<view aria-modal/>', 'aria-modal', 'aria-modal belongs on a popover with role="dialog"'],
+    ['<dialog aria-label="x" aria-modal={false}/>', 'aria-modal', 'a <dialog> is always modal'],
+    ['<view onPage={f}/>', 'onPage', 'onPage belongs to a <view role="grid">'],
+    ['<button aria-actions="a" onClick={f}>x</button>', 'aria-actions', 'aria-actions belongs to an element with drag'],
+    ['<button keepOpen onClick={f}>x</button>', 'keepOpen', 'keepOpen belongs on a menu item'],
+    ['<view open/>', 'open', 'open belongs to a popover; add popover'],
+    ['<view anchor="b"/>', 'anchor', 'anchor belongs to a popover; add popover'],
+    ['<view onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs to a popover; add popover'],
+    ['<view popover="manual" onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs on a popover that is not manual'],
+  ]) {
+    const problems = audit(`const a = ${source};`, 'page.tsx');
+    assert.equal(problems.length, 1, `${source}: ${problems.join('; ')}`);
+    assert.ok(problems[0].startsWith(`page.tsx:1:${source.indexOf(` ${prop}`) + 12}: UI_PROP: ${message}`), problems[0]);
+  }
+});
+
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');

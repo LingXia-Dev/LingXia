@@ -717,7 +717,7 @@
     "webview": {"wire": "webview", "children": "none", "style": ["box"], "props": {"src": {"type": "string"}, "web": {"type": "WebView"}, "aria-label": {"type": "string", "required": true}, "handlesDrags": {"type": "boolean"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}, "onLoad": {"type": "(event: WebViewLoad) => void"}, "onMessage": {"type": "(message: WebViewMessage) => void"}, "onBlocked": {"type": "(event: WebViewBlocked) => void"}, "onError": {"type": "(error: WebViewError) => void"}}}
   },
   "rules": {
-    "doc": "Authoring admission the wire does not carry. The runtime, the compiler's static audit, authoring.d.ts and the reference all read it. A rule passes when every condition holds: tags (the element, a <link> outside <text> counting as link-box), role (the authored role, or the element's implied one), with (props present), unless (a prop holding one of these values fails it), value (the rule applies only to that value of its prop). error is the message without its code; the default names the fix.",
+    "doc": "Authoring admission the wire does not carry. The runtime, the compiler's static audit, authoring.d.ts and the reference all read it. role: where each role goes; elementRole: the roles an element takes and the one it implies; prop: what a prop needs once set. A rule passes when every condition holds: tags (the element, a <link> outside <text> counting as link-box), role (the authored role, or the element's implied one), with (props present and not empty), not (a prop holding one of these values fails it). on limits a prop rule to those elements; value limits it to that value of its prop. error is the message without its code; a role rule's default names where it goes.",
     "role": {
       "tab": [{"tags": ["button"]}],
       "radio": [{"tags": ["button"]}],
@@ -738,7 +738,23 @@
       "dialog": [{"tags": ["view"], "with": ["popover"], "error": "role=\"dialog\" goes on a popover <view>, or is the <dialog> element"}]
     },
     "elementRole": {
-      "dialog": {"roles": ["alertdialog"], "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
+      "dialog": {"roles": ["alertdialog"], "implied": "dialog", "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
+    },
+    "prop": {
+      "headingLevel": [{"role": ["heading"], "error": "headingLevel belongs on role=\"heading\""}],
+      "aria-level": [{"role": ["treeitem"], "error": "aria-level belongs on role=\"treeitem\""}],
+      "aria-controls": [{"role": ["combobox"], "error": "aria-controls and aria-autocomplete belong on role=\"combobox\""}],
+      "aria-autocomplete": [{"role": ["combobox"], "error": "aria-controls and aria-autocomplete belong on role=\"combobox\""}],
+      "aria-checked": [{"value": "mixed", "role": ["menuitemcheckbox"], "error": "aria-checked=\"mixed\" goes on role=\"menuitemcheckbox\"; a <checkbox> takes indeterminate"}, {"role": ["radio", "menuitemcheckbox", "menuitemradio"], "error": "aria-checked goes on role=\"radio\", \"menuitemcheckbox\" or \"menuitemradio\"; a checkbox has its own checked"}],
+      "aria-modal": [{"role": ["dialog", "alertdialog"], "error": "aria-modal belongs on a popover with role=\"dialog\""}, {"value": false, "tags": ["view"], "error": "a <dialog> is always modal; a non-modal dialog is a popover with role=\"dialog\""}],
+      "onPage": [{"tags": ["view"], "role": ["grid"], "error": "onPage belongs to a <view role=\"grid\">"}],
+      "aria-actions": [{"with": ["drag"], "error": "aria-actions belongs to an element with drag"}],
+      "keepOpen": [{"role": ["menuitem", "menuitemcheckbox", "menuitemradio"], "error": "keepOpen belongs on a menu item: role=\"menuitem\", \"menuitemcheckbox\" or \"menuitemradio\""}],
+      "open": [{"on": ["view"], "with": ["popover"], "error": "open belongs to a popover; add popover"}],
+      "onToggle": [{"on": ["view"], "with": ["popover"], "error": "onToggle belongs to a popover; add popover"}],
+      "closeAfter": [{"on": ["view"], "with": ["popover"], "error": "closeAfter belongs to a popover; add popover"}],
+      "anchor": [{"on": ["view"], "with": ["popover"], "error": "anchor belongs to a popover; add popover"}],
+      "onCloseRequest": [{"on": ["view"], "with": ["popover"], "error": "onCloseRequest belongs to a popover; add popover"}, {"not": {"popover": ["manual"]}, "error": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one"}]
     }
   }
 }

@@ -413,7 +413,9 @@ function semantics(schema) {
     'the `role` prop sets one of the authored roles on any non-control element.', '',
     '## Authored roles', '', table(['`role`', 'Goes on', 'Exposed as'], authored.map(role => [code(role), where(role), code(projected(role))])), '',
     ...Object.entries(admits.elementRole).map(([tag, rule]) => `A ${code(`<${tag}>`)} takes only ${list(rule.roles)} (\`UI_PROP\`).`), '',
-    '`headingLevel` (1..6) applies only to `role="heading"`.', '',
+    '## Props with conditions', '',
+    'A literal combination that breaks one of these fails the build; a computed one fails at render (`UI_PROP`).', '',
+    table(['Prop', 'Needs'], Object.entries(admits.prop).map(([prop, list]) => [code(prop), list.map(rule => `${rule.on ? `on ${rule.on.map(tag => code(`<${tag}>`)).join(', ')}: ` : ''}${code(rule.error)}`).join(' · ')])), '',
     '## All exposed roles', '', list(roles), '',
     '## Live regions', '', `\`aria-live\`: ${list(schema.options['live-region'])}. Announced politeness: ${list(liveRegions)}.`, '',
     '## Text actions', '', `Selectable text supports ${list(actions)}.`, ''].join('\n');
