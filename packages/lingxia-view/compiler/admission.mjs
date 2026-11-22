@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { authoringRules as rules, admission, elements, kindOf } from '../src/generated/contract.js';
+import { authoringRules as rules, admission, elements, kindOf, commonProps } from '../src/generated/contract.js';
 import { elementKind, enclosingTags } from './class-usage.mjs';
 
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -50,6 +50,9 @@ export function admissionProblems(node, file) {
     return [[node, `UI_TEXT: <${kind}> belongs inside <text>; wrap it in a <text>`]];
   const only = rules.elementRole[kind];
   const problems = [];
+  const run = has(rules.run, kind) ? rules.run[kind] : undefined;
+  if (run) for (const [name, attribute] of named)
+    if (commonProps.includes(name) && !run.includes(name)) problems.push([attribute, `UI_PROP: <${kind}> is a run of its <text>; put ${name} on the <text>`]);
   const role = named.get('role');
   // null: the source does not fix the role, so no role-gated rule fails.
   const roles = (values('role') ?? [null]).map(value => value === undefined ? only?.implied : value);

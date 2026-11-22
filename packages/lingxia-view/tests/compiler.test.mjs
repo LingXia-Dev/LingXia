@@ -164,6 +164,13 @@ test('a <span> outside <text> fails the build with the fix', () => {
   assert.deepEqual(audit('const a = <button onClick={f}><span>Go</span></button>;', 'page.tsx'), ['page.tsx:1:31: UI_TEXT: <span> belongs inside <text>; wrap it in a <text>']);
 });
 
+test('a run takes only its run props: an id or aria state on a <span> or an inline <link> fails the build', () => {
+  clean('const a = <text dir="rtl">A <span className="font-bold" data-testid="b" key="b">b</span> <link to="/t" aria-describedby="h">c</link></text>;');
+  clean('const a = <view><link to="/t" id="card" aria-describedby="h" aria-busy><text>Card</text></link></view>;');
+  assert.deepEqual(audit('const a = <text><span id="x">b</span></text>;', 'page.tsx'), ['page.tsx:1:23: UI_PROP: <span> is a run of its <text>; put id on the <text>']);
+  assert.deepEqual(audit('const a = <text><link to="/t" aria-hidden>b</link></text>;', 'page.tsx'), ['page.tsx:1:31: UI_PROP: <link> is a run of its <text>; put aria-hidden on the <text>']);
+});
+
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');

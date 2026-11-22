@@ -536,7 +536,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     wire('ariaDescribedBy', ids.join(' '));
   }
   if (props.id !== undefined) {
-    if (tag === 'span' || (tag === 'link' && !block)) throw Error(`UI_ID: <${tag}> is a run of its <text>; put the id on the <text>`);
     if (typeof props.id !== 'string' || !props.id.length || props.id.length > 256 || /\s/.test(props.id)) throw Error('UI_ID: an id is 1..256 characters without spaces');
     wire('elementId', props.id);
   }
@@ -943,6 +942,10 @@ const breaks = (rule, kind, role, props) => (rule.tags && !rule.tags.includes(ki
 function authoredRules(tag, props, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) return;
   const kind = tag === 'link' && !parent.inText ? 'link-box' : tag;
+  // A run inside <text> takes only its run props; the <text> carries the rest.
+  const run = has(authoringRules.run, kind) ? authoringRules.run[kind] : undefined;
+  if (run) for (const key in props)
+    if (props[key] !== undefined && common.has(key) && !run.includes(key)) throw Error(`UI_PROP: <${tag}> is a run of its <text>; put ${key} on the <text>`);
   const only = authoringRules.elementRole[kind];
   const role = props.role ?? only?.implied;
   if (props.role !== undefined) {

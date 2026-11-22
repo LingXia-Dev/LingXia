@@ -717,7 +717,7 @@
     "webview": {"wire": "webview", "children": "none", "style": ["box"], "props": {"src": {"type": "string"}, "web": {"type": "WebView"}, "aria-label": {"type": "string", "required": true}, "handlesDrags": {"type": "boolean"}, "onFullscreenChange": {"type": "(event: { readonly fullscreen: boolean }) => void"}, "onLoad": {"type": "(event: WebViewLoad) => void"}, "onMessage": {"type": "(message: WebViewMessage) => void"}, "onBlocked": {"type": "(event: WebViewBlocked) => void"}, "onError": {"type": "(error: WebViewError) => void"}}}
   },
   "rules": {
-    "doc": "Authoring admission the wire does not carry. The runtime, the compiler's static audit, authoring.d.ts and the reference all read it. role: where each role goes; elementRole: the roles an element takes and the one it implies; prop: what a prop needs once set. A rule passes when every condition holds: tags (the element, a <link> outside <text> counting as link-box), role (the authored role, or the element's implied one), with (props present and not empty), not (a prop holding one of these values fails it). on limits a prop rule to those elements; value limits it to that value of its prop. error is the message without its code; a role rule's default names where it goes.",
+    "doc": "Authoring admission the wire does not carry. The runtime, the compiler's static audit, authoring.d.ts and the reference all read it. role: where each role goes; elementRole: the roles an element takes and the one it implies; prop: what a prop needs once set; run: the props every element takes that a run inside <text> (a <span>, a <link> there) takes too. A rule passes when every condition holds: tags (the element, a <link> outside <text> counting as link-box), role (the authored role, or the element's implied one), with (props present and not empty), not (a prop holding one of these values fails it). on limits a prop rule to those elements; value limits it to that value of its prop. error is the message without its code; a role rule's default names where it goes.",
     "role": {
       "tab": [{"tags": ["button"]}],
       "radio": [{"tags": ["button"]}],
@@ -739,6 +739,10 @@
     },
     "elementRole": {
       "dialog": {"roles": ["alertdialog"], "implied": "dialog", "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
+    },
+    "run": {
+      "span": ["style", "className", "key", "data-testid", "dir", "children"],
+      "link": ["style", "className", "key", "data-testid", "dir", "children", "aria-describedby"]
     },
     "prop": {
       "headingLevel": [{"role": ["heading"], "error": "headingLevel belongs on role=\"heading\""}],

@@ -82,6 +82,11 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const tablistOnButton = <button role="tablist" onClick={() => {}}>x</button>;
   // @ts-expect-error role="spinbutton" belongs on an <input>.
   const spinOnText = <text role="spinbutton">1</text>;
+  const run = <text>A <span className="font-bold" data-testid="b">b</span></text>;
+  // @ts-expect-error a <span> is a run of its <text>; the id goes on the <text>.
+  const runId = <text><span id="x">b</span></text>;
+  // @ts-expect-error a run carries no role of its own.
+  const runRole = <text><span role="heading">b</span></text>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.

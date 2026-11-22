@@ -68,6 +68,8 @@ async function elements(schema) {
     if (element.wire !== name) facts.push(`Renders as ${code(element.wire)}.`);
     if (element.block) facts.push(`Elsewhere, a block link (${code(element.block.wire)}): a pressable box whose children are ${childKinds[element.block.children]}, styled like \`<button>\`; a block link never sits inside another (\`UI_LINK\`).`);
     else if (parents[element.wire]) facts.push(`Only inside ${code(`<${parents[element.wire]}>`)}.`);
+    const run = rules(schema).run[name];
+    if (run) facts.push(`${element.block ? 'As a run it' : 'It'} takes, of the props every element takes, only ${run.filter(prop => prop !== 'children').map(code).join(', ')}; the rest go on its \`<text>\` (\`UI_PROP\`).`);
     if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.');
     if (admission.root) facts.push('The page root.');
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.

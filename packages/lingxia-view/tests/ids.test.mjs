@@ -13,7 +13,7 @@ test('every element takes an id; a run does not, and ids hold no spaces', () => 
   for (const tag of ['view', 'text', 'image', 'scroll'])
     assert.equal(rendered(() => h('page', {}, h(tag, { id: `the-${tag}`, ...(tag === 'image' ? { src: 'a.png' } : {}) }))).children[0].props.elementId, `the-${tag}`);
   assert.equal(rendered(() => h('page', {}, h('input', { id: 'field', value: '' }))).children[0].props.elementId, 'field');
-  assert.throws(() => describe(() => h('page', {}, h('text', {}, h('span', { id: 'run' }, 'x'))), {}), /UI_ID: <span> is a run/);
+  assert.throws(() => describe(() => h('page', {}, h('text', {}, h('span', { id: 'run' }, 'x'))), {}), /UI_PROP: <span> is a run of its <text>; put id on the <text>/);
   assert.throws(() => describe(() => h('page', {}, h('view', { id: 'a b' })), {}), /UI_ID: an id is 1\.\.256 characters without spaces/);
 });
 

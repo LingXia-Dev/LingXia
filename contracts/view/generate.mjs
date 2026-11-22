@@ -348,11 +348,11 @@ const tagList = tags => tags.map(tag => `${/^[aeiou]/.test(tag) ? 'an' : 'a'} <$
 
 /** schema.json `rules` with every default message filled in: what the runtime, the compiler and the docs read. */
 export function rules(schema, common) {
-  const { role = {}, elementRole = {}, prop = {} } = schema.rules ?? {};
+  const { role = {}, elementRole = {}, prop = {}, run = {} } = schema.rules ?? {};
   const kinds = new Set([...Object.keys(schema.elements), ...Object.values(schema.elements).filter(element => element.block).map(element => element.block.wire)]);
   const known = (where, tags) => { for (const tag of tags ?? []) if (!kinds.has(tag)) throw Error(`schema.json: rules.${where} names unknown element ${tag}`); };
   const roles = new Set(schema.options.role);
-  const out = { role: {}, elementRole: {}, prop: {} };
+  const out = { role: {}, elementRole: {}, prop: {}, run: {} };
   const rolesKnown = (where, list) => { for (const name of list ?? []) if (!roles.has(name)) throw Error(`schema.json: rules.${where} names unknown role ${name}`); };
   for (const [name, list] of Object.entries(role)) {
     if (!roles.has(name)) throw Error(`schema.json: rules.role names unknown role ${name}`);
@@ -376,6 +376,11 @@ export function rules(schema, common) {
       return rule;
     });
   }
+  for (const [tag, list] of Object.entries(run)) {
+    if (schema.elements[tag]?.children !== 'runs') throw Error(`schema.json: rules.run.${tag} is not a run element`);
+    if (common) for (const name of list) if (!common.includes(name)) throw Error(`schema.json: rules.run.${tag} names ${name}, which not every element takes`);
+    out.run[tag] = list;
+  }
   return out;
 }
 
@@ -386,7 +391,7 @@ function rolesOn(schema, table, tag) {
 }
 
 function authoring(schema, api) {
-  const table = rules(schema);
+  const table = rules(schema), common = commonProps(api);
   const style = Object.entries(schema.style).filter(([, entry]) => !entry.internal)
     .map(([name, entry]) => `  ${name}?: ${entry.type};`).join('\n');
   const lines = [];
@@ -398,12 +403,16 @@ function authoring(schema, api) {
     lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
     const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.block?.children ?? element.children];
     const props = Object.entries(element.props).map(([prop, entry]) => `${/^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop)}${entry.required ? '' : '?'}: ${entry.type};`);
+    // A run with no block form takes only its run props, so `<span id>` fails in tsc; a `<link>`
+    // may be a block link, which takes them all, so its run props are checked at build.
+    const runOnly = table.run[name] && !element.block ? common.filter(prop => !table.run[name].includes(prop) && prop !== 'style' && prop !== 'children') : [];
     // A role the rules keep off this element fails in tsc, not at render.
-    const allowed = rolesOn(schema, table, name), narrowed = allowed.length < schema.options.role.length;
+    const allowed = rolesOn(schema, table, name), narrowed = allowed.length < schema.options.role.length && !runOnly.includes('role');
     if (narrowed) lines.push(`/** The roles a \`<${name}>\` takes; reference/elements.md says where the others go. */`,
       `export type ${type}Role = ${allowed.length ? allowed.map(entry => JSON.stringify(entry)).join(' | ') : 'never'};`);
     const role = narrowed ? `role?: ${type}Role; ` : '';
-    const base = `Omit<Props, "style" | "children"${narrowed ? ' | "role"' : ''}> & { ${role}style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
+    const omitted = ['style', 'children', ...(narrowed ? ['role'] : []), ...runOnly];
+    const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children}${props.length ? '; ' + props.join(' ') : ''} }`;
     const binding = element.binding;
     if (binding) {
       const payload = binding.type === 'string' ? 'string' : `ReadonlyData<${binding.type}>`;
