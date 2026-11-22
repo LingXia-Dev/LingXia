@@ -42,7 +42,7 @@ const html = renderBootstrap(sessionId, secret);
 assert.match(html, /^<script>.*<\/script>$/);
 const inlineSource = html.slice('<script>'.length, -'</script>'.length);
 const window = {
-  __LX_BRIDGE_CFG: { os: 'macOS' },
+  __LX_BRIDGE_CFG: { os: 'macos' },
   __LX_RUNTIME_CONFIG: { error: { reason: 'test' } },
 };
 vm.runInNewContext(inlineSource, { window });

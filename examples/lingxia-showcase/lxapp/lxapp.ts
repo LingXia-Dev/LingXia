@@ -26,7 +26,7 @@ function targetOfLink(link: OpenLink): NavTarget | undefined {
 }
 
 /** Sidebar actions and the "More" menu, in the display language; re-run when it changes. */
-async function applyHostChrome(os: string, tag: string) {
+async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
   const language = resolveDisplayLanguage(tag);
   const { t } = getAppMessages(language);
   type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
@@ -52,7 +52,7 @@ async function applyHostChrome(os: string, tag: string) {
       },
     },
   ];
-  if (os === 'macOS' || os === 'Windows') {
+  if (os === 'macos' || os === 'windows') {
     sidebarActions.push({
       id: 'terminal-settings',
       placement: 'footer',

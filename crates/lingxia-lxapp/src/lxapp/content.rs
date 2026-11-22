@@ -401,7 +401,7 @@ fn build_bridge_config_script(
     bridge_nonce: Option<&str>,
     content_language: Option<&str>,
 ) -> String {
-    let bridge_os = lingxia_platform::os_label();
+    let bridge_os = lingxia_platform::os_id();
     let display_language = escape_js_string(&super::display_language());
     let content_kv = content_language.map_or_else(String::new, |language| {
         format!(r#",contentLanguage:"{}""#, escape_js_string(language))

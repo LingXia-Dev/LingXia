@@ -1,4 +1,6 @@
-import type { BridgeConfig } from './types';
+import type { BridgeConfig, PlatformOS } from './types';
+
+export type { PlatformOS };
 
 export type CommunicationMethod =
   | 'messageport'
@@ -6,7 +8,8 @@ export type CommunicationMethod =
   | 'webmessage'
   | 'webkit'
   | 'unknown';
-export type PlatformOS = NonNullable<BridgeConfig['os']> | 'unknown';
+
+const PLATFORM_OS: readonly PlatformOS[] = ['ios', 'macos', 'android', 'windows', 'harmony'];
 
 export const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
@@ -152,7 +155,8 @@ export function subscribeDisplayLanguage(
 }
 
 export function getPlatformOS(): PlatformOS {
-  return BRIDGE_CONFIG.os || 'unknown';
+  const os = String(BRIDGE_CONFIG.os ?? '').toLowerCase() as PlatformOS;
+  return PLATFORM_OS.includes(os) ? os : 'unknown';
 }
 
 type HostClass = 'mobile' | 'desktop';
@@ -172,27 +176,28 @@ function hostClass(): HostClass {
   if (BRIDGE_CONFIG.hostClass === 'mobile' || BRIDGE_CONFIG.hostClass === 'desktop') {
     return BRIDGE_CONFIG.hostClass;
   }
-  return BRIDGE_CONFIG.os === 'macOS' || BRIDGE_CONFIG.os === 'Windows' ? 'desktop' : 'mobile';
+  const os = getPlatformOS();
+  return os === 'macos' || os === 'windows' ? 'desktop' : 'mobile';
 }
 
 export function isHarmony(): boolean {
-  return BRIDGE_CONFIG.os === 'Harmony';
+  return getPlatformOS() === 'harmony';
 }
 
 export function isIOS(): boolean {
-  return BRIDGE_CONFIG.os === 'iOS';
+  return getPlatformOS() === 'ios';
 }
 
 export function isAndroid(): boolean {
-  return BRIDGE_CONFIG.os === 'Android';
+  return getPlatformOS() === 'android';
 }
 
 export function isMacOS(): boolean {
-  return BRIDGE_CONFIG.os === 'macOS';
+  return getPlatformOS() === 'macos';
 }
 
 export function isWindows(): boolean {
-  return BRIDGE_CONFIG.os === 'Windows';
+  return getPlatformOS() === 'windows';
 }
 
 // Form factor, not OS: the Runner shows a real macOS/Windows build inside a
@@ -227,10 +232,11 @@ export function isRunner(): boolean {
 }
 
 export function getCommunicationMethod(): CommunicationMethod {
-  if (BRIDGE_CONFIG.os === 'iOS' || BRIDGE_CONFIG.os === 'macOS') return 'webkit';
-  if (BRIDGE_CONFIG.os === 'Harmony') return 'messageport';
-  if (BRIDGE_CONFIG.os === 'Windows') return 'webmessage';
-  if (BRIDGE_CONFIG.os === 'Android') {
+  const os = getPlatformOS();
+  if (os === 'ios' || os === 'macos') return 'webkit';
+  if (os === 'harmony') return 'messageport';
+  if (os === 'windows') return 'webmessage';
+  if (os === 'android') {
     if (window.LingXiaProxy?.supportsMessagePort?.()) return 'messageport';
     return 'jsinterface';
   }

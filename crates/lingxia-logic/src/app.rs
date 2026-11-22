@@ -34,25 +34,13 @@ struct HostInfo {
     sdk_version: String,
 }
 
-/// `HostOs` for a platform label; the platform layer keeps product casing for the WebView bridge.
-pub(crate) fn host_os(label: &str) -> &'static str {
-    match label {
-        "iOS" => "ios",
-        "macOS" => "macos",
-        "Android" => "android",
-        "Windows" => "windows",
-        "Harmony" => "harmony",
-        _ => "unknown",
-    }
-}
-
 /// The host app's identity: OS, product name, product version, and SDK runtime
 /// version.
 fn host_info() -> JSResult<HostInfo> {
     let app_cfg =
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(HostInfo {
-        os: host_os(lingxia_platform::os_label()).to_string(),
+        os: lingxia_platform::os_id().to_string(),
         product_name: lingxia_app_context::product_name()
             .unwrap_or(app_cfg.product_name.as_str())
             .to_string(),

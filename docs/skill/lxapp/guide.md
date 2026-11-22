@@ -270,7 +270,7 @@ nothing. It never changes while a window is dragged.
 - `formFactor` (`mobile` | `desktop`) — which machine. Branch on it for what a
   phone must not show. A narrow desktop window is `desktop`; a tablet or
   unfolded fold is `mobile`.
-- `os` — `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'`, for
+- `os` — `'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unknown'` (Logic's `HostOs`), for
   OS-specific features only. `runner` is `true` in the dev Runner.
 - `displayLanguage` — the product language; `contentLanguage` — it narrowed to
   lxapp.json `languages`, which sets `<html lang>` and `<html dir>`; pick copy by

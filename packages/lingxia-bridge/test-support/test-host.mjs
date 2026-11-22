@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 // changes, and a change never comes from the viewport's size alone.
 globalThis.window = {
   __LX_BRIDGE_CFG: {
+    // A host before the lower-case ids; the bridge reads it as `macos`.
     os: 'macOS',
     hostClass: 'desktop',
     displayLanguage: 'en-US',
@@ -24,7 +25,7 @@ assert.deepEqual(first, {
   displayLanguage: 'en-US',
   contentLanguage: 'en-US',
   formFactor: 'desktop',
-  os: 'macOS',
+  os: 'macos',
   runner: false,
 });
 assert.equal(getHost(), first, 'one object until a field changes');

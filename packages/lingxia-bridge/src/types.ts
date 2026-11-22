@@ -1,7 +1,11 @@
 import type { LxLeaveHandler } from './leave-guard';
 
+/** The OS ids Logic's `HostOs` uses. */
+export type PlatformOS = 'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unknown';
+
 export interface BridgeConfig {
-  os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
+  /** The host's OS id; hosts before the lower-case ids send product casing (`'macOS'`). */
+  os?: string;
   /**
    * Transport for the host's form factor, read through `isMobile()` /
    * `isDesktop()` rather than directly. Distinct from `os`, which names the
@@ -251,7 +255,7 @@ export interface LingXiaBridgeInterface {
     isMobile(): boolean;
     isApple(): boolean;
     isRunner(): boolean;
-    getOS(): string;
+    getOS(): PlatformOS;
   };
   dom: {
     measureById(id: string): [number, number, number, number, number] | null;

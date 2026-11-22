@@ -1,4 +1,4 @@
-import type {} from '@lingxia/bridge';
+import type { PlatformOS } from '@lingxia/bridge';
 
 export function isHarmony(): boolean {
   return window.LingXiaBridge?.platform?.isHarmony?.() === true;
@@ -24,6 +24,6 @@ export function isDesktop(): boolean {
   return window.LingXiaBridge?.platform?.isDesktop?.() === true;
 }
 
-export function getOS(): string {
+export function getOS(): PlatformOS {
   return window.LingXiaBridge?.platform?.getOS?.() ?? "unknown";
 }

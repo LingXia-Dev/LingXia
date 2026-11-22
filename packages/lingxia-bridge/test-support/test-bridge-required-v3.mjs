@@ -42,7 +42,7 @@ globalThis.document = {
 };
 globalThis.window = {
   __LX_BRIDGE_CFG: {
-    os: scenario === 'webkit' ? 'macOS' : 'Windows',
+    os: scenario === 'webkit' ? 'macos' : 'windows',
     nonce: 'nonce-1',
     dev: true,
     ...(scenario === 'webkit'

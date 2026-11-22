@@ -14,7 +14,7 @@ const context = vm.createContext({
     addEventListener() {}, removeEventListener() {}, getElementById() { return null; },
   },
   window: {
-    __LX_BRIDGE_CFG: { os: 'Windows', nonce: 'channel-test', dev: true },
+    __LX_BRIDGE_CFG: { os: 'windows', nonce: 'channel-test', dev: true },
     __LX_RUNTIME_CONFIG: {},
     LingXiaProxy: {
       supportsMessagePort: () => false, getPort: () => '',

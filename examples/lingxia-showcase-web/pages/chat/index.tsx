@@ -379,7 +379,7 @@ export default function ChatPage() {
   // The Tools menu is for desktop hosts; its dockable terminal is a
   // host-declared surface the LingXia Runner does not provide.
   const { os, runner } = useLxHost();
-  const desktopHost = os === 'macOS' || os === 'Windows';
+  const desktopHost = os === 'macos' || os === 'windows';
   const { data, actions } = useLxPage<Chat['data'], Chat['actions']>();
 
   const { messages } = data;

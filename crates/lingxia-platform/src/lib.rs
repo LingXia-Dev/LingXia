@@ -61,11 +61,25 @@ mod unsupported;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod desktop;
 
-/// Canonical platform-family label — the single source of truth for "which
-/// OS is this," shared by the WebView bridge config injection
-/// (`lingxia-lxapp`), `lx.host.info.os`, and `lx.device.info.osName`
-/// (`lingxia-logic`) so the three can never drift apart. Matches the values
-/// the View-side bridge already exposes via `useLxHost().os`.
+/// The OS id (`ios`, `macos`, `android`, `windows`, `harmony`): `lx.host.info.os`
+/// and the WebView bridge config both carry it, so the two never drift apart.
+pub fn os_id() -> &'static str {
+    os_id_for(os_label())
+}
+
+/// The OS id for a product name from [`os_label`]; `unknown` for anything else.
+pub fn os_id_for(label: &str) -> &'static str {
+    match label {
+        "iOS" => "ios",
+        "macOS" => "macos",
+        "Android" => "android",
+        "Windows" => "windows",
+        "Harmony" => "harmony",
+        _ => "unknown",
+    }
+}
+
+/// The OS's product name (`macOS`, `iOS`, …), for display.
 pub fn os_label() -> &'static str {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
