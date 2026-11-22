@@ -7,6 +7,7 @@ export {
   whenPageReady,
   type ActionMap,
   type PageActions,
+  type PageOf,
   type DeepReadonly,
   type Snapshot,
 } from "./shared/runtime.js";

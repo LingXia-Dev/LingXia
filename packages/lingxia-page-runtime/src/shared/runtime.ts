@@ -16,6 +16,17 @@ export type PageActions<A extends ActionMap> = {
           : (error: "a page action takes at most one JSON payload") => never
     : never;
 };
+/**
+ * A page's View side from its `definePage` type (`typeof page`, imported with
+ * `import type page from './index.ts'`), or from separate data and action types.
+ */
+export type PageOf<TData, TActions extends ActionMap> = TData extends {
+  readonly __lxPage: unknown;
+  readonly data: infer D;
+  readonly actions: infer A extends ActionMap;
+}
+  ? { data: DeepReadonly<D>; actions: PageActions<A> }
+  : { data: DeepReadonly<TData>; actions: PageActions<TActions> };
 /** The Logic end of a channel (`PageChannel`): such an action opens with `useLxChannel`. */
 type PageChannelLike = { send(payload: never): void; close(code?: string, reason?: string): void };
 type ViewActionResult<R> =

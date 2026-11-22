@@ -1,13 +1,13 @@
 import { getPage, pageReady, subscribePage } from '@lingxia/html';
 
-import type { HomePage } from './contract';
+import type page from './index.ts';
 
 const nameInput = document.getElementById('name') as HTMLInputElement | null;
 const btn = document.getElementById('btn') as HTMLButtonElement | null;
 const greetingEl = document.getElementById('greeting');
 
 function render() {
-  const { data } = getPage<HomePage['data'], HomePage['actions']>();
+  const { data } = getPage<typeof page>();
   if (!greetingEl) return;
   if (data.greeting) {
     greetingEl.textContent = data.greeting;
@@ -20,7 +20,7 @@ function render() {
 
 function submit() {
   const name = nameInput?.value.trim();
-  if (name) getPage<HomePage['data'], HomePage['actions']>().actions.greet({ name });
+  if (name) getPage<typeof page>().actions.greet({ name });
 }
 
 btn?.addEventListener('click', submit);

@@ -167,8 +167,8 @@ Never keep per-entry state in module scope.
 ### Types for the View
 
 A GPU View takes its types from its Logic: `import type { View } from './$types'`
-(see [GPU Views](./gpu.md)). A React View and a test read the page type itself:
-`useLxPage<typeof page>()` and `t.app.page<typeof page>()` with
+(see [GPU Views](./gpu.md)). React, HTML and tests read the page type itself:
+`useLxPage<typeof page>()`, `getPage<typeof page>()` and `t.app.page<typeof page>()` with
 `import type page from './index.ts'`.
 
 ## View
@@ -231,9 +231,10 @@ export default function HomePage() {
 ```ts
 // pages/home/entry.ts — index.html loads it with <script type="module">
 import { getPage, pageReady, subscribePage } from '@lingxia/html';
+import type page from './index.ts';
 
-const render = () => draw(getPage<PageData, PageActions>().data);
-document.getElementById('inc-btn')?.addEventListener('click', () => getPage<PageData, PageActions>().actions.increment());
+const render = () => draw(getPage<typeof page>().data);
+document.getElementById('inc-btn')?.addEventListener('click', () => getPage<typeof page>().actions.increment());
 
 // Plain HTML has no mount to gate: wait for the first state, then follow it.
 void pageReady().then(() => {
@@ -484,7 +485,8 @@ Each page's `index.json`:
 All keys are optional. `navigationStyle: "custom"` draws no native bar; on
 mobile the capsule stays over the page's header.
 `pageOrientation` (`portrait`, `landscape`, `auto`) applies until
-`lx.device.orientation.set()` locks the app; `unlock()` hands it back.
+`lx.device.orientation.lock()` locks the app; `unlock()` hands it back;
+`get()` / `watch(cb)` report the lock, or the screen's shape when unlocked.
 
 ### Localized labels and titles
 

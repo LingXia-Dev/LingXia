@@ -180,7 +180,7 @@ pub(super) fn build_framework_vars(
             "@lingxia/html",
             "html",
             "preserve",
-            r#""pages/**/entry.ts", "pages/**/contract.ts""#,
+            r#""pages/**/entry.ts""#,
             "body",
             "",
             "",
@@ -846,6 +846,32 @@ mod tests {
         .unwrap();
         let view = fs::read_to_string(app.join("pages/home/index.tsx")).unwrap();
         assert!(view.contains("useLxPage<typeof page>()"), "{view}");
+        assert!(!app.join("pages/home/contract.ts").exists());
+        let config = fs::read_to_string(app.join("tsconfig.view.json")).unwrap();
+        assert!(
+            config.contains(r#""path": "./tsconfig.logic.json""#),
+            "{config}"
+        );
+    }
+
+    #[test]
+    fn the_html_scaffold_types_its_entry_from_its_logic() {
+        let output = tempdir().unwrap();
+        let app = output.path().join("myapp");
+        create_lxapp_from_template(
+            &app,
+            "myapp",
+            "myapp",
+            "My App",
+            "html",
+            AppServiceMode::Enabled,
+            &dummy_versions(),
+            "0.16.0",
+            None,
+        )
+        .unwrap();
+        let entry = fs::read_to_string(app.join("pages/home/entry.ts")).unwrap();
+        assert!(entry.contains("getPage<typeof page>()"), "{entry}");
         assert!(!app.join("pages/home/contract.ts").exists());
         let config = fs::read_to_string(app.join("tsconfig.view.json")).unwrap();
         assert!(

@@ -31,7 +31,7 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   type ActionMap,
-  type PageActions,
+  type PageOf,
   type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
@@ -59,13 +59,7 @@ export function useLxPage<
  * `useLxPage<typeof page>()` with the page's `definePage` type imported
  * (`import type page from './index.ts'`), or `useLxPage<Data, Actions>()`.
  */
-export type LxPage<TData, TActions extends ActionMap> = TData extends {
-  readonly __lxPage: unknown;
-  readonly data: infer D;
-  readonly actions: infer A extends ActionMap;
-}
-  ? { data: DeepReadonly<D>; actions: PageActions<A> }
-  : { data: DeepReadonly<TData>; actions: PageActions<TActions> };
+export type LxPage<TData, TActions extends ActionMap> = PageOf<TData, TActions>;
 
 /**
  * What the host decided for this page: `sizeClass`, `canDock`,

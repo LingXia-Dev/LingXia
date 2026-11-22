@@ -5,8 +5,7 @@ import {
   whenPageReady,
   waitForPageState,
   type ActionMap,
-  type PageActions,
-  type DeepReadonly,
+  type PageOf,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
@@ -21,13 +20,11 @@ export function pageReady(options?: { timeoutMs?: number | null }): Promise<void
 
 /**
  * This page's Logic state and actions — `this.data` and the page's methods.
+ * `getPage<typeof page>()` with `import type page from './index.ts'` types both from the Logic.
  * `data` is readonly: Logic owns it (in a dev session a write throws).
  */
-export function getPage<TData = Snapshot, TActions extends ActionMap = ActionMap>(): {
-  data: DeepReadonly<TData>;
-  actions: PageActions<TActions>;
-} {
-  return { data: getPageSnapshot<DeepReadonly<TData>>(), actions: getPageActions<TActions>() };
+export function getPage<TData = Snapshot, TActions extends ActionMap = ActionMap>(): PageOf<TData, TActions> {
+  return { data: getPageSnapshot(), actions: getPageActions() } as PageOf<TData, TActions>;
 }
 
 /** Follow the page's state. Change-only; read it with `getPage()`. Returns an unsubscribe. */

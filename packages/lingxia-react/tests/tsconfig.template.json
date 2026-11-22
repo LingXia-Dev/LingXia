@@ -2,11 +2,13 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
     "rootDir": "../../..",
     "types": [],
     "paths": {
       "@lingxia/react": ["../dist/index.d.ts"],
-      "@lingxia/types/page": ["../../lingxia-types/src/page.ts"],
+      "@lingxia/logic": ["../../lingxia-logic/index.d.ts"],
       "react": ["../../node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"]
     }
