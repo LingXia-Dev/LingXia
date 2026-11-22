@@ -1320,6 +1320,43 @@ fn wait_for_interrupt(stop_requested: Arc<AtomicBool>) -> Result<()> {
     Ok(())
 }
 
+/// How long a launched device app may stay unconnected before the session says why it might be.
+const UNCONNECTED_HINT_AFTER: Duration = Duration::from_secs(30);
+
+/// Like `wait_for_interrupt`, but says once, after a short wait, that a launched
+/// app has not connected: a blocked socket fails silently on the device.
+fn wait_for_interrupt_hinting(
+    stop_requested: Arc<AtomicBool>,
+    server: &server::DevServerHandle,
+    hint: &str,
+) -> Result<()> {
+    let hint_at = std::time::Instant::now() + UNCONNECTED_HINT_AFTER;
+    let mut settled = false;
+    while !stop_requested.load(Ordering::Acquire) {
+        if !settled {
+            if server.runtime_connected() {
+                settled = true;
+            } else if std::time::Instant::now() >= hint_at {
+                settled = true;
+                println!("  {} {hint}", "•".yellow());
+            }
+        }
+        thread::sleep(Duration::from_millis(150));
+    }
+    println!();
+    println!("{}", "Dev workflow stopped.".yellow().bold());
+    Ok(())
+}
+
+/// What to check when an iOS dev build runs but never reaches the dev server.
+fn ios_unconnected_hint(app_name: &str) -> String {
+    format!(
+        "The app is running but has not connected. On the iPhone, check Settings → Privacy & \
+         Security → Local Network for {app_name}, and that the phone is on the same network as \
+         this computer."
+    )
+}
+
 fn stop_dev_server(server: server::DevServerHandle, run_result: Result<()>) -> Result<()> {
     let stop_result = server.stop();
     match (run_result, stop_result) {
@@ -1498,6 +1535,14 @@ fn process_executable_matches(process_exe: &Path, executable_path: &Path) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unconnected_ios_app_is_pointed_at_local_network_and_the_same_network() {
+        let hint = ios_unconnected_hint("LingXia");
+        assert!(hint.contains("has not connected"));
+        assert!(hint.contains("Privacy & Security → Local Network for LingXia"));
+        assert!(hint.contains("same network"));
+    }
 
     #[test]
     fn mock_all_needs_the_dev_env() {
