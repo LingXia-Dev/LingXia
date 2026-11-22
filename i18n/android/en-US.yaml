@@ -9,7 +9,7 @@
 # notification posted as a fallback when the app is backgrounded during a
 # self-update.
 update:
-  install_aborted: "Installation cancelled"
+  install_aborted: "Installation canceled"
   install_apk_empty: "Update package is missing"
   install_apk_invalid: "Update package is corrupted"
   install_apk_mismatch: "Update package does not match this app"

@@ -255,7 +255,7 @@ declare global {
      * ```
      * @throws {E_INVALID_ARG} Malformed options.
      * @supports surface.window
-     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows; `reason` is `'placementUnsupported'`.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
@@ -272,7 +272,7 @@ declare global {
      * const picker = lx.nav.go({ page: 'pick-contact' });
      * const contact = await picker.result;
      * ```
-     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, or ten pages already stacked (`data.reason: 'stack_full'`).
+     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, a tab already on the stack (`reason: 'tabAlreadyOpen'`), or ten pages stacked (`reason: 'stackFull'`).
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
@@ -474,7 +474,7 @@ declare global {
      * @throws {E_INVALID_ARG} A malformed URL or options, or a `to` already in use.
      * @throws {E_PERMISSION_DENIED} `to: 'downloads'` without the host's Downloads grant.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
-     * @throws {E_NETWORK} The connection failed or the server failed (on `result`).
+     * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
      * @throws {E_TIMEOUT} The server stopped answering (on `result`).
      */
     download(url: string | URL, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;

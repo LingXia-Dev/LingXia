@@ -19,7 +19,7 @@ err_code:
   1005: "Internal error"
 
   # 2xxx - User actions
-  2000: "User cancelled"
+  2000: "User canceled"
   2001: "User declined"
 
   # 3xxx - Permission errors

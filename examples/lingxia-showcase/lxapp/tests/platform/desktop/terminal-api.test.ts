@@ -142,8 +142,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     try {
       await t.settings.update({ font: { size: nextSize }, ifRevision: first.revision });
     } catch (error) {
-      const failure = error as { code?: string; data?: { reason?: string } } | null;
-      stale = { code: failure?.code ?? '', reason: failure?.data?.reason ?? '' };
+      const failure = error as { code?: string; reason?: string } | null;
+      stale = { code: failure?.code ?? '', reason: failure?.reason ?? '' };
     }
 
     const reset = await t.settings.reset({ ifRevision: updated.revision, scope: 'font' });
@@ -192,7 +192,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     );
     expect(events.length).toBeGreaterThanOrEqual(1);
     expect(result.stale?.code).toBe('E_INVALID_STATE');
-    expect(result.stale?.reason).toBe('revision_conflict');
+    expect(result.stale?.reason).toBe('revisionOutdated');
     expect(result.reset.revision).toBeGreaterThan(result.updated.revision);
     expect(result.reset.size).toBe(result.defaultSize);
     expect(result.reset.fontOverride).toBe(null);

@@ -1,4 +1,4 @@
-use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
+use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_state_error};
 use lxapp::LxApp;
 use lxapp::tabbar::TabBarPatch;
 use rong::{JSContext, JSObject, JSResult};
@@ -14,6 +14,7 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
 ///
 /// @platform macOS, Windows: the bar is the sidebar, which follows the host theme; `backgroundColor` does not paint it, and a dark host ignores every style key.
 /// @throws {E_INVALID_ARG} A `style` field, an unknown one, or a name that is not a tab.
+/// @throws {E_INVALID_STATE} The app declares no tab bar; `reason` is `'tabBarNotDeclared'`.
 async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let app = LxApp::from_ctx(&ctx)?;
     let json = patch
@@ -28,7 +29,9 @@ async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let patch = indexed_patch(value, &tabs).map_err(js_invalid_parameter_error)?;
     app.commit_tabbar(patch).await.map_err(|error| match error {
         lxapp::LxAppError::InvalidParameter(_) => js_invalid_parameter_error(error.to_string()),
-        lxapp::LxAppError::ResourceNotFound(_) => js_service_unavailable_error(error.to_string()),
+        lxapp::LxAppError::ResourceNotFound(_) => {
+            js_state_error("tabBarNotDeclared", error.to_string())
+        }
         _ => js_internal_error(error.to_string()),
     })
 }

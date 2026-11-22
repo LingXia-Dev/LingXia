@@ -16,6 +16,15 @@ pub use upload::{
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+/// The status of a server failure, which both transfers word as `http status <code>…`.
+fn http_status_in(error: &str) -> Option<u16> {
+    let rest = error.strip_prefix("http status ")?;
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
 use tokio::sync::broadcast;
 
 pub type Result<T> = std::result::Result<T, DownloadsError>;
@@ -330,4 +339,14 @@ pub fn resume(app_data_dir: &Path, task_id: &str) -> Result<()> {
     }
 
     download::retry_browser_owned_download(task_id)
+}
+
+#[cfg(test)]
+mod http_status_tests {
+    #[test]
+    fn a_server_failure_gives_its_status_back() {
+        assert_eq!(super::http_status_in("http status 404"), Some(404));
+        assert_eq!(super::http_status_in("http status 503: busy"), Some(503));
+        assert_eq!(super::http_status_in("connection reset"), None);
+    }
 }

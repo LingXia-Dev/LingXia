@@ -190,5 +190,5 @@ test('raise every lx failure as an LxError, refusals included', {
   });
   expect(seen.refusal).toBe('true E_INVALID_ARG TypeError number -');
   expect(seen.abort).toBe('true E_ABORT AbortError undefined -');
-  expect(seen.reasoned).toBe('true E_INVALID_STATE Error undefined serviceUnavailable');
+  expect(seen.reasoned).toBe('true E_INVALID_STATE Error undefined pageUnloaded');
 });

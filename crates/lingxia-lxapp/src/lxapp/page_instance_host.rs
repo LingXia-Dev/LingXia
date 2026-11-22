@@ -48,7 +48,7 @@ fn validate_navigation_stack(
             if pinned_instance.is_some_and(|id| stack.iter().any(|entry| entry == id)) =>
         {
             Err(navigation_entry_error(
-                "duplicate_route",
+                "tabAlreadyOpen",
                 nav_type,
                 target_path,
                 format!(
@@ -59,7 +59,7 @@ fn validate_navigation_stack(
         }
         crate::page::NavigationType::Forward if stack.len() >= PAGE_STACK_MAX => {
             Err(navigation_entry_error(
-                "stack_full",
+                "stackFull",
                 nav_type,
                 target_path,
                 format!(
@@ -1490,7 +1490,7 @@ mod tests {
             NavigationType::Forward,
         )
         .unwrap_err();
-        assert_eq!(navigation_reason(error), "duplicate_route");
+        assert_eq!(navigation_reason(error), "tabAlreadyOpen");
     }
 
     #[test]
@@ -1509,7 +1509,7 @@ mod tests {
 
         let error = validate_navigation_stack(&stack, None, "pages/new", NavigationType::Forward)
             .unwrap_err();
-        assert_eq!(navigation_reason(error), "stack_full");
+        assert_eq!(navigation_reason(error), "stackFull");
     }
 
     #[test]

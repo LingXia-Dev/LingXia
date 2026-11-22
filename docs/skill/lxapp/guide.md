@@ -37,8 +37,7 @@ my-lxapp/
   that may open the package; `lingxia new` writes it and `lingxia upgrade`
   raises it. The CLI builds only for lines from its supported floor up to
   its own, and names the CLI to use otherwise. An older host refuses the
-  package; detect that with `hostUpgradeRequired(error)` from
-  `@lingxia/logic` and ask the user to update the host app.
+  package with `reason: 'hostUpgradeRequired'`; ask the user to update the host app.
 - `lxapp.config.ts` — build config (view tooling, aliases, `staticDirs`).
 
 ### Static assets
@@ -135,8 +134,8 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 - Replacing the current page with its own route keeps the instance and calls
   `onLoad` again.
 - Every push is its own instance, so `detail {id: 1} → detail {id: 2}`
-  stacks. Tab pages are singletons. Refusals carry `error.data.reason`:
-  `"duplicate_route"` (a tab already on the stack) or `"stack_full"` (ten pages).
+  stacks. Tab pages are singletons. Refusals carry `error.reason`:
+  `'tabAlreadyOpen'` (a tab already on the stack) or `'stackFull'` (ten pages).
 - `await lx.nav.back()` pops one; `lx.nav.back(2)` pops more, stopping at the root.
 
 ### What resets

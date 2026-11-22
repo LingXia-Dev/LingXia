@@ -233,8 +233,9 @@ independent by default.
 | `E_SURFACE_ROLE_LOCKED` | The role forbids the operation: hiding a main, closing the stable root, or moving it out of main |
 | `E_SURFACE_CLOSED` | Operation on a destroyed handle |
 
-`data.code` carries the finer `SurfaceErrorCode`; external callers also read
-it for open refusals (`maintain` / `suspended`).
+Where the code is shared, `reason` says which: `placementUnsupported` with
+`E_NOT_SUPPORTED`, `appOpenInOtherRole` with `E_SURFACE_CONFLICT`; an
+operator takedown is `appUnderMaintenance` or `appSuspended`.
 
 ### 2.4 Open pipeline
 

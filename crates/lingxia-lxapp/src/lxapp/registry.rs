@@ -190,9 +190,19 @@ pub fn registry_unavailable_status(error: &LxAppError) -> Option<LxAppStatus> {
     else {
         return None;
     };
-    let code = data.get("code")?.as_str()?;
-    let status = LxAppStatus::from_str_lossy(code);
-    status.blocks_open().then_some(status)
+    match data.get("reason")?.as_str()? {
+        "appUnderMaintenance" => Some(LxAppStatus::Maintain),
+        "appSuspended" => Some(LxAppStatus::Suspended),
+        _ => None,
+    }
+}
+
+/// The `reason` a Logic caller reads for a blocking status.
+fn unavailable_reason(status: LxAppStatus) -> &'static str {
+    match status {
+        LxAppStatus::Maintain => "appUnderMaintenance",
+        _ => "appSuspended",
+    }
 }
 
 type OpenBlockedListener = Box<dyn Fn(LxAppStatus) + Send + Sync>;
@@ -452,18 +462,17 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
 
 /// The refusal a blocked open reports, typed so a caller can act on it.
 ///
-/// `maintain` and `suspended` both stop the open and mean opposite things to a
+/// `appUnderMaintenance` and `appSuspended` both stop the open and mean opposite things to a
 /// user — "come back later" against "this is not yours to open" — so the status
-/// travels in `data.code` rather than only inside a sentence. Callers branch on
-/// it the way they branch on a surface error code; the message is a fallback for
-/// a host that shows the raw text.
+/// travels as the error's `reason` rather than only inside a sentence; the message
+/// is a fallback for a host that shows the raw text.
 fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
     LxAppError::RongJSHost {
         code: "3000".to_string(),
         message: format!("lxapp {appid} is {status} and cannot be opened"),
         data: Some(serde_json::json!({
             "bizCode": 3000,
-            "code": status.as_str(),
+            "reason": unavailable_reason(status),
             "appId": appid,
         })),
     }
@@ -1196,7 +1205,7 @@ mod tests {
                 panic!("a blocked open must carry structured data, got a bare error");
             };
             let data = data.expect("blocked open carries data");
-            assert_eq!(data["code"], status.as_str());
+            assert_eq!(data["reason"], unavailable_reason(status));
             assert_eq!(data["appId"], "com.example.app");
             // The message stays useful for a host that only shows raw text.
             assert!(message.contains("com.example.app"));

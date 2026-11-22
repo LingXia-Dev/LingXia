@@ -47,7 +47,7 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
       return { code: value.code, reason: value.reason ?? '' };
     }
   });
-  expect(disabled).toEqual({ code: 'E_INVALID_STATE', reason: 'featureDisabled' });
+  expect(disabled).toEqual({ code: 'E_INVALID_STATE', reason: 'refreshNotEnabled' });
 
   await app.nav.reset({ page: 'pullToRefresh' });
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(pullConfig));

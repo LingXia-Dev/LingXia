@@ -34,6 +34,7 @@ const rules = {
   "throws": "a member returning a Promise or a task names what it rejects with as `@throws {E_…}`, or says it never rejects",
   "type-summary": "every named type has a one-sentence summary",
   "namespace-example": "every top-level `lx` namespace has an `@example` on one of its calls",
+  "spelling": "American spelling in the published declarations: `canceled`, `canceling` (not `cancelled`, `cancelling`)",
   "tag-vocabulary": "tags are `@throws {E_…} when`, `@default value`, `@platform <iOS|Android|HarmonyOS|macOS|Windows>[, …]: text` (one tag per platform group), `@permission name`, `@supports key`, `@example` with a fenced block, `@param`, `@see` or `@deprecated`",
 };
 
@@ -191,6 +192,12 @@ const declaredCodes = new Set(readFileSync(resolve(packageDir, "src/error.ts"), 
 for (const file of ["src/generated/logic.ts", "src/page.ts", "src/index.ts"]) {
   for (const [, code] of readFileSync(resolve(packageDir, file), "utf8").matchAll(/@throws \{(E_[A-Z_]+)\}/g)) {
     if (!declaredCodes.has(code)) find("error-code", `${file}:${code}`);
+  }
+}
+
+for (const file of ["src/generated/logic.ts", "src/page.ts", "src/index.ts", "src/error.ts", "src/mocks.ts"]) {
+  for (const [word] of readFileSync(resolve(packageDir, file), "utf8").matchAll(/\w*cancell(?:ed|ing)\w*/gi)) {
+    find("spelling", `${file}:${word}`);
   }
 }
 

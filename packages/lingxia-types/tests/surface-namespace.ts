@@ -1,15 +1,14 @@
-import type { AnySurface, Lx, PageHandle, SurfaceErrorCode } from "../src/index.js";
-import { SURFACE_ERROR_CODES } from "../src/error.js";
+import type { AnySurface, Lx, LxErrorReason, PageHandle } from "../src/index.js";
 
 declare const lx: Lx;
 declare const wide: boolean;
 
-// `satisfies readonly SurfaceErrorCode[]` on the array proves membership, not
-// completeness: a ninth code would compile there while `surfaceErrorCode()`
-// silently started returning null for it. This is the other half.
-type MissingSurfaceErrorCode = Exclude<SurfaceErrorCode, (typeof SURFACE_ERROR_CODES)[number]>;
-type AssertNever<T extends never> = T;
-type SurfaceErrorCodesAreExhaustive = AssertNever<MissingSurfaceErrorCode>;
+// A surface refusal's sub-reason is one `LxErrorReason`, compared on `e.reason`.
+const placement: LxErrorReason = "placementUnsupported";
+// @ts-expect-error the snake_case surface codes are gone
+const oldCode: LxErrorReason = "unsupported_placement";
+void placement;
+void oldCode;
 
 // Probe 1: an illegal placement names the legal ones, instead of demanding an
 // unrelated `appId` from a home-lxapp-only branch.
@@ -181,7 +180,6 @@ export type SurfaceNamespaceGate = [
   typeof orderedPreference,
   typeof identityReplacesCaching,
   typeof windowOffered,
-  SurfaceErrorCodesAreExhaustive,
 ];
 
 // `as` decides which options exist: a float anchors, a window is decorated.

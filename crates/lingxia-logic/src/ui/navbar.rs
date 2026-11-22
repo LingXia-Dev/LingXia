@@ -1,5 +1,5 @@
 use super::page_chrome_patch::parse_patch;
-use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
+use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_state_error};
 use lxapp::navbar::NavigationBarPatch;
 use lxapp::{LxApp, PageInstance};
 use rong::{JSObject, JSResult};
@@ -13,7 +13,7 @@ pub(super) async fn update(app: Arc<LxApp>, page: PageInstance, patch: JSObject)
         .map_err(|error| match error {
             lxapp::LxAppError::InvalidParameter(_) => js_invalid_parameter_error(error.to_string()),
             lxapp::LxAppError::ResourceNotFound(_) => {
-                js_service_unavailable_error(error.to_string())
+                js_state_error("pageUnloaded", error.to_string())
             }
             _ => js_internal_error(error.to_string()),
         })

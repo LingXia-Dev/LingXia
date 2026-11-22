@@ -60,8 +60,8 @@ export async function eventually<T>(
  * ```
  */
 export type Caught<T = unknown> =
-  | { ok: true; value?: T; code?: undefined; message?: undefined; data?: undefined }
-  | { ok: false; value?: undefined; code?: string; message: string; data?: unknown };
+  | { ok: true; value?: T; code?: undefined; message?: undefined; reason?: undefined; data?: undefined }
+  | { ok: false; value?: undefined; code?: string; message: string; reason?: string | null; data?: unknown };
 
 /**
  * Schedule `lx.nav.reset` without awaiting the torn-down eval context, and resolve

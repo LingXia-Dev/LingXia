@@ -127,7 +127,8 @@ try {
 }
 ```
 
-`isLxError(e)` does the same check for an error from another context or a mock; `hostUpgradeRequired(e)` says the host app needs updating.
+`isLxError(e)` does the same check for an error from another context or a mock. Where `code` alone
+does not say why, `e.reason` does (`'hostUpgradeRequired'`, `'stackFull'`, …): one `LxErrorReason` union, never `data`.
 
 ## Logic and native APIs
 

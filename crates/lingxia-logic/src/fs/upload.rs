@@ -2,7 +2,7 @@ use super::download::options_string;
 use super::{network_security, normalize_relative_path};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
-    js_invalid_parameter_error,
+    js_invalid_parameter_error, server_error_status,
 };
 use futures::channel::{mpsc, oneshot};
 use futures::lock::Mutex;
@@ -157,7 +157,7 @@ fn upload_failure_to_js_error(error: UploadFailure) -> rong::RongJSError {
         UploadFailureKind::NetworkUnavailable => {
             js_error_from_business_code_with_detail(5001, error.error)
         }
-        UploadFailureKind::Server => js_error_from_business_code_with_detail(5003, error.error),
+        UploadFailureKind::Server => server_error_status(error.http_status(), &error.error),
         UploadFailureKind::Connection => js_error_from_business_code_with_detail(5004, error.error),
         UploadFailureKind::AccessDenied => {
             js_error_from_business_code_with_detail(3000, error.error)
@@ -494,7 +494,7 @@ fn upload_result_to_js(ctx: &JSContext, result: UploadCompletion) -> JSResult<JS
 ///
 /// @throws {E_INVALID_ARG} A malformed URL, a missing or unreadable file, or bad headers.
 /// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
-/// @throws {E_NETWORK} The connection failed or the server could not be reached (on `result`).
+/// @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
 /// @throws {E_TIMEOUT} The server stopped answering (on `result`).
 fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;

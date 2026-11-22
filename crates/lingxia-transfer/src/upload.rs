@@ -144,6 +144,13 @@ pub struct UploadFailure {
 }
 
 impl UploadFailure {
+    /// The HTTP status the server answered with, for a `Server` failure.
+    pub fn http_status(&self) -> Option<u16> {
+        (self.kind == UploadFailureKind::Server)
+            .then(|| crate::http_status_in(&self.error))
+            .flatten()
+    }
+
     fn new(
         kind: UploadFailureKind,
         url: String,
@@ -1229,6 +1236,7 @@ mod wire_tests {
         // Without the status, a rejected signature is indistinguishable from a
         // flaky network, which is the one thing the caller must be able to tell.
         assert_eq!(failure.kind, UploadFailureKind::Server, "{}", failure.error);
+        assert_eq!(failure.http_status(), Some(403));
         assert!(failure.error.contains("403"), "{}", failure.error);
         assert!(failure.error.contains("refused!!"), "{}", failure.error);
     }

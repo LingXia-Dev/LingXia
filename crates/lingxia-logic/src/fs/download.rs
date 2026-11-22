@@ -206,7 +206,11 @@ enum CompletedTransferResolution {
 #[derive(Debug, Clone)]
 enum DownloadFailureReason {
     Quota(StorageQuotaError),
-    Network { code: u32, message: String },
+    Network {
+        code: u32,
+        message: String,
+        status: Option<u16>,
+    },
     Internal(String),
 }
 
@@ -218,7 +222,12 @@ impl DownloadFailureReason {
     fn to_js_error(&self) -> rong::RongJSError {
         match self {
             Self::Quota(error) => storage::quota_error_to_js(*error),
-            Self::Network { code, message } => {
+            Self::Network {
+                code: 5003,
+                message,
+                status,
+            } => crate::i18n::server_error_status(*status, message),
+            Self::Network { code, message, .. } => {
                 js_error_from_business_code_with_detail(*code, message)
             }
             Self::Internal(message) => js_internal_error(format!("download failed: {message}")),
@@ -242,6 +251,7 @@ fn download_failure_to_reason(error: DownloadFailure) -> DownloadFailureReason {
     if let Some(code) = code {
         DownloadFailureReason::Network {
             code,
+            status: error.http_status(),
             message: error.error,
         }
     } else {
@@ -812,9 +822,10 @@ fn finalize_download_result(
         let ext = download_extension(source_url, result.mime_type.as_deref()).ok_or_else(|| {
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::Network {
-                code: 5003,
+                code: 5000,
                 message: "download response requires Content-Type or a URL file extension"
                     .to_string(),
+                status: None,
             }
         })?;
         let mut filename = unique_temp_download_name(source_url, &result.temp_path, result.size);

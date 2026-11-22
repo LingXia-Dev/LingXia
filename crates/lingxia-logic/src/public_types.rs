@@ -630,7 +630,7 @@ rong::js_api! {
     get(): Promise<TerminalSettingsSnapshot>;
     /**
      * Save the patched fields.
-     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `reason` is `'revisionOutdated'`.
      */
     update(patch: TerminalSettingsPatch & {
         /** The `revision` the patch was made against. */
@@ -638,7 +638,7 @@ rong::js_api! {
     }): Promise<TerminalSettingsSnapshot>;
     /**
      * Drop the user's overrides.
-     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `reason` is `'revisionOutdated'`.
      */
     reset(options: {
         /** The `revision` the reset was decided against. */
@@ -1147,39 +1147,41 @@ rong::js_api! {
 
         /// Why an `lx` call failed, where `code` alone does not say: `e.reason === 'wifiPasswordWrong'`.
         ///
-        /// - `initializationFailed` with `E_INTERNAL`
-        /// - `userCancelled` with `E_ABORT`
+        /// - `userCanceled` with `E_ABORT`
         /// - `userDeclined` with `E_ABORT`
         /// - `cameraPermissionDenied` with `E_PERMISSION_DENIED`
         /// - `locationPermissionDenied` with `E_PERMISSION_DENIED`
         /// - `microphonePermissionDenied` with `E_PERMISSION_DENIED`
         /// - `photosPermissionDenied` with `E_PERMISSION_DENIED`
         /// - `storagePermissionDenied` with `E_PERMISSION_DENIED`
-        /// - `notificationsPermissionDenied` with `E_PERMISSION_DENIED`
-        /// - `bluetoothPermissionDenied` with `E_PERMISSION_DENIED`
         /// - `clipboardPermissionDenied` with `E_PERMISSION_DENIED`
-        /// - `serviceUnavailable` with `E_INVALID_STATE`
         /// - `locationServicesDisabled` with `E_INVALID_STATE`
-        /// - `bluetoothDisabled` with `E_INVALID_STATE`
-        /// - `nfcDisabled` with `E_INVALID_STATE`
-        /// - `featureDisabled` with `E_INVALID_STATE`
+        /// - `refreshNotEnabled` with `E_INVALID_STATE`
         /// - `networkUnavailable` with `E_NETWORK`
-        /// - `serverFailed` with `E_NETWORK`
+        /// - `serverErrorStatus` with `E_NETWORK`
         /// - `connectionFailed` with `E_NETWORK`
         /// - `deviceUnsupported` with `E_NOT_SUPPORTED`
         /// - `hostUpgradeRequired` with `E_NOT_SUPPORTED`
-        /// - `wifiUninitialized` with `E_INVALID_STATE`
-        /// - `wifiFailed` with `E_NETWORK`
+        /// - `wifiSystemError` with `E_NETWORK`
         /// - `wifiPasswordWrong` with `E_NETWORK`
         /// - `wifiTimedOut` with `E_TIMEOUT`
-        /// - `wifiRequestDuplicated` with `E_NETWORK`
         /// - `wifiUnsupported` with `E_NOT_SUPPORTED`
         /// - `wifiPermissionDenied` with `E_NETWORK`
         /// - `wifiPromptUnanswered` with `E_NETWORK`
         /// - `wifiConnectionDeclined` with `E_NETWORK`
         /// - `wifiDisabled` with `E_INVALID_STATE`
         /// - `wifiNetworkNotFound` with `E_NOT_FOUND`
-        type LxErrorReason = r###"'initializationFailed' | 'userCancelled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'notificationsPermissionDenied' | 'bluetoothPermissionDenied' | 'clipboardPermissionDenied' | 'serviceUnavailable' | 'locationServicesDisabled' | 'bluetoothDisabled' | 'nfcDisabled' | 'featureDisabled' | 'networkUnavailable' | 'serverFailed' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiUninitialized' | 'wifiFailed' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiRequestDuplicated' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound'"###;
+        /// - `placementUnsupported` with `E_NOT_SUPPORTED`
+        /// - `appOpenInOtherRole` with `E_SURFACE_CONFLICT`
+        /// - `appUnderMaintenance` with `E_PERMISSION_DENIED`
+        /// - `appSuspended` with `E_PERMISSION_DENIED`
+        /// - `tabAlreadyOpen` with `E_INVALID_ARG`
+        /// - `stackFull` with `E_INVALID_ARG`
+        /// - `revisionOutdated` with `E_INVALID_STATE`
+        /// - `appClosed` with `E_INVALID_STATE`
+        /// - `pageUnloaded` with `E_INVALID_STATE`
+        /// - `tabBarNotDeclared` with `E_INVALID_STATE`
+        type LxErrorReason = r###"'userCanceled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'clipboardPermissionDenied' | 'locationServicesDisabled' | 'refreshNotEnabled' | 'networkUnavailable' | 'serverErrorStatus' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiSystemError' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound' | 'placementUnsupported' | 'appOpenInOtherRole' | 'appUnderMaintenance' | 'appSuspended' | 'tabAlreadyOpen' | 'stackFull' | 'revisionOutdated' | 'appClosed' | 'pageUnloaded' | 'tabBarNotDeclared'"###;
 
         /// A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for.
         type PermissionName = r###"'location' | 'camera' | 'photos' | 'notifications'"###;
@@ -1967,55 +1969,6 @@ true
         ///
         type WindowChrome = r###"'system' | 'full'"###;
 
-        /// Why a surface operation was refused. Carried on `data.code` of every
-        /// `SurfaceError`, so no caller has to match on message text.
-        ///
-        type SurfaceErrorCode = r###"/** The placement cannot be realized by this host build. */
-'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
- | 'denied'
-/** No such declared surface, lxapp, or builtin page. */
- | 'not_declared'
-/** The arguments are malformed or combine options that cannot apply together. */
- | 'invalid_arg'
-/** The target is already open in a role this call cannot change. */
- | 'already_open_other_role'
-/** The role forbids this: a main cannot be hidden, and the stable
- * root main cannot be closed or leave `main`. */
- | 'role_locked'
-/** The surface has been closed; the handle is detached. */
- | 'closed'
-/** The host lacks a capability the request needs, such as an instantiable
- * native provider for a keyed surface. */
- | 'capability_missing'
-/** The operation reached the host and failed there. */
- | 'failed'"###;
-
-        /// A surface rejection. `code` is the host code: `E_SURFACE_CONFLICT`,
-        /// `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CLOSED`, `E_CAPABILITY_MISSING`,
-        /// `E_NOT_SUPPORTED`, `E_NOT_FOUND`, `E_INVALID_ARG`,
-        /// `E_PERMISSION_DENIED`, or `E_INTERNAL`. `data.code` carries the finer
-        /// `SurfaceErrorCode`; read it with `surfaceErrorCode(error)` and never
-        /// parse the message.
-        ///
-        /// ```ts
-        /// import { surfaceErrorCode } from '@lingxia/types/error';
-        ///
-        /// try {
-        ///   await lx.surface.openPage('detail', { as: 'window' });
-        /// } catch (error) {
-        ///   if (surfaceErrorCode(error) !== 'unsupported_placement') throw error;
-        /// }
-        /// ```
-        ///
-        type SurfaceError = r###"Error & {
-    /** The surface failure in detail. */
-    readonly data?: {
-        /** Which surface rule refused the call. */
-        readonly code?: SurfaceErrorCode;
-    };
-}"###;
-
         /// What every surface handle carries, whatever opened it.
         ///
         type SurfaceBase = r###"{
@@ -2267,7 +2220,7 @@ true
      * await `.opened` to wait for the page.
      * @throws {E_INVALID_ARG} Malformed options.
      * @supports surface.window
-     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows; `reason` is `'placementUnsupported'`.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;

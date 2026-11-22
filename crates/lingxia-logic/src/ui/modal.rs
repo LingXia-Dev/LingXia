@@ -2,7 +2,7 @@
 use crate::dismissal::USER_DISMISSED;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
-use crate::i18n::{js_internal_error, js_service_unavailable_error};
+use crate::i18n::{js_internal_error, js_service_unavailable_error, js_state_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::error::PlatformError;
@@ -101,7 +101,8 @@ async fn show_modal(
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(js_service_unavailable_error(
+        return Err(js_state_error(
+            "appClosed",
             "LxApp is closed; modal suppressed",
         ));
     }
@@ -145,7 +146,7 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.
 ///
 /// @throws {E_ABORT} `signal` aborted; the dialog is closed.
-/// @throws {E_INVALID_STATE} No page can show a dialog now.
+/// @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
 /// @throws {E_INTERNAL} The dialog could not be shown.
 async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
     show_modal(ctx, dialog_options(options, false)?).await?;
@@ -155,7 +156,7 @@ async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
 /// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
 ///
 /// @throws {E_ABORT} `signal` aborted; the dialog is closed.
-/// @throws {E_INVALID_STATE} No page can show a dialog now.
+/// @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
 /// @throws {E_INTERNAL} The dialog could not be shown.
 async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {
     show_modal(ctx, dialog_options(options, true)?).await

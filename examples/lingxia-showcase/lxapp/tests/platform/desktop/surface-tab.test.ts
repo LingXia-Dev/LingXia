@@ -186,12 +186,12 @@ test('open a browser tab from Logic and control it through TabSurface', {
             await tab[method]();
             return { ok: true };
           } catch (error) {
-            const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-            return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+            const { code, message, reason } = error as { code?: string; message?: string; reason?: string };
+            return { ok: false, code: code ?? '', message: String(message ?? error), reason: reason ?? null };
           }
         }, stateKey, method);
         expect(rejected.ok).toBeFalsy();
-        expect((rejected.data as { reason?: string } | undefined)?.reason).toBe('unsupported_placement');
+        expect(rejected.reason).toBe('placementUnsupported');
       }
       expect((await readState()).alive).toBeTruthy();
       await browser.close({ tab: tab.tab_id });

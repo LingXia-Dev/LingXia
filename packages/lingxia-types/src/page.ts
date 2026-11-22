@@ -122,12 +122,13 @@ export interface PageApi<Data, Params, Result, Messages = never> {
   readonly surface?: Omit<PageSurface, 'opened' | 'result' | 'send' | 'onMessage'>;
   /** This page's navigation bar, reached even while another page is on top. */
   readonly navigationBar: {
-    /** Patch it; unset fields stay as they are. */
+    /** Patch it; unset fields stay as they are. Rejects `E_INVALID_STATE` (`'pageUnloaded'`) once the page has unloaded. */
     update(patch: NavigationBarPatch): Promise<void>;
   };
   /**
    * Show the refresh indicator and run `onRefresh`, as a pull would.
-   * Throws `E_INVALID_STATE` unless the page config sets `enablePullDownRefresh`.
+   * Throws `E_INVALID_STATE` with `reason` `'refreshNotEnabled'` unless the page config sets
+   * `enablePullDownRefresh`, or `'pageUnloaded'` once the page has unloaded.
    */
   refresh(): void;
   /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */

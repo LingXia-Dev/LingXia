@@ -2,11 +2,11 @@ import type { LxAppMessageKey } from '@lingxia/types';
 import { errorMessage } from "../../shared/lib/errors";
 import {
   definePage,
+  isLxError,
   lx,
   type PageSurface,
   type OverlaySurfaceSizeValue,
   type SurfaceEdge,
-  type SurfaceErrorCode,
   type SurfaceFloatPosition,
   type ActionSheetResult,
   type ToastHandle,
@@ -36,21 +36,6 @@ interface DemoSurfaceConfig {
   chrome?: "system" | "full";
 }
 
-// The type is erased at compile time. `SURFACE_ERROR_CODES` is a runtime export
-// of the same package, and importing that would leave an external module in the
-// concatenated Logic bundle — so the list is restated here.
-const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
-  "unsupported_placement",
-  "denied",
-  "not_declared",
-  "invalid_arg",
-  "already_open_other_role",
-  "role_locked",
-  "closed",
-  "capability_missing",
-  "failed",
-];
-
 const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
 
 const NAV_TITLE_MAP: Record<string, string> = {
@@ -70,13 +55,10 @@ function surfaceErrorObject(error: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
-  const root = surfaceErrorObject(error);
-  const data = surfaceErrorObject(root?.data);
-  const code = data?.code;
-  return typeof code === "string" && SURFACE_ERROR_CODES.includes(code as SurfaceErrorCode)
-    ? (code as SurfaceErrorCode)
-    : null;
+// The code says which rule refused; `reason` adds why where the code is shared.
+function surfaceErrorLabel(error: unknown): string {
+  if (!isLxError(error)) return "unknown";
+  return error.reason ? `${error.code} ${error.reason}` : error.code;
 }
 
 function surfaceErrorMessage(error: unknown): string {
@@ -412,14 +394,12 @@ export default definePage({
             helpers.observeDemoPageSurface(surface);
           }
         } catch (error) {
-          // Every rejection carries a code from the exported union; read it with
-          // the helper rather than reaching into the error's shape.
           const message = surfaceErrorMessage(error);
           console.error("lx.surface open failed:", error);
           thisPage.update(d => {
             d.surfaceDemo = {
               ...thisPage.data.surfaceDemo,
-              message: `Failed (${surfaceErrorCode(error) ?? "unknown"}): ${message}`,
+              message: `Failed (${surfaceErrorLabel(error)}): ${message}`,
               active: false,
               visible: false,
             };

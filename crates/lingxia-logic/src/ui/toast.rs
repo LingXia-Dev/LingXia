@@ -2,7 +2,7 @@
 use crate::i18n::js_error_from_platform_error;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::i18n::js_internal_error;
-use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
+use crate::i18n::{js_invalid_parameter_error, js_state_error};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::LxApp;
@@ -140,6 +140,7 @@ enum ToastPhase {
 /// const busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });
 /// busy.dismiss();
 /// ```
+/// @throws {E_INVALID_STATE} The app is not open; `reason` is `'appClosed'`.
 fn show_toast(
     ctx: JSContext,
     message: String,
@@ -151,7 +152,8 @@ fn show_toast(
     let request = ToastRequest::parse(message, options)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     if !lxapp.is_opened() {
-        return Err(js_service_unavailable_error(
+        return Err(js_state_error(
+            "appClosed",
             "LxApp is closed; toast suppressed",
         ));
     }
@@ -234,7 +236,8 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(js_service_unavailable_error(
+        return Err(js_state_error(
+            "appClosed",
             "LxApp is closed; toast suppressed",
         ));
     }
@@ -274,7 +277,8 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
 async fn hide_toast(ctx: &JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
     if !lxapp.is_opened() {
-        return Err(js_service_unavailable_error(
+        return Err(js_state_error(
+            "appClosed",
             "LxApp is closed; toast dismissal suppressed",
         ));
     }

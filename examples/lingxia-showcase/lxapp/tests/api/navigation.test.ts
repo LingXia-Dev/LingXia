@@ -99,7 +99,7 @@ test("reset from Logic and reject invalid navigation", {
     expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
   });
 
-  await t.step('pushing a tab already on the stack is duplicate_route', async () => {
+  await t.step('pushing a tab already on the stack is tabAlreadyOpen', async () => {
     await relaunchFromLogic(app, 'home');
     await waitForCurrent(app, 'home');
     const rejected = await app.logic.eval(async ({ lx }): Promise<Caught> => {
@@ -107,14 +107,13 @@ test("reset from Logic and reject invalid navigation", {
         await lx.nav.go({ page: 'home' }).opened;
         return { ok: true };
       } catch (error) {
-        const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+        const { code, message, reason } = error as { code?: string; message?: string; reason?: string };
+        return { ok: false, code: code ?? '', message: String(message ?? error), reason: reason ?? null };
       }
     });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_ARG');
-    const reason = (rejected.data as { reason?: string } | undefined)?.reason;
-    expect(reason).toBe('duplicate_route');
+    expect(rejected.reason).toBe('tabAlreadyOpen');
   });
 
   await t.step('back at the root is a no-op', async () => {

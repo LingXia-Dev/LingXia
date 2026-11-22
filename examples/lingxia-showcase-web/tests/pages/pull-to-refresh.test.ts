@@ -99,7 +99,7 @@ test("page.refresh runs onRefresh, and the indicator stays until it settles", { 
     });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_STATE');
-    expect(rejected.reason).toBe('featureDisabled');
+    expect(rejected.reason).toBe('refreshNotEnabled');
     expect(rejected.detail).toContain('enablePullDownRefresh: true');
   });
 });

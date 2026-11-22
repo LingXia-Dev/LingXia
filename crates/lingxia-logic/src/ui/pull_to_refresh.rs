@@ -4,7 +4,7 @@ use lxapp::{LxApp, PageInstance};
 use rong::JSResult;
 
 /// Show `page`'s refresh indicator and run its `onRefresh`, as a
-/// pull would. Throws `E_INVALID_STATE` (`reason === 'featureDisabled'`) unless the
+/// pull would. Throws `E_INVALID_STATE` (`reason === 'refreshNotEnabled'`) unless the
 /// page config sets `enablePullDownRefresh: true`.
 pub(super) fn start(app: &LxApp, page: &PageInstance) -> JSResult<()> {
     if !page.is_pull_down_refresh_enabled() {

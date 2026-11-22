@@ -689,7 +689,7 @@ pub(crate) async fn open_url_text(
 /// the Control app's.
 ///
 /// @throws {E_NOT_FOUND} `lingxia.yaml` declares no such surface.
-/// @throws {E_PERMISSION_DENIED} `key`, `as` or `edge` from an lxapp other than the Control app.
+/// @throws {E_PERMISSION_DENIED} `key`, `as` or `edge` from an lxapp other than the Control app, or a declared app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
 /// @throws {E_SURFACE_ROLE_LOCKED} It is the root main surface and cannot change role.
 /// @throws {E_CAPABILITY_MISSING} A `key` on a surface that is not a declared native one.
 async fn open_declared(
@@ -739,10 +739,10 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
 
 /// Show another lxapp in a shell slot. Control app only.
 ///
-/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app, or the app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
 /// @throws {E_INVALID_ARG} An empty app id, an unknown option, or an unknown `as`.
 /// @throws {E_SURFACE_ROLE_LOCKED} The app is the root main surface and cannot change role.
-/// @throws {E_SURFACE_CONFLICT} The app is already open in the other role.
+/// @throws {E_SURFACE_CONFLICT} The app is already open in the other role; `reason` is `'appOpenInOtherRole'`.
 async fn open_app(
     ctx: JSContext,
     app_id: JSValue,
@@ -1486,8 +1486,8 @@ fn reused_app_reopen(
 }
 
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
-    // An operator takedown keeps its business error, whose `data.code` says
-    // `maintain` or `suspended`.
+    // An operator takedown keeps its business error, whose `reason` says
+    // `appUnderMaintenance` or `appSuspended`.
     if lxapp::registry_unavailable_status(&err).is_some() {
         return js_error_from_lxapp_error(&err);
     }
@@ -3699,8 +3699,8 @@ fn surface_role_label(role: lingxia_surface::Role) -> &'static str {
     }
 }
 
-/// Why a surface operation was refused. The JS `SurfaceErrorCode` union is
-/// generated from this enum, so no caller has to match on message text.
+/// Why a surface operation was refused: each has its own `error.code`, and the two whose code
+/// other refusals share add a `reason`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceErrorCode {
     UnsupportedPlacement,
@@ -3715,18 +3715,12 @@ pub(crate) enum SurfaceErrorCode {
 }
 
 impl SurfaceErrorCode {
-    /// The `code` an lxapp reads off the error.
-    const fn as_str(self) -> &'static str {
+    /// The `reason` beside a code that does not say it alone.
+    const fn reason(self) -> Option<&'static str> {
         match self {
-            Self::UnsupportedPlacement => "unsupported_placement",
-            Self::Denied => "denied",
-            Self::NotDeclared => "not_declared",
-            Self::InvalidArg => "invalid_arg",
-            Self::AlreadyOpenOtherRole => "already_open_other_role",
-            Self::RoleLocked => "role_locked",
-            Self::Closed => "closed",
-            Self::CapabilityMissing => "capability_missing",
-            Self::Failed => "failed",
+            Self::UnsupportedPlacement => Some("placementUnsupported"),
+            Self::AlreadyOpenOtherRole => Some("appOpenInOtherRole"),
+            _ => None,
         }
     }
 
@@ -3749,42 +3743,17 @@ impl SurfaceErrorCode {
 }
 
 fn surface_error(code: SurfaceErrorCode, detail: impl std::fmt::Display) -> rong::RongJSError {
-    HostError::new(code.host_code(), detail.to_string())
-        .with_data(rong::err_data!({ code: (code.as_str()) }))
-        .into()
+    let error = HostError::new(code.host_code(), detail.to_string());
+    match code.reason() {
+        Some(reason) => error.with_reason(reason),
+        None => error,
+    }
+    .into()
 }
-
-/// Every code, in the order the generated union lists them.
-#[cfg(test)]
-const SURFACE_ERROR_CODES: &[&str] = &[
-    SurfaceErrorCode::UnsupportedPlacement.as_str(),
-    SurfaceErrorCode::Denied.as_str(),
-    SurfaceErrorCode::NotDeclared.as_str(),
-    SurfaceErrorCode::InvalidArg.as_str(),
-    SurfaceErrorCode::AlreadyOpenOtherRole.as_str(),
-    SurfaceErrorCode::RoleLocked.as_str(),
-    SurfaceErrorCode::Closed.as_str(),
-    SurfaceErrorCode::CapabilityMissing.as_str(),
-    SurfaceErrorCode::Failed.as_str(),
-];
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The public `SurfaceErrorCode` union must list exactly the codes the
-    /// runtime raises, so a new code can never ship without a type for it.
-    #[test]
-    fn declared_error_codes_match_the_enum() {
-        let source = include_str!("public_types.rs");
-        let block = source
-            .split("type SurfaceErrorCode = r###\"")
-            .nth(1)
-            .and_then(|rest| rest.split("\"###").next())
-            .expect("SurfaceErrorCode literal");
-        let declared: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
-        assert_eq!(declared, SURFACE_ERROR_CODES);
-    }
 
     #[test]
     fn error_code_alone_tells_role_capability_and_lookup_failures_apart() {

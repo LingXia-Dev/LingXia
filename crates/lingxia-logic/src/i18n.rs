@@ -81,9 +81,9 @@ pub(crate) const REASONS: &[(u32, Option<&str>)] = &[
     (1001, None),
     (1002, None),
     (1003, None),
-    (1004, Some("initializationFailed")),
+    (1004, None),
     (1005, None),
-    (2000, Some("userCancelled")),
+    (2000, Some("userCanceled")),
     (2001, Some("userDeclined")),
     (3000, None),
     (3001, Some("cameraPermissionDenied")),
@@ -91,27 +91,27 @@ pub(crate) const REASONS: &[(u32, Option<&str>)] = &[
     (3003, Some("microphonePermissionDenied")),
     (3004, Some("photosPermissionDenied")),
     (3005, Some("storagePermissionDenied")),
-    (3006, Some("notificationsPermissionDenied")),
-    (3007, Some("bluetoothPermissionDenied")),
+    (3006, None),
+    (3007, None),
     (3008, Some("clipboardPermissionDenied")),
-    (4000, Some("serviceUnavailable")),
+    (4000, None),
     (4001, Some("locationServicesDisabled")),
-    (4002, Some("bluetoothDisabled")),
-    (4003, Some("nfcDisabled")),
-    (4004, Some("featureDisabled")),
+    (4002, None),
+    (4003, None),
+    (4004, Some("refreshNotEnabled")),
     (5000, None),
     (5001, Some("networkUnavailable")),
     (5002, None),
-    (5003, Some("serverFailed")),
+    (5003, Some("serverErrorStatus")),
     (5004, Some("connectionFailed")),
     (6000, None),
     (6001, Some("deviceUnsupported")),
     (6002, Some("hostUpgradeRequired")),
-    (12000, Some("wifiUninitialized")),
-    (12001, Some("wifiFailed")),
+    (12000, None),
+    (12001, Some("wifiSystemError")),
     (12002, Some("wifiPasswordWrong")),
     (12003, Some("wifiTimedOut")),
-    (12004, Some("wifiRequestDuplicated")),
+    (12004, None),
     (12005, Some("wifiUnsupported")),
     (12006, Some("wifiPermissionDenied")),
     (12007, Some("wifiPromptUnanswered")),
@@ -119,6 +119,29 @@ pub(crate) const REASONS: &[(u32, Option<&str>)] = &[
     (12009, Some("wifiDisabled")),
     (12010, Some("wifiNetworkNotFound")),
 ];
+
+/// Reasons raised without a business code, with the code they come with. `LxErrorReason` lists
+/// these after the business-code rows.
+pub(crate) const STATE_REASONS: &[(&str, &str)] = &[
+    ("placementUnsupported", rong::error::E_NOT_SUPPORTED),
+    ("appOpenInOtherRole", "E_SURFACE_CONFLICT"),
+    ("appUnderMaintenance", rong::error::E_PERMISSION_DENIED),
+    ("appSuspended", rong::error::E_PERMISSION_DENIED),
+    ("tabAlreadyOpen", rong::error::E_INVALID_ARG),
+    ("stackFull", rong::error::E_INVALID_ARG),
+    ("revisionOutdated", rong::error::E_INVALID_STATE),
+    ("appClosed", rong::error::E_INVALID_STATE),
+    ("pageUnloaded", rong::error::E_INVALID_STATE),
+    ("tabBarNotDeclared", rong::error::E_INVALID_STATE),
+];
+
+/// The table's spelling of a reason another crate raised in `data.reason`.
+fn state_reason(reason: &str) -> Option<&'static str> {
+    STATE_REASONS
+        .iter()
+        .find(|(known, _)| *known == reason)
+        .map(|(known, _)| *known)
+}
 
 fn reason_for_code(code: u32) -> Option<&'static str> {
     REASONS
@@ -209,6 +232,23 @@ pub fn js_service_unavailable_error(detail: impl AsRef<str>) -> RongJSError {
     js_error_from_business_code_with_detail(4000, detail)
 }
 
+/// A call the app's or page's state refuses, with the reason that says which state.
+pub fn js_state_error(reason: &'static str, detail: impl AsRef<str>) -> RongJSError {
+    host_error_from_business_code_with_detail(4000, detail)
+        .with_reason(reason)
+        .into()
+}
+
+/// The server answered a transfer with an error status, carried in `data.status`.
+pub fn server_error_status(status: Option<u16>, detail: impl AsRef<str>) -> RongJSError {
+    let error = host_error_from_business_code_with_detail(5003, detail);
+    match status {
+        Some(status) => error.with_data(rong::err_data!({ status: (status) })),
+        None => error,
+    }
+    .into()
+}
+
 pub fn js_timeout_error(detail: impl AsRef<str>) -> RongJSError {
     js_error_from_business_code_with_detail(5002, detail)
 }
@@ -286,19 +326,30 @@ pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
     {
         // `bizCode` is the carrier a View reply reads; a Logic error says it as `reason`.
         let mut data = data.clone();
+        let mut reason = None;
         let detail = data.as_object_mut().and_then(|fields| {
             fields.remove("bizCode");
+            // A sub-reason is top-level on a Logic error, never in `data`.
+            if let Some(Value::String(raised)) = fields.remove("reason") {
+                reason = state_reason(&raised);
+                if reason.is_none() {
+                    log::error!("reason '{raised}' is not in STATE_REASONS");
+                }
+            }
             match fields.remove("detail") {
                 Some(Value::String(detail)) => Some(detail),
                 _ => None,
             }
         });
-        let error = host_error_with_business_meta(
+        let mut error = host_error_with_business_meta(
             host_error_kind_for_code(code),
             err_code_message(code),
             code,
             detail.as_deref(),
         );
+        if let Some(reason) = reason {
+            error = error.with_reason(reason);
+        }
         return match data.as_object() {
             Some(fields) if fields.is_empty() => error,
             _ => error.with_data(error_data_from_json(&data)),
@@ -358,7 +409,9 @@ mod tests {
     fn the_reason_table_matches_the_union_and_the_error_codes() {
         let union = REASONS
             .iter()
-            .filter_map(|(_, reason)| reason.map(|reason| format!("'{reason}'")))
+            .filter_map(|(_, reason)| *reason)
+            .chain(STATE_REASONS.iter().map(|(reason, _)| *reason))
+            .map(|reason| format!("'{reason}'"))
             .collect::<Vec<_>>()
             .join(" | ");
         let declared = format!("type LxErrorReason = r###\"{union}\"###;");
@@ -369,9 +422,10 @@ mod tests {
         let listed: String = REASONS
             .iter()
             .filter_map(|(code, reason)| {
-                let kind = host_error_kind_for_code(*code);
-                reason.map(|reason| format!("        /// - `{reason}` with `{kind}`\n"))
+                reason.map(|reason| (reason, host_error_kind_for_code(*code)))
             })
+            .chain(STATE_REASONS.iter().copied())
+            .map(|(reason, kind)| format!("        /// - `{reason}` with `{kind}`\n"))
             .collect();
         assert!(
             include_str!("public_types.rs").contains(&listed),
@@ -384,6 +438,141 @@ mod tests {
             .collect();
         let table: Vec<u32> = REASONS.iter().map(|(code, _)| *code).collect();
         assert_eq!(table, codes, "every i18n error code needs a REASONS row");
+    }
+
+    /// Source files under `dir` with one of `exts`, test modules cut off.
+    fn sources(dir: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
+        let mut found = Vec::new();
+        let mut dirs = vec![dir.to_path_buf()];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for path in entries.map(|entry| entry.unwrap().path()) {
+                let name = path.file_name().unwrap().to_string_lossy();
+                if path.is_dir() {
+                    if !matches!(
+                        &*name,
+                        "tests" | "target" | "build" | "node_modules" | ".build"
+                    ) {
+                        dirs.push(path);
+                    }
+                } else if exts.iter().any(|ext| name.ends_with(ext)) {
+                    let text = std::fs::read_to_string(&path).unwrap_or_default();
+                    let code = text
+                        .split("#[cfg(test)]\nmod tests")
+                        .next()
+                        .unwrap()
+                        .to_string();
+                    found.push((path, code));
+                }
+            }
+        }
+        found
+    }
+
+    fn quoted_after(text: &str, marker: &str) -> Vec<String> {
+        text.match_indices(marker)
+            .filter_map(|(at, _)| {
+                let rest = text[at + marker.len()..].trim_start();
+                let rest = rest.strip_prefix('"')?;
+                Some(rest[..rest.find('"')?].to_string())
+            })
+            .collect()
+    }
+
+    /// The reasons raised by name: here, and the ones `lxapp` puts in its error data.
+    fn raised_by_name() -> Vec<String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut raised = Vec::new();
+        for (path, code) in sources(&root.join("src"), &[".rs"]) {
+            if path.ends_with("i18n.rs") {
+                continue;
+            }
+            raised.extend(quoted_after(&code, ".with_reason("));
+            raised.extend(quoted_after(&code, "js_state_error("));
+        }
+        let surface = std::fs::read_to_string(root.join("src/surface.rs")).unwrap();
+        let body = &surface[surface.find("const fn reason(self)").unwrap()..];
+        raised.extend(quoted_after(
+            &body[..body.find("\n    }").unwrap()],
+            "Some(",
+        ));
+        let lxapp = root.join("../lingxia-lxapp/src/lxapp");
+        let navigation = std::fs::read_to_string(lxapp.join("page_instance_host.rs")).unwrap();
+        raised.extend(quoted_after(&navigation, "navigation_entry_error("));
+        let registry = std::fs::read_to_string(lxapp.join("registry.rs")).unwrap();
+        let body = &registry[registry.find("fn unavailable_reason").unwrap()..];
+        raised.extend(quoted_after(&body[..body.find("\n}").unwrap()], "=>"));
+        raised
+    }
+
+    /// A reason raised by name, here or in `lxapp`, is one the table lists.
+    #[test]
+    fn every_raised_reason_is_in_the_table() {
+        let known: Vec<&str> = REASONS
+            .iter()
+            .filter_map(|(_, reason)| *reason)
+            .chain(STATE_REASONS.iter().map(|(reason, _)| *reason))
+            .collect();
+        let raised = raised_by_name();
+        assert!(raised.len() >= 10, "found the raised reasons: {raised:?}");
+        for reason in raised {
+            assert!(
+                known.contains(&reason.as_str()),
+                "'{reason}' is raised but not in the table"
+            );
+        }
+    }
+
+    /// Every reason has a producer. A state reason is raised by name; a business code is
+    /// written somewhere in the Rust crates or a host SDK (Kotlin, Java, Swift, ArkTS) outside
+    /// this table. That is a mention, not proof of a raise: hosts pass codes through callbacks
+    /// in too many shapes to parse.
+    #[test]
+    fn every_reason_has_a_producer() {
+        let raised = raised_by_name();
+        for (reason, _) in STATE_REASONS {
+            assert!(
+                raised.iter().any(|name| name == reason),
+                "'{reason}' is in the table but nothing raises it"
+            );
+        }
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut texts: Vec<String> = Vec::new();
+        for (path, code) in sources(&repo.join("crates"), &[".rs"]) {
+            let name = path.file_name().unwrap().to_string_lossy();
+            if !(name == "i18n.rs" && path.parent().unwrap().ends_with("lingxia-logic/src"))
+                && name != "i18n_generated.rs"
+            {
+                texts.push(code);
+            }
+        }
+        let sdk = sources(
+            &repo.join("lingxia-sdk"),
+            &[".kt", ".java", ".swift", ".ets"],
+        );
+        assert!(sdk.len() > 20, "the host SDKs were not found");
+        texts.extend(sdk.into_iter().map(|(_, code)| code));
+        let mentioned = |code: u32| {
+            let digits = code.to_string();
+            texts.iter().any(|text| {
+                text.match_indices(&digits).any(|(at, _)| {
+                    let before = text[..at].chars().next_back();
+                    let after = text[at + digits.len()..].chars().next();
+                    !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '.')
+                        && !after.is_some_and(|c| c.is_ascii_alphanumeric() || c == '.')
+                })
+            })
+        };
+        for (code, reason) in REASONS {
+            if let Some(reason) = reason {
+                assert!(
+                    mentioned(*code),
+                    "'{reason}' ({code}) is in the table but nothing raises it"
+                );
+            }
+        }
     }
 
     #[test]
@@ -403,7 +592,7 @@ mod tests {
             data: Some(serde_json::json!({
                 "bizCode": 1002,
                 "detail": "duplicate route",
-                "reason": "duplicate_route",
+                "reason": "tabAlreadyOpen",
                 "operation": "navigateTo",
                 "target": "pages/home",
             })),
@@ -413,16 +602,13 @@ mod tests {
         let Some(ErrorData::Object(data)) = host.data.clone() else {
             panic!("expected structured error metadata");
         };
-        assert_eq!(
-            data.get("reason").and_then(ErrorData::as_str),
-            Some("duplicate_route")
-        );
+        assert!(!data.contains_key("reason"));
         assert_eq!(
             data.get("operation").and_then(ErrorData::as_str),
             Some("navigateTo")
         );
         assert!(!data.contains_key("bizCode") && !data.contains_key("detail"));
         assert_eq!(host.detail(), Some("duplicate route"));
-        assert_eq!(host.reason(), None);
+        assert_eq!(host.reason(), Some("tabAlreadyOpen"));
     }
 }

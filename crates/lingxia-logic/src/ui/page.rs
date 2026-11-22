@@ -2,7 +2,7 @@
 //! `page.navigationBar`, `page.refresh()`, `page.video()`, `page.orientation` and `page.env`. Each call names
 //! its page by instance id, so it reaches that page whether or not it is on top.
 
-use crate::i18n::js_service_unavailable_error;
+use crate::i18n::js_state_error;
 use lxapp::{LxApp, PageInstance};
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ fn page_of(ctx: &JSContext, instance_id: &str) -> JSResult<(Arc<LxApp>, PageInst
     let app = LxApp::from_ctx(ctx)?;
     let page = app
         .get_page_by_instance_id_str(instance_id)
-        .ok_or_else(|| js_service_unavailable_error("the page has unloaded"))?;
+        .ok_or_else(|| js_state_error("pageUnloaded", "the page has unloaded"))?;
     Ok((app, page))
 }
 

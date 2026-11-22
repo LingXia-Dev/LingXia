@@ -3,7 +3,9 @@ use crate::dismissal::USER_DISMISSED;
 use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
-use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
+use crate::i18n::{
+    js_internal_error, js_invalid_parameter_error, js_service_unavailable_error, js_state_error,
+};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::error::PlatformError;
@@ -74,7 +76,7 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
 ///
 /// @throws {E_ABORT} `signal` aborted; the sheet is closed.
 /// @throws {E_INVALID_ARG} An empty or repeated id, an empty label, no items, or an unknown `tone`.
-/// @throws {E_INVALID_STATE} No page can show a sheet now.
+/// @throws {E_INVALID_STATE} No page can show a sheet now; `reason` is `'appClosed'` when the app is not open.
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
@@ -150,7 +152,8 @@ pub(crate) async fn present_action_sheet(
     item_color: Option<String>,
 ) -> Result<Option<usize>, RongJSError> {
     if !lxapp.is_opened() {
-        return Err(js_service_unavailable_error(
+        return Err(js_state_error(
+            "appClosed",
             "LxApp is closed; actionSheet suppressed",
         ));
     }

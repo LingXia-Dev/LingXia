@@ -214,6 +214,13 @@ pub struct DownloadFailure {
 }
 
 impl DownloadFailure {
+    /// The HTTP status the server answered with, for a `Server` failure.
+    pub fn http_status(&self) -> Option<u16> {
+        (self.kind == DownloadFailureKind::Server)
+            .then(|| crate::http_status_in(&self.error))
+            .flatten()
+    }
+
     fn new(
         kind: DownloadFailureKind,
         url: impl Into<String>,

@@ -258,7 +258,7 @@ declare global {
      * ```
      * @throws {E_INVALID_ARG} Malformed options.
      * @supports surface.window
-     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows; `reason` is `'placementUnsupported'`.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
@@ -275,7 +275,7 @@ declare global {
      * const picker = lx.nav.go({ page: 'pick-contact' });
      * const contact = await picker.result;
      * ```
-     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, or ten pages already stacked (`data.reason: 'stack_full'`).
+     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, a tab already on the stack (`reason: 'tabAlreadyOpen'`), or ten pages stacked (`reason: 'stackFull'`).
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
@@ -477,7 +477,7 @@ declare global {
      * @throws {E_INVALID_ARG} A malformed URL or options, or a `to` already in use.
      * @throws {E_PERMISSION_DENIED} `to: 'downloads'` without the host's Downloads grant.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
-     * @throws {E_NETWORK} The connection failed or the server failed (on `result`).
+     * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
      * @throws {E_TIMEOUT} The server stopped answering (on `result`).
      */
     download(url: string | URL, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
@@ -1663,40 +1663,42 @@ export type LxAppUpdateApi = globalThis.LxAppUpdateApi;
 
 /**
  * Why an `lx` call failed, where `code` alone does not say: `e.reason === 'wifiPasswordWrong'`.
- * - `initializationFailed` with `E_INTERNAL`
- * - `userCancelled` with `E_ABORT`
+ * - `userCanceled` with `E_ABORT`
  * - `userDeclined` with `E_ABORT`
  * - `cameraPermissionDenied` with `E_PERMISSION_DENIED`
  * - `locationPermissionDenied` with `E_PERMISSION_DENIED`
  * - `microphonePermissionDenied` with `E_PERMISSION_DENIED`
  * - `photosPermissionDenied` with `E_PERMISSION_DENIED`
  * - `storagePermissionDenied` with `E_PERMISSION_DENIED`
- * - `notificationsPermissionDenied` with `E_PERMISSION_DENIED`
- * - `bluetoothPermissionDenied` with `E_PERMISSION_DENIED`
  * - `clipboardPermissionDenied` with `E_PERMISSION_DENIED`
- * - `serviceUnavailable` with `E_INVALID_STATE`
  * - `locationServicesDisabled` with `E_INVALID_STATE`
- * - `bluetoothDisabled` with `E_INVALID_STATE`
- * - `nfcDisabled` with `E_INVALID_STATE`
- * - `featureDisabled` with `E_INVALID_STATE`
+ * - `refreshNotEnabled` with `E_INVALID_STATE`
  * - `networkUnavailable` with `E_NETWORK`
- * - `serverFailed` with `E_NETWORK`
+ * - `serverErrorStatus` with `E_NETWORK`
  * - `connectionFailed` with `E_NETWORK`
  * - `deviceUnsupported` with `E_NOT_SUPPORTED`
  * - `hostUpgradeRequired` with `E_NOT_SUPPORTED`
- * - `wifiUninitialized` with `E_INVALID_STATE`
- * - `wifiFailed` with `E_NETWORK`
+ * - `wifiSystemError` with `E_NETWORK`
  * - `wifiPasswordWrong` with `E_NETWORK`
  * - `wifiTimedOut` with `E_TIMEOUT`
- * - `wifiRequestDuplicated` with `E_NETWORK`
  * - `wifiUnsupported` with `E_NOT_SUPPORTED`
  * - `wifiPermissionDenied` with `E_NETWORK`
  * - `wifiPromptUnanswered` with `E_NETWORK`
  * - `wifiConnectionDeclined` with `E_NETWORK`
  * - `wifiDisabled` with `E_INVALID_STATE`
  * - `wifiNetworkNotFound` with `E_NOT_FOUND`
+ * - `placementUnsupported` with `E_NOT_SUPPORTED`
+ * - `appOpenInOtherRole` with `E_SURFACE_CONFLICT`
+ * - `appUnderMaintenance` with `E_PERMISSION_DENIED`
+ * - `appSuspended` with `E_PERMISSION_DENIED`
+ * - `tabAlreadyOpen` with `E_INVALID_ARG`
+ * - `stackFull` with `E_INVALID_ARG`
+ * - `revisionOutdated` with `E_INVALID_STATE`
+ * - `appClosed` with `E_INVALID_STATE`
+ * - `pageUnloaded` with `E_INVALID_STATE`
+ * - `tabBarNotDeclared` with `E_INVALID_STATE`
  */
-export type LxErrorReason = 'initializationFailed' | 'userCancelled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'notificationsPermissionDenied' | 'bluetoothPermissionDenied' | 'clipboardPermissionDenied' | 'serviceUnavailable' | 'locationServicesDisabled' | 'bluetoothDisabled' | 'nfcDisabled' | 'featureDisabled' | 'networkUnavailable' | 'serverFailed' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiUninitialized' | 'wifiFailed' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiRequestDuplicated' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound';
+export type LxErrorReason = 'userCanceled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'clipboardPermissionDenied' | 'locationServicesDisabled' | 'refreshNotEnabled' | 'networkUnavailable' | 'serverErrorStatus' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiSystemError' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound' | 'placementUnsupported' | 'appOpenInOtherRole' | 'appUnderMaintenance' | 'appSuspended' | 'tabAlreadyOpen' | 'stackFull' | 'revisionOutdated' | 'appClosed' | 'pageUnloaded' | 'tabBarNotDeclared';
 
 export type MediaApi = globalThis.MediaApi;
 
@@ -2658,7 +2660,7 @@ export type SurfaceApi = {
      * await `.opened` to wait for the page.
      * @throws {E_INVALID_ARG} Malformed options.
      * @supports surface.window
-     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
+     * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows; `reason` is `'placementUnsupported'`.
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
@@ -2744,55 +2746,6 @@ export type SurfaceClosedEvent = {
  * it. Compact Hosts may reproject the same aside as a full-screen overlay.
  */
 export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
-
-/**
- * A surface rejection. `code` is the host code: `E_SURFACE_CONFLICT`,
- * `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CLOSED`, `E_CAPABILITY_MISSING`,
- * `E_NOT_SUPPORTED`, `E_NOT_FOUND`, `E_INVALID_ARG`,
- * `E_PERMISSION_DENIED`, or `E_INTERNAL`. `data.code` carries the finer
- * `SurfaceErrorCode`; read it with `surfaceErrorCode(error)` and never
- * parse the message.
- * ```ts
- * import { surfaceErrorCode } from '@lingxia/types/error';
- * try {
- * await lx.surface.openPage('detail', { as: 'window' });
- * } catch (error) {
- * if (surfaceErrorCode(error) !== 'unsupported_placement') throw error;
- * }
- * ```
- */
-export type SurfaceError = Error & {
-    /** The surface failure in detail. */
-    readonly data?: {
-        /** Which surface rule refused the call. */
-        readonly code?: SurfaceErrorCode;
-    };
-};
-
-/**
- * Why a surface operation was refused. Carried on `data.code` of every
- * `SurfaceError`, so no caller has to match on message text.
- */
-export type SurfaceErrorCode = /** The placement cannot be realized by this host build. */
-'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
- | 'denied'
-/** No such declared surface, lxapp, or builtin page. */
- | 'not_declared'
-/** The arguments are malformed or combine options that cannot apply together. */
- | 'invalid_arg'
-/** The target is already open in a role this call cannot change. */
- | 'already_open_other_role'
-/** The role forbids this: a main cannot be hidden, and the stable
- * root main cannot be closed or leave `main`. */
- | 'role_locked'
-/** The surface has been closed; the handle is detached. */
- | 'closed'
-/** The host lacks a capability the request needs, such as an instantiable
- * native provider for a keyed surface. */
- | 'capability_missing'
-/** The operation reached the host and failed there. */
- | 'failed';
 
 /** Where a float popup anchors (default `center`). */
 export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
@@ -3092,7 +3045,7 @@ export type TerminalSettingsApi = {
     get(): Promise<TerminalSettingsSnapshot>;
     /**
      * Save the patched fields.
-     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `reason` is `'revisionOutdated'`.
      */
     update(patch: TerminalSettingsPatch & {
         /** The `revision` the patch was made against. */
@@ -3100,7 +3053,7 @@ export type TerminalSettingsApi = {
     }): Promise<TerminalSettingsSnapshot>;
     /**
      * Drop the user's overrides.
-     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `data.reason` is `'revision_conflict'`.
+     * @throws {E_INVALID_STATE} The saved settings moved past `ifRevision`; `reason` is `'revisionOutdated'`.
      */
     reset(options: {
         /** The `revision` the reset was decided against. */
@@ -4131,7 +4084,7 @@ declare global {
      * @default A `POST` with a `multipart/form-data` body.
      * @throws {E_INVALID_ARG} A malformed URL, a missing or unreadable file, or bad headers.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
-     * @throws {E_NETWORK} The connection failed or the server could not be reached (on `result`).
+     * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
      * @throws {E_TIMEOUT} The server stopped answering (on `result`).
      */
     upload(url: string | URL, options: UploadOptions): UploadTask;
@@ -4284,10 +4237,10 @@ declare global {
     openUrl(url: string | URL, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
      * Show another lxapp in a shell slot. Control app only.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app, or the app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
      * @throws {E_INVALID_ARG} An empty app id, an unknown option, or an unknown `as`.
      * @throws {E_SURFACE_ROLE_LOCKED} The app is the root main surface and cannot change role.
-     * @throws {E_SURFACE_CONFLICT} The app is already open in the other role.
+     * @throws {E_SURFACE_CONFLICT} The app is already open in the other role; `reason` is `'appOpenInOtherRole'`.
      */
     openApp(appId: string, options?: OpenAppOptions): Promise<AppSurface>;
     /**
@@ -4295,7 +4248,7 @@ declare global {
      * placement; `key`, `as` and `edge` change shared shell composition and are
      * the Control app's.
      * @throws {E_NOT_FOUND} `lingxia.yaml` declares no such surface.
-     * @throws {E_PERMISSION_DENIED} `key`, `as` or `edge` from an lxapp other than the Control app.
+     * @throws {E_PERMISSION_DENIED} `key`, `as` or `edge` from an lxapp other than the Control app, or a declared app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
      * @throws {E_SURFACE_ROLE_LOCKED} It is the root main surface and cannot change role.
      * @throws {E_CAPABILITY_MISSING} A `key` on a surface that is not a declared native one.
      */
@@ -4324,6 +4277,7 @@ declare global {
      * fields stay; colors stay in `lxapp.json` `tabBar.style`.
      * @platform macOS, Windows: the bar is the sidebar, which follows the host theme; `backgroundColor` does not paint it, and a dark host ignores every style key.
      * @throws {E_INVALID_ARG} A `style` field, an unknown one, or a name that is not a tab.
+     * @throws {E_INVALID_STATE} The app declares no tab bar; `reason` is `'tabBarNotDeclared'`.
      */
     update(patch: TabBarPatch): Promise<void>;
   }
@@ -4369,20 +4323,20 @@ declare global {
      * an invalid selection.
      * @throws {E_ABORT} `signal` aborted; the sheet is closed.
      * @throws {E_INVALID_ARG} An empty or repeated id, an empty label, no items, or an unknown `tone`.
-     * @throws {E_INVALID_STATE} No page can show a sheet now.
+     * @throws {E_INVALID_STATE} No page can show a sheet now; `reason` is `'appClosed'` when the app is not open.
      */
     actionSheet(options: ActionSheetOptions): Promise<ActionSheetResult>;
     /**
      * Acknowledgement-only dialog. Resolves when the user dismisses it.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
-     * @throws {E_INVALID_STATE} No page can show a dialog now.
+     * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
      * @throws {E_INTERNAL} The dialog could not be shown.
      */
     alert(options: string | AlertOptions): Promise<void>;
     /**
      * Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
-     * @throws {E_INVALID_STATE} No page can show a dialog now.
+     * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
      * @throws {E_INTERNAL} The dialog could not be shown.
      */
     confirm(options: string | ConfirmOptions): Promise<boolean>;
@@ -4394,6 +4348,7 @@ declare global {
      * const busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });
      * busy.dismiss();
      * ```
+     * @throws {E_INVALID_STATE} The app is not open; `reason` is `'appClosed'`.
      */
     toast(message: string, options?: ToastOptions): ToastHandle;
   }

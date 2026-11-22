@@ -190,8 +190,8 @@ fn mutation_error(error: MutationError) -> RongJSError {
             rong::error::E_INVALID_STATE,
             "terminal settings changed since they were read",
         )
+        .with_reason("revisionOutdated")
         .with_data(rong::err_data!({
-            reason: ("revision_conflict"),
             expectedRevision: (expected),
             actualRevision: (actual)
         }))

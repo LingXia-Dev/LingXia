@@ -1,4 +1,4 @@
-import type { LxErrorReason, SurfaceErrorCode } from './generated/logic.js';
+import type { LxErrorReason } from './generated/logic.js';
 
 /** Every code an `lx` call documents with `@throws`. */
 export const LX_ERROR_CODES = [
@@ -108,96 +108,6 @@ export function isLxError(error: unknown): error is LxError {
       typeof target.message === "string",
   );
 }
-
-/**
- * The surface code carried by a `lx.surface.*` / `lx.shell.*` rejection.
- *
- * A rejection's `code` is the host code (`E_SURFACE_CONFLICT`,
- * `E_SURFACE_ROLE_LOCKED`, `E_CAPABILITY_MISSING`, …); the finer
- * `SurfaceErrorCode` rides on `data.code`. Reading it through this helper
- * keeps callers off both the message text and the shape.
- */
-export function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
-  const root = toRecord(error);
-  const data = root ? toRecord(root.data) : null;
-  const code = data?.code;
-  return typeof code === 'string' && SURFACE_ERROR_CODES.includes(code as SurfaceErrorCode)
-    ? (code as SurfaceErrorCode)
-    : null;
-}
-
-/**
- * Why an lxapp refused to open, when the operator took it down.
- *
- * Both values block the open and mean opposite things to a user, so a caller
- * that shows one message for both is showing the wrong one half the time.
- */
-export type LxAppUnavailableReason = 'maintain' | 'suspended';
-
-/** Every member of `LxAppUnavailableReason`, for runtime narrowing. */
-export const LXAPP_UNAVAILABLE_REASONS = ['maintain', 'suspended'] as const;
-
-/**
- * Read why an open was refused, or `null` when it failed for another reason.
- *
- * Navigation rejects like any other `lx` API; the reason rides on `data.code`,
- * the same way a surface error carries its own. Branch on it rather than on the
- * message: `maintain` deserves "try again later" and `suspended` does not.
- *
- * ```ts
- * try {
- *   await lx.nav.go({ app: appId })
- * } catch (error) {
- *   const reason = lxAppUnavailableReason(error)
- *   if (reason === 'maintain') showMaintenanceNotice()
- *   else if (reason === 'suspended') showUnavailableNotice()
- *   else throw error
- * }
- * ```
- */
-export function lxAppUnavailableReason(error: unknown): LxAppUnavailableReason | null {
-  const root = toRecord(error);
-  const data = root ? toRecord(root.data) : null;
-  const code = data?.code;
-  return typeof code === 'string' &&
-    (LXAPP_UNAVAILABLE_REASONS as readonly string[]).includes(code)
-    ? (code as LxAppUnavailableReason)
-    : null;
-}
-
-/**
- * Whether an open, navigation, or update was refused because the host is
- * older than the lxapp's `minRuntime`.
- *
- * The rejection's `code` is `E_NOT_SUPPORTED`, which also covers missing
- * capabilities; only this says the user needs a newer host app.
- *
- * ```ts
- * try {
- *   await lx.nav.go({ app: appId })
- * } catch (error) {
- *   if (hostUpgradeRequired(error)) showUpdateHostNotice()
- *   else throw error
- * }
- * ```
- */
-export function hostUpgradeRequired(error: unknown): boolean {
-  return toRecord(error)?.reason === 'hostUpgradeRequired';
-}
-
-/** Every member of `SurfaceErrorCode`, for runtime narrowing. */
-export const SURFACE_ERROR_CODES = [
-  'unsupported_placement',
-  'denied',
-  'not_declared',
-  'invalid_arg',
-  'already_open_other_role',
-  'role_locked',
-  'closed',
-  'capability_missing',
-  'failed',
-] as const satisfies readonly SurfaceErrorCode[];
-
 
 function toRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) return null;
