@@ -5,11 +5,11 @@ export function render() {
   const sample = 'Tracking sample';
   const row = 'w-[280px] h-11 text-[28px] leading-10';
   return <view className="bg-white text-black p-4 gap-4" style={{ paddingTop: env.insets.top + 16 }}>
-    <button testId="tracking-toggle" onClick={() => tracking.set(!tracking.value)} className="h-12 bg-blue-600 text-white">Toggle tracking</button>
-    <text testId="tracking-normal" className={`${row} tracking-normal`}>{sample}</text>
-    <text testId="tracking-direct" className={`${row} tracking-[2px]`}>{sample}</text>
-    <view className="tracking-[2px]"><text testId="tracking-inherited" className={row}>{sample}</text></view>
-    <view className="tracking-[2px]"><text testId="tracking-reset" className={`${row} tracking-normal`}>{sample}</text></view>
-    <text testId="tracking-dynamic" className={`${row} ${tracking.value ? 'tracking-[2px]' : 'tracking-normal'}`}>{sample}</text>
+    <button data-testid="tracking-toggle" onClick={() => tracking.set(!tracking.value)} className="h-12 bg-blue-600 text-white">Toggle tracking</button>
+    <text data-testid="tracking-normal" className={`${row} tracking-normal`}>{sample}</text>
+    <text data-testid="tracking-direct" className={`${row} tracking-[2px]`}>{sample}</text>
+    <view className="tracking-[2px]"><text data-testid="tracking-inherited" className={row}>{sample}</text></view>
+    <view className="tracking-[2px]"><text data-testid="tracking-reset" className={`${row} tracking-normal`}>{sample}</text></view>
+    <text data-testid="tracking-dynamic" className={`${row} ${tracking.value ? 'tracking-[2px]' : 'tracking-normal'}`}>{sample}</text>
   </view>;
 }

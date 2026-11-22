@@ -11,15 +11,15 @@ export function render() {
     failNext = false;
     throw new Error('Deliberate recoverable candidate failure');
   }
-  return <view style={{ padding: 24, gap: 20, backgroundColor: '#f0f4f8' }}>
-    <text testId="recovery-count">{`Count ${count.value}`}</text>
-    <input testId="recovery-draft" accessibilityLabel="Draft" bind={draft} />
-    <button testId="recovery-increment" onClick={() => count.set(count.value + 1)}>Save count</button>
-    <button testId="recovery-trigger" onClick={() => {
+  return <view className="p-6 gap-5 bg-[#f0f4f8]">
+    <text data-testid="recovery-count">{`Count ${count.value}`}</text>
+    <input data-testid="recovery-draft" aria-label="Draft" bind={draft} />
+    <button data-testid="recovery-increment" onClick={() => count.set(count.value + 1)}>Save count</button>
+    <button data-testid="recovery-trigger" onClick={() => {
       failNext = true;
       count.set(count.value + 1);
     }}>Fail one update</button>
-    <button testId="recovery-timeout" onClick={() => {
+    <button data-testid="recovery-timeout" onClick={() => {
       timeoutNext = true;
       count.set(count.value + 1);
     }}>Interrupt session</button>
