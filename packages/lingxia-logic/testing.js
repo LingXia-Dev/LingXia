@@ -60,12 +60,12 @@ function trackTimers() {
       token.timers.delete(id);
       fn(...args);
     }, ...rest);
-    token.timers.add(id);
+    token.timers.set(id, { kind: "timeout", at: startedAt() });
     return id;
   };
   globalThis.setInterval = (...args) => {
     const id = realTimers.setInterval(...args);
-    owner.getStore()?.timers.add(id);
+    owner.getStore()?.timers.set(id, { kind: "interval", at: startedAt() });
     return id;
   };
   globalThis.clearTimeout = (id) => {
@@ -77,6 +77,26 @@ function trackTimers() {
     realTimers.clearInterval(id);
   };
 }
+// The first stack frame in the author's code: not this file, the page runtime or Node.
+const here = import.meta.url;
+function startedAt() {
+  const frames = (new Error().stack ?? "").split("\n").slice(1);
+  const frame = frames.find(line => !line.includes(here) && !line.includes("node:") && !line.includes("<anonymous>"));
+  return frame ? frame.trim().replace(/^at /, "") : "an unknown place";
+}
+
+function leakError(path, leaked) {
+  const count = (kind, word) => {
+    const n = leaked.filter(timer => timer.kind === kind).length;
+    return n ? [`${n} ${word}${n === 1 ? "" : "s"}`] : [];
+  };
+  const what = [...count("timeout", "timeout"), ...count("interval", "interval")].join(" and ");
+  const where = leaked.map(timer => `\n  ${timer.kind} started at ${timer.at}`).join("");
+  return new Error(
+    `${path} left ${what} running at unmount; stop it when \`page.signal\` aborts.${where}`,
+  );
+}
+
 function untrackTimers() {
   if (live.size > 0) return;
   Object.assign(globalThis, realTimers);
@@ -94,7 +114,7 @@ function owned(token, value) {
 let mounted = 0;
 
 export async function mount(definition, options = {}) {
-  const { params = {}, lx = importedLx, name = "page" } = options;
+  const { params = {}, lx = importedLx, name = "page", leakedTimers = "fail" } = options;
   // Page.js runs in this realm, so page data keeps the test's `Object.prototype`,
   // but its globals land on this scope, not on the test's `globalThis`.
   const scope = Object.create(globalThis);
@@ -126,17 +146,19 @@ export async function mount(definition, options = {}) {
   scope.__lxCaptureTimers();
 
   claimLx(lx);
-  const token = { timers: new Set() };
+  const token = { timers: new Map() };
   live.add(token);
   trackTimers();
   let svc;
   let unmounted = false;
+  // Returns the timers the page left running, now stopped.
   const release = () => {
-    if (unmounted) return;
+    if (unmounted) return [];
     unmounted = true;
+    const leaked = [...token.timers.values()];
     try {
       svc?._cancelPendingSetData();
-      for (const id of token.timers) {
+      for (const id of token.timers.keys()) {
         realTimers.clearTimeout(id);
         realTimers.clearInterval(id);
       }
@@ -145,14 +167,15 @@ export async function mount(definition, options = {}) {
       releaseLx(token);
       untrackTimers();
     }
+    return leaked;
   };
   const hook = async (key, ...args) => {
     const fn = svc.config[key];
     if (typeof fn === "function") await owner.run(token, () => fn.apply(svc, args));
   };
 
+  const path = `pages/${name}/index`;
   try {
-    const path = `pages/${name}/index`;
     const instanceId = `mount-${++mounted}`;
     scope.__registerDefinedPage(path, definition);
     svc = owner.run(token, () =>
@@ -181,13 +204,16 @@ export async function mount(definition, options = {}) {
     hide: () => hook("onHide"),
     async unmount() {
       if (unmounted) return;
+      let leaked;
       try {
         // As the runtime does: the signal aborts just before `onUnload`.
         svc._abortLifetime();
         await hook("onUnload");
       } finally {
-        release();
+        leaked = release();
       }
+      // The runtime never stops a page's timers, so one left running here leaks in the app.
+      if (leaked.length > 0 && leakedTimers !== "allow") throw leakError(path, leaked);
     },
   };
 }

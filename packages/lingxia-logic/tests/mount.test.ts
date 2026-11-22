@@ -145,11 +145,24 @@ test("unmounting one page leaves another page's interval running", async () => {
   }
 });
 
-test("a timer an action starts after an await stops at unmount", async () => {
+test("a timer the page left running fails unmount, naming where it started, and is stopped", async () => {
   trace.length = 0;
   const mounted = await mount(kindsPage, { lx: createLxMock() });
   await mounted.actions.later();
-  await mounted.unmount();
+  await assert.rejects(mounted.unmount(), (error: Error) =>
+    /pages\/page\/index left 1 timeout running/.test(error.message) &&
+    /timeout started at .*kinds-page\.ts:\d+/.test(error.message) &&
+    /stop it when `page\.signal` aborts/.test(error.message));
   await sleep(40);
   assert.equal(trace.includes("late"), false);
+});
+
+test("leakedTimers: 'allow' resolves unmount and still stops the interval", async () => {
+  trace.length = 0;
+  const mounted = await mount(kindsPage, { lx: createLxMock(), leakedTimers: "allow" });
+  mounted.actions.leak();
+  await mounted.unmount();
+  const leaks = trace.filter(entry => entry === "leak").length;
+  await sleep(30);
+  assert.equal(trace.filter(entry => entry === "leak").length, leaks);
 });

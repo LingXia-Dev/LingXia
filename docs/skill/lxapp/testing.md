@@ -403,7 +403,9 @@ A page's Logic runs in Node with `mount(page, { params, lx })` from `@lingxia/lo
 `createLxMock({ pick: { file: async () => ({ status: 'ok', file }) } })` from `@lingxia/types/testing`:
 call `mounted.actions.x()` (as written: sync, async or a generator), read `mounted.data`; an `lx` member you did
 not give rejects `E_NOT_SUPPORTED`. A mock fails as the host does with `throw new LxError('denied', { code: 'E_PERMISSION_DENIED' })`.
-Pages mounted at once share one `lx`; `unmount()` aborts `page.signal`, runs `onUnload` and stops the timers they started.
+Pages mounted at once share one `lx`. `unmount()` aborts `page.signal` and runs `onUnload`; a timer the page left
+running leaks in the app, so unmount stops it and rejects naming where it started (stop it when `page.signal` aborts;
+`leakedTimers: 'allow'` opts out, rarely).
 
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `render(page, view)`
 compiles a page and runs it on the real View runtime, with a phone `env` you can override. Query by

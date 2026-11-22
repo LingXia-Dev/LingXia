@@ -8,7 +8,8 @@ export default definePage({
     return {
       onLoad(params: { fail?: string }) {
         if (params.fail) throw new Error(params.fail);
-        setInterval(() => trace.push("tick"), 5);
+        const tick = setInterval(() => trace.push("tick"), 5);
+        page.signal.addEventListener("abort", () => clearInterval(tick));
       },
       onUnload() {
         trace.push(`unload aborted=${page.signal.aborted}`);
@@ -29,7 +30,11 @@ export default definePage({
           }
         },
         poll(tag: string) {
-          setInterval(() => trace.push(tag), 5);
+          const id = setInterval(() => trace.push(tag), 5);
+          page.signal.addEventListener("abort", () => clearInterval(id));
+        },
+        leak() {
+          setInterval(() => trace.push("leak"), 5);
         },
         async later() {
           await Promise.resolve();

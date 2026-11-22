@@ -26,6 +26,12 @@ export interface MountOptions<Params> {
    * @default 'page'
    */
   name?: string;
+  /**
+   * `'allow'` lets `unmount` resolve with timers the page left running; rare, for a test about
+   * something else. They are stopped either way.
+   * @default 'fail'
+   */
+  leakedTimers?: "fail" | "allow";
 }
 
 /** A page `mount` opened in Node. */
@@ -41,8 +47,9 @@ export interface MountedPage<D extends PageDefinition> {
   /** Run `onHide`. */
   hide(): Promise<void>;
   /**
-   * Abort `page.signal`, run `onUnload`, stop the timers started while mounted, and put back the
-   * `lx` that was there before. A second call does nothing.
+   * Abort `page.signal`, run `onUnload`, and put back the `lx` that was there before. A timer the
+   * page started and left running leaks in the app, so it is stopped and `unmount` rejects naming
+   * where it started. A second call does nothing.
    */
   unmount(): Promise<void>;
 }
