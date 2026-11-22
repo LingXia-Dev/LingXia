@@ -1,125 +1,91 @@
 # Adaptive UI
 
-Change an lxapp's component tree by available size. Never infer a device from
-the user agent, `screen.width`, or a browser media query.
+Write one declarative page for all screen sizes. Never check device type,
+`formFactor`, user agent, or `screen.width` — branch only on `sizeClass`
+(`compact < 600 dp` vs `regular >= 600 dp`, with `±24 dp` hysteresis).
 
-## Size class
+**Three rules cover 95% of pages:**
+- List-detail drill-down: use `<ListDetail>` from `@liulidesign/core/ListDetail` (or `@lingxia/react`).
+- Primary + companion pane: use `<Split>` from `@liulidesign/core/Split` (or `@lingxia/react`).
+- Responsive grids and visibility: use the scope-aware `regular:` variant (`grid-cols-1 regular:grid-cols-2`, `regular:hidden`).
 
-```ts
-// View: useLxHost() / env. Logic: page.env.get() (no pixels).
-type SizeContext = {
-  canDock: boolean;                  // can `as: 'aside'` dock beside the main right now
-  sizeClass: 'compact' | 'regular';
-};
-```
+## `<page>` title and `bleed`
 
-| Size class | Surface viewport width (logical px) |
-|---|---:|
-| `compact` | less than 600 |
-| `regular` | 600 and above |
+Declare `<page title={t('orders')} headerActions={...}>` for standard pages.
+Omit `title` and add `bleed` (`boolean | 'top' | 'bottom' | 'horizontal'`) on a
+**direct child** of `<page>` for full-bleed maps, video, or hero covers;
+non-bleed floating controls stay inside safe areas automatically. Placing
+`bleed` on a non-direct child throws `UI_BLEED_PARENT`.
 
-- The size class is the lxapp's own presentation, not the window: an lxapp in
-  a narrow region of a wide desktop is `compact`. It is one value per lxapp:
-  a page in its own window (`as: 'window'`) reads its lxapp's value, so size
-  that page from its own viewport.
-- `canDock` is whether the window has a dock region right now, so
-  `as: 'aside'` opens beside the main instead of as an overlay. It is not
-  where this lxapp is shown: nothing reports that; lay out by size. Read it,
-  never infer it from width.
-- `regular` is room, not desktop. Pair it with `formFactor`:
+For custom headers (e.g. a search bar), use `<TopBar>` from `@liulidesign/core/TopBar`.
+The page already keeps content clear of host chrome, so never pad a header by `env.insets`.
 
-| | mobile | desktop |
-|---|---|---|
-| `compact` | folded phone, narrow tablet split | narrow desktop window |
-| `regular` | unfolded fold, tablet | desktop workspace |
+`bleed` on the first in-flow child reaches the top edge and on the last the bottom
+edge; a child in between bleeds only sideways.
 
-Do not add a third size class or View for folds or tablets; extra width on a
-mobile `regular` surface is a CSS two-pane.
-
-## Read it in the View
-
-`useLxHost().sizeClass` and `.canDock` ([host facts](./guide.md#host-facts)) are
-present before the first frame and change only when the class changes. A page
-that only picks a layout needs no Logic subscription. Size spacing and columns
-with CSS and container queries. Older hosts report `compact`, so keep
-`minRuntime` current.
-
-Logic reads `page.env.get()` (`{ sizeClass, canDock }`), and calls
-`page.env.watch(cb)` only when Logic itself acts on a change. `cb` runs at once,
-then when `sizeClass` or `canDock` changes (not on every resize); the watcher
-stops when the page unloads, and the returned function stops it earlier.
-
-## CSS or separate Views
-
-Use CSS when only spacing, columns, or alignment change. Use separate
-components when the interaction model changes (cards vs a data table, bottom
-bar vs toolbar). Keep the page entry stable and lazy-load one variant:
+## `<ListDetail>`
 
 ```tsx
-import { useLxHost } from '@lingxia/react';
+import { ListDetail } from '@liulidesign/core/ListDetail';
 
-const CompactView = lazy(() => import('./views/compact-view'));
-const WorkspaceView = lazy(() => import('./views/workspace-view'));
-
-export default function PageView() {
-  const { sizeClass, formFactor } = useLxHost();
-  const View =
-    sizeClass === 'regular' && formFactor === 'desktop'
-      ? WorkspaceView
-      : CompactView;
-
-  // Each View reads its own data with useLxPage(); nothing is passed down.
-  return (
-    <Suspense fallback={<PageSkeleton />}>
-      <View />
-    </Suspense>
-  );
-}
+<page title={t('orders')}>
+  <ListDetail value={data.selectedId} onChange={actions.selectOrder} listLabel={t('orders')}>
+    <ListDetail.List>
+      <OrderList items={data.orders} selectedId={data.selectedId} onSelect={actions.selectOrder} />
+    </ListDetail.List>
+    <ListDetail.Detail title={data.currentOrder?.title} placeholder={<EmptyState title={t('selectOrder')} />}>
+      {data.currentOrder && <OrderDetail order={data.currentOrder} />}
+    </ListDetail.Detail>
+  </ListDetail>
+</page>
 ```
 
-- Workspace is the desktop interaction; a `regular` mobile surface keeps
-  CompactView.
-- Switching unmounts local UI state. Keep business state and drafts in Logic;
-  keep hover or an open popover in the View.
-- Size-based availability is a product rule, not authorization: Logic still
-  rejects unavailable actions.
+- On `compact`, selecting an item drills into `Detail`, preserves list scroll
+  position, and intercepts Back (never Home) via `useBackHandler` to return to
+  the list.
+- On `regular`, both panes sit side-by-side, snap to a vertical fold hinge
+  (`env.hinge`) when present, and wrap each pane in `<SizeClassScope value="compact">`
+  so nested cards never trigger wide-screen grids inside a 360 dp column.
 
-## Edge-to-edge windows
+## `<Split>`
 
-`lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
-the window edge; the system keeps window controls and the runtime keeps a drag
-strip whose height is `--lx-page-chrome-top-inset`. Check
-`lx.supports('surface.window.fullChrome')` first; the default is `'system'`.
+```tsx
+import { Split } from '@liulidesign/core/Split';
 
-```css
-header {
-  padding-top: var(--lx-page-chrome-top-inset);
-}
+// compact="stack" (default): top/bottom on compact, left/right on regular,
+// and upper-leaf / lower-leaf automatically on half-opened tabletop folds.
+<Split aside={<LiveChat messages={data.messages} />} asideWidth={320}>
+  <VideoPlayer src={data.streamUrl} />
+</Split>
+
+// compact="sheet": turns `aside` into a draggable BottomSheet on compact.
+<Split compact="sheet" bindOpen={commentsOpen} asideTitle={t('comments')} aside={<CommentThread />}>
+  <DocumentView />
+</Split>
 ```
 
-Other page-chrome variables: [Page chrome CSS](./guide.md#page-chrome-css).
+## Scope-aware `regular:` and `view.env`
+
+`regular:` binds to the nearest `<SizeClassScope>` (falling back to
+`env.sizeClass`), so a card using `grid-cols-1 regular:grid-cols-2` stays
+single-column inside `<ListDetail.Detail>` or a narrow aside dock.
+
+`view.env` (GPU) and `useLxViewEnvironment()` (React, field-tracked Proxy)
+expose the same canvas facts: `sizeClass`, `viewport`, logical `insets` and
+`safeArea` (`top`, `bottom`, `inlineStart`, `inlineEnd`), `hinge`, `keyboard`,
+`pointer`, `direction`, `theme`, `highContrast`, `reducedMotion`,
+`displayLanguage`, `contentLanguage`, and `platform` (for shortcut glyphs only).
+React pages always read `hinge` as `null`; only GPU pages get fold geometry.
 
 ## Test runtime switching
 
-Runner device changes report a new viewport. Switch in one test:
+Switch form factors and fold postures in specs or with `lxdev device set --preset fold --posture open` (Runner only; a posture the device lacks fails):
 
 ```ts
-test('switches Compact and Workspace views', async (t) => {
-  const devices = await t.automation.device.list();
-  const phone = devices.find((device) => device.group === 'phone')!;
-  const desktop = devices.find((device) => device.group === 'desktop')!;
-
-  await t.automation.device.set({ id: phone.id });
-  await expect(t.app.view.css('[data-view="compact"]')).toBeVisible();
-
-  await t.automation.device.set({ id: desktop.id });
-  await expect(t.app.view.css('[data-view="workspace"]')).toBeVisible();
+spec('adapts across compact, foldable, and desktop', async (t) => {
+  await t.device.set({ preset: 'phone', orientation: 'portrait' });
+  await t.device.set({ preset: 'fold', posture: 'open' });
+  await t.device.set({ preset: 'fold', posture: 'tabletop' });
+  await t.device.set({ preset: 'pad', orientation: 'landscape' });
 });
 ```
-
-- Switching form factor re-serves the page; a tablet or fold frame is still
-  mobile, so expect CompactView there.
-- `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
-  simulated scheme, `textScale` (0.5 to 3) and `contrast: "standard" | "high"` the
-  system text size and contrast.
-- Assert the old View is gone and Logic-owned state survived.

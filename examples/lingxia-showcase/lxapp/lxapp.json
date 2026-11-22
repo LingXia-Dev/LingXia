@@ -29,6 +29,10 @@
       "path": "pages/surface/index"
     },
     {
+      "name": "adaptive",
+      "path": "pages/adaptive/index"
+    },
+    {
       "name": "feedback",
       "path": "pages/feedback/index"
     },
