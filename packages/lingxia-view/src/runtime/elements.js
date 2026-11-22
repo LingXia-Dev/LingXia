@@ -463,6 +463,17 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
   if (props.drag !== undefined) dragElement(tag, props, wire, on, style.release);
+  // A snapping scroll's index: `snapIndex` from the page's own state, told back through `onSnapChange`.
+  if (tag === 'scroll' && props.snapIndex !== undefined) {
+    const { snapIndex, onSnapChange } = props;
+    if (!Number.isInteger(snapIndex) || snapIndex < 0) throw Error('UI_PROP: snapIndex is a snap point index, an integer from 0');
+    if (onSnapChange !== undefined && typeof onSnapChange !== 'function') throw Error('UI_PROP: onSnapChange takes a function');
+    wire('snapIndex', snapIndex);
+    if (onSnapChange) on('onSnapChange', payload => {
+      const index = Number(payload);
+      if (Number.isInteger(index) && index >= 0 && index !== snapIndex) onSnapChange(index);
+    }, 'text');
+  }
   // A snapping scroll's `bind`: the index of the snap point it rests on, two-way.
   if (tag === 'scroll' && props.bind !== undefined) {
     const cell = props.bind, bound = cellOf(cell);
@@ -932,7 +943,8 @@ function progressValues(role, props, wire, tag) {
 const present = value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim());
 const breaks = (rule, kind, role, props) => (rule.tags && !rule.tags.includes(kind)) || (rule.role && !rule.role.includes(role))
   || rule.with?.some(name => !present(props[name])) || (rule.not && Object.keys(rule.not).some(name => rule.not[name].includes(props[name])))
-  || rule.any?.every(alternative => breaks(alternative, kind, role, props));
+  || rule.any?.every(alternative => breaks(alternative, kind, role, props))
+  || rule.without?.some(name => present(props[name]));
 function authoredRules(tag, props, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) return;
   const kind = tag === 'link' && !parent.inText ? 'link-box' : tag;
@@ -1028,7 +1040,7 @@ function semantics(tag, props, wire) {
 // from where layout put it, px or % of its own size) and springs it to one on release.
 const dragPoint = /^-?\d+(\.\d+)?%$/;
 function dragElement(tag, props, wire, on, release) {
-  const { drag: axis, dragSnapPoints: points = [0], bind: cell, onDragStart, onDragEnd } = props;
+  const { drag: axis, dragSnapPoints: points = [0], bind: cell, snapIndex, onSnapChange, onDragStart, onDragEnd } = props;
   if (axis !== 'x' && axis !== 'y') throw Error('UI_PROP: drag is "x" or "y"');
   if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints ||
       points.some(point => typeof point === 'number' ? !Number.isFinite(point) || Math.abs(point) > limits.styleNumber
@@ -1036,7 +1048,7 @@ function dragElement(tag, props, wire, on, release) {
     throw Error(`UI_PROP: dragSnapPoints are 1..${limits.dragSnapPoints} offsets in px or %`);
   if (tag !== 'dialog' && tag !== 'button' && !props.accessibilityLabel)
     throw Error('UI_A11Y: an element with drag needs aria-label, so assistive tech can move it');
-  for (const [name, value] of [['onDragStart', onDragStart], ['onDragEnd', onDragEnd]])
+  for (const [name, value] of [['onDragStart', onDragStart], ['onDragEnd', onDragEnd], ['onSnapChange', onSnapChange]])
     if (value !== undefined && typeof value !== 'function') throw Error(`UI_PROP: ${name}`);
   let index = 0;
   if (cell !== undefined) {
@@ -1044,7 +1056,7 @@ function dragElement(tag, props, wire, on, release) {
     if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || typeof cell.value !== 'number')
       throw Error('UI_PROP: bind on a drag element takes a mounted number useLocal cell');
     index = cell.value;
-  }
+  } else if (snapIndex !== undefined) index = snapIndex;
   if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error('UI_PROP: the bound snap index is out of range');
   wire('drag', JSON.stringify({ axis, points, index, ...(release ? { release } : {}) }));
   const close = props[dragClose];
@@ -1054,6 +1066,7 @@ function dragElement(tag, props, wire, on, release) {
     else if (event.phase === 'end') onDragEnd?.({ index: event.index, velocity: event.velocity });
     else if (event.phase === 'settle' && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
       if (cell !== undefined && cell.value !== event.index) cell.set(event.index);
+      else if (onSnapChange && event.index !== index) onSnapChange(event.index);
       // A dialog that came to rest wholly off screen is dismissed.
       if (event.hidden === true) close?.();
     }

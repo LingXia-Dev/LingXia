@@ -1,4 +1,4 @@
-import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type ViewProps, type View } from '../../src/index.js';
+import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type ViewProps, type View, type Local } from '../../src/index.js';
 
 // A role is typed per element, so a component forwarding to a <view> takes ViewProps.
 function Card(props: ViewProps) { return <view {...props}/>; }
@@ -96,6 +96,12 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const sheet2 = <view drag="y" dragSnapPoints={[0, '50%']} aria-label="Sheet" aria-actions="close" onDragEnd={({ index }) => {}}/>;
   // @ts-expect-error dragSnapPoints needs drag.
   const undragged = <view aria-label="Sheet" dragSnapPoints={[0, 100]}/>;
+  const pager = (at: number, go: (index: number) => void) => <scroll snapIndex={at} onSnapChange={go}/>;
+  const detent = (at: number) => <view drag="y" dragSnapPoints={[0, 200]} snapIndex={at} aria-label="Sheet"/>;
+  // @ts-expect-error bind and snapIndex both set the snap index.
+  const both = (cell: Local<number>) => <scroll bind={cell} snapIndex={0}/>;
+  // @ts-expect-error onSnapChange comes with snapIndex.
+  const deaf = <scroll onSnapChange={() => {}}/>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.

@@ -40,7 +40,7 @@ Styles each element accepts are in [styles.md](styles.md).
 
 ## `<view>`
 
-Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
+Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (with `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -58,6 +58,8 @@ Children: any elements and text. Renders as `column`. `open`, `onToggle`, `close
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |
+| `snapIndex` | `number` |  |
+| `onSnapChange` | `(index: number) => void` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
@@ -87,7 +89,7 @@ Children: text, `<span>` and `<link>` runs.
 
 ## `<button>`
 
-Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
+Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (with `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -103,6 +105,8 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |
+| `snapIndex` | `number` |  |
+| `onSnapChange` | `(index: number) => void` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 | `aria-actions` | `string` |  |
@@ -111,7 +115,7 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 
 ## `<scroll>`
 
-Children: any elements and text. Not allowed inside a pressable control (`UI_BUTTON`).
+Children: any elements and text. At most one of `bind` or `snapIndex` (with `onSnapChange`) (`UI_PROP`). Not allowed inside a pressable control (`UI_BUTTON`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -121,6 +125,10 @@ Children: any elements and text. Not allowed inside a pressable control (`UI_BUT
 | `onReachEnd` | `() => void` |  |
 | `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  |
 | `bind` | `Local<number>` |  |
+| `snapIndex` | `number` |  |
+| `onSnapChange` | `(index: number) => void` |  |
+
+`bind` and `snapIndex` are the index of the snap point a `scrollSnapType` scroll rests on, not its offset: `bind={local}` with a number `useLocal` cell, or `snapIndex={n}` with `onSnapChange(index)` to follow it from the page's or Logic's state. Not both (`UI_PROP`).
 
 ## `<List>`
 
@@ -274,7 +282,7 @@ Two values: `values={[lower, upper]}` with `thumbLabels={[name, name]}` makes a 
 
 ## `<dialog>`
 
-Children: any elements and text. Renders as `column`. `dragSnapPoints`, `bind`, `onDragStart`, `onDragEnd` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`).
+Children: any elements and text. Renders as `column`. `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (with `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -285,6 +293,8 @@ Children: any elements and text. Renders as `column`. `dragSnapPoints`, `bind`, 
 | `drag` | `"x" \| "y"` |  |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  |
 | `bind` | `Local<number>` |  |
+| `snapIndex` | `number` |  |
+| `onSnapChange` | `(index: number) => void` |  |
 | `onDragStart` | `() => void` |  |
 | `onDragEnd` | `(info: { index: number; velocity: number }) => void` |  |
 

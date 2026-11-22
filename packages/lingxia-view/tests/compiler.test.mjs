@@ -156,11 +156,23 @@ test('a prop its role or element cannot carry fails the build with what it needs
     ['<image src="a.png" alt="" aria-activedescendant="x"/>', 'aria-activedescendant', 'aria-activedescendant belongs on an <input> or <textarea>'],
     ['<view aria-valuenow={3}/>', 'aria-valuenow', 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"'],
     ['<button role="combobox" aria-valuenow={3} onClick={f}>x</button>', 'aria-valuenow', 'role="combobox" takes aria-valuetext only'],
+    ['<scroll onSnapChange={g}/>', 'onSnapChange', 'onSnapChange reports the snap index you pass in snapIndex'],
   ]) {
     const problems = audit(`const a = ${source};`, 'page.tsx');
     assert.equal(problems.length, 1, `${source}: ${problems.join('; ')}`);
     assert.ok(problems[0].startsWith(`page.tsx:1:${source.indexOf(` ${prop}`) + 12}: UI_PROP: ${message}`), problems[0]);
   }
+});
+
+test('bind and snapIndex on one element fail the build; either alone passes', () => {
+  clean('const a = <scroll snapIndex={i} onSnapChange={g}/>;');
+  clean('const a = <view drag="y" bind={c} aria-label="S"/>;');
+  clean('const a = <scroll {...rest} snapIndex={i}/>;');
+  clean('const a = <scroll bind={controlled ? undefined : c} snapIndex={controlled ? i : undefined}/>;');
+  assert.deepEqual(audit('const a = <scroll bind={c} snapIndex={1}/>;', 'page.tsx').map(problem => problem.split(': ').slice(1).join(': ')), [
+    'UI_PROP: bind and snapIndex both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange',
+    'UI_PROP: snapIndex and bind both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange',
+  ]);
 });
 
 test('a <span> outside <text> fails the build with the fix', () => {

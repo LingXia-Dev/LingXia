@@ -74,6 +74,8 @@ async function elements(schema) {
       const refused = (trait.forms ?? []).flatMap(form => Object.keys(form.without ?? {}).map(prop => `${code(prop)} not with ${form.values.map(value => code(`${trait.key}=${JSON.stringify(value)}`)).join(' or ')}`));
       facts.push(`${trait.props.filter(prop => element.props[prop]).map(code).join(', ')} need ${code(trait.key)}${refused.length ? `; ${refused.join('; ')}` : ''}: tsc and the build refuse them otherwise (\`UI_PROP\`).`);
     }
+    for (const group of Object.values(rules(schema).exclusive).filter(entry => entry.on.includes(name)))
+      facts.push(`At most one of ${group.props.map(prop => `${code(prop)}${group.with?.[prop] ? ` (with ${group.with[prop].map(code).join(', ')})` : ''}`).join(' or ')} (\`UI_PROP\`).`);
     if (name === 'link') facts.push('Needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`). Enter activates it; Space does not.');
     if (admission.root) facts.push('The page root.');
     // Controls nest inside a pressable control; scrolls, lists and webviews are refused there.
@@ -107,6 +109,7 @@ const propNotes = {
   switch: '`defaultChecked`: where a switch without `value` or `bind` starts; it applies once, and a later change does nothing.',
   slider: '`defaultValue`: where a slider without `value` or `bind` starts, snapped to `step`; it applies once, and a later change does nothing.',
   select: '`defaultValue`: the option a select without `value` or `bind` starts on; it applies once, and a later change does nothing.',
+  scroll: '`bind` and `snapIndex` are the index of the snap point a `scrollSnapType` scroll rests on, not its offset: `bind={local}` with a number `useLocal` cell, or `snapIndex={n}` with `onSnapChange(index)` to follow it from the page\'s or Logic\'s state. Not both (`UI_PROP`).',
   webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default. When the screen takes a drag the page had started, the page gets `pointercancel` and `touchcancel`; on HarmonyOS they are synthetic (`isTrusted` false), and the page\'s own overflow scrolling, fixed when the finger lands, keeps scrolling.',
 };
 

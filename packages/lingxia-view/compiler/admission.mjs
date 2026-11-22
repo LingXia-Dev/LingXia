@@ -25,6 +25,20 @@ function literals(expression) {
   return null;
 }
 
+// Whether every branch of an attribute sets it; a value the source does not fix counts as set.
+function alwaysSet(attribute) {
+  let expression = attribute.initializer;
+  if (expression && ts.isJsxExpression(expression)) expression = expression.expression;
+  const sets = node => {
+    if (!node) return true;
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    if (ts.isConditionalExpression(node)) return sets(node.whenTrue) && sets(node.whenFalse);
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return false;
+    return !(ts.isIdentifier(node) && node.text === 'undefined') && node.kind !== ts.SyntaxKind.FalseKeyword && node.kind !== ts.SyntaxKind.NullKeyword;
+  };
+  return sets(expression);
+}
+
 function attributeValues(attribute) {
   const value = attribute.initializer;
   if (!value) return [true];
@@ -60,7 +74,9 @@ export function admissionProblems(node, file) {
     || (rule.role && value !== null && !rule.role.includes(value))
     || rule.with?.some(name => !present(name))
     || (rule.not && Object.keys(rule.not).some(name => { const list = values(name); return list && list.every(item => rule.not[name].includes(item)); }))
-    || rule.any?.every(alternative => breaks(alternative, value));
+    || rule.any?.every(alternative => breaks(alternative, value))
+    // Only a prop written here and set in every branch breaks a `without`.
+    || rule.without?.some(name => named.has(name) && alwaysSet(named.get(name)));
   for (const value of (role && attributeValues(role)) ?? []) {
     if (typeof value !== 'string') continue;
     if (only && !only.roles.includes(value)) { problems.push([role, `UI_PROP: ${only.error}`]); continue; }

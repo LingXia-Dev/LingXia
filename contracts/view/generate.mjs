@@ -348,11 +348,11 @@ const tagList = tags => tags.map(tag => `${/^[aeiou]/.test(tag) ? 'an' : 'a'} <$
 
 /** schema.json `rules` with every default message filled in: what the runtime, the compiler and the docs read. */
 export function rules(schema, common) {
-  const { role = {}, elementRole = {}, prop = {}, run = {}, trait = {} } = schema.rules ?? {};
+  const { role = {}, elementRole = {}, prop = {}, run = {}, trait = {}, exclusive = {} } = schema.rules ?? {};
   const kinds = new Set([...Object.keys(schema.elements), ...Object.values(schema.elements).filter(element => element.block).map(element => element.block.wire)]);
   const known = (where, tags) => { for (const tag of tags ?? []) if (!kinds.has(tag)) throw Error(`schema.json: rules.${where} names unknown element ${tag}`); };
   const roles = new Set(schema.options.role);
-  const out = { role: {}, elementRole: {}, prop: {}, run: {}, trait: {} };
+  const out = { role: {}, elementRole: {}, prop: {}, run: {}, trait: {}, exclusive: {} };
   const rolesKnown = (where, list) => { for (const name of list ?? []) if (!roles.has(name)) throw Error(`schema.json: rules.${where} names unknown role ${name}`); };
   for (const [name, list] of Object.entries(role)) {
     if (!roles.has(name)) throw Error(`schema.json: rules.role names unknown role ${name}`);
@@ -379,6 +379,19 @@ export function rules(schema, common) {
       for (const form of entry.forms ?? []) if (form.without?.[member])
         derived.push({ on: entry.on, not: { [entry.key]: form.values }, error: form.without[member] });
       (out.prop[member] ??= []).push(...derived);
+    }
+  }
+  // At most one of an exclusive group, and a companion only with its own member.
+  for (const [name, entry] of Object.entries(exclusive)) {
+    known(`exclusive.${name}`, entry.on);
+    for (const member of [...entry.props, ...Object.values(entry.with ?? {}).flat()])
+      for (const tag of entry.on) if (!schema.elements[tag].props[member]) throw Error(`schema.json: rules.exclusive.${name}: <${tag}> has no prop ${member}`);
+    out.exclusive[name] = entry;
+    for (const member of entry.props) {
+      const others = entry.props.filter(other => other !== member);
+      (out.prop[member] ??= []).push({ on: entry.on, without: others, error: entry.error.replace('{prop}', member).replace('{other}', others.join(' or ')) });
+      for (const companion of entry.with?.[member] ?? [])
+        (out.prop[companion] ??= []).push({ on: entry.on, with: [member], error: entry.companion.replace('{prop}', companion) });
     }
   }
   for (const [name, list] of Object.entries(prop)) {
@@ -414,6 +427,15 @@ function traitUnion(element, entry) {
   return `(${[absent, ...present].join(' | ')})`;
 }
 
+/** `(none set) | (one member per prop, the others never)`; a member's companions come with it. */
+function exclusiveUnion(element, entry) {
+  const companions = prop => entry.with?.[prop] ?? [];
+  const never = props => props.map(prop => `${propName(prop)}?: never;`).join(' ');
+  const all = [...entry.props, ...entry.props.flatMap(companions)];
+  const one = prop => `{ ${member(prop, { ...element.props[prop], required: true })} ${companions(prop).map(other => member(other, element.props[other])).join(' ')} ${never(all.filter(other => other !== prop && !companions(prop).includes(other)))} }`;
+  return `(${[`{ ${never(all)} }`, ...entry.props.map(one)].join(' | ')})`;
+}
+
 /** The roles `<tag>` may carry: every role whose rules all admit it. */
 function rolesOn(schema, table, tag) {
   return schema.options.role.filter(name => (table.elementRole[tag]?.roles.includes(name) ?? true)
@@ -443,9 +465,10 @@ function authoring(schema, api) {
     const omitted = ['style', 'children', ...(narrowed ? ['role'] : []), ...runOnly];
     // A trait's key and props move out of the flat props into a union: without the key they are `never`.
     const traits = Object.values(table.trait).filter(entry => entry.on.includes(name));
-    const traitProps = new Set(traits.flatMap(entry => [entry.key, ...entry.props]));
+    const groups = Object.values(table.exclusive).filter(entry => entry.on.includes(name));
+    const traitProps = new Set([...traits.flatMap(entry => [entry.key, ...entry.props]), ...groups.flatMap(entry => [...entry.props, ...Object.values(entry.with ?? {}).flat()])]);
     const flat = Object.entries(element.props).filter(([prop]) => !traitProps.has(prop)).map(([prop, entry]) => member(prop, entry));
-    const unions = traits.map(entry => traitUnion(element, entry)).join(' & ');
+    const unions = [...traits.map(entry => traitUnion(element, entry)), ...groups.map(entry => exclusiveUnion(element, entry))].join(' & ');
     const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children}${flat.length ? '; ' + flat.join(' ') : ''} }${unions ? ` & ${unions}` : ''}`;
     const binding = element.binding;
     if (binding) {

@@ -54,7 +54,9 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `anchor` | on `<view>`: `anchor belongs to a popover; add popover` |
 | `onCloseRequest` | on `<view>`: `onCloseRequest belongs to a popover; add popover` · on `<view>`: `onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one` |
 | `dragSnapPoints` | on `<view>`, `<button>`, `<dialog>`: `dragSnapPoints belongs to an element with drag; add drag="x" or drag="y"` |
-| `bind` | on `<view>`, `<button>`, `<dialog>`: `bind belongs to an element with drag; add drag="x" or drag="y"` |
+| `bind` | on `<view>`, `<button>`, `<dialog>`: `bind belongs to an element with drag; add drag="x" or drag="y"` · on `<view>`, `<button>`, `<dialog>`, `<scroll>`: `bind and snapIndex both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange` |
+| `snapIndex` | on `<view>`, `<button>`, `<dialog>`: `snapIndex belongs to an element with drag; add drag="x" or drag="y"` · on `<view>`, `<button>`, `<dialog>`, `<scroll>`: `snapIndex and bind both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange` |
+| `onSnapChange` | on `<view>`, `<button>`, `<dialog>`: `onSnapChange belongs to an element with drag; add drag="x" or drag="y"` · on `<view>`, `<button>`, `<dialog>`, `<scroll>`: `onSnapChange reports the snap index you pass in snapIndex; add snapIndex, or bind a useLocal cell instead` |
 | `onDragStart` | on `<view>`, `<button>`, `<dialog>`: `onDragStart belongs to an element with drag; add drag="x" or drag="y"` |
 | `onDragEnd` | on `<view>`, `<button>`, `<dialog>`: `onDragEnd belongs to an element with drag; add drag="x" or drag="y"` |
 | `aria-actions` | on `<view>`, `<button>`, `<dialog>`: `aria-actions belongs to an element with drag; add drag="x" or drag="y"` |

@@ -105,3 +105,29 @@ test('bare duration-*/ease-* time only a drag release: class changes keep Tailwi
   assert.equal(byId(nodes, 'plain').props.transition, undefined);
   assert.equal(byId(nodes, 'plain').props.drag, undefined);
 });
+
+test('snapIndex with onSnapChange drives a snapping scroll and a drag detent from the page state', () => {
+  reset();
+  const heard = [];
+  const scrollView = at => () => h('page', {}, h('scroll', { snapIndex: at, onSnapChange: index => heard.push(['scroll', index]), 'data-testid': 's' }));
+  const scroll = byId(render(scrollView(1)), 's');
+  assert.equal(scroll.props.snapIndex, 1);
+  assert.equal(dispatch(scroll.props.onSnapChange, '2'), true);
+  dispatch(scroll.props.onSnapChange, '-1');
+  assert.deepEqual(heard, [['scroll', 2]]);
+  assert.equal(byId(render(scrollView(2)), 's').props.snapIndex, 2);
+
+  const sheet = at => () => h('page', {}, h('view', { drag: 'y', dragSnapPoints: [0, 200], snapIndex: at, 'aria-label': 'Sheet', 'data-testid': 'd',
+    onSnapChange: index => heard.push(['drag', index]) }));
+  const panel = byId(render(sheet(1)), 'd');
+  assert.equal(JSON.parse(panel.props.drag).index, 1);
+  dispatch(panel.props.onDragEvent, event('settle', 0));
+  dispatch(panel.props.onDragEvent, event('settle', 1));
+  assert.deepEqual(heard.slice(1), [['drag', 0]]);
+
+  for (const [props, pattern] of [
+    [{ snapIndex: -1 }, /snapIndex is a snap point index/],
+    [{ snapIndex: 0, bind: { value: 0 } }, /bind and snapIndex both set the snap index/],
+    [{ onSnapChange: () => {} }, /onSnapChange reports the snap index you pass in snapIndex/],
+  ]) assert.throws(() => render(() => h('page', {}, h('scroll', props))), pattern);
+});
