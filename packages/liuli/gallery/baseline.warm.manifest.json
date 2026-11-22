@@ -1,5 +1,5 @@
 {
-  "accepted": "2026-11-21",
+  "accepted": "2026-11-22",
   "presets": [
     "iphone-15-pro",
     "desktop-1280"
@@ -690,12 +690,12 @@
     "iphone-15-pro/progress-bar-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "405d40f0aeb6058b33c912d8675930793a5b15667909b551075c671554e9e7cb"
+      "sha256": "f9010b5d0a5d315a41fc2e11d0c8295dc5c13378067e17d12c40d6dd4ebb302c"
     },
     "iphone-15-pro/progress-bar-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "823821f6eb9a6f4b96ce0effe0630b2a06493a1a73c92307bd343cbc786f336b"
+      "sha256": "b3c9645e2df0419f1a88a110fef9406ea76b1941f00a7dc95ddeba23c0c8c278"
     },
     "iphone-15-pro/radio-group-dark.png": {
       "width": 1179,
@@ -1700,12 +1700,12 @@
     "desktop-1280/progress-bar-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "83b13f53e902c27822d8d56da407ef664ed43d561bd3e68decc2e002b08f5e1a"
+      "sha256": "797365c543858f3a4e56cfcc6de0ef9c182559027a65a7cf5222932871c3423e"
     },
     "desktop-1280/progress-bar-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "da9072b67c50ffa3179b8e1743ad2b06839c6a3bb41b9176ad4beb504540e896"
+      "sha256": "a7501c57e1c364a9b8513d8f69486307b661785f92eb251bd574b8d1af15ead3"
     },
     "desktop-1280/radio-group-dark.png": {
       "width": 2536,
