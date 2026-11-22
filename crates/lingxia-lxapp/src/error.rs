@@ -185,6 +185,8 @@ fn error_data_to_json(data: &ErrorData) -> Value {
 }
 
 const REQUIRES_RUNTIME_UPGRADE_CODE: &str = "6002";
+/// Spelled here: the crate also builds without rong.
+const PERMISSION_DENIED_CODE: &str = "E_PERMISSION_DENIED";
 
 impl LxAppError {
     /// This host's runtime is below the package's `minRuntime`.
@@ -202,7 +204,7 @@ impl LxAppError {
 
     /// The host refused the call (`E_PERMISSION_DENIED`): the lxapp's policy, not a fault.
     pub fn is_refusal(&self) -> bool {
-        matches!(self, Self::RongJSHost { code, .. } if code == rong::error::E_PERMISSION_DENIED)
+        matches!(self, Self::RongJSHost { code, .. } if code == PERMISSION_DENIED_CODE)
     }
 
     /// The message without the variant's prefix.
