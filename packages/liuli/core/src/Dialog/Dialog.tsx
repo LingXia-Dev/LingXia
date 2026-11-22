@@ -5,6 +5,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 import { dataOf } from '../internal/data';
+import { Footer } from '../internal/footer';
 
 export type DialogSize = 'sm' | 'md' | 'lg' | 'full';
 export type DialogDismissOn = 'any' | 'closeRequest' | 'none';
@@ -35,6 +36,8 @@ export interface DialogProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
+  /** Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh. */
+  headerAction?: Child;
   /** Shows a close button in the header. An alert has none unless you ask for one; any other dialog has one unless you turn it off. */
   hasCloseButton?: boolean;
   /** Names the close button. Defaults to "Close" in the page's language. */
@@ -68,6 +71,7 @@ export function Dialog({
   media,
   children,
   actions,
+  headerAction,
   hasCloseButton = !isAlert,
   closeLabel = liuliText('@liuli.close'),
   dismissOn = 'any',
@@ -102,9 +106,10 @@ export function Dialog({
           )}
         </view>
       )}
-      {(!isLabelHidden || (hasCloseButton && media === undefined)) && (
+      {(!isLabelHidden || headerAction !== undefined || (hasCloseButton && media === undefined)) && (
         <view className={r.header.base}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
+          {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
           {hasCloseButton && media === undefined && (
             <button aria-label={closeLabel} onClick={close} className={r.close.base}>
               <Glyph name="close" className={r.closeIcon.base} />
@@ -114,7 +119,7 @@ export function Dialog({
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full)}>{children}</scroll></LayerContext.Provider>}
-      {actions !== undefined && <LayerContext.Provider value="overlay"><view className={r.footer.base}>{actions}</view></LayerContext.Provider>}
+      {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );
 }

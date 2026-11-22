@@ -65,3 +65,28 @@ test('the panel runs to the bottom edge and its content clears the home indicato
   screen.press(screen.getByTestId('move-open'));
   assert.equal(sheet(screen, 'move').props.paddingBottom, 54);
 });
+
+const phone = { env: { sizeClass: 'compact', viewport: { width: 393, height: 852 } } };
+const wide = { env: { sizeClass: 'regular', viewport: { width: 1024, height: 768 } } };
+
+test('Required: on a phone the actions share the footer equally, the main one last; wider they keep their widths', async () => {
+  for (const [form, shared] of [[phone, true], [wide, false]]) {
+    const screen = await renderExample('BottomSheet/BottomSheet', 'Required', form);
+    screen.press(screen.getByTestId('leave-open'));
+    const [stay, leave] = [screen.getByTestId('stay'), screen.getByTestId('leave-confirm')];
+    assert.equal(stay.parent, leave.parent);
+    assert.equal(stay.parent.children.indexOf(leave), stay.parent.children.length - 1, 'the main action is last');
+    for (const button of [stay, leave]) assert.equal(button.props.grow === 1, shared, `${form.env.sizeClass}: ${button.testId}`);
+  }
+});
+
+test('MoveTo: the header action sits between the title and the close button', async () => {
+  const screen = await renderExample('BottomSheet/BottomSheet', 'MoveTo');
+  screen.press(screen.getByTestId('move-open'));
+  const action = screen.getByTestId('move-new-folder');
+  assert.equal(action.props.accessibilityLabel, 'New folder');
+  const header = screen.getByText('Move to').parent;
+  let at = action;
+  while (at.parent !== header) at = at.parent;
+  assert.equal(header.children.indexOf(at), 1);
+});

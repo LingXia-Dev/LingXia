@@ -20,7 +20,8 @@ export const doc: ComponentDoc = {
     { part: 'close', required: false, description: 'A close button: an alert has none unless you ask for one; any other dialog has one unless you turn it off. `closeLabel` names it.' },
     { part: 'description', required: false, description: 'Text under the title.' },
     { part: 'body', required: false, description: '`children`, in a scroll that takes the remaining height.' },
-    { part: 'footer', required: false, description: '`actions`, end-aligned, wrapping when narrow.' },
+    { part: 'headerAction', required: false, description: '`headerAction`: one small control beside the title that acts on the whole panel, such as Refresh.' },
+    { part: 'footer', required: false, description: '`actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow.' },
   ],
   accessibility: {
     pattern: 'dialog',

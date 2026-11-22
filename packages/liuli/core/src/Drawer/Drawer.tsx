@@ -6,6 +6,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { drawerRecipe as r } from './Drawer.recipe';
 import { dataOf } from '../internal/data';
+import { Footer } from '../internal/footer';
 
 export type DrawerSide = 'end' | 'start';
 export type DrawerSize = 'sm' | 'md' | 'lg';
@@ -23,6 +24,8 @@ export interface DrawerProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
+  /** Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh. */
+  headerAction?: Child;
   /** Shows a close button. @default true */
   hasCloseButton?: boolean;
   /** Names the close button. Defaults to "Close" in the page's language. */
@@ -48,6 +51,7 @@ export function Drawer({
   description,
   children,
   actions,
+  headerAction,
   hasCloseButton = true,
   closeLabel = liuliText('@liuli.close'),
   side = 'end',
@@ -73,6 +77,7 @@ export function Drawer({
     >
       <view className={r.header.base}>
         <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
+        {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
         {hasCloseButton && (
           <button aria-label={closeLabel} onClick={close} className={r.close.base}>
             <Glyph name="close" className={r.closeIcon.base} />
@@ -81,7 +86,7 @@ export function Drawer({
       </view>
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>
-      {actions !== undefined && <LayerContext.Provider value="overlay"><view className={r.footer.base}>{actions}</view></LayerContext.Provider>}
+      {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );
 }

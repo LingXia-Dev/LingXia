@@ -15,8 +15,10 @@ BottomSheet holds a short task or a choice that belongs to the page under it: wh
 ### A choice, as tall as its list
 
 ```tsx
+import { unused } from '../example';
 import { useLocal } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
+import { IconButton } from '@liulidesign/core/IconButton';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { BottomSheet } from '@liulidesign/core/BottomSheet';
 
@@ -30,7 +32,10 @@ export function MoveTo() {
     <view className="gap-3">
       <Button label="Move note" width="content" onClick={() => open.set(true)} data-testid="move-open" />
       <text className="text-footnote text-muted" data-testid="folder">{`In ${folder.value}`}</text>
-      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label="Move to" data-testid="move">
+      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label="Move to"
+        headerAction={<IconButton icon="add" label="New folder" size="sm" onClick={unused} data-testid="move-new-folder" />}
+        data-testid="move"
+      >
         <ItemList label="Folders">
           {moveTargets.map(name => (
             <Item key={name} label={name} onClick={() => { folder.set(name); open.set(false); }} data-testid={`folder-${name}`} />
@@ -128,7 +133,8 @@ export function Required() {
 | `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name without drawing it as a title. |
 | `description` | `string` |  | One or two sentences under the title, read as the sheet's description. |
 | `children` | `Child` |  | The body; it scrolls when the sheet reaches its height. |
-| `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
+| `headerAction` | `Child` |  | Beside the title, before the close button: one small control that acts on the whole sheet, such as Refresh. |
+| `actions` | `Child` |  |  |
 | `hasCloseButton` | `boolean` | `false` | Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |
@@ -145,7 +151,8 @@ export function Required() {
 | header | `<view>` | no | The title, and the close button with `hasCloseButton`. |
 | description | `<text>` | no | One or two sentences under the title, read as the description. |
 | body | `<scroll>` | no | `children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first. |
-| footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |
+| headerAction | `<view>` | no | `headerAction`: one small control beside the title that acts on the whole panel, such as Refresh. |
+| footer | `<view>` | no | `actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow. |
 
 ## What an app may override
 

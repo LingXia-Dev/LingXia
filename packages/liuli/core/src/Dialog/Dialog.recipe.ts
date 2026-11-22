@@ -6,6 +6,7 @@ export const dialogParts = {
   mediaClose: 'button',
   header: 'view',
   title: 'text',
+  headerAction: 'view',
   close: 'button',
   closeIcon: 'vector',
   description: 'text',
@@ -40,6 +41,10 @@ export const dialogRecipe = {
   },
   title: {
     base: 'grow basis-0 text-title font-semibold tracking-tight text-text',
+  },
+  /** One small control beside the title, on the close button's line. */
+  headerAction: {
+    base: 'shrink-0 flex-row items-center gap-1 min-h-8 -mt-1',
   },
   close: {
     base: 'size-8 -me-1.5 -mt-1 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',

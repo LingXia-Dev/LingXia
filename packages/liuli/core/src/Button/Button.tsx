@@ -7,6 +7,7 @@ import { registerPressable, useTrigger } from '../internal/trigger';
 import { buttonRecipe as r } from './Button.recipe';
 import { LayerContext } from '../internal/layer';
 import { dataOf } from '../internal/data';
+import { SharedRowContext } from '../internal/footer';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'destructive';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -85,6 +86,7 @@ export function Button({
   'data-testid': testId, ...attributes
 }: ButtonProps) {
   const group = useContext(ButtonGroupContext);
+  const shares = useContext(SharedRowContext) && width === undefined && !isIconOnly && group === null;
   const layer = useContext(LayerContext);
   const trigger = useTrigger();
   const variant = ownVariant ?? group?.variant ?? 'secondary';
@@ -118,7 +120,7 @@ export function Button({
       onClick={press}
       className={cx(
         r.root.base, r.root.variant[variant], variant === 'secondary' && layer === 'overlay' && r.root.overlay, r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
+        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
       )}
     >
       {busy ? (

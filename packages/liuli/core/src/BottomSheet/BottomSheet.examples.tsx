@@ -2,6 +2,7 @@ import { unused } from '../example';
 import type { BottomSheetProps } from './BottomSheet';
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
+import { IconButton } from '../IconButton/IconButton';
 import { LayerContext } from '../internal/layer';
 import { Item, ItemList } from '../Item/Item';
 import { bottomSheetRecipe } from './BottomSheet.recipe';
@@ -17,7 +18,10 @@ export function MoveTo() {
     <view className="gap-3">
       <Button label="Move note" width="content" onClick={() => open.set(true)} data-testid="move-open" />
       <text className="text-footnote text-muted" data-testid="folder">{`In ${folder.value}`}</text>
-      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label="Move to" data-testid="move">
+      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label="Move to"
+        headerAction={<IconButton icon="add" label="New folder" size="sm" onClick={unused} data-testid="move-new-folder" />}
+        data-testid="move"
+      >
         <ItemList label="Folders">
           {moveTargets.map(name => (
             <Item key={name} label={name} onClick={() => { folder.set(name); open.set(false); }} data-testid={`folder-${name}`} />

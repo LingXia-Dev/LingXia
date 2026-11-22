@@ -6,6 +6,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { bottomSheetRecipe as r } from './BottomSheet.recipe';
 import { dataOf } from '../internal/data';
+import { Footer } from '../internal/footer';
 
 /** `fit` is as tall as its content; `expandable` opens halfway and drags up to nearly full height. */
 export type BottomSheetDetents = 'fit' | 'expandable';
@@ -24,6 +25,8 @@ export interface BottomSheetProps {
   /** The body; it scrolls when the sheet reaches its height. */
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
+  /** Beside the title, before the close button: one small control that acts on the whole sheet, such as Refresh. */
+  headerAction?: Child;
   actions?: Child;
   /** Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. @default false */
   hasCloseButton?: boolean;
@@ -58,6 +61,7 @@ export function BottomSheet({
   description,
   children,
   actions,
+  headerAction,
   hasCloseButton = false,
   closeLabel = liuliText('@liuli.close'),
   dismissOn = 'any',
@@ -90,9 +94,10 @@ export function BottomSheet({
       className={cx(r.panel.base, r.panel.detents[detents], className)}
     >
       <view aria-hidden className={r.grabber.base} />
-      {(!isLabelHidden || hasCloseButton) && (
+      {(!isLabelHidden || hasCloseButton || headerAction !== undefined) && (
         <view className={r.header.base}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
+          {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
           {hasCloseButton && (
             <button aria-label={closeLabel} onClick={close} data-testid={testId && `${testId}-close`} className={r.close.base}>
               <Glyph name="close" className={r.closeIcon.base} />
@@ -102,7 +107,7 @@ export function BottomSheet({
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>}
-      {actions !== undefined && <LayerContext.Provider value="overlay"><view className={r.footer.base}>{actions}</view></LayerContext.Provider>}
+      {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );
 }

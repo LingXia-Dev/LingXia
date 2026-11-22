@@ -44,6 +44,8 @@ export const buttonRecipe = {
     } satisfies Record<ButtonSize, string>,
     /** Over scrolling content: the raised elevation in place of the variant's hairline shadow. */
     floating: 'shadow-raised',
+    /** In a modal footer at compact width: an equal share of the row. */
+    share: 'grow basis-0',
     width: {
       content: 'self-start',
       fill: 'self-stretch',

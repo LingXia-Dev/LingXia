@@ -91,6 +91,7 @@ export function Navigation() {
 | `description` | `string` |  | A sentence under the title, read as the drawer's description. |
 | `children` | `Child` |  | The body; it scrolls when it is taller than the drawer. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
+| `headerAction` | `Child` |  | Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh. |
 | `hasCloseButton` | `boolean` | `true` | Shows a close button. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `side` | `DrawerSide` | `'end'` | `end` for details and filters of what is on the page; `start` for navigation. |
@@ -108,7 +109,8 @@ export function Navigation() {
 | close | `<button>` | no | A close button, unless `hasCloseButton` is false; `closeLabel` names it. |
 | description | `<text>` | no | Text under the title. |
 | body | `<scroll>` | no | `children`, in a scroll that takes the height left. |
-| footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |
+| headerAction | `<view>` | no | `headerAction`: one small control beside the title that acts on the whole panel, such as Refresh. |
+| footer | `<view>` | no | `actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow. |
 
 ## What an app may override
 

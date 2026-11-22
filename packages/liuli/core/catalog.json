@@ -1233,10 +1233,16 @@
           "description": "The body; it scrolls when the sheet reaches its height."
         },
         {
+          "name": "headerAction",
+          "type": "Child",
+          "required": false,
+          "description": "Beside the title, before the close button: one small control that acts on the whole sheet, such as Refresh."
+        },
+        {
           "name": "actions",
           "type": "Child",
           "required": false,
-          "description": "The footer, typically Buttons, the main action last."
+          "description": ""
         },
         {
           "name": "hasCloseButton",
@@ -1284,6 +1290,7 @@
         "grabber": "view",
         "header": "view",
         "title": "text",
+        "headerAction": "view",
         "close": "button",
         "closeIcon": "vector",
         "description": "text",
@@ -1341,7 +1348,7 @@
         {
           "name": "MoveTo",
           "title": "A choice, as tall as its list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { BottomSheet } from '@liulidesign/core/BottomSheet';\n\nconst moveTargets = ['Inbox', 'Travel', 'Work', 'Recipes'];\n\n/** Choosing where a note goes: a sheet as tall as its list, dragged down or tapped outside to cancel. */\nexport function MoveTo() {\n  const open = useLocal('open', false);\n  const folder = useLocal('folder', 'Inbox');\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Move note\" width=\"content\" onClick={() => open.set(true)} data-testid=\"move-open\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"folder\">{`In ${folder.value}`}</text>\n      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Move to\" data-testid=\"move\">\n        <ItemList label=\"Folders\">\n          {moveTargets.map(name => (\n            <Item key={name} label={name} onClick={() => { folder.set(name); open.set(false); }} data-testid={`folder-${name}`} />\n          ))}\n        </ItemList>\n      </BottomSheet>\n    </view>\n  );\n}"
+          "source": "import { unused } from '../example';\nimport { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { BottomSheet } from '@liulidesign/core/BottomSheet';\n\nconst moveTargets = ['Inbox', 'Travel', 'Work', 'Recipes'];\n\n/** Choosing where a note goes: a sheet as tall as its list, dragged down or tapped outside to cancel. */\nexport function MoveTo() {\n  const open = useLocal('open', false);\n  const folder = useLocal('folder', 'Inbox');\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Move note\" width=\"content\" onClick={() => open.set(true)} data-testid=\"move-open\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"folder\">{`In ${folder.value}`}</text>\n      <BottomSheet isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Move to\"\n        headerAction={<IconButton icon=\"add\" label=\"New folder\" size=\"sm\" onClick={unused} data-testid=\"move-new-folder\" />}\n        data-testid=\"move\"\n      >\n        <ItemList label=\"Folders\">\n          {moveTargets.map(name => (\n            <Item key={name} label={name} onClick={() => { folder.set(name); open.set(false); }} data-testid={`folder-${name}`} />\n          ))}\n        </ItemList>\n      </BottomSheet>\n    </view>\n  );\n}"
         },
         {
           "name": "Comments",
@@ -6629,6 +6636,12 @@
           "description": "The footer, typically Buttons, the main action last."
         },
         {
+          "name": "headerAction",
+          "type": "Child",
+          "required": false,
+          "description": "Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh."
+        },
+        {
           "name": "hasCloseButton",
           "type": "boolean",
           "required": false,
@@ -6674,6 +6687,7 @@
         "mediaClose": "button",
         "header": "view",
         "title": "text",
+        "headerAction": "view",
         "close": "button",
         "closeIcon": "vector",
         "description": "text",
@@ -7042,6 +7056,12 @@
           "description": "The footer, typically Buttons, the main action last."
         },
         {
+          "name": "headerAction",
+          "type": "Child",
+          "required": false,
+          "description": "Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh."
+        },
+        {
           "name": "hasCloseButton",
           "type": "boolean",
           "required": false,
@@ -7093,6 +7113,7 @@
         "panel": "dialog",
         "header": "view",
         "title": "text",
+        "headerAction": "view",
         "close": "button",
         "closeIcon": "vector",
         "description": "text",

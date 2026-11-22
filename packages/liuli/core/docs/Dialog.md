@@ -166,6 +166,7 @@ export function Hero() {
 | `media` | `Child` |  | A picture or an illustration above the title, edge to edge under the panel's top corners: for a dialog that introduces something. Give it its own height or aspect ratio. The close button, if any, sits over it. |
 | `children` | `Child` |  | The body; it scrolls when the panel reaches its maximum height. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
+| `headerAction` | `Child` |  | Beside the title, before the close button: one small control that acts on the whole panel, such as Refresh. |
 | `hasCloseButton` | `boolean` |  | Shows a close button in the header. An alert has none unless you ask for one; any other dialog has one unless you turn it off. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish. |
@@ -184,7 +185,8 @@ export function Hero() {
 | close | `<button>` | no | A close button: an alert has none unless you ask for one; any other dialog has one unless you turn it off. `closeLabel` names it. |
 | description | `<text>` | no | Text under the title. |
 | body | `<scroll>` | no | `children`, in a scroll that takes the remaining height. |
-| footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |
+| headerAction | `<view>` | no | `headerAction`: one small control beside the title that acts on the whole panel, such as Refresh. |
+| footer | `<view>` | no | `actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow. |
 
 ## What an app may override
 

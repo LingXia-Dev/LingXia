@@ -5,6 +5,7 @@ export const bottomSheetParts = {
   grabber: 'view',
   header: 'view',
   title: 'text',
+  headerAction: 'view',
   close: 'button',
   closeIcon: 'vector',
   description: 'text',
@@ -33,6 +34,10 @@ export const bottomSheetRecipe = {
   },
   title: {
     base: 'grow basis-0 pt-1 text-title font-semibold tracking-tight text-text',
+  },
+  /** One small control beside the title, on the close button's line. */
+  headerAction: {
+    base: 'shrink-0 flex-row items-center gap-1 min-h-8',
   },
   close: {
     base: 'size-8 -me-1.5 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
