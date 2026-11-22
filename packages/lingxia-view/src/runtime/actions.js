@@ -5,6 +5,7 @@ import { outsideRender } from './state.js';
 import { createStream } from './stream.js';
 import { createChannel } from './channel.js';
 import { createLeaveGuards } from './leave-guard.js';
+import { snapActionSettled } from './snap.js';
 
 // Page actions, streams and channels share one bounded queue of plain messages that the
 // native session walks into typed Logic events; every reset invalidates what the old page issued.
@@ -204,6 +205,9 @@ export function automationAction(call, name, payload) {
 }
 export function takeAutomationResults() { const result = automationResults; automationResults = []; return JSON.stringify(result); }
 export function takeActionErrors() { const result = actionErrors; actionErrors = []; return result; }
+/** The serial the next action or request takes; `actionPending(serial)` while it awaits Logic. */
+export function actionSerial() { return nextRequest; }
+export function actionPending(serial) { return pendingActions.has(`ui-action:${serial}`); }
 export function hasActionEpoch(epoch) { return epoch === actionEpoch; }
 export function actionEpochNow() { return actionEpoch; }
 
@@ -234,6 +238,7 @@ export function receiveActionResponse(frame) {
   const value = frame.ok ? immutable(frame.result ?? null) : failure(frame);
   pendingActions.delete(frame.id);
   if (frame.ok) pending.resolve(value); else pending.reject(value);
+  snapActionSettled(Number(frame.id.slice('ui-action:'.length)), frame.ok);
   return true;
 }
 

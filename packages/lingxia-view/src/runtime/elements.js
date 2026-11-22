@@ -474,8 +474,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     if (onSnapChange) on('onSnapChange', payload => {
       const index = Number(payload);
       if (!Number.isInteger(index) || index < 0) return;
-      snapSettled(key, index, snapIndex);
-      if (index !== snapIndex) onSnapChange(index);
+      snapSettled(key, index, snapIndex, index !== snapIndex ? () => onSnapChange(index) : undefined);
     }, 'text');
   }
   // A snapping scroll's `bind`: the index of the snap point it rests on, two-way.
@@ -1072,8 +1071,7 @@ function dragElement(tag, props, wire, on, release, key) {
     else if (event.phase === 'settle' && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
       if (cell !== undefined && cell.value !== event.index) cell.set(event.index);
       else if (snapIndex !== undefined) {
-        snapSettled(key, event.index, index);
-        if (onSnapChange && event.index !== index) onSnapChange(event.index);
+        snapSettled(key, event.index, index, onSnapChange && event.index !== index ? () => onSnapChange(event.index) : undefined);
       } else if (onSnapChange && event.index !== index) onSnapChange(event.index);
       // A dialog that came to rest wholly off screen is dismissed.
       if (event.hidden === true) close?.();

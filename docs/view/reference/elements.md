@@ -128,7 +128,7 @@ Children: any elements and text. At most one of `bind` or `snapIndex` (and its `
 | `snapIndex` | `number` |  |
 | `onSnapChange` | `(index: number) => void` |  |
 
-`bind` and `snapIndex` are the index of the snap point a `scrollSnapType` scroll rests on, not its offset: `bind={local}` with a number `useLocal` cell, or `snapIndex={n}` with `onSnapChange(index)` to follow it from the page's or Logic's state. Not both (`UI_PROP`). A swipe the page does not take up (`snapIndex` left as it was) springs back to `snapIndex`, here and on a dragged element.
+`bind` and `snapIndex` are the index of the snap point a `scrollSnapType` scroll rests on, not its offset: `bind={local}` with a number `useLocal` cell, or `snapIndex={n}` with `onSnapChange(index)` to follow it from the page's or Logic's state. Not both (`UI_PROP`). After a swipe the element waits for the page's answer; if the page keeps its index, the element returns to it. The answer may come through a Logic action `onSnapChange` starts; the wait ends at 400 ms. The same holds on a dragged element.
 
 ## `<List>`
 

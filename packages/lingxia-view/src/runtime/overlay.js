@@ -6,7 +6,7 @@ import { lowerStyle } from '../style/lower.js';
 import { closeTopmost } from './toplayer.js';
 import { word } from './words.js';
 
-let toast = null, modals = [], sheets = [], timers = [], nextToken = 1;
+let toast = null, modals = [], sheets = [], timers = [], nextToken = 1, wakes = new Map();
 const ENTER_MS = 200;
 
 const reply = (id, ok, payload) => ok ? { kind: 'res', id, ok: true, result: payload ?? null }
@@ -64,6 +64,8 @@ export function viewCall(call) {
 
 /** The toast timer `token` ran out; true when it hid the toast still showing. */
 export function overlayTimer(token) {
+  const wake = wakes.get(token);
+  if (wake) { wakes.delete(token); return wake() === true; }
   if (!toast || toast.token !== token) return false;
   toast = null;
   return true;
@@ -74,6 +76,13 @@ export function escapeOverlay() {
   if (closeTopmost()) return true;
   if (toast) { toast = null; return true; }
   return false;
+}
+
+/** Run `fire` after `ms` on the host's toast clock; true from it repaints the page. */
+export function requestWake(ms, fire) {
+  const token = nextToken++;
+  wakes.set(token, fire);
+  timers.push([token, Math.round(ms)]);
 }
 
 export function takeOverlayTimers() { const result = timers; timers = []; return JSON.stringify(result); }
@@ -100,7 +109,7 @@ export function cancelSheets() {
 
 /** The page went away; its connection, and Logic's calls waiting on it, went with it. */
 export function resetOverlays() {
-  toast = null; modals = []; sheets = []; timers = []; outbound = [];
+  toast = null; modals = []; sheets = []; timers = []; outbound = []; wakes = new Map();
 }
 
 export const hasOverlay = () => Boolean(toast || modals.length || sheets.length);

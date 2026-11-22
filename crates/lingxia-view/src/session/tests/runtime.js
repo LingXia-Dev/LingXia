@@ -1362,10 +1362,10 @@
   }
   function dialog(props, children, identity, parent) {
     common(props, parent, "<dialog>");
-    const { open, onClose, closedby = "closerequest", ...rest } = props;
+    const { open: open2, onClose, closedby = "closerequest", ...rest } = props;
     if (onClose !== void 0 && typeof onClose !== "function") throw Error("UI_PROP: onClose");
     if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
-    if (!open || !admitted(identity)) return null;
+    if (!open2 || !admitted(identity)) return null;
     const close = () => onClose?.();
     collected().entries.push({ identity, kind: "dialog", sequence: opened.get(identity), close: closedby === "none" ? null : close });
     const env = envOf(render.view);
@@ -1396,7 +1396,7 @@
   }
   function popover(tag, props, children, identity, parent) {
     common(props, parent, "popover");
-    const { popover: type, id, open, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
+    const { popover: type, id, open: open2, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
     const kind = type === true || type === "" || type === "auto" ? "auto" : type === "manual" || type === "hint" ? type : null;
     if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
     if (typeof id !== "string" || !id.length || id.length > 256) throw Error("UI_ID: a popover needs an id of 1..256 characters");
@@ -1408,8 +1408,8 @@
       throw Error('UI_PROP: closeAfter takes 1..60000 ms on a popover="manual"');
     const top = collected();
     if (top.popovers.has(id)) throw Error(`UI_ID: two popovers have the id "${id}"`);
-    const controlled = open !== void 0;
-    const shown = controlled ? open : uncontrolled.has(id);
+    const controlled = open2 !== void 0;
+    const shown = controlled ? open2 : uncontrolled.has(id);
     const scope = parent.popovers ?? [];
     const entry = { kind, controlled, onToggle, open: false, ancestors: scope, anchorId };
     top.popovers.set(id, entry);
@@ -1774,6 +1774,7 @@
   var sheets = [];
   var timers = [];
   var nextToken = 1;
+  var wakes = /* @__PURE__ */ new Map();
   var ENTER_MS = 200;
   var reply = (id, ok, payload) => ok ? { kind: "res", id, ok: true, result: payload ?? null } : { kind: "res", id, ok: false, error: payload };
   var text = (value, fallback = "") => typeof value === "string" ? value.slice(0, 4096) : fallback;
@@ -1838,6 +1839,11 @@
     return { changed: changed2, replies };
   }
   function overlayTimer(token) {
+    const wake = wakes.get(token);
+    if (wake) {
+      wakes.delete(token);
+      return wake() === true;
+    }
     if (!toast || toast.token !== token) return false;
     toast = null;
     return true;
@@ -1849,6 +1855,11 @@
       return true;
     }
     return false;
+  }
+  function requestWake(ms, fire) {
+    const token = nextToken++;
+    wakes.set(token, fire);
+    timers.push([token, Math.round(ms)]);
   }
   function takeOverlayTimers() {
     const result = timers;
@@ -1880,6 +1891,7 @@
     sheets = [];
     timers = [];
     outbound = [];
+    wakes = /* @__PURE__ */ new Map();
   }
   var hasOverlay = () => Boolean(toast || modals.length || sheets.length);
   var RING = "M14 0a14 14 0 0 1 14 14a14 14 0 0 1-14 14a14 14 0 0 1-14-14a14 14 0 0 1 14-14z";
@@ -2446,6 +2458,65 @@
     };
   }
 
+  // src/runtime/snap.js
+  var CEILING_MS = 400;
+  var settled = /* @__PURE__ */ new Map();
+  function resetSnaps() {
+    settled = /* @__PURE__ */ new Map();
+  }
+  var clock2 = () => Date.now();
+  function controlledSnap(key, index) {
+    if (settled.size === 0) return index;
+    const record = settled.get(key);
+    if (!record) return index;
+    if (index === record.index || index !== record.from) {
+      settled.delete(key);
+      return index;
+    }
+    if (!record.sent) {
+      record.sent = true;
+      if (!open(record)) render.candidate.invalidateAfterCommit = true;
+      return record.index;
+    }
+    if (open(record)) return record.index;
+    settled.delete(key);
+    return index;
+  }
+  function open(record) {
+    if (record.ids.length === 0 || record.rejected || clock2() >= record.deadline) return false;
+    if (record.ids.some(actionPending)) return true;
+    return render.view?.data === record.data;
+  }
+  function snapSettled(key, index, current, heard) {
+    if (index === current) {
+      settled.delete(key);
+      return;
+    }
+    const first = actionSerial();
+    try {
+      heard?.();
+    } finally {
+      const ids = [];
+      for (let serial = first; serial < actionSerial(); serial++) ids.push(serial);
+      const record = { index, from: current, ids, rejected: false, sent: false, data: page.committed?.view?.data, deadline: clock2() + CEILING_MS };
+      settled.set(key, record);
+      page.invalidated = true;
+      if (ids.length) requestWake(CEILING_MS, () => {
+        if (settled.get(key) !== record) return false;
+        page.invalidated = true;
+        return true;
+      });
+    }
+  }
+  function snapActionSettled(serial, ok) {
+    if (settled.size === 0) return;
+    for (const record of settled.values()) {
+      if (!record.ids.includes(serial)) continue;
+      if (!ok) record.rejected = true;
+      page.invalidated = true;
+    }
+  }
+
   // src/runtime/actions.js
   var actions = Object.freeze(/* @__PURE__ */ Object.create(null));
   var actionEpoch = 0;
@@ -2659,6 +2730,12 @@
     actionErrors = [];
     return result;
   }
+  function actionSerial() {
+    return nextRequest;
+  }
+  function actionPending(serial) {
+    return pendingActions.has(`ui-action:${serial}`);
+  }
   function hasActionEpoch(epoch2) {
     return epoch2 === actionEpoch;
   }
@@ -2690,6 +2767,7 @@
     pendingActions.delete(frame.id);
     if (frame.ok) pending3.resolve(value);
     else pending3.reject(value);
+    snapActionSettled(Number(frame.id.slice("ui-action:".length)), frame.ok);
     return true;
   }
   function receiveChannelFrame(frame) {
@@ -4760,31 +4838,6 @@
     }, "text", true);
   }
 
-  // src/runtime/snap.js
-  var settled = /* @__PURE__ */ new Map();
-  function resetSnaps() {
-    settled = /* @__PURE__ */ new Map();
-  }
-  function controlledSnap(key, index) {
-    const record = settled.get(key);
-    if (!record || record.index === index) {
-      settled.delete(key);
-      return index;
-    }
-    if (!record.echoed) {
-      record.echoed = true;
-      render.candidate.invalidateAfterCommit = true;
-      return record.index;
-    }
-    settled.delete(key);
-    return index;
-  }
-  function snapSettled(key, index, current) {
-    if (index === current) return;
-    settled.set(key, { index, echoed: false });
-    page.invalidated = true;
-  }
-
   // src/runtime/elements.js
   var videoFlags = [["videoMuted", "muted"], ["videoLoop", "loop"]];
   var videoEvents = [
@@ -5225,8 +5278,7 @@
       if (onSnapChange) on("onSnapChange", (payload) => {
         const index = Number(payload);
         if (!Number.isInteger(index) || index < 0) return;
-        snapSettled(key, index, snapIndex);
-        if (index !== snapIndex) onSnapChange(index);
+        snapSettled(key, index, snapIndex, index !== snapIndex ? () => onSnapChange(index) : void 0);
       }, "text");
     }
     if (tag === "scroll" && props.bind !== void 0) {
@@ -5808,8 +5860,7 @@
       else if (event.phase === "settle" && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
         if (cell2 !== void 0 && cell2.value !== event.index) cell2.set(event.index);
         else if (snapIndex !== void 0) {
-          snapSettled(key, event.index, index);
-          if (onSnapChange && event.index !== index) onSnapChange(event.index);
+          snapSettled(key, event.index, index, onSnapChange && event.index !== index ? () => onSnapChange(event.index) : void 0);
         } else if (onSnapChange && event.index !== index) onSnapChange(event.index);
         if (event.hidden === true) close?.();
       }
@@ -6280,7 +6331,7 @@
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
   var sheetStyle = ({ borderRadius, ...rest }) => rest;
-  var clock2 = ({ hour, minute }, words2, env) => clockText({ hour, minute }, words2, env?.hourCycle);
+  var clock3 = ({ hour, minute }, words2, env) => clockText({ hour, minute }, words2, env?.hourCycle);
   function pickerNode(env) {
     if (!picker) return null;
     const words2 = wordsFor(env?.language);
@@ -6308,7 +6359,7 @@
           "aria-live": "polite",
           style: { flexGrow: 1, flexBasis: 0, minWidth: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "text", lineClamp: 1 }
         },
-        monthTitle || (picker.kind === "time" ? clock2(picker.value, words2, env) : picker.label || "")
+        monthTitle || (picker.kind === "time" ? clock3(picker.value, words2, env) : picker.label || "")
       ),
       done({ ...text2, color: "accent", fontWeight: 600 })
     );
@@ -6358,8 +6409,8 @@
       id: "lx-picker",
       popover: "auto",
       open: true,
-      onToggle: (open) => {
-        if (!open) settle(null);
+      onToggle: (open2) => {
+        if (!open2) settle(null);
       },
       style: { ...panel.style, position: "absolute", top: 0, left: 0 }
     }, body, footer);

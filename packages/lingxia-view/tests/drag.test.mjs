@@ -165,3 +165,101 @@ test('a controlled settle the page refuses springs back once; one it takes stays
     assert.equal(hasLocalUpdates(), false, name);
   }
 });
+
+test('a controlled settle waits for Logic: taken late stays put, refused or unanswered springs back once', async () => {
+  const { configureActions, createView, takeActionRequests, receiveActionResponse } = await import('../src/internal.js');
+  const { overlayTimer, takeOverlayTimers } = await import('../src/runtime/overlay.js');
+  const { CEILING_MS } = await import('../src/runtime/snap.js');
+  const shapes = [
+    ['scroll', (at, heard) => () => h('page', {}, h('scroll', { snapIndex: at, onSnapChange: heard, 'data-testid': 'e' })),
+      node => node.props.snapIndex, (node, index) => dispatch(node.props.onSnapChange, String(index))],
+    ['drag', (at, heard) => () => h('page', {}, h('view', { drag: 'y', dragSnapPoints: [0, 200, 400], snapIndex: at, 'aria-label': 'Sheet', 'data-testid': 'e', onSnapChange: heard })),
+      node => JSON.parse(node.props.drag).index, (node, index) => dispatch(node.props.onDragEvent, event('settle', index))],
+  ];
+  for (const [name, view, sent, settle] of shapes) {
+    const setup = () => {
+      reset();
+      configureActions({ __names: ['setAt'], __modes: { setAt: 'call' } });
+      const { actions } = createView({}, {});
+      const state = { data: Object.freeze({ at: 0 }) };
+      const heard = index => { actions.setAt(index).catch(() => {}); };
+      state.frame = () => { const node = byId(decode(prepare(view(state.data.at, heard), { env: {}, data: state.data })), 'e'); commit(); return node; };
+      state.request = () => JSON.parse(takeActionRequests().at(-1)).id;
+      return state;
+    };
+    const sentFrames = (state, n) => Array.from({ length: n }, () => sent(state.frame()));
+
+    // Taken after three frames: the element holds 2 throughout and never visits 0.
+    for (const wait of [0, 150]) {
+      const s = setup();
+      settle(s.frame(), 2);
+      const id = s.request();
+      assert.deepEqual(sentFrames(s, 3), [2, 2, 2], `${name}: holds while the action is out`);
+      assert.equal(hasLocalUpdates(), false, `${name}: no polling while it waits`);
+      if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+      s.data = Object.freeze({ at: 2 });
+      receiveActionResponse({ v: 2, kind: 'res', id, ok: true });
+      assert.equal(hasLocalUpdates(), true, `${name}: the reply renders`);
+      assert.deepEqual(sentFrames(s, 2), [2, 2], `${name}: taken after ${wait} ms`);
+      assert.equal(hasLocalUpdates(), false, name);
+    }
+    // The reply lands before its data: still waiting until the snapshot says 2.
+    {
+      const s = setup();
+      settle(s.frame(), 2);
+      const id = s.request();
+      receiveActionResponse({ v: 2, kind: 'res', id, ok: true });
+      assert.deepEqual(sentFrames(s, 2), [2, 2], `${name}: waits for the snapshot`);
+      s.data = Object.freeze({ at: 2 });
+      assert.deepEqual(sentFrames(s, 1), [2], `${name}: the snapshot takes it`);
+    }
+    // Rejected: back to the page's index once the reply lands.
+    {
+      const s = setup();
+      settle(s.frame(), 2);
+      const id = s.request();
+      assert.deepEqual(sentFrames(s, 1), [2], name);
+      receiveActionResponse({ v: 2, kind: 'res', id, ok: false, error: { code: 'E_X', message: 'no' } });
+      assert.deepEqual(sentFrames(s, 2), [0, 0], `${name}: a rejection springs back once`);
+      assert.equal(hasLocalUpdates(), false, name);
+    }
+    // Resolved with a snapshot that keeps 0: refused.
+    {
+      const s = setup();
+      settle(s.frame(), 2);
+      const id = s.request();
+      sentFrames(s, 1);
+      s.data = Object.freeze({ at: 0, other: 1 });
+      receiveActionResponse({ v: 2, kind: 'res', id, ok: true });
+      assert.deepEqual(sentFrames(s, 2), [0, 0], `${name}: a kept index springs back`);
+    }
+    // Never answered: the ceiling closes the window.
+    {
+      const s = setup();
+      takeOverlayTimers();
+      settle(s.frame(), 2);
+      s.request();
+      const [[token, ms]] = JSON.parse(takeOverlayTimers());
+      assert.equal(ms, CEILING_MS, name);
+      assert.deepEqual(sentFrames(s, 2), [2, 2], name);
+      await new Promise(resolve => setTimeout(resolve, CEILING_MS));
+      assert.equal(overlayTimer(token), true, `${name}: the ceiling repaints`);
+      assert.deepEqual(sentFrames(s, 2), [0, 0], `${name}: a hung action springs back once`);
+      assert.equal(overlayTimer(token), false, name);
+    }
+    // A second swipe during the window replaces the first settle.
+    {
+      const s = setup();
+      settle(s.frame(), 2);
+      const first = s.request();
+      assert.deepEqual(sentFrames(s, 1), [2], name);
+      settle(s.frame(), 1);
+      const second = s.request();
+      receiveActionResponse({ v: 2, kind: 'res', id: first, ok: false, error: { code: 'E_X', message: 'stale' } });
+      assert.deepEqual(sentFrames(s, 2), [1, 1], `${name}: the older reply does not decide the newer settle`);
+      s.data = Object.freeze({ at: 1 });
+      receiveActionResponse({ v: 2, kind: 'res', id: second, ok: true });
+      assert.deepEqual(sentFrames(s, 2), [1, 1], `${name}: the newer settle is taken`);
+    }
+  }
+});
