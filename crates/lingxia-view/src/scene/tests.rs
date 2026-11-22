@@ -95,7 +95,9 @@ fn retained_scroll_combines_axes_and_reveals_through_nested_regions() {
         assert_eq!(pixel(50, 20), [0, 0, 255, 255]);
         assert_eq!(pixel(20, 20), [255, 255, 255, 255]);
         let mut revealed_offsets = HashMap::new();
-        let revealed = before.reveal(&identity, 0.0, &mut revealed_offsets).unwrap();
+        let revealed = before
+            .reveal(&identity, 0.0, &mut revealed_offsets)
+            .unwrap();
         assert!(revealed_offsets[&inner] > 0.0);
         assert!(!revealed_offsets.contains_key(&outer));
         let target = revealed

@@ -1,7 +1,6 @@
+mod anchor_center;
 mod animation;
 mod checked_style;
-mod side_style;
-mod anchor_center;
 mod decoration;
 mod drag;
 mod flex_direction;
@@ -9,6 +8,7 @@ mod host;
 mod images;
 mod list_end_resize;
 mod lowered;
+mod side_style;
 #[cfg(feature = "gpu")]
 mod video;
 mod webview;
@@ -1958,6 +1958,8 @@ mod input_ellipsis;
 #[path = "motion.rs"]
 mod motion;
 mod presence;
+#[path = "scales.rs"]
+mod scales;
 #[path = "select.rs"]
 mod select;
 mod size_transition;
@@ -1965,8 +1967,6 @@ mod size_transition;
 mod text_selection;
 #[path = "time_field.rs"]
 mod time_field;
-#[path = "scales.rs"]
-mod scales;
 mod top_layer;
 #[path = "transition.rs"]
 mod transition;
@@ -2130,7 +2130,9 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
             && *color == focus
         {
             assert!(
-                pieces.iter().any(|[x, y, w, h]| *bounds == [x - 4.0, y - 4.0, w + 8.0, h + 8.0]),
+                pieces
+                    .iter()
+                    .any(|[x, y, w, h]| *bounds == [x - 4.0, y - 4.0, w + 8.0, h + 8.0]),
                 "{bounds:?} around one of {pieces:?}"
             );
             assert_eq!((*widths, *radius), ([2.0; 4], small + 2.0));
@@ -2806,7 +2808,11 @@ fn an_unbound_date_field_shows_the_users_date_not_an_empty_display() {
     .unwrap();
     page.prepare_native(300, 300, 1.0, false, None, Ok).unwrap();
     page.layout(300, 300, 1.0).unwrap();
-    assert!(page.focus_input(page.generation(), &note).unwrap().is_some());
+    assert!(
+        page.focus_input(page.generation(), &note)
+            .unwrap()
+            .is_some()
+    );
     let after = page.layout(300, 300, 1.0).unwrap();
     let input = after.nodes[1].input.as_ref().unwrap();
     assert_eq!(input.value, "2026-11-19");

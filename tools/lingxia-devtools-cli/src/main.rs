@@ -231,10 +231,7 @@ fn run() -> Result<()> {
             let transport = client::DevSession::new(&info.ws_url);
             let context = lingxia_control_commands::app::AppContext {
                 transport: &transport,
-                target: lingxia_control_commands::app::host_platform(
-                    &transport,
-                    &info.target,
-                ),
+                target: lingxia_control_commands::app::host_platform(&transport, &info.target),
                 session: Some(info.session_id.clone()),
             };
             lingxia_control_commands::app::execute(&context, options)

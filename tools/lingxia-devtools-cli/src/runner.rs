@@ -219,7 +219,10 @@ fn points(data: &Value, key: &str) -> String {
 
 /// `@3x`: the device pixels per point a GPU page renders at.
 fn pixel_ratio(data: &Value) -> String {
-    let ratio = data.get("pixelRatio").and_then(Value::as_f64).unwrap_or(1.0);
+    let ratio = data
+        .get("pixelRatio")
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0);
     format!("@{ratio}x")
 }
 

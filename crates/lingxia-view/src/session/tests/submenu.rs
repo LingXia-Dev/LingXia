@@ -212,7 +212,10 @@ fn a_submenu_sits_beside_its_item_and_under_it_when_neither_side_has_room() {
         edges(&narrow, "move-to"),
         edges(&narrow, "move"),
     );
-    assert!(sub[0] >= menu[2], "beside the menu: {sub:?} against {menu:?}");
+    assert!(
+        sub[0] >= menu[2],
+        "beside the menu: {sub:?} against {menu:?}"
+    );
     assert_eq!(sub[1], item[1], "level with its item");
 
     let wide = side_page(&platform, &worker, 80);

@@ -60,7 +60,10 @@ const STALL_AFTER: u32 = 3;
 
 fn failure_answer(failure: &Failure) -> String {
     if failure.retained {
-        format!("E_PAGE_FAILED: the page stopped rendering: {}", failure.error)
+        format!(
+            "E_PAGE_FAILED: the page stopped rendering: {}",
+            failure.error
+        )
     } else {
         format!(
             "E_PAGE_FAILED: the page failed before its first frame: {}",
@@ -1741,7 +1744,10 @@ impl<A: PlatformAdapter> ViewHost<A> {
             let mut main = self.inner.main();
             // A pin the cap would clamp would test a text size the page never shows.
             let max = main.host_environment.max_text_scale();
-            if let Some(scale) = test.and_then(|test| test.text_scale).filter(|scale| *scale > max) {
+            if let Some(scale) = test
+                .and_then(|test| test.text_scale)
+                .filter(|scale| *scale > max)
+            {
                 return Err(format!(
                     "E_INVALID_ARG: environment textScale {scale} is above this page's maxTextScale {max} (lxapp.json, default 2); raise maxTextScale to test it"
                 ));

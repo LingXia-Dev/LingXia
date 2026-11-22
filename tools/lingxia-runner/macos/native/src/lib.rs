@@ -51,7 +51,10 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
         )
     }
 
-    fn set(&self, change: &lingxia::dev::DeviceChange) -> Result<lingxia::dev::DeviceState, String> {
+    fn set(
+        &self,
+        change: &lingxia::dev::DeviceChange,
+    ) -> Result<lingxia::dev::DeviceState, String> {
         let id = change.id.as_deref();
         if let Some(id) = id {
             let entries = self.list()?;

@@ -26,9 +26,9 @@ mod hot_swap;
 mod images;
 mod prepare;
 mod selection;
-mod uncontrolled;
 #[cfg(test)]
 pub(crate) mod tests;
+mod uncontrolled;
 mod video;
 mod webview;
 use frame_animation::FrameAnimations;

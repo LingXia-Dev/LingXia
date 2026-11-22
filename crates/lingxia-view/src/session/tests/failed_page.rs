@@ -39,10 +39,16 @@ fn one_panic_drops_its_frame_and_the_next_one_presents() {
     host.request_frame();
     platform.settle(&[&host]);
     assert_eq!(host.panics_left(), 0);
-    assert!(host.failure().is_none(), "two dropped frames are no failure");
+    assert!(
+        host.failure().is_none(),
+        "two dropped frames are no failure"
+    );
     let (recoveries, presented) = shown(&host);
     assert_eq!(recoveries, 0, "no recovery chrome");
-    assert!(presented > before, "the frame after the dropped ones presents");
+    assert!(
+        presented > before,
+        "the frame after the dropped ones presents"
+    );
     assert_eq!(frame(&host)["stalled"], false);
     assert!(frame(&host)["failure"].is_null());
     assert_eq!(query(&host).unwrap()["exists"], true);
@@ -90,7 +96,11 @@ fn three_panics_in_a_row_stall_the_page_and_automation_hears_it_at_once() {
     assert!(query(&host).is_err());
     host.environment_changed();
     platform.settle(&[&host]);
-    assert_eq!(host.panics_left(), 6, "an unchanged environment is no change");
+    assert_eq!(
+        host.panics_left(),
+        6,
+        "an unchanged environment is no change"
+    );
     host.automation_request(&serde_json::json!({"op": "environment", "theme": "dark"}))
         .unwrap();
     platform.settle(&[&host]);

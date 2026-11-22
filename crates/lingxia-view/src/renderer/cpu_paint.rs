@@ -409,9 +409,9 @@ impl DisplayList {
                     gradient,
                 } => {
                     // `bg-clip-text`: the glyphs are a coverage mask the gradient is drawn through.
-                    let clipped = gradient.as_ref().zip(crate::scene::paint::clip_text_box(
-                        ink, &glyphs, size, skew,
-                    ));
+                    let clipped = gradient
+                        .as_ref()
+                        .zip(crate::scene::paint::clip_text_box(ink, &glyphs, size, skew));
                     if clipped.is_some() {
                         context.push_layer(None, None, None, None, None);
                         context.set_paint(AlphaColor::<Srgb>::from_rgba8(0, 0, 0, 255));
