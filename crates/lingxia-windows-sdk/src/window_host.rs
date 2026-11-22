@@ -5777,6 +5777,10 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
     let moved = flags.0 & WindowsAndMessaging::SWP_NOMOVE.0 == 0;
     let sized = flags.0 & WindowsAndMessaging::SWP_NOSIZE.0 == 0;
     if sized {
+        // This pass runs before `WM_SIZE`: laid out against the previous width's sidebar, the
+        // page reports a viewport whose size class the hysteresis band then holds.
+        #[cfg(feature = "shell-chrome")]
+        report_shell_surface_width(hwnd);
         sync_window_layout(hwnd);
         if windows_chrome_renderer().is_some() {
             invalidate_window(hwnd);
@@ -9758,9 +9762,9 @@ fn show_webview_window_replacing(
     }
 
     mark_active(webtag);
-    if !defer_initial_show {
-        notify_webtag_visibility(webtag.key(), true);
-    }
+    // Only the host stays hidden: the reveal waits on this page's `onReady`, which waits on its
+    // `onShow`.
+    notify_webtag_visibility(webtag.key(), true);
     hide_other_workspace_windows(target);
     Ok(())
 }
