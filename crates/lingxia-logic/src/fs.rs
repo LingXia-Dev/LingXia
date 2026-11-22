@@ -1092,6 +1092,7 @@ fn read_managed_file(lxapp: &LxApp, raw_path: &str, api_name: &'static str) -> J
     read_file_bytes(&path.path, metadata.len(), api_name)
 }
 
+/// A lazy reference to a managed path from `lx.fs.file`; nothing is read until a method runs.
 #[js_class(rename = "LxFile")]
 impl JSLxFile {
     #[js_method(constructor, private)]

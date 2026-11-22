@@ -326,7 +326,7 @@ rong::js_api! {
         namespace ClipboardApi = namespace(ctx)?;
         fn writeText(ts_params = "text: string") = write_text;
         fn readText(ts_return = "Promise<ClipboardTextResult>") = read_text;
-        fn write(ts_params = "item: ClipboardWriteItem") = write;
+        fn write(ts_params = "item: ClipboardItem") = write;
         fn read(
             ts_params = "options?: ClipboardReadOptions",
             ts_return = "Promise<ClipboardReadResult>"

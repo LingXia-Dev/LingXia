@@ -67,44 +67,6 @@ export interface Live<T> {
 }
 
 /**
- * Injected by the runtime into methods listed in `stream_handlers` page metadata.
- *
- * Use this when your async source uses callbacks rather than an async iterator.
- * For the generator form (`async *method()`), no handle is needed — the runtime
- * pumps the generator automatically.
- */
-export interface StreamHandle<T = unknown> {
-  /** Send a chunk to View. */
-  send(payload: T): void;
-  /** End the stream with an optional final value. */
-  end(result?: unknown): void;
-  /** End the stream with an error. */
-  error(code: string, message?: string): void;
-  /**
-   * Called once if View cancels before `end`/`error`. Returns unsubscribe.
-   * The generator form still observes cancel in `finally`; use this for the
-   * callback-based handle.
-   */
-  onCancel(handler: () => void, options?: SignalOptions): () => void;
-}
-
-/**
- * Injected by the runtime as the second parameter when View opens a channel.
- *
- * Use `ch.send()` to push data to View, `ch.on()` to receive data/close
- * events from View, and `ch.close()` to shut down the channel.
- */
-export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
-  /** Push a message to View. */
-  send(payload: TSend): void;
-  /** Close the channel from Logic side. */
-  close(code?: string, reason?: string): void;
-  /** Register a listener for incoming events. Returns unsubscribe. */
-  on(event: 'data', handler: (payload: TReceive) => void): () => void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
-}
-
-/**
  * Where `lx.network.download` writes, chosen by `to`:
  *
  * - omitted: a temporary file this lxapp owns
@@ -141,15 +103,6 @@ export interface Task<R, P = TransferProgress> extends AsyncIterable<P> {
    */
   readonly result: Promise<R>;
   [Symbol.asyncIterator](): AsyncIterator<P, R, undefined>;
-}
-
-/** A lazy reference to a managed path from `lx.fs.file`; nothing is read until a method runs. */
-export interface LxFile {
-  /**
-   * Read and parse the complete file as JSON, typed as `T` without a check.
-   * @throws {E_INVALID_ARG} The file is not UTF-8 or not valid JSON.
-   */
-  json<T>(): Promise<T>;
 }
 
 /** A task the caller can cancel. */
@@ -1152,9 +1105,12 @@ export type CaptureOptions = CameraOptions & {
 
 export type ClipboardApi = globalThis.ClipboardApi;
 
-/** One clipboard representation: text, or an image file. */
+/**
+ * One clipboard representation: text, or an image file. `read` returns them and `write`
+ * takes one, so an item read can be written back.
+ */
 export type ClipboardItem = {
-    /** Plain text. */
+    /** Plain text, at most 1 MiB to write. */
     type: 'text';
     /** The text. */
     text: string;
@@ -1162,8 +1118,10 @@ export type ClipboardItem = {
     /** An image. */
     type: 'image';
     /**
-     * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
-     * copy it with `lx.fs` if you need to keep it.
+     * Read: a temporary `lx://temp` PNG, session-scoped and auto-cleaned; move or copy it with
+     * `lx.fs` to keep it. Write: a PNG or JPEG at a managed `lx://` path or one `lx.pick`
+     * returned (the same file rules as `lx.share`), re-encoded as the platform's image format;
+     * rejects `E_INVALID_ARG` when it is not a decodable image.
      */
     path: string;
 };
@@ -1200,26 +1158,6 @@ export type ClipboardTextResult = {
 
 /** Representations the runtime can round-trip. Closed union. */
 export type ClipboardType = 'text' | 'image';
-
-/**
- * One clipboard write. Every host accepts both: `image` takes a PNG or
- * JPEG file and re-encodes it as the platform's native image format.
- */
-export type ClipboardWriteItem = {
-    /** Write text. */
-    type: 'text';
-    /** Unicode text, at most 1 MiB. */
-    text: string;
-} | {
-    /** Write an image. */
-    type: 'image';
-    /**
-     * Managed `lx://` path, or a path `lx.pick` returned — the same file
-     * rules as `lx.share`. Rejects
-     * `E_INVALID_ARG` when the file is not a decodable image.
-     */
-    path: string;
-};
 
 /** How `lx.media.compressImage` re-encodes the image. */
 export type CompressImageOptions = {
@@ -3714,6 +3652,7 @@ export interface WifiInfo {
   frequency?: number;
 }
 
+/** A lazy reference to a managed path from `lx.fs.file`; nothing is read until a method runs. */
 export interface LxFile {
   /** The path supplied to `lx.fs.file`. */
   readonly path: string;
@@ -3724,7 +3663,7 @@ export interface LxFile {
    * parsed shape, unchecked.
    * @throws {E_INVALID_ARG} The file is not UTF-8 or not valid JSON.
    */
-  json(): Promise<unknown>;
+  json<T = unknown>(): Promise<T>;
   /** Read the complete file as a Base64 string. */
   base64(): Promise<string>;
   /** Read the complete file as bytes. */
@@ -3761,7 +3700,7 @@ declare global {
      * Replace the clipboard with a typed item.
      * @throws {E_INVALID_ARG} Text above 1 MiB, or an image file that does not decode.
      */
-    write(item: ClipboardWriteItem): Promise<void>;
+    write(item: ClipboardItem): Promise<void>;
     /**
      * Read the clipboard.
      * Omit `type` to receive every representation this host can surface.

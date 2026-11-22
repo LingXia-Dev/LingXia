@@ -4,6 +4,7 @@ import { LxError } from "@lingxia/types/error";
 import { lx as importedLx, setLx } from "./node.js";
 
 export { setLx } from "./node.js";
+export { createLxMock } from "@lingxia/types/testing";
 
 // The page runtime the Logic worker runs, copied in by `npm run build`.
 let runtimeSource;

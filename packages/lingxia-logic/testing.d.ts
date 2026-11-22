@@ -1,6 +1,9 @@
 import type { Lx } from "@lingxia/types";
 import type { PageApi, PageDefinition } from "@lingxia/types/page";
 
+export { createLxMock } from "@lingxia/types/testing";
+export type { LxMockOverrides } from "@lingxia/types/testing";
+
 /** Replaces the `lx` that Logic modules imported from `@lingxia/logic` see, in a Node test. */
 export declare function setLx(value: Lx | undefined): void;
 

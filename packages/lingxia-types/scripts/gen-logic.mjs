@@ -55,6 +55,13 @@ if (!existsSync(binary)) {
   run("cargo", ["install", "rong_typegen", "--version", `=${VERSION}`, "--locked", "--root", installRoot]);
 }
 
+// A `js_method` cannot declare a type parameter, so `LxFile.json` gets its one here.
+function jsonGeneric(source) {
+  const plain = "  json(): Promise<unknown>;";
+  if (source.split(plain).length !== 2) throw new Error("gen-logic: expected one `json(): Promise<unknown>` on LxFile");
+  return source.replace(plain, "  json<T = unknown>(): Promise<T>;");
+}
+
 // --check is implemented here rather than passed to the binary: the committed
 // outputs carry the rewritten hint, which the binary's internal comparison
 // would always flag as drift.
@@ -66,8 +73,8 @@ try {
   for (const path of outputs) {
     let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
     if (path.endsWith("logic.ts")) {
-      source = dropBindingClasses(source)
-        .replace(/export declare class (DirEntry|LxFile) \{\n  private constructor\(\);/g, 'export interface $1 {')
+      source = jsonGeneric(dropBindingClasses(source)
+        .replace(/export declare class (DirEntry|LxFile) \{\n  private constructor\(\);/g, 'export interface $1 {'))
         + "\n" + featureDeclaration();
     }
     if (path.endsWith("logic-web.d.ts")) source = refineWebProfile(source);

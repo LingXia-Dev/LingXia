@@ -399,8 +399,8 @@ Pure Logic helpers are plain TypeScript: import them into a Node test runner
 (`node --test`, vitest) instead. `lxdev test` is for behaviour that needs the
 app running.
 
-A page's Logic runs in Node with `mount(page, { params, lx })` from `@lingxia/logic/testing` and
-`createLxMock({ pick: { file: async () => ({ status: 'ok', file }) } })` from `@lingxia/types/testing`:
+A page's Logic runs in Node with `mount(page, { params, lx })` and
+`createLxMock({ pick: { file: async () => ({ status: 'ok', file }) } })`, both from `@lingxia/logic/testing`:
 call `mounted.actions.x()` (as written: sync, async or a generator), read `mounted.data`; an `lx` member you did
 not give rejects `E_NOT_SUPPORTED`. A mock fails as the host does with `throw new LxError('denied', { code: 'E_PERMISSION_DENIED' })`.
 Pages mounted at once share one `lx`. `unmount()` aborts `page.signal` and runs `onUnload`; a timer the page left

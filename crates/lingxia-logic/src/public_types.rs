@@ -1007,24 +1007,6 @@ rong::js_api! {
         /// Representations the runtime can round-trip. Closed union.
         type ClipboardType = r###"'text' | 'image'"###;
 
-        /// One clipboard write. Every host accepts both: `image` takes a PNG or
-        /// JPEG file and re-encodes it as the platform's native image format.
-        type ClipboardWriteItem = r###"{
-    /** Write text. */
-    type: 'text';
-    /** Unicode text, at most 1 MiB. */
-    text: string;
-} | {
-    /** Write an image. */
-    type: 'image';
-    /**
-     * Managed `lx://` path, or a path `lx.pick` returned — the same file
-     * rules as `lx.share`. Rejects
-     * `E_INVALID_ARG` when the file is not a decodable image.
-     */
-    path: string;
-}"###;
-
         /// Options for `lx.clipboard.read`.
         type ClipboardReadOptions = r###"{
     /** Omit to receive every representation the host can surface. */
@@ -1051,9 +1033,10 @@ rong::js_api! {
     items: readonly ClipboardItem[];
 } | CanceledResult"###;
 
-        /// One clipboard representation: text, or an image file.
+        /// One clipboard representation: text, or an image file. `read` returns them and `write`
+        /// takes one, so an item read can be written back.
         type ClipboardItem = r###"{
-    /** Plain text. */
+    /** Plain text, at most 1 MiB to write. */
     type: 'text';
     /** The text. */
     text: string;
@@ -1061,8 +1044,10 @@ rong::js_api! {
     /** An image. */
     type: 'image';
     /**
-     * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
-     * copy it with `lx.fs` if you need to keep it.
+     * Read: a temporary `lx://temp` PNG, session-scoped and auto-cleaned; move or copy it with
+     * `lx.fs` to keep it. Write: a PNG or JPEG at a managed `lx://` path or one `lx.pick`
+     * returned (the same file rules as `lx.share`), re-encoded as the platform's image format;
+     * rejects `E_INVALID_ARG` when it is not a decodable image.
      */
     path: string;
 }"###;

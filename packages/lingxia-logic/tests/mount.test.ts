@@ -1,22 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLxMock } from "@lingxia/types/testing";
 import { LxError } from "@lingxia/logic";
-import { mount, setLx } from "@lingxia/logic/testing";
+import { createLxMock, mount, setLx, type LxMockOverrides } from "@lingxia/logic/testing";
 import { lxNow } from "./fixtures/lx-now.mjs";
 import attachPage from "./fixtures/attach-page.ts";
 import kindsPage, { trace } from "./fixtures/kinds-page.ts";
 
 test("an action that calls lx.pick.file runs against a mock lx", async () => {
   const picks: unknown[] = [];
-  const lx = createLxMock({
+  const overrides: LxMockOverrides = {
     pick: {
       file: async (options) => {
         picks.push(options);
         return { status: "ok", file: { path: "lx://temp/a.pdf", name: "a.pdf", size: 3, type: "application/pdf" } };
       },
     },
-  });
+  };
+  const lx = createLxMock(overrides);
   const mounted = await mount(attachPage, { lx });
   try {
     assert.equal(await mounted.actions.attach(), "ok");

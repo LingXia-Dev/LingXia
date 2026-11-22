@@ -71,27 +71,6 @@ export default definePage({
 });
 ```
 
-### Handle form
-
-For callback-based sources, take the injected `StreamHandle` as the second
-parameter (no import):
-
-```ts
-actions: {
-  async onProcess(params: { fileId: string }, stream: StreamHandle) {
-    const job = processFile(params.fileId);
-    stream.onCancel(() => job.abort());
-
-    job.on('progress', (pct) => stream.send({ type: 'progress', pct }));
-    job.on('done',     (out) => stream.end(out));
-    job.on('error',    (err) => stream.error('PROCESS_FAILED', err.message));
-  },
-},
-```
-
-The build classifies an action returning an `AsyncGenerator` or taking the
-handle as a stream; there is nothing to declare.
-
 ### `useLxStream`
 
 ```tsx
@@ -118,12 +97,12 @@ stream with `chat.error`; `chat.cancel()` settles it with `BRIDGE_CANCELED`.
 
 ## Channel
 
-A long-lived, two-way session opened by the View. The handler receives the
-injected `ChannelHandle`:
+A long-lived, two-way session opened by the View. The handler receives a
+`PageChannel` from `@lingxia/logic` as its second parameter:
 
 ```ts
 actions: {
-  syncSession(params: { sessionId: string }, ch: ChannelHandle) {
+  syncSession(params: { sessionId: string }, ch: PageChannel) {
     const session = openSession(params.sessionId);
     ch.send({ type: 'init', state: session.state });
     session.onUpdate((update) => ch.send({ type: 'update', update }));
