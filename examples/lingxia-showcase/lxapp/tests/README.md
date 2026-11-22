@@ -82,6 +82,7 @@ New cases use `test` from `@lingxia/test`:
 - keep one primary behavior per case so the report identifies the broken
   contract;
 - never catch and discard an error merely to make a platform pass.
+- write gestures at fractions of `view.viewport()`, never at fixed screen points, and `scrollIntoView()` a target before a viewport assertion, so a case reads the same in portrait and landscape.
 
 Use `--id ID` or `--last-failed path/to/report.json` for focused reruns;
 `--verbose` adds the full action trace. `--shard i/n` needs a separate host session

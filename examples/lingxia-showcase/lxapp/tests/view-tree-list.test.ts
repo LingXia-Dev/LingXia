@@ -32,5 +32,7 @@ test('arrows open a folder, move into it, move out and close it', { covers: ['vi
 test('a list takes a name a screen reader says', { covers: ['view:list-name'], start: openDemo('named') }, async (t) => {
   const view = t.app.view;
   await expect(view.css('[aria-label="Messages"]')).toHaveCount(1);
+  // A windowed list builds rows only near the viewport.
+  await view.testId('lab-named-list').scrollIntoView();
   expect(await view.css('[aria-label="Messages"] span').count()).toBeGreaterThan(0);
 });

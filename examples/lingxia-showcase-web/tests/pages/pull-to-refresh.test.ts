@@ -108,6 +108,12 @@ test("page.refresh runs onRefresh, and the indicator stays until it settles", { 
 /** What the page shows before any pull; a pull or refresh must not take any of it away. */
 const PULL_PAGE_IDS = ['pull-refresh-status', 'pull-refresh-count', 'pull-refresh-start', 'pull-refresh-stop'];
 
+/** A point at fractions of the viewport, so a gesture reads the same in either orientation. */
+async function at(view: TestView, x: number, y: number): Promise<[number, number]> {
+  const { width, height } = await view.viewport();
+  return [Math.round(width * x), Math.round(height * y)];
+}
+
 async function expectPageIntact(view: TestView, when: string): Promise<void> {
   for (const id of PULL_PAGE_IDS) {
     await expect(view.testId(id), `${id} ${when}`).toBeVisible({ timeout: 3_000 });
@@ -123,7 +129,7 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
   const before = await refreshState(app);
 
   await t.step('the indicator follows the finger and arms past the threshold', async () => {
-    const start: [number, number] = [180, 140];
+    const start = await at(view, 0.5, 0.18);
     const finger = await view.touch(start);
     const offsets: number[] = [];
     for (const dy of [40, 80, 120, 160]) {
@@ -144,6 +150,7 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
   await t.step('the page stays whole while the refresh holds it open', async () => {
     await t.attach('refreshing.png', await view.screenshot());
     await expectPageIntact(view, 'while refreshing');
+    await view.testId('pull-refresh-stop').scrollIntoView();
     await expect(view.testId('pull-refresh-stop')).toBeInViewport();
   });
 
@@ -157,6 +164,8 @@ test("a pull follows the finger, refreshes once past the threshold, and leaves t
   await expectPageIntact(view, 'after stop');
 
   await t.step('a short pull snaps back without refreshing', async () => {
+    // A pull starts at the top of the page; Stop may have scrolled it.
+    await view.testId('pull-refresh-status').scrollIntoView();
     const short = await view.pullToRefresh({ distance: 30, hold: 100 });
     expect(short.refreshed).toBe(false);
     await expect.poll(async () => (await view.refreshIndicator()).offset, { timeout: 3_000 }).toBe(0);
@@ -177,14 +186,15 @@ test("a swipe scrolls the page and a pull below the top scrolls back instead of 
   const before = await refreshState(app);
 
   await t.step('a slow swipe scrolls the top of the page away', async () => {
-    await view.swipe({ from: [180, 520], to: [180, 220], durationMs: 400 });
-    await view.swipe({ from: [180, 520], to: [180, 220], durationMs: 400 });
+    const [from, to] = [await at(view, 0.5, 0.68), await at(view, 0.5, 0.29)];
+    await view.swipe({ from, to, durationMs: 400 });
+    await view.swipe({ from, to, durationMs: 400 });
     await expect(status).not.toBeInViewport();
   });
 
   await t.step('a downward pull below the top scrolls back and never arms', async () => {
-    const finger = await view.touch([180, 220]);
-    await finger.moveTo([180, 340], { durationMs: 200 });
+    const finger = await view.touch(await at(view, 0.5, 0.29));
+    await finger.moveTo(await at(view, 0.5, 0.45), { durationMs: 200 });
     expect((await view.refreshIndicator()).phase).toBe('idle');
     await finger.up();
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
@@ -202,7 +212,7 @@ test("a fling carries the page past where the finger stopped", { id: "PULL-004",
   const lastRow = view.testId('pull-refresh-row').last();
   await expect(lastRow).not.toBeInViewport();
   // A slow swipe of the same finger travel stops well short of the end.
-  await view.swipe({ from: [180, 520], to: [180, 200], durationMs: 400 });
+  await view.swipe({ from: await at(view, 0.5, 0.68), to: await at(view, 0.5, 0.26), durationMs: 400 });
   await expect(lastRow).not.toBeInViewport();
   await view.fling('up', 4000);
   await expect(lastRow).toBeInViewport({ timeout: 3_000 });
