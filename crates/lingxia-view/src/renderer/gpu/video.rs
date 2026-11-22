@@ -121,6 +121,19 @@ fn views(display: &crate::DisplayList) -> HashMap<&str, ([f32; 2], Fit)> {
             }
         }
     }
+    // A transparent player keeps the quality it was drawn at.
+    for paint in &display.unseen_media {
+        if let Paint::Video {
+            player,
+            bounds,
+            fit,
+            ..
+        } = paint
+        {
+            out.entry(player.as_str())
+                .or_insert(([bounds[2] * display.scale, bounds[3] * display.scale], *fit));
+        }
+    }
     out
 }
 
@@ -1477,6 +1490,7 @@ fn keys(display: &crate::DisplayList) -> Vec<&str> {
     let mut keys: Vec<&str> = display
         .commands
         .iter()
+        .chain(&display.unseen_media)
         .filter_map(|paint| match paint {
             Paint::Video { player, .. } => Some(player.as_str()),
             _ => None,
@@ -1502,6 +1516,7 @@ pub(crate) fn draws_video(display: &crate::DisplayList) -> bool {
     display
         .commands
         .iter()
+        .chain(&display.unseen_media)
         .any(|paint| matches!(paint, Paint::Video { .. }))
 }
 

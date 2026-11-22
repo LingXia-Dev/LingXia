@@ -770,14 +770,16 @@ async function rowLayers(rows) {
 test('UI_PERF row layers follow the branch a literal prop selects; dialog and popover content is not row content', async () => {
   // variant="bar" passes through Player to Controls: the overlay branch and the map's overlay key never render.
   assert.deepEqual(await rowLayers(['<Player variant="bar" />', '<Chip flat />']), []);
-  // An absent prop without a spread is undefined; a default fills it.
-  assert.deepEqual(await rowLayers(['<Controls />']), ['opacity-0']);
+  // An absent prop without a spread is undefined; a default fills it. Fully transparent draws
+  // nothing, so `opacity-0` is no layer.
+  assert.deepEqual(await rowLayers(['<Controls />']), []);
+  assert.deepEqual(await rowLayers(['<Controls on />']), ['opacity-25']);
   // A view whose popover is false stays in the row.
   assert.deepEqual(await rowLayers(['<view popover={false} id="inline"><view className="opacity-80" /></view>']), ['opacity-80']);
 });
 
 test('UI_PERF row layers stay on for a prop the row computes and for a spread', async () => {
-  assert.deepEqual(await rowLayers(['<Controls variant={i} on={i === "b"} />']), ['opacity-0', 'opacity-25', 'opacity-50']);
+  assert.deepEqual(await rowLayers(['<Controls variant={i} on={i === "b"} />']), ['opacity-25', 'opacity-50']);
   assert.deepEqual(await rowLayers(['<Chip {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
   assert.deepEqual(await rowLayers(['<Chip flat {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
 });

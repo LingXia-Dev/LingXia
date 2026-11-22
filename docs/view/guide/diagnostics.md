@@ -77,7 +77,7 @@ A class problem points at the string literal that holds the class, which may be 
 (a shared `const` or class map). Line and column are 1-based.
 
 `UI_PERF` lines are warnings: the page still builds. They flag more than 50 rows from a literal set
-outside `<List>`, an `opacity-*` or `backdrop-*` layer repeated in every row, and a bundled image
+outside `<List>`, a partial `opacity-*` or a `backdrop-*` layer repeated in every row, and a bundled image
 longer than 2048 px or larger than 8 MiB.
 
 ## Runtime errors

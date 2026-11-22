@@ -240,7 +240,8 @@ function walkRows(files, checker, visitRow) {
 }
 
 const composites = rule => !rule.when?.state && (
-  (rule.style?.opacity ?? 1) < 1 ||
+  // Fully transparent draws nothing, so only a partial opacity composites.
+  ((rule.style?.opacity ?? 1) > 0 && (rule.style?.opacity ?? 1) < 1) ||
   Boolean(rule.backdrop && (rule.backdrop.blur > 0 || (rule.backdrop.saturation ?? 1) !== 1)));
 
 /** PNG and JPEG pixel size from the file header. */

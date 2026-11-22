@@ -489,9 +489,13 @@ impl RetainedLayout {
         let mut active_layers: Vec<Paint> = Vec::new();
         let mut blurred = 0;
         let mut child_layers: Vec<Vec<Paint>> = vec![Vec::new(); count];
+        // Fully transparent, itself or through an ancestor: laid out, hit-tested and read by
+        // semantics, but nothing of it is drawn or composited.
+        let mut unseen = vec![false; count];
         let mut painted = Vec::new();
         let mut input_paints = Vec::new();
         let mut selectable_paints = Vec::new();
+        let mut unseen_media = Vec::new();
         // A transitioning text colour reaches descendants that inherit it.
         let mut foregrounds: Vec<Option<[u8; 4]>> = vec![None; count];
         if !visuals.is_empty() {
@@ -787,6 +791,7 @@ impl RetainedLayout {
             if !alpha.is_finite() || !(0.0..=1.0).contains(&alpha) {
                 return Err("UI_ANIMATION: invalid visual opacity".into());
             }
+            unseen[index] = alpha == 0.0 || parent.is_some_and(|p| unseen[p]);
             transforms[index] = matrix;
             if animated {
                 desired.push(Paint::Transform(matrix));
@@ -839,7 +844,9 @@ impl RetainedLayout {
                     )?);
                 }
             }
-            if let Some((blur, saturation)) = self.backdrops[index] {
+            if unseen[index] {
+                // No layer for a box nothing of which draws; a backdrop behind it never blurs.
+            } else if let Some((blur, saturation)) = self.backdrops[index] {
                 desired.push(Paint::Backdrop {
                     node: index,
                     clip: ClipSnapshot {
@@ -873,8 +880,10 @@ impl RetainedLayout {
                 });
             }
             // A translation moves the live view with the box; anything else draws its picture.
+            // Transparent, the native view hides and no picture draws.
             let [sx, b, c, sy, _, _] = matrix.as_coeffs();
-            let web_degraded = (sx, b, c, sy) != (1.0, 0.0, 0.0, 1.0)
+            let web_degraded = unseen[index]
+                || (sx, b, c, sy) != (1.0, 0.0, 0.0, 1.0)
                 || desired.iter().any(|p| {
                     matches!(
                         p,
@@ -928,6 +937,26 @@ impl RetainedLayout {
                 matrix,
             )?;
             if clip[2] == 0.0 || clip[3] == 0.0 {
+                continue;
+            }
+            if unseen[index] {
+                // Its images stay decoded and its videos keep playing, so a fade back in draws
+                // them at once.
+                unseen_media.extend(
+                    self.commands[self.ranges[index].clone()]
+                        .iter()
+                        .filter(|paint| {
+                            matches!(
+                                paint,
+                                Paint::Image { .. } | Paint::WebHole { .. } | Paint::Video { .. }
+                            )
+                        })
+                        .cloned(),
+                );
+                // A transparent editor still reports its caret and selection to the IME.
+                if node.input.is_some() {
+                    input_paints.push((index, None));
+                }
                 continue;
             }
             painted.clear();
@@ -1449,7 +1478,7 @@ impl RetainedLayout {
                     .count();
                 input_paints.push((
                     index,
-                    commands.len() + background..commands.len() + painted.len(),
+                    Some(commands.len() + background..commands.len() + painted.len()),
                 ));
             }
             if self.selectables[index].is_some() {
@@ -1537,6 +1566,7 @@ impl RetainedLayout {
             commands,
             input_paints,
             selectable_paints,
+            unseen_media,
             caret_paint: None,
             nodes,
             width: self.width,

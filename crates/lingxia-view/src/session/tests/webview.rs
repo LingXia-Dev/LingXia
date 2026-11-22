@@ -216,7 +216,7 @@ fn webview_paints_surface_placeholder_until_ready_then_punches_dest_out_hole_pre
 fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() {
     let module = source(
         "globalThis.motion='none';\
-         function render(){const m=globalThis.motion;return h('page',{style:{backgroundColor:'#ffffff'}},h('view',{style:m==='fade'?{opacity:0.5}:m==='move'?{translate:[20,0]}:m==='turn'?{rotate:10}:{}},h('webview',{'aria-label':'Doc','data-testid':'wv',src:'https://example.com',style:{width:100,height:100}})))}",
+         function render(){const m=globalThis.motion;return h('page',{style:{backgroundColor:'#ffffff'}},h('view',{style:m==='fade'?{opacity:0.5}:m==='gone'?{opacity:0}:m==='move'?{translate:[20,0]}:m==='turn'?{rotate:10}:{}},h('webview',{'aria-label':'Doc','data-testid':'wv',src:'https://example.com',style:{width:100,height:100}})))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
     let first = page.layout(140, 120, 1.0).unwrap();
@@ -286,6 +286,16 @@ fn a_moved_web_view_stays_live_and_a_faded_one_or_a_capture_draws_its_picture() 
             [r, g, b, a]
         );
     }
+
+    // Transparent: the native view hides and nothing draws in its place.
+    page.eval("globalThis.motion='gone'").unwrap();
+    let display = page.layout(140, 120, 1.0).unwrap();
+    let mount = crate::scene::webview::mount_of(&webview(&display)).unwrap();
+    assert!(mount.degraded && mount.accessibility_hidden);
+    assert_eq!(
+        pixel(&display.rasterize().unwrap(), 50, 50),
+        [255, 255, 255, 255]
+    );
 
     // A capture of a live view draws the picture instead of a hole.
     page.eval("globalThis.motion='none'").unwrap();

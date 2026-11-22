@@ -82,7 +82,8 @@ empty `<view className="grow" />` is a spacer.
 | `inline-flex`, `inline-block` | as `flex`/`block`, but the box keeps its content width (`self-start`) |
 
 `inline`, `contents`, `table`, `flow-root` and `list-item` are not supported. `invisible` is not supported;
-use `hidden`, or `opacity-0` to keep the space.
+use `hidden`, or `opacity-0` to keep the space: it draws nothing and costs no layer, but stays
+hit-testable and read by assistive technology.
 
 ## Grid
 

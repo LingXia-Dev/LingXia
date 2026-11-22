@@ -13,9 +13,12 @@ pub struct DisplayList {
     pub(crate) animated: Vec<AnimatedSpan>,
     pub(crate) images: HashMap<String, crate::scene::image::Bitmap>,
     pub(crate) commands: Vec<Paint>,
-    pub(crate) input_paints: Vec<(usize, Range<usize>)>,
+    /// An input's paint range; `None` when it is fully transparent and drew nothing.
+    pub(crate) input_paints: Vec<(usize, Option<Range<usize>>)>,
     /// Where each selectable text's paints start, for the selection highlight.
     pub(crate) selectable_paints: Vec<(usize, usize)>,
+    /// Image, web-picture and video paints of fully transparent nodes: not drawn, kept live.
+    pub(crate) unseen_media: Vec<Paint>,
     pub(crate) caret_paint: Option<usize>,
     pub nodes: Vec<NodeSnapshot>,
     pub width: u16,
@@ -387,7 +390,11 @@ impl DisplayList {
             for (origin, offset) in origin.iter_mut().zip(input.scroll_offset) {
                 *origin -= offset;
             }
-            for paint in &mut self.commands[range.clone()] {
+            let painted = match range {
+                Some(range) => &mut self.commands[range.clone()],
+                None => &mut [][..],
+            };
+            for paint in painted {
                 if let Paint::Text { glyphs, ink, .. } = paint {
                     for glyph in glyphs {
                         glyph.x -= input.scroll_offset[0];
@@ -429,6 +436,16 @@ impl DisplayList {
                 })
                 .unwrap_or_default();
             let caret = bounds(local_caret);
+            let Some(range) = range else {
+                input.geometry = Some(InputGeometry {
+                    anchor: bounds(anchor.geometry(layout, 1.5)),
+                    caret,
+                    content_bounds,
+                    selection,
+                    composition,
+                });
+                continue;
+            };
             let rect = |bounds, color| Paint::Rect {
                 corners: None,
                 bounds,
@@ -564,7 +581,8 @@ impl DisplayList {
 
     /// Only currently painted sources are requested; list overscan does not load images.
     pub fn image_sources(&self) -> impl Iterator<Item = &str> {
-        self.commands.iter().filter_map(|paint| match paint {
+        let commands = self.commands.iter().chain(&self.unseen_media);
+        commands.filter_map(|paint| match paint {
             Paint::Image { src, .. } if ChromeEdge::of_source(src).is_none() => Some(src.as_str()),
             Paint::WebHole { picture, .. } => Some(picture.as_str()),
             _ => None,
@@ -573,7 +591,7 @@ impl DisplayList {
     /// Each painted source's decode bucket: the union of its boxes, in device pixels.
     pub fn image_buckets(&self) -> HashMap<String, crate::scene::image::Bucket> {
         let mut buckets = HashMap::new();
-        for paint in &self.commands {
+        for paint in self.commands.iter().chain(&self.unseen_media) {
             if let Paint::Image { src, bounds, .. } = paint
                 && ChromeEdge::of_source(src).is_none()
             {

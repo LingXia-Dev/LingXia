@@ -694,3 +694,24 @@ fn an_endless_spin_keeps_frames_coming_but_leaves_the_page_settled_while_finite_
     );
     assert!(!page.view_animation_moving(ms(120)).unwrap());
 }
+
+#[test]
+fn a_fade_in_draws_nothing_at_zero_and_composites_only_while_partial() {
+    let source = tests::source(&format!(
+        "globalThis.effect={};function render(){{return h('view',{{style:{{width:40,height:40,backgroundColor:'#ff0000',animation:effect}}}},h('text',{{}},'abc'));}}",
+        authored_effect()
+    ));
+    let mut page = ViewSession::new(&source).unwrap();
+    page.set_animation_surface(Some(SurfaceTicket::new(1)), ms(0))
+        .unwrap();
+    let start = automatic(&mut page, 0, true, 0.0).cost();
+    assert_eq!((start.layers, start.glyphs), (0, 0), "{start:?}");
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(0))
+        .unwrap();
+    let middle = automatic(&mut page, 50, false, 0.0).cost();
+    assert!(middle.layers >= 1 && middle.glyphs == 3, "{middle:?}");
+    page.animation_presented(SurfaceTicket::new(1), page.generation(), ms(50))
+        .unwrap();
+    let end = automatic(&mut page, 110, false, 0.0).cost();
+    assert_eq!((end.layers, end.glyphs), (0, 3), "{end:?}");
+}
