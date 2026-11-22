@@ -63,39 +63,6 @@ export class LxAppWifi {
   }
 
   /**
-   * Stop WiFi module
-   */
-  public static stopWifi(callbackId: string): void {
-    try {
-      hilog.info(DOMAIN, TAG, 'WiFi module stopped');
-
-      // Clean up active candidate network (HarmonyOS)
-      if (LxAppWifi.activeCandidateNetworkId !== null) {
-        try {
-          wifiManager.removeCandidateConfig(LxAppWifi.activeCandidateNetworkId);
-          hilog.info(DOMAIN, TAG, `Removed candidate network: ${LxAppWifi.activeCandidateNetworkId}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-          hilog.warn(DOMAIN, TAG, `Failed to remove candidate network: ${errorMessage}`);
-        }
-        LxAppWifi.activeCandidateNetworkId = null;
-      }
-
-      // Clear target SSID
-      LxAppWifi.targetSsid = null;
-
-      const success: boolean = liblingxia.onCallback(callbackId, true, '{}');
-      if (!success) {
-        LxLog.e(TAG, `Failed to send stopWifi callback for ID: ${callbackId}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      LxLog.e(TAG, `stopWifi error: ${errorMessage}`);
-      liblingxia.onCallback(callbackId, false, '12001'); // System error
-    }
-  }
-
-  /**
    * Add a listener for WiFi connection state changes
    * Multiple listeners can be registered (supports multiple LxApp instances)
    */

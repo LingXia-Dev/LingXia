@@ -77,18 +77,18 @@ fn build_hints(scan_types: &[ScanType]) -> Vec<BarcodeFormat> {
 
 fn format_to_type_string(format: &BarcodeFormat) -> String {
     match format {
-        BarcodeFormat::QR_CODE => "QR_CODE",
-        BarcodeFormat::EAN_8 => "EAN_8",
-        BarcodeFormat::EAN_13 => "EAN_13",
-        BarcodeFormat::CODE_39 => "CODE_39",
-        BarcodeFormat::CODE_93 => "CODE_93",
-        BarcodeFormat::CODE_128 => "CODE_128",
-        BarcodeFormat::ITF => "ITF",
-        BarcodeFormat::UPC_A => "UPC_A",
-        BarcodeFormat::UPC_E => "UPC_E",
-        BarcodeFormat::DATA_MATRIX => "DATA_MATRIX",
-        BarcodeFormat::PDF_417 => "PDF_417",
-        _ => "UNKNOWN",
+        BarcodeFormat::QR_CODE => "qr_code",
+        BarcodeFormat::EAN_8 => "ean_8",
+        BarcodeFormat::EAN_13 => "ean_13",
+        BarcodeFormat::CODE_39 => "code_39",
+        BarcodeFormat::CODE_93 => "code_93",
+        BarcodeFormat::CODE_128 => "code_128",
+        BarcodeFormat::ITF => "itf",
+        BarcodeFormat::UPC_A => "upc_a",
+        BarcodeFormat::UPC_E => "upc_e",
+        BarcodeFormat::DATA_MATRIX => "datamatrix",
+        BarcodeFormat::PDF_417 => "pdf417",
+        _ => "unknown",
     }
     .to_string()
 }

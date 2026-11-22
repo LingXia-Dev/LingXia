@@ -23,12 +23,6 @@ impl Wifi for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to start WiFi: {}", e)))
     }
 
-    fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
-        let callback_id_str = callback_id.to_string();
-        lingxia_webview::platform::harmony::tsfn::call_arkts("stopWifi", &[&callback_id_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to stop WiFi: {}", e)))
-    }
-
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         let callback_id_str = request.callback_id.to_string();
         let password = request.password.unwrap_or_default();

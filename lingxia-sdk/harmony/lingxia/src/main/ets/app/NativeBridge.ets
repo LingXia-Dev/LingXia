@@ -588,10 +588,6 @@ class NativeBridge {
       LxAppWifi.startWifi(callbackId);
     });
 
-    this.register('stopWifi', (callbackId: string): void => {
-      LxAppWifi.stopWifi(callbackId);
-    });
-
     this.register('connectWifi', (callbackId: string, ssid: string, password: string): void => {
       LxAppWifi.connectWifi(callbackId, ssid, password);
     });

@@ -47,14 +47,6 @@ pub trait Wifi: Send + Sync + 'static {
         ))
     }
 
-    /// Stop Wi-Fi module (wx.stopWifi).
-    fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
-        let _ = callback_id;
-        Err(PlatformError::NotSupported(
-            "stop_wifi not implemented".to_string(),
-        ))
-    }
-
     /// Connect to a Wi-Fi access point (wx.connectWifi).
     ///
     /// # Platform Limitations

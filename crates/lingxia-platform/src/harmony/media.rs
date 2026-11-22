@@ -160,8 +160,8 @@ impl MediaInteraction for Platform {
                 .scan_types
                 .iter()
                 .map(|scan_type| match scan_type {
-                    ScanType::QrCode => "qrCode".to_string(),
-                    ScanType::BarCode => "barCode".to_string(),
+                    ScanType::QrCode => "qr_code".to_string(),
+                    ScanType::BarCode => "bar_code".to_string(),
                     ScanType::DataMatrix => "datamatrix".to_string(),
                     ScanType::Pdf417 => "pdf417".to_string(),
                 })

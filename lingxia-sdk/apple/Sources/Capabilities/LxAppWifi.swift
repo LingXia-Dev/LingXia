@@ -74,14 +74,6 @@ class LxAppWifi {
     }
 
     /**
-     * Stop WiFi module
-     */
-    nonisolated public static func stopWifi(callback_id: UInt64) {
-        os_log("%@", log: Self.log, type: .info, "WiFi module stopped")
-        let _ = onCallback(callback_id, true, "{}")
-    }
-
-    /**
      * Add a listener for WiFi connection state changes
      * Multiple listeners can be registered (supports multiple LxApp instances)
      */

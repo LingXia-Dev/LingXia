@@ -550,20 +550,20 @@ internal class ScanCodeFragment : Fragment() {
 
     private fun mapBarcodeFormatToType(format: Int): String {
         return when (format) {
-            Barcode.FORMAT_QR_CODE -> "QR_CODE"
-            Barcode.FORMAT_DATA_MATRIX -> "DATA_MATRIX"
-            Barcode.FORMAT_PDF417 -> "PDF_417"
-            Barcode.FORMAT_AZTEC -> "AZTEC"
-            Barcode.FORMAT_CODABAR -> "CODABAR"
-            Barcode.FORMAT_CODE_39 -> "CODE_39"
-            Barcode.FORMAT_CODE_93 -> "CODE_93"
-            Barcode.FORMAT_CODE_128 -> "CODE_128"
-            Barcode.FORMAT_EAN_8 -> "EAN_8"
-            Barcode.FORMAT_EAN_13 -> "EAN_13"
-            Barcode.FORMAT_ITF -> "ITF"
-            Barcode.FORMAT_UPC_A -> "UPC_A"
-            Barcode.FORMAT_UPC_E -> "UPC_E"
-            else -> "UNKNOWN"
+            Barcode.FORMAT_QR_CODE -> "qr_code"
+            Barcode.FORMAT_DATA_MATRIX -> "datamatrix"
+            Barcode.FORMAT_PDF417 -> "pdf417"
+            Barcode.FORMAT_AZTEC -> "aztec"
+            Barcode.FORMAT_CODABAR -> "codabar"
+            Barcode.FORMAT_CODE_39 -> "code_39"
+            Barcode.FORMAT_CODE_93 -> "code_93"
+            Barcode.FORMAT_CODE_128 -> "code_128"
+            Barcode.FORMAT_EAN_8 -> "ean_8"
+            Barcode.FORMAT_EAN_13 -> "ean_13"
+            Barcode.FORMAT_ITF -> "itf"
+            Barcode.FORMAT_UPC_A -> "upc_a"
+            Barcode.FORMAT_UPC_E -> "upc_e"
+            else -> "unknown"
         }
     }
 

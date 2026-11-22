@@ -26,7 +26,7 @@ public final class GpuScanProbe {
    GpuRadioProbe.key(4);Thread.sleep(500);GpuUiProbe.clickNative("Album");Thread.sleep(700);
    AccessibilityNodeInfo image=GpuMediaImageProbe.firstPhoto(a.getRootInActiveWindow());GpuUiProbe.check(image!=null,"QR album fixture");
    GpuUiProbe.check(image.performAction(AccessibilityNodeInfo.ACTION_CLICK),"select QR image");image.recycle();GpuUiProbe.clickNative("Done");
-   GpuUiProbe.waitText("media-scan-result","LingXia GPU scanner verification");GpuUiProbe.waitText("media-scan-type","QR_CODE");
+   GpuUiProbe.waitText("media-scan-result","LingXia GPU scanner verification");GpuUiProbe.waitText("media-scan-type","qr_code");
    GpuRadioProbe.screenshot("gpu-independent-scan-result");
    GpuRadioProbe.key(4);Thread.sleep(500);GpuApiProbe.node("api-media-ScanCode").recycle();
    GpuRadioProbe.key(4);Thread.sleep(500);GpuApiProbe.node("api-media-ScanCode").recycle();

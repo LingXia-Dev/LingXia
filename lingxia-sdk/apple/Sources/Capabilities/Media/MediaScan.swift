@@ -549,51 +549,51 @@ extension ScanCodeViewController: @preconcurrency AVCaptureMetadataOutputObjects
 
     private func mapMetadataTypeToString(_ type: AVMetadataObject.ObjectType) -> String {
         switch type {
-        case .qr: return "QR_CODE"
-        case .dataMatrix: return "DATA_MATRIX"
-        case .pdf417: return "PDF_417"
-        case .aztec: return "AZTEC"
-        case .code128: return "CODE_128"
-        case .code39: return "CODE_39"
-        case .code39Mod43: return "CODE_39_MOD_43"
-        case .code93: return "CODE_93"
-        case .ean8: return "EAN_8"
-        case .ean13: return "EAN_13"
-        case .itf14: return "ITF"
-        case .upce: return "UPC_E"
+        case .qr: return "qr_code"
+        case .dataMatrix: return "datamatrix"
+        case .pdf417: return "pdf417"
+        case .aztec: return "aztec"
+        case .code128: return "code_128"
+        case .code39: return "code_39"
+        case .code39Mod43: return "code_39_mod_43"
+        case .code93: return "code_93"
+        case .ean8: return "ean_8"
+        case .ean13: return "ean_13"
+        case .itf14: return "itf"
+        case .upce: return "upc_e"
         case .interleaved2of5: return "INTERLEAVED_2_OF_5"
-        default: return "UNKNOWN"
+        default: return "unknown"
         }
     }
 
     private func mapSymbologyToString(_ symbology: VNBarcodeSymbology) -> String {
         switch symbology {
         case .qr:
-            return "QR_CODE"
+            return "qr_code"
         case .dataMatrix:
-            return "DATA_MATRIX"
+            return "datamatrix"
         case .pdf417:
-            return "PDF_417"
+            return "pdf417"
         case .aztec:
-            return "AZTEC"
+            return "aztec"
         case .code128:
-            return "CODE_128"
+            return "code_128"
         case .code39, .code39Checksum, .code39FullASCII, .code39FullASCIIChecksum:
-            return "CODE_39"
+            return "code_39"
         case .code93, .code93i:
-            return "CODE_93"
+            return "code_93"
         case .ean8:
-            return "EAN_8"
+            return "ean_8"
         case .ean13:
-            return "EAN_13"
+            return "ean_13"
         case .upce:
-            return "UPC_E"
+            return "upc_e"
         case .i2of5, .i2of5Checksum:
             return "INTERLEAVED_2_OF_5"
         case .itf14:
-            return "ITF"
+            return "itf"
         default:
-            return "UNKNOWN"
+            return "unknown"
         }
     }
 }

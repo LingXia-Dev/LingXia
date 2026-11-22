@@ -142,44 +142,6 @@ internal object LxAppWifi {
 
 
     /**
-     * Stop WiFi module
-     */
-    @JvmStatic
-    fun stopWifi(callbackId: Long) {
-        try {
-            // Unregister scan receiver if registered
-            scanResultsReceiver?.let { receiver ->
-                try {
-                    Lingxia.applicationContext()?.unregisterReceiver(receiver)
-                } catch (e: Exception) {
-                    LxLog.w(TAG, "Failed to unregister scan receiver", e)
-                }
-            }
-            scanResultsReceiver = null
-            pendingScanCallbackId = null
-            lastConnectedSignature = null
-            lastKnownConnected = null
-
-            // Clean up active network connection (Android 10+)
-            activeNetworkCallback?.let { callback ->
-                try {
-                    connectivityManager?.unregisterNetworkCallback(callback)
-                    Log.i(TAG, "Unregistered active network connection")
-                } catch (e: Exception) {
-                    LxLog.w(TAG, "Failed to unregister active network callback", e)
-                }
-            }
-            activeNetworkCallback = null
-
-            Log.i(TAG, "WiFi module stopped")
-            NativeApi.onCallback(callbackId, true, "{}")
-        } catch (e: Exception) {
-            LxLog.e(TAG, "stopWifi error", e)
-            NativeApi.onCallback(callbackId, false, "12001") // System error
-        }
-    }
-
-    /**
      * Add a WiFi state listener (supports multiple LxApp instances)
      */
     @JvmStatic

@@ -38,10 +38,6 @@ impl Wifi for Platform {
         call_wifi_method("startWifi", callback_id)
     }
 
-    fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
-        call_wifi_method("stopWifi", callback_id)
-    }
-
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         let wifi_class = get_wifi_class()?;
 

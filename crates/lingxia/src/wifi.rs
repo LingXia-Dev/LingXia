@@ -165,14 +165,6 @@ pub async fn start() -> crate::Result<()> {
         .map(|_| ())
 }
 
-/// Tears down the platform Wi-Fi module.
-pub async fn stop() -> crate::Result<()> {
-    let runtime = crate::runtime::platform()?;
-    native_callback(|callback_id| runtime.stop_wifi(callback_id))
-        .await
-        .map(|_| ())
-}
-
 /// Scans for nearby Wi-Fi access points.
 pub async fn scan() -> crate::Result<Vec<WifiInfo>> {
     let runtime = crate::runtime::platform()?;

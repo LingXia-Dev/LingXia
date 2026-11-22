@@ -507,9 +507,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxAppWifi.startWifi")]
         fn start_wifi(callback_id: u64);
 
-        #[swift_bridge(swift_name = "LxAppWifi.stopWifi")]
-        fn stop_wifi(callback_id: u64);
-
         #[swift_bridge(swift_name = "LxAppWifi.connectWifi")]
         fn connect_wifi(callback_id: u64, ssid: &str, password: Option<&str>);
 
@@ -596,7 +593,7 @@ pub use bridge::{pick_media, start_pull_down_refresh, stop_pull_down_refresh};
 #[allow(unused_imports)]
 pub use bridge::{
     add_wifi_state_listener, connect_wifi, get_connected_wifi, get_wifi_list, is_wifi_enabled,
-    remove_wifi_state_listener, start_wifi, stop_wifi,
+    remove_wifi_state_listener, start_wifi,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

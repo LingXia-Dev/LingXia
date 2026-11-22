@@ -35,10 +35,6 @@ impl Wifi for Platform {
         apple_only!("start_wifi", callback_id, ffi::start_wifi(callback_id))
     }
 
-    fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
-        apple_only!("stop_wifi", callback_id, ffi::stop_wifi(callback_id))
-    }
-
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {

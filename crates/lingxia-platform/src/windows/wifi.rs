@@ -701,10 +701,6 @@ impl Wifi for Platform {
         invoke_success(callback_id, "{}")
     }
 
-    fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
-        invoke_success(callback_id, "{}")
-    }
-
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         connect_wifi_request(&request)?;
         invoke_success(request.callback_id, "{}")
