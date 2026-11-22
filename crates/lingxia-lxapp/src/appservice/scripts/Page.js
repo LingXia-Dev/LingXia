@@ -70,7 +70,6 @@
     const pageSvc = new PageSvc(
       svcConfig,
       pagePath,
-      definition.bindingMetaJson || "{}",
       pageInstanceId || "",
     );
 
@@ -521,17 +520,13 @@
   globalThis.__registerPage = function (
     pagePath,
     pageConfig,
-    bindingMetaJson,
   ) {
     if (!pagePath) {
       throw new Error(
         "__registerPage() called without page path. This indicates a build configuration issue.",
       );
     }
-    pageDefinitions.set(pagePath, {
-      config: pageConfig,
-      bindingMetaJson: bindingMetaJson || '{"handlers":[]}',
-    });
+    pageDefinitions.set(pagePath, { config: pageConfig });
   };
 
   globalThis.__registerDefinedPage = function (pagePath, definition) {

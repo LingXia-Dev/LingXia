@@ -15,10 +15,9 @@ use rong::{
     Source, error::HostError, function::Optional, js_class, js_method,
 };
 use rong_event::EventEmitter;
-use serde::Deserialize;
 use serde_json::value::RawValue;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 use tokio::sync::{Mutex, oneshot, watch};
@@ -47,12 +46,6 @@ fn next_lifecycle_event(
     }
     queue.pop_front()
 }
-
-type CreatedStreamHandle = (
-    JSObject,
-    oneshot::Receiver<Result<Payload, RpcError>>,
-    Rc<RefCell<Option<JSFunc>>>,
-);
 
 /// A page service's own JS object, shared by every clone of the service.
 ///
@@ -93,11 +86,6 @@ pub struct PageSvc {
     hooks: HashMap<String, JSFunc>,
     /// The page's `actions`: the whole View-callable surface, called with `this` undefined.
     actions: HashMap<String, JSFunc>,
-    /// Methods declared as `stream_handlers` in page meta — they receive an
-    /// explicit `StreamHandle` JS object as their second argument and are
-    /// expected to call `stream.end(result)` (or `stream.error(code, msg)`)
-    /// instead of returning an async iterator.
-    stream_handlers: HashSet<String>,
     this: PageObject,
 
     pub(crate) page: PageInstance,
@@ -257,14 +245,6 @@ impl Drop for ChannelTurn {
             let _ = done_tx.send(());
         }
     }
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct PageBindingMeta {
-    /// Methods that receive an explicit `StreamHandle` JS object as their
-    /// second argument instead of using the `async function*` generator pattern.
-    #[serde(default)]
-    stream_handlers: Vec<String>,
 }
 
 fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
@@ -525,50 +505,6 @@ impl PageSvc {
 
         let call_arg = payload_arg(&ctx, params);
 
-        // Explicit stream handle path — function declared in `stream_handlers`.
-        // The handler receives `(params, streamHandle)` and is expected to call
-        // `streamHandle.end(result)` or `streamHandle.error(code, msg)`.
-        if self.stream_handlers.contains(method) {
-            let (stream_handle, mut end_rx, cancel_handler) =
-                self.create_stream_handle(req_id, work_id, outbound.clone())?;
-            let notify_cancel = || notify_stream_cancel(&cancel_handler);
-            let call = async {
-                match call_arg {
-                    Some(val) => {
-                        js_func
-                            .call_async::<_, JSValue>(None, (val, stream_handle))
-                            .await
-                    }
-                    None => {
-                        js_func
-                            .call_async::<_, JSValue>(None, (JSObject::new(&ctx), stream_handle))
-                            .await
-                    }
-                }
-            };
-            if let Err(error) = await_js_call_or_cancel(&mut cancel_rx, call).await {
-                if error.code == BRIDGE_CANCELED {
-                    notify_cancel();
-                }
-                return Err(error);
-            }
-            return tokio::select! {
-                biased;
-                _ = &mut cancel_rx => {
-                    notify_cancel();
-                    Err(RpcError::new(BRIDGE_CANCELED, None))
-                },
-                result = &mut end_rx => match result {
-                    Ok(r) => r,
-                    Err(_) => Err(RpcError::new(
-                        BRIDGE_INTERNAL_ERROR,
-                        Some("Stream handle dropped without end/error".to_string()),
-                    )),
-                }
-            };
-        }
-
-        // Generator / unary path.
         let fut = async {
             match call_arg {
                 Some(val) => js_func.call_async::<_, JSValue>(None, (val,)).await,
@@ -1209,7 +1145,6 @@ impl PageSvc {
         ctx: JSContext,
         config: JSObject,
         path: String,
-        meta_json: Optional<String>,
         page_instance_id: Optional<String>,
     ) -> JSResult<JSObject> {
         let lxapp = LxApp::from_ctx(&ctx)?;
@@ -1239,7 +1174,6 @@ impl PageSvc {
         let mut page_svc = PageSvc {
             hooks: HashMap::new(),
             actions: HashMap::new(),
-            stream_handlers: HashSet::new(),
             this: PageObject::new(config.clone()),
             page,
             event_emitter: EventEmitter::default(),
@@ -1259,7 +1193,7 @@ impl PageSvc {
             terminated: Rc::new(Cell::new(false)),
         };
 
-        page_svc.register_functions(&config, meta_json.0.as_deref())?;
+        page_svc.register_functions(&config)?;
 
         let class = Class::lookup::<PageSvc>(&ctx).unwrap();
         let instance = class.instance(page_svc);
@@ -1474,22 +1408,10 @@ impl PageSvc {
     }
 }
 
-fn notify_stream_cancel(handler: &Rc<RefCell<Option<JSFunc>>>) {
-    if let Some(callback) = handler.borrow_mut().take() {
-        let _ = callback.call::<_, ()>(None, ());
-    }
-}
-
 impl PageSvc {
     /// Hooks come from the config's lifecycle names; actions only from its
     /// `actions` object, so no action name collides with the runtime's.
-    fn register_functions(&mut self, obj: &JSObject, meta_json: Option<&str>) -> JSResult<()> {
-        let meta: PageBindingMeta = meta_json
-            .map(serde_json::from_str)
-            .transpose()
-            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
-            .unwrap_or_default();
-
+    fn register_functions(&mut self, obj: &JSObject) -> JSResult<()> {
         for event in PageLifecycleEvent::ALL {
             if let Ok(func) = obj.get::<_, JSFunc>(event.as_str()) {
                 self.hooks.insert(event.as_str().to_string(), func);
@@ -1499,12 +1421,6 @@ impl PageSvc {
         let Ok(actions) = obj.get::<_, JSObject>("actions") else {
             return Ok(());
         };
-        for function_name in meta.stream_handlers {
-            if let Ok(func) = actions.get::<_, JSFunc>(function_name.as_str()) {
-                self.actions.insert(function_name.clone(), func);
-                self.stream_handlers.insert(function_name);
-            }
-        }
         for key_value in actions.keys()? {
             let Ok(function_name) = key_value.to_rust::<String>() else {
                 continue;
@@ -1570,130 +1486,6 @@ impl PageSvc {
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             seq += 1;
         }
-    }
-
-    /// Create an explicit stream handle JS object for Logic-layer functions
-    /// that prefer an imperative push API over the generator pattern.
-    ///
-    /// The returned object exposes `send(data)`, `end(result)`, `error(code, msg)`,
-    /// and `onCancel(handler)`.
-    /// The caller awaits `end_rx` to receive the final result (or error) once
-    /// the JS function has finished pushing events.
-    fn create_stream_handle(
-        &self,
-        req_id: &str,
-        work_id: Option<SessionWorkId>,
-        outbound: Option<OutboundContext>,
-    ) -> Result<CreatedStreamHandle, RpcError> {
-        let ctx = self
-            .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
-        let handle = JSObject::new(&ctx);
-
-        handle
-            .set("id", req_id.to_string())
-            .map_err(rpc_error_from_rong)?;
-
-        // Shared seq counter for outbound events.
-        let seq = Rc::new(Cell::new(0u64));
-
-        // Shared oneshot sender — whichever of end / error fires first wins.
-        let gpu = is_gpu(outbound.as_ref());
-        let (end_tx, end_rx) = oneshot::channel::<Result<Payload, RpcError>>();
-        let end_tx_cell = Rc::new(RefCell::new(Some(end_tx)));
-
-        // stream.send(data) — emits a stream event to the View.
-        let page_send = self.clone();
-        let id_send = req_id.to_string();
-        let seq_send = seq.clone();
-        let outbound_send = outbound.clone();
-        let work_id_send = work_id;
-        let send_fn = JSFunc::new(&ctx, move |payload: JSValue| {
-            let page = page_send.clone();
-            let id = id_send.clone();
-            let s = seq_send.get();
-            seq_send.set(s + 1);
-            let outbound = outbound_send.clone();
-            async move {
-                if !page.session_work_is_active(work_id_send).await {
-                    return Ok(());
-                }
-                let payload = js_payload(payload, gpu).map_err(|e: RpcError| {
-                    RongJSError::from(HostError::new(
-                        rong::error::E_INTERNAL,
-                        e.message.unwrap_or(e.code),
-                    ))
-                })?;
-                page.bridge()
-                    .send_event_for_context(&page, work_id_send, outbound.as_ref(), id, s, payload)
-                    .map_err(|e| {
-                        RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-                    })?;
-                Ok(())
-            }
-        })
-        .map_err(rpc_error_from_rong)?;
-        handle.set("send", send_fn).map_err(rpc_error_from_rong)?;
-
-        // stream.end(result) — finalises the stream with a return value.
-        let tx_end = end_tx_cell.clone();
-        let end_fn = JSFunc::new(&ctx, move |result: JSValue| {
-            let tx = tx_end.clone();
-            async move {
-                let result = js_payload(result, gpu).map_err(|e: RpcError| {
-                    RongJSError::from(HostError::new(
-                        rong::error::E_INTERNAL,
-                        e.message.unwrap_or(e.code),
-                    ))
-                })?;
-                if let Some(sender) = tx.borrow_mut().take() {
-                    let _ = sender.send(Ok(result));
-                }
-                Ok(())
-            }
-        })
-        .map_err(rpc_error_from_rong)?;
-        handle.set("end", end_fn).map_err(rpc_error_from_rong)?;
-
-        // stream.error(code, message) — finalises the stream with an error.
-        let tx_err = end_tx_cell.clone();
-        let error_fn = JSFunc::new(&ctx, move |code: String, message: Optional<String>| {
-            let tx = tx_err.clone();
-            async move {
-                if let Some(sender) = tx.borrow_mut().take() {
-                    let _ = sender.send(Err(RpcError::new(code, message.0)));
-                }
-                Ok(())
-            }
-        })
-        .map_err(rpc_error_from_rong)?;
-        handle.set("error", error_fn).map_err(rpc_error_from_rong)?;
-
-        let cancel_handler = Rc::new(RefCell::new(None::<JSFunc>));
-        let cancel_store = cancel_handler.clone();
-        let ctx_on_cancel = ctx.clone();
-        let handle_for_handler = handle.clone();
-        let on_cancel_fn = JSFunc::new(&ctx, move |handler: JSFunc, options: Optional<JSValue>| {
-            crate::lx::subscribe(&ctx_on_cancel, options.0, || {
-                *cancel_store.borrow_mut() = Some(handler.clone());
-                let _ = handle_for_handler.set("_cancelHandler", handler);
-                let cancel_store = cancel_store.clone();
-                let handle_for_handler = handle_for_handler.clone();
-                let ctx_unsub = ctx_on_cancel.clone();
-                JSFunc::new(&ctx_on_cancel, move || {
-                    *cancel_store.borrow_mut() = None;
-                    let _ =
-                        handle_for_handler.set("_cancelHandler", JSValue::undefined(&ctx_unsub));
-                    Ok(())
-                })
-            })
-        })
-        .map_err(rpc_error_from_rong)?;
-        handle
-            .set("onCancel", on_cancel_fn)
-            .map_err(rpc_error_from_rong)?;
-
-        Ok((handle, end_rx, cancel_handler))
     }
 
     fn create_channel_context(
