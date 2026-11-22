@@ -1,5 +1,5 @@
 import {
-  test, expect, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type NetworkCall, type PageContract, type ProfileCheckpoint, type TestApp, type TestErrorCode, type TestPage, type TestView, type UnaryActionsOnly, type ViewElement,
+  test, expect, TEST_ERROR_CODES, TimeoutError, type JsonValue, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type NetworkCall, type PageDefinition, type ProfileCheckpoint, type TestApp, type TestErrorCode, type TestPage, type TestView, type UnaryActionsOnly, type ViewElement,
 } from '../dist/index.js';
 import type { FailureRecord, JsonReport, TagSummary } from '@lingxia/test/report';
 import { run, rawAutomation, trackPublicSurface, VERSION } from '@lingxia/test/runner';
@@ -7,7 +7,7 @@ import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDri
 
 test('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
-  const editor: TestPage<PageContract> = await app.page({ name: 'editor' }, { timeout: 2_000 });
+  const editor: TestPage<PageDefinition> = await app.page({ name: 'editor' }, { timeout: 2_000 });
   editor.instanceId.toUpperCase(); editor.name.toUpperCase();
   const editorView: TestView = editor.view;
   const input = editorView.testId('input').nth(0);
@@ -235,7 +235,7 @@ test('typed Logic access', async t => {
   maybe?.toUpperCase();
   interface Devices { devices: { id: string }[] }
   // A page contract types the bound page's data and its public actions.
-  type DevicesContract = PageContract<Devices, {
+  type DevicesContract = PageDefinition<Devices, {
     rename(patch: { id: string; name: string }): Promise<boolean>;
     count(): number;
   }>;
@@ -494,7 +494,7 @@ void mainRun;
 
 
 test('a page contract binds one identity and checks public action payloads', async t => {
-  type Contract = import('../dist/index.js').PageContract<
+  type Contract = import('../dist/index.js').PageDefinition<
     { title: string }, { rename(input: { title: string }): Promise<boolean> }
   >;
   const page = await t.app.page<Contract>({ name: 'editor' });
@@ -511,7 +511,7 @@ test('a page contract binds one identity and checks public action payloads', asy
   page.view.testId('x', { page: 'other' });
 
   // An action with more than one parameter is not callable: it takes one payload.
-  type Wide = PageContract<{ n: number }, {
+  type Wide = PageDefinition<{ n: number }, {
     move(from: number, to: number): void;
     feed(): AsyncGenerator<number>;
     optional(input?: { n: number }): number;
@@ -531,11 +531,11 @@ test('a page contract binds one identity and checks public action payloads', asy
   await wide.actions.stamp(new Date());
 
   // A contract whose data is not JSON has no data, and binding it fails.
-  type NotJson = PageContract<{ at: Date }, {}>;
-  // @ts-expect-error PageContract data must be JSON.
+  type NotJson = PageDefinition<{ at: Date }, {}>;
+  // @ts-expect-error Page data must be JSON.
   await t.app.page<NotJson>();
   // @ts-expect-error Nor a function member.
-  await t.app.page<PageContract<{ save(): void }, {}>>();
+  await t.app.page<PageDefinition<{ save(): void }, {}>>();
 });
 
 // Removed exports do not compile.

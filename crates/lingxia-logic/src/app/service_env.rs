@@ -4,6 +4,7 @@ use lingxia_app_context::{AppEnv, ServiceEnvSnapshot, ServiceEnvSwitch};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSResult};
 
+/// The service environment the app runs against now and after its next launch.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvState {
     /// The environment the app was built for.
@@ -26,6 +27,7 @@ struct HostServiceEnvState {
     can_switch: bool,
 }
 
+/// What `lx.host.setServiceEnv` saved, and whether the app is exiting to apply it.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostServiceEnvSwitchResult {
     /// The environments after the switch.

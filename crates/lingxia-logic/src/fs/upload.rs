@@ -513,6 +513,11 @@ fn upload_result_to_js(ctx: &JSContext, result: UploadCompletion) -> JSResult<JS
 /// iterate it for progress, await `result` for the answer.
 ///
 /// @default A `POST` with a `multipart/form-data` body.
+///
+/// @throws {E_INVALID_ARG} A malformed URL, a missing or unreadable file, or bad headers.
+/// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
+/// @throws {E_NETWORK} The connection failed or the server could not be reached (on `result`).
+/// @throws {E_TIMEOUT} The server stopped answering (on `result`).
 fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_upload_options(url, options)?;

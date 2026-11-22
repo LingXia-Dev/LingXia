@@ -1,4 +1,4 @@
-import type { PageContract } from '@lingxia/types/page';
+import type { PageShape } from '../../shared/lib/page-shape';
 
 export interface SwiperItem {
   id: string;
@@ -10,7 +10,7 @@ export type ObjectFit = 'cover' | 'contain' | 'fill';
 export type Animation = 'slide' | 'none';
 export type Direction = 'horizontal' | 'vertical';
 
-export type SwiperPage = PageContract<
+export type SwiperPage = PageShape<
   {
     items: SwiperItem[];
     index: number;

@@ -51,6 +51,10 @@ rong::js_api! {
 /// native overlays, and every composited WebView, not just this lxapp's web
 /// content. Because that view can include other lxapps' UI, the API is
 /// restricted to the Control app, like the other host-level APIs on `lx.host`.
+///
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+/// @throws {E_INVALID_ARG} The image would go over the temporary storage quota.
+/// @throws {E_INTERNAL} The window could not be captured.
 async fn app_screenshot(
     ctx: JSContext,
     options: Optional<JSValue>,

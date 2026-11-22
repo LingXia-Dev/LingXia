@@ -1,5 +1,5 @@
 import { expect, test, type Fixture } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { APP_ID } from '../../support/app.js';
 import { androidDevice, androidCancelLabels, androidConfirmLabels } from '../../support/android-device.js';
 import { bindFixture } from '../../support/poll.js';
@@ -46,7 +46,7 @@ async function openPicker(t: Fixture, id: string) {
     if (cancel) await device.tap(cancel);
     await app.nav.reset({ page: 'home' });
   });
-  const page = await app.page<PageContract<{ coffee?: string; location?: string[]; multiTime: string[]; activeTab: string }>>({ name: 'picker' });
+  const page = await app.page<PageDefinition<{ coffee?: string; location?: string[]; multiTime: string[]; activeTab: string }>>({ name: 'picker' });
   const advanceColumn = async (current: string, next: string) => {
     const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === next), timeout: 15000 });
     const from = nodes.find((node) => node.text === current);

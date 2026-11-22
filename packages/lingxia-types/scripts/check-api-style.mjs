@@ -28,9 +28,14 @@ const rules = {
   "readonly-array-field": "an array field of an option or result type is `readonly`",
   "url-type": "a `url` parameter or field accepts `string | URL`",
   "supports-key": "a member that can reject `E_NOT_SUPPORTED` names its `@supports` key, and every key is one `lx.supports` answers (crates/lingxia-logic/src/features.json)",
+  "throws": "a member returning a Promise or a task names what it rejects with as `@throws {E_…}`, or says it never rejects",
+  "type-summary": "every named type has a one-sentence summary",
+  "namespace-example": "every top-level `lx` namespace has an `@example` on one of its calls",
 };
 
 const { members, types } = catalogue();
+// The whole authored surface (page API, `App`, error helpers), for summaries only.
+const full = catalogue({ entries: true });
 const featureKeys = new Set(JSON.parse(readFileSync(resolve(packageDir, "../../crates/lingxia-logic/src/features.json"), "utf8")).map(entry => entry.key));
 const findings = [];
 const find = (rule, path) => findings.push(`${rule} ${path}`);
@@ -102,6 +107,8 @@ for (const member of members) {
   if (member.doc.split("\n").length + member.tags.length > 12) find("doc-length", member.path);
   if (member.optional) find("required-member", member.path);
   if (member.kind !== "method") continue;
+  const settles = member.signatures.some(signature => /^Promise<|^\w*Task\b/.test(signature.returns));
+  if (settles && !member.tags.includes("throws") && !/\bNever rejects\b/.test(member.doc)) find("throws", member.path);
   if (/^get[A-Z]/.test(name)) find("no-get-read", member.path);
   if (member.signatures.some(signature => shapeOf(signature)?.fits === false)) find("argument-shape", member.path);
   if (/^(watch\w*|on[A-Z]\w*)$/.test(name)) {
@@ -131,6 +138,19 @@ for (const [type, fields] of types) {
       if (values.some(value => value !== "ok" && value !== "canceled")) find("status-values", path);
     }
   }
+}
+
+const known = new Set(members.map(member => member.path));
+for (const member of full.members) if (!known.has(member.path) && !member.summary) find("summary", member.path);
+for (const [type, fields] of full.types) {
+  if (types.has(type)) continue;
+  for (const field of fields) if (!isGuard(field) && !field.summary) find("summary", `${type}.${field.name}`);
+}
+const named = [...full.typeInfo].filter(([name]) => !/[.(]/.test(name)).concat([...full.aliases]);
+for (const [name, info] of named) if (!info.summary) find("type-summary", name);
+for (const namespace of members.filter(member => member.path.split(".").length === 2)) {
+  const under = members.filter(member => member.path === namespace.path || member.path.startsWith(`${namespace.path}.`));
+  if (!under.some(member => member.tags.includes("example"))) find("namespace-example", namespace.path);
 }
 
 const table = [

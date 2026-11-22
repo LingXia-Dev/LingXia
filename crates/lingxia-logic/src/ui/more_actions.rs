@@ -152,6 +152,13 @@ fn parse_action(app: &LxApp, item: &JSObject) -> JSResult<ParsedMoreAction> {
 /// Replace the current lxapp's complete app-declared More action list (seven
 /// entries maximum). Pass an empty array to clear it. Native hosts append these
 /// entries after their own lifecycle actions.
+///
+/// @example
+/// ```ts
+/// lx.app.moreActions.replace([
+///   { icon: 'public/feedback.svg', label: 'Feedback', onSelect: () => openFeedback() },
+/// ]);
+/// ```
 fn replace_more_actions(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     if items.len() > LXAPP_MORE_ACTION_LIMIT {
         return Err(rong::HostError::new(

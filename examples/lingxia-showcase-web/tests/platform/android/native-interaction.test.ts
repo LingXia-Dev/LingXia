@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { APP_ID } from '../../support/app.js';
 import { androidDevice } from '../../support/android-device.js';
 import { bindFixture } from '../../support/poll.js';
@@ -16,7 +16,7 @@ test('pull down from the screen to refresh, then refresh again', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-PULL-GESTURE-001');
   defer(async () => { await app.nav.reset({ page: 'home' }); });
-  const page = await app.page<PageContract<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
+  const page = await app.page<PageDefinition<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
   const device = androidDevice(t);
   const { width, height } = await device.size();
   await expect(page.view.testId('pull-refresh-page')).toBeVisible();

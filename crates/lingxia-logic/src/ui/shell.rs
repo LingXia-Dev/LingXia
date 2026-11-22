@@ -226,6 +226,13 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// and infers nothing else. Control app only; call it on every Logic launch,
 /// since the list does not outlive the process.
 ///
+/// @example
+/// ```ts
+/// await lx.shell.sidebarActions.replace([
+///   { id: 'new', placement: 'header', icon: 'public/plus.svg', label: 'New', onSelect: () => createDraft() },
+/// ]);
+/// ```
+///
 /// @throws {E_INVALID_ARG} A duplicate or empty id, more than two header actions, or more than two footer values.
 fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<Promise> {
     let result = replace_now(&ctx, items);
@@ -312,6 +319,9 @@ const SET_APP_DISPLAY: &str = "lx.shell.setAppDisplay";
 /// Change the name and icon the host shows for the calling app. Only the
 /// Control app may call this API. Resolves once stored; the host repaints only
 /// when a value changed, so calling it on every launch is cheap.
+///
+/// @throws {E_INVALID_ARG} A patch that is not an object, or an unknown field.
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
 async fn set_app_display(ctx: JSContext, patch: JSValue) -> JSResult<()> {
     let (invocation, patch) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellSetAppDisplay, || {

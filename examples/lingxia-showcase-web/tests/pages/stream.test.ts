@@ -1,6 +1,6 @@
 import { APP_ID } from '../support/app.js';
 import { expect, test } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { bindFixture } from '../support/poll.js';
 import {
   waitForElementAttribute,
@@ -17,7 +17,7 @@ interface Message {
 test('streams a complete response from real page input', { app: APP_ID }, async (t) => {
   const app = t.app;
   await app.nav.reset({ page: 'chat' });
-  const page = await app.page<PageContract<{ messages: Message[] }>>({ name: 'chat' }, { timeout: 30_000 });
+  const page = await app.page<PageDefinition<{ messages: Message[] }>>({ name: 'chat' }, { timeout: 30_000 });
   const stream = page.view;
   await stream.testId('stream-page').waitFor({ timeout: 30_000 });
   const message = async (role: Message['role'], until: (message: Message) => boolean) => {
@@ -53,7 +53,7 @@ test('cancel an active response, finish Logic cleanup, and send again', {
   start: { page: 'chat' },
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'STREAM-CANCEL-001');
-  const page = await app.page<PageContract<{ messages: Message[]; isStreaming: boolean }>>({ name: 'chat' });
+  const page = await app.page<PageDefinition<{ messages: Message[]; isStreaming: boolean }>>({ name: 'chat' });
   defer(async () => { await app.nav.reset({ page: 'home' }); });
   await app.clock.install();
 

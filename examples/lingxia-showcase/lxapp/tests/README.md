@@ -76,7 +76,7 @@ New cases use `test` from `@lingxia/test`:
 - use `expect(locator)` / `expect.poll(fn)` (or `PageDriver.waitFor` on a raw driver); fixed sleeps are
   permitted only for a documented physical stabilization interval;
 - bind a page once, `const home = await app.page({ name: 'home' })`, and act through `home.view.testId('…')`; the handle never follows navigation, so bind again after a relaunch, redirect or reopen of that page. Select duplicate matches with `.nth(index)` and press keys with `.press('Enter')`;
-- call a page's public actions and read its data through its `PageContract` (`app.page<TodoPage>(…)`, then `todo.actions.addTodo(…)` / `todo.data()`); keep `app.logic.eval` for what no page exposes;
+- call a page's public actions and read its data through its page type (`app.page<TodoPage>(…)`, then `todo.actions.addTodo(…)` / `todo.data()`); keep `app.logic.eval` for what no page exposes;
 - use `t.automation` for host/browser/terminal drivers; keep raw drivers only for deliberate API-boundary checks;
 - for rejected operations, use `t.reject` and assert unchanged state;
 - keep one primary behavior per case so the report identifies the broken

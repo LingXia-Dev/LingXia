@@ -34,6 +34,9 @@ rong::js_api! {
 /// completed scan resolves `{ status: 'ok', value, format }`. A value that is an
 /// `/lxapp/` app link also opens that lxapp; other URLs are only returned.
 /// Rejects when scanning fails or the host returns an invalid payload.
+///
+/// @throws {E_INVALID_ARG} An unknown entry in `formats`.
+/// @throws {E_INTERNAL} The scanner failed or returned an invalid payload.
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();

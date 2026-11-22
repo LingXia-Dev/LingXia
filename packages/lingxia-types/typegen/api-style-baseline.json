@@ -16,5 +16,8 @@
   "literal-case": [],
   "readonly-array-field": [],
   "url-type": [],
-  "supports-key": []
+  "supports-key": [],
+  "throws": [],
+  "type-summary": [],
+  "namespace-example": []
 }

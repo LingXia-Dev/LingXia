@@ -1,5 +1,5 @@
 import { definePage, type, type ParamsOf, type ResultOf } from '../src/page.js';
-import type { PageContract } from '../src/page.js';
+import type { PageDefinition } from '../src/page.js';
 
 type Order = { id: string; total: number };
 
@@ -25,7 +25,7 @@ const order = definePage({
 });
 
 // The definition is a page contract: View and tests read data and actions.
-const asContract: PageContract<{ order: Order | null; n: number }, unknown> = order;
+const asContract: PageDefinition<{ order: Order | null; n: number }, unknown> = order;
 // Actions are Promises to the View.
 const counted: (name: string) => Promise<number> = order.actions.rename;
 type OrderParams = ParamsOf<typeof order>;

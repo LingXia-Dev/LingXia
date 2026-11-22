@@ -44,6 +44,12 @@ async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
 /// person dismisses the OS paste prompt (iOS 16+, macOS 15.4+).
 ///
 /// @platform Android: an unfocused app reads no text, so read in response to a person's action.
+/// @example
+/// ```ts
+/// const read = await lx.clipboard.readText();
+/// if (read.status === 'ok' && read.text) paste(read.text);
+/// ```
+///
 /// @throws {E_PERMISSION_DENIED} macOS set to never allow, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
 async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
     let contents = read_contents(&ctx, Some(ClipboardKind::Text)).await?;
@@ -73,6 +79,9 @@ async fn write(ctx: JSContext, item: JSValue) -> JSResult<()> {
 /// is empty rather than a mismatch error.
 /// Images arrive as a temporary PNG under `lx://temp`. Dismissal and
 /// permission behave as in `readText`.
+///
+/// @throws {E_INVALID_ARG} A `type` other than `'text'` or `'image'`.
+/// @throws {E_PERMISSION_DENIED} macOS set to never allow, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
 async fn read(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObject> {
     let kind = parse_read_kind(options.0)?;
     let contents = read_contents(&ctx, kind).await?;
@@ -80,6 +89,8 @@ async fn read(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObject> 
 }
 
 /// Remove every representation.
+///
+/// @throws {E_INTERNAL} The platform clipboard refused the change.
 async fn clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -96,6 +107,8 @@ async fn clear(ctx: JSContext) -> JSResult<()> {
 /// Never shows the OS paste prompt and needs no permission on any host, so it
 /// is the way to decide whether to offer "Paste". The answer is a hint —
 /// content may change before you read it.
+///
+/// @throws {E_INTERNAL} The platform clipboard could not be read.
 async fn types(ctx: JSContext) -> JSResult<rong::JSArray> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let peeked = lxapp

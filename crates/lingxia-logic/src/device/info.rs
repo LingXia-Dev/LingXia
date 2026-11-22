@@ -22,6 +22,7 @@ pub struct DeviceInfo {
     os_version: String,
 }
 
+/// The screen's size in logical pixels and its density.
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct ScreenInfo {
     /// Width in logical pixels.

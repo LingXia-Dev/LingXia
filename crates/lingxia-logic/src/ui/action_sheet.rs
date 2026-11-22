@@ -70,6 +70,9 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
 /// Resolves `{ status: 'ok', id }` when the user selects an item; `id` identifies the selected item. Resolves `{ status: 'canceled' }` only when the
 /// user dismisses the sheet. Rejects when presentation fails or the host returns
 /// an invalid selection.
+///
+/// @throws {E_INVALID_ARG} An empty or repeated id, an empty label, no items, or an unknown `tone`.
+/// @throws {E_INVALID_STATE} No page can show a sheet now.
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,

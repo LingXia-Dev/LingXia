@@ -1,4 +1,4 @@
-import type { PageContract } from '@lingxia/types/page';
+import type { PageShape } from '../../shared/lib/page-shape';
 
 export type PickerTab = 'selector' | 'multiSelector' | 'time' | 'date';
 
@@ -16,7 +16,7 @@ export interface PickerValues {
 
 export type PickerField = keyof PickerValues;
 
-export type PickerPage = PageContract<
+export type PickerPage = PageShape<
   PickerValues & { activeTab: PickerTab },
   {
     setActiveTab(params: { tab: PickerTab }): Promise<void>;

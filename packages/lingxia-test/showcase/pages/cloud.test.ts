@@ -1,6 +1,6 @@
 import { keyedElement } from '../helpers/keyed.js';
 import { expect, test } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 for (const mode of ['auth', 'mqtt', 'functions'] as const) {
@@ -11,7 +11,7 @@ for (const mode of ['auth', 'mqtt', 'functions'] as const) {
   }, async (t) => {
     t.defer(async () => { await t.app.nav.reset({ page: 'home' }); });
     await t.app.nav.reset({ page: 'cloud', params: { type: mode } });
-    const page = await t.app.page<PageContract<Record<string, unknown>>>({ name: 'cloud' });
+    const page = await t.app.page<PageDefinition<Record<string, unknown>>>({ name: 'cloud' });
     await expect(page.view.testId('cloud-page')).toHaveAttribute('data-mode', mode);
     const key = mode === 'auth' ? 'status' : mode === 'mqtt' ? 'mqttStatus' : 'functionsStatus';
     await t.waitFor(async () => {

@@ -205,7 +205,7 @@ rejects. Bind again after navigating.
 
 Type the handle with the page itself: `t.app.page<typeof page>()` takes `data`
 and `actions` from `import type page from '../../pages/devices/index'`, the same
-type the View uses. A `PageContract<Data, Actions>` from `@lingxia/types/page`
+type the View uses. A `PageDefinition<Data, Actions>` from `@lingxia/types/page`
 also works where the test cannot see the Logic file.
 
 ```ts

@@ -185,6 +185,10 @@ rong::js_api! {
 /// ```ts
 /// const { durationMs, size } = await lx.media.videoInfo(clip);
 /// ```
+///
+/// @throws {E_NOT_FOUND} No file at the path.
+/// @throws {E_INVALID_ARG} A path the lxapp may not read.
+/// @throws {E_INTERNAL} The file is not a video the platform can read.
 async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
@@ -219,6 +223,10 @@ async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInf
 /// ```ts
 /// const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });
 /// ```
+///
+/// @throws {E_NOT_FOUND} No file at the path.
+/// @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+/// @throws {E_INTERNAL} No frame could be extracted.
 async fn extract_video_thumbnail_api(
     ctx: JSContext,
     path: String,
@@ -282,6 +290,10 @@ async fn extract_video_thumbnail_api(
 /// for await (const { fraction } of task) render(fraction);
 /// const { path, size } = await task.result;
 /// ```
+///
+/// @throws {E_INVALID_ARG} A path the lxapp may not read, `to` equal to the source, or `quality` mixed with `bitrate`, `fps` or `resolution`.
+/// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
+/// @throws {E_INTERNAL} The transcode failed (on `result`).
 fn compress_video_api(
     ctx: JSContext,
     path: String,

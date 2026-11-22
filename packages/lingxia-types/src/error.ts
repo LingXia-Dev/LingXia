@@ -42,9 +42,11 @@ export type LxErrorCode = (typeof LX_ERROR_CODES)[number];
  * ```
  */
 export interface LxError {
+  /** The JavaScript error kind, such as `TypeError`; branch on `code` instead. */
   readonly name: string;
   /** For a log line; it can change between releases. */
   readonly message: string;
+  /** What went wrong, stable across releases. */
   readonly code: LxErrorCode;
 }
 

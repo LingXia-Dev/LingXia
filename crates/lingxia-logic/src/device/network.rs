@@ -153,6 +153,13 @@ fn parse_network_info(data: String) -> Result<JSNetworkInfoResult, RongJSError> 
 }
 
 /// Read connectivity right now: whether it is connected, its type, and addresses.
+///
+/// @example
+/// ```ts
+/// const { isConnected, networkType } = await lx.network.status();
+/// ```
+///
+/// @throws {E_INTERNAL} The platform could not report it.
 async fn get_network_info(ctx: JSContext) -> JSResult<JSNetworkInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

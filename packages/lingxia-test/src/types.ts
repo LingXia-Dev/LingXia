@@ -1,7 +1,7 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 /// <reference types="@lingxia/types/logic-globals" preserve="true" />
-import type { PageApi, PageContract } from "@lingxia/types/page";
-export type { PageContract } from "@lingxia/types/page";
+import type { JsonData, PageApi, PageDefinition } from "@lingxia/types/page";
+export type { PageDefinition } from "@lingxia/types/page";
 import type {
   ActionSheetAnswer,
   ActionSheetRecord,
@@ -785,12 +785,18 @@ export type PageInvokeCalls<A> = {
     : never;
 };
 
+/** Refuses a page type whose `data` is not JSON, naming the problem at the call. */
+export type JsonPageData<P extends PageDefinition> = [P["data"]] extends [JsonData<P["data"]>]
+  ? unknown
+  : { readonly __pageDataMustBeJson: "Page data must be JSON: no functions, Dates, Maps, Sets or class instances" };
+
 /**
  * One live page instance, fixed when `t.app.page()` resolved: it never
  * follows navigation or a replacement, and every call on it rejects once
- * the instance is gone. Type it with `typeof page` or a `PageContract`.
+ * the instance is gone. Type it with `typeof page`, or `PageDefinition<Data, Actions>`
+ * for a page this package cannot import.
  */
-export interface TestPage<C extends PageContract> {
+export interface TestPage<C extends PageDefinition> {
   readonly instanceId: string;
   /** Configured page name. */
   readonly name: string;
@@ -1062,7 +1068,7 @@ export interface TestApp {
    * names (a page kept below the current one, or one a surface shows),
    * waiting for it to open. The handle never follows navigation.
    */
-  page<C extends PageContract = PageContract>(selector?: PageSelector, options?: PageBindOptions): Promise<TestPage<C>>;
+  page<C extends PageDefinition & JsonPageData<C> = PageDefinition>(selector?: PageSelector, options?: PageBindOptions): Promise<TestPage<C>>;
   /** The View of whichever page is current at each call. */
   readonly view: TestView;
   /** Native app-window input, independent of pages and DOM focus. */

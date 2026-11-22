@@ -98,6 +98,10 @@ rong::js_api! {
 /// check claims nothing. Incompatible updates are hidden as
 /// `null`. Store-channel hosts still surface a newer feed version;
 /// `apply()` opens the store listing instead of downloading.
+///
+/// @throws {E_ABORT} `signal` was aborted.
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+/// @throws {E_INTERNAL} The update feed could not be fetched or read.
 async fn check_app_update(
     ctx: JSContext,
     options: rong::function::Optional<crate::task_object::SignalOptions>,

@@ -130,12 +130,18 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 }
 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.
+///
+/// @throws {E_INVALID_STATE} No page can show a dialog now.
+/// @throws {E_INTERNAL} The dialog could not be shown.
 async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
     show_modal(ctx, dialog_options(options, false)?).await?;
     Ok(())
 }
 
 /// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
+///
+/// @throws {E_INVALID_STATE} No page can show a dialog now.
+/// @throws {E_INTERNAL} The dialog could not be shown.
 async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {
     show_modal(ctx, dialog_options(options, true)?).await
 }

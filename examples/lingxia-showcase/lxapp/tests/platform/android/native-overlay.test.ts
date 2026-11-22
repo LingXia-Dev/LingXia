@@ -1,6 +1,6 @@
 import { expect, test } from '@lingxia/test';
 import type { ActionSheetResult } from '@lingxia/types';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { androidDevice, androidCancelLabels } from '@lingxia/test/showcase/helpers/android-device.js';
 import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
@@ -67,7 +67,7 @@ for (const action of ['confirm', 'cancel', 'back', 'outside'] as const) {
     await app.nav.reset({ page: 'home' });
     await app.nav.go({ page: 'ui', params: { type: 'modal' } });
     const current = await app.nav.current();
-    const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
+    const page = await app.page<PageDefinition<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
     await page.view.testId('modal-show').click();
     await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => node.text === 'CANCEL') });
     if (action === 'confirm') {
@@ -103,7 +103,7 @@ test('a confirm-only modal consumes Back and outside taps until confirmed', {
   await app.nav.reset({ page: 'home' });
   await app.nav.go({ page: 'ui', params: { type: 'modal' } });
   const current = await app.nav.current();
-  const page = await app.page<PageContract<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
+  const page = await app.page<PageDefinition<{ modalResult: { status: 'ok' | 'canceled' } | null }>>();
   await page.view.testId('modal-show-cancel').click();
   await page.view.testId('modal-show').click();
   const nodes = await t.waitFor(() => device.nodes(), { until: (items) => items.some((node) => node.text === 'OK' && node.className === 'android.widget.Button') });
@@ -134,7 +134,7 @@ for (const action of ['select', 'cancel', 'back', 'outside'] as const) {
     await app.nav.reset({ page: 'home' });
     await app.nav.go({ page: 'ui', params: { type: 'actionsheet' } });
     const current = await app.nav.current();
-    const page = await app.page<PageContract<{ actionSheetResult: ActionSheetResult | null }>>();
+    const page = await app.page<PageDefinition<{ actionSheetResult: ActionSheetResult | null }>>();
     await page.view.testId('actionsheet-show').click();
     await t.waitFor(() => device.nodes(), { until: (nodes) => nodes.some((node) => androidCancelLabels.includes(node.text)) });
     if (action === 'back') await device.key('back');

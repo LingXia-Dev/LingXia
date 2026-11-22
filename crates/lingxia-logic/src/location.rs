@@ -138,6 +138,17 @@ fn parse_location_payload(data: &str) -> Result<LocationInfo, RongJSError> {
 /// Rejects when permission is denied or location is off; abort `signal` to stop waiting.
 ///
 /// @permission location, asked the first time.
+///
+/// @example
+/// ```ts
+/// const { latitude, longitude } = await lx.device.location();
+/// showOnMap(latitude, longitude);
+/// ```
+///
+/// @throws {E_ABORT} `signal` was aborted.
+/// @throws {E_INVALID_ARG} An unknown `coordinates` value.
+/// @throws {E_PERMISSION_DENIED} The person refused location access.
+/// @throws {E_INVALID_STATE} Location services are off.
 async fn get_location(
     ctx: JSContext,
     options: Optional<JSLocationOptions>,

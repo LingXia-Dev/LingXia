@@ -1,5 +1,5 @@
 // The page contracts the shared specs drive; each showcase implements them.
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 
 export interface Todo {
   id: string;
@@ -9,7 +9,7 @@ export interface Todo {
 
 export type TodoFilter = 'all' | 'active' | 'completed';
 
-export type TodoPage = PageContract<
+export type TodoPage = PageDefinition<
   { todos: Todo[]; currentFilter: TodoFilter; lastUpdated: string },
   {
     addTodo(params: { text: string }): Promise<void>;

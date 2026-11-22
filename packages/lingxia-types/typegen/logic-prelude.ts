@@ -13,6 +13,7 @@ export type AppLifecycleName = keyof AppConfig;
  * the compiler names the mistake instead of silently accepting a new method.
  */
 export type MisspelledLifecycle<K extends string> = {
+  /** The compiler's message for the misspelled key. */
   'LingXia type error': `'${K}' differs only in case from a lifecycle hook`;
 };
 
@@ -98,7 +99,9 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
  */
 export type DownloadOptions = AppDownloadOptions | DownloadsDownloadOptions;
 
+/** A download into a temporary file this lxapp owns. */
 export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
+/** A download into a durable file under `lx://userdata`. */
 export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
 /** How far a task has got. */
@@ -125,11 +128,16 @@ export interface Task<R, P = TransferProgress> extends AsyncIterable<P> {
   [Symbol.asyncIterator](): AsyncIterator<P, R, undefined>;
 }
 
+/** A lazy reference to a managed path from `lx.fs.file`; nothing is read until a method runs. */
+export interface LxFile {}
+
+/** A task the caller can cancel. */
 export interface CancelableTask<R, P = TransferProgress> extends Task<R, P> {
   /** Requests cancellation; `result` then rejects. */
   cancel(): Promise<void>;
 }
 
+/** A running download: progress, its result, and pause, resume and cancel. */
 export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
   extends CancelableTask<TResult> {
   /** Pauses a running download; does nothing in any other state. Rejects when the platform cannot pause. */
@@ -166,7 +174,13 @@ export type PageTarget<N = ConfiguredPageName> = {
     app?: never;
     url?: never;
 }
-    & ({} extends NavParams<N> ? { params?: NavParams<N> } : { params: NavParams<N> });
+    & ({} extends NavParams<N> ? {
+        /** The page's params, as its `definePage` declares them. */
+        params?: NavParams<N>;
+    } : {
+        /** The page's params, as its `definePage` declares them. */
+        params: NavParams<N>;
+    });
 
 /**
  * A page's handle, returned at once by `lx.nav.go` and `lx.surface.openPage`.
@@ -228,11 +242,16 @@ declare global {
   /** Each page's `definePage` type, generated for Logic; `lx.nav` reads params and result from it. */
   interface LxAppPageTypes {}
 
-  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  /** `lx.surface`: open pages, other lxapps, URLs and declared surfaces beside or over the main area. */
   interface SurfaceApi {
     /**
      * Open one of this lxapp's pages as a float or a window. Returns at once;
      * await `.opened` to wait for the page.
+     * @example
+     * ```ts
+     * const sheet = lx.surface.openPage('settings', { as: 'float' });
+     * await sheet.opened;
+     * ```
      * @throws {E_INVALID_ARG} Malformed options.
      * @supports surface.window
      * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows.
@@ -241,11 +260,17 @@ declare global {
     openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
   }
 
+  /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
   interface NavApi {
     /**
      * Push a page. The handle is returned at once: `opened` settles when the
      * page is on screen, and rejects only when the platform cannot show it;
      * `result` settles when it leaves.
+     * @example
+     * ```ts
+     * const picker = lx.nav.go({ page: 'pick-contact' });
+     * const contact = await picker.result;
+     * ```
      * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, or ten pages already stacked (`data.reason: 'stack_full'`).
      * @throws {E_NOT_FOUND} A page the app does not declare.
      */
@@ -264,11 +289,19 @@ declare global {
     /**
      * Pop `n` pages, stopping at the root. Resolves once the revealed page is ready.
      * @param [n=1] How many pages to pop.
+     * @throws {E_INVALID_ARG} `n` is not a positive whole number.
      */
     back(n?: number): Promise<void>;
-    /** Clear the stack and start at a page or tab; every discarded page's result settles canceled. */
+    /**
+     * Clear the stack and start at a page or tab; every discarded page's result settles canceled.
+     * @throws {E_INVALID_ARG} A target that is neither `{ page }` nor `{ tab }`.
+     * @throws {E_NOT_FOUND} A page or tab the app does not declare.
+     */
     reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
-    /** Back to the lxapp that opened this one. */
+    /**
+     * Back to the lxapp that opened this one.
+     * @throws {E_INTERNAL} There is no lxapp to go back to, or it could not be shown.
+     */
     leaveApp(): Promise<void>;
   }
 
@@ -277,6 +310,7 @@ declare global {
   // capability members' docs and doc comments (js_api consts cannot carry docs).
   // host.env, fs.userData and fs.userCache re-declare the generated members
   // doc-only; tsc rejects the merge if the types drift.
+  /** `lx.host`: the host app every lxapp runs in, shared by all of them. */
   interface HostAppApi {
     /**
      * The host's deployment environment from `app.json`, fixed at launch. Not
@@ -348,6 +382,7 @@ declare global {
     readonly tray: TrayApi;
   }
 
+  /** `lx.app`: this lxapp: its identity, tab bar, updates and More actions. */
   interface LxAppApi {
     /** This lxapp's identity: id, name, version and channel. */
     readonly info: Readonly<AppInfo>;
@@ -362,11 +397,16 @@ declare global {
     readonly moreActions: MoreActionsApi;
   }
 
+  /**
+   * `lx.host.tray`: the menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml`
+   * declares. Control app only; off the desktop every call rejects.
+   */
   interface TrayApi {
     /** The dropdown menu under the tray item. */
     readonly menu: TrayMenuApi;
   }
 
+  /** `lx.device`: the device: identity, screen, orientation, location, keys and haptics. */
   interface DeviceApi {
     /** The device's maker, model and OS. */
     readonly info: Readonly<DeviceInfo>;
@@ -375,11 +415,27 @@ declare global {
     readonly orientation: OrientationApi;
   }
 
+  /** `lx.clipboard`: the system clipboard: text, images, and what it holds. */
+  interface ClipboardApi {}
+  /** `lx.media`: inspect, compress and preview images and videos. */
+  interface MediaApi {}
+  /** `lx.device.orientation`: read the screen's orientation, lock it, follow it. */
+  interface OrientationApi {}
+  /** `lx.pick`: let the person choose files, a folder, photos and videos, or scan a code. */
+  interface PickApi {}
+  /** `lx.app.tabBar`: this lxapp's tab bar: items, badges and visibility. */
+  interface TabBarApi {}
+  /** `lx.ui`: the system's own dialogs, sheets and toasts. */
+  interface UiApi {}
+  /** `lx.network.wifi`: scan, join and follow Wi-Fi networks; the radio starts on the first call. */
+  interface WifiApi {}
+
   interface ShellApi {
     /** The action rows the desktop sidebar shows for this lxapp. */
     readonly sidebarActions: ShellSidebarActionsApi;
   }
 
+  /** `lx.fs`: read and write files under this lxapp's managed `lx://` paths. */
   interface FileSystemApi {
     /** The root of this lxapp's durable files; a relative path resolves here. */
     readonly userData: 'lx://userdata';
@@ -387,17 +443,23 @@ declare global {
     readonly userCache: 'lx://usercache';
   }
 
+  /** `lx.network`: connectivity, transfers and Wi-Fi. */
   interface NetworkApi {
     /** Wi-Fi: scan, connect and follow the connected network. */
     readonly wifi: WifiApi;
 
     /**
      * Download over HTTP(S), streamed to disk. Returns the task before the
-     * transfer starts: `result` settles once, `progress` streams, `cancel()`
-     * aborts.
+     * transfer starts: `result` settles once, iterating streams progress,
+     * `cancel()` aborts.
+     * @throws {E_INVALID_ARG} A malformed URL or options, or a `to` already in use.
+     * @throws {E_PERMISSION_DENIED} `to: 'downloads'` without the host's Downloads grant.
+     * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
+     * @throws {E_NETWORK} The connection failed or the server failed (on `result`).
+     * @throws {E_TIMEOUT} The server stopped answering (on `result`).
      */
     download(url: string | URL, options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable path under `lx://userdata`. */
+    /** Download to a durable path under `lx://userdata`, named by `to`. */
     download(
       url: string | URL,
       options: AppDownloadOptions & { to: string },
@@ -407,7 +469,9 @@ declare global {
       url: string | URL,
       options?: AppDownloadOptions & { to?: undefined },
     ): DownloadTask<AppTempDownloadResult>;
+    /** Download where `to` says, when it is not known until run time. */
     download(url: string | URL, options?: AppDownloadOptions): DownloadTask<AppDownloadResult>;
+    /** Download with any options, when the destination is not known until run time. */
     download(url: string | URL, options?: DownloadOptions): DownloadTask<DownloadResult>;
   }
 
@@ -441,6 +505,11 @@ declare global {
      * Open this lxapp's store with every key's shape pinned on the handle.
      * `get` / `set` / `delete` then share that schema instead of
      * repeating `get<T>()` at each call site.
+     * @example
+     * ```ts
+     * const store = lx.storage<{ token: string }>();
+     * await store.set('token', token);
+     * ```
      */
     storage<S extends StorageSchema>(): TypedStorage<S>;
   }
@@ -470,11 +539,18 @@ type StorageEntry<S extends object> = {
  * unchecked assertion this type exists to remove from `get<T>()`.
  */
 export type TypedStorage<S extends object> = {
+  /** Reads a value the schema names; a missing key resolves `undefined`. */
   get<K extends StorageKey<S>>(key: K, decode?: (value: unknown) => S[K]): Promise<S[K] | undefined>;
+  /** Stores a value under a key the schema names, typed by that key. */
   set(...entry: StorageEntry<S>): Promise<void>;
+  /** Resolves whether the key exists, without reading its value. */
   has(key: StorageKey<S>): Promise<boolean>;
+  /** Removes the key; a missing key is fine. */
   delete(key: StorageKey<S>): Promise<void>;
+  /** Removes every key, including ones outside the schema. */
   clear(): Promise<void>;
+  /** Resolves every stored key, optionally filtered by prefix. */
   list(prefix?: string): Promise<string[]>;
+  /** Resolves how much is stored and the limit. */
   info(): Promise<StorageInfo>;
 };

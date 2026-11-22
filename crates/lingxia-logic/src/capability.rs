@@ -246,6 +246,11 @@ pub(crate) fn unsupported_namespace(
 /// Frozen feature support, not permission or current layout. Unknown strings
 /// return false; non-strings throw TypeError. Required features also need an
 /// appropriate lxapp.json minRuntime.
+///
+/// @example
+/// ```ts
+/// if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });
+/// ```
 fn supports(ctx: JSContext, feature: JSValue) -> JSResult<bool> {
     if !feature.is_string() {
         return Err(HostError::new(

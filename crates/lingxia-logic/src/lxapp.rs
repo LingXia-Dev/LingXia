@@ -1,6 +1,7 @@
 use ::lxapp::{AppSessionClass, LxApp};
 use rong::{IntoJSObject, JSContext, JSResult};
 
+/// This lxapp's identity and the role it runs in.
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppInfo {
     /// This lxapp's id.

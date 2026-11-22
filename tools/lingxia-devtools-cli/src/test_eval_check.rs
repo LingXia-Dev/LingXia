@@ -669,8 +669,8 @@ mod helper_tests {
                 "logic",
             ),
             (
-                "import type { TestPage, PageContract } from '@lingxia/test';",
-                "page: TestPage<PageContract<{ n: number }, {}>>",
+                "import type { TestPage, PageDefinition } from '@lingxia/test';",
+                "page: TestPage<PageDefinition<{ n: number }, {}>>",
                 "page.view",
             ),
             (

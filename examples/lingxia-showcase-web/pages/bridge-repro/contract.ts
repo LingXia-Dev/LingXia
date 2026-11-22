@@ -1,5 +1,5 @@
 import type { LxStream } from '@lingxia/bridge';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageShape } from '../../shared/lib/page-shape';
 
 export interface Tick {
   seq: number;
@@ -13,7 +13,7 @@ export interface BootstrapProbe {
   bootstrapMarker: string;
 }
 
-export type BridgeReproPage = PageContract<
+export type BridgeReproPage = PageShape<
   { bootstrapMarker: string; logicLoadedAt: number },
   {
     onBootstrapProbe(params: { nonce: number; viewSentAt: number }): Promise<BootstrapProbe>;

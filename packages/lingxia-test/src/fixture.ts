@@ -48,7 +48,8 @@ import type {
   SourceLocation,
   TestApp,
   TestMetrics,
-  PageContract,
+  PageDefinition,
+  JsonPageData,
   PageSelector,
   PageBindOptions,
   TestPage,
@@ -1178,7 +1179,7 @@ export class LiveFixture implements Fixture {
     const driver = () => ref.driver;
     const input = lazyDriver(() => ({ owner: driver().page, value: driver().page }), fixture, "window.") as PageDriver;
     return {
-      page: <C extends PageContract>(selector?: PageSelector, options?: PageBindOptions) =>
+      page: <C extends PageDefinition & JsonPageData<C>>(selector?: PageSelector, options?: PageBindOptions) =>
         this.bindPage<C>(driver, selector, options),
       view: this.wrapView(() => driver().page, undefined),
       window: {
@@ -1305,7 +1306,7 @@ export class LiveFixture implements Fixture {
     };
   }
 
-  private bindPage<C extends PageContract>(
+  private bindPage<C extends PageDefinition>(
     driver: () => LxAppDriver,
     selector?: PageSelector,
     options?: PageBindOptions,

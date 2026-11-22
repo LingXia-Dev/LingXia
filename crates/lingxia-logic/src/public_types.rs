@@ -35,6 +35,7 @@ rong::js_api! {
     id: string;
 } | CanceledResult"###;
 
+        /// What `App({...})` takes: the lxapp's lifecycle hooks.
         type AppConfig = r###"{
     /** Runs once when the lxapp starts, before its first page. */
     onLaunch?: () => void | Promise<void>;
@@ -58,6 +59,7 @@ rong::js_api! {
     readonly [appDownloadPathBrand]: 'app-download-file-path';
 }"###;
 
+        /// Options for a download into this lxapp's own storage.
         type AppDownloadOptions = r###"DownloadOptionsBase & {
     /**
      * Durable output path under `lx://userdata`; relative paths resolve there.
@@ -68,15 +70,24 @@ rong::js_api! {
     suggestedName?: never;
 }"###;
 
+        /// Where a download into this lxapp's storage landed: a temporary file, or the `to` path under `lx://userdata`.
         type AppDownloadResult = r###"{
+    /** The temporary file. */
     path: AppDownloadFilePath;
+    /** A temporary file this lxapp owns. */
     storage: 'temp';
+    /** MIME type from the response, when it named one. */
     type?: string;
+    /** Bytes written. */
     size: number;
 } | {
+    /** The `to` path. */
     path: AppDownloadFilePath;
+    /** A durable file under `lx://userdata`. */
     storage: 'userdata';
+    /** MIME type from the response, when it named one. */
     type?: string;
+    /** Bytes written. */
     size: number;
 }"###;
 
@@ -109,6 +120,7 @@ rong::js_api! {
     query: Record<string, string>;
 }"###;
 
+        /// What `App` `onShow` and `onHide` receive: who moved and why.
         type AppLifecycleEventArgs = r###"{
     /** `host` when the whole app moved; `lxapp` when only this lxapp did. */
     source: 'host' | 'lxapp';
@@ -120,6 +132,7 @@ rong::js_api! {
     query?: Record<string, string>;
 }"###;
 
+        /// Options for `lx.host.screenshot`.
         type AppScreenshotOptions = r###"{
     /**
      * Platform-specific window id to capture (desktop only). Omit to let the
@@ -128,6 +141,7 @@ rong::js_api! {
     windowId?: string;
 }"###;
 
+        /// The PNG `lx.host.screenshot` wrote.
         type AppScreenshotResult = r###"{
     /** `lx://` path of the captured PNG in the lxapp temp directory. */
     path: string;
@@ -153,6 +167,7 @@ rong::js_api! {
         /// `{ appLink }`. One destination per target; a mix is a parameter error.
         type HostTarget = r###"PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget"###;
 
+        /// A target that only brings the product forward.
         type ActivateTarget = r###"{
     /** Bring the product forward, nothing else. */
     activate: true;
@@ -163,6 +178,7 @@ rong::js_api! {
     appLink?: never;
 }"###;
 
+        /// A target that opens a location the host registered, not a page.
         type RouteTarget = r###"{
     /** A location the host registered at startup that is not a page. */
     route: string;
@@ -174,6 +190,7 @@ rong::js_api! {
     appLink?: never;
 }"###;
 
+        /// A target that opens an inbound App Link URL.
         type AppLinkTarget = r###"{
     /** An `https://` URL that is also an inbound App Link. */
     appLink: string;
@@ -200,6 +217,8 @@ rong::js_api! {
     /**
      * Read the current permission without prompting. `'default'` means the
      * user has not been asked yet.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
      */
     permission(): Promise<'granted' | 'denied' | 'default'>;
     /**
@@ -207,6 +226,9 @@ rong::js_api! {
      * the user has not answered; otherwise reports the current setting.
      * Rejects when the prompt is left unanswered.
      * @permission notifications
+     * @throws {E_PERMISSION_DENIED} A guest lxapp asks while it is not on screen, or a second time this launch.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
      */
     requestPermission(): Promise<'granted' | 'denied'>;
     /**
@@ -214,6 +236,10 @@ rong::js_api! {
      * An invalid target, unknown page or route, or an unconfigured host rejects here,
      * before anything is posted. A tap whose target is gone by then brings the
      * product forward and says it is unavailable.
+     * @example
+     * ```ts
+     * await lx.host.notification.show({ title: 'Upload finished', target: { page: 'files' } });
+     * ```
      * @throws {E_PERMISSION_DENIED} A guest lxapp's `target` names anything but itself.
      */
     show(options: {
@@ -252,11 +278,16 @@ rong::js_api! {
     /**
      * Remove what is pending or delivered under `id`, and retire its tap
      * target. Unknown ids are fine.
+     * @throws {E_INVALID_ARG} An empty `id`.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
      */
     cancel(id: string): Promise<void>;
     /**
      * Remove every local notification this API posted or scheduled. A guest
      * lxapp's call removes only its own.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
      */
     cancelAll(): Promise<void>;
 }"###;
@@ -275,7 +306,12 @@ rong::js_api! {
         /// dismiss, timeout, or replace. User outcomes resolve; presentation
         /// failures reject.
         type BannerApi = r###"{
-    /** Show a banner, or replace the one with the same `id`; resolves with what the person did. */
+    /**
+     * Show a banner, or replace the one with the same `id`; resolves with what the person did.
+     * @throws {E_INVALID_ARG} No `title`, more than two actions, a bad `background`, or an invalid action `target`.
+     * @supports host.banner
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
+     */
     show(options: {
         /** Replace key; a banner under it is replaced and resolves `replaced`. */
         id?: string;
@@ -322,7 +358,12 @@ rong::js_api! {
             reason: 'dismissed' | 'timeout' | 'replaced';
         }
     >;
-    /** Unknown ids are fine. */
+    /**
+     * Close the banner under `id`; it resolves `dismissed`. Unknown ids are fine.
+     * @throws {E_INVALID_ARG} An empty `id`.
+     * @supports host.banner
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
+     */
     dismiss(id: string): Promise<void>;
 }"###;
 
@@ -352,15 +393,26 @@ rong::js_api! {
      * each time; the user can change it outside the app, so re-read it when
      * the settings screen shows.
      * @platform macOS: login items. Windows: the `Run` registry key.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @supports host.autostart
+     * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
     isEnabled(): Promise<boolean>;
     /**
      * Register the app as a startup item for the current user.
      * Idempotent. Call it only from the person's own action.
      * @platform macOS: the system may tell the user a login item was added.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @supports host.autostart
+     * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
     enable(): Promise<void>;
-    /** Unregister the app as a startup item for the current user. Idempotent. */
+    /**
+     * Unregister the app as a startup item for the current user. Idempotent.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @supports host.autostart
+     * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
+     */
     disable(): Promise<void>;
 }"###;
 
@@ -369,13 +421,18 @@ rong::js_api! {
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
         /// has run. Control app only; a guest's call fails `E_PERMISSION_DENIED`.
         type AppCacheApi = r###"{
-    /** Bytes `clear()` would free, estimated; open lxapps' caches and the WebView cache are not counted. */
+    /**
+     * Bytes `clear()` would free, estimated; open lxapps' caches and the WebView cache are not counted.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
     size(): Promise<number>;
     /**
      * Clear reclaimable host caches. Control app only. Live session usercache and
      * temp are preserved, including the caller's. Does not restart any lxapp.
      * Userdata, KV, Downloads, cookies, valid installs and host components survive.
-     * Per-category failures are reported; setup/worker failures reject the call.
+     * Per-category failures are reported in `failures`.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @throws {E_INTERNAL} The clear could not start.
      */
     clear(): Promise<{
         /** Estimated file bytes successfully removed; excludes WebView cache. */
@@ -388,6 +445,7 @@ rong::js_api! {
         failures: readonly string[];
     }>;
 }"###;
+        /// The terminal's font: family candidates, size, line height and ligatures.
         type TerminalFontSettings = r###"{
     /** Ordered candidates; the first installed monospaced family wins. */
     family: readonly string[];
@@ -414,6 +472,7 @@ rong::js_api! {
     dark: string;
 }"###;
 
+        /// A complete set of terminal settings: font and theme.
         type TerminalSettingsValue = r###"{
     /** Font settings. */
     font: TerminalFontSettings;
@@ -421,6 +480,7 @@ rong::js_api! {
     theme: TerminalThemeSettings;
 }"###;
 
+        /// The terminal settings to change; fields left out keep their value.
         type TerminalSettingsPatch = r###"{
     /** Font fields to change; others keep their value. */
     font?: Partial<TerminalFontSettings>;
@@ -428,6 +488,7 @@ rong::js_api! {
     theme?: Partial<TerminalThemeSettings>;
 }"###;
 
+        /// A problem with the user's saved terminal settings, reported instead of thrown.
         type TerminalSettingsWarning = r###"{
     /** What is wrong: the user's settings file does not parse, or names a scheme that does not exist. */
     code: 'invalid_user_file' | 'missing_color_scheme';
@@ -435,6 +496,7 @@ rong::js_api! {
     message: string;
 }"###;
 
+        /// The terminal settings at one revision: defaults, the user's overrides and what is in effect.
         type TerminalSettingsSnapshot = r###"{
     /** Monotonic process revision used by update/reset compare-and-swap. */
     revision: number;
@@ -464,6 +526,7 @@ rong::js_api! {
     warnings: readonly TerminalSettingsWarning[];
 }"###;
 
+        /// A terminal color scheme: background, foreground, cursor, selection and the 16 ANSI colors.
         type TerminalColorScheme = r###"{
     /** Display name. */
     name?: string;
@@ -511,6 +574,7 @@ rong::js_api! {
     brightWhite: string;
 }"###;
 
+        /// A stored terminal color scheme with its name and where it came from.
         type TerminalColorSchemeDetails = r###"{
     /** The name settings refer to it by. */
     name: string;
@@ -520,6 +584,7 @@ rong::js_api! {
     scheme: TerminalColorScheme;
 }"###;
 
+        /// A font family installed on this machine.
         type InstalledTerminalFont = r###"{
     /** Family name, as `TerminalFontSettings.family` takes it. */
     family: string;
@@ -531,6 +596,7 @@ rong::js_api! {
     nerdIcons: boolean;
 }"###;
 
+        /// Shows a color scheme live in open terminals without saving it.
         type TerminalPreviewController = r###"{
     /** Preview a stored name or an unpersisted scheme. Last request wins. */
     show(scheme: string | TerminalColorScheme): Promise<void>;
@@ -540,8 +606,13 @@ rong::js_api! {
     close(): Promise<void>;
 }"###;
 
+        /// Read and change the saved terminal settings, checked against a revision.
         type TerminalSettingsApi = r###"{
-    /** The settings now: defaults, the user's overrides, and what is in effect. */
+    /**
+     * The settings now: defaults, the user's overrides, and what is in effect.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     * @throws {E_IO} The saved settings could not be read.
+     */
     get(): Promise<TerminalSettingsSnapshot>;
     /**
      * Save the patched fields.
@@ -565,10 +636,20 @@ rong::js_api! {
     onChange(listener: (snapshot: TerminalSettingsSnapshot) => void, options?: SignalOptions): () => void;
 }"###;
 
+        /// The terminal color schemes: list, import and preview.
         type TerminalColorSchemesApi = r###"{
-    /** Every scheme, shipped and imported. */
+    /**
+     * Every scheme, shipped and imported.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
     list(): Promise<TerminalColorSchemeDetails[]>;
-    /** Add a scheme from its text. */
+    /**
+     * Add a scheme from its text.
+     * @throws {E_INVALID_DATA} The text is not a scheme in any of the three formats.
+     * @throws {E_ALREADY_EXISTS} A scheme has that name and `overwrite` is not set.
+     * @throws {E_IO} It could not be saved.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
     import(options: {
         /** A Windows Terminal JSON scheme, or Xresources or kitty `name: value` lines. */
         text: string;
@@ -581,23 +662,37 @@ rong::js_api! {
     createPreview(): TerminalPreviewController;
 }"###;
 
+        /// The font families a terminal can use.
         type TerminalFontsApi = r###"{
-    /** The font families installed on this machine. */
+    /**
+     * The font families installed on this machine.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
     list(): Promise<InstalledTerminalFont[]>;
 }"###;
 
+        /// Whether the Microsoft ConPTY runtime that passes inline images through is installed and selected.
         type WindowsTerminalInlineImageStatus = r###"{
+    /** New terminal sessions use the installed runtime. */
     enabled: boolean;
+    /** The runtime is installed. */
     installed: boolean;
+    /** The one package version this host installs. */
     package: {
+        /** Its version. */
         version: string;
+        /** Where to download it. */
         url: string;
+        /** The SHA-256 digest `install` checks. */
         sha256: string;
+        /** Its size in bytes. */
         bytes: number;
     };
 }"###;
 
+        /// Windows only: install and select the ConPTY runtime that passes inline images through.
         type WindowsTerminalApi = r###"{
+    /** Whether the runtime is installed and selected. */
     status(): Promise<WindowsTerminalInlineImageStatus>;
     /** Verify and install the fixed Microsoft ConPTY package from lxapp temp storage. */
     install(options: { path: string }): Promise<WindowsTerminalInlineImageStatus>;
@@ -605,6 +700,7 @@ rong::js_api! {
     setEnabled(options: { enabled: boolean }): Promise<WindowsTerminalInlineImageStatus>;
 }"###;
 
+        /// The host terminal's settings, color schemes, fonts and Windows runtime.
         type TerminalApi = r###"{
     /** Saved terminal settings, revision-checked on write. */
     readonly settings: TerminalSettingsApi;
@@ -616,6 +712,7 @@ rong::js_api! {
     readonly windows?: WindowsTerminalApi;
 }"###;
 
+        /// Bytes `lx.fs.write` and the clipboard accept.
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         /// What the product's light/dark scheme is set to. `'auto'` follows
@@ -643,6 +740,8 @@ rong::js_api! {
         /**
          * Pin the product to `'light'` or `'dark'`, or follow the system with
          * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+         * @throws {E_INVALID_ARG} Any other value.
+         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
          */
         set(preference: AppearancePreference): Promise<void>;
         /**
@@ -683,7 +782,11 @@ rong::js_api! {
     readonly preference: {
         /** The choice now. */
         get(): DisplayLanguagePreference;
-        /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+        /**
+         * Persist the product's language.
+         * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
+         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+         */
         set(preference: DisplayLanguagePreference): Promise<void>;
         /**
          * Follow the choice, not what it resolves to: a system locale change under
@@ -695,22 +798,34 @@ rong::js_api! {
     };
 }"###;
 
+        /// The scheme in effect: light or dark.
         type ResolvedAppearance = r###"'light' | 'dark'"###;
+        /// Whether a piece of page chrome shows: `auto` leaves it to the runtime, `hidden` hides it.
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
+        /// Whether the tab bar shows: `auto` leaves it to the runtime, or always `visible` or `hidden`.
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
 
+        /// Navigation bar colors to change; `null` restores the declared one.
         type NavigationBarStylePatch = r###"{
+    /** Bar color. */
     backgroundColor?: string | null;
+    /** Title and button color. */
     foregroundColor?: string | null;
+    /** The line under the bar. */
     dividerColor?: string | null;
 }"###;
 
+        /// Navigation bar fields to change; fields left out keep their value.
         type NavigationBarPatch = r###"{
+    /** Title text; `null` restores the declared one. */
     title?: string | null;
+    /** Whether the home button may show. */
     homeButton?: VisibilityPreference;
+    /** Colors to change; `null` restores every declared color. */
     style?: NavigationBarStylePatch | null;
 }"###;
 
+        /// One tab's label, icons and badge to change.
         type TabBarItemPatch = r###"{
     /** Label text; `null` restores the declared one. */
     label?: string | null;
@@ -758,6 +873,7 @@ rong::js_api! {
     onSelect: () => void | Promise<void>;
 }"###;
 
+        /// Options for `lx.pick.directory`.
         type PickDirectoryOptions = r###"{
     /**
      * The directory the dialog opens in; the platform's choice when absent.
@@ -779,7 +895,9 @@ rong::js_api! {
         /// its own is named `IMG_YYYYMMDD_HHMMSS.jpg` / `VID_…` (UTC). `name` is
         /// display-only and not unique.
         type PickedFile = r###"{
+    /** An `lx://temp` path this lxapp can read. */
     path: string;
+    /** The file's name as the person saw it. */
     name: string;
     /** Bytes. */
     size: number;
@@ -807,6 +925,7 @@ rong::js_api! {
     directory: PickedDirectory;
 } | CanceledResult"###;
 
+        /// Options for `lx.pick.file` and `lx.pick.files`.
         type PickFileOptions = r###"{
     /** Optional file filters. Empty or omitted means all file types. */
     filters?: readonly FileDialogFilter[];
@@ -837,6 +956,7 @@ rong::js_api! {
     files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult"###;
 
+        /// Options for `lx.pick.media`: how many, which kinds, and from where.
         type PickMediaOptions = r###"{
     /**
      * Most files to return. Where the system picker cannot enforce it
@@ -886,6 +1006,7 @@ rong::js_api! {
     path: string;
 }"###;
 
+        /// Options for `lx.clipboard.read`.
         type ClipboardReadOptions = r###"{
     /** Omit to receive every representation the host can surface. */
     type?: ClipboardType;
@@ -911,6 +1032,7 @@ rong::js_api! {
     items: readonly ClipboardItem[];
 } | CanceledResult"###;
 
+        /// One clipboard representation: text, or an image file.
         type ClipboardItem = r###"{
     /** Plain text. */
     type: 'text';
@@ -983,6 +1105,7 @@ rong::js_api! {
 }
 )"###;
 
+        /// The smaller video `lx.media.compressVideo` wrote.
         type CompressVideoResult = r###"{
     /** The compressed video, an `lx://` path. */
     path: string;
@@ -1005,6 +1128,7 @@ rong::js_api! {
         /// fraction done out of a `total` of 1.
         type CompressVideoTask = r###"CancelableTask<CompressVideoResult>"###;
 
+        /// The network `lx.network.wifi.connect` joins.
         type ConnectWifiOptions = r###"{
     /** Network name. */
     ssid: string;
@@ -1025,12 +1149,16 @@ rong::js_api! {
     overwrite?: boolean;
 }"###;
 
+        /// The screen's orientation.
         type DeviceOrientation = r###""portrait" | "landscape""###;
 
+        /// What an orientation watcher receives.
         type DeviceOrientationChangeEvent = r###"{
+    /** The orientation now. */
     value: DeviceOrientation;
 }"###;
 
+        /// Options every download takes: headers and an abort signal.
         type DownloadOptionsBase = r###"{
     /**
      * Optional request headers.
@@ -1041,8 +1169,10 @@ rong::js_api! {
     signal?: AbortSignal;
 }"###;
 
+        /// Where any download landed.
         type DownloadResult = r###"AppDownloadResult | DownloadsDownloadResult"###;
 
+        /// Options for a download into the user's Downloads folder.
         type DownloadsDownloadOptions = r###"DownloadOptionsBase & {
     /** The user's Downloads folder. Needs the host's downloads grant. */
     to: 'downloads';
@@ -1050,6 +1180,7 @@ rong::js_api! {
     suggestedName?: string;
 }"###;
 
+        /// Where a download into the user's Downloads folder landed.
         type DownloadsDownloadResult = r###"{
     /** Where the file landed in the user's Downloads folder. */
     path: SystemDownloadsPath;
@@ -1099,6 +1230,7 @@ rong::js_api! {
     type: string;
 }"###;
 
+        /// One file type a file picker offers.
         type FileDialogFilter = r###"{
     /** Optional label shown in the native dialog (desktop only). */
     name?: string;
@@ -1106,6 +1238,7 @@ rong::js_api! {
     extensions: readonly string[];
 }"###;
 
+        /// Options for `lx.device.location`.
         type GetLocationOptions = r###"{
     /**
      * Coordinate system of the result.
@@ -1137,6 +1270,7 @@ rong::js_api! {
         ///
         type HostAppEnv = r###"'dev' | 'prod'"###;
 
+        /// A step of applying a host app update: downloading or installing.
         type HostAppUpdateApplyStage = r###"'download' | 'install'"###;
 
         /// A newer published host app version.
@@ -1171,6 +1305,7 @@ rong::js_api! {
     apply(): HostAppUpdateTask;
 }"###;
 
+        /// What applying a host app update did.
         type HostAppUpdateResult = r###"{
     /** `store_opened` via `store`: the listing opened, nothing was installed. */
     state: 'install_requested' | 'store_opened';
@@ -1180,26 +1315,37 @@ rong::js_api! {
         /// `total` is present when the update named its size.
         type HostAppUpdateTask = r###"Task<HostAppUpdateResult>"###;
 
+        /// A hardware key press or release.
         type KeyEvent = r###"{
     /** Key value following W3C naming (e.g. "Enter", "ArrowLeft", "a") */
     key: string;
     /** Physical key code (e.g. "ENTER", "DPAD_LEFT") */
     code: string;
+    /** Alt (Option) is held. */
     altKey?: boolean;
+    /** Control is held. */
     ctrlKey?: boolean;
+    /** Shift is held. */
     shiftKey?: boolean;
+    /** Command (macOS) or the Windows key is held. */
     metaKey?: boolean;
+    /** The key is held down and this event is a repeat. */
     repeat?: boolean;
 }"###;
 
+        /// Receives each hardware key event.
         type KeyEventCallback = r###"(event: KeyEvent) => void"###;
 
+        /// Which channel an lxapp build came from: a release or a draft.
         type LxAppReleaseType = r###"'release' | 'draft'"###;
 
+        /// How media fills its box: crop, letterbox, stretch, or fit.
         type MediaObjectFit = r###"'cover' | 'contain' | 'fill' | 'fit'"###;
 
+        /// A clockwise rotation in degrees.
         type MediaRotation = r###"0 | 90 | 180 | 270"###;
 
+        /// Options for `lx.fs.mkdir`.
         type FsMkdirOptions = r###"{
     /**
      * Create missing parents too; no error when it exists.
@@ -1211,6 +1357,7 @@ rong::js_api! {
         /// A tab root of this lxapp.
         type TabName = r###"keyof LxAppPages extends never ? string : keyof LxAppTabs & string"###;
 
+        /// A navigation target that switches to one of this lxapp's tabs.
         type TabTarget = r###"{
     /** A tab root of this lxapp. */
     tab: TabName;
@@ -1246,11 +1393,14 @@ rong::js_api! {
     params?: never;
 }"###;
 
+        /// Anywhere `lx.nav.go` can go: a page, a tab, another lxapp, or a URL.
         type NavTarget = r###"PageTarget | TabTarget | AppTarget | UrlTarget"###;
 
 
+        /// Receives connectivity after each change.
         type NetworkChangeCallback = r###"(info: NetworkInfo) => void"###;
 
+        /// Connectivity right now: whether it is up, its type and addresses.
         type NetworkInfo = r###"{
     /** Any network is usable. */
     isConnected: boolean;
@@ -1262,6 +1412,7 @@ rong::js_api! {
     ipv6: readonly string[];
 }"###;
 
+        /// The kind of network the device is on.
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
         /// How `lx.openFile` shows the file.
@@ -1297,6 +1448,7 @@ rong::js_api! {
         /// `capabilities.browser` and is restricted to the native-assigned Control app.
         type BuiltinShellPage = r###"'downloads'"###;
 
+        /// A float's size hint.
         type OverlaySurfaceSize = r###"{
     /** Width hint. */
     width?: OverlaySurfaceSizeValue;
@@ -1348,12 +1500,14 @@ rong::js_api! {
         reason: 'user' | 'opener' | 'reclaimed' | 'app_closed';
     }"###;
 
+        /// A page's params, keyed by name.
         type PageQuery = r###"Record<string, PageQueryValue>"###;
 
         /// A page param: any JSON value. `null` and `undefined` mean absent. The
         /// whole set of non-string params is limited to 8 KB as JSON.
         type PageQueryValue = r###"JsonValue | undefined"###;
 
+        /// What a preview does when an item ends: wait, go to the next, or loop.
         type PreviewMediaAdvance = r###"'manual' | 'next' | 'loop'"###;
 
         /// One change-stream event / the `current` snapshot.
@@ -1364,6 +1518,7 @@ rong::js_api! {
     source: PreviewMediaShownSource;
 }"###;
 
+        /// Why a media preview closed.
         type PreviewMediaCloseReason = r###"'manual' | 'completed' | 'interrupted' | 'error'"###;
 
         /// A media session. `presented` tells a rendered first frame from a
@@ -1380,8 +1535,10 @@ rong::js_api! {
     readonly completed: Promise<PreviewMediaResult>;
 }"###;
 
+        /// What `lx.media.preview` shows: one path, one source, or a list.
         type PreviewMediaOptions = r###"string | PreviewMediaSingleOptions | PreviewMediaSequenceOptions"###;
 
+        /// How a media preview ended.
         type PreviewMediaResult = r###"{
     /**
      * Why the preview session finished.
@@ -1398,6 +1555,7 @@ rong::js_api! {
     source: PreviewMediaShownSource;
 }"###;
 
+        /// A media preview of several items, starting at one of them.
         type PreviewMediaSequenceOptions = r###"{
     /**
      * Preview list. Supports images, videos, or a mixed queue.
@@ -1445,6 +1603,7 @@ rong::js_api! {
     type: 'image' | 'video';
 }"###;
 
+        /// A media preview of one item.
         type PreviewMediaSingleOptions = r###"PreviewMediaSource & {
     /**
      * Auto behavior for the preview session.
@@ -1470,6 +1629,7 @@ rong::js_api! {
     showIndexIndicator?: boolean;
 }"###;
 
+        /// One image or video in a media preview.
         type PreviewMediaSource = r###"{
     /**
      * Media source path.
@@ -1502,6 +1662,7 @@ rong::js_api! {
 
 
 
+        /// Options for `lx.fs.remove`.
         type FsRemoveOptions = r###"{
     /**
      * Remove a directory and everything in it.
@@ -1522,6 +1683,7 @@ rong::js_api! {
 }"###;
 
 
+        /// Options for `lx.pick.code`.
         type PickCodeOptions = r###"{
     /**
      * Read only from the camera; `false` also lets the person pick a picture.
@@ -1563,8 +1725,10 @@ rong::js_api! {
     text?: never;
 }"###;
 
+        /// What `lx.share` hands to the share sheet: text, the current page, or files.
         type ShareOptions = r###"ShareTextOptions | SharePageOptions | ShareFilesOptions"###;
 
+        /// The current page as a share target, with or without a query.
         type SharePage = r###"/**
  * Share the current page.
  */
@@ -1600,8 +1764,10 @@ true
     files?: never;
 }"###;
 
+        /// Query values appended to a shared page's link.
         type ShareQuery = r###"Record<string, string | number | boolean>"###;
 
+        /// What the share sheet reported.
         type ShareResult = r###"{
     /**
      * What the share sheet reported. Not part of the `canceled` family: some
@@ -1612,6 +1778,7 @@ true
     outcome: 'completed' | 'dismissed' | 'unknown';
 }"###;
 
+        /// The title and text every share may carry.
         type ShareTextBaseOptions = r###"ShareTitleOptions & {
     /**
      * Share text body.
@@ -1627,6 +1794,7 @@ true
     files?: never;
 }"###;
 
+        /// The title every share may carry.
         type ShareTitleOptions = r###"{
     /**
      * Share title.
@@ -1634,6 +1802,7 @@ true
     title?: string;
 }"###;
 
+        /// The choices `lx.ui.actionSheet` shows.
         type ActionSheetOptions = r###"{
     /** The choices, in order. */
     items: readonly {
@@ -1714,6 +1883,7 @@ true
      * `undefined`, which a stored `null` never does.
      */
     get<T = unknown>(key: string, decode?: (value: unknown) => T): Promise<T | undefined>;
+    /** Stores a JSON value under `key`, replacing any value there. */
     set(key: string, value: unknown): Promise<void>;
     /**
      * Resolves whether an exact key exists, without reading its value. Prefer
@@ -1721,10 +1891,13 @@ true
      * while `get` also reads and deserializes the stored value.
      */
     has(key: string): Promise<boolean>;
+    /** Removes `key`; a missing key is fine. */
     delete(key: string): Promise<void>;
+    /** Removes every key. */
     clear(): Promise<void>;
     /** Resolves every key, optionally filtered by prefix. */
     list(prefix?: string): Promise<string[]>;
+    /** Resolves how much is stored and the limit. */
     info(): Promise<StorageInfo>;
 }"###;
 
@@ -1739,15 +1912,21 @@ true
     keyCount: number;
 }"###;
 
+        /// A stream a page player plays from a provider the host registered.
         type StreamSourceOptions = r###"{
+    /** The name the host registered the provider under. */
     provider: string;
+    /** A live stream, with no fixed length to seek in. */
     isLive: boolean;
     /** Length in milliseconds; ignored when `isLive`. */
     durationMs?: number;
+    /** Passed to the provider as it starts. */
     params?: Record<string, unknown>;
 }"###;
 
+        /// What a surface's `onClosed` receives.
         type SurfaceClosedEvent = r###"{
+    /** Why it closed. */
     reason: SurfaceCloseReason;
 }"###;
 
@@ -1812,7 +1991,11 @@ true
         /// ```
         ///
         type SurfaceError = r###"Error & {
-    readonly data?: { readonly code?: SurfaceErrorCode };
+    /** The surface failure in detail. */
+    readonly data?: {
+        /** Which surface rule refused the call. */
+        readonly code?: SurfaceErrorCode;
+    };
 }"###;
 
         /// What every surface handle carries, whatever opened it.
@@ -1928,6 +2111,7 @@ true
         ///
         type AnySurface = r###"PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface"###;
 
+        /// Options every `lx.surface.openPage` placement takes.
         type OpenPageShared = r###"{
     /**
      * A float accepts a percentage; a window is in logical pixels and ignores
@@ -1968,6 +2152,7 @@ true
     position?: SurfaceFloatPosition;
 })"###;
 
+        /// Options for `lx.surface.openUrl`: where the browser opens.
         type OpenUrlOptions = r###"{
     /**
      * `main` opens a browser tab in the main area; `aside` docks the browser
@@ -2101,6 +2286,7 @@ true
     declared(id: string, options?: GetDeclaredOptions): DeclaredSurface | AppSurface | undefined;
 }"###;
 
+        /// Why a surface closed.
         type SurfaceCloseReason = r###"'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
 /**
  * The host unloaded a hidden surface's page under memory pressure.
@@ -2138,6 +2324,7 @@ true
         /// toggled visibility). `shell` identifies a host-driven main switch.
         ///
         type SurfaceVisibilityEvent = r###"{
+    /** Who changed it: the opener's handle, the page itself, or the shell. */
     source: 'opener' | 'page' | 'shell';
 }"###;
 
@@ -2147,6 +2334,7 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
+        /// Options for `lx.host.setBadge`.
         type SetBadgeOptions = r###"{
     /**
      * Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.
@@ -2155,11 +2343,13 @@ true
     surface?: 'auto' | 'app_icon' | 'tray';
 }"###;
 
+        /// What `lx.host.setBadge` painted.
         type SetBadgeResult = r###"{
     /** Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item. */
     painted: boolean;
 }"###;
 
+        /// One row of the tray item's menu.
         type TrayMenuItem = r###"{
     /** Text shown. */
     label: string;
@@ -2181,17 +2371,23 @@ true
     visible?: boolean;
 }"###;
 
+        /// A line between rows of the tray item's menu.
         type TrayMenuSeparator = r###"{
     /** A line between items. */
     separator: true;
 }"###;
 
+        /// What `lx.app.update.onFailed` receives.
         type UpdateFailedInfo = r###"UpdateReadyInfo & {
+    /** What went wrong, for a log line. */
     error?: string;
 }"###;
 
+        /// What `lx.app.update.onReady` receives: the downloaded bundle.
         type UpdateReadyInfo = r###"{
+    /** The downloaded bundle's version. */
     version?: string;
+    /** The channel it came from. */
     channel?: "release" | "draft" | string;
 }"###;
 
@@ -2293,18 +2489,24 @@ true
         /// Handle returned by `lx.network.upload`; progress counts request body bytes.
         type UploadTask = r###"CancelableTask<UploadResult>"###;
 
+        /// A preset size for `lx.media.compressVideo`.
         type VideoCompressQuality = r###"'low' | 'medium' | 'high'"###;
 
         /// A page `<video>`'s controller, from `page.video(name)`.
         type PagePlayer = r###"{
+    /** Start or resume playback. */
     play(): Promise<void>;
+    /** Pause at the current position. */
     pause(): Promise<void>;
     /** Pauses and returns to the start. */
     stop(): Promise<void>;
     /** Jump to a position, in milliseconds from the start. */
     seek(positionMs: number): Promise<void>;
+    /** Show the player full screen. */
     requestFullscreen(): Promise<void>;
+    /** Leave full screen. */
     exitFullscreen(): Promise<void>;
+    /** Play from a stream provider the host registered instead of a URL. */
     setStreamSource(options: StreamSourceOptions): Promise<void>;
     /** A GPU page player's quality: `"auto"` or one of its source labels. */
     setQuality(quality: string): Promise<void>;
@@ -2378,10 +2580,14 @@ true
     path: string;
 }"###;
 
+        /// Receives each Wi-Fi connection change.
         type WifiConnectedCallback = r###"(info: WifiConnectedInfo) => void"###;
 
+        /// A Wi-Fi network and whether the device is joined to it.
         type WifiConnectedInfo = r###"WifiInfo & {
+    /** The device is joined to this network now. */
     connected: boolean;
+    /** The platform's own word for the connection state, such as `connected`. */
     state: string;
 }"###;
 
@@ -2430,9 +2636,6 @@ true
         type MediaApi = "globalThis.MediaApi";
         type PickApi = "globalThis.PickApi";
         type TabBarApi = "globalThis.TabBarApi";
-        /// The menu-bar (macOS) / system-tray (Windows) item declared in
-        /// `lingxia.yaml` (`tray:`). Desktop only: on mobile every method is a
-        /// no-op and never throws. Control app only; a guest gets a permission error.
         type TrayApi = "globalThis.TrayApi";
         /// The tray item's dropdown menu.
         type TrayMenuApi = "globalThis.TrayMenuApi";

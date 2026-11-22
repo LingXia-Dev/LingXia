@@ -297,6 +297,12 @@ async fn ensure_wifi_started(ctx: &JSContext) -> JSResult<()> {
 
 /// Asks the system to join a network. Resolves once the request is submitted,
 /// not when the device has joined: `onConnected` reports that. Rejects when Wi-Fi is off.
+///
+/// @throws {E_ABORT} `signal` was aborted.
+/// @throws {E_INVALID_STATE} Wi-Fi is off.
+/// @throws {E_NOT_FOUND} No network in range has that `ssid`.
+/// @throws {E_NETWORK} The system refused the request, or the person declined it.
+/// @throws {E_TIMEOUT} The system did not answer.
 async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let JSConnectWifiOptions {
@@ -324,6 +330,10 @@ async fn connect_wifi(ctx: JSContext, options: JSConnectWifiOptions) -> JSResult
 }
 
 /// Scans and resolves the networks in range. Rejects when Wi-Fi is off.
+///
+/// @throws {E_ABORT} `signal` was aborted.
+/// @throws {E_INVALID_STATE} Wi-Fi is off.
+/// @throws {E_NETWORK} The scan failed.
 async fn get_wifi_list(
     ctx: JSContext,
     options: Optional<crate::task_object::SignalOptions>,
@@ -344,6 +354,9 @@ async fn get_wifi_list(
 }
 
 /// The network the device is on now. Rejects when Wi-Fi is off.
+///
+/// @throws {E_INVALID_STATE} Wi-Fi is off.
+/// @throws {E_NETWORK} The system could not report the network.
 async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_wifi_started(&ctx).await?;

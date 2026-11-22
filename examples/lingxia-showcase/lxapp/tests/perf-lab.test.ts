@@ -1,10 +1,10 @@
 import { expect, test, type Fixture, type TestMetrics } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import type { DriveRequest, PerfActions, PerfData } from '../shared/perf-types';
 import { judgeFrames, judgeInput, judgeReveal, REVEAL_P95_MS, TICK_SHARE } from '../shared/perf-judge';
 import { skipWhenCovered } from './covered.js';
 
-type PerfLab = PageContract<PerfData, PerfActions>;
+type PerfLab = PageDefinition<PerfData, PerfActions>;
 
 // Perf lab: one workload per pipeline stage, judged with the bar the page's "Run budget" uses
 // (shared/perf-judge.ts). A scene that misses it fails here too; each spec attaches what it

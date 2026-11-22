@@ -1,5 +1,5 @@
 import { expect, test } from '@lingxia/test';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { harmonyDevice } from '@lingxia/test/showcase/helpers/harmony-device.js';
 import { bindFixture } from '@lingxia/test/showcase/helpers/poll.js';
@@ -14,7 +14,7 @@ test('pull down from the screen to refresh, then refresh again', {
   start: { page: 'pullToRefresh' },
 }, async (t) => {
   const { app } = bindFixture(t, 'HARMONY-PULL-GESTURE-001');
-  const page = await app.page<PageContract<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
+  const page = await app.page<PageDefinition<{ refreshCount: number; isRefreshing: boolean }>>({ name: 'pullToRefresh' });
   const view = page.view;
   const device = harmonyDevice(t);
   const screen = (await device.nodes()).reduce((a, b) => (b.bounds[2] * b.bounds[3] > a.bounds[2] * a.bounds[3] ? b : a));

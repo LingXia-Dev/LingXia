@@ -1,4 +1,5 @@
-import type { PageChannel, PageContract } from '@lingxia/types/page';
+import type { PageChannel } from '@lingxia/types/page';
+import type { PageShape } from '../../shared/lib/page-shape';
 
 // What the ticker channel carries each way; the View and Logic both import it.
 export interface TickerUpdate {
@@ -22,7 +23,7 @@ export interface ClientCommand {
   symbol: string;
 }
 
-export type TickerPage = PageContract<
+export type TickerPage = PageShape<
   Record<string, never>,
   { tickerSession(params: undefined, ch: PageChannel<ServerMessage, ClientCommand>): void }
 >;

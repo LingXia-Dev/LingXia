@@ -1,5 +1,5 @@
 import type { PageInfo } from '@lingxia/types/automation';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageDefinition } from '@lingxia/types/page';
 import { currentPageOrNull } from '@lingxia/test/showcase/helpers/page.js';
 import { expect, test, type AnyLogicPage, type TestApp } from '@lingxia/test';
 import { bindFixture, eventually, relaunchFromLogic, specNamespace, type Caught } from '@lingxia/test/showcase/helpers/poll.js';
@@ -8,7 +8,7 @@ import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 
 /** The device page's section, which its `type` query picks on load. */
 async function deviceSection(app: TestApp, expected: string): Promise<void> {
-  const device = await app.page<PageContract<{ currentType: string }>>({ name: 'device' });
+  const device = await app.page<PageDefinition<{ currentType: string }>>({ name: 'device' });
   await device.view.testId('device-page').waitFor({ timeout: 30_000 });
   await expect.poll(async () => (await device.data()).currentType).toBe(expected);
 }

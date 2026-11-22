@@ -14,17 +14,6 @@ export type JsonData<T> =
     : T extends object ? { [K in keyof T]: JsonData<T[K]> }
     : never;
 
-/**
- * A shared, type-only page contract: the page's `data` and public actions,
- * written once and used by Logic, View and tests. Importing it installs no
- * Logic globals. `Data` must be JSON (see `JsonData`); otherwise the
- * contract has no `data`, and every use of it names the problem.
- */
-export type PageContract<Data = unknown, Actions = unknown> =
-  [Data] extends [JsonData<Data>]
-    ? { readonly data: Data; readonly actions: Actions }
-    : { readonly __pageDataMustBeJson: "PageContract data must be JSON: no functions, Dates, Maps, Sets or class instances" };
-
 import type {
   DeepReadonly,
   JsonValue,
@@ -57,10 +46,15 @@ type Hook = () => void | Promise<void>;
 
 /** What `setup` returns: lifecycle hooks under their names, and `actions`. */
 export interface PageSetup<Params, Actions> {
+  /** Runs once with the params the page was opened with. */
   onLoad?: (params: Params) => void | Promise<void>;
+  /** Runs each time the page comes on screen. */
   onShow?: Hook;
+  /** Runs once, after the View first rendered. */
   onReady?: Hook;
+  /** Runs each time the page leaves the screen but stays alive. */
   onHide?: Hook;
+  /** Runs once as the page goes away, after `page.signal` aborts. */
   onUnload?: Hook;
   /** A pull, or `page.refresh()`. The indicator stays until the returned promise settles. */
   onRefresh?: Hook;
@@ -154,10 +148,12 @@ export interface PageApi<Data, Params, Result, Messages = never> {
    * when the page unloads.
    */
   readonly env: PageEnvContext & {
+    /** Follow the size class: the current value first, then each change. */
     watch(callback: (env: PageEnvContext) => void, options?: SignalOptions): () => void;
   };
 }
 
+/** Page actions as the View calls them: each resolves to its result. */
 type ViewCallable<A> = {
   readonly [K in keyof A]: A[K] extends (...args: infer P) => infer R
     ? R extends AsyncIterable<unknown> ? A[K] : (...args: P) => Promise<Awaited<R>>
@@ -171,9 +167,19 @@ type ViewCallable<A> = {
  * rest is type-only.
  */
 export interface PageDefinition<Data = unknown, Actions = unknown, Params = unknown, Result = unknown, Messages = unknown> {
+  /** The page's initial data. */
   readonly data: Data;
+  /** The page's actions, as the View calls them. */
   readonly actions: ViewCallable<Actions>;
-  readonly __lxPage: { readonly params: Params; readonly result: Result; readonly messages: Messages };
+  /** What the page declares, for the type system only. */
+  readonly __lxPage: {
+    /** What it is opened with. */
+    readonly params: Params;
+    /** What it closes with. */
+    readonly result: Result;
+    /** What it sends its opener. */
+    readonly messages: Messages;
+  };
 }
 
 /**
@@ -182,7 +188,9 @@ export interface PageDefinition<Data = unknown, Actions = unknown, Params = unkn
  * receives `Command`s.
  */
 export interface PageChannel<Send = unknown, Receive = unknown> {
+  /** Send one payload to the View. */
   send(payload: Send): void;
+  /** End the channel; the View sees `code` and `reason`. */
   close(code?: string, reason?: string): void;
   /** Returns a function that removes the handler. */
   on(event: 'data', handler: (payload: Receive) => void): () => void;
@@ -198,9 +206,13 @@ export type MessagesOf<P> = P extends { readonly __lxPage: { readonly messages: 
 
 /** What every `definePage` form declares besides its behaviour. */
 interface PageDeclarations<Data, Params, Result, Messages> {
+  /** What the page is opened with: `type<{ id: string }>()`. */
   params?: Declared<Params>;
+  /** What the page closes with. */
   result?: Declared<Result>;
+  /** What the page sends its opener. */
   messages?: Declared<Messages>;
+  /** The initial data, JSON only. */
   data?: Data & JsonData<Data>;
 }
 
@@ -237,7 +249,9 @@ export function definePage<
   Actions extends object = {},
   R = {},
 >(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  /** Runs once per instance, before `onLoad`, and returns its hooks and `actions`. */
   setup?: (page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
+  /** Not with `setup`: `setup` returns the actions. */
   actions?: undefined;
 }): PageDefinition<Data, Actions, Params, Result, Messages>;
 export function definePage<
@@ -248,7 +262,9 @@ export function definePage<
   Actions extends object = {},
   S = never,
 >(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  /** Builds the actions once per instance. */
   actions: (page: PageApi<Data, Params, Result, Messages>) => Actions & ThisType<void> & SyncActions<Actions>;
+  /** Not with `actions`. */
   setup?: S & OnlyOne<S>;
 }): PageDefinition<Data, Actions, Params, Result, Messages>;
 export function definePage<
@@ -259,7 +275,9 @@ export function definePage<
   Actions extends object = {},
   S = never,
 >(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  /** The actions as a plain object, when they need no `page`. */
   actions: Actions & ThisType<void> & ActionMap<Actions>;
+  /** Not with `actions`. */
   setup?: S & OnlyOne<S>;
 }): PageDefinition<Data, Actions, Params, Result, Messages>;
 export function definePage(definition: { setup?: unknown; actions?: unknown }): unknown {

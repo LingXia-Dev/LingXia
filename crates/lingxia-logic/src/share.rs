@@ -30,6 +30,14 @@ struct JSShareResult {
 ///
 /// Share text, files, or a page link — files cannot be combined with a page
 /// target or with text; share those separately.
+///
+/// @example
+/// ```ts
+/// const { outcome } = await lx.share({ title: 'LingXia', text: 'Try this app' });
+/// ```
+///
+/// @throws {E_INVALID_ARG} Nothing to share, a field of the wrong type, or a file the lxapp may not read.
+/// @throws {E_INTERNAL} The share sheet could not be shown.
 async fn share(ctx: JSContext, options: JSValue) -> JSResult<JSShareResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_share_options(options)?;

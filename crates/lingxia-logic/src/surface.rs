@@ -640,6 +640,9 @@ async fn call_control(surface: &JSObject, name: &str) -> JSResult<()> {
 }
 
 /// Open a URL in the in-app browser, as a main tab or docked as an aside.
+///
+/// @throws {E_INVALID_ARG} A URL that is not a string or `URL`, an unknown option, or an `edge` without `as: 'aside'`.
+/// @throws {E_INTERNAL} The browser could not open it.
 async fn open_url(ctx: JSContext, url: JSValue, options: Optional<JSObject>) -> JSResult<JSObject> {
     let url = crate::url::text_of(&url).ok_or_else(|| {
         surface_error(
@@ -683,6 +686,11 @@ pub(crate) async fn open_url_text(
 /// Open a surface `lingxia.yaml` declares. Without options it opens with the declaration's own
 /// placement; `key`, `as` and `edge` change shared shell composition and are
 /// the Control app's.
+///
+/// @throws {E_NOT_FOUND} `lingxia.yaml` declares no such surface.
+/// @throws {E_PERMISSION_DENIED} `key`, `as` or `edge` from an lxapp other than the Control app.
+/// @throws {E_SURFACE_ROLE_LOCKED} It is the root main surface and cannot change role.
+/// @throws {E_CAPABILITY_MISSING} A `key` on a surface that is not a declared native one.
 async fn open_declared(
     ctx: JSContext,
     id: JSValue,
@@ -729,6 +737,11 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
 }
 
 /// Show another lxapp in a shell slot. Control app only.
+///
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+/// @throws {E_INVALID_ARG} An empty app id, an unknown option, or an unknown `as`.
+/// @throws {E_SURFACE_ROLE_LOCKED} The app is the root main surface and cannot change role.
+/// @throws {E_SURFACE_CONFLICT} The app is already open in the other role.
 async fn open_app(
     ctx: JSContext,
     app_id: JSValue,
@@ -844,6 +857,9 @@ fn declared_lxapp(id: &str) -> Option<String> {
 }
 
 /// Open a host builtin page such as downloads. Control app only.
+///
+/// @throws {E_NOT_FOUND} A page other than `downloads`.
+/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
 async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
     let (invocation, page) =
         authorization::require_before_decode(&ctx, LogicRoute::ShellOpenBuiltin, || {
@@ -1849,6 +1865,11 @@ fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
 
 /// Hand a URL to the OS: `https` opens the system browser, `tel:` and
 /// `mailto:` their apps.
+///
+/// @example
+/// ```ts
+/// await lx.openExternal('mailto:help@example.com');
+/// ```
 ///
 /// @throws {E_INVALID_ARG} Not an absolute URL.
 /// @throws {E_PERMISSION_DENIED} Any other scheme.

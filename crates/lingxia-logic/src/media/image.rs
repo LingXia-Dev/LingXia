@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// An image's size and type, and a path to read it from.
 #[derive(Debug, Clone, IntoJSObject)]
 struct ImageInfo {
     /// Width in pixels.
@@ -63,6 +64,10 @@ rong::js_api! {
 /// ```ts
 /// const { width, height } = await lx.media.imageInfo('images/cover.png');
 /// ```
+///
+/// @throws {E_NOT_FOUND} No file at the path.
+/// @throws {E_INVALID_ARG} A path the lxapp may not read.
+/// @throws {E_INTERNAL} The file is not an image the platform can read.
 async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
@@ -110,6 +115,10 @@ async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo>
 /// ```ts
 /// const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });
 /// ```
+///
+/// @throws {E_NOT_FOUND} No file at the path.
+/// @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+/// @throws {E_INTERNAL} The image could not be re-encoded.
 async fn compress_image_api(
     ctx: JSContext,
     path: String,

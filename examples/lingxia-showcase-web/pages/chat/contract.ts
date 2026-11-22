@@ -1,5 +1,5 @@
 import type { LxStream } from '@lingxia/bridge';
-import type { PageContract } from '@lingxia/types/page';
+import type { PageShape } from '../../shared/lib/page-shape';
 
 export interface ChartData {
   kind: 'bar' | 'line' | 'pie';
@@ -18,7 +18,7 @@ export type ChatChunk =
   | { type: 'token'; token: string }
   | { type: 'artifact'; chart: ChartData };
 
-export type ChatPage = PageContract<
+export type ChatPage = PageShape<
   { messages: Message[]; isStreaming: boolean },
   {
     onSend(params: { text: string }): LxStream<ChatChunk, void>;
