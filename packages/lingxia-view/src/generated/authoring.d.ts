@@ -200,6 +200,8 @@ export declare function useWebView(name: string): WebView;
 export interface VideoMetadata { readonly duration: number | null; readonly videoWidth: number; readonly videoHeight: number; readonly live: boolean }
 /** One quality of a `sources` video: `label` is what `setQuality` and `quality` name. */
 export interface VideoSource { readonly src: string; readonly label: string }
+/** A `<video>`'s source as a forwarding component takes it: spread it whole onto the `<video>`. */
+export type VideoSourceProps = { src: string; sources?: never } | { sources: readonly VideoSource[]; src?: never } | { src?: never; sources?: never };
 /** `quality` is the label now on screen; `auto` while the player picks it. */
 export interface VideoQualityChange { readonly quality: string; readonly auto: boolean }
 export interface VideoPause { readonly reason: "user" | "api" | "hidden" | "interrupted" | "replaced" | "parked" }

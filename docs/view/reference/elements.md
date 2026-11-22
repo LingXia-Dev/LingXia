@@ -400,6 +400,8 @@ Children: none.
 | `onQualityChange` | `(event: VideoQualityChange) => void` |  |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
 
+`src` plays one file; `sources` offers the same video at several qualities. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
+
 ## `<webview>`
 
 Children: none. Not allowed inside a pressable control (`UI_BUTTON`). Moves live with a translation. Under opacity, a mask, a blur, a scale or a rotation it shows a still picture of the page and takes no input until the effect ends. Scaling or rotating it outside entering and leaving fails the build (`UI_TRANSFORM`); a scale or rotation applied at run time shows the still picture. Its page's `prefers-color-scheme` follows the View page's appearance, live.
