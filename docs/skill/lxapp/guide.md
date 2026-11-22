@@ -177,8 +177,8 @@ A View is a React component or an HTML module entry. It renders `data`
 and calls `actions`; it never mutates `data`.
 
 The page mounts once its first state (the `definePage({ data })` defaults) has
-arrived, so `data` is whole from the first render. Type `PageData` and
-`PageActions` fields as **required**; use `?:` only for a field filled later.
+arrived, so `data` is whole from the first render. Declare `definePage` `data`
+fields as **required**; use `?:` only for a field filled later.
 Never write `actions.foo?.()`. If Logic fails to deliver state, the page shows
 a panel naming itself.
 
@@ -191,12 +191,12 @@ a panel naming itself.
 Any component may call either. Geometry is CSS, not a hook:
 [page chrome CSS](#page-chrome-css).
 
-`data` is typed `DeepReadonly<PageData>`. In a dev session a write throws.
+`data` is deeply read-only. In a dev session a write throws.
 Keep what the user edits as View state and submit it with an action; Logic's
 `page.update` brings the result back:
 
 ```tsx
-const { data, actions } = useLxPage<PageData, PageActions>();
+const { data, actions } = useLxPage<typeof page>();
 const [draft, setDraft] = useState(data.message);
 <input value={draft} onChange={(e) => setDraft(e.target.value)} />
 <button onClick={() => actions.updateMessage({ text: draft })}>Save</button>
@@ -207,19 +207,10 @@ const [draft, setDraft] = useState(data.message);
 ```tsx
 // pages/home/index.tsx
 import { useLxHost, useLxPage } from '@lingxia/react';
-
-type PageData = {
-  count: number;
-  message: string;
-};
-
-type PageActions = {
-  increment: () => void;
-  updateMessage: (params: { text: string }) => void;
-};
+import type page from './index.ts';
 
 export default function HomePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
+  const { data, actions } = useLxPage<typeof page>();
   const { formFactor } = useLxHost();
 
   return (
