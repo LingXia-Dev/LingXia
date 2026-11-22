@@ -13,6 +13,7 @@ import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
 import { envOf, resetEnvReads } from './hooks.js';
 import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
+import { resetSnaps } from './snap.js';
 import { fullscreenFallback, fullscreenDrawn, resolveBare } from './fullscreen.js';
 import { resetVideos } from './video.js';
 import { webFullscreenFallback, webFullscreenDrawn, resolveBareWeb, resetWebViews } from './webview.js';
@@ -157,7 +158,7 @@ function commitCandidate() {
   const previous = page.committed;
   for (const cell of candidate.locals.values()) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
   page.locals = candidate.locals; page.callbacks = candidate.callbacks;
-  page.committed = candidate; render.candidate = null; page.updates.clear(); page.invalidated = false;
+  page.committed = candidate; render.candidate = null; page.updates.clear(); page.invalidated = candidate.invalidateAfterCommit === true;
   const retained = new Set(page.locals.values()), next = new Map(), definitions = new Map();
   for (const [cell, resource] of page.resources) if (!retained.has(cell)) resource.dispose();
   for (const cell of retained) {
@@ -220,7 +221,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews(); resetSnaps();
   wireReset();
 }
 

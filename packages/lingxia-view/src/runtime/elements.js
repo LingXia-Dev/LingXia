@@ -23,6 +23,7 @@ import { boxBinding } from './box.js';
 import { shownInDialog } from './fullscreen.js';
 import { fieldText } from './calendar.js';
 import { resolveWebView } from './webview.js';
+import { controlledSnap, snapSettled } from './snap.js';
 
 const videoFlags = [['videoMuted', 'muted'], ['videoLoop', 'loop']];
 const videoEvents = [['loadedmetadata', 'onLoadedMetadata'], ['play', 'onPlay'], ['playing', 'onPlaying'], ['pause', 'onPause'],
@@ -462,16 +463,19 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);
   semantics(tag, props, wire);
-  if (props.drag !== undefined) dragElement(tag, props, wire, on, style.release);
+  if (props.drag !== undefined) dragElement(tag, props, wire, on, style.release, `${identity}#drag`);
   // A snapping scroll's index: `snapIndex` from the page's own state, told back through `onSnapChange`.
   if (tag === 'scroll' && props.snapIndex !== undefined) {
     const { snapIndex, onSnapChange } = props;
     if (!Number.isInteger(snapIndex) || snapIndex < 0) throw Error('UI_PROP: snapIndex is a snap point index, an integer from 0');
     if (onSnapChange !== undefined && typeof onSnapChange !== 'function') throw Error('UI_PROP: onSnapChange takes a function');
-    wire('snapIndex', snapIndex);
+    const key = `${identity}#scroll`;
+    wire('snapIndex', controlledSnap(key, snapIndex));
     if (onSnapChange) on('onSnapChange', payload => {
       const index = Number(payload);
-      if (Number.isInteger(index) && index >= 0 && index !== snapIndex) onSnapChange(index);
+      if (!Number.isInteger(index) || index < 0) return;
+      snapSettled(key, index, snapIndex);
+      if (index !== snapIndex) onSnapChange(index);
     }, 'text');
   }
   // A snapping scroll's `bind`: the index of the snap point it rests on, two-way.
@@ -1039,7 +1043,7 @@ function semantics(tag, props, wire) {
 // `drag="x|y"`: the host moves the element with the finger between its snap points (offsets
 // from where layout put it, px or % of its own size) and springs it to one on release.
 const dragPoint = /^-?\d+(\.\d+)?%$/;
-function dragElement(tag, props, wire, on, release) {
+function dragElement(tag, props, wire, on, release, key) {
   const { drag: axis, dragSnapPoints: points = [0], bind: cell, snapIndex, onSnapChange, onDragStart, onDragEnd } = props;
   if (axis !== 'x' && axis !== 'y') throw Error('UI_PROP: drag is "x" or "y"');
   if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints ||
@@ -1058,7 +1062,8 @@ function dragElement(tag, props, wire, on, release) {
     index = cell.value;
   } else if (snapIndex !== undefined) index = snapIndex;
   if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error('UI_PROP: the bound snap index is out of range');
-  wire('drag', JSON.stringify({ axis, points, index, ...(release ? { release } : {}) }));
+  const sent = cell === undefined && snapIndex !== undefined ? controlledSnap(key, index) : index;
+  wire('drag', JSON.stringify({ axis, points, index: sent, ...(release ? { release } : {}) }));
   const close = props[dragClose];
   on('onDragEvent', payload => {
     const event = JSON.parse(payload);
@@ -1066,7 +1071,10 @@ function dragElement(tag, props, wire, on, release) {
     else if (event.phase === 'end') onDragEnd?.({ index: event.index, velocity: event.velocity });
     else if (event.phase === 'settle' && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
       if (cell !== undefined && cell.value !== event.index) cell.set(event.index);
-      else if (onSnapChange && event.index !== index) onSnapChange(event.index);
+      else if (snapIndex !== undefined) {
+        snapSettled(key, event.index, index);
+        if (onSnapChange && event.index !== index) onSnapChange(event.index);
+      } else if (onSnapChange && event.index !== index) onSnapChange(event.index);
       // A dialog that came to rest wholly off screen is dismissed.
       if (event.hidden === true) close?.();
     }

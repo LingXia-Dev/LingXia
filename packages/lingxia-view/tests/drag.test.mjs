@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, prepare, commit, dispatch, useLocal, reset } from '../src/internal.js';
+import { h, prepare, commit, dispatch, useLocal, reset, hasLocalUpdates } from '../src/internal.js';
 import { decode } from './support/wire.mjs';
 import { compileUtilities } from '../compiler/tailwind.mjs';
 import { configureClasses } from '../src/style/classes.js';
@@ -131,4 +131,37 @@ test('snapIndex with onSnapChange drives a snapping scroll and a drag detent fro
     [{ onSnapChange: () => {} }, /onSnapChange reports the snap index you pass in snapIndex/],
     [{ snapIndex: 0 }, /snapIndex controls the position, so it needs onSnapChange/],
   ]) assert.throws(() => render(() => h('page', {}, h('scroll', props))), pattern);
+});
+
+test('a controlled settle the page refuses springs back once; one it takes stays', () => {
+  for (const [name, view, sent, settle] of [
+    ['scroll', (at, heard) => () => h('page', {}, h('scroll', { snapIndex: at, onSnapChange: heard, 'data-testid': 'e' })),
+      node => node.props.snapIndex, (node, index) => dispatch(node.props.onSnapChange, String(index))],
+    ['drag', (at, heard) => () => h('page', {}, h('view', { drag: 'y', dragSnapPoints: [0, 200, 400], snapIndex: at, 'aria-label': 'Sheet', 'data-testid': 'e', onSnapChange: heard })),
+      node => JSON.parse(node.props.drag).index, (node, index) => dispatch(node.props.onDragEvent, event('settle', index))],
+  ]) {
+    reset();
+    const heard = [];
+    // Refused: the page keeps 0. One frame echoes the settled 2, the next sends 0, which springs back.
+    let node = byId(render(view(0, index => heard.push(index))), 'e');
+    assert.equal(sent(node), 0, name);
+    settle(node, 2);
+    assert.deepEqual(heard, [2], name);
+    assert.equal(hasLocalUpdates(), true, `${name}: the refusal renders`);
+    node = byId(render(view(0, index => heard.push(index))), 'e');
+    assert.equal(sent(node), 2, `${name}: echo`);
+    assert.equal(hasLocalUpdates(), true, `${name}: the echo asks for one more frame`);
+    node = byId(render(view(0, index => heard.push(index))), 'e');
+    assert.equal(sent(node), 0, `${name}: back to the page's index`);
+    assert.equal(hasLocalUpdates(), false, `${name}: once per settle`);
+    assert.equal(sent(byId(render(view(0, index => heard.push(index))), 'e')), 0, name);
+    // Taken: the page moves to 1; no echo, no extra frame.
+    settle(node, 1);
+    node = byId(render(view(1, index => heard.push(index))), 'e');
+    assert.equal(sent(node), 1, `${name}: taken`);
+    assert.equal(hasLocalUpdates(), false, `${name}: no extra frame`);
+    // A settle where the page already is asks for nothing.
+    settle(node, 1);
+    assert.equal(hasLocalUpdates(), false, name);
+  }
 });

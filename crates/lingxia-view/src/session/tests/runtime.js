@@ -4760,6 +4760,31 @@
     }, "text", true);
   }
 
+  // src/runtime/snap.js
+  var settled = /* @__PURE__ */ new Map();
+  function resetSnaps() {
+    settled = /* @__PURE__ */ new Map();
+  }
+  function controlledSnap(key, index) {
+    const record = settled.get(key);
+    if (!record || record.index === index) {
+      settled.delete(key);
+      return index;
+    }
+    if (!record.echoed) {
+      record.echoed = true;
+      render.candidate.invalidateAfterCommit = true;
+      return record.index;
+    }
+    settled.delete(key);
+    return index;
+  }
+  function snapSettled(key, index, current) {
+    if (index === current) return;
+    settled.set(key, { index, echoed: false });
+    page.invalidated = true;
+  }
+
   // src/runtime/elements.js
   var videoFlags = [["videoMuted", "muted"], ["videoLoop", "loop"]];
   var videoEvents = [
@@ -5190,15 +5215,18 @@
     if (data) wire("dataAttributes", JSON.stringify(data));
     if (props.dir !== void 0) wire("direction", props.dir);
     semantics(tag, props, wire);
-    if (props.drag !== void 0) dragElement(tag, props, wire, on, style2.release);
+    if (props.drag !== void 0) dragElement(tag, props, wire, on, style2.release, `${identity}#drag`);
     if (tag === "scroll" && props.snapIndex !== void 0) {
       const { snapIndex, onSnapChange } = props;
       if (!Number.isInteger(snapIndex) || snapIndex < 0) throw Error("UI_PROP: snapIndex is a snap point index, an integer from 0");
       if (onSnapChange !== void 0 && typeof onSnapChange !== "function") throw Error("UI_PROP: onSnapChange takes a function");
-      wire("snapIndex", snapIndex);
+      const key = `${identity}#scroll`;
+      wire("snapIndex", controlledSnap(key, snapIndex));
       if (onSnapChange) on("onSnapChange", (payload) => {
         const index = Number(payload);
-        if (Number.isInteger(index) && index >= 0 && index !== snapIndex) onSnapChange(index);
+        if (!Number.isInteger(index) || index < 0) return;
+        snapSettled(key, index, snapIndex);
+        if (index !== snapIndex) onSnapChange(index);
       }, "text");
     }
     if (tag === "scroll" && props.bind !== void 0) {
@@ -5753,7 +5781,7 @@
     }
   }
   var dragPoint = /^-?\d+(\.\d+)?%$/;
-  function dragElement(tag, props, wire, on, release) {
+  function dragElement(tag, props, wire, on, release, key) {
     const { drag: axis, dragSnapPoints: points = [0], bind: cell2, snapIndex, onSnapChange, onDragStart, onDragEnd } = props;
     if (axis !== "x" && axis !== "y") throw Error('UI_PROP: drag is "x" or "y"');
     if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints || points.some((point) => typeof point === "number" ? !Number.isFinite(point) || Math.abs(point) > limits.styleNumber : typeof point !== "string" || !dragPoint.test(point) || Math.abs(parseFloat(point)) > 1e3))
@@ -5770,7 +5798,8 @@
       index = cell2.value;
     } else if (snapIndex !== void 0) index = snapIndex;
     if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error("UI_PROP: the bound snap index is out of range");
-    wire("drag", JSON.stringify({ axis, points, index, ...release ? { release } : {} }));
+    const sent = cell2 === void 0 && snapIndex !== void 0 ? controlledSnap(key, index) : index;
+    wire("drag", JSON.stringify({ axis, points, index: sent, ...release ? { release } : {} }));
     const close = props[dragClose];
     on("onDragEvent", (payload) => {
       const event = JSON.parse(payload);
@@ -5778,7 +5807,10 @@
       else if (event.phase === "end") onDragEnd?.({ index: event.index, velocity: event.velocity });
       else if (event.phase === "settle" && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
         if (cell2 !== void 0 && cell2.value !== event.index) cell2.set(event.index);
-        else if (onSnapChange && event.index !== index) onSnapChange(event.index);
+        else if (snapIndex !== void 0) {
+          snapSettled(key, event.index, index);
+          if (onSnapChange && event.index !== index) onSnapChange(event.index);
+        } else if (onSnapChange && event.index !== index) onSnapChange(event.index);
         if (event.hidden === true) close?.();
       }
     }, "text");
@@ -6508,7 +6540,7 @@
     page.committed = candidate;
     render.candidate = null;
     page.updates.clear();
-    page.invalidated = false;
+    page.invalidated = candidate.invalidateAfterCommit === true;
     const retained = new Set(page.locals.values()), next = /* @__PURE__ */ new Map(), definitions = /* @__PURE__ */ new Map();
     for (const [cell2, resource] of page.resources) if (!retained.has(cell2)) resource.dispose();
     for (const cell2 of retained) {
@@ -6584,6 +6616,7 @@
     resetEnvReads();
     resetVideos();
     resetWebViews();
+    resetSnaps();
     wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
