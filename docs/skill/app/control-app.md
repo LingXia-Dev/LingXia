@@ -34,7 +34,7 @@ are present for every lxapp and refuse a guest at the call.
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`
-- `lx.host.setBadge(...)` and `lx.host.tray.*`
+- `lx.host.badge.*` and `lx.host.tray.*`
 - `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
 - `lx.host.update.*`, `lx.host.screenshot()`
   — the host app, not your bundle (that is `lx.app.update.onReady`)
@@ -64,7 +64,7 @@ A call from the wrong class rejects with `E_PERMISSION_DENIED`, naming the
 admitted class:
 
 ```
-lx.host.setBadge is only available in the Control app
+lx.host.exit is only available in the Control app
 ```
 
 Do not retry or impersonate; ask the Control app to act. It is never the user

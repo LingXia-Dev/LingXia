@@ -35,6 +35,7 @@ import type {
   AppCacheApi,
   AppLanguageApi,
   AutostartApi,
+  BadgeApi,
   BannerApi,
   CompressVideoTask,
   HostAppearanceApi,
@@ -102,6 +103,7 @@ export const LX_API_NAMES = [
 const HOST_APP_API = [
   'appearance',
   'autostart',
+  'badge',
   'banner',
   'cache',
   'displayLanguage',
@@ -111,7 +113,6 @@ const HOST_APP_API = [
   'notification',
   'screenshot',
   'serviceEnv',
-  'setBadge',
   'setServiceEnv',
   'terminal',
   'tray',
@@ -129,6 +130,7 @@ const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
     name !== 'terminal',
 );
 const AUTOSTART_API = ['disable', 'enable', 'isEnabled'] as const;
+const BADGE_API = ['clear', 'set'] as const;
 const BANNER_API = ['dismiss', 'show'] as const;
 const NOTIFICATION_API = [
   'cancel',
@@ -405,6 +407,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host.autostart',
     members: AUTOSTART_API,
+  },
+  {
+    name: 'lx.host.badge',
+    layer: 'logic',
+    expression: 'lx.host.badge',
+    members: BADGE_API,
   },
   {
     name: 'lx.host.banner',
@@ -861,6 +869,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<BadgeApi, typeof BADGE_API>>,
   AssertTrue<Exact<BannerApi, typeof BANNER_API>>,
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,

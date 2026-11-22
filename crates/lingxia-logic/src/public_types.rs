@@ -2342,8 +2342,8 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
-        /// Options for `lx.host.setBadge`.
-        type SetBadgeOptions = r###"{
+        /// Where `lx.host.badge.set` and `clear` paint.
+        type BadgeOptions = r###"{
     /**
      * Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.
      * @default 'auto'
@@ -2351,10 +2351,34 @@ true
     surface?: 'auto' | 'app_icon' | 'tray';
 }"###;
 
-        /// What `lx.host.setBadge` painted.
-        type SetBadgeResult = r###"{
-    /** Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item. */
+        /// What a badge call changed.
+        type BadgeResult = r###"{
+    /** Whether any surface took the change; `false` when one exists but declined, such as a hidden tray item. */
     painted: boolean;
+}"###;
+
+        /// A mark on the product's own system chrome, such as an unread count. A badge never
+        /// prompts, and a notification never sets one.
+        type BadgeApi = r###"{
+    /**
+     * Show `value` on the badge, such as an unread count.
+     * @supports host.badge
+     * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
+     * @platform Windows: the taskbar and the notification-area item.
+     * @platform iOS: the home-screen icon, numbers only; needs notification permission.
+     * @platform HarmonyOS: the home-screen icon.
+     * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
+     * @throws {E_INVALID_ARG} An empty value, or text where the platform paints numbers only.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    set(value: string | number, options?: BadgeOptions): Promise<BadgeResult>;
+    /**
+     * Remove the badge.
+     * @supports host.badge
+     * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    clear(options?: BadgeOptions): Promise<BadgeResult>;
 }"###;
 
         /// One row of the tray item's menu.

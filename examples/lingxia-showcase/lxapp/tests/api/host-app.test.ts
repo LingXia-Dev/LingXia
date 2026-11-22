@@ -68,41 +68,40 @@ test('capture a host app screenshot into the lxapp sandbox', {
 
 test('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set', 'lx.host.badge.clear'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
   const painted = await app.logic.eval(async ({ lx }) => {
-    const first = await lx.host.setBadge(12);
-    const cleared = await lx.host.setBadge(null);
+    const first = await lx.host.badge.set(12);
+    const cleared = await lx.host.badge.clear();
     // Clearing an already-clear badge must stay a no-op, not an error.
-    const clearedAgain = await lx.host.setBadge(null);
-    const empty = await lx.host.setBadge('');
-    return [first, cleared, clearedAgain, empty];
+    const clearedAgain = await lx.host.badge.clear();
+    return [first, cleared, clearedAgain];
   });
 
   // Support does not guarantee painting: permission and visible chrome vary.
-  expect(painted.length).toBe(4);
+  expect(painted.length).toBe(3);
   for (const result of painted) {
     expect(typeof result.painted).toBe('boolean');
   }
 });
 
-test('tell a hidden tray from a shown one in what setBadge reports', {
+test('tell a hidden tray from a shown one in what badge.set reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.host.setBadge', 'lx.host.tray.update'],
+  covers: ['lx.host.badge.set', 'lx.host.tray.update'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); lx.host.tray.update({ visible: false }); } catch {} return true;
+      try { await lx.host.badge.clear(); lx.host.tray.update({ visible: false }); } catch {} return true;
     });
   });
 
@@ -110,10 +109,10 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
   // `visible: true`, so "the item took the value" is not "the user can see it".
   // A host without a tray rejects `E_NOT_SUPPORTED`, which reads as not painted.
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.update({ visible: false }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
+    try { lx.host.tray.update({ visible: false }); return (await lx.host.badge.set(4, { surface: 'tray' })).painted; } catch { return false; }
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.update({ visible: true }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
+    try { lx.host.tray.update({ visible: true }); return (await lx.host.badge.set(4, { surface: 'tray' })).painted; } catch { return false; }
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -125,13 +124,13 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
 
 test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   id: 'HOSTAPP-BADGE-003',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
@@ -139,7 +138,7 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   // but declines resolves `painted: false`.
   const outcome = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      const value = await lx.host.setBadge(2, { surface: 'tray' });
+      const value = await lx.host.badge.set(2, { surface: 'tray' });
       return { ok: true, value: value.painted ? 'painted' : 'declined' };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -152,7 +151,7 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   const bad = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
       // `dock` is not a surface the typings offer; the probe asks for it on purpose.
-      const value = await (lx.host.setBadge as unknown as (value: number, options: { surface: string }) => Promise<unknown>)(2, { surface: 'dock' });
+      const value = await (lx.host.badge.set as unknown as (value: number, options: { surface: string }) => Promise<unknown>)(2, { surface: 'dock' });
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -163,21 +162,22 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   expect(bad.code).toBe('E_INVALID_ARG');
 });
 
-test('reject a badge value that is neither a string, a number, nor null', {
+test('reject an empty badge, or one that is neither a string nor a number', {
   id: 'HOSTAPP-BADGE-002',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
-  // Coercing these would paint "[object Object]" on the dock instead of failing.
-  for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
-    await t.step(`lx.host.setBadge(${literal})`, async () => {
+  // Coercing these would paint "[object Object]" on the dock instead of failing;
+  // an empty one would be a second way to clear.
+  for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}', 'null', "''"]) {
+    await t.step(`lx.host.badge.set(${literal})`, async () => {
       const outcome = await app.logic.eval(async ({ lx }, literal): Promise<Caught> => {
         // Values the typings refuse on purpose; a function cannot cross as JSON.
         const values: Record<string, unknown> = {
@@ -185,9 +185,11 @@ test('reject a badge value that is neither a string, a number, nor null', {
           '[1, 2]': [1, 2],
           true: true,
           '() => {}': () => {},
+          null: null,
+          "''": '',
         };
         try {
-          await (lx.host.setBadge as unknown as (value: unknown) => Promise<unknown>)(values[literal]);
+          await (lx.host.badge.set as unknown as (value: unknown) => Promise<unknown>)(values[literal]);
           return { ok: true };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

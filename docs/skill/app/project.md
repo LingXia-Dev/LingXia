@@ -492,7 +492,7 @@ surfaces:
       size: { width: 320, height: 480 }
 ```
 
-The runtime tray content (`lx.host.tray.*`) and badge (`lx.host.setBadge`) are
+The runtime tray content (`lx.host.tray.*`) and badge (`lx.host.badge.*`) are
 Control-app APIs ([Control app](./control-app.md)).
 
 ### Terminal and browser mains

@@ -50,7 +50,7 @@ export async function eventually<T>(
  * ```ts
  * const outcome: Caught = await t.app.logic.eval(async ({ lx }) => {
  *   try {
- *     await lx.host.setBadge(2);
+ *     await lx.host.badge.set(2);
  *     return { ok: true };
  *   } catch (error) {
  *     const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

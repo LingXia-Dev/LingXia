@@ -384,6 +384,13 @@ declare global {
     readonly banner: BannerApi;
 
     /**
+     * A mark on the product's own system chrome, such as an unread count.
+     * Control app only.
+     * @supports host.badge
+     */
+    readonly badge: BadgeApi;
+
+    /**
      * The product's language preference. Only the Control app may read or set
      * it; an lxapp reads the language it renders in from `lx.app.language`.
      */

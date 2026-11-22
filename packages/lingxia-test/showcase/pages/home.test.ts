@@ -80,6 +80,7 @@ test('switches display language from the home control', {
   id: 'UI-LANGUAGE-001',
   covers: [
     'lx.app.language.watch',
+    'lx.app.t',
     'lx.host.displayLanguage.get',
     'lx.host.displayLanguage.set',
     'lx.host.displayLanguage.watch',
@@ -130,6 +131,8 @@ test('switches display language from the home control', {
       (state) => hasTabLabels(state, ['首页', '接口', '待办']),
       'tab bar labels after zh-CN',
     );
+    // Logic's own words, for native dialogs nothing re-renders, follow too.
+    expect(await app.logic.eval(({ lx }) => lx.app.t('app.update.later'))).toBe('稍后');
 
     await waitForElementEnabled(home.view, '[data-testid="home-language-en-US"]');
     await home.view.testId('home-language-en-US').click();

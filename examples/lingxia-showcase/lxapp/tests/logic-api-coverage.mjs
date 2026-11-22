@@ -8,6 +8,7 @@ export default {
     { "api": "lx.host.info", "mode": "automated", "owner": "SYSTEM-001" },
     { "api": "lx.app.language.get", "mode": "automated", "owner": "SYSTEM-001" },
     { "api": "lx.app.language.watch", "mode": "automated", "owner": "UI-LANGUAGE-001" },
+    { "api": "lx.app.t", "mode": "automated", "owner": "UI-LANGUAGE-001" },
     { "api": "lx.host.displayLanguage.get", "mode": "automated", "owner": "UI-LANGUAGE-001" },
     { "api": "lx.host.displayLanguage.set", "mode": "automated", "owner": "UI-LANGUAGE-001" },
     { "api": "lx.host.displayLanguage.watch", "mode": "automated", "owner": "UI-LANGUAGE-001" },

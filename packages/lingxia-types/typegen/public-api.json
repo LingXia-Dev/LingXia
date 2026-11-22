@@ -16,6 +16,7 @@
     "AppScreenshotOptions",
     "AppScreenshotResult",
     "AutostartApi",
+    "BadgeApi",
     "BannerApi",
     "AppAppearanceApi",
     "HostAppearanceApi",
