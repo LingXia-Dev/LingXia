@@ -196,7 +196,9 @@ pub(crate) struct SignalOptions {
 }
 
 pub(crate) fn abort_error() -> rong::RongJSError {
-    rong::HostError::new(rong::error::E_ABORT, "the call was aborted").into()
+    rong::HostError::new(rong::error::E_ABORT, "the call was aborted")
+        .with_name("AbortError")
+        .into()
 }
 
 /// Run `work` until it settles or `signal` aborts. Abort rejects `E_ABORT` and drops

@@ -71,9 +71,15 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
       call().then(() => 'ok', (error: { code?: string }) => error?.code ?? String(error));
     // Keys and values outside `LxFeature` on purpose: the contract is how it answers them.
     const supports = (value: unknown) => (lx.supports as (value: unknown) => boolean)(value);
+    // A refusal is an LxError named TypeError, never a bare TypeError.
+    const LxError = (globalThis as Record<symbol, unknown>)[Symbol.for('lingxia.LxError')] as new () => Error;
     const rejects = (value: unknown) => {
       try { supports(value); return false; }
-      catch (error) { return error instanceof TypeError; }
+      catch (error) {
+        const e = error as { code?: string; name?: string; data?: { argument?: unknown } };
+        return error instanceof LxError && !(error instanceof TypeError) && e.code === 'E_INVALID_ARG'
+          && e.name === 'TypeError' && e.data?.argument === 1;
+      }
     };
     return {
       os: lx.host.info.os,

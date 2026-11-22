@@ -1,3 +1,4 @@
+use super::download::options_string;
 use super::{network_security, normalize_relative_path};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
@@ -189,37 +190,21 @@ fn get_present_property(obj: &JSObject, field: &str) -> Option<JSValue> {
         .filter(|value| !value.is_undefined() && !value.is_null())
 }
 
-fn read_required_string_field(obj: &JSObject, field: &str, api_name: &str) -> JSResult<String> {
+fn read_required_string_field(obj: &JSObject, field: &str, _api_name: &str) -> JSResult<String> {
     let value = get_present_property(obj, field).ok_or_else(|| {
-        js_error_from_business_code_with_detail(1002, format!("{api_name} requires {field}"))
+        rong::RongJSError::from(rong::HostError::missing_field(field)).at_argument(2)
     })?;
-    if !value.is_string() {
-        return Err(js_invalid_parameter_error(format!(
-            "{api_name} {field} must be a string"
-        )));
-    }
-    value
-        .to_rust::<String>()
-        .map_err(|_| js_invalid_parameter_error(format!("{api_name} {field} must be a string")))
+    options_string(value, &[field])
 }
 
 fn read_optional_string_field(
     obj: &JSObject,
     field: &str,
-    api_name: &str,
+    _api_name: &str,
 ) -> JSResult<Option<String>> {
-    let Some(value) = get_present_property(obj, field) else {
-        return Ok(None);
-    };
-    if !value.is_string() {
-        return Err(js_invalid_parameter_error(format!(
-            "{api_name} {field} must be a string"
-        )));
-    }
-    value
-        .to_rust::<String>()
-        .map(Some)
-        .map_err(|_| js_invalid_parameter_error(format!("{api_name} {field} must be a string")))
+    get_present_property(obj, field)
+        .map(|value| options_string(value, &[field]))
+        .transpose()
 }
 
 fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
@@ -248,14 +233,7 @@ fn read_string_map(obj: &JSObject, field: &str, api_name: &str) -> JSResult<Vec<
         if value.is_undefined() || value.is_null() {
             continue;
         }
-        if !value.is_string() {
-            return Err(js_invalid_parameter_error(format!(
-                "{api_name} {field}.{key} must be a string"
-            )));
-        }
-        let parsed = value.to_rust::<String>().map_err(|_| {
-            js_invalid_parameter_error(format!("{api_name} {field}.{key} must be a string"))
-        })?;
+        let parsed = options_string(value, &[field, &key])?;
         entries.push((key, parsed));
     }
     Ok(entries)
@@ -822,6 +800,45 @@ mod tests {
 
     fn number(ctx: &rong::JSContext, value: f64) -> JSValue {
         JSValue::from_rust(ctx, value)
+    }
+
+    /// A field of the wrong type is refused like an argument: `E_INVALID_ARG` at argument 2, with
+    /// the path inside the options.
+    #[test]
+    fn a_wrong_option_field_is_refused_with_its_argument_and_path() {
+        let (_runtime, ctx) = js_context();
+        let located = |error: rong::RongJSError| {
+            (
+                error.code().unwrap_or_default().to_string(),
+                format!(
+                    "{:?}",
+                    error.as_host_error().and_then(|host| host.data.clone())
+                ),
+            )
+        };
+        let (code, data) = located(
+            parse_upload_options(url(&ctx), options(&ctx, &[("type", number(&ctx, 5.0))]))
+                .unwrap_err(),
+        );
+        assert_eq!(code, rong::error::E_INVALID_ARG);
+        assert!(
+            data.contains("argument") && data.contains("\"type\""),
+            "{data}"
+        );
+
+        let headers = JSObject::new(&ctx);
+        headers.set("accept", 1).unwrap();
+        let headers = JSValue::from_raw(&ctx, headers.into_value());
+        let (code, data) = located(
+            parse_upload_options(url(&ctx), options(&ctx, &[("headers", headers)])).unwrap_err(),
+        );
+        assert_eq!(code, rong::error::E_INVALID_ARG);
+        assert!(data.contains("headers.accept"), "{data}");
+
+        let bare = JSValue::from_raw(&ctx, JSObject::new(&ctx).into_value());
+        let (code, data) = located(parse_upload_options(url(&ctx), bare).unwrap_err());
+        assert_eq!(code, rong::error::E_INVALID_ARG);
+        assert!(data.contains("\"path\""), "{data}");
     }
 
     #[test]

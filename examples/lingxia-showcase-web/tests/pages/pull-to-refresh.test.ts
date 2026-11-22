@@ -1,7 +1,7 @@
 import type { Fixture, TestApp, TestView } from '@lingxia/test';
 import { waitForElementText } from '../support/page.js';
 import { expect, test } from '@lingxia/test';
-import { bindFixture, eventually, type Caught } from '../support/poll.js';
+import { bindFixture, eventually } from '../support/poll.js';
 import { APP_ID } from '../support/app.js';
 
 interface RefreshState {
@@ -88,20 +88,19 @@ test("page.refresh runs onRefresh, and the indicator stays until it settles", { 
     // The relaunch waited for home to be ready, so it is the current page.
     await app.view.testId('home-page').waitFor({ timeout: 30_000 });
 
-    const rejected: Caught = await app.logic.eval(async ({ currentPage }) => {
+    const rejected = await app.logic.eval(async ({ currentPage }) => {
       try {
         currentPage()!.refresh();
         return { ok: true };
       } catch (error) {
-        const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
-        return { ok: false, code: code ?? '', message: String(message ?? error), data: data ?? null };
+        const { code, reason, detail } = error as { code?: string; reason?: string; detail?: string };
+        return { ok: false, code: code ?? '', reason: reason ?? '', detail: detail ?? '' };
       }
     });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_STATE');
-    expect((rejected.data as { bizCode?: number } | undefined)?.bizCode).toBe(4004);
-    expect((rejected.data as { detail?: string } | undefined)?.detail)
-      .toContain('enablePullDownRefresh: true');
+    expect(rejected.reason).toBe('featureDisabled');
+    expect(rejected.detail).toContain('enablePullDownRefresh: true');
   });
 });
 

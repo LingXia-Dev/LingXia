@@ -342,13 +342,13 @@ async fn fonts_list(ctx: JSContext) -> JSResult<JSValue> {
 
 #[cfg(target_os = "windows")]
 async fn conpty_status(ctx: JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsStatus)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalConptyStatus)?;
     to_js(&ctx, &lingxia_terminal_config::windows::status(&data_dir))
 }
 
 #[cfg(target_os = "windows")]
 async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
-    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsInstall)?;
+    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalConptyInstall)?;
     let options = options.to_rust::<InstallConptyOptions>()?;
     let logical_path = options.path.trim();
     if !logical_path.starts_with("lx://temp/") {
@@ -379,7 +379,7 @@ async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
 
 #[cfg(target_os = "windows")]
 async fn conpty_set_enabled(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
-    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsSetEnabled)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalConptySetEnabled)?;
     let options = options.to_rust::<SetConptyEnabledOptions>()?;
     let status = lingxia_terminal_config::windows::set_enabled(&data_dir, options.enabled)
         .map_err(|error| HostError::new(rong::error::E_INVALID_STATE, error.to_string()))?;
@@ -630,18 +630,18 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     crate::capability::unsupported_namespace(
         ctx,
         &terminal,
-        "lx.host.terminal.windows",
-        "host.terminal.windows",
+        "lx.host.terminal.conpty",
+        "host.terminal.conpty",
     )?;
     #[cfg(target_os = "windows")]
     {
-        let windows = child_namespace(&terminal, ctx, "windows")?;
-        windows.set("status", JSFunc::new(ctx, conpty_status)?.name("status")?)?;
-        windows.set(
+        let conpty = child_namespace(&terminal, ctx, "conpty")?;
+        conpty.set("status", JSFunc::new(ctx, conpty_status)?.name("status")?)?;
+        conpty.set(
             "install",
             JSFunc::new(ctx, conpty_install)?.name("install")?,
         )?;
-        windows.set(
+        conpty.set(
             "setEnabled",
             JSFunc::new(ctx, conpty_set_enabled)?.name("setEnabled")?,
         )?;

@@ -91,7 +91,7 @@ test("an lx.* error thrown in logic.eval is matched by its own code", async () =
   const world = createWorld();
   world.app.eval = async () => {
     throw coded("E_EVAL_SCRIPT", "E_INVALID_STATE: Error: Wi-Fi is off", {
-      cause: { code: "E_INVALID_STATE", message: "Error: Wi-Fi is off", data: { bizCode: 12009 } },
+      cause: { code: "E_INVALID_STATE", message: "Error: Wi-Fi is off", reason: "wifiDisabled" },
     });
   };
   installFakeHost(world);

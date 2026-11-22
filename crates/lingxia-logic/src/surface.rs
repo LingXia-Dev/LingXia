@@ -146,9 +146,10 @@ impl JSSurface {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
-            rong::error::E_TYPE,
+            rong::error::E_NOT_SUPPORTED,
             "Surface cannot be directly constructed",
         )
+        .with_name("TypeError")
         .into())
     }
 

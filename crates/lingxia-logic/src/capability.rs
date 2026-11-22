@@ -3,7 +3,7 @@
 
 use crate::i18n::js_internal_error;
 use lxapp::LxApp;
-use rong::{HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, Promise};
+use rong::{HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, Promise};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock, Weak};
@@ -254,16 +254,8 @@ pub(crate) fn unsupported_namespace(
 /// ```ts
 /// if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });
 /// ```
-fn supports(ctx: JSContext, feature: JSValue) -> JSResult<bool> {
-    if !feature.is_string() {
-        return Err(HostError::new(
-            rong::error::E_INVALID_ARG,
-            "lx.supports requires a feature string",
-        )
-        .with_name("TypeError")
-        .into());
-    }
-    Ok(exposes(&ctx, &feature.to_rust::<String>()?))
+fn supports(ctx: JSContext, feature: String) -> JSResult<bool> {
+    Ok(exposes(&ctx, &feature))
 }
 
 rong::js_api! {
@@ -333,6 +325,7 @@ mod tests {
         "lx.host.terminal.settings",
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",
+        "lx.host.terminal.conpty",
     ];
 
     #[test]

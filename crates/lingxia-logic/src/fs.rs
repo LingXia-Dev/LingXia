@@ -1027,9 +1027,7 @@ fn js_value_to_bytes(
     api_name: &'static str,
 ) -> JSResult<Vec<u8>> {
     if value.is_string() {
-        let text = value
-            .to_rust::<String>()
-            .map_err(|_| js_invalid_parameter_error(format!("{api_name} data must be a string")))?;
+        let text = value.to_rust::<String>()?;
         return match decode_encoding(encoding, api_name)? {
             Some("base64") => general_purpose::STANDARD.decode(text).map_err(|err| {
                 js_invalid_parameter_error(format!("{api_name} invalid base64 data: {err}"))
@@ -1098,7 +1096,11 @@ fn read_managed_file(lxapp: &LxApp, raw_path: &str, api_name: &'static str) -> J
 impl JSLxFile {
     #[js_method(constructor, private)]
     fn _ctor() -> JSResult<()> {
-        Err(HostError::new(rong::error::E_TYPE, "Use lx.fs.file(path)").into())
+        Err(
+            HostError::new(rong::error::E_NOT_SUPPORTED, "Use lx.fs.file(path)")
+                .with_name("TypeError")
+                .into(),
+        )
     }
 
     /// The path supplied to `lx.fs.file`.

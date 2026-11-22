@@ -160,12 +160,12 @@ const NETWORK_API = ['download', 'status', 'upload', 'wifi'] as const;
 const WIFI_API = ['connect', 'current', 'list', 'onConnected'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
 const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
-const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
+const TERMINAL_API = ['colorSchemes', 'conpty', 'fonts', 'settings'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
-const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
+const CONPTY_API = ['install', 'setEnabled', 'status'] as const;
 const SURFACE_NAMESPACE_API = ['app', 'declared', 'get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
 const SHELL_API = ['activate', 'openBuiltin', 'setAppDisplay', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['remove', 'replace', 'update'] as const;
@@ -554,10 +554,10 @@ export const LX_RUNTIME_SURFACES = [
     members: TERMINAL_FONTS_API,
   },
   {
-    name: 'lx.host.terminal.windows',
+    name: 'lx.host.terminal.conpty',
     layer: 'logic',
-    expression: 'lx.host.terminal.windows',
-    members: WINDOWS_TERMINAL_API,
+    expression: 'lx.host.terminal.conpty',
+    members: CONPTY_API,
   },
 
   {
@@ -984,7 +984,7 @@ type RuntimeSurfaceTypes = {
   'lx.host.terminal.settings': TerminalSettingsApi;
   'lx.host.terminal.colorSchemes': TerminalColorSchemesApi;
   'lx.host.terminal.fonts': TerminalFontsApi;
-  'lx.host.terminal.windows': NonNullable<TerminalApi['windows']>;
+  'lx.host.terminal.conpty': NonNullable<TerminalApi['conpty']>;
   'lx.surface': SurfaceApi;
   'lx.shell': ShellApi;
   'lx.shell.sidebarActions': ShellApi['sidebarActions'];

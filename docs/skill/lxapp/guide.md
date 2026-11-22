@@ -160,7 +160,7 @@ export default definePage({
 | --- | --- | --- |
 | One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
 | Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
-| Must survive restarts | `lx.storage` (JSON values; key types in `LxStorageSchema`) | Persistent |
+| Must survive restarts | `lx.storage` (JSON values; key types in `LxStorageSchema`; a plain file, readable by any same-user process on macOS and Windows, so no tokens) | Persistent |
 
 Never keep per-entry state in module scope.
 

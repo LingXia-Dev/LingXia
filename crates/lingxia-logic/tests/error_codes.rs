@@ -73,7 +73,8 @@ fn every_thrown_code_is_in_the_published_union() {
             &[]
         };
         for code in codes_in(&text) {
-            if !allowed.contains(&code) && !view_names.contains(&code.as_str()) {
+            // rong may still raise E_TYPE for a wrong-typed field; our own refusals are E_INVALID_ARG.
+            if code == "E_TYPE" || !allowed.contains(&code) && !view_names.contains(&code.as_str()) {
                 strays.push(format!("{}: {code}", file.display()));
             }
         }

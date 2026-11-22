@@ -61,12 +61,9 @@ pub(crate) enum LogicRoute {
     TerminalPreviewClear,
     TerminalPreviewClose,
     TerminalFontsList,
-    #[cfg(all(feature = "terminal", target_os = "windows"))]
-    TerminalWindowsStatus,
-    #[cfg(all(feature = "terminal", target_os = "windows"))]
-    TerminalWindowsInstall,
-    #[cfg(all(feature = "terminal", target_os = "windows"))]
-    TerminalWindowsSetEnabled,
+    TerminalConptyStatus,
+    TerminalConptyInstall,
+    TerminalConptySetEnabled,
 }
 
 impl LogicRoute {
@@ -123,12 +120,9 @@ impl LogicRoute {
         Self::TerminalPreviewClear,
         Self::TerminalPreviewClose,
         Self::TerminalFontsList,
-        #[cfg(all(feature = "terminal", target_os = "windows"))]
-        Self::TerminalWindowsStatus,
-        #[cfg(all(feature = "terminal", target_os = "windows"))]
-        Self::TerminalWindowsInstall,
-        #[cfg(all(feature = "terminal", target_os = "windows"))]
-        Self::TerminalWindowsSetEnabled,
+        Self::TerminalConptyStatus,
+        Self::TerminalConptyInstall,
+        Self::TerminalConptySetEnabled,
     ];
 
     /// `lx.host.terminal.*` serves the host-bundled Settings surface. The
@@ -194,10 +188,9 @@ impl LogicRoute {
             | Self::TerminalPreviewClear
             | Self::TerminalPreviewClose
             | Self::TerminalFontsList => RouteAudience::ControlSurfaceOnly,
-            #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsStatus
-            | Self::TerminalWindowsInstall
-            | Self::TerminalWindowsSetEnabled => RouteAudience::ControlSurfaceOnly,
+            Self::TerminalConptyStatus
+            | Self::TerminalConptyInstall
+            | Self::TerminalConptySetEnabled => RouteAudience::ControlSurfaceOnly,
         }
     }
 
@@ -255,12 +248,9 @@ impl LogicRoute {
             Self::TerminalPreviewClear => "lx.host.terminal.colorSchemes.preview.clear",
             Self::TerminalPreviewClose => "lx.host.terminal.colorSchemes.preview.close",
             Self::TerminalFontsList => "lx.host.terminal.fonts.list",
-            #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsStatus => "lx.host.terminal.windows.status",
-            #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsInstall => "lx.host.terminal.windows.install",
-            #[cfg(all(feature = "terminal", target_os = "windows"))]
-            Self::TerminalWindowsSetEnabled => "lx.host.terminal.windows.setEnabled",
+            Self::TerminalConptyStatus => "lx.host.terminal.conpty.status",
+            Self::TerminalConptyInstall => "lx.host.terminal.conpty.install",
+            Self::TerminalConptySetEnabled => "lx.host.terminal.conpty.setEnabled",
         }
     }
 }

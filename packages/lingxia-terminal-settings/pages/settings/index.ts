@@ -1,7 +1,7 @@
 import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
 type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
-type WindowsInlineImageStatus = Awaited<ReturnType<TerminalApi['windows']['status']>>;
+type WindowsInlineImageStatus = Awaited<ReturnType<TerminalApi['conpty']['status']>>;
 
 type UpdateInput = {
   patch: Parameters<TerminalApi['settings']['update']>[0];
@@ -57,8 +57,8 @@ function terminal() {
   return lx.host.terminal;
 }
 
-function windowsTerminal(): TerminalApi['windows'] {
-  return terminal().windows;
+function conpty(): TerminalApi['conpty'] {
+  return terminal().conpty;
 }
 
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
@@ -80,19 +80,19 @@ export default definePage({
       loadTerminalSettings() {
         return action(async () => {
           const api = terminal();
-          const isWindows = lx.supports('host.terminal.windows');
+          const isWindows = lx.supports('host.terminal.conpty');
           const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
             api.settings.get(),
             api.colorSchemes.list(),
             api.fonts.list(),
-            isWindows ? windowsTerminal().status() : Promise.resolve(null),
+            isWindows ? conpty().status() : Promise.resolve(null),
           ]);
           return { snapshot, themes, fonts, isWindows, windowsInlineImages };
         });
       },
       setWindowsInlineImages(input: { enabled: boolean }) {
         return action(async (): Promise<WindowsInlineImageStatus> => {
-          const api = windowsTerminal();
+          const api = conpty();
           if (!input.enabled) {
             await conptyDownload?.cancel();
             conptyDownload = null;

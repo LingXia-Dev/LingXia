@@ -430,20 +430,22 @@ fn get_present_property(obj: &JSObject, field: &str) -> Option<JSValue> {
 fn read_optional_string_field(
     obj: &JSObject,
     field: &str,
-    api_name: &str,
+    _api_name: &str,
 ) -> JSResult<Option<String>> {
-    let Some(value) = get_present_property(obj, field) else {
-        return Ok(None);
-    };
-    if !value.is_string() {
-        return Err(js_invalid_parameter_error(format!(
-            "{api_name} {field} must be a string"
-        )));
-    }
-    value
-        .to_rust::<String>()
-        .map(Some)
-        .map_err(|_| js_invalid_parameter_error(format!("{api_name} {field} must be a string")))
+    get_present_property(obj, field)
+        .map(|value| options_string(value, &[field]))
+        .transpose()
+}
+
+/// A string inside the options object, the second argument of `download` and `upload`, refused
+/// with its argument and path like any other `lx` argument.
+pub(super) fn options_string(value: JSValue, path: &[&str]) -> JSResult<String> {
+    value.to_rust::<String>().map_err(|error| {
+        path.iter()
+            .rev()
+            .fold(error, |error, field| error.at_field(field))
+            .at_argument(2)
+    })
 }
 
 fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
@@ -486,14 +488,7 @@ fn read_header_entries(obj: &JSObject, field: &str) -> JSResult<Vec<(String, Str
         if value.is_undefined() || value.is_null() {
             continue;
         }
-        if !value.is_string() {
-            return Err(js_invalid_parameter_error(format!(
-                "network.download {field}.{key} must be a string"
-            )));
-        }
-        let parsed = value.to_rust::<String>().map_err(|_| {
-            js_invalid_parameter_error(format!("network.download {field}.{key} must be a string"))
-        })?;
+        let parsed = options_string(value, &[field, &key])?;
         headers.push((key, parsed));
     }
     Ok(headers)

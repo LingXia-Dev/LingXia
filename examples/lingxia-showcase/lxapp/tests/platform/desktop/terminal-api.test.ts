@@ -37,7 +37,7 @@ interface SettingsRoundTrip {
   schemes: { count: number; first: string; background: string };
   imported: { name: string; source: string; listed: boolean };
   preview: string;
-  windows: { type: string; supported: boolean };
+  conpty: { type: string; supported: boolean };
 }
 
 test('read, revise, reset, and preview terminal settings inside the bundled settings lxapp', {
@@ -55,7 +55,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     'lx.host.terminal.colorSchemes.list',
     'lx.host.terminal.colorSchemes.import',
     'lx.host.terminal.colorSchemes.createPreview',
-    'lx.host.terminal.windows',
+    'lx.host.terminal.conpty',
     'lx.surface.openApp',
     'LxAppManager.close',
   ],
@@ -175,7 +175,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       schemes: { count: schemes.length, first: source.name, background: source.scheme.background ?? null },
       imported: { name: imported.name, source: imported.source, listed },
       preview: 'shown, cleared, closed',
-      windows: { type: typeof t.windows, supported: lx.supports('host.terminal.windows') },
+      conpty: { type: typeof t.conpty, supported: lx.supports('host.terminal.conpty') },
     };
   }, stateKey, PROBE_SCHEME);
 
@@ -211,7 +211,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
   });
 
   await t.step('the Windows runtime namespace is always there; support follows the platform', async () => {
-    expect(result.windows).toEqual({ type: 'object', supported: platform === 'windows' });
+    expect(result.conpty).toEqual({ type: 'object', supported: platform === 'windows' });
   });
 
   await t.step('hand the host back its own settings and its root main', async () => {

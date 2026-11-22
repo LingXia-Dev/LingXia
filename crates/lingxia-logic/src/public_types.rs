@@ -686,7 +686,7 @@ rong::js_api! {
 }"###;
 
         /// Whether the Microsoft ConPTY runtime that passes inline images through is installed and selected.
-        type WindowsTerminalInlineImageStatus = r###"{
+        type ConptyStatus = r###"{
     /** New terminal sessions use the installed runtime. */
     enabled: boolean;
     /** The runtime is installed. */
@@ -704,18 +704,20 @@ rong::js_api! {
     };
 }"###;
 
-        /// Install and select the ConPTY runtime that passes inline images through, on Windows.
-        type WindowsTerminalApi = r###"{
+        /// Install and select the Windows console runtime (ConPTY) a terminal needs for inline images.
+        type ConptyApi = r###"{
     /**
      * Whether the runtime is installed and selected.
-     * @supports host.terminal.windows
+     * @supports host.terminal.conpty
+     * @platform Windows: the only platform that has it.
      * @throws {E_NOT_SUPPORTED} Off Windows.
      * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
      */
-    status(): Promise<WindowsTerminalInlineImageStatus>;
+    status(): Promise<ConptyStatus>;
     /**
      * Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.
-     * @supports host.terminal.windows
+     * @supports host.terminal.conpty
+     * @platform Windows: the only platform that has it.
      * @throws {E_NOT_SUPPORTED} Off Windows.
      * @throws {E_PERMISSION_DENIED} Outside the host's own control surface, or `path` is not this lxapp's temp file.
      * @throws {E_INVALID_DATA} The package fails verification.
@@ -723,10 +725,11 @@ rong::js_api! {
     install(options: {
         /** The downloaded package, an `lx://temp/` path. */
         path: string;
-    }): Promise<WindowsTerminalInlineImageStatus>;
+    }): Promise<ConptyStatus>;
     /**
      * Select the installed runtime for new terminal sessions.
-     * @supports host.terminal.windows
+     * @supports host.terminal.conpty
+     * @platform Windows: the only platform that has it.
      * @throws {E_NOT_SUPPORTED} Off Windows.
      * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
      * @throws {E_INVALID_STATE} Enabling before the runtime is installed.
@@ -734,10 +737,10 @@ rong::js_api! {
     setEnabled(options: {
         /** Use the runtime for new sessions. */
         enabled: boolean;
-    }): Promise<WindowsTerminalInlineImageStatus>;
+    }): Promise<ConptyStatus>;
 }"###;
 
-        /// The host terminal's settings, color schemes, fonts and Windows runtime.
+        /// The host terminal's settings, color schemes, fonts and Windows console runtime.
         type TerminalApi = r###"{
     /** Saved terminal settings, revision-checked on write. */
     readonly settings: TerminalSettingsApi;
@@ -745,8 +748,8 @@ rong::js_api! {
     readonly colorSchemes: TerminalColorSchemesApi;
     /** Terminal fonts installed on this machine. */
     readonly fonts: TerminalFontsApi;
-    /** The optional Windows runtime that passes inline images through. */
-    readonly windows: WindowsTerminalApi;
+    /** The Windows console runtime a terminal needs for inline images. */
+    readonly conpty: ConptyApi;
 }"###;
 
         /// Bytes `lx.fs.write` and the clipboard accept.
@@ -2367,7 +2370,7 @@ true
         /// prompts, and a notification never sets one.
         type BadgeApi = r###"{
     /**
-     * Show `value` on the badge, such as an unread count.
+     * Show `value` on the badge, such as an unread count; a count of `0` clears it.
      * @supports host.badge
      * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
      * @platform Windows: the taskbar and the notification-area item.

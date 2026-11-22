@@ -41,13 +41,13 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
   expect((await device.nodes()).some((node) => node.text === marker)).toBe(false);
 
   const disabled = await app.logic.eval(async ({ currentPage }) => {
-    try { currentPage()!.refresh(); return { code: '', bizCode: 0 }; }
+    try { currentPage()!.refresh(); return { code: '', reason: '' }; }
     catch (error) {
-      const value = error as { code: string; data?: { bizCode?: number } };
-      return { code: value.code, bizCode: value.data?.bizCode ?? 0 };
+      const value = error as { code: string; reason?: string };
+      return { code: value.code, reason: value.reason ?? '' };
     }
   });
-  expect(disabled).toEqual({ code: 'E_INVALID_STATE', bizCode: 4004 });
+  expect(disabled).toEqual({ code: 'E_INVALID_STATE', reason: 'featureDisabled' });
 
   await app.nav.reset({ page: 'pullToRefresh' });
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(pullConfig));

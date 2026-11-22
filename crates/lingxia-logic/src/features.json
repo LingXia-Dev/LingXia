@@ -4,7 +4,7 @@
   {"key":"host.banner","predicate":"Banner"},
   {"key":"host.selfUpdate","predicate":"SelfUpdate"},
   {"key":"host.terminal","predicate":"Terminal"},
-  {"key":"host.terminal.windows","requires":["host.terminal"],"predicate":"WindowsOs"},
+  {"key":"host.terminal.conpty","requires":["host.terminal"],"predicate":"WindowsOs"},
   {"key":"host.tray","predicate":"Tray"},
   {"key":"host.badge","predicate":"Badge"},
   {"key":"device.haptics","predicate":"Haptics"},

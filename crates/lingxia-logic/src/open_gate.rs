@@ -72,6 +72,7 @@ pub(crate) fn canceled_open_error() -> RongJSError {
         rong::error::E_ABORT,
         "the page did not open: close() was called first",
     )
+    .with_name("AbortError")
     .into()
 }
 

@@ -81,7 +81,15 @@ async fn set_badge(
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppBadgeSet)?;
+    // A surface the platform lacks is reported before the value, which may be valid elsewhere.
+    let surface = badge_surface(options.0)?;
+    reachable(surface)?;
+    let value_is_number = value.is_number();
     let text = badge_text(value)?;
+    // A count of 0 clears, so a counter can be passed through unchanged.
+    if text == "0" && value_is_number {
+        return paint_badge(&ctx, invocation.lxapp(), String::new(), surface).await;
+    }
     if text.is_empty() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
@@ -98,12 +106,29 @@ async fn set_badge(
         )
         .into());
     }
-    paint_badge(&ctx, invocation.lxapp(), text, options.0).await
+    paint_badge(&ctx, invocation.lxapp(), text, surface).await
 }
 
 async fn clear_badge(ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppBadgeClear)?;
-    paint_badge(&ctx, invocation.lxapp(), String::new(), options.0).await
+    let surface = badge_surface(options.0)?;
+    reachable(surface)?;
+    paint_badge(&ctx, invocation.lxapp(), String::new(), surface).await
+}
+
+/// A surface this platform lacks rejects; one that exists but declines resolves `painted: false`.
+fn reachable(surface: BadgeSurface) -> JSResult<()> {
+    let available = lingxia_platform::badge_surfaces();
+    let app_icon = surface != BadgeSurface::Tray && available.app_icon;
+    let tray = surface != BadgeSurface::AppIcon && available.tray;
+    if app_icon || tray {
+        return Ok(());
+    }
+    Err(rong::HostError::new(
+        rong::error::E_NOT_SUPPORTED,
+        "this platform has no badge surface of that kind; check lx.supports('host.badge') first",
+    )
+    .into())
 }
 
 /// Paints `text` (empty clears) on the surfaces `options` names.
@@ -111,34 +136,21 @@ async fn paint_badge(
     ctx: &JSContext,
     lxapp: std::sync::Arc<lxapp::LxApp>,
     text: String,
-    options: Option<JSObject>,
+    surface: BadgeSurface,
 ) -> JSResult<JSObject> {
-    let surface = badge_surface(options)?;
     let available = lingxia_platform::badge_surfaces();
-    // A surface that exists but declined, such as a hidden macOS status item,
-    // resolves `painted: false`; a surface the platform lacks rejects.
     let mut painted = false;
-    let mut reachable = false;
     // Off the JS thread: a platform may block, and HarmonyOS answers through a
     // callback it can only wait for inside the async runtime.
     if surface != BadgeSurface::Tray && available.app_icon {
-        reachable = true;
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
         painted |= blocking(move || runtime.set_app_badge(&text)).await?;
     }
     if surface != BadgeSurface::AppIcon && available.tray {
-        reachable = true;
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
         painted |= blocking(move || runtime.set_tray_badge(&text)).await?;
-    }
-    if !reachable {
-        return Err(rong::HostError::new(
-            rong::error::E_NOT_SUPPORTED,
-            "this platform has no badge surface of that kind; check lx.supports('host.badge') first",
-        )
-        .into());
     }
     let result = JSObject::new(ctx);
     result.set("painted", painted)?;
@@ -171,9 +183,13 @@ fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
     let Some(options) = options else {
         return Ok(BadgeSurface::Auto);
     };
-    let Ok(surface) = options.get::<_, String>("surface") else {
+    let surface: JSValue = options.get("surface")?;
+    if surface.is_undefined() {
         return Ok(BadgeSurface::Auto);
-    };
+    }
+    let surface: String = surface
+        .to_rust()
+        .map_err(|error: rong::RongJSError| error.at_field("surface").at_argument(2))?;
     match surface.as_str() {
         "auto" => Ok(BadgeSurface::Auto),
         "app_icon" => Ok(BadgeSurface::AppIcon),
@@ -189,8 +205,12 @@ fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
 /// A badge is a string or a number. Coercing anything else would paint
 /// `[object Object]` on the dock, so reject it at the boundary instead.
 fn badge_text(value: JSValue) -> JSResult<String> {
-    if value.is_string() || value.is_number() {
+    if value.is_string() {
         return value.to_rust::<String>();
+    }
+    if value.is_number() {
+        // A whole number prints without a fraction: `2`, not `2.0`.
+        return Ok(value.to_rust::<f64>()?.to_string());
     }
     Err(rong::HostError::new(
         rong::error::E_INVALID_ARG,
@@ -287,10 +307,36 @@ pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
         "lx.host.terminal.settings",
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",
-        "lx.host.terminal.windows",
+        "lx.host.terminal.conpty",
     ] {
         crate::capability::unsupported_namespace(ctx, &terminal, path, "host.terminal")?;
     }
     app_namespace(ctx)?.set("terminal", terminal)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BadgeSurface, badge_surface, badge_text};
+    use rong::{JSEngine, JSObject, JSValue};
+
+    /// A number is a count to paint, and a wrong `surface` type is refused at argument 2.
+    #[test]
+    fn a_badge_number_paints_and_a_wrong_surface_is_refused() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let number = |value: f64| JSValue::from_rust(&ctx, value);
+        assert_eq!(badge_text(number(2.0)).unwrap(), "2");
+        assert_eq!(badge_text(number(0.0)).unwrap(), "0");
+        assert_eq!(badge_text(number(1.5)).unwrap(), "1.5");
+        assert_eq!(badge_text(JSValue::from_rust(&ctx, "new")).unwrap(), "new");
+
+        let options = JSObject::new(&ctx);
+        options.set("surface", "tray").unwrap();
+        assert_eq!(badge_surface(Some(options)).unwrap(), BadgeSurface::Tray);
+        let options = JSObject::new(&ctx);
+        options.set("surface", 5).unwrap();
+        let error = badge_surface(Some(options)).unwrap_err();
+        assert_eq!(error.code(), Some(rong::error::E_INVALID_ARG));
+    }
 }

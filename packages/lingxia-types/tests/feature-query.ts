@@ -1,4 +1,4 @@
-import type { AutostartApi, BannerApi, Lx, LxFeature, NotificationApi, PageEnvContext, TerminalSettingsApi, WindowsTerminalApi } from "../src/index.js";
+import type { AutostartApi, BannerApi, Lx, LxFeature, NotificationApi, PageEnvContext, TerminalSettingsApi, ConptyApi } from "../src/index.js";
 
 declare const lx: Lx;
 declare const feature: LxFeature;
@@ -38,6 +38,6 @@ const notification: NotificationApi = lx.host.notification;
 const banner: BannerApi = lx.host.banner;
 const terminalSettings: TerminalSettingsApi = lx.host.terminal.settings;
 void lx.host.autostart.disable();
-const windowsAlways: WindowsTerminalApi = lx.host.terminal.windows;
-if (lx.supports('host.terminal.windows')) void lx.host.terminal.windows.status();
+const windowsAlways: ConptyApi = lx.host.terminal.conpty;
+if (lx.supports('host.terminal.conpty')) void lx.host.terminal.conpty.status();
 export type FeatureQueryGate = [typeof known, typeof window, typeof fullChrome, typeof notifications, typeof control, typeof docked, typeof autostart, typeof notification, typeof banner, typeof terminalSettings, typeof windowsAlways];

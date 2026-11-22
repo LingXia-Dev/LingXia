@@ -42,8 +42,8 @@ test('scan, read, and observe Wi-Fi on a real radio', {
     try {
       list = await lx.network.wifi.list();
     } catch (error) {
-      // 12009: Wi-Fi is off, a device precondition rather than a failure.
-      if ((error as { data?: { bizCode?: number } }).data?.bizCode === 12009) {
+      // Wi-Fi is off: a device precondition rather than a failure.
+      if ((error as { reason?: string }).reason === 'wifiDisabled') {
         return { radioOff: true } as WifiRoundTrip;
       }
       throw error;

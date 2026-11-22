@@ -85,11 +85,14 @@ test('set and clear the host app badge without leaving one behind', {
     const cleared = await lx.host.badge.clear();
     // Clearing an already-clear badge must stay a no-op, not an error.
     const clearedAgain = await lx.host.badge.clear();
-    return [first, cleared, clearedAgain];
+    // A count of 0 clears, like clear().
+    await lx.host.badge.set(3);
+    const zero = await lx.host.badge.set(0);
+    return [first, cleared, clearedAgain, zero];
   });
 
   // Support does not guarantee painting: permission and visible chrome vary.
-  expect(painted.length).toBe(3);
+  expect(painted.length).toBe(4);
   for (const result of painted) {
     expect(typeof result.painted).toBe('boolean');
   }

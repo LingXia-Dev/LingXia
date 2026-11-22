@@ -571,10 +571,13 @@ declare global {
      * This lxapp's persistent key-value store. Values are JSON; declare each
      * key's shape once in `LxStorageSchema`, or every key holds any `JsonValue`.
      * Use `lx.fs` for path-based data.
+     * A plain file in the app's data, not encrypted by LingXia: only the OS protects it (iOS data
+     * protection, Android 10+ file-based encryption, the HarmonyOS el2 area); on macOS and Windows
+     * any process of the same user can read it. Keep tokens and passwords out of it.
      * @example
      * ```ts
-     * declare global { interface LxStorageSchema { token: string } }
-     * await lx.storage.set('token', token);
+     * declare global { interface LxStorageSchema { lastTab: string } }
+     * await lx.storage.set('lastTab', 'orders');
      * ```
      */
     readonly storage: Storage<LxStorageValues>;
