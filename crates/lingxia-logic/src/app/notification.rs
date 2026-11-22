@@ -51,14 +51,6 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
         return Ok(());
     }
     let notification = JSObject::new(ctx);
-    notification.set(
-        "permission",
-        JSFunc::new(ctx, permission)?.name("permission")?,
-    )?;
-    notification.set(
-        "requestPermission",
-        JSFunc::new(ctx, request_permission)?.name("requestPermission")?,
-    )?;
     notification.set("show", JSFunc::new(ctx, show)?.name("show")?)?;
     notification.set("cancel", JSFunc::new(ctx, cancel)?.name("cancel")?)?;
     notification.set(
@@ -69,29 +61,58 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-async fn permission(ctx: JSContext) -> JSResult<String> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppNotificationPermission)?;
+/// Notification permission for `lx.device.permission`, in Permissions API words:
+/// the platforms' `default` is `prompt`.
+fn permission_state(platform: String) -> String {
+    if platform == "default" {
+        "prompt".to_string()
+    } else {
+        platform
+    }
+}
+
+fn require_notifications(ctx: &JSContext, member: &str) -> JSResult<()> {
+    if crate::capability::exposes(ctx, "host.notification") {
+        return Ok(());
+    }
+    Err(HostError::new(
+        rong::error::E_NOT_SUPPORTED,
+        format!(
+            "{member}('notifications'): the host app does not declare capabilities.notifications"
+        ),
+    )
+    .into())
+}
+
+pub(crate) async fn notification_permission(ctx: JSContext) -> JSResult<String> {
+    let invocation = authorization::require(&ctx, LogicRoute::DevicePermission)?;
+    require_notifications(&ctx, "lx.device.permission")?;
     let runtime = invocation.lxapp().runtime.clone();
-    spawn_blocking(move || runtime.notification_permission()).await
+    spawn_blocking(move || runtime.notification_permission())
+        .await
+        .map(permission_state)
 }
 
 /// The permission is the product's, so a guest's prompt names the product.
 /// A guest may therefore cause at most one prompt per launch, and only while
 /// it is open on screen, where the person can see who is asking. Once the
 /// OS has an answer every caller just reads it.
-async fn request_permission(ctx: JSContext) -> JSResult<String> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppNotificationRequestPermission)?;
+pub(crate) async fn request_notification_permission(ctx: JSContext) -> JSResult<String> {
+    let invocation = authorization::require(&ctx, LogicRoute::DeviceRequestPermission)?;
+    require_notifications(&ctx, "lx.device.requestPermission")?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
     if AttentionScope::of(&invocation).owner().is_some() {
         let probe = runtime.clone();
         let current = spawn_blocking(move || probe.notification_permission()).await?;
         if current != "default" {
-            return Ok(current);
+            return Ok(permission_state(current));
         }
-        guest_prompt::claim(&app, "lx.host.notification.requestPermission")?;
+        guest_prompt::claim(&app, "lx.device.requestPermission")?;
     }
-    spawn_blocking(move || runtime.notification_request_permission()).await
+    spawn_blocking(move || runtime.notification_request_permission())
+        .await
+        .map(permission_state)
 }
 
 /// One OS prompt per guest session, and only while that guest is open.

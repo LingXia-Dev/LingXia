@@ -128,7 +128,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
-  `lx.storage()` or `App({})`.
+  `lx.storage` or `App({})`.
 - **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
   desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
   and the next show brings `onShow` and a new `onReady`.
@@ -160,7 +160,7 @@ export default definePage({
 | --- | --- | --- |
 | One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
 | Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
-| Must survive restarts | `lx.storage()` | Persistent |
+| Must survive restarts | `lx.storage` (JSON values; key types in `LxStorageSchema`) | Persistent |
 
 Never keep per-entry state in module scope.
 
@@ -318,6 +318,8 @@ created once at boot and shared by every page:
 ```ts
 // shared/session.ts — app state is a module the App and pages import
 export const session = { userId: '', theme: 'light' as 'light' | 'dark' };
+// Types every `lx.storage` key; without it each key holds any JSON value.
+declare global { interface LxStorageSchema { userId: string } }
 ```
 
 ```ts
@@ -327,7 +329,7 @@ import { session } from './shared/session';
 App({
   async onLaunch() {
     // Once per worker. An App Link goes to `onOpen`, not here.
-    const stored = await lx.storage().get<string>('userId');
+    const stored = await lx.storage.get('userId');
     if (stored) session.userId = stored;
   },
 
@@ -484,9 +486,9 @@ Each page's `index.json`:
 
 All keys are optional. `navigationStyle: "custom"` draws no native bar; on
 mobile the capsule stays over the page's header.
-`pageOrientation` (`portrait`, `landscape`, `auto`) applies until
-`lx.device.orientation.lock()` locks the app; `unlock()` hands it back;
-`get()` / `watch(cb)` report the lock, or the screen's shape when unlocked.
+`pageOrientation` (`portrait`, `landscape`, `auto`) applies unless the page
+calls `page.orientation.lock()`; the lock ends with `unlock()` or when that page
+unloads. `lx.device.orientation.get()` / `watch(cb)` report the orientation in effect.
 
 ### Localized labels and titles
 

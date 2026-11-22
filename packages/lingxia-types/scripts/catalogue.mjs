@@ -128,7 +128,7 @@ export function catalogue({ entries = false } = {}) {
           for (const parameter of signature.getParameters()) collectType(checker.getTypeOfSymbolAtLocation(parameter, at), `${memberPath}(${parameter.name})`);
           collectType(signature.getReturnType(), `${memberPath}()`);
         }
-        // A callable namespace (`lx.storage()`) also has members.
+        // A callable namespace also has members.
         if (checker.getPropertiesOfType(propertyType).some(ownDeclaration) && depth < 4) walk(property, propertyType, memberPath, depth + 1);
       } else if (propertyType.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection) && checker.getPropertiesOfType(propertyType).some(ownDeclaration) && depth < 4) {
         members.push({ path: memberPath, kind: "namespace", optional, summary: summary(property), doc: docText(property), tags: tags(property), jsdoc: jsdoc(property), source: source(property), signatures: [] });

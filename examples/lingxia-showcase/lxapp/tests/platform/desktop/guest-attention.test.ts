@@ -112,7 +112,7 @@ test('a guest lxapp gets attention for itself only', {
   // Its own notification, opening itself, under its own id.
   const own = await chat.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
     const n = lx.host.notification;
-    const permission = await n.permission();
+    const permission = await lx.device.permission('notifications');
     try {
       const shown = await n.show({
         id: 'guest-own',

@@ -13,10 +13,10 @@ interface OrientationProbe {
   offLive: () => void;
 }
 
-test('rotate the Android viewport and deliver events only to live listeners', {
+test('rotate the Android viewport for the locking page only, and deliver events only to live listeners', {
   id: 'ANDROID-ORIENTATION-001',
   app: SHOWCASE_APP_ID,
-  covers: ['lx.device.orientation.lock', 'lx.device.orientation.watch'],
+  covers: ['page.orientation.lock', 'page.orientation.unlock', 'lx.device.orientation.watch'],
   timeout: 60_000,
   reason: 'requires the Android host orientation implementation',
 }, async (t) => {
@@ -35,12 +35,13 @@ test('rotate the Android viewport and deliver events only to live listeners', {
       states[key]?.offRemoved();
       states[key]?.offLive();
       delete states[key];
-      lx.device.orientation.unlock();
     }, namespace);
+    await app.nav.reset({ page: 'home' });
+    await app.logic.eval(({ currentPage }) => { currentPage()?.orientation.unlock(); });
     await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {
-    await app.logic.eval(({ lx }, value) => { lx.device.orientation.lock(value); }, orientation);
+    await app.logic.eval(({ currentPage }, value) => { currentPage()?.orientation.lock(value); }, orientation);
     const size = await t.waitFor(dimensions, {
       until: size => size.width > 0 && size.height > 0 && (size.width > size.height) === (orientation === 'landscape'),
       timeout: 15000,
@@ -75,4 +76,13 @@ test('rotate the Android viewport and deliver events only to live listeners', {
   // The surviving listener is the delivery barrier for the removed listener.
   await expect.poll(events).toEqual({ removed: first.removed, live: [...first.live, 'portrait'] });
   await expect(page.view.testId('home-page')).toBeVisible();
+
+  // The lock stays with home: a pushed page gets its own orientation, and back restores home's.
+  await rotate('landscape');
+  await app.nav.go({ page: 'device' });
+  // Assumes the phone is held upright: the device page declares no pageOrientation.
+  const pushed = await app.page({ name: 'device' });
+  await t.waitFor(async () => pushed.view.viewport(), { until: size => size.width > 0 && size.height > size.width, timeout: 15000 });
+  await app.nav.back();
+  await t.waitFor(dimensions, { until: size => size.width > size.height, timeout: 15000 });
 });

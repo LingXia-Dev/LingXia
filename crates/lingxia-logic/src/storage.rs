@@ -1,13 +1,11 @@
 use crate::i18n::js_service_unavailable_error;
 use lxapp::LxApp;
-use rong::function::{Optional, This};
+use rong::function::Optional;
 use rong::{
     FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
     Promise,
 };
 use rong_storage::{Storage as RongStorage, StorageOptions};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
 const STORAGE_MAX_VALUE_BYTES: u32 = 5 * 1024 * 1024;
@@ -24,23 +22,98 @@ fn storage_options() -> StorageOptions {
 #[derive(Clone)]
 struct LxStorageService {
     storage: RongStorage,
-    /// The JS object handed to `lx.storage()`. Cached so repeated calls
-    /// return the same object — `storage() === storage()` — and so the
-    /// shimmed `list` is installed exactly once per context.
-    exposed: Rc<RefCell<Option<JSObject>>>,
+    /// The storage module's JS object; `lx.storage` forwards to it.
+    native: JSObject,
 }
 
 impl JSContextService for LxStorageService {
     fn on_shutdown(&self) {
-        // Explicitly close the underlying database so that the process
-        // can safely reopen the same path on the next LxApp restart,
-        // even if JS still holds Storage objects from the old context.
+        // Close the database so the next LxApp restart can reopen the same
+        // path, even if JS still holds the old context's objects.
         self.storage.close();
     }
 }
 
-/// Drains a JS iterator into the resolved key list.
-fn collect_iterator_keys(iterator: &JSObject) -> JSResult<Vec<String>> {
+/// Opens the database on first use, so a Logic context that never touches
+/// `lx.storage` never opens it.
+fn native_storage(ctx: &JSContext) -> JSResult<JSObject> {
+    if let Some(existing) = ctx.get_service::<LxStorageService>() {
+        return Ok(existing.native.clone());
+    }
+    let lxapp = LxApp::from_ctx(ctx)?;
+    if lxapp.storage_file_path.as_os_str().is_empty() {
+        return Err(js_service_unavailable_error(
+            "Storage path is not configured for this app",
+        ));
+    }
+    let storage = RongStorage::new(lxapp.storage_file_path.clone(), storage_options())?;
+    let native = JSObject::from_js_value(ctx, storage.clone().into_js_value(ctx))?;
+    ctx.set_service::<LxStorageService>(LxStorageService {
+        storage,
+        native: native.clone(),
+    });
+    Ok(native)
+}
+
+fn native_method(ctx: &JSContext, name: &str) -> JSResult<(JSObject, JSFunc)> {
+    let native = native_storage(ctx)?;
+    let method: JSFunc = native.get(name)?;
+    Ok((native, method))
+}
+
+async fn storage_get(
+    ctx: JSContext,
+    key: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSValue> {
+    let decode = match options.0 {
+        Some(options) => options.get::<_, Option<JSFunc>>("decode")?,
+        None => None,
+    };
+    let (native, get) = native_method(&ctx, "get")?;
+    let pending: Promise = get.call(Some(native), (key,))?;
+    let value: JSValue = pending.into_future().await?;
+    match decode {
+        Some(decode) if !value.is_undefined() => decode.call(None, (value,)),
+        _ => Ok(value),
+    }
+}
+
+async fn storage_set(ctx: JSContext, key: String, value: JSValue) -> JSResult<()> {
+    let (native, set) = native_method(&ctx, "set")?;
+    let pending: Promise = set.call(Some(native), (key, value))?;
+    let _: JSValue = pending.into_future().await?;
+    Ok(())
+}
+
+async fn storage_has(ctx: JSContext, key: String) -> JSResult<bool> {
+    let (native, has) = native_method(&ctx, "has")?;
+    let pending: Promise = has.call(Some(native), (key,))?;
+    pending.into_future().await
+}
+
+async fn storage_delete(ctx: JSContext, key: String) -> JSResult<()> {
+    let (native, delete) = native_method(&ctx, "delete")?;
+    let pending: Promise = delete.call(Some(native), (key,))?;
+    let _: JSValue = pending.into_future().await?;
+    Ok(())
+}
+
+async fn storage_clear(ctx: JSContext) -> JSResult<()> {
+    let (native, clear) = native_method(&ctx, "clear")?;
+    let pending: Promise = clear.call(Some(native), ())?;
+    let _: JSValue = pending.into_future().await?;
+    Ok(())
+}
+
+/// The module resolves `list` to a JS iterator; `Storage.list` is an array.
+async fn storage_list(ctx: JSContext, prefix: Optional<String>) -> JSResult<Vec<String>> {
+    let (native, list) = native_method(&ctx, "list")?;
+    let pending: Promise = match prefix.0 {
+        Some(prefix) => list.call(Some(native), (prefix,))?,
+        None => list.call(Some(native), ())?,
+    };
+    let iterator: JSObject = pending.into_future().await?;
     let next: JSFunc = iterator.get("next")?;
     let mut keys = Vec::new();
     loop {
@@ -52,126 +125,26 @@ fn collect_iterator_keys(iterator: &JSObject) -> JSResult<Vec<String>> {
     }
 }
 
-/// The storage module resolves `list` to a JS iterator; `Storage.list` is an
-/// array, so shadow the prototype method on the instance.
-///
-/// Resolve `this` at invocation time rather than capturing `storage`: a Rust
-/// closure is opaque to the JS cycle collector, so capturing the object that
-/// owns the closure would keep both alive forever.
-fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, inner: JSFunc) -> JSResult<()> {
-    let shim = JSFunc::new(
-        ctx,
-        move |this: This<JSObject>, prefix: Optional<String>| {
-            let inner = inner.clone();
-            let target = (*this).clone();
-            async move {
-                let pending: Promise = match prefix.0 {
-                    Some(prefix) => inner.call(Some(target), (prefix,))?,
-                    None => inner.call(Some(target), ())?,
-                };
-                let iterator: JSObject = pending.into_future().await?;
-                collect_iterator_keys(&iterator)
-            }
-        },
-    )?;
-    storage.set("list", shim)?;
-    Ok(())
+async fn storage_info(ctx: JSContext) -> JSResult<JSObject> {
+    let (native, info) = native_method(&ctx, "info")?;
+    let pending: Promise = info.call(Some(native), ())?;
+    let raw: JSObject = pending.into_future().await?;
+    let out = JSObject::new(&ctx);
+    out.set("usedBytes", raw.get::<_, f64>("currentSize")?)?;
+    out.set("limitBytes", raw.get::<_, f64>("limitSize")?)?;
+    out.set("keys", raw.get::<_, f64>("keyCount")?)?;
+    Ok(out)
 }
 
-/// Open this lxapp's asynchronous persistent key-value store. `get` asserts the
-/// value shape at the call site and resolves `undefined` for a missing key. Use
-/// `lx.fs` instead for path-based data.
-fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
-    // If a Storage instance has already been created for this JSContext,
-    // return a clone so storage() can be called multiple times safely.
-    if let Some(existing) = ctx.get_service::<LxStorageService>() {
-        return expose_storage(&ctx, existing);
-    }
-
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
-    if lxapp.storage_file_path.as_os_str().is_empty() {
-        return Err(js_service_unavailable_error(
-            "Storage path is not configured for this app",
-        ));
-    }
-
-    let options = storage_options();
-    let storage = RongStorage::new(lxapp.storage_file_path.clone(), options)?;
-
-    // Cache Storage instance on JSContext so that:
-    // - Subsequent storage() calls reuse the same database handle.
-    // - When JSContext is dropped, JSContextService::on_shutdown is invoked
-    //   and LxStorageService is dropped, closing the database.
-    ctx.set_service::<LxStorageService>(LxStorageService {
-        storage,
-        exposed: Rc::new(RefCell::new(None)),
-    });
-    let service = ctx
-        .get_service::<LxStorageService>()
-        .expect("storage service was inserted above");
-
-    expose_storage(&ctx, service)
-}
-
-fn install_decoder(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
-    let inner: JSFunc = storage.get("get")?;
-    storage.set(
-        "get",
-        JSFunc::new(
-            ctx,
-            move |this: This<JSObject>, key: String, decode: Optional<JSFunc>| {
-                let inner = inner.clone();
-                let target = (*this).clone();
-                async move {
-                    let pending: Promise = inner.call(Some(target), (key,))?;
-                    let value: JSValue = pending.into_future().await?;
-                    if value.is_undefined() {
-                        return Ok(value);
-                    }
-                    match decode.0 {
-                        Some(decode) => decode.call(None, (value,)),
-                        None => Ok(value),
-                    }
-                }
-            },
-        )?,
-    )?;
-    Ok(())
-}
-
-/// Rename the module's byte fields to the house names; see `install_list_array_shim` on `this`.
-fn install_info_shim(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
-    let inner: JSFunc = storage.get("info")?;
-    storage.set(
-        "info",
-        JSFunc::new(ctx, move |ctx: JSContext, this: This<JSObject>| {
-            let inner = inner.clone();
-            let target = (*this).clone();
-            async move {
-                let pending: Promise = inner.call(Some(target), ())?;
-                let raw: JSObject = pending.into_future().await?;
-                let info = JSObject::new(&ctx);
-                info.set("usedBytes", raw.get::<_, f64>("currentSize")?)?;
-                info.set("limitBytes", raw.get::<_, f64>("limitSize")?)?;
-                info.set("keyCount", raw.get::<_, f64>("keyCount")?)?;
-                JSResult::Ok(info)
-            }
-        })?,
-    )?;
-    Ok(())
-}
-
-fn expose_storage(ctx: &JSContext, service: &LxStorageService) -> JSResult<JSObject> {
-    if let Some(existing) = service.exposed.borrow().as_ref() {
-        return Ok(existing.clone());
-    }
-    let object = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
-    install_decoder(ctx, &object)?;
-    install_info_shim(ctx, &object)?;
-    let native_list: JSFunc = object.get("list")?;
-    install_list_array_shim(ctx, &object, native_list)?;
-    *service.exposed.borrow_mut() = Some(object.clone());
+fn storage_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    let object = JSObject::new(ctx);
+    object.set("get", JSFunc::new(ctx, storage_get)?.name("get")?)?;
+    object.set("set", JSFunc::new(ctx, storage_set)?.name("set")?)?;
+    object.set("has", JSFunc::new(ctx, storage_has)?.name("has")?)?;
+    object.set("delete", JSFunc::new(ctx, storage_delete)?.name("delete")?)?;
+    object.set("clear", JSFunc::new(ctx, storage_clear)?.name("clear")?)?;
+    object.set("list", JSFunc::new(ctx, storage_list)?.name("list")?)?;
+    object.set("info", JSFunc::new(ctx, storage_info)?.name("info")?)?;
     Ok(object)
 }
 
@@ -182,6 +155,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        fn storage(ts_return = "Storage") = get_storage;
+        const storage: "Storage<LxStorageValues>" = storage_namespace(ctx)?;
     }
 }

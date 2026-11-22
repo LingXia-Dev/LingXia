@@ -128,13 +128,7 @@ const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
 );
 const AUTOSTART_API = ['disable', 'enable', 'isEnabled'] as const;
 const BANNER_API = ['dismiss', 'show'] as const;
-const NOTIFICATION_API = [
-  'cancel',
-  'cancelAll',
-  'permission',
-  'requestPermission',
-  'show',
-] as const;
+const NOTIFICATION_API = ['cancel', 'cancelAll', 'show'] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
 /** `Live<T>`: every value that changes. */
 const LIVE_API = ['get', 'watch'] as const;
@@ -145,8 +139,19 @@ const HOST_UPDATE_API = ['check', 'claim'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
 const PICK_API = ['capture', 'code', 'directory', 'file', 'files', 'media'] as const;
-const DEVICE_API = ['haptics', 'info', 'location', 'onKeyDown', 'onKeyUp', 'orientation', 'screen', 'systemSettings'] as const;
-const ORIENTATION_API = ['get', 'lock', 'unlock', 'watch'] as const;
+const DEVICE_API = [
+  'haptics',
+  'info',
+  'location',
+  'onKeyDown',
+  'onKeyUp',
+  'orientation',
+  'permission',
+  'requestPermission',
+  'screen',
+  'systemSettings',
+] as const;
+const ORIENTATION_API = LIVE_API;
 const NETWORK_API = ['download', 'status', 'upload', 'wifi'] as const;
 const WIFI_API = ['connect', 'current', 'list', 'onConnected'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
@@ -381,6 +386,7 @@ export const LX_RUNTIME_SURFACES = [
       'network',
       'pick',
       'shell',
+      'storage',
       'surface',
       'ui',
     ],
@@ -576,7 +582,7 @@ export const LX_RUNTIME_SURFACES = [
     properties: ['userCache', 'userData'],
   },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
-  { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
+  { name: 'lx.storage', layer: 'logic', expression: 'lx.storage', members: STORAGE_API },
   { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'moreActions', 'tabBar', 'update'] },
   { name: 'lx.app.update', layer: 'logic', expression: 'lx.app.update', members: APP_UPDATE_API },
   { name: 'lx.app.moreActions', layer: 'logic', expression: 'lx.app.moreActions', members: MORE_ACTIONS_API },
@@ -978,7 +984,7 @@ type RuntimeSurfaceTypes = {
   'lx.host.tray.menu': TrayMenuApi;
   'lx.fs': FileSystemApi;
   'lx.clipboard': ClipboardApi;
-  Storage: Storage;
+  'lx.storage': Storage;
   'lx.app': LxAppApi;
   'lx.app.update': LxAppUpdateApi;
   'lx.app.moreActions': MoreActionsApi;

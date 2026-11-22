@@ -105,7 +105,7 @@ export interface TestOptions {
    * `start`, or on its home page. Needs an
    * isolated run (`lxdev test --profile`); if the rollback fails, the rest of
    * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
-   * the `lx.storage()` keys those globs match, which keep their state at
+   * the `lx.storage` keys those globs match, which keep their state at
    * the end of the test (see `ProfileRestoreOptions`).
    */
   restoreProfile?: boolean | RestoreProfileOptions;
@@ -159,7 +159,7 @@ export interface TestRequirements {
 
 /** `restoreProfile: { keep }`. */
 export interface RestoreProfileOptions {
-  /** `lx.storage()` key globs that survive the rollback (`*`, `?`). */
+  /** `lx.storage` key globs that survive the rollback (`*`, `?`). */
   keep: string[];
 }
 
@@ -1144,7 +1144,7 @@ export interface ProfileFixture {
   checkpoint(): Promise<ProfileCheckpoint>;
   /**
    * Roll the app's data back to `checkpoint` (or its id). With `keep`, the
-   * `lx.storage()` keys those globs match keep their current state;
+   * `lx.storage` keys those globs match keep their current state;
    * `kept` lists the ones that existed.
    */
   restore(checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions): Promise<ProfileRestoreResult>;
@@ -1155,7 +1155,7 @@ export interface ProfileFixture {
 /** `t.app.profile.restore` options. */
 export interface ProfileRestoreOptions {
   /**
-   * `lx.storage()` keys whose current state survives the rollback: globs
+   * `lx.storage` keys whose current state survives the rollback: globs
    * over the whole key (`*` any run of characters, `?` one). A matching key
    * keeps its current value, one added since the checkpoint stays, and one
    * deleted since stays deleted. Files always roll back.

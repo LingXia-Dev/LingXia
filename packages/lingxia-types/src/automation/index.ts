@@ -1473,7 +1473,7 @@ export interface ProfileDriver {
 /** `ProfileDriver.restore` options. */
 export interface ProfileRestoreOptions {
   /**
-   * `lx.storage()` keys whose current state survives the rollback: globs
+   * `lx.storage` keys whose current state survives the rollback: globs
    * over the whole key, `*` any run of characters (dots included), `?` one
    * character, anything else literal (at most 64 patterns). A matching key
    * keeps its current value, one added since the checkpoint stays, and one

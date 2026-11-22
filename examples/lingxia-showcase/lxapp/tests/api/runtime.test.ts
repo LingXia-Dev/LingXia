@@ -87,7 +87,7 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
       calls: {
         terminal: await outcome(() => lx.host.terminal.settings.get()),
         autostart: await outcome(() => lx.host.autostart.isEnabled()),
-        notification: await outcome(() => lx.host.notification.permission()),
+        notification: await outcome(() => lx.device.permission('notifications')),
         banner: await outcome(() => lx.host.banner.dismiss('lx-capability-probe')),
       },
       cache: await outcome(() => lx.host.cache.size()),
@@ -113,11 +113,11 @@ test("answer capability questions and refuse what the host lacks", { id: "LOGIC-
   expect(result.dependency).toBe(true);
 });
 
-test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.storage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.storage', 'lx.storage.info', 'lx.storage.set', 'lx.storage.get', 'lx.storage.has', 'lx.storage.list', 'lx.storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.logic.eval(async ({ lx }, namespace) => {
-    const storage = lx.storage();
+    const storage = lx.storage;
     const key = namespace;
     const before = await storage.info();
     const absentBefore = await storage.has(key);
@@ -134,13 +134,13 @@ test("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.st
     }
     const after = await storage.info();
     return {
-      value,
+      value: value ?? null,
       present,
       hasWhilePresent,
       absentBefore,
       hasAfterDelete: await storage.has(key),
       removed: !(await storage.list()).includes(key),
-      sizeRestored: after.keyCount === before.keyCount,
+      sizeRestored: after.keys === before.keys,
     };
   }, namespace);
 
@@ -185,7 +185,7 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs'
         arrayBufferLength: buffer.byteLength,
         isUint8Array: bytes instanceof Uint8Array,
         base64,
-        isFile: stat.isFile,
+        isFile: stat.kind === 'file',
         renamed: await files.exists(renamed),
         copied: await files.exists(copied),
         dataPathAvailable,
@@ -209,21 +209,21 @@ test("round-trip files under lx user cache", { id: "LOGIC-004", covers: ['lx.fs'
 
 test("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
   id: "LOGIC-007",
-  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.nav.reset'],
+  covers: ['lx.storage.clear', 'lx.storage.list', 'lx.storage.get', 'lx.storage.set', 'lx.nav.reset'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "LOGIC-007");
   const persistKey = `${namespace}-persist`;
   defer(async () => {
     await app.logic.eval(async ({ lx }, namespace) => {
-      const storage = lx.storage();
+      const storage = lx.storage;
       const keys = await storage.list(namespace);
       for (const key of keys) await storage.delete(key);
     }, namespace).catch(() => undefined);
   });
 
   const first = await app.logic.eval(async ({ lx }, namespace, persistKey) => {
-    const storage = lx.storage();
+    const storage = lx.storage;
     const ns = namespace;
     await storage.set(ns + '-a', 1);
     await storage.set(ns + '-b', 2);
@@ -239,7 +239,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
     const persistGone = await storage.get(persistKey);
     await storage.set(persistKey, { kept: true });
     // A missing key reads as undefined, which a JSON result cannot carry.
-    return { prefixed, storedNull, missing: missing ?? null, listedNull, listedMissing, afterClear, persistGone: persistGone ?? null };
+    return { prefixed, storedNull: storedNull === undefined ? 'missing' : storedNull, missing: missing ?? null, listedNull, listedMissing, afterClear, persistGone: persistGone ?? null };
   }, namespace, persistKey);
 
   expect(first.prefixed).toEqual([`${namespace}-a`, `${namespace}-b`, `${namespace}-null`].sort());
@@ -252,12 +252,12 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
 
   await app.nav.reset({ page: 'home' });
   await waitForCurrentPage(app, 'home', 30_000);
-  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.storage().get(persistKey), persistKey);
+  const persisted = await app.logic.eval(async ({ lx }, persistKey) => await lx.storage.get(persistKey), persistKey);
   expect(persisted).toEqual({ kept: true });
 
   const oversized: Caught = await app.logic.eval(async ({ lx }, namespace) => {
     try {
-      await lx.storage().set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
+      await lx.storage.set(namespace + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));
       return { ok: true };
     } catch (error) {
       const { code, message } = error as { code?: string; message?: string };
@@ -266,7 +266,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   }, namespace);
   expect(oversized.ok).toBeFalsy();
   expect(oversized.code).toBe('E_OUT_OF_RANGE');
-  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.storage().get(namespace + '-big'), namespace);
+  const leftover = await app.logic.eval(async ({ lx }, namespace) => await lx.storage.get(namespace + '-big'), namespace);
   expect(leftover == null).toBeTruthy();
 });
 
@@ -298,14 +298,14 @@ test("replace on write, read directories, LxFile.exists/path, and deny escaped p
       const stat = await files.stat(root);
       return {
         names: entries.map((entry) => entry.name).sort(),
-        childIsFile: entries.some((entry) => entry.name === 'child.txt' && entry.isFile),
+        childIsFile: entries.some((entry) => entry.name === 'child.txt' && entry.kind === 'file'),
         // Entries must be plain data: a class wrapper serializes to null.
         serializedIsFile: (JSON.parse(JSON.stringify(entries)) as typeof entries)
-          .some((entry) => entry.name === 'child.txt' && entry.isFile),
+          .some((entry) => entry.name === 'child.txt' && entry.kind === 'file'),
         exists,
         path: file.path,
         text,
-        dirStat: stat.isDirectory,
+        dirStat: stat.kind === 'directory',
         overwriteRejected,
       };
     } finally {

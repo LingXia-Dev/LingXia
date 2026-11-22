@@ -11,6 +11,7 @@ mod banner;
 mod cache;
 mod display_language;
 mod notification;
+pub(crate) use notification::{notification_permission, request_notification_permission};
 mod screenshot;
 mod service_env;
 mod update;

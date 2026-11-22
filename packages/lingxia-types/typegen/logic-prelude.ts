@@ -141,7 +141,13 @@ export interface Task<R, P = TransferProgress> extends AsyncIterable<P> {
 }
 
 /** A lazy reference to a managed path from `lx.fs.file`; nothing is read until a method runs. */
-export interface LxFile {}
+export interface LxFile {
+  /**
+   * Read and parse the complete file as JSON, typed as `T` without a check.
+   * @throws {E_INVALID_ARG} The file is not UTF-8 or not valid JSON.
+   */
+  json<T>(): Promise<T>;
+}
 
 /** A task the caller can cancel. */
 export interface CancelableTask<R, P = TransferProgress> extends Task<R, P> {
@@ -423,7 +429,7 @@ declare global {
     /** The device's maker, model and OS. */
     readonly info: Readonly<DeviceInfo>;
 
-    /** Screen orientation: read it, lock it, follow it. */
+    /** Screen orientation: read it and follow it; a page locks it with `page.orientation`. */
     readonly orientation: OrientationApi;
   }
 
@@ -431,7 +437,7 @@ declare global {
   interface ClipboardApi {}
   /** `lx.media`: inspect, compress and preview images and videos. */
   interface MediaApi {}
-  /** `lx.device.orientation`: read the screen's orientation, lock it, follow it. */
+  /** `lx.device.orientation`: the orientation in effect, read or followed. */
   interface OrientationApi extends Live<DeviceOrientation> {}
   /** `lx.pick`: let the person choose files, a folder, photos and videos, or scan a code. */
   interface PickApi {}
@@ -524,55 +530,118 @@ declare global {
     readonly ui: UiApi;
 
     /**
-     * Open this lxapp's store with every key's shape pinned on the handle.
-     * `get` / `set` / `delete` then share that schema instead of
-     * repeating `get<T>()` at each call site.
+     * This lxapp's persistent key-value store. Values are JSON; declare each
+     * key's shape once in `LxStorageSchema`, or every key holds any `JsonValue`.
+     * Use `lx.fs` for path-based data.
      * @example
      * ```ts
-     * const store = lx.storage<{ token: string }>();
-     * await store.set('token', token);
+     * declare global { interface LxStorageSchema { token: string } }
+     * await lx.storage.set('token', token);
      * ```
      */
-    storage<S extends StorageSchema>(): TypedStorage<S>;
+    readonly storage: Storage<LxStorageValues>;
   }
 }
 
+declare global {
+  /**
+   * Each `lx.storage` key and the shape stored under it. Empty here on
+   * purpose: until an app declares keys, any key holds any `JsonValue`.
+   */
+  interface LxStorageSchema {}
+}
+
+/** The schema `lx.storage` uses: the app's `LxStorageSchema`, or any key with a JSON value. */
+export type LxStorageValues = keyof LxStorageSchema extends never ? Record<string, JsonValue> : LxStorageSchema;
+
 /**
- * A map of storage keys to stored value shapes.
- *
- * `object` deliberately accepts both type aliases and interfaces. Requiring a
- * string index signature would reject ordinary interface-based schemas.
+ * `T` where every value survives a JSON round trip; a function, Date, Map,
+ * Set, promise or class instance becomes `never`, so it does not compile.
+ * `undefined` members are allowed: serialization drops them, as an optional
+ * member reads.
  */
-export type StorageSchema = object;
+export type JsonData<T> =
+  0 extends 1 & T ? any
+    : unknown extends T ? unknown
+    : T extends string | number | boolean | null | undefined ? T
+    : T extends (...args: never[]) => unknown ? never
+    : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | PromiseLike<unknown> | symbol | bigint ? never
+    : T extends readonly unknown[] ? { [K in keyof T]: JsonData<T[K]> }
+    : T extends object ? { [K in keyof T]: JsonData<T[K]> }
+    : never;
 
 type StorageKey<S extends object> = Extract<keyof S, string>;
-type StorageEntry<S extends object> = {
-  [K in StorageKey<S>]: [key: K, value: S[K] | DeepReadonly<S[K]>];
-}[StorageKey<S>];
+/**
+ * `set`'s arguments. A schema pins each key's value, and the tuple keeps a
+ * union key correlated with its value; without one, any JSON-safe value fits.
+ */
+type StorageEntry<S extends object, T> = string extends keyof S
+  ? [key: string, value: T & JsonData<T>]
+  : { [K in StorageKey<S>]: [key: K, value: JsonData<S[K]> | DeepReadonly<JsonData<S[K]>>] }[StorageKey<S>];
+
+/** How `lx.storage.get` turns the stored value into its result. */
+export type StorageGetOptions<T> = {
+  /** Checks the stored value and returns it typed; whatever it throws rejects the read. Not called for a missing key. */
+  decode: (value: unknown) => T;
+};
 
 /**
- * Schema-typed view of the same store `lx.storage()` returns.
- * Runtime is identical; only the key/value types are pinned.
+ * A persistent key-value store of JSON values, typed by a schema.
  *
- * The schema constrains what this handle writes and reads, not what the store
- * contains: a previous app version, or another code path holding the untyped
- * handle, can have written keys outside it. That is why `list` still resolves
- * plain strings — narrowing it to the schema's keys would be the same
- * unchecked assertion this type exists to remove from `get<T>()`.
+ * The schema constrains what this handle reads and writes, not what the store
+ * holds: an earlier app version can have written other keys, so `list`
+ * resolves plain strings and `get` takes a `decode` option to check a value.
  */
-export type TypedStorage<S extends object> = {
-  /** Reads a value the schema names; a missing key resolves `undefined`. */
-  get<K extends StorageKey<S>>(key: K, decode?: (value: unknown) => S[K]): Promise<S[K] | undefined>;
-  /** Stores a value under a key the schema names, typed by that key. */
-  set(...entry: StorageEntry<S>): Promise<void>;
-  /** Resolves whether the key exists, without reading its value. */
+export type Storage<S extends object = Record<string, JsonValue>> = {
+  /**
+   * Reads a value; a missing key resolves `undefined`, which a stored `null` never does.
+   * @throws {E_INVALID_DATA} The stored value could not be decoded.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
+  get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
+  /**
+   * Reads a value and passes it through `options.decode`, which checks the stored shape and gives the result its type.
+   * @throws {E_INVALID_DATA} The stored value could not be decoded.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
+  get<K extends StorageKey<S>, T>(key: K, options: StorageGetOptions<T>): Promise<T | undefined>;
+  /**
+   * Stores a JSON value under `key`, replacing any value there.
+   * @throws {E_OUT_OF_RANGE} The key is over 1 KiB, the value over 5 MiB, or the store would pass 20 MiB.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
+  set<T>(...entry: Readonly<StorageEntry<S, T>>): Promise<void>;
+  /**
+   * Resolves whether the key exists, without reading its value.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
   has(key: StorageKey<S>): Promise<boolean>;
-  /** Removes the key; a missing key is fine. */
+  /**
+   * Removes the key; a missing key is fine.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
   delete(key: StorageKey<S>): Promise<void>;
-  /** Removes every key, including ones outside the schema. */
+  /**
+   * Removes every key, including ones outside the schema.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
   clear(): Promise<void>;
-  /** Resolves every stored key, optionally filtered by prefix. */
+  /**
+   * Resolves every stored key, optionally filtered by prefix.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
   list(prefix?: string): Promise<string[]>;
-  /** Resolves how much is stored and the limit. */
+  /**
+   * Resolves how much is stored, the limit, and the key count.
+   * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
+   * @throws {E_IO} The database could not be read or written.
+   */
   info(): Promise<StorageInfo>;
 };

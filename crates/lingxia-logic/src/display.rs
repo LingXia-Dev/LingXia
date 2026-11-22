@@ -30,7 +30,7 @@ fn emit_orientation_change_event(appid: &str, value: &str) {
 #[inline]
 fn should_emit_orientation_event_after_set() -> bool {
     // iOS/Harmony may not deliver a host orientation callback immediately after
-    // orientation.lock, so we actively emit one to keep JS state in sync.
+    // page.orientation.lock, so we actively emit one to keep JS state in sync.
     // Android already emits orientation events from Activity callbacks; emitting
     // again here would create duplicate events.
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
@@ -79,33 +79,23 @@ fn get_device_orientation(ctx: JSContext) -> JSResult<String> {
     Ok(current_orientation(&lxapp).to_string())
 }
 
-/// Lock this lxapp to `portrait` or `landscape`.
-///
-/// The lock beats every page's `pageOrientation`; only a full-screen video
-/// beats the lock. `unlock()` removes it.
-///
-/// @throws {E_INVALID_ARG} Any other value.
-fn lock_device_orientation(ctx: JSContext, orientation: String) -> JSResult<()> {
-    let lock = match orientation.as_str() {
-        "portrait" | "landscape" => OrientationConfig::from_label(&orientation),
-        _ => {
+/// Place or remove (`None`) `page`'s orientation lock: `portrait` or
+/// `landscape`. It applies while the page is current and ends at its unload.
+pub(crate) fn apply_page_orientation_lock(
+    lxapp: &LxApp,
+    page: &lxapp::PageInstance,
+    orientation: Option<String>,
+) -> JSResult<()> {
+    let lock = match orientation.as_deref() {
+        None => None,
+        Some(value @ ("portrait" | "landscape")) => OrientationConfig::from_label(value),
+        Some(other) => {
             return Err(js_invalid_parameter_error(format!(
-                "Invalid orientation value: {orientation} (expected portrait or landscape)"
+                "Invalid orientation value: {other} (expected portrait or landscape)"
             )));
         }
     };
-    apply_orientation_lock(&ctx, lock)
-}
-
-/// Remove the lock `lock` placed: each page's `pageOrientation`, then the
-/// app's default, applies again.
-fn unlock_device_orientation(ctx: JSContext) -> JSResult<()> {
-    apply_orientation_lock(&ctx, None)
-}
-
-fn apply_orientation_lock(ctx: &JSContext, lock: Option<OrientationConfig>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(ctx)?;
-    lxapp.set_app_orientation(lock);
+    page.set_orientation_lock(lock);
 
     lxapp
         .runtime
@@ -115,7 +105,7 @@ fn apply_orientation_lock(ctx: &JSContext, lock: Option<OrientationConfig>) -> J
     // A page that follows the screen waits for the host's report: the screen
     // size read here predates the window turning.
     if should_emit_orientation_event_after_set()
-        && let Some(value) = resolved_orientation(&lxapp)
+        && let Some(value) = resolved_orientation(lxapp)
     {
         emit_orientation_change_event(&lxapp.appid, value);
     }
@@ -166,8 +156,6 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace OrientationApi = crate::namespace::orientation(ctx)?;
         fn get(ts_return = "DeviceOrientation") = get_device_orientation;
-        fn lock(ts_params = "orientation: DeviceOrientation", ts_return = "void") = lock_device_orientation;
-        fn unlock(ts_return = "void") = unlock_device_orientation;
         fn watch(
             ts_params = "callback: (value: DeviceOrientation) => void, options?: SignalOptions",
             ts_return = "() => void"

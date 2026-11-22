@@ -42,7 +42,7 @@ Keep that in `tsconfig.logic.json`; the View has its own config, and the root
   runtime needs `page as ConfiguredPageName`; another lxapp's page is a plain string.
 - Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
   `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.clipboard`,
-  `lx.storage()`, `lx.surface`, `lx.shell`.
+  `lx.storage`, `lx.surface`, `lx.shell`.
 - Page-addressed calls live on `page`, not on `lx`: its data, params, signal,
   result and channel ([Page API](./guide.md)).
 

@@ -237,6 +237,14 @@ assert.equal(run('envLate.length'), 0, 'an aborted signal subscribes nothing');
 assert.throws(() => run('dialogPage.env.watch(() => {}, { signal: 1 })'), /\{ signal \}/);
 console.log('page.env.watch delivery and signal passed.');
 
+// page.orientation names its own instance, so the lock is keyed by page.
+run(`globalThis.locks = [];
+globalThis.__LX_PAGE_NATIVE__ = { orientationLock: (...args) => { locks.push(args); } };
+dialogPage.orientation.lock('landscape');
+dialogPage.orientation.unlock();`);
+assert.deepEqual(JSON.parse(run('JSON.stringify(locks)')), [['d1', 'landscape'], ['d1']]);
+console.log('page.orientation lock and unlock passed.');
+
 // `actions: page => ({ … })` runs once per instance; a plain object is shared.
 run(`globalThis.made = 0;
 __registerPage('short', define({

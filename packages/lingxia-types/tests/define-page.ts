@@ -165,3 +165,16 @@ definePage({
 definePage({ actions: async () => ({ go() {} }) });
 // A this-less action reads no page: `this` is void.
 definePage({ actions: { who() { return this; } } }).actions.who satisfies () => Promise<void>;
+
+definePage({
+  setup(page) {
+    return {
+      onShow: () => page.orientation.lock('landscape'),
+      onHide: () => page.orientation.unlock(),
+      onLoad: () => {
+        // @ts-expect-error a page locks to portrait or landscape only
+        page.orientation.lock('sideways');
+      },
+    };
+  },
+});

@@ -20,7 +20,9 @@ pub use definition::{register_page_resolver, resolve_page_path};
 use crate::bridge::PageBridge;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
-use crate::page::config::{OrientationOverride, PageConfig, PageOrientation, PageRenderer};
+use crate::page::config::{
+    OrientationConfig, OrientationOverride, PageConfig, PageOrientation, PageRenderer,
+};
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, debug, error, info, warn};
@@ -292,6 +294,8 @@ pub struct PageState {
     dev_hold_first_state: bool,
     /// A full-screen video's lock; it outranks the page and app orientation while set.
     presentation_orientation: Option<PageOrientation>,
+    /// `page.orientation.lock` from Logic; ends with the instance, at `onUnload`.
+    orientation_lock: Option<OrientationConfig>,
     // Query parameters
     pub(crate) query: serde_json::Value,
 }
@@ -541,6 +545,7 @@ impl PageInstance {
             leave_guard: false,
             leave_reason: None,
             presentation_orientation: None,
+            orientation_lock: None,
             orientation_override: page_config.get_orientation_override(),
             max_text_scale: page_config.max_text_scale,
             dev_hold_first_state: page_config.dev_hold_first_state,
@@ -1786,6 +1791,9 @@ impl PageInstance {
             }
             // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
             else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
+                if event == PageLifecycleEvent::OnUnload {
+                    state.orientation_lock = None;
+                }
                 Self::collect_hidden_or_unloaded_lifecycle_event(
                     &mut state,
                     event,
@@ -1865,6 +1873,24 @@ impl PageInstance {
             .lock()
             .ok()
             .and_then(|state| state.presentation_orientation)
+    }
+
+    /// The lock this page's Logic placed with `page.orientation.lock`.
+    pub fn orientation_lock(&self) -> Option<OrientationConfig> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.orientation_lock)
+    }
+
+    /// Place this page's orientation lock, or remove it (`None`).
+    pub fn set_orientation_lock(&self, orientation: Option<OrientationConfig>) {
+        let orientation =
+            orientation.map(|value| OrientationConfig::normalize(value.mode, value.rotation));
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.orientation_lock = orientation;
+        }
     }
 
     /// Lock the window while this page shows a full-screen video, or release it (`None`);
@@ -3131,6 +3157,7 @@ mod tests {
             leave_guard: false,
             leave_reason: None,
             presentation_orientation: None,
+            orientation_lock: None,
             orientation_override: OrientationOverride::default(),
             max_text_scale: None,
             dev_hold_first_state: false,

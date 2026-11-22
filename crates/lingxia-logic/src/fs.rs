@@ -205,15 +205,9 @@ struct JSFsRemoveOptions {
 /// A managed path's kind, size and times.
 #[derive(Debug, Clone, IntoJSObject)]
 struct FileStats {
-    /// A regular file.
-    #[js_name = "isFile"]
-    is_file: bool,
-    /// A directory.
-    #[js_name = "isDirectory"]
-    is_directory: bool,
-    /// A symbolic link; the other fields describe the link itself.
-    #[js_name = "isSymlink"]
-    is_symlink: bool,
+    /// What the path is; for a `symlink` the other fields describe the link itself.
+    #[ts_type = "FsEntryKind"]
+    kind: String,
     /// Size in bytes.
     size: u64,
     /// Epoch milliseconds; absent where the file system does not record it.
@@ -300,15 +294,9 @@ fn managed_root(lxapp: &LxApp, kind: ManagedPathKind) -> Option<&Path> {
 struct DirEntry {
     /// The entry's name, one path component.
     name: String,
-    /// A regular file.
-    #[js_name = "isFile"]
-    is_file: bool,
-    /// A directory.
-    #[js_name = "isDirectory"]
-    is_directory: bool,
-    /// A symbolic link; it is not followed.
-    #[js_name = "isSymlink"]
-    is_symlink: bool,
+    /// What the entry is; a `symlink` is not followed.
+    #[ts_type = "FsEntryKind"]
+    kind: String,
 }
 
 fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
@@ -838,12 +826,20 @@ pub(crate) fn resolve_writable_file_path(
     Ok(path.path)
 }
 
+fn entry_kind(file_type: std::fs::FileType) -> &'static str {
+    if file_type.is_symlink() {
+        "symlink"
+    } else if file_type.is_dir() {
+        "directory"
+    } else {
+        "file"
+    }
+}
+
 fn file_stats(metadata: std::fs::Metadata) -> FileStats {
     let file_type = metadata.file_type();
     FileStats {
-        is_file: file_type.is_file(),
-        is_directory: file_type.is_dir(),
-        is_symlink: file_type.is_symlink(),
+        kind: entry_kind(file_type).to_string(),
         size: metadata.len(),
         last_modified_time: system_time_millis(metadata.modified()),
         last_accessed_time: system_time_millis(metadata.accessed()),
@@ -1121,10 +1117,10 @@ impl JSLxFile {
         })
     }
 
-    /// Read and parse the complete file as JSON. Stays `unknown`: a class
-    /// method cannot carry a type parameter through the binding, so unlike
-    /// `lx.storage().get<T>()` the assertion is spelled `as` at the call
-    /// site rather than passed in.
+    /// Read and parse the complete file as JSON; `json<T>()` names the
+    /// parsed shape, unchecked.
+    ///
+    /// @throws {E_INVALID_ARG} The file is not UTF-8 or not valid JSON.
     #[js_method(ts_return = "Promise<unknown>")]
     async fn json(&self, ctx: JSContext) -> JSResult<JSValue> {
         let lxapp = self.lxapp()?;
@@ -1132,7 +1128,9 @@ impl JSLxFile {
         let text = String::from_utf8(bytes).map_err(|err| {
             js_invalid_parameter_error(format!("LxFile.json invalid utf8 data: {err}"))
         })?;
-        text.as_str().json_to_js_value(&ctx)
+        text.as_str()
+            .json_to_js_value(&ctx)
+            .map_err(|err| js_invalid_parameter_error(format!("LxFile.json invalid JSON: {err}")))
     }
 
     /// Read the complete file as a Base64 string.
@@ -1281,9 +1279,7 @@ async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<DirEntry>> {
             .map_err(|err| js_internal_error(format!("fs.readDir file type failed: {err}")))?;
         children.push(DirEntry {
             name: entry.file_name().to_string_lossy().into_owned(),
-            is_file: file_type.is_file(),
-            is_directory: file_type.is_dir(),
-            is_symlink: file_type.is_symlink(),
+            kind: entry_kind(file_type).to_string(),
         });
     }
     Ok(children)

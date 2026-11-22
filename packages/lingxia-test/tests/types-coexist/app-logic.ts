@@ -6,5 +6,5 @@ export function userDataPath(): string {
 }
 
 export function hasStorageKey(key: string): Promise<boolean> {
-  return lx.storage().has(key);
+  return lx.storage.has(key);
 }

@@ -28,8 +28,8 @@ pub(crate) enum LogicRoute {
     AppAutostartIsEnabled,
     AppAutostartEnable,
     AppAutostartDisable,
-    AppNotificationPermission,
-    AppNotificationRequestPermission,
+    DevicePermission,
+    DeviceRequestPermission,
     AppNotificationShow,
     AppNotificationCancel,
     AppNotificationCancelAll,
@@ -89,8 +89,8 @@ impl LogicRoute {
         Self::AppAutostartIsEnabled,
         Self::AppAutostartEnable,
         Self::AppAutostartDisable,
-        Self::AppNotificationPermission,
-        Self::AppNotificationRequestPermission,
+        Self::DevicePermission,
+        Self::DeviceRequestPermission,
         Self::AppNotificationShow,
         Self::AppNotificationCancel,
         Self::AppNotificationCancelAll,
@@ -173,8 +173,8 @@ impl LogicRoute {
             | Self::ShellSetAppDisplay
             | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
-            Self::AppNotificationPermission
-            | Self::AppNotificationRequestPermission
+            Self::DevicePermission
+            | Self::DeviceRequestPermission
             | Self::AppNotificationShow
             | Self::AppNotificationCancel
             | Self::AppNotificationCancelAll
@@ -219,8 +219,8 @@ impl LogicRoute {
             Self::AppAutostartIsEnabled => "lx.host.autostart.isEnabled",
             Self::AppAutostartEnable => "lx.host.autostart.enable",
             Self::AppAutostartDisable => "lx.host.autostart.disable",
-            Self::AppNotificationPermission => "lx.host.notification.permission",
-            Self::AppNotificationRequestPermission => "lx.host.notification.requestPermission",
+            Self::DevicePermission => "lx.device.permission",
+            Self::DeviceRequestPermission => "lx.device.requestPermission",
             Self::AppNotificationShow => "lx.host.notification.show",
             Self::AppNotificationCancel => "lx.host.notification.cancel",
             Self::AppNotificationCancelAll => "lx.host.notification.cancelAll",
@@ -636,6 +636,10 @@ mod tests {
     fn is_attention_route(route: LogicRoute) -> bool {
         route.name().starts_with("lx.host.notification.")
             || route.name().starts_with("lx.host.banner.")
+            || matches!(
+                route.name(),
+                "lx.device.permission" | "lx.device.requestPermission"
+            )
     }
 
     #[test]
@@ -648,8 +652,8 @@ mod tests {
         assert_eq!(
             attention,
             [
-                "lx.host.notification.permission",
-                "lx.host.notification.requestPermission",
+                "lx.device.permission",
+                "lx.device.requestPermission",
                 "lx.host.notification.show",
                 "lx.host.notification.cancel",
                 "lx.host.notification.cancelAll",

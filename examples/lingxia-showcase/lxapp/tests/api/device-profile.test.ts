@@ -56,7 +56,7 @@ const ORIENTATION_SUPPORT: Record<string, boolean> = {
 
 test('accept both device orientations and reject an unknown one', {
   id: 'DEVICE-ORIENTATION-001',
-  covers: ['lx.device.orientation.lock', 'lx.device.orientation.get'],
+  covers: ['page.orientation.lock', 'page.orientation.unlock', 'lx.device.orientation.get'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
@@ -67,12 +67,14 @@ test('accept both device orientations and reject an unknown one', {
   const supported = ORIENTATION_SUPPORT[os] ?? true;
   defer(async () => {
     // Removing the lock hands each page its own `pageOrientation` back.
-    await app.logic.eval(({ lx }) => { lx.device.orientation.unlock(); return true; }).catch(() => undefined);
+    await app.logic.eval(({ currentPage }) => { currentPage()?.orientation.unlock(); return true; }).catch(() => undefined);
   });
 
-  const result = await app.logic.eval(({ lx }) => {
+  const result = await app.logic.eval(({ lx, currentPage }) => {
+    const page = currentPage();
+    if (!page) throw new Error('no current page');
     // 'sideways' is not an orientation: the probe passes it on purpose.
-    const setOrientation = lx.device.orientation.lock as (value: string) => void;
+    const setOrientation = page.orientation.lock as (value: string) => void;
     const attempt = (value: string): { ok: boolean; code?: string } => {
       try { setOrientation(value); return { ok: true }; }
       catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
@@ -85,7 +87,7 @@ test('accept both device orientations and reject an unknown one', {
       lockedTo,
       portrait: attempt('portrait'),
       unlock: (() => {
-        try { lx.device.orientation.unlock(); return { ok: true }; }
+        try { page.orientation.unlock(); return { ok: true }; }
         catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
       })(),
       invalid: attempt('sideways'),

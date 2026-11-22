@@ -69,7 +69,7 @@ fn scope_for(ctx: &JSContext, app: &LxApp) -> JSResult<ProfileRunScope> {
 
 #[derive(FromJSObject)]
 struct RestoreOptions {
-    /// `lx.storage()` key globs whose current values survive the rollback.
+    /// `lx.storage` key globs whose current values survive the rollback.
     keep: Option<Vec<String>>,
 }
 

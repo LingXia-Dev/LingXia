@@ -329,6 +329,16 @@
       },
     });
 
+    // The lock holds while this page is current and ends when it unloads.
+    const orientation = Object.freeze({
+      lock(value) {
+        native().orientationLock(pageInstanceId, value);
+      },
+      unlock() {
+        native().orientationLock(pageInstanceId);
+      },
+    });
+
     // Size class only. A watcher starts with the current value and goes with the page.
     const env = Object.freeze({
       get() {
@@ -433,6 +443,7 @@
       video(name) {
         return native().video(pageInstanceId, name);
       },
+      orientation,
       env,
     });
 

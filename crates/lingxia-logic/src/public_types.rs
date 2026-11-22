@@ -208,7 +208,8 @@ rong::js_api! {
         /// local API, every call fails `E_NOT_SUPPORTED`; ask
         /// `lx.supports('host.notification')` first.
         /// Declaring the capability never prompts; permission runs on
-        /// `requestPermission()` or the first `show()` that reaches the OS.
+        /// `lx.device.requestPermission('notifications')` or the first `show()`
+        /// that reaches the OS.
         ///
         /// Every lxapp may call it. The Control app speaks for the product; a
         /// guest lxapp speaks only for itself: its ids are its own (it cannot
@@ -216,23 +217,6 @@ rong::js_api! {
         /// may hold 32 live notifications, and it may cause at most one
         /// permission prompt per launch, only while it is open on screen.
         type NotificationApi = r###"{
-    /**
-     * Read the current permission without prompting. `'default'` means the
-     * user has not been asked yet.
-     * @supports host.notification
-     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
-     */
-    permission(): Promise<'granted' | 'denied' | 'default'>;
-    /**
-     * Ask for notification permission. Prompts where the OS has a prompt and
-     * the user has not answered; otherwise reports the current setting.
-     * Rejects when the prompt is left unanswered.
-     * @permission notifications
-     * @throws {E_PERMISSION_DENIED} A guest lxapp asks while it is not on screen, or a second time this launch.
-     * @supports host.notification
-     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
-     */
-    requestPermission(): Promise<'granted' | 'denied'>;
     /**
      * Post a local notification now or at `schedule`, replacing any under the same `id`.
      * An invalid target, unknown page or route, or an unconfigured host rejects here,
@@ -1124,6 +1108,15 @@ rong::js_api! {
     signal?: AbortSignal;
 }"###;
 
+        /// What a managed path is: a regular file, a directory or a symbolic link.
+        type FsEntryKind = r###"'file' | 'directory' | 'symlink'"###;
+
+        /// A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for.
+        type PermissionName = r###"'location' | 'camera' | 'photos' | 'notifications'"###;
+
+        /// A permission's state: `prompt` means the person has not been asked yet.
+        type PermissionState = r###"'granted' | 'denied' | 'prompt'"###;
+
         /// Where `lx.fs.copy` puts the copy.
         type FsCopyOptions = r###"{
     /** The destination file path. */
@@ -1856,38 +1849,6 @@ true
     signal?: AbortSignal;
 }"###;
 
-        /// Asynchronous persistent key-value storage backed by the lxapp
-        /// database. Use `lx.fs` for path-based data.
-        ///
-        /// `get<T>()` is an unchecked assertion at the call site. Pin every
-        /// key's shape once with `lx.storage<Schema>()` — that returns a
-        /// `TypedStorage<Schema>` instead of this untyped handle.
-        ///
-        type Storage = r###"{
-    /**
-     * Reads a stored value. `T` is an unchecked assertion about the stored
-     * shape, exactly like a `JSON.parse` boundary; a missing key resolves
-     * `undefined`, which a stored `null` never does.
-     */
-    get<T = unknown>(key: string, decode?: (value: unknown) => T): Promise<T | undefined>;
-    /** Stores a JSON value under `key`, replacing any value there. */
-    set(key: string, value: unknown): Promise<void>;
-    /**
-     * Resolves whether an exact key exists, without reading its value. Prefer
-     * it over comparing `get` against `undefined`: presence is a key lookup,
-     * while `get` also reads and deserializes the stored value.
-     */
-    has(key: string): Promise<boolean>;
-    /** Removes `key`; a missing key is fine. */
-    delete(key: string): Promise<void>;
-    /** Removes every key. */
-    clear(): Promise<void>;
-    /** Resolves every key, optionally filtered by prefix. */
-    list(prefix?: string): Promise<string[]>;
-    /** Resolves how much is stored and the limit. */
-    info(): Promise<StorageInfo>;
-}"###;
-
         /// Current persistent-storage usage and configured limits.
         ///
         type StorageInfo = r###"{
@@ -1896,7 +1857,7 @@ true
     /** The configured ceiling, in bytes. */
     limitBytes: number;
     /** Number of stored keys; `list()` names them. */
-    keyCount: number;
+    keys: number;
 }"###;
 
         /// A stream a page player plays from a provider the host registered.

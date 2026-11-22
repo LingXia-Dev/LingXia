@@ -1,21 +1,7 @@
-/**
- * `T` where every value survives the JSON transfer of page data to the
- * View; a function, Date, Map, Set, promise or class instance becomes
- * `never`, so a contract holding one does not compile. `undefined` members
- * are allowed: the transfer drops them, as an optional member reads.
- */
-export type JsonData<T> =
-  0 extends 1 & T ? any
-    : unknown extends T ? unknown
-    : T extends string | number | boolean | null | undefined ? T
-    : T extends (...args: never[]) => unknown ? never
-    : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | PromiseLike<unknown> | symbol | bigint ? never
-    : T extends readonly unknown[] ? { [K in keyof T]: JsonData<T[K]> }
-    : T extends object ? { [K in keyof T]: JsonData<T[K]> }
-    : never;
 
 import type {
   DeepReadonly,
+  JsonData,
   JsonValue,
   NavigationBarPatch,
   PageLoadOptions,
@@ -26,7 +12,10 @@ import type {
   PageSurface,
   SignalOptions,
   PagePlayer,
+  DeviceOrientation,
 } from './generated/logic.js';
+
+export type { JsonData } from './generated/logic.js';
 
 declare const typeTag: unique symbol;
 
@@ -143,6 +132,18 @@ export interface PageApi<Data, Params, Result, Messages = never> {
   refresh(): void;
   /** The player named `name` on this page: a `useVideo` name or `<video id>`, or an `<lx-video>` id. */
   video(name: string): PagePlayer;
+  /**
+   * Lock the window to `portrait` or `landscape` while this page is current.
+   * The lock beats `pageOrientation`; only a full-screen video beats it. It
+   * ends when the page unloads, so the next page gets its own orientation.
+   * `lock` throws `E_INVALID_ARG` for any other value.
+   */
+  readonly orientation: {
+    /** Place the lock; replaces one already placed. */
+    lock(orientation: DeviceOrientation): void;
+    /** Remove the lock: `pageOrientation`, then the app's default, applies again. */
+    unlock(): void;
+  };
   /**
    * The size class this page lays out for. `watch` delivers it at once, then
    * when `sizeClass` or `canDock` changes (not on every resize), and stops

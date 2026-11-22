@@ -15,11 +15,12 @@ page instance. They advance independently.
   ```ts
   // shared/session.ts
   export const session = { userId: '' };
+  declare global { interface LxStorageSchema { userId: string } }
 
   // app.ts
   App({
     async onLaunch() {
-      session.userId = (await lx.storage().get<string>('userId')) ?? '';
+      session.userId = (await lx.storage.get('userId')) ?? '';
     },
   });
 

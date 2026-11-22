@@ -58,9 +58,9 @@ export default [
   {
     id: "PEND-ORIENT-001",
     implementedOn: ["android"],
-    title: "observe the host physically rotate after setDeviceOrientation",
+    title: "observe the host physically rotate after page.orientation.lock",
     mode: "external-ui",
-    covers: ["lx.device.orientation.lock"],
+    covers: ["page.orientation.lock"],
     reason: "ANDROID-ORIENTATION-001 observes the real Android viewport rotate; other hosts still need a rotation contract",
   },
   {

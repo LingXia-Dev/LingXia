@@ -1189,9 +1189,6 @@ pub(crate) struct LxAppState {
     /// Dynamic page surfaces created by lx.openSurface.
     pub(crate) surfaces: Mutex<SurfaceRecords>,
 
-    /// App-level orientation override (runtime + persisted)
-    pub(crate) orientation_override: Option<OrientationConfig>,
-
     /// App-declared actions surfaced by the host's secondary action affordance.
     more_actions: LxAppMoreActionState,
 }
@@ -1214,7 +1211,6 @@ impl LxAppState {
             startup_options: LxAppStartupOptions::default(),
             open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
-            orientation_override: None,
             more_actions: LxAppMoreActionState::default(),
         }
     }
@@ -2874,28 +2870,18 @@ impl LxApp {
         }
     }
 
-    /// The orientation with no page in view: the runtime lock, else the app's.
+    /// The orientation with no page in view: the app's default.
     pub fn get_app_orientation(&self) -> OrientationConfig {
-        let state = self.state.lock().unwrap();
-        state.orientation_override.unwrap_or_default()
-    }
-
-    /// Set the runtime lock `lx.device.orientation.lock` applies, or remove it (`None`).
-    pub fn set_app_orientation(&self, orientation: Option<OrientationConfig>) {
-        let orientation =
-            orientation.map(|value| OrientationConfig::normalize(value.mode, value.rotation));
-        let mut state = self.state.lock().unwrap();
-        state.orientation_override = orientation;
+        OrientationConfig::default()
     }
 
     /// Resolved orientation for a page, in the order [`resolve_orientation`] states.
     pub fn get_page_orientation(&self, path: &str) -> OrientationConfig {
         let page = self.get_page(path);
-        let lock = self.state.lock().unwrap().orientation_override;
         resolve_orientation(
             page.as_ref()
                 .and_then(|page| page.presentation_orientation()),
-            lock,
+            page.as_ref().and_then(|page| page.orientation_lock()),
             page.and_then(|page| page.get_orientation_override())
                 .unwrap_or_default(),
             OrientationConfig::default(),
@@ -6113,17 +6099,31 @@ mod manifest_reload_tests {
     fn unlocking_orientation_hands_a_page_without_its_own_back_to_the_app_default() {
         let (_temp, app, detail) = popped_fixture("gpu");
         let path = detail.path();
-        app.set_app_orientation(OrientationConfig::from_label("landscape"));
+        detail.set_orientation_lock(OrientationConfig::from_label("landscape"));
         assert_eq!(
             app.get_page_orientation(&path).mode,
             crate::PageOrientation::Landscape
         );
-        app.set_app_orientation(None);
+        detail.set_orientation_lock(None);
         assert_eq!(
             app.get_page_orientation(&path),
             OrientationConfig::default(),
             "the unlock removes the lock; it does not force sensor rotation"
         );
+    }
+
+    #[test]
+    fn an_orientation_lock_belongs_to_the_page_that_placed_it_and_ends_at_unload() {
+        let (_temp, app, detail) = popped_fixture("gpu");
+        let home = app.get_page("pages/home/index.js").expect("home page");
+        detail.set_orientation_lock(OrientationConfig::from_label("landscape"));
+        assert_eq!(
+            app.get_page_orientation(&home.path()),
+            OrientationConfig::default(),
+            "another page does not inherit the lock"
+        );
+        detail.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
+        assert_eq!(detail.orientation_lock(), None, "leaving releases the lock");
     }
 
     fn live(app: &LxApp, page: &PageInstance) -> bool {

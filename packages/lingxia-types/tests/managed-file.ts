@@ -13,6 +13,27 @@ async function representationsHaveConcreteTypes(): Promise<number> {
   return text.length + bytes.byteLength + buffer.byteLength + base64.length;
 }
 
+interface Notes {
+  title: string;
+}
+
+async function jsonNamesItsShape(): Promise<string> {
+  const notes = await lx.fs.file("notes.json").json<Notes>();
+  const raw = await lx.fs.file("notes.json").json();
+  // @ts-expect-error without a type argument the parsed value is unknown
+  raw.title;
+  return notes.title;
+}
+
+async function kindReplacesTheBooleans(): Promise<boolean> {
+  const stats = await lx.fs.stat("notes.json");
+  const entries = await lx.fs.readDir("lx://userdata");
+  // @ts-expect-error one `kind` field, not three booleans
+  stats.isFile;
+  const kinds: Array<"file" | "directory" | "symlink"> = entries.map((entry) => entry.kind);
+  return stats.kind === "file" && kinds.length >= 0;
+}
+
 async function writesUseWebDataTypes(): Promise<void> {
   await lx.fs.write("notes.txt", { data: "hello" });
   await lx.fs.write("bytes.bin", { data: new Uint8Array([1, 2, 3]) });
@@ -35,4 +56,6 @@ void lx.fs.write("notes.txt", { data: "hello", encoding: "latin1" });
 export type ManagedFileGate = [
   typeof representationsHaveConcreteTypes,
   typeof writesUseWebDataTypes,
+  typeof jsonNamesItsShape,
+  typeof kindReplacesTheBooleans,
 ];

@@ -277,8 +277,8 @@ test('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
     'lx.host.notification',
-    'lx.host.notification.permission',
-    'lx.host.notification.requestPermission',
+    'lx.device.permission',
+    'lx.device.requestPermission',
     'lx.host.notification.show',
     'lx.host.notification.cancel',
     'lx.host.notification.cancelAll',
@@ -292,10 +292,10 @@ test('request permission and replace local notifications by id', {
 
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
     const n = lx.host.notification;
-    const permission = await n.permission();
+    const permission = await lx.device.permission('notifications');
     // A pending OS prompt has nobody to answer it here, so only ask when
     // the answer is already known.
-    const requested = permission === 'default' ? null : await n.requestPermission();
+    const requested = permission === 'prompt' ? null : await lx.device.requestPermission('notifications');
     let immediate = null;
     try {
       immediate = await n.show({
@@ -362,7 +362,7 @@ test('request permission and replace local notifications by id', {
     };
   });
 
-  expect(['granted', 'denied', 'default']).toContain(result.permission);
+  expect(['granted', 'denied', 'prompt']).toContain(result.permission);
   if (result.requested !== null) {
     expect(result.requested).toBe(result.permission);
   }
@@ -518,19 +518,19 @@ test('clear product caches while preserving live app storage', {
     await lx.fs.write(cached, { data: payload, overwrite: true });
     await lx.fs.write(durable, { data: payload, overwrite: true });
 
-    await lx.storage().set('automation-cache-probe', 'keep');
+    await lx.storage.set('automation-cache-probe', 'keep');
     const before = await lx.host.cache.size();
     const report = await lx.host.cache.clear();
     const after = await lx.host.cache.size();
 
     const cachedSurvived = await lx.fs.exists(cached);
     const durableSurvived = await lx.fs.exists(durable);
-    const kv = await lx.storage().get('automation-cache-probe');
-    await lx.storage().delete('automation-cache-probe');
+    const kv = await lx.storage.get('automation-cache-probe');
+    await lx.storage.delete('automation-cache-probe');
     await lx.fs.remove(durable);
     await lx.fs.remove(cached);
 
-    return { before, report, after, cachedSurvived, durableSurvived, kv };
+    return { before, report, after, cachedSurvived, durableSurvived, kv: kv ?? null };
   });
 
   expect(result.before).toBeGreaterThanOrEqual(0);

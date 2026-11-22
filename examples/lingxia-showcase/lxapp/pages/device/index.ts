@@ -139,7 +139,7 @@ export default definePage({
       },
       async setOrientationPortrait() {
         try {
-          lx.device.orientation.lock("portrait");
+          page.orientation.lock("portrait");
           page.update(d => { d.orientationLock = lx.device.orientation.get(); });
         } catch (error) {
           console.error("Failed to set portrait orientation:", error);
@@ -148,7 +148,7 @@ export default definePage({
       },
       async setOrientationLandscape() {
         try {
-          lx.device.orientation.lock("landscape");
+          page.orientation.lock("landscape");
           page.update(d => { d.orientationLock = lx.device.orientation.get(); });
         } catch (error) {
           console.error("Failed to set landscape orientation:", error);

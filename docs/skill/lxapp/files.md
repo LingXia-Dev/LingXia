@@ -61,7 +61,7 @@ as with Web `Blob`:
 ```ts
 const file = lx.fs.file("notes.json");
 const text = await file.text();            // string, strict UTF-8
-const value = await file.json();           // unknown; validate before use
+const value = await file.json();           // unknown; json<Notes>() names the shape, unchecked
 const bytes = await file.bytes();           // Uint8Array
 const buffer = await file.arrayBuffer();    // ArrayBuffer
 const encoded = await file.base64();        // string
@@ -74,8 +74,8 @@ const encoded = await file.base64();        // string
   preview, or native APIs.
 - `write(path, { data })` takes a string, `ArrayBuffer`, or typed array;
   `encoding: "base64"` decodes a Base64 input string.
-- `readDir(path)` resolves to entries with `name`, `isFile`, `isDirectory`,
-  `isSymlink`.
+- `readDir(path)` resolves to entries with `name` and `kind`
+  (`'file' | 'directory' | 'symlink'`); `stat` reports the same `kind`.
 
 ### Copy and move
 

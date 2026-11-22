@@ -1,14 +1,24 @@
-import { definePage, lx, type TypedStorage } from '@lingxia/logic';
+import { definePage, lx } from '@lingxia/logic';
 import { generateTodoId, validateTodoText, getCurrentTimestamp, type Todo } from '../../shared/lib/todo-utils';
 
 type Filter = 'all' | 'active' | 'completed';
 interface Snapshot { todos: Todo[]; currentFilter: Filter; lastUpdated: string }
-interface TodoStorage {
-  'todo:state': Snapshot;
-  'todo:todos': Todo[];
-  'todo:filter': string;
-  'todo:lastUpdated': string;
-}
+const isTodo = (value: unknown): value is Todo => {
+  const todo = value as Partial<Todo> | null;
+  return !!todo && typeof todo.id === 'string' && typeof todo.text === 'string' && typeof todo.completed === 'boolean';
+};
+const decodeTodos = (value: unknown): Todo[] => {
+  if (!Array.isArray(value) || !value.every(isTodo)) throw new Error('Invalid saved tasks');
+  return value;
+};
+const decodeSnapshot = (value: unknown): Snapshot => {
+  const state = (value ?? {}) as Partial<Record<keyof Snapshot, unknown>>;
+  return {
+    todos: decodeTodos(state.todos),
+    currentFilter: filterValue(state.currentFilter),
+    lastUpdated: typeof state.lastUpdated === 'string' ? state.lastUpdated : getCurrentTimestamp(),
+  };
+};
 const filterValue = (value: unknown): Filter => (value === 'active' || value === 'completed' ? value : 'all');
 const initial = (): Snapshot => ({ todos: [], currentFilter: 'all', lastUpdated: getCurrentTimestamp() });
 const initialData = { ...initial(), loading: true, loadError: '' };
@@ -16,14 +26,10 @@ const initialData = { ...initial(), loading: true, loadError: '' };
 export default definePage({
   data: initialData,
   setup(page) {
-    let _storage = null as TypedStorage<TodoStorage> | null;
     let disposed = false;
     let saving = false;
     let _loading = false;
     const helpers = {
-      ensureStorage() {
-        return _storage ?? (_storage = lx.storage<TodoStorage>());
-      },
       async commit(change: Partial<Snapshot>) {
         if (disposed || saving || page.data.loading || page.data.loadError) throw new Error('Tasks are not ready');
         saving = true;
@@ -35,7 +41,7 @@ export default definePage({
             ...change,
           };
           // One write keeps tasks and filter together; failed saves retain the draft and visible state.
-          await helpers.ensureStorage().set('todo:state', state);
+          await lx.storage.set('todo:state', state);
           if (!disposed) {
             page.update(d => { Object.assign(d, state); });
             await page.flush();
@@ -54,25 +60,18 @@ export default definePage({
           d.loadError = '';
         });
         try {
-          const storage = helpers.ensureStorage();
-          let state = await storage.get('todo:state');
+          let state = await lx.storage.get('todo:state', { decode: decodeSnapshot });
           if (!state) {
             const [todos, filter, lastUpdated] = await Promise.all([
-              storage.get('todo:todos'),
-              storage.get('todo:filter'),
-              storage.get('todo:lastUpdated'),
+              lx.storage.get('todo:todos', { decode: decodeTodos }),
+              lx.storage.get('todo:filter'),
+              lx.storage.get('todo:lastUpdated'),
             ]);
-            state = { todos: todos ?? [], currentFilter: filterValue(filter), lastUpdated: lastUpdated ?? getCurrentTimestamp() };
+            state = decodeSnapshot({ todos: todos ?? [], currentFilter: filter, lastUpdated });
           }
-          if (
-            !Array.isArray(state.todos) ||
-            state.todos.some(todo => !todo || typeof todo.id !== 'string' || typeof todo.text !== 'string' || typeof todo.completed !== 'boolean')
-          ) {
-            throw new Error('Invalid saved tasks');
-          }
+          const loaded = state;
           if (!disposed) page.update(d => {
-            Object.assign(d, state);
-            d.currentFilter = filterValue(state.currentFilter);
+            Object.assign(d, loaded);
             d.loading = false;
           });
         } catch {

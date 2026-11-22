@@ -1,5 +1,5 @@
 //! The native half of the page-scoped members `definePage` hands to `setup`:
-//! `page.navigationBar`, `page.refresh()`, `page.video()` and `page.env`. Each call names
+//! `page.navigationBar`, `page.refresh()`, `page.video()`, `page.orientation` and `page.env`. Each call names
 //! its page by instance id, so it reaches that page whether or not it is on top.
 
 use crate::i18n::js_service_unavailable_error;
@@ -45,6 +45,15 @@ fn video(
     crate::media::video_for_page(&ctx, page, name)
 }
 
+fn orientation_lock(
+    ctx: JSContext,
+    instance_id: String,
+    orientation: rong::function::Optional<String>,
+) -> JSResult<()> {
+    let (app, page) = page_of(&ctx, &instance_id)?;
+    crate::display::apply_page_orientation_lock(&app, &page, orientation.0)
+}
+
 fn env(ctx: JSContext) -> JSResult<JSObject> {
     crate::surface::page_env(&ctx)
 }
@@ -62,6 +71,7 @@ pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
     native.set("startRefresh", JSFunc::new(ctx, start_refresh)?)?;
     native.set("stopRefresh", JSFunc::new(ctx, stop_refresh)?)?;
     native.set("video", JSFunc::new(ctx, video)?)?;
+    native.set("orientationLock", JSFunc::new(ctx, orientation_lock)?)?;
     native.set("env", JSFunc::new(ctx, env)?)?;
     native.set("envWatch", JSFunc::new(ctx, env_watch)?)?;
     ctx.global().set(NATIVE_SLOT, native)?;

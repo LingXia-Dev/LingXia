@@ -53,10 +53,11 @@ const language: Live<string> = lx.host.displayLanguage;
 const orientation: Live<DeviceOrientation> = lx.device.orientation;
 const orientationNow: DeviceOrientation = lx.device.orientation.get();
 lx.device.orientation.watch((value: DeviceOrientation) => void value);
+// @ts-expect-error a lock belongs to a page: `page.orientation.lock`
 lx.device.orientation.lock('landscape');
 // @ts-expect-error the watcher receives the value itself, not `{ value }`
 lx.device.orientation.watch((event: { value: DeviceOrientation }) => void event);
-// @ts-expect-error locking is `lock`
+// @ts-expect-error the reported value is read-only
 lx.device.orientation.set('landscape');
 const network: Live<NetworkInfo> = lx.network.status;
 const networkNow: NetworkInfo = lx.network.status.get();
