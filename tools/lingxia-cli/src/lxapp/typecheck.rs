@@ -21,12 +21,65 @@ pub(crate) fn applies(root: &Path) -> bool {
     root.join("tsconfig.json").is_file()
 }
 
+/// Mirrors each project of the root's reference graph as a config under `.lingxia/typecheck/` that
+/// extends it, so build info and any emit land there: a write in the project tree would be an edit
+/// to a dev session's watcher, and the check would loop.
+const WRAP_SCRIPT: &str = r#"
+const { createRequire } = await import('node:module');
+const path = await import('node:path');
+const fs = await import('node:fs');
+const [root, typescript] = process.argv.slice(1);
+const ts = createRequire(path.join(typescript, 'package.json'))('typescript');
+const out = path.join(root, '.lingxia', 'typecheck');
+fs.rmSync(out, { recursive: true, force: true });
+fs.mkdirSync(out, { recursive: true });
+const rel = file => { const r = path.relative(out, file).split(path.sep).join('/'); return r.startsWith('.') ? r : `./${r}`; };
+const wrappers = new Map();
+function wrap(config) {
+  if (wrappers.has(config)) return wrappers.get(config);
+  const name = `${wrappers.size}-${path.basename(config, '.json')}`;
+  const wrapper = path.join(out, `${name}.json`);
+  wrappers.set(config, wrapper);
+  const read = ts.readConfigFile(config, ts.sys.readFile);
+  if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
+  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
+  const options = parsed.options;
+  const compilerOptions = { tsBuildInfoFile: `./${name}.tsbuildinfo`, rootDir: rel(options.rootDir ?? path.dirname(config)) };
+  if (!options.noEmit) {
+    compilerOptions.outDir = `./${name}.out`;
+    if (options.declarationDir) compilerOptions.declarationDir = `./${name}.out`;
+  }
+  const references = (parsed.projectReferences ?? []).map(reference => ({ path: rel(wrap(ts.resolveProjectReferencePath(reference))) }));
+  fs.writeFileSync(wrapper, JSON.stringify({ extends: rel(config), compilerOptions, references }, null, 1));
+  return wrapper;
+}
+process.stdout.write(wrap(path.join(root, 'tsconfig.json')));
+"#;
+
 /// Every type error as `file:line:col: TSnnnn: message`; empty when the project checks clean.
 pub(crate) fn run(root: &Path) -> Result<Vec<String>> {
     let tsc = resolve_tsc(root)?;
+    let typescript = tsc
+        .parent()
+        .and_then(Path::parent)
+        .context("TypeScript install has no package directory")?;
+    let wrapped = Command::new("node")
+        .args(["--input-type=module", "--eval", WRAP_SCRIPT])
+        .arg(root)
+        .arg(typescript)
+        .current_dir(root)
+        .output()
+        .context("Failed to start Node.js for the type check")?;
+    if !wrapped.status.success() {
+        bail!(
+            "Type check: cannot read the project's tsconfig:\n{}",
+            String::from_utf8_lossy(&wrapped.stderr).trim()
+        );
+    }
+    let entry = String::from_utf8_lossy(&wrapped.stdout).into_owned();
     let output = Command::new("node")
         .arg(&tsc)
-        .args(["-b", "--pretty", "false"])
+        .args(["-b", &entry, "--pretty", "false"])
         .current_dir(root)
         .output()
         .context("Failed to start the TypeScript compiler; is Node.js installed?")?;

@@ -109,6 +109,39 @@ try {
   fs.writeFileSync(logic, logicSource);
 }
 
+// The type-check writes nothing outside `.lingxia/`, whatever the tsconfig: a dev session's watcher
+// would take any other write as an edit and check again, forever.
+function tree(dir, base = dir, seen = new Map()) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (['.lingxia', 'node_modules', '.git'].includes(entry.name)) continue;
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) tree(file, base, seen);
+    else seen.set(path.relative(base, file), fs.statSync(file).mtimeMs);
+  }
+  return seen;
+}
+const rootConfig = path.join(app, 'tsconfig.json');
+const solution = fs.readFileSync(rootConfig, 'utf8');
+// Plain: not composite, no tsBuildInfoFile, emitting; `tsc -b` alone would write beside the sources.
+fs.writeFileSync(rootConfig, JSON.stringify({
+  compilerOptions: { target: 'ES2020', module: 'ESNext', moduleResolution: 'bundler', strict: true, skipLibCheck: true,
+    types: ['@lingxia/types', '@lingxia/types/logic-globals'] },
+  include: ['lxapp.ts', 'pages/**/index.ts'],
+}));
+try {
+  for (const config of [rootConfig, null]) {
+    if (config === null) fs.writeFileSync(rootConfig, solution);
+    const before = tree(app);
+    assert.match(ok(cli, ['check'], app), /no problems/);
+    const after = tree(app);
+    assert.deepEqual(after, before, 'the check wrote outside .lingxia/');
+    ok(cli, ['check'], app);
+    assert.deepEqual(tree(app), after, 'a second check changed a file outside .lingxia/');
+  }
+} finally {
+  fs.writeFileSync(rootConfig, solution);
+}
+
 for (const dir of lxapps) missingBase(path.resolve(dir));
 
 fs.rmSync(root, { recursive: true, force: true });
