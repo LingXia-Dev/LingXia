@@ -120,6 +120,7 @@
       "LxAppUpdateApi",
       "LxError",
       "LxErrorCode",
+      "LxErrorOptions",
       "LxErrorReason",
       "LxFeature",
       "LxFile",
@@ -309,6 +310,7 @@
       "LxAppUnavailableReason",
       "LxError",
       "LxErrorCode",
+      "LxErrorOptions",
       "SURFACE_ERROR_CODES",
       "hostUpgradeRequired",
       "isLxError",
@@ -432,6 +434,7 @@
       "LxAppUpdateApi",
       "LxError",
       "LxErrorCode",
+      "LxErrorOptions",
       "LxErrorReason",
       "LxFeature",
       "LxFile",
@@ -894,7 +897,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:109"
+      "source": "src/error.ts:138"
     },
     {
       "path": "LX_ERROR_CODES",
@@ -914,7 +917,7 @@
       "kind": "namespace",
       "entry": "@lingxia/logic",
       "summary": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.",
-      "description": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.\nBranch on `code`, never on `message`; a refusal is `E_INVALID_ARG` with `data.argument`, `path`,\n`expected` and `got`:\n\n```ts\nasync function pickFolder() {\n  try {\n    return await lx.pick.directory()\n  } catch (e) {\n    if (e instanceof LxError && e.code === 'E_NOT_SUPPORTED') return null\n    throw e\n  }\n}\n```\nThe class the Logic runtime builds every host error from; a plain class elsewhere (Node tests).",
+      "description": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.\nBranch on `code`, never on `message`; a refusal is `E_INVALID_ARG` with `data.argument`, `path`,\n`expected` and `got`:\n\n```ts\nasync function pickFolder() {\n  try {\n    return await lx.pick.directory()\n  } catch (e) {\n    if (e instanceof LxError && e.code === 'E_NOT_SUPPORTED') return null\n    throw e\n  }\n}\n```\nThe class the Logic runtime builds every host error from; the same class elsewhere (Node tests).",
       "signatures": [],
       "types": [],
       "tags": {},
@@ -931,7 +934,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:64"
+      "source": "src/error.ts:79"
     },
     {
       "path": "LxError.prototype.code",
@@ -1024,7 +1027,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:160"
+      "source": "src/error.ts:189"
     },
     {
       "path": "definePage",
@@ -1090,7 +1093,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:243"
+      "source": "src/page.ts:245"
     },
     {
       "path": "hostUpgradeRequired",
@@ -1114,7 +1117,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:155"
+      "source": "src/error.ts:184"
     },
     {
       "path": "isLxError",
@@ -1141,7 +1144,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:73"
+      "source": "src/error.ts:101"
     },
     {
       "path": "lx.app",
@@ -6718,7 +6721,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:129"
+      "source": "src/error.ts:158"
     },
     {
       "path": "page.close",
@@ -7391,7 +7394,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:91"
+      "source": "src/error.ts:120"
     },
     {
       "path": "type",
@@ -10925,7 +10928,7 @@
       "description": "Why an lxapp refused to open, when the operator took it down.\n\nBoth values block the open and mean opposite things to a user, so a caller\nthat shows one message for both is showing the wrong one half the time.",
       "text": "\"maintain\" | \"suspended\"",
       "fields": [],
-      "source": "src/error.ts:106"
+      "source": "src/error.ts:135"
     },
     {
       "name": "LxAppUpdateApi",
@@ -10959,7 +10962,7 @@
     {
       "name": "LxError",
       "summary": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.",
-      "description": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.\nBranch on `code`, never on `message`; a refusal is `E_INVALID_ARG` with `data.argument`, `path`,\n`expected` and `got`:\n\n```ts\nasync function pickFolder() {\n  try {\n    return await lx.pick.directory()\n  } catch (e) {\n    if (e instanceof LxError && e.code === 'E_NOT_SUPPORTED') return null\n    throw e\n  }\n}\n```\nThe class the Logic runtime builds every host error from; a plain class elsewhere (Node tests).",
+      "description": "What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.\nBranch on `code`, never on `message`; a refusal is `E_INVALID_ARG` with `data.argument`, `path`,\n`expected` and `got`:\n\n```ts\nasync function pickFolder() {\n  try {\n    return await lx.pick.directory()\n  } catch (e) {\n    if (e instanceof LxError && e.code === 'E_NOT_SUPPORTED') return null\n    throw e\n  }\n}\n```\nThe class the Logic runtime builds every host error from; the same class elsewhere (Node tests).",
       "fields": [
         {
           "name": "name",
@@ -11013,6 +11016,49 @@
       "text": "\"E_ABORT\" | \"E_ALREADY_EXISTS\" | \"E_CAPABILITY_MISSING\" | \"E_INTERNAL\" | \"E_INVALID_ARG\" | \"E_INVALID_DATA\" | \"E_INVALID_STATE\" | \"E_IO\" | \"E_NETWORK\" | \"E_NOT_FOUND\" | \"E_NOT_SUPPORTED\" | \"E_OUT_OF_RANGE\" | \"E_PERMISSION_DENIED\" | \"E_QUOTA\" | \"E_STREAM\" | \"E_SURFACE_CLOSED\" | \"E_SURFACE_CONFLICT\" | \"E_SURFACE_ROLE_LOCKED\" | \"E_TIMEOUT\" | \"E_TYPE\"",
       "fields": [],
       "source": "src/error.ts:28"
+    },
+    {
+      "name": "LxErrorOptions",
+      "summary": "What an `LxError` carries besides its message; `code` is what a caller branches on.",
+      "description": "What an `LxError` carries besides its message; `code` is what a caller branches on.",
+      "fields": [
+        {
+          "name": "code",
+          "type": "\"E_ABORT\" | \"E_ALREADY_EXISTS\" | \"E_CAPABILITY_MISSING\" | \"E_INTERNAL\" | \"E_INVALID_ARG\" | \"E_INVALID_DATA\" | \"E_INVALID_STATE\" | \"E_IO\" | \"E_NETWORK\" | \"E_NOT_FOUND\" | \"E_NOT_SUPPORTED\" | \"E_OUT_OF_RANGE\" | \"E_PERMISSION_DENIED\" | \"E_QUOTA\" | \"E_STREAM\" | \"E_SURFACE_CLOSED\" | \"E_SURFACE_CONFLICT\" | \"E_SURFACE_ROLE_LOCKED\" | \"E_TIMEOUT\" | \"E_TYPE\"",
+          "required": true,
+          "summary": "What went wrong.",
+          "description": "What went wrong."
+        },
+        {
+          "name": "reason",
+          "type": "(string & {}) | LxErrorReason | undefined",
+          "required": false,
+          "summary": "Why, where `code` alone does not say.",
+          "description": "Why, where `code` alone does not say."
+        },
+        {
+          "name": "detail",
+          "type": "string | undefined",
+          "required": false,
+          "summary": "Free-form detail for a log line.",
+          "description": "Free-form detail for a log line."
+        },
+        {
+          "name": "data",
+          "type": "unknown",
+          "required": false,
+          "summary": "Structured facts about the failure.",
+          "description": "Structured facts about the failure."
+        },
+        {
+          "name": "cause",
+          "type": "unknown",
+          "required": false,
+          "summary": "The error that caused this one.",
+          "description": "The error that caused this one."
+        }
+      ],
+      "source": "src/error.ts:62"
     },
     {
       "name": "LxErrorReason",
@@ -11304,7 +11350,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:204"
+      "source": "src/page.ts:206"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12127,7 +12173,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:189"
+      "source": "src/page.ts:191"
     },
     {
       "name": "PageDeclarations",
@@ -12163,7 +12209,7 @@
           "description": "The initial data, JSON only."
         }
       ],
-      "source": "src/page.ts:207"
+      "source": "src/page.ts:209"
     },
     {
       "name": "PageDefinition",
@@ -12186,7 +12232,7 @@
         },
         {
           "name": "__lxPage",
-          "type": "{ readonly params: Params; readonly result: Result; readonly messages: Messages; }",
+          "type": "{ readonly params: Params; readonly result: Result; readonly messages: Messages; readonly actions: Actions; }",
           "required": true,
           "summary": "What the page declares, for the type system only.",
           "description": "What the page declares, for the type system only."
@@ -12219,6 +12265,13 @@
           "required": true,
           "summary": "What it sends its opener.",
           "description": "What it sends its opener."
+        },
+        {
+          "name": "actions",
+          "type": "Actions",
+          "required": true,
+          "summary": "The actions as written, which `mount` calls directly.",
+          "description": "The actions as written, which `mount` calls directly."
         }
       ],
       "source": "src/page.ts:174"
@@ -12713,7 +12766,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:200"
+      "source": "src/page.ts:202"
     },
     {
       "name": "PermissionName",
@@ -13375,7 +13428,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:202"
+      "source": "src/page.ts:204"
     },
     {
       "name": "RouteTarget",
@@ -16264,7 +16317,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:250"
+      "source": "src/page.ts:252"
     },
     {
       "name": "lx.clipboard.read()",

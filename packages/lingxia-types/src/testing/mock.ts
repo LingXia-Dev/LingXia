@@ -8,9 +8,7 @@ export type LxMockOverrides<T = Lx> = {
 };
 
 function notSupported(path: string): LxError {
-  return Object.assign(new LxError(`${path} is not mocked: give it in createLxMock({ ... })`), {
-    code: 'E_NOT_SUPPORTED' as const,
-  });
+  return new LxError(`${path} is not mocked: give it in createLxMock({ ... })`, { code: 'E_NOT_SUPPORTED' });
 }
 
 function stand(path: string, overrides: Record<string, unknown> | undefined): unknown {

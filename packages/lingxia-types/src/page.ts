@@ -178,6 +178,8 @@ export interface PageDefinition<Data = unknown, Actions = unknown, Params = unkn
     readonly result: Result;
     /** What it sends its opener. */
     readonly messages: Messages;
+    /** The actions as written, which `mount` calls directly. */
+    readonly actions: Actions;
   };
 }
 

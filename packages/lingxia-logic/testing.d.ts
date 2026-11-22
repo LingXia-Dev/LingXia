@@ -4,13 +4,22 @@ import type { PageApi, PageDefinition } from "@lingxia/types/page";
 /** Replaces the `lx` that Logic modules imported from `@lingxia/logic` see, in a Node test. */
 export declare function setLx(value: Lx | undefined): void;
 
-type ParamsOf<D> = D extends PageDefinition<any, any, infer P, any, any> ? P : never;
+type Declared<D> = D extends { readonly __lxPage: infer P } ? P : never;
+type ParamsOf<D> = Declared<D> extends { readonly params: infer P } ? P : never;
+type ActionsOf<D> = Declared<D> extends { readonly actions: infer A } ? A : never;
+type DataOf<D> = D extends { readonly data: infer Data } ? Data : never;
+type ApiOf<D> = Declared<D> extends { readonly params: infer P; readonly result: infer R; readonly messages: infer M }
+  ? PageApi<DataOf<D>, P, R, M>
+  : never;
 
 /** How `mount` opens the page. */
 export interface MountOptions<Params> {
   /** What the page is opened with; `onLoad` and `page.params` receive it. */
   params?: Params;
-  /** The `lx` the page sees, such as one from `createLxMock`; restored by `unmount`. */
+  /**
+   * The `lx` the page sees, such as one from `createLxMock`; restored by `unmount`. Pages mounted
+   * at the same time share one `lx`: a second with a different one throws.
+   */
   lx?: Lx;
   /**
    * The page name `page.name` reports.
@@ -20,32 +29,36 @@ export interface MountOptions<Params> {
 }
 
 /** A page `mount` opened in Node. */
-export interface MountedPage<D extends PageDefinition<any, any, any, any, any>> {
+export interface MountedPage<D extends PageDefinition> {
   /** The page's current `data`, after every `page.update` so far. */
-  readonly data: D["data"];
-  /** The page's actions, called as the View calls them. */
-  readonly actions: D["actions"];
+  readonly data: DataOf<D>;
+  /** The page's actions as it wrote them: a sync action returns, an async generator streams. */
+  readonly actions: ActionsOf<D>;
   /** The object `setup` received. */
-  readonly page: D extends PageDefinition<infer Data, any, infer P, infer R, infer M> ? PageApi<Data, P, R, M> : never;
+  readonly page: ApiOf<D>;
   /** Run `onShow`. */
   show(): Promise<void>;
   /** Run `onHide`. */
   hide(): Promise<void>;
-  /** Run `onUnload`, abort `page.signal`, and put back the `lx` that was there before. */
+  /**
+   * Abort `page.signal`, run `onUnload`, stop the timers started while mounted, and put back the
+   * `lx` that was there before. A second call does nothing.
+   */
   unmount(): Promise<void>;
 }
 
 /**
  * Run a `definePage` page in Node with the real page runtime: `setup`, then
  * `onLoad`, `onShow` and `onReady`. The View is not rendered; `page.update`
- * changes `data` at once.
+ * changes `data` at once. If a hook throws, the page is unmounted and the
+ * error rethrown.
  * @example
  * ```ts
  * const mounted = await mount(page, { params: { id: '7' }, lx: createLxMock({ pick: { file } }) });
  * await mounted.actions.attach();
  * ```
  */
-export declare function mount<D extends PageDefinition<any, any, any, any, any>>(
+export declare function mount<D extends PageDefinition>(
   definition: D,
   options?: MountOptions<ParamsOf<D>>,
 ): Promise<MountedPage<D>>;

@@ -58,19 +58,48 @@ export interface LxError extends Error {
   readonly data?: unknown;
 }
 
+/** What an `LxError` carries besides its message; `code` is what a caller branches on. */
+export interface LxErrorOptions {
+  /** What went wrong. */
+  code: LxErrorCode;
+  /** Why, where `code` alone does not say. */
+  reason?: LxErrorReason | (string & {});
+  /** Free-form detail for a log line. */
+  detail?: string;
+  /** Structured facts about the failure. */
+  data?: unknown;
+  /** The error that caused this one. */
+  cause?: unknown;
+}
+
 interface LxErrorConstructor {
-  new (message?: string): LxError;
+  /** An error as an `lx` call would raise it, such as a mock's rejection. */
+  new (message: string, options: LxErrorOptions): LxError;
   /** The prototype every `lx` error shares, which `instanceof LxError` checks. */
   readonly prototype: LxError;
 }
 
-/** The class the Logic runtime builds every host error from; a plain class elsewhere (Node tests). */
+/** The class the Logic runtime builds every host error from; the same class elsewhere (Node tests). */
 export const LxError: LxErrorConstructor =
   ((globalThis as Record<symbol, unknown>)[Symbol.for('lingxia.LxError')] as LxErrorConstructor | undefined) ??
-  (class LxError extends Error {} as unknown as LxErrorConstructor);
+  (class LxError extends Error {
+    // The host builds its errors as `new LxError(message)` and sets the fields after, so the
+    // options are optional at run time though the type requires them.
+    constructor(message: string, options?: LxErrorOptions) {
+      super(message);
+      if (!options) return;
+      const self = this as unknown as Record<string, unknown>;
+      self.code = options.code;
+      if (options.reason !== undefined) self.reason = options.reason;
+      if (options.detail !== undefined) self.detail = options.detail;
+      if (options.data !== undefined) self.data = options.data;
+      if ('cause' in options) self.cause = options.cause;
+    }
+  } as unknown as LxErrorConstructor);
 
 /** Whether `error` is an `lx` rejection, including one from another context or a mock, where `instanceof` cannot see it. */
 export function isLxError(error: unknown): error is LxError {
+  if (error instanceof LxError) return true;
   const target = toRecord(error);
   return Boolean(
     target &&
