@@ -842,7 +842,8 @@ export type AutostartApi = {
      * Whether the app is registered to launch at startup, read from the OS
      * each time; the user can change it outside the app, so re-read it when
      * the settings screen shows.
-     * @platform macOS: login items. Windows: the `Run` registry key.
+     * @platform macOS: login items.
+     * @platform Windows: the `Run` registry key.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      * @supports host.autostart
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
@@ -870,6 +871,7 @@ export type AutostartApi = {
  * Product-drawn desktop banner, top-right. Not an OS notification and
  * not bound to App Link. Desktop only, in every lxapp: elsewhere every
  * call fails `E_NOT_SUPPORTED`, so ask `lx.supports('host.banner')` first.
+ * Needs no `capabilities` entry in `lingxia.yaml`. The card is 328 pt wide.
  * A guest lxapp's banner carries its name and icon, so
  * it cannot pass as the product's. Its ids are its own, it may have
  * three banners showing or waiting, each closes after 60s at most
@@ -882,18 +884,28 @@ export type AutostartApi = {
 export type BannerApi = {
     /**
      * Show a banner, or replace the one with the same `id`; resolves with what the person did.
+     * @example
+     * ```ts
+     * const picked = await lx.host.banner.show({
+     *   title: 'Run finished',
+     *   actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: '42' } } }],
+     * });
+     * ```
      * @throws {E_INVALID_ARG} No `title`, more than two actions, a bad `background`, or an invalid action `target`.
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     show(options: {
-        /** Replace key; a banner under it is replaced and resolves `replaced`. */
+        /**
+         * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
+         * resolves `replaced`. Different ids queue, one on screen at a time.
+         */
         id?: string;
         /** First line. */
         title: string;
         /** Text below the title. */
         message?: string;
-        /** Buttons; with any, the banner waits for a choice instead of closing by itself. */
+        /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
         actions?: ReadonlyArray<{
             /** What `action` reports when this button is picked. */
             id: string;
@@ -1181,6 +1193,8 @@ export type DisplayLanguageApi = {
      * The language in effect right now, as a canonical BCP-47 tag. Map it to
      * the catalogs this lxapp actually ships and fall back where it has none;
      * that narrowing is yours, and is not a language setting of its own.
+     * List the languages you ship in `lxapp.json` `languages`; the View's
+     * `contentLanguage` is this value narrowed to them.
      */
     get(): string;
     /**
@@ -1435,6 +1449,8 @@ export type HostOs = 'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unkn
  * Where a notification tap or a banner action goes: a page, tab or
  * lxapp as `lx.nav.go` takes it, or `{ activate }`, `{ route }`,
  * `{ appLink }`. One destination per target; a mix is a parameter error.
+ * An lxapp already open, such as docked as an aside, comes back where it
+ * is, and `page` and `params` reach its App `onShow` (`reason: 'switch_back'`).
  */
 export type HostTarget = PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget;
 
@@ -1620,7 +1636,11 @@ export type NotificationApi = {
          * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
          */
         target?: HostTarget;
-        /** When to present; a time not in the future posts now. */
+        /**
+         * When to present; a time not in the future posts now.
+         * @platform Android: may fire late, and a reboot drops it.
+         * @platform HarmonyOS: needs the agent-reminder privilege.
+         */
         schedule?: {
             /** Epoch milliseconds. */
             at: number;
@@ -1628,7 +1648,10 @@ export type NotificationApi = {
             /** Milliseconds from now. */
             delayMs: number;
         };
-        /** No sound. The banner still appears. */
+        /**
+         * No sound. The banner still appears.
+         * @platform HarmonyOS: no effect.
+         */
         silent?: boolean;
     }): Promise<{
         /** The replace key, generated when none was given. */
@@ -3381,7 +3404,7 @@ export interface AppInfo {
   role: 'control' | 'control_surface' | 'guest';
 }
 
-/** Device info APIs. */
+/** What `lx.device.info` reports: the device and its OS. */
 export interface DeviceInfo {
   /** Manufacturer, e.g. `Apple`, `Xiaomi`. */
   brand: string;
@@ -3516,7 +3539,7 @@ export interface SystemSettingInfo {
   wifiEnabled: boolean;
 }
 
-/** Wi-Fi APIs. */
+/** A Wi-Fi network: one a scan found, or the one the device is joined to. */
 export interface WifiInfo {
   /** Service Set Identifier (network name) */
   ssid: string;
@@ -3758,6 +3781,7 @@ declare global {
     /**
      * Mark the product in system chrome, such as with an unread count; `null` or
      * `''` clears it. Control app only. Resolves whether anything was painted.
+     * A badge never prompts, and a notification never sets one.
      * @supports host.badge
      * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
      * @platform Windows: the taskbar and the notification-area item.
@@ -3803,7 +3827,8 @@ declare global {
     /**
      * Frozen feature support, not permission or current layout. Unknown strings
      * return false; non-strings throw TypeError. Required features also need an
-     * appropriate lxapp.json minRuntime.
+     * appropriate lxapp.json minRuntime. Control-only members are not features:
+     * ask `lx.app.info.role === 'control'`.
      * @example
      * ```ts
      * if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });

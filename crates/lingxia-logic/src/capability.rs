@@ -245,7 +245,8 @@ pub(crate) fn unsupported_namespace(
 
 /// Frozen feature support, not permission or current layout. Unknown strings
 /// return false; non-strings throw TypeError. Required features also need an
-/// appropriate lxapp.json minRuntime.
+/// appropriate lxapp.json minRuntime. Control-only members are not features:
+/// ask `lx.app.info.role === 'control'`.
 ///
 /// @example
 /// ```ts

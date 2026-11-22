@@ -95,3 +95,8 @@ if (check) {
     console.log(`${path} is up to date.`);
   }
 }
+
+// The declarations are the docs: a member or field without its summary or required tags fails here.
+const docRules = ["summary", "type-summary", "throws", "tag-vocabulary", "error-code", "supports-key"];
+const docs = spawnSync(process.execPath, [join(packageDir, "scripts/check-api-style.mjs"), `--only=${docRules.join(",")}`], { stdio: "inherit" });
+if (docs.status !== 0) process.exit(docs.status ?? 1);

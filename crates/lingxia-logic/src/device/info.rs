@@ -3,7 +3,7 @@ use lingxia_platform::{DeviceInfo as PlatformDeviceInfo, ScreenInfo as PlatformS
 use lxapp::LxApp;
 use rong::{IntoJSObject, JSContext, JSResult};
 
-/// Device info APIs.
+/// What `lx.device.info` reports: the device and its OS.
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct DeviceInfo {
     /// Manufacturer, e.g. `Apple`, `Xiaomi`.

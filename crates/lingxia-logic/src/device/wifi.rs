@@ -136,7 +136,7 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-/// Wi-Fi APIs.
+/// A Wi-Fi network: one a scan found, or the one the device is joined to.
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct WifiInfo {
     /// Service Set Identifier (network name)

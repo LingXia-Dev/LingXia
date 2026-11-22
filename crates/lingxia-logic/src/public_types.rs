@@ -165,6 +165,8 @@ rong::js_api! {
         /// Where a notification tap or a banner action goes: a page, tab or
         /// lxapp as `lx.nav.go` takes it, or `{ activate }`, `{ route }`,
         /// `{ appLink }`. One destination per target; a mix is a parameter error.
+        /// An lxapp already open, such as docked as an aside, comes back where it
+        /// is, and `page` and `params` reach its App `onShow` (`reason: 'switch_back'`).
         type HostTarget = r###"PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget"###;
 
         /// A target that only brings the product forward.
@@ -254,7 +256,11 @@ rong::js_api! {
          * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
          */
         target?: HostTarget;
-        /** When to present; a time not in the future posts now. */
+        /**
+         * When to present; a time not in the future posts now.
+         * @platform Android: may fire late, and a reboot drops it.
+         * @platform HarmonyOS: needs the agent-reminder privilege.
+         */
         schedule?: {
             /** Epoch milliseconds. */
             at: number;
@@ -262,7 +268,10 @@ rong::js_api! {
             /** Milliseconds from now. */
             delayMs: number;
         };
-        /** No sound. The banner still appears. */
+        /**
+         * No sound. The banner still appears.
+         * @platform HarmonyOS: no effect.
+         */
         silent?: boolean;
     }): Promise<{
         /** The replace key, generated when none was given. */
@@ -295,6 +304,7 @@ rong::js_api! {
         /// Product-drawn desktop banner, top-right. Not an OS notification and
         /// not bound to App Link. Desktop only, in every lxapp: elsewhere every
         /// call fails `E_NOT_SUPPORTED`, so ask `lx.supports('host.banner')` first.
+        /// Needs no `capabilities` entry in `lingxia.yaml`. The card is 328 pt wide.
         ///
         /// A guest lxapp's banner carries its name and icon, so
         /// it cannot pass as the product's. Its ids are its own, it may have
@@ -308,18 +318,28 @@ rong::js_api! {
         type BannerApi = r###"{
     /**
      * Show a banner, or replace the one with the same `id`; resolves with what the person did.
+     * @example
+     * ```ts
+     * const picked = await lx.host.banner.show({
+     *   title: 'Run finished',
+     *   actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: '42' } } }],
+     * });
+     * ```
      * @throws {E_INVALID_ARG} No `title`, more than two actions, a bad `background`, or an invalid action `target`.
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     show(options: {
-        /** Replace key; a banner under it is replaced and resolves `replaced`. */
+        /**
+         * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
+         * resolves `replaced`. Different ids queue, one on screen at a time.
+         */
         id?: string;
         /** First line. */
         title: string;
         /** Text below the title. */
         message?: string;
-        /** Buttons; with any, the banner waits for a choice instead of closing by itself. */
+        /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
         actions?: ReadonlyArray<{
             /** What `action` reports when this button is picked. */
             id: string;
@@ -392,7 +412,8 @@ rong::js_api! {
      * Whether the app is registered to launch at startup, read from the OS
      * each time; the user can change it outside the app, so re-read it when
      * the settings screen shows.
-     * @platform macOS: login items. Windows: the `Run` registry key.
+     * @platform macOS: login items.
+     * @platform Windows: the `Run` registry key.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      * @supports host.autostart
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
@@ -764,6 +785,8 @@ rong::js_api! {
      * The language in effect right now, as a canonical BCP-47 tag. Map it to
      * the catalogs this lxapp actually ships and fall back where it has none;
      * that narrowing is yours, and is not a language setting of its own.
+     * List the languages you ship in `lxapp.json` `languages`; the View's
+     * `contentLanguage` is this value narrowed to them.
      */
     get(): string;
     /**

@@ -68,6 +68,7 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 
 /// Mark the product in system chrome, such as with an unread count; `null` or
 /// `''` clears it. Control app only. Resolves whether anything was painted.
+/// A badge never prompts, and a notification never sets one.
 ///
 /// @supports host.badge
 /// @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.

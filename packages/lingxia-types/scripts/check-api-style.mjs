@@ -1,6 +1,7 @@
 // House style over the Logic API catalogue. Each finding names its rule; the baseline lists the
 // findings that predate the rule, and an entry that no longer fires must be removed from it.
 // `--write` regenerates the member table and the baseline; the default checks both.
+// `--only rule,…` checks just those rules against the baseline, without the table.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,8 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = resolve(packageDir, "typegen/api-style-baseline.json");
 const tablePath = resolve(packageDir, "../../docs/internal/logic-api-members.md");
 const write = process.argv.includes("--write");
+const onlyArg = process.argv.find(arg => arg.startsWith("--only="));
+const only = onlyArg ? new Set(onlyArg.slice("--only=".length).split(",")) : null;
 
 const rules = {
   "no-get-read": "a read is named for what it returns, without a `get` prefix",
@@ -31,6 +34,7 @@ const rules = {
   "throws": "a member returning a Promise or a task names what it rejects with as `@throws {E_…}`, or says it never rejects",
   "type-summary": "every named type has a one-sentence summary",
   "namespace-example": "every top-level `lx` namespace has an `@example` on one of its calls",
+  "tag-vocabulary": "tags are `@throws {E_…} when`, `@default value`, `@platform <iOS|Android|HarmonyOS|macOS|Windows>[, …]: text` (one tag per platform group), `@permission name`, `@supports key`, `@example` with a fenced block, `@param`, `@see` or `@deprecated`",
 };
 
 const { members, types } = catalogue();
@@ -64,8 +68,26 @@ function withoutReadonly(type) {
 }
 const isMutableArray = type => /\[\]|(?<!Readonly)Array<|^\[|[|(] *\[/.test(withoutReadonly(type));
 const isBareUrl = type => type === "string" || type === "string | undefined";
+const PLATFORM = "(?:iOS|Android|HarmonyOS|macOS|Windows)";
+const platformTag = new RegExp(`^${PLATFORM}(?:, ${PLATFORM})*(?: [^:]+)?: \\S`);
+const secondPlatform = new RegExp(`[.;] ${PLATFORM}(?:, ${PLATFORM})*: `);
+const tagShape = {
+  throws: text => /^\{E_[A-Z_]+\}\s+\S/.test(text),
+  default: text => text.length > 0,
+  platform: text => platformTag.test(text) && !secondPlatform.test(text),
+  permission: text => /^[a-z][\w.-]*/.test(text),
+  supports: text => /^[a-z][\w.]*$/.test(text),
+  example: text => text.includes("```"),
+  param: () => true,
+  see: text => text.length > 0,
+  deprecated: () => true,
+};
 function checkDoc(path, item) {
   const jsdoc = item.jsdoc ?? [];
+  for (const tag of jsdoc) {
+    const shape = tagShape[tag.name];
+    if (!shape || !shape(tag.text.trim())) find("tag-vocabulary", `${path}:@${tag.name}`);
+  }
   const keys = jsdoc.filter(tag => tag.name === "supports").map(tag => tag.text.trim());
   if (jsdoc.some(tag => tag.name === "throws" && /^\{?E_NOT_SUPPORTED\b/.test(tag.text.trim())) && !keys.length) find("supports-key", path);
   for (const key of keys) if (!featureKeys.has(key)) find("supports-key", `${path}:${key}`);
@@ -182,7 +204,7 @@ for (const line of readFileSync(resolve(packageDir, "src/generated/logic.ts"), "
   }
 }
 
-const current = [...new Set(findings)].sort();
+const current = [...new Set(findings)].filter(finding => !only || only.has(finding.split(" ")[0])).sort();
 if (write) {
   const byRule = Object.fromEntries(Object.keys(rules).map(rule => [rule, current.filter(f => f.startsWith(`${rule} `)).map(f => f.slice(rule.length + 1))]));
   writeFileSync(baselinePath, `${JSON.stringify(byRule, null, 2)}\n`);
@@ -192,7 +214,7 @@ if (write) {
 }
 
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-const allowed = new Set(Object.entries(baseline).flatMap(([rule, paths]) => paths.map(path => `${rule} ${path}`)));
+const allowed = new Set(Object.entries(baseline).filter(([rule]) => !only || only.has(rule)).flatMap(([rule, paths]) => paths.map(path => `${rule} ${path}`)));
 const fresh = current.filter(finding => !allowed.has(finding));
 const stale = [...allowed].filter(finding => !current.includes(finding));
 let failed = false;
@@ -208,7 +230,7 @@ if (stale.length) {
   failed = true;
   console.error(`API style: fixed, so remove from typegen/api-style-baseline.json:\n  ${stale.join("\n  ")}`);
 }
-if (readFileSync(tablePath, "utf8") !== table) {
+if (!only && readFileSync(tablePath, "utf8") !== table) {
   failed = true;
   console.error("docs/internal/logic-api-members.md is stale; run `npm run gen:api`");
 }
