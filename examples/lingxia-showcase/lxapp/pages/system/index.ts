@@ -174,7 +174,7 @@ export default definePage({
           });
         }
       },
-      // Presence of the member is the support check — same latch as
+      // Presence of the member is the support check 鈥?same latch as
       // `lx.supports('host.notification')`.
       async refreshNotification() {
         const notification = lx.host.notification;
@@ -213,7 +213,7 @@ export default definePage({
           return;
         }
         try {
-          // An immediate show is suppressed while this page is frontmost.
+          // Scheduled, so it reaches the OS even while this page is frontmost.
           const { id } = await notification.show({
             id: 'showcase-local',
             title: lx.app.t('system.showcaseTitle'),
@@ -399,7 +399,7 @@ export default definePage({
       onShow() {
         console.log('System page onShow');
         // The user can flip the login item in System Settings / Task Manager
-        // while this page is hidden — re-read the OS state on every show.
+        // while this page is hidden 鈥?re-read the OS state on every show.
         if (page.data.currentType === 'autostart') {
           actions.refreshAutostart();
         }

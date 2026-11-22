@@ -9,6 +9,7 @@ common:
   delete: "删除"
   done: "完成"
   close: "关闭"
+  open: "打开"
   refresh: "刷新"
   about: "关于"
   exit: "退出"

@@ -9,6 +9,7 @@ common:
   delete: "Delete"
   done: "Done"
   close: "Close"
+  open: "Open"
   refresh: "Refresh"
   about: "About"
   exit: "Exit"

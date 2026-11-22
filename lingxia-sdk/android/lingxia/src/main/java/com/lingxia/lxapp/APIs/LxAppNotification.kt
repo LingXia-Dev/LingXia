@@ -109,7 +109,8 @@ internal object LxAppNotification {
         body: String,
         activationToken: String,
         deliverAtMs: Long,
-        silent: Boolean
+        silent: Boolean,
+        postWhenFrontmost: Boolean
     ): String {
         val context = appContext()
         if (context == null) {
@@ -117,7 +118,7 @@ internal object LxAppNotification {
             return ""
         }
         val scheduled = deliverAtMs > System.currentTimeMillis() + 500L
-        if (!scheduled && isFrontmost()) {
+        if (!scheduled && !postWhenFrontmost && isFrontmost()) {
             // Still an upsert: whatever the id held must not outlive this call.
             cancel(id)
             return "suppressed"

@@ -273,16 +273,25 @@ rong::js_api! {
          * @platform HarmonyOS: no effect.
          */
         silent?: boolean;
+        /**
+         * An immediate post while the product is frontmost: `banner` shows it as
+         * `lx.host.banner` would, with an Open button that follows `target`;
+         * `system` posts it anyway; `suppress` shows nothing. Where there is no
+         * banner (phones), `banner` posts it as `system` does.
+         * @platform macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown.
+         * @default 'banner'
+         */
+        whenFrontmost?: 'banner' | 'system' | 'suppress';
     }): Promise<{
         /** The replace key, generated when none was given. */
         id: string;
         /**
          * `posted`: the OS took it for display, not proof anyone saw it. `scheduled`:
          * queued for `schedule`, and shown even if the product is frontmost then.
-         * `suppressed`: an immediate post while the product is frontmost; nothing
-         * posted, no permission needed.
+         * `presented`: the product was frontmost, so it shows as a banner instead.
+         * `suppressed`: frontmost and nothing shown. Neither needs permission.
          */
-        delivery: 'posted' | 'scheduled' | 'suppressed';
+        delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
     }>;
     /**
      * Remove what is pending or delivered under `id`, and retire its tap

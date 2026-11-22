@@ -370,7 +370,7 @@ test('request permission and replace local notifications by id', {
   }
   if (result.immediate) {
     expect(result.immediate.id).toBe('automation-local');
-    expect(['posted', 'suppressed']).toContain(result.immediate.delivery);
+    expect(['posted', 'presented', 'suppressed']).toContain(result.immediate.delivery);
   }
   if (result.permission === 'granted' && !result.scheduleUnsupported) {
     expect(result.scheduled).toEqual({ id: 'automation-local', delivery: 'scheduled' });
@@ -462,6 +462,58 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
     reason: 'dismissed',
   });
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
+});
+
+test('show a frontmost notification unless told to suppress it', {
+  id: 'HOSTAPP-NOTIFICATION-002',
+  covers: ['lx.host.notification.show', 'lx.host.notification.cancel', 'lx.shell.activate'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-002');
+  t.defer(async () => {
+    await app.logic.eval(async ({ lx }) => {
+      try { await lx.host.notification.cancel('automation-frontmost'); } catch {} return true;
+    });
+  });
+
+  const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    try { lx.shell.activate(); } catch {}
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+    const n = lx.host.notification;
+    const permission = await n.permission();
+    const base = { id: 'automation-frontmost', title: 'LingXia automation', target: { page: 'system' }, silent: true };
+    // Posting needs permission; without it the OS refusal stands in for `posted`.
+    const show = async (whenFrontmost?: 'banner' | 'system' | 'suppress') => {
+      try {
+        return (await n.show(whenFrontmost ? { ...base, whenFrontmost } : base)).delivery as string;
+      } catch (error) {
+        if (permission === 'granted') return String(error);
+        return 'posted';
+      }
+    };
+    const shown = await show();
+    const quiet = await show('suppress');
+    const system = await show('system');
+    await n.cancel('automation-frontmost');
+    let bad = '';
+    try {
+      await (n.show as (options: unknown) => Promise<unknown>)({ ...base, whenFrontmost: 'always' });
+    } catch (error) {
+      bad = (error as { code?: string }).code ?? String(error);
+    }
+    return { shown, quiet, system, bad };
+  });
+
+  // Frontmost: desktops show a banner; phones, having none, post it. Only
+  // Windows and Android decide frontmost where `system` can reach them.
+  const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '';
+  const posts = platform === 'windows' || platform === 'android';
+  expect(result).toEqual({
+    shown: DESKTOP_HOSTS.has(platform) ? 'presented' : posts ? 'posted' : 'suppressed',
+    quiet: 'suppressed',
+    system: posts ? 'posted' : 'suppressed',
+    bad: 'E_INVALID_ARG',
+  });
 });
 
 test('report autostart state and accept an idempotent write', {
