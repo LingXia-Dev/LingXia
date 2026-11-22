@@ -355,6 +355,8 @@ const limitNotes = {
   topLayer: 'Dialogs and popovers open at once; a further one stays closed (`UI_BUDGET`) and fires no `onClose` or `onToggle`.',
   dataAttributeBytes: '`data-*` props of a page, as UTF-8 JSON; automation reads them, nothing draws them.',
   webMessageBytes: 'One `window.lingxia.postMessage` payload of a `<webview>` page, as UTF-8 JSON; past it the call throws in the web page.',
+  lineHeightMultiplier: 'Largest unitless `lineHeight`, a multiple of the font size; a larger number is almost always meant as points, so it fails (build and render) and names `"<n>px"` or a `leading-*` class.',
+  styleNumber: 'Largest length in points a style takes (sizes, spacing, insets, translations, line heights; negative where the style allows it); past it the render fails with `UI_STYLE_VALUE`.',
   webMessageQueue: 'Queued (`{ queue: true }`) messages of one `<webview>` waiting for `onMessage`; past it the oldest is dropped and `onError` reports `WEBVIEW_MESSAGE_DROPPED` once.',
   outlineGlyphs: "Glyphs the platform outlines (Apple's PingFang UI faces) in one frame, each filled as a path; past it frames slow down.",
 };

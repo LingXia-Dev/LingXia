@@ -694,6 +694,8 @@ pub mod limits {
     pub const DRAG_SNAP_POINTS: usize = 8;
     pub const WEB_MESSAGE_BYTES: usize = 65536;
     pub const WEB_MESSAGE_QUEUE: usize = 64;
+    pub const STYLE_NUMBER: usize = 16384;
+    pub const LINE_HEIGHT_MULTIPLIER: usize = 4;
 }
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.

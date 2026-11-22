@@ -12,8 +12,9 @@ pub(crate) fn length_or_percent(value: &Value, signed: bool) -> Option<(f32, boo
         Some(text) => text.parse::<f64>().ok(),
         None => value.as_f64(),
     }?;
-    let bound = if signed { -16384.0 } else { 0.0 };
-    (number.is_finite() && (bound..=16384.0).contains(&number))
+    let max = limits::STYLE_NUMBER as f64;
+    let bound = if signed { -max } else { 0.0 };
+    (number.is_finite() && (bound..=max).contains(&number))
         .then_some((number as f32, percent.is_some()))
 }
 
@@ -31,7 +32,7 @@ pub(crate) fn flex_basis(value: &Value) -> Result<Option<(f32, bool)>, String> {
         value.as_f64()
     };
     let number = number
-        .filter(|v| v.is_finite() && (0.0..=16384.0).contains(v))
+        .filter(|v| v.is_finite() && (0.0..=limits::STYLE_NUMBER as f64).contains(v))
         .ok_or("UI_STYLE: invalid flex basis")?;
     Ok(Some((number as f32, percent.is_some())))
 }

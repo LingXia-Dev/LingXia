@@ -1,4 +1,10 @@
-import { elements, blocks } from '../generated/contract.js';
+import { elements, blocks, limits } from '../generated/contract.js';
+
+/** A unitless lineHeight past the multiplier cap: almost always points written without a unit. */
+export function lineHeightProblem(value) {
+  if (typeof value !== 'number' || !(value > limits.lineHeightMultiplier)) return undefined;
+  return `UI_STYLE_VALUE: lineHeight ${value} is a multiple of the font size (${value}×), not points; write "${value}px", or a leading-* class`;
+}
 
 const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
   'gap', 'rowGap', 'columnGap', 'gridTemplateColumns', 'gridTemplateRows', 'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow']);

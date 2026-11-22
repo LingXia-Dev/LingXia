@@ -33,3 +33,5 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `dragSnapPoints` | 8 | Snap points one `drag` element declares in `dragSnapPoints`. |
 | `webMessageBytes` | 65536 (64 KiB) | One `window.lingxia.postMessage` payload of a `<webview>` page, as UTF-8 JSON; past it the call throws in the web page. |
 | `webMessageQueue` | 64 | Queued (`{ queue: true }`) messages of one `<webview>` waiting for `onMessage`; past it the oldest is dropped and `onError` reports `WEBVIEW_MESSAGE_DROPPED` once. |
+| `styleNumber` | 16384 | Largest length in points a style takes (sizes, spacing, insets, translations, line heights; negative where the style allows it); past it the render fails with `UI_STYLE_VALUE`. |
+| `lineHeightMultiplier` | 4 | Largest unitless `lineHeight`, a multiple of the font size; a larger number is almost always meant as points, so it fails (build and render) and names `"<n>px"` or a `leading-*` class. |

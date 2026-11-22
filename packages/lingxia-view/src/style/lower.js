@@ -3,7 +3,7 @@ import { kindOf, style as table } from '../generated/contract.js';
 import { fieldOptions, field } from '../generated/wire.js';
 import { limits, options, scales, scaledFields, scaleDefaults } from '../generated/contract.js';
 import { normalizeRing, normalizeShadows } from './shadow.js';
-import { appliesTo } from './hints.js';
+import { appliesTo, lineHeightProblem } from './hints.js';
 import { normalizeGradient } from './gradient.js';
 import { wireColorProblem } from './color.js';
 import { utf8Bytes, has } from '../runtime/data.js';
@@ -83,7 +83,7 @@ const fold = value => isStep(value) && finite(scaleDefaults[value[0]]) ? value[1
 // `value` scaled by `factor`, a step staying a step.
 const times = (value, factor) => isStep(value) ? [value[0], value[1] * factor, value[2] * factor] : value * factor;
 
-function length(name, value, { signed = false, max = 16384 } = {}) {
+function length(name, value, { signed = false, max = limits.styleNumber } = {}) {
   if (isStep(value)) {
     // Steps are positive: a negative multiple with no positive offset can only resolve below 0.
     if (!signed && value[1] < 0 && value[2] <= 0) invalid(name, value, 'a step that resolves to 0 or more');
@@ -182,14 +182,14 @@ function gridLine(name, value, lines) {
   }
 }
 
-const translateLength = value => finite(value) ? Math.abs(value) <= 16384
+const translateLength = value => finite(value) ? Math.abs(value) <= limits.styleNumber
   : typeof value === 'string' && /^-?(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value) && Math.abs(parseFloat(value)) <= 1000;
 
 // CSS individual transform properties, composed natively as translate, rotate, scale about the origin.
 function transformPart(name, value, out) {
   const pair = check => {
     const parts = Array.isArray(value) ? value : [value, name === 'scale' ? value : 0];
-    if (parts.length !== 2 || !parts.every(check)) invalid(name, value, name === 'scale' ? 'a factor or [x, y], each up to 1000' : 'points or a percentage, or [x, y] of them, up to 16384 points or 1000%');
+    if (parts.length !== 2 || !parts.every(check)) invalid(name, value, name === 'scale' ? 'a factor or [x, y], each up to 1000' : `points or a percentage, or [x, y] of them, up to ${limits.styleNumber} points or 1000%`);
     return [...parts];
   };
   if (name === 'translate') out.translate = pair(translateLength);
@@ -216,7 +216,7 @@ function maskValue(value) {
   if (value === 'none') return undefined;
   const invalid = () => { throw Error('UI_STYLE_VALUE: maskImage'); };
   const position = stop => (stop.offset !== undefined) !== (stop.px !== undefined) &&
-    (stop.offset === undefined || (finite(stop.offset) && Math.abs(stop.offset) <= 16)) && (stop.px === undefined || (finite(stop.px) && Math.abs(stop.px) <= 16384));
+    (stop.offset === undefined || (finite(stop.offset) && Math.abs(stop.offset) <= 16)) && (stop.px === undefined || (finite(stop.px) && Math.abs(stop.px) <= limits.styleNumber));
   if (!Array.isArray(value) || !value.length || value.length > 4 || value.some(layer => !layer || !['top', 'bottom', 'left', 'right'].includes(layer.to) ||
       Object.keys(layer).some(key => !['to', 'stops'].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 ||
       layer.stops.some(stop => !stop || Object.keys(stop).some(key => !['alpha', 'offset', 'px'].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid();
@@ -372,8 +372,9 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'line-height':
         if (isStep(value)) lineHeight = value;
         else if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
-        else if (finite(value) && value > 0 && value <= 64) lineHeight = { multiplier: value };
-        else invalid(name, value, 'a multiplier above 0 up to 64, or <n>px');
+        else if (finite(value) && value > 0 && value <= limits.lineHeightMultiplier) lineHeight = { multiplier: value };
+        else if (finite(value) && lineHeightProblem(value)) throw Error(lineHeightProblem(value));
+        else invalid(name, value, `a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px`);
         break;
       case 'letter-spacing': {
         const em = typeof value === 'string' && value.match(/^(-?\d+(?:\.\d+)?)em$/);
@@ -406,7 +407,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   // A multiplier recomputes against each node's font size; pixels inherit natively.
   if (style.lineHeight !== undefined || (lineHeight && typeof lineHeight === 'object' && !isStep(lineHeight))) {
     const pixels = lineHeight?.multiplier !== undefined ? times(fontSize, lineHeight.multiplier) : lineHeight;
-    if (!isStep(pixels) && !(pixels > 0 && pixels <= 16384)) invalid('lineHeight', pixels, 'a height above 0 up to 16384 points');
+    if (!isStep(pixels) && !(pixels > 0 && pixels <= limits.styleNumber)) invalid('lineHeight', pixels, `a height above 0 up to ${limits.styleNumber} points`);
     out.lineHeight = pixels;
   }
   // Each step goes only where its family applies: a radius step never sizes a padding.

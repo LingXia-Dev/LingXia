@@ -126,6 +126,9 @@ test('typography: CSS line-height multipliers inherit and recompute per font siz
   assert.equal(style({ fontFamily: 'monospace', fontWeight: 650 }, 'text').fontFamily, 'mono');
   for (const value of [{ fontWeight: 0 }, { fontWeight: 1001 }, { fontWeight: 'bold' }, { lineHeight: 0 }, { lineHeight: Infinity }, { lineHeight: '24' },
     { fontFamily: 'mono' }, { fontFamily: 'Brand, cursive' }]) rejects(value, /UI_STYLE_VALUE/, 'text');
+  // A unitless number is a multiple of the font size; past 4 it is almost always points without a unit.
+  assert.equal(style({ fontSize: 10, lineHeight: 4 }, 'text').lineHeight, 40);
+  rejects({ lineHeight: 24 }, /UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size \(24×\), not points; write "24px", or a leading-\* class/, 'text');
   rejects({ fontFamily: 'Arial' }, /UI_FONT: Arial is not declared with @font-face/, 'text');
   assert.equal(style({ fontFamily: 'serif' }, 'text').fontFamily, 'serif');
   const text = style({ textTransform: 'uppercase', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textDecorationLine: 'underline' }, 'text');

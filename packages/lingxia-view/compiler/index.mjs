@@ -21,7 +21,7 @@ import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promis
 import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, kindOf, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
-import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint } from '../src/style/hints.js';
+import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint, lineHeightProblem } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -189,6 +189,8 @@ export function audit(source, filename, { literalColors = false } = {}) {
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
           const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
           if (colorIssue) report(entry, colorIssue);
+          const lineHeight = name === 'lineHeight' && ts.isPropertyAssignment(entry) && ts.isNumericLiteral(entry.initializer) && lineHeightProblem(Number(entry.initializer.text));
+          if (lineHeight) report(entry, lineHeight);
         }
       }
     }

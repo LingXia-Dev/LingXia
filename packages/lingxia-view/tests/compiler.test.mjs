@@ -178,6 +178,13 @@ test('a run takes only its run props: an id or aria state on a <span> or an inli
   assert.deepEqual(audit('const a = <text><link to="/t" aria-hidden>b</link></text>;', 'page.tsx'), ['page.tsx:1:31: UI_PROP: <link> is a run of its <text>; put aria-hidden on the <text>']);
 });
 
+test('a unitless lineHeight past the multiplier cap fails the build with both fixes', () => {
+  clean('const a = <text style={{lineHeight: 1.5}}>x</text>;');
+  clean('const a = <text style={{lineHeight: "24px"}}>x</text>;');
+  assert.deepEqual(audit('const a = <text style={{lineHeight: 24}}>x</text>;', 'page.tsx'),
+    ['page.tsx:1:25: UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size (24×), not points; write "24px", or a leading-* class']);
+});
+
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');
