@@ -20,9 +20,7 @@ test('Plain: no header without a title or an action', async () => {
 });
 
 test('InSentence: code is a run of its sentence, on a tint', async () => {
-  const screen = await renderExample('Code/Code', 'InSentence');
-  // A run has no node of its own, so no test id: it is found by its words.
-  const [run] = screen.queryAll(node => node.tag === 'span' && node.text === 'minRuntime');
+  const run = (await renderExample('Code/Code', 'InSentence')).getByTestId('key');
   assert.deepEqual([run.tag, run.props.background], ['span', 'text/8']);
 });
 

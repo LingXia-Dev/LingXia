@@ -4114,7 +4114,7 @@
         {
           "name": "InSentence",
           "title": "In a sentence",
-          "source": "import { Code } from '@liulidesign/core/Code';\n\n/** In a sentence: a file name and a value to type exactly. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Set <Code text=\"minRuntime\" /> in <Code text=\"lxapp.json\" /> to the oldest runtime you test on.\n    </text>\n  );\n}"
+          "source": "import { Code } from '@liulidesign/core/Code';\n\n/** In a sentence: a file name and a value to type exactly. */\nexport function InSentence() {\n  return (\n    <text className=\"text-body text-text\">\n      Set <Code text=\"minRuntime\" data-testid=\"key\" /> in <Code text=\"lxapp.json\" /> to the oldest runtime you test on.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [],
