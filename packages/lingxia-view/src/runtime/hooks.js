@@ -153,12 +153,13 @@ export function useStream(name, action, options = {}) {
   if (!options || typeof options !== 'object' || (options.onData !== undefined && typeof options.onData !== 'function'))
     throw Error('UI_STREAM: onData must be a function');
   const target = pageAction(action, 'UI_STREAM', 'stream');
-  const resource = own(name, { status: 'idle', error: null, result: null }, 'stream', 'UI_STREAM', streamResource,
+  const resource = own(name, { status: 'idle', error: null, result: null, data: null }, 'stream', 'UI_STREAM', streamResource,
     { action: target?.action, onData: options.onData });
   return Object.freeze({
     get status() { return resource.state.status; },
     get error() { return resource.state.error; },
     get result() { return resource.state.result; },
+    get data() { return resource.state.data; },
     start: guard('stream mutation', resource.start), cancel: guard('stream mutation', resource.cancel),
   });
 }

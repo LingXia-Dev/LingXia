@@ -110,7 +110,9 @@ A result that arrives after its params changed, or after the component unmounted
 ## `useStream(name, action, { onData? })`
 
 Owns one streaming action. `start(...params)` begins a stream, cancelling one already running;
-`cancel()` stops it. `onData` receives each yielded value; `result` is the generator's return value.
+`cancel()` stops it. `data` is the latest yielded value (`null` before the first and after a restart),
+so showing progress needs no state of its own. `onData` receives each
+yielded value, for side effects such as appending chunks; `result` is the generator's return value.
 `status` is `idle`, `streaming`, `completed`, `canceled` or `failed` (with `error`). Unmounting cancels
 the stream, and late messages from a replaced stream are ignored.
 

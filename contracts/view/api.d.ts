@@ -148,20 +148,22 @@ export interface ActionResource<P extends unknown[], R> {
   run(...params: P): Promise<ActionOutcome<R>>;
 }
 /** How one `run` settled; an action that returns nothing succeeds with `value` `null`, as JSON carries it. */
-export type ActionOutcome<R> = { readonly ok: true; readonly value: ReadonlyData<R> } | { readonly ok: false; readonly error: ResourceError };
+export type ActionOutcome<R> = { readonly ok: true; readonly value: [R] extends [void] ? null : ReadonlyData<R> } | { readonly ok: false; readonly error: ResourceError };
 /** One action called from handlers, with its busy and failed state; keyed by call order in the component. */
 export declare function useAction<P extends [] | [unknown?], R>(action: (...params: P) => Promise<R>): ActionResource<P, R>;
 /** `useAction` keyed by `name`, for a second use of one action in a component. */
 export declare function useAction<P extends [] | [unknown?], R>(name: string, action: (...params: P) => Promise<R>): ActionResource<P, R>;
 
-export interface StreamResource<P extends unknown[], R> {
+export interface StreamResource<P extends unknown[], R, T = unknown> {
   readonly status: "idle" | "streaming" | "completed" | "canceled" | "failed";
   readonly error: ResourceError | null;
   readonly result: ReadonlyData<R> | null;
+  /** The latest value the stream yielded; `null` before the first and after a restart. */
+  readonly data: ReadonlyData<T> | null;
   start(...params: P): void;
   cancel(): void;
 }
-export declare function useStream<P extends [] | [unknown?], T, R>(name: string, action: (...params: P) => Stream<T, R>, options?: { onData?: (value: ReadonlyData<T>) => void }): StreamResource<P, R>;
+export declare function useStream<P extends [] | [unknown?], T, R>(name: string, action: (...params: P) => Stream<T, R>, options?: { onData?: (value: ReadonlyData<T>) => void }): StreamResource<P, R, T>;
 
 export interface ChannelResource<S = unknown> {
   readonly connecting: boolean; readonly connected: boolean; readonly error: ResourceError | null;
@@ -236,6 +238,7 @@ export declare function useVideo(name: string): Video;
 /** Where a `<link to>` goes: a target of `lx.nav.go`, or `{ back: n }`. Logic navigates. */
 export type LinkTarget =
   | LinkPageTarget
+  | { readonly page: LinkOpenPageName; readonly params?: never; readonly replace?: true }
   | { readonly tab: LinkTabName; readonly replace?: never }
   | { readonly app: string; readonly page?: string; readonly params?: Readonly<Record<string, unknown>>; readonly channel?: "release" | "draft"; readonly version?: string; readonly replace?: never }
   | { readonly url: string; readonly replace?: never }
@@ -245,6 +248,8 @@ export type LinkTarget =
 export type LinkPageTarget<N extends LinkPageName = LinkPageName> = N extends unknown
   ? { readonly page: N; readonly replace?: true } & ({} extends LinkParams<N> ? { readonly params?: LinkParams<N> } : { readonly params: LinkParams<N> })
   : never;
+/** Pages that take no required params: a target naming one of several (a union) checks without params. */
+export type LinkOpenPageName<N extends LinkPageName = LinkPageName> = N extends unknown ? ({} extends LinkParams<N> ? N : never) : never;
 /** This lxapp's page names, tab roots excepted; any string before the project's registry is generated. */
 export type LinkPageName = keyof LxAppPages extends never ? string : Exclude<keyof LxAppPages, keyof LxAppTabs> & string;
 export type LinkTabName = keyof LxAppPages extends never ? string : keyof LxAppTabs & string;

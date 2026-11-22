@@ -1,5 +1,5 @@
 // The View catalogue's one demo shape, the group page built from it and the index of groups.
-import { useView, type Child, type Component, type LinkTarget } from '@lingxia/view';
+import { useView, type Child, type Component } from '@lingxia/view';
 import { Icon, Page } from '../ui';
 import { chrome, count, demos, groups, missing, say, type GroupId, type Words } from './text';
 
@@ -70,8 +70,7 @@ export function Index() {
       <view role="list" className="rounded-2xl border border-line bg-surface divide-y divide-line">
         {groups.map(group => (
           <view key={group.id} role="listitem">
-            {/* `as`: a target whose page is a union of names does not type-check as one target yet. */}
-            <link data-testid={`view-index-${group.id}`} to={{ page: group.page } as LinkTarget}
+            <link data-testid={`view-index-${group.id}`} to={{ page: group.page }}
               className="flex-row items-center gap-3 px-4 py-3 active:bg-surface-sunken">
               <view className="grow basis-0 min-w-0 gap-0.5 items-start">
                 <text className="text-base font-medium text-start">{t(group.title)}</text>

@@ -37,6 +37,19 @@ test('manual stream starts only after commit, retains callbacks across redraw an
   assert.equal(stream.status, 'completed'); assert.equal(stream.result, 'done');
 });
 
+test('a stream holds its latest value without onData, and a restart clears it', async () => {
+  const view = setup(); let stream;
+  describe(() => { stream = useStream('ticks', view.actions.ticks); return h('text'); }, view);
+  assert.equal(stream.data, null);
+  stream.start(); const [first] = frames();
+  event(first.id, 0, { loaded: 1 }); event(first.id, 1, { loaded: 2 });
+  assert.deepEqual(stream.data, { loaded: 2 });
+  stream.start(); const [, second] = frames();
+  assert.equal(stream.data, null, 'a restart starts empty');
+  end(second.id, 'done'); await flush();
+  assert.deepEqual([stream.status, stream.data], ['completed', null]);
+});
+
 test('restart cancels old stream and ignores its late events and rejection', async () => {
   const view = setup(), seen = []; let stream;
   describe(() => { stream = useStream('ticks', view.actions.ticks, { onData: value => seen.push(value) }); return h('text'); }, view);

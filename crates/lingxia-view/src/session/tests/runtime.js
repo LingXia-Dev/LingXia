@@ -2581,14 +2581,15 @@
         if (!mounted) return;
         cancel();
         const current = ++ticket;
-        update({ status: "streaming", error: null, result: null });
+        update({ status: "streaming", error: null, result: null, data: null });
         try {
           if (!definition.action) throw Error("UI_STREAM: bridge not ready");
           stream = definition.action(...params);
-          if (definition.onData) stream.on("data", (value) => {
+          stream.on("data", (value) => {
             if (!mounted || current !== ticket) return;
+            update({ data: value ?? null });
             try {
-              definition.onData(value);
+              definition.onData?.(value);
             } catch (error) {
               cancel();
               fail(error);
@@ -2612,7 +2613,7 @@
       commit(next) {
         if (definition && definition.action !== next.action) {
           cancel();
-          update({ status: "idle", error: null, result: null });
+          update({ status: "idle", error: null, result: null, data: null });
         }
         definition = next;
         mounted = true;
@@ -3492,7 +3493,7 @@
     const target = pageAction(action, "UI_STREAM", "stream");
     const resource = own(
       name,
-      { status: "idle", error: null, result: null },
+      { status: "idle", error: null, result: null, data: null },
       "stream",
       "UI_STREAM",
       streamResource,
@@ -3507,6 +3508,9 @@
       },
       get result() {
         return resource.state.result;
+      },
+      get data() {
+        return resource.state.data;
       },
       start: guard("stream mutation", resource.start),
       cancel: guard("stream mutation", resource.cancel)

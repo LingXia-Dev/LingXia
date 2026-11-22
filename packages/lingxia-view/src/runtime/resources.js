@@ -20,13 +20,14 @@ export function streamResource(state) {
       if (!mounted) return;
       cancel();
       const current = ++ticket;
-      update({ status: 'streaming', error: null, result: null });
+      update({ status: 'streaming', error: null, result: null, data: null });
       try {
         if (!definition.action) throw Error('UI_STREAM: bridge not ready');
         stream = definition.action(...params);
-        if (definition.onData) stream.on('data', value => {
+        stream.on('data', value => {
           if (!mounted || current !== ticket) return;
-          try { definition.onData(value); }
+          update({ data: value ?? null });
+          try { definition.onData?.(value); }
           catch (error) { cancel(); fail(error); }
         });
         stream.result.then(value => {
@@ -43,7 +44,7 @@ export function streamResource(state) {
     commit(next) {
       if (definition && definition.action !== next.action) {
         cancel();
-        update({ status: 'idle', error: null, result: null });
+        update({ status: 'idle', error: null, result: null, data: null });
       }
       definition = next; mounted = true;
     },
