@@ -243,6 +243,8 @@ export class LiveFixture implements Fixture {
           this.assertRunnable();
           return this.appOf(appId === undefined ? this.pinned : this.refFor(appId));
         }
+        : prop === "lxapps"
+          ? this.followingRestart(Reflect.get(target, prop))
         // Reading a host tier never throws, even on a host without it; each
         // call resolves it and rejects there instead.
         : HOST_TIERS.includes(prop)
@@ -363,6 +365,43 @@ export class LiveFixture implements Fixture {
         return this.act("profile.drop", id, async () => { await ref.driver.profile.drop(id); });
       },
     };
+  }
+
+  /**
+   * `lxapps.restart` replaces the app instance, which the drivers handed out
+   * so far no longer reach. It resolves before the replacement exists, so the
+   * fixture apps of that lxapp select it again on every access afterwards.
+   */
+  private followingRestart(lxapps: unknown): unknown {
+    // Rong host objects are callable, so `typeof` is "function" on a device.
+    if (!lxapps || (typeof lxapps !== "object" && typeof lxapps !== "function")) return lxapps;
+    return new Proxy(lxapps, {
+      get: (inner, prop) => {
+        const member = Reflect.get(inner, prop, inner);
+        if (prop !== "restart" || typeof member !== "function") return member;
+        return async (options?: { app?: string }) => {
+          const result = await (member as (o?: unknown) => Promise<unknown>).call(inner, options);
+          const appid = options?.app ?? this.pinned.appid;
+          if (appid !== undefined) this.followReplacement(appid);
+          return result;
+        };
+      },
+    });
+  }
+
+  private followReplacement(appid: string): void {
+    const automation = this.hostAutomation;
+    const current = new Proxy({}, {
+      get: (_, prop) => {
+        const driver = automation.lxapp(appid) as object;
+        const member = Reflect.get(driver, prop, driver);
+        // A getter's callable result is a namespace (`nav`, `page`), not a method.
+        return typeof member === "function" && !isAccessor(driver, prop) ? member.bind(driver) : member;
+      },
+    }) as LxAppDriver;
+    for (const ref of this.appRefs) {
+      if (ref.appid === appid) ref.driver = current;
+    }
   }
 
   /**
@@ -2171,6 +2210,14 @@ interface DriverNavWait {
   timeoutMs?: number;
 }
 
+function isAccessor(target: object, prop: PropertyKey): boolean {
+  for (let owner: object | null = target; owner; owner = Object.getPrototypeOf(owner)) {
+    const descriptor = Object.getOwnPropertyDescriptor(owner, prop);
+    if (descriptor) return typeof descriptor.get === "function";
+  }
+  return false;
+}
+
 function guardObject<T extends object>(
   target: T,
   fixture: LiveFixture,
@@ -2185,14 +2232,7 @@ function guardObject<T extends object>(
       const value = Reflect.get(obj, prop, obj);
       // Rong native class instances are callable objects too. Getter results
       // are driver namespaces; rebinding them as methods loses their members.
-      let owner: object | null = obj;
-      let accessor = false;
-      while (owner) {
-        const descriptor = Object.getOwnPropertyDescriptor(owner, prop);
-        if (descriptor) { accessor = typeof descriptor.get === "function"; break; }
-        owner = Object.getPrototypeOf(owner);
-      }
-      if (typeof value === "function" && !accessor) {
+      if (typeof value === "function" && !isAccessor(obj, prop)) {
         const name = `${path}${String(prop)}`;
         const bound = IDEMPOTENT_READS.has(name)
           ? (...args: unknown[]) =>

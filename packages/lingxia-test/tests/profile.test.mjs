@@ -244,6 +244,52 @@ test("a saved t.app, and any part of it, follows the app a profile switch reopen
   assert.equal(seen.instance, 3);
 });
 
+test("a fixture app follows the instance lxapps.restart replaced", async () => {
+  const world = createWorld();
+  // Each selection is a driver of the instance running then; restart starts a
+  // new one and the old drivers stop reaching it.
+  let instance = 1;
+  // Callable, as a Rong host object is.
+  const lxapps = Object.assign(function lxapps() {}, { async restart() { instance += 1; } });
+  installFakeHost(world, { lxapps });
+  const automation = globalThis.lx.automation;
+  globalThis.lx.automation = () => {
+    const root = automation();
+    // Shaped like a Rong driver: `nav` is a getter on the prototype that
+    // returns a callable namespace. Each driver reaches only its instance.
+    const lxapp = (...args) => {
+      const selected = instance;
+      const base = root.lxapp(...args);
+      const alive = () => {
+        if (selected !== instance) throw Object.assign(new Error(`instance ${selected} is closed`), { code: "E_AUTOMATION" });
+      };
+      const proto = {
+        get nav() {
+          alive();
+          return Object.assign(function nav() {}, { current: async () => { alive(); return base.nav.current(); } });
+        },
+      };
+      return new Proxy(Object.create(proto), {
+        get: (target, prop, receiver) => prop in proto ? Reflect.get(target, prop, receiver) : Reflect.get(base, prop, base),
+      });
+    };
+    // A getter returning a callable namespace, as the host's tiers are.
+    return Object.defineProperty({ lxapp }, "lxapps", { get: () => lxapps, enumerable: true });
+  };
+
+  lxTest("follows", { app: "demo-app" }, async (t) => {
+    const before = t.app;
+    await before.nav.current();
+    await t.automation.lxapps.restart({ app: "demo-app" });
+    await t.automation.lxapp("demo-app").nav.current();
+    await before.nav.current();
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(instance, 2);
+});
+
 test("restoreProfile keep carries chosen keys over the rollback", async () => {
   const world = createWorld();
   const profile = fakeProfile(world);
