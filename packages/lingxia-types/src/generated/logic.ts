@@ -241,7 +241,37 @@ export type OpenPageArgs<N> = {} extends NavParams<N>
     ? [options?: OpenPageOptions & { params?: NavParams<N> }]
     : [options: OpenPageOptions & { params: NavParams<N> }];
 
+/** Arguments `lx.app.t` takes for a message: its tags keep their text, so they take nothing. */
+type LogicMessageArgs<A> = { [P in keyof A as A[P] extends (...args: any) => any ? never : P]: A[P] };
+
+declare const messageKey: unique symbol;
+/** A key built at run time, named `as LxAppMessageKey`: still one of the lxapp's keys, its arguments unchecked. */
+export type LxAppMessageKey = (keyof LxAppMessages extends never ? string : keyof LxAppMessages & string) & { readonly [messageKey]: true };
+
+/** `lx.app.t`'s key and arguments, checked against `LxAppMessages` once the build generates it. */
+export type LxAppMessageCall = keyof LxAppMessages extends never
+  ? readonly [key: string, args?: Readonly<Record<string, unknown>>]
+  : {
+      [K in keyof LxAppMessages & string]: {} extends LogicMessageArgs<LxAppMessages[K]>
+        ? readonly [key: K, args?: LogicMessageArgs<LxAppMessages[K]>]
+        : readonly [key: K, args: LogicMessageArgs<LxAppMessages[K]>];
+    }[keyof LxAppMessages & string]
+    | readonly [key: LxAppMessageKey, args?: Readonly<Record<string, unknown>>];
+
 declare global {
+  /**
+   * The lxapp's messages, each with the arguments it takes. Empty here: the build generates the
+   * source catalogue's keys into it, and until then any key compiles.
+   */
+  interface LxAppMessages {}
+
+  interface LxAppApi {
+    /** The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`. */
+    readonly language: AppLanguageApi;
+    /** The light/dark scheme this lxapp renders in. */
+    readonly appearance: AppAppearanceApi;
+  }
+
   /**
    * The lxapp's configured page names, one key per page.
    *
@@ -349,23 +379,31 @@ declare global {
     readonly notification: NotificationApi;
 
     /**
-     * A banner the product draws at the top right of the desktop.
+     * A banner the product draws at the top right of the desktop. Phones have
+     * none by design: use `lx.ui.toast` for a notice and a modal for a choice.
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     readonly banner: BannerApi;
 
     /**
-     * The language this lxapp renders in. Every lxapp follows it; only the
-     * Control app changes it.
+     * A mark on the product's own system chrome, such as an unread count.
+     * Control app only.
+     * @supports host.badge
      */
-    readonly displayLanguage: DisplayLanguageApi;
+    readonly badge: BadgeApi;
 
     /**
-     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
-     * only the Control app changes it.
+     * The product's language preference. Only the Control app may read or set
+     * it; an lxapp reads the language it renders in from `lx.app.language`.
      */
-    readonly appearance: AppearanceApi;
+    readonly displayLanguage: HostDisplayLanguageApi;
+
+    /**
+     * The product's light/dark preference. Only the Control app may read or set
+     * it; an lxapp reads the scheme it renders in from `lx.app.appearance`.
+     */
+    readonly appearance: HostAppearanceApi;
 
     /**
      * The product-wide cache, reported and cleared for a settings screen.
@@ -633,6 +671,12 @@ export type AlertOptions = {
 export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
 
 /**
+ * `lx.app.appearance` — the scheme this lxapp renders in: the one its
+ * `lxapp.json` pins, else the product's.
+ */
+export type AppAppearanceApi = Live<ResolvedAppearance>;
+
+/**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
  * has run. Control app only; a guest's call fails `E_PERMISSION_DENIED`.
@@ -735,6 +779,16 @@ export type AppDownloadResult = {
     size: number;
 };
 
+/**
+ * `lx.app.language` — the language this lxapp renders in, as a BCP-47 tag:
+ * the product's language narrowed to the `languages` its lxapp.json lists
+ * (the exact tag, else the same language, else the first). Pages read it
+ * as `env.language`; `watch` fires only when the narrowed value changes.
+ * Logic follows it for text it hands to native chrome, which nothing
+ * re-renders on its behalf.
+ */
+export type AppLanguageApi = Live<string>;
+
 /** What `App` `onShow` and `onHide` receive: who moved and why. */
 export type AppLifecycleEventArgs = {
     /** `host` when the whole app moved; `lxapp` when only this lxapp did. */
@@ -801,27 +855,6 @@ export type AppTarget = {
 };
 
 /**
- * `lx.host.appearance` — the scheme this lxapp renders in. An lxapp that
- * pinned one in its `lxapp.json` reports that; every other lxapp reports
- * the product's.
- */
-export type AppearanceApi = Live<ResolvedAppearance> & {
-    /**
-     * What the user chose for the whole product. Control app only. A system
-     * flip under `'auto'` moves the resolved scheme and leaves this quiet.
-     */
-    readonly preference: Live<AppearancePreference> & {
-        /**
-         * Pin the product to `'light'` or `'dark'`, or follow the system with
-         * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
-         * @throws {E_INVALID_ARG} Any other value.
-         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-         */
-        set(preference: AppearancePreference): Promise<void>;
-    };
-};
-
-/**
  * What the product's light/dark scheme is set to. `'auto'` follows
  * the system.
  */
@@ -873,6 +906,47 @@ export type AutostartApi = {
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
     disable(): Promise<void>;
+};
+
+/**
+ * A mark on the product's own system chrome, such as an unread count. A badge never
+ * prompts, and a notification never sets one.
+ */
+export type BadgeApi = {
+    /**
+     * Show `value` on the badge, such as an unread count.
+     * @supports host.badge
+     * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
+     * @platform Windows: the taskbar and the notification-area item.
+     * @platform iOS: the home-screen icon, numbers only; needs notification permission.
+     * @platform HarmonyOS: the home-screen icon.
+     * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
+     * @throws {E_INVALID_ARG} An empty value, or text where the platform paints numbers only.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    set(value: string | number, options?: BadgeOptions): Promise<BadgeResult>;
+    /**
+     * Remove the badge.
+     * @supports host.badge
+     * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    clear(options?: BadgeOptions): Promise<BadgeResult>;
+};
+
+/** Where `lx.host.badge.set` and `clear` paint. */
+export type BadgeOptions = {
+    /**
+     * Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.
+     * @default 'auto'
+     */
+    surface?: 'auto' | 'app_icon' | 'tray';
+};
+
+/** What a badge call changed. */
+export type BadgeResult = {
+    /** Whether any surface took the change; `false` when one exists but declined, such as a hidden tray item. */
+    painted: boolean;
 };
 
 /**
@@ -1203,30 +1277,6 @@ export type DeviceApi = globalThis.DeviceApi;
 export type DeviceOrientation = "portrait" | "landscape";
 
 /**
- * `lx.host.displayLanguage` — the language this lxapp renders in, as a
- * canonical BCP-47 tag. Map it to the catalogs this lxapp ships (its
- * `lxapp.json` `languages`) and fall back where it has none; the View's
- * `contentLanguage` is this value narrowed to them. Logic follows it
- * because the strings it hands to native chrome (titles, tab labels,
- * dialog text) are its own and nothing re-renders them.
- */
-export type DisplayLanguageApi = Live<string> & {
-    /**
-     * What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app
-     * only. A system locale change under `'auto'` moves the language and
-     * leaves this quiet.
-     */
-    readonly preference: Live<DisplayLanguagePreference> & {
-        /**
-         * Persist the product's language.
-         * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
-         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-         */
-        set(preference: DisplayLanguagePreference): Promise<void>;
-    };
-};
-
-/**
  * What the product's language is set to: `'auto'` follows the system,
  * or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
  * autocomplete while still accepting a tag.
@@ -1435,6 +1485,36 @@ export type HostAppUpdateResult = {
  * `total` is present when the update named its size.
  */
 export type HostAppUpdateTask = Task<HostAppUpdateResult>;
+
+/**
+ * `lx.host.appearance` — the product's scheme preference; only the Control
+ * app gets past it. A system flip under `'auto'` moves `lx.app.appearance`
+ * and leaves this quiet.
+ */
+export type HostAppearanceApi = Live<AppearancePreference> & {
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves
+     * once this lxapp's own `lx.app.appearance` follows.
+     * @throws {E_INVALID_ARG} Any other value.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    set(preference: AppearancePreference): Promise<void>;
+};
+
+/**
+ * `lx.host.displayLanguage` — the product's language preference: `'auto'`
+ * or a canonical BCP-47 tag; only the Control app gets past it. A system
+ * locale change under `'auto'` moves `lx.app.language` and leaves this quiet.
+ */
+export type HostDisplayLanguageApi = Live<DisplayLanguagePreference> & {
+    /**
+     * Persist the product's language.
+     * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     */
+    set(preference: DisplayLanguagePreference): Promise<void>;
+};
 
 /**
  * Canonical platform-family label shared by `lx.host.info.os`
@@ -2221,21 +2301,6 @@ export type RouteTarget = {
     tab?: never;
     app?: never;
     appLink?: never;
-};
-
-/** Options for `lx.host.setBadge`. */
-export type SetBadgeOptions = {
-    /**
-     * Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.
-     * @default 'auto'
-     */
-    surface?: 'auto' | 'app_icon' | 'tray';
-};
-
-/** What `lx.host.setBadge` painted. */
-export type SetBadgeResult = {
-    /** Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item. */
-    painted: boolean;
 };
 
 /** Share images, PDFs, or other files. */
@@ -3465,8 +3530,7 @@ export interface FileStats {
 
 /**
  * Host app identity. Everything here is fixed for the life of the process;
- * the language the app renders in is not, and lives on
- * `lx.host.displayLanguage`.
+ * the language the app renders in is not, and lives on `lx.app.language`.
  */
 export interface HostInfo {
   /** Platform family, lower case. */
@@ -3793,20 +3857,6 @@ declare global {
      * only after confirmation.
      */
     exit(): void;
-    /**
-     * Mark the product in system chrome, such as with an unread count; `null` or
-     * `''` clears it. Control app only. Resolves whether anything was painted.
-     * A badge never prompts, and a notification never sets one.
-     * @supports host.badge
-     * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
-     * @platform Windows: the taskbar and the notification-area item.
-     * @platform iOS: the home-screen icon, numbers only; needs notification permission.
-     * @platform HarmonyOS: the home-screen icon.
-     * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
-     * @throws {E_INVALID_ARG} Text where the platform paints numbers only.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-     */
-    setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<SetBadgeResult>;
     readonly tray: TrayApi;
   }
 }
@@ -3908,6 +3958,11 @@ declare global {
 declare global {
   interface LxAppApi {
     readonly info: Readonly<AppInfo>;
+    /**
+     * The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`;
+     * tags keep their text. Read it when the text is shown: a later language switch does not change it.
+     */
+    t(...message: LxAppMessageCall): string;
     readonly moreActions: MoreActionsApi;
     readonly tabBar: TabBarApi;
     readonly update: LxAppUpdateApi;

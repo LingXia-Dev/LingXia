@@ -394,7 +394,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'displayLanguage', 'env', 'info', 'tray', 'update'],
+    properties: ['appearance', 'badge', 'displayLanguage', 'env', 'info', 'tray', 'update'],
   },
   {
     name: 'lx.host.update',
@@ -982,6 +982,7 @@ type RuntimeSurfaceTypes = {
   'lx.surface': SurfaceApi;
   'lx.shell': ShellApi;
   'lx.shell.sidebarActions': ShellApi['sidebarActions'];
+  'lx.host.badge': BadgeApi;
   'lx.host.tray': TrayApi;
   'lx.host.tray.menu': TrayMenuApi;
   'lx.fs': FileSystemApi;
