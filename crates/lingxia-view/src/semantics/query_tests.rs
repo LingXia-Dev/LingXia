@@ -226,8 +226,14 @@ fn test_ids_reach_the_projection_for_spans_and_link_pieces() {
     let [para_left, para_width] = rect("para");
     for id in ["em", "terms"] {
         let [left, width] = rect(id);
-        assert!(width > 0.0 && width < para_width / 2.0, "{id}: {width} of {para_width}");
-        assert!(left > para_left, "{id} starts after the paragraph's first word");
+        assert!(
+            width > 0.0 && width < para_width / 2.0,
+            "{id}: {width} of {para_width}"
+        );
+        assert!(
+            left > para_left,
+            "{id} starts after the paragraph's first word"
+        );
     }
 }
 
@@ -1161,4 +1167,20 @@ fn typing_inserts_at_a_focused_editors_selection_and_moves_the_caret_past_it() {
     assert_eq!(typed([2, 2], "9"), [(Some("2.95".into()), -1), (None, 3)]);
     // A selection is replaced.
     assert_eq!(typed([0, 3], "7"), [(Some("7".into()), -1), (None, 1)]);
+}
+
+#[test]
+fn automation_reads_no_break_spaces_as_written() {
+    // Specs compare strings: "14 days" with U+00A0 must read back with it.
+    let i = interaction(
+        "h('view',{},h('text',{'data-testid':'up'},'Uptime 14\\u00a0days 6\\u202fhr'),h('button',{'data-testid':'go','aria-label':'Wait 14\\u00a0days',style:{height:40}},'go'))",
+    );
+    let up = i
+        .automation_query("[data-testid=\"up\"]", None, false, None)
+        .unwrap();
+    assert_eq!(up["text"], "Uptime 14\u{a0}days 6\u{202f}hr");
+    let go = i
+        .automation_query("[data-testid=\"go\"]", None, false, None)
+        .unwrap();
+    assert_eq!(go["aria_label"], "Wait 14\u{a0}days");
 }

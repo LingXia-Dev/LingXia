@@ -40,7 +40,7 @@ impl Collapser {
                 self.out
                     .truncate(self.out.trim_end_matches([' ', '\t']).len());
                 self.out.push('\n');
-            } else if c.is_whitespace() {
+            } else if crate::text::style::collapsible(c) {
                 self.pending |= !self.out.is_empty() && !self.out.ends_with('\n');
             } else {
                 if self.pending {

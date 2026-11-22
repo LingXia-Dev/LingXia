@@ -904,3 +904,90 @@ fn a_long_url_breaks_after_slashes_and_before_dots() {
     let lines = wrapped_lines("ana@example.co", 100.0);
     assert_eq!(lines, ["ana", "@example.co"]);
 }
+
+fn lines_with(text: &str, width: f32, style: &str) -> Vec<String> {
+    let source = crate::session::tests::source(&format!(
+        "function render(){{return h('view',{{}},h('text',{{style:{{userSelect:'text',fontSize:16,width:{width}{style}}}}},'{text}'))}}"
+    ));
+    let mut page = crate::ViewSession::new(&source).unwrap();
+    let display = page.layout(400, 400, 1.0).unwrap();
+    let paragraph = display
+        .retained
+        .selectables
+        .iter()
+        .flatten()
+        .next()
+        .unwrap();
+    paragraph
+        .layout
+        .lines()
+        .map(|line| paragraph.text[line.text_range()].to_owned())
+        .collect()
+}
+
+#[test]
+fn no_break_characters_hold_their_neighbours_on_one_line() {
+    // The joiners reach the line breaker as written, never as a plain space.
+    for (escape, joiner) in [
+        ("\\u00a0", '\u{a0}'),
+        ("\\u202f", '\u{202f}'),
+        ("\\u2060", '\u{2060}'),
+        ("\\u2011", '\u{2011}'),
+    ] {
+        let lines = wrapped_lines(&format!("Uptime 14{escape}days 6 hr and more"), 90.0);
+        let held = format!("14{joiner}days");
+        assert!(
+            lines.iter().any(|line| line.contains(&held)),
+            "{escape}: {lines:?}"
+        );
+        assert!(
+            lines.len() > 1,
+            "{escape}: the width must force a break: {lines:?}"
+        );
+    }
+}
+
+#[test]
+fn a_soft_hyphen_is_a_break_only_where_the_line_needs_one() {
+    let wide = wrapped_lines("extra\\u00adordinary", 300.0);
+    assert_eq!(wide, ["extra\u{ad}ordinary"]);
+    let narrow = wrapped_lines("extra\\u00adordinary", 60.0);
+    assert_eq!(
+        narrow.first().map(String::as_str),
+        Some("extra\u{ad}"),
+        "{narrow:?}"
+    );
+}
+
+#[test]
+fn a_newline_collapses_unless_white_space_keeps_it() {
+    // CSS's default white-space: a newline is a space; `pre-line` keeps it.
+    assert_eq!(
+        lines_with("Firmware 3.4.2\\nUptime", 300.0, ""),
+        ["Firmware 3.4.2 Uptime"]
+    );
+    let kept = lines_with("Firmware 3.4.2\\nUptime", 300.0, ",whiteSpace:'pre-line'");
+    assert_eq!(kept.len(), 2, "{kept:?}");
+    assert!(
+        kept[0].starts_with("Firmware 3.4.2") && kept[1] == "Uptime",
+        "{kept:?}"
+    );
+}
+
+#[test]
+fn collapsing_white_space_leaves_no_break_spaces_alone() {
+    use crate::text::style::Collapse;
+    assert_eq!(
+        Collapse::All.apply("a \u{a0} b\u{202f}c\u{3000}d"),
+        "a \u{a0} b\u{202f}c\u{3000}d"
+    );
+    assert_eq!(Collapse::Spaces.apply("14\u{a0}\ndays"), "14\u{a0}\ndays");
+}
+
+#[test]
+fn a_no_break_space_at_a_line_end_stays_in_the_text() {
+    // Only a collapsible space hangs at a break; a no-break space is text and is never trimmed.
+    let lines = wrapped_lines("aaaa\\u00a0 bbbb", 50.0);
+    assert_eq!(lines.concat(), "aaaa\u{a0} bbbb", "{lines:?}");
+    assert!(lines[0].starts_with("aaaa\u{a0}"), "{lines:?}");
+}

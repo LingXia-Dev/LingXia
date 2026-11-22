@@ -87,7 +87,7 @@ impl Collapse {
                 pending = false;
                 out.truncate(out.trim_end_matches([' ', '\t']).len());
                 out.push('\n');
-            } else if c.is_whitespace() {
+            } else if collapsible(c) {
                 pending = !out.is_empty() && !out.ends_with('\n');
             } else {
                 if pending {
@@ -135,6 +135,11 @@ pub(crate) enum Transform {
     Uppercase,
     Lowercase,
     Capitalize,
+}
+
+/// CSS's collapsible white space; a no-break or ideographic space is text.
+pub(crate) fn collapsible(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{c}')
 }
 
 impl Transform {
