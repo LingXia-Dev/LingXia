@@ -273,7 +273,9 @@ platforms (phone, foldable, tri-fold, tablet, desktop):
 - Bidirectional role migration is symmetric: dragging an aside tab onto the
   sidebar promotes it to `main` (`promote_aside_to_main`); dragging a non-root
   main to the right half or invoking `SurfaceMenuBuiltinAction::MoveToAside`
-  demotes it into the right aside slot (`demote_main_to_aside`).
+  demotes it into the right aside slot (`demote_main_to_aside`). Content that
+  offers its own placement item (an lxapp's "Open in Side Panel") gets no
+  `MoveToAside`: the host's handler for that item re-hosts the live page first.
 - Platform Pin boundary: desktop hosts (macOS / Windows) retain the `4×2` Pin
   grid; mobile hosts (iOS / Android / HarmonyOS, including foldables and pads)
   render live switchers only and omit host-level sidebar Pins.

@@ -281,7 +281,9 @@ pub fn compose_surface_menu_parts(
     }
 
     let mut management = Vec::new();
-    if context.closable && context.movable_to_aside {
+    // Content that places itself ("Open in Side Panel") owns that move; a second entry would
+    // skip the host's own re-hosting of the live page.
+    if context.closable && context.movable_to_aside && parts.placement.is_empty() {
         management.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::MoveToAside,
             SurfaceMenuItemRole::Normal,
@@ -567,6 +569,39 @@ mod tests {
                 SurfaceMenuSectionKind::Removal,
             ]
         );
+    }
+
+    #[test]
+    fn content_placement_replaces_the_generic_move_to_aside() {
+        let context = SurfaceMenuContext {
+            revision: 1,
+            surface_id: "guest".into(),
+            closable: true,
+            renameable: false,
+            title_overridden: false,
+            has_other_closable: false,
+            has_closable_before: false,
+            has_closable_after: false,
+            movable_to_aside: true,
+        };
+        let offers_move = |parts: SurfaceMenuParts| {
+            compose_surface_menu_parts(context.clone(), parts)
+                .sections
+                .iter()
+                .flat_map(|section| &section.items)
+                .any(|item| {
+                    item.action
+                        == SurfaceMenuAction::Switcher {
+                            action: SurfaceMenuBuiltinAction::MoveToAside,
+                        }
+                })
+        };
+
+        assert!(offers_move(SurfaceMenuParts::default()));
+        assert!(!offers_move(SurfaceMenuParts {
+            placement: vec![SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::OpenInSide)],
+            ..Default::default()
+        }));
     }
 
     #[test]
