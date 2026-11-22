@@ -4,9 +4,7 @@
   "field-name": [],
   "status-values": [],
   "readonly-array-param": [],
-  "required-member": [
-    "lx.host.terminal.windows"
-  ],
+  "required-member": [],
   "summary": [],
   "error-code": [],
   "tags": [],

@@ -703,7 +703,7 @@ rong::js_api! {
         /** Its version. */
         version: string;
         /** Where to download it. */
-        url: string;
+        url: string | URL;
         /** The SHA-256 digest `install` checks. */
         sha256: string;
         /** Its size in bytes. */
@@ -711,14 +711,37 @@ rong::js_api! {
     };
 }"###;
 
-        /// Windows only: install and select the ConPTY runtime that passes inline images through.
+        /// Install and select the ConPTY runtime that passes inline images through, on Windows.
         type WindowsTerminalApi = r###"{
-    /** Whether the runtime is installed and selected. */
+    /**
+     * Whether the runtime is installed and selected.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
     status(): Promise<WindowsTerminalInlineImageStatus>;
-    /** Verify and install the fixed Microsoft ConPTY package from lxapp temp storage. */
-    install(options: { path: string }): Promise<WindowsTerminalInlineImageStatus>;
-    /** Select the installed runtime for new terminal sessions. */
-    setEnabled(options: { enabled: boolean }): Promise<WindowsTerminalInlineImageStatus>;
+    /**
+     * Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface, or `path` is not this lxapp's temp file.
+     * @throws {E_INVALID_DATA} The package fails verification.
+     */
+    install(options: {
+        /** The downloaded package, an `lx://temp/` path. */
+        path: string;
+    }): Promise<WindowsTerminalInlineImageStatus>;
+    /**
+     * Select the installed runtime for new terminal sessions.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     * @throws {E_INVALID_STATE} Enabling before the runtime is installed.
+     */
+    setEnabled(options: {
+        /** Use the runtime for new sessions. */
+        enabled: boolean;
+    }): Promise<WindowsTerminalInlineImageStatus>;
 }"###;
 
         /// The host terminal's settings, color schemes, fonts and Windows runtime.
@@ -729,8 +752,8 @@ rong::js_api! {
     readonly colorSchemes: TerminalColorSchemesApi;
     /** Terminal fonts installed on this machine. */
     readonly fonts: TerminalFontsApi;
-    /** Windows-only optional inline-image compatibility runtime. */
-    readonly windows?: WindowsTerminalApi;
+    /** The optional Windows runtime that passes inline images through. */
+    readonly windows: WindowsTerminalApi;
 }"###;
 
         /// Bytes `lx.fs.write` and the clipboard accept.

@@ -91,7 +91,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
     value: t('app.sidebar.languageName'),
     onSelect: () => {
       const next = language.startsWith('zh') ? 'en-US' : 'zh-CN';
-      void lx.host.displayLanguage?.set(next)
+      void lx.host.displayLanguage.set(next)
         .catch((error) => console.warn('language action failed', error));
     },
   });
@@ -120,7 +120,7 @@ App({
     // A preference click always moves the preference event; the language watch alone can
     // miss a Harmony dispatch.
     lx.app.language.watch(() => applyChrome());
-    lx.host.displayLanguage?.watch(() => applyChrome());
+    lx.host.displayLanguage.watch(() => applyChrome());
 
     lx.app.update.onReady(async () => {
       const applyNow = await lx.ui.confirm({

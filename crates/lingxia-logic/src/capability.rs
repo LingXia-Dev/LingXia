@@ -20,6 +20,7 @@ struct FeatureEntry {
 enum Predicate {
     Always,
     Terminal,
+    WindowsOs,
     Autostart,
     Notifications,
     Banner,
@@ -133,12 +134,13 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     use lingxia_platform::traits::update::UpdateService;
     let entries = registry().as_ref().map_err(js_internal_error)?;
     let supported = resolve(entries, |predicate| {
-        if focused && predicate != Predicate::Terminal {
+        if focused && !matches!(predicate, Predicate::Terminal | Predicate::WindowsOs) {
             return false;
         }
         match predicate {
             Predicate::Always => true,
             Predicate::Terminal => focused,
+            Predicate::WindowsOs => cfg!(target_os = "windows"),
             Predicate::Autostart => autostart_supported(),
             Predicate::Notifications => lingxia_app_context::capability::notifications(),
             Predicate::Banner => lingxia_platform::banner_supported(),

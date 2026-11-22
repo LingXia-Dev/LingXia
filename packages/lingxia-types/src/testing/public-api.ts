@@ -544,7 +544,6 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host.terminal.windows',
     members: WINDOWS_TERMINAL_API,
-    optional: true,
   },
 
   {

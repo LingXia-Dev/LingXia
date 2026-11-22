@@ -612,8 +612,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let settings = child_namespace(&terminal, ctx, "settings")?;
     let schemes = child_namespace(&terminal, ctx, "colorSchemes")?;
     let fonts = child_namespace(&terminal, ctx, "fonts")?;
-    #[cfg(target_os = "windows")]
-    let windows = child_namespace(&terminal, ctx, "windows")?;
 
     settings.set("get", JSFunc::new(ctx, settings_get)?.name("get")?)?;
     settings.set("update", JSFunc::new(ctx, settings_update)?.name("update")?)?;
@@ -628,8 +626,16 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     )?;
 
     fonts.set("list", JSFunc::new(ctx, fonts_list)?.name("list")?)?;
+    #[cfg(not(target_os = "windows"))]
+    crate::capability::unsupported_namespace(
+        ctx,
+        &terminal,
+        "lx.host.terminal.windows",
+        "host.terminal.windows",
+    )?;
     #[cfg(target_os = "windows")]
     {
+        let windows = child_namespace(&terminal, ctx, "windows")?;
         windows.set("status", JSFunc::new(ctx, conpty_status)?.name("status")?)?;
         windows.set(
             "install",

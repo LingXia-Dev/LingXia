@@ -241,7 +241,7 @@ test('reject an invalid host display language', {
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.displayLanguage?.set(language);
+        await lx.host.displayLanguage.set(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

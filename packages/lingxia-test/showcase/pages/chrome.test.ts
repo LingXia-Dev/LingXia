@@ -46,7 +46,7 @@ async function waitForTabBar(
 
 async function appearanceOf(app: TestApp): Promise<{ preference: string; resolved: string }> {
   return app.logic.eval(({ lx }) => ({
-    preference: String(lx.host.appearance?.get()),
+    preference: String(lx.host.appearance.get()),
     resolved: String(lx.app.appearance.get()),
   }));
 }
@@ -171,7 +171,7 @@ test("round-trip appearance preference through the ui controls", {
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-APPEARANCE-001");
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.host.appearance?.set('auto'); })
+    await app.logic.eval(async ({ lx }) => { await lx.host.appearance.set('auto'); })
       .catch(() => undefined);
   });
 

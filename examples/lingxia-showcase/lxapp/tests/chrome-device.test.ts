@@ -16,7 +16,7 @@ test('the nav bar takes the GPU page palette in light and in dark', {
 }, async (t) => {
   const app = t.app;
   const device = harmonyDevice(t);
-  const previous = await app.logic.eval(({ lx }) => lx.host.appearance?.get() ?? null);
+  const previous = await app.logic.eval(({ lx }) => lx.host.appearance.get() ?? null);
   if (previous === null) t.skip('only the Control app sets the appearance');
   const colours = async () => {
     const layout = await device.nodes();
@@ -30,7 +30,7 @@ test('the nav bar takes the GPU page palette in light and in dark', {
   };
   try {
     for (const scheme of ['dark', 'light'] as const) {
-      await app.logic.eval(async ({ lx }, scheme) => { await lx.host.appearance?.set(scheme); }, scheme);
+      await app.logic.eval(async ({ lx }, scheme) => { await lx.host.appearance.set(scheme); }, scheme);
       let last = { nav: [0, 0, 0], surface: [0, 0, 0] };
       await expect.poll(async () => {
         last = await colours();
@@ -39,6 +39,6 @@ test('the nav bar takes the GPU page palette in light and in dark', {
       }, { timeout: 10_000, message: `in ${scheme} the nav bar is the page's surface colour` }).toBe('match');
     }
   } finally {
-    if (previous !== null) await app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance?.set(previous); }, previous);
+    if (previous !== null) await app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance.set(previous); }, previous);
   }
 });

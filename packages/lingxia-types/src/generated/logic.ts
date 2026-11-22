@@ -2803,8 +2803,8 @@ export type TerminalApi = {
     readonly colorSchemes: TerminalColorSchemesApi;
     /** Terminal fonts installed on this machine. */
     readonly fonts: TerminalFontsApi;
-    /** Windows-only optional inline-image compatibility runtime. */
-    readonly windows?: WindowsTerminalApi;
+    /** The optional Windows runtime that passes inline images through. */
+    readonly windows: WindowsTerminalApi;
 };
 
 /** A terminal color scheme: background, foreground, cursor, selection and the 16 ANSI colors. */
@@ -3340,14 +3340,37 @@ export type WifiConnectedInfo = WifiInfo & {
  */
 export type WindowChrome = 'system' | 'full';
 
-/** Windows only: install and select the ConPTY runtime that passes inline images through. */
+/** Install and select the ConPTY runtime that passes inline images through, on Windows. */
 export type WindowsTerminalApi = {
-    /** Whether the runtime is installed and selected. */
+    /**
+     * Whether the runtime is installed and selected.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
     status(): Promise<WindowsTerminalInlineImageStatus>;
-    /** Verify and install the fixed Microsoft ConPTY package from lxapp temp storage. */
-    install(options: { path: string }): Promise<WindowsTerminalInlineImageStatus>;
-    /** Select the installed runtime for new terminal sessions. */
-    setEnabled(options: { enabled: boolean }): Promise<WindowsTerminalInlineImageStatus>;
+    /**
+     * Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface, or `path` is not this lxapp's temp file.
+     * @throws {E_INVALID_DATA} The package fails verification.
+     */
+    install(options: {
+        /** The downloaded package, an `lx://temp/` path. */
+        path: string;
+    }): Promise<WindowsTerminalInlineImageStatus>;
+    /**
+     * Select the installed runtime for new terminal sessions.
+     * @supports host.terminal.windows
+     * @throws {E_NOT_SUPPORTED} Off Windows.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     * @throws {E_INVALID_STATE} Enabling before the runtime is installed.
+     */
+    setEnabled(options: {
+        /** Use the runtime for new sessions. */
+        enabled: boolean;
+    }): Promise<WindowsTerminalInlineImageStatus>;
 };
 
 /** Whether the Microsoft ConPTY runtime that passes inline images through is installed and selected. */
@@ -3361,7 +3384,7 @@ export type WindowsTerminalInlineImageStatus = {
         /** Its version. */
         version: string;
         /** Where to download it. */
-        url: string;
+        url: string | URL;
         /** The SHA-256 digest `install` checks. */
         sha256: string;
         /** Its size in bytes. */
@@ -4314,4 +4337,4 @@ declare global {
 export {};
 
 /** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.tray' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';
+export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.terminal.windows' | 'host.tray' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';

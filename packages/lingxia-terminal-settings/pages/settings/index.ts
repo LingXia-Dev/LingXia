@@ -1,8 +1,7 @@
 import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
 type TerminalApi = NonNullable<typeof lx.host.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
-type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;
-type WindowsInlineImageStatus = Awaited<ReturnType<WindowsTerminalApi['status']>>;
+type WindowsInlineImageStatus = Awaited<ReturnType<TerminalApi['windows']['status']>>;
 
 type UpdateInput = {
   patch: Parameters<TerminalApi['settings']['update']>[0];
@@ -58,10 +57,8 @@ function terminal() {
   return lx.host.terminal;
 }
 
-function windowsTerminal(): WindowsTerminalApi {
-  const api = terminal().windows;
-  if (!api) throw new Error('Windows terminal compatibility settings are unavailable');
-  return api;
+function windowsTerminal(): TerminalApi['windows'] {
+  return terminal().windows;
 }
 
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
@@ -83,7 +80,7 @@ export default definePage({
       loadTerminalSettings() {
         return action(async () => {
           const api = terminal();
-          const isWindows = lx.host.info.os === 'windows';
+          const isWindows = lx.supports('host.terminal.windows');
           const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
             api.settings.get(),
             api.colorSchemes.list(),

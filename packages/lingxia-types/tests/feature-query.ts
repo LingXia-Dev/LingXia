@@ -38,13 +38,6 @@ const notification: NotificationApi = lx.host.notification;
 const banner: BannerApi = lx.host.banner;
 const terminalSettings: TerminalSettingsApi = lx.host.terminal.settings;
 void lx.host.autostart.disable();
-// The Windows terminal controls exist only on Windows, so they stay possibly absent.
-// @ts-expect-error absent off Windows, guarded by the terminal feature or not
 const windowsAlways: WindowsTerminalApi = lx.host.terminal.windows;
-if (lx.supports('host.terminal')) {
-  // @ts-expect-error the terminal feature does not imply Windows
-  const windowsGuarded: WindowsTerminalApi = lx.host.terminal.windows;
-  void windowsGuarded;
-}
-const windowsChecked: WindowsTerminalApi | undefined = lx.host.terminal.windows;
-export type FeatureQueryGate = [typeof known, typeof window, typeof fullChrome, typeof notifications, typeof control, typeof docked, typeof autostart, typeof notification, typeof banner, typeof terminalSettings, typeof windowsAlways, typeof windowsChecked];
+if (lx.supports('host.terminal.windows')) void lx.host.terminal.windows.status();
+export type FeatureQueryGate = [typeof known, typeof window, typeof fullChrome, typeof notifications, typeof control, typeof docked, typeof autostart, typeof notification, typeof banner, typeof terminalSettings, typeof windowsAlways];

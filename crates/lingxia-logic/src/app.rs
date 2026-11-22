@@ -277,6 +277,7 @@ pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
         "lx.host.terminal.settings",
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",
+        "lx.host.terminal.windows",
     ] {
         crate::capability::unsupported_namespace(ctx, &terminal, path, "host.terminal")?;
     }

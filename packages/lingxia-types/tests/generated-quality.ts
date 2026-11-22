@@ -38,10 +38,10 @@ declare const videoInfo: VideoInfo;
 
 const resolvedAppearance: ResolvedAppearance = lx.app.appearance.get();
 const appearanceUnwatch: () => void = lx.app.appearance.watch(() => {});
-const appearanceSetResult: Promise<void> | undefined =
-  lx.host.appearance?.set("dark");
-const appearancePreference: AppearancePreference | undefined =
-  lx.host.appearance?.get();
+const appearanceSetResult: Promise<void> =
+  lx.host.appearance.set("dark");
+const appearancePreference: AppearancePreference =
+  lx.host.appearance.get();
 const navigationUpdateResult: Promise<void> = page.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.app.tabBar.update({ visibility: "visible" });

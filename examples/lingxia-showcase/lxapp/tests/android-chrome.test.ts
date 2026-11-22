@@ -44,7 +44,7 @@ test('the nav bar takes the GPU page palette in light and in dark on Android', {
 }, async (t) => {
   const app = t.app;
   const device = androidDevice(t);
-  const previous = await app.logic.eval(({ lx }) => lx.host.appearance?.get() ?? null);
+  const previous = await app.logic.eval(({ lx }) => lx.host.appearance.get() ?? null);
   if (previous === null) t.skip('only the Control app sets the appearance');
   const colours = async () => {
     const { title, width, surface } = await bars(device);
@@ -58,7 +58,7 @@ test('the nav bar takes the GPU page palette in light and in dark on Android', {
   };
   try {
     for (const scheme of ['dark', 'light'] as const) {
-      await app.logic.eval(async ({ lx }, scheme) => { await lx.host.appearance?.set(scheme); }, scheme);
+      await app.logic.eval(async ({ lx }, scheme) => { await lx.host.appearance.set(scheme); }, scheme);
       let last = { nav: [0, 0, 0], surface: [0, 0, 0] };
       await expect.poll(async () => {
         last = await colours();
@@ -67,7 +67,7 @@ test('the nav bar takes the GPU page palette in light and in dark on Android', {
       }, { timeout: 10_000, message: `in ${scheme} the nav bar is the page's surface colour` }).toBe('match');
     }
   } finally {
-    if (previous !== null) await app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance?.set(previous); }, previous);
+    if (previous !== null) await app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance.set(previous); }, previous);
   }
 });
 
@@ -81,11 +81,11 @@ test('a page dialog dims the nav and tab bars as it dims the page on Android', {
   const view = t.app.view;
   const device = androidDevice(t);
   // The dimming is measured on lit bars: a phone in dark mode runs the page light for the check.
-  const previous = await t.app.logic.eval(({ lx }) => lx.host.appearance?.get() ?? null);
+  const previous = await t.app.logic.eval(({ lx }) => lx.host.appearance.get() ?? null);
   if (previous !== null && previous !== 'light') {
-    await t.app.logic.eval(async ({ lx }) => { await lx.host.appearance?.set('light'); });
+    await t.app.logic.eval(async ({ lx }) => { await lx.host.appearance.set('light'); });
     t.defer(async () => {
-      await t.app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance?.set(previous); }, previous);
+      await t.app.logic.eval(async ({ lx }, previous) => { await lx.host.appearance.set(previous); }, previous);
     });
   }
   const { title, tab, surface } = await bars(device);
