@@ -1907,6 +1907,14 @@
     "defaultMessage": "Type \"Row 3\": only matching rows remain. Tap a row to choose it. Only the rows on screen are built.",
     "description": "What to try in a View lab demo."
   },
+  "lab.demo.scrolling.held.title": {
+    "defaultMessage": "Swipes the app answers",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.scrolling.held.try": {
+    "defaultMessage": "Swipe the pages or drag the panel: each waits for the app, which refuses the last page and the panel's top, so those spring back.",
+    "description": "What to try in a View lab demo."
+  },
   "lab.demo.scrolling.jump.title": {
     "defaultMessage": "Jump to a row",
     "description": "A View lab demo heading."
@@ -2739,6 +2747,10 @@
     "defaultMessage": "Small|Medium|Large|Extra large",
     "description": "A label inside a View lab demo."
   },
+  "lab.label.slowAnswer": {
+    "defaultMessage": "Slow answer",
+    "description": "A label inside a View lab demo."
+  },
   "lab.label.stayIn": {
     "defaultMessage": "Zoom in",
     "description": "A label inside a View lab demo."
@@ -2958,6 +2970,10 @@
   "lab.readout.gap": {
     "defaultMessage": "{side, select, none {Callout closed} below {Callout below the button{nudged, select, yes {, nudged} other {}}} other {Callout above the button{nudged, select, yes {, nudged} other {}}}}",
     "description": "The gap demo's state, in words."
+  },
+  "lab.readout.held": {
+    "defaultMessage": "Page {page}, panel at {panel}{refused, select, page {: the app kept page {page}} panel {: the app kept the panel at {panel}} other {}}",
+    "description": "The held pager and panel demo's state, in words."
   },
   "lab.readout.insets": {
     "defaultMessage": "Top {top} · bottom {bottom} · keyboard {keyboard}",

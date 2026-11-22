@@ -1,10 +1,13 @@
 import { labData } from '../../shared/lib/lab-data';
 import { definePage } from '@lingxia/logic';
+import { heldSnap, holdPage, holdPanel, type HeldChoice } from '../../shared/lib/held-snap';
 
 export default definePage({
-  data: { ...labData(), group: '', spec: '', packagedMedia: false, dipped: false },
+  data: { ...labData(), group: '', spec: '', packagedMedia: false, dipped: false, held: heldSnap() },
   setup(thisPage) {
     const actions = {
+      holdPage: (choice: HeldChoice) => holdPage(thisPage, choice),
+      holdPanel: (choice: HeldChoice) => holdPanel(thisPage, choice),
       interrupt() {
         thisPage.update(d => { d.dipped = true; });
         setTimeout(() => thisPage.update(d => { d.dipped = false; }), 100);

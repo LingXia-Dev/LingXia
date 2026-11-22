@@ -2513,6 +2513,7 @@
     for (const record of settled.values()) {
       if (!record.ids.includes(serial)) continue;
       if (!ok) record.rejected = true;
+      if (!record.ids.some(actionPending)) record.data = page.committed?.view?.data;
       page.invalidated = true;
     }
   }

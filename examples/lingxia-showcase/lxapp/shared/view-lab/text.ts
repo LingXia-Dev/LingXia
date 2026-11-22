@@ -101,6 +101,7 @@ export const demos = {
   },
   scrolling: {
     snap: { testId: 'motion-pager', title: 'lab.demo.scrolling.snap.title', try: 'lab.demo.scrolling.snap.try' },
+    held: { testId: 'lab-held', title: 'lab.demo.scrolling.held.title', try: 'lab.demo.scrolling.held.try' },
     jump: { testId: 'lab-reveal', title: 'lab.demo.scrolling.jump.title', try: 'lab.demo.scrolling.jump.try' },
     sticky: { testId: 'lab-sticky', title: 'lab.demo.scrolling.sticky.title', try: 'lab.demo.scrolling.sticky.try' },
     filter: { testId: 'lab-filter', title: 'lab.demo.scrolling.filter.title', try: 'lab.demo.scrolling.filter.try' },
@@ -185,6 +186,7 @@ export const readouts = {
   sheet: (open: boolean, at: number, closed: number): Words => m('lab.readout.sheet', { open: open ? 'yes' : 'no', at, closed }),
   rows: (rows: number, last: string): Words => m('lab.readout.rows', { rows, last }),
   pages: (page: number): Words => m('lab.readout.pages', { n: page + 1 }),
+  held: (page: number, panel: number, refused: 'none' | 'page' | 'panel'): Words => m('lab.readout.held', { page: page + 1, panel, refused }),
   nested: (opened: number, wifi: boolean, removed: number): Words => m('lab.readout.nested', { opened, wifi: wifi ? 'yes' : 'no', removed }),
   partly: (checked: number, total: number): Words => m('lab.readout.partly', { checked, total }),
   range: (low: number, high: number, done: string): Words => m('lab.readout.range', { low, high, done }),
@@ -270,6 +272,7 @@ export const labels = {
   stickyDays: 'lab.label.stickyDays',
   stickyRows: 'lab.label.stickyRows',
   dayParts: 'lab.label.dayParts',
+  slowAnswer: 'lab.label.slowAnswer',
   containedRow: 'lab.label.containedRow',
   filterRows: 'lab.label.filterRows',
   readTheme: 'lab.label.readTheme',

@@ -36,7 +36,7 @@ export function controlledSnap(key, index) {
 function open(record) {
   if (record.ids.length === 0 || record.rejected || clock() >= record.deadline) return false;
   if (record.ids.some(actionPending)) return true;
-  // Settled: Logic's answer is the first data snapshot after them.
+  // Settled: Logic's answer is the first data snapshot after the last of them.
   return render.view?.data === record.data;
 }
 
@@ -65,6 +65,8 @@ export function snapActionSettled(serial, ok) {
   for (const record of settled.values()) {
     if (!record.ids.includes(serial)) continue;
     if (!ok) record.rejected = true;
+    // The answer is the first snapshot after the last reply, not any since the swipe.
+    if (!record.ids.some(actionPending)) record.data = page.committed?.view?.data;
     page.invalidated = true;
   }
 }

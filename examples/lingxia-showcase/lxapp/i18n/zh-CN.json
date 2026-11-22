@@ -1430,6 +1430,12 @@
   "lab.demo.scrolling.filter.try": {
     "defaultMessage": "输入“Row 3”：只剩匹配的行。点一行即选中。只有屏幕上的行才会被创建。"
   },
+  "lab.demo.scrolling.held.title": {
+    "defaultMessage": "由应用决定的滑动"
+  },
+  "lab.demo.scrolling.held.try": {
+    "defaultMessage": "滑动页面或拖动面板：每次都等应用回答；应用拒绝最后一页和面板的顶端，所以它们会弹回。"
+  },
   "lab.demo.scrolling.jump.title": {
     "defaultMessage": "跳到某一行"
   },
@@ -2054,6 +2060,9 @@
   "lab.label.sizes": {
     "defaultMessage": "小|中|大|特大"
   },
+  "lab.label.slowAnswer": {
+    "defaultMessage": "慢速回答"
+  },
   "lab.label.stayIn": {
     "defaultMessage": "放大"
   },
@@ -2218,6 +2227,9 @@
   },
   "lab.readout.gap": {
     "defaultMessage": "{side, select, none {提示框已关闭} below {提示框在按钮下方{nudged, select, yes {，已微移} other {}}} other {提示框在按钮上方{nudged, select, yes {，已微移} other {}}}}"
+  },
+  "lab.readout.held": {
+    "defaultMessage": "第 {page} 页，面板在 {panel}{refused, select, page {：应用保留了第 {page} 页} panel {：应用把面板留在 {panel}} other {}}"
   },
   "lab.readout.insets": {
     "defaultMessage": "顶部 {top} · 底部 {bottom} · 键盘 {keyboard}"

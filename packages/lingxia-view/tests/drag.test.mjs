@@ -213,6 +213,19 @@ test('a controlled settle waits for Logic: taken late stays put, refused or unan
       s.data = Object.freeze({ at: 2 });
       assert.deepEqual(sentFrames(s, 1), [2], `${name}: the snapshot takes it`);
     }
+    // An unrelated snapshot while the action is out, then the reply, then its data: no visit to 0.
+    {
+      const s = setup();
+      settle(s.frame(), 2);
+      const id = s.request();
+      sentFrames(s, 1);
+      s.data = Object.freeze({ at: 0, tick: 1 });
+      assert.deepEqual(sentFrames(s, 1), [2], `${name}: an unrelated snapshot does not decide`);
+      receiveActionResponse({ v: 2, kind: 'res', id, ok: true });
+      assert.deepEqual(sentFrames(s, 1), [2], `${name}: the reply waits for its own snapshot`);
+      s.data = Object.freeze({ at: 2, tick: 1 });
+      assert.deepEqual(sentFrames(s, 2), [2, 2], `${name}: taken`);
+    }
     // Rejected: back to the page's index once the reply lands.
     {
       const s = setup();

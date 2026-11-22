@@ -1,9 +1,10 @@
 // Scrolling demos of the View catalogue: each is the body of one demo.
-import { List, reveal, useLocal } from '@lingxia/view';
+import { List, reveal, useAction, useLocal, useView } from '@lingxia/view';
 import { Pager } from './kit';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
+import type { HeldSnap } from '../lib/held-snap';
 
 export function JumpDemo() {
   return (
@@ -57,6 +58,41 @@ export function SnapDemo() {
         <view className="grow"><Readout testId="motion-pager-state" state={`page=${page.value}`}>{t(readouts.pages(page.value))}</Readout></view>
         <Button testId="motion-pager-next" size="sm" onClick={() => page.set((page.value + 1) % 3)}>{t(labels.next)}</Button>
       </view>
+    </>
+  );
+}
+
+// A pager and a panel whose index lives in the page's data: a swipe waits for Logic's answer, the
+// last page and the panel's top are refused and spring back. `Slow answer` delays Logic by 250 ms.
+export function HeldDemo() {
+  const { data, actions } = useView();
+  const held = (data as { held?: HeldSnap }).held ?? { page: 0, panel: 1 };
+  const slow = useLocal('held-slow', true);
+  const refused = useLocal<'none' | 'page' | 'panel'>('held-refused', 'none');
+  // Called straight from `onSnapChange`, so the element waits for the answer; a refusal is shown.
+  const page = useAction(actions.holdPage);
+  const panel = useAction(actions.holdPanel);
+  const t = useSay();
+  return (
+    <>
+      <scroll data-testid="lab-held-pager" snapIndex={held.page} onSnapChange={async index => refused.set((await page.run({ index, slow: slow.value })).ok ? 'none' : 'page')}
+        className="w-72 overflow-x-auto snap-x snap-always rounded-xl bg-surface-sunken">
+        <view className="flex-row">
+          {t(labels.dayParts).split('|').map((name, index) => (
+            <view key={name} data-testid={`lab-held-page-${index}`} className="snap-start shrink-0 w-72 h-24 items-center justify-center">
+              <text className="text-lg font-semibold">{name}</text>
+            </view>
+          ))}
+        </view>
+      </scroll>
+      <view className="h-36 w-72 rounded-xl bg-surface-sunken overflow-hidden">
+        <view drag="y" dragSnapPoints={[0, 48, 96]} snapIndex={held.panel} onSnapChange={async index => refused.set((await panel.run({ index, slow: slow.value })).ok ? 'none' : 'panel')}
+          aria-label="Panel" data-testid="lab-held-panel" className="h-36 rounded-t-xl bg-surface-raised p-3">
+          <view className="self-center w-10 h-1 rounded-full bg-line-strong" />
+        </view>
+      </view>
+      <Readout testId="lab-held-state" state={`page=${held.page} panel=${held.panel} refused=${refused.value}`}>{t(readouts.held(held.page, held.panel, refused.value))}</Readout>
+      <switch data-testid="lab-held-slow" bind={slow} aria-label="Slow answer" className="text-sm">{t(labels.slowAnswer)}</switch>
     </>
   );
 }
@@ -144,6 +180,7 @@ export const scrollingDemos = {
   jump: JumpDemo,
   sticky: StickyDemo,
   snap: SnapDemo,
+  held: HeldDemo,
   dots: DotsDemo,
   contained: ContainedDemo,
   edges: EdgesDemo,
