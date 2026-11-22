@@ -1432,3 +1432,117 @@ fn a_written_solid_whose_text_does_not_read_is_caught_at_build() {
         "{problems:?}"
     );
 }
+
+/// The pack of a product app whose dark accent carries dark text.
+const DARK_INK_PACK: &str = r##"{"name":"brand","version":1,"accent":{"seed":"#1b4fe0","derive":true},"appearance":{
+    "light":{"canvas":"#f6f7f8","surface":"#ffffff","surface-raised":"#ffffff","surface-sunken":"#f0f2f4","surface-overlay":"#ffffff",
+        "line":"#dee2e6","line-strong":"#6d7c8d","text":"#1b232b","text-muted":"#56616c","text-faint":"#7a8590",
+        "accent":"#1b4fe0","on-accent":"#ffffff","accent-solid":"#1b4fe0","on-accent-solid":"#ffffff","accent-soft":"#eaf0ff",
+        "on-accent-soft":"#163fb5","focus":"#2865ff","danger":"#b42318","on-danger":"#ffffff","danger-soft":"#f5e0df",
+        "success":"#087a45","on-success":"#ffffff","success-soft":"#dcece5","warning":"#b87000","on-warning":"#0a1420",
+        "warning-soft":"#fbf1e1","chart-1":"#1b4fe0","chart-2":"#9333ea","scrim":"#0a142066","shadow":"#0a1420",
+        "media":"#0a1420b8","media-canvas":"#000000"},
+    "dark":{"canvas":"#101214","surface":"#17191d","surface-raised":"#20252a","surface-sunken":"#1b1f23","surface-overlay":"#20252a",
+        "line":"#30373e","line-strong":"#8399af","text":"#f0f3f5","text-muted":"#b6bec6","text-faint":"#7e8892",
+        "accent":"#5285ff","on-accent":"#0a1420","accent-solid":"#5285ff","on-accent-solid":"#0a1420","accent-soft":"#16294f",
+        "on-accent-soft":"#adc4ff","focus":"#7ba0ff","danger":"#ee6a60","on-danger":"#0a1420","danger-soft":"#362327",
+        "success":"#57c482","on-success":"#0a1420","success-soft":"#1a332d","warning":"#e3a44b","on-warning":"#0a1420",
+        "warning-soft":"#342d23","chart-1":"#5285ff","chart-2":"#a97fe0","scrim":"#000000a0","shadow":"#000000",
+        "media":"#000000b8","media-canvas":"#000000"}}}"##;
+
+#[test]
+fn states_lighten_where_deepening_would_lose_their_label() {
+    let pack = complete(serde_json::from_str(DARK_INK_PACK).unwrap());
+    assert_eq!(
+        check(&pack),
+        Vec::new(),
+        "the product pack builds unchanged"
+    );
+    let dark = resolve(
+        &pack,
+        &Prefs {
+            appearance: Appearance::Dark,
+            ..Prefs::default()
+        },
+    )
+    .unwrap();
+    let ink = dark.color(Role::OnAccentSolid);
+    let [fill, hover, pressed] = [
+        Role::AccentSolid,
+        Role::AccentSolidHover,
+        Role::AccentSolidPressed,
+    ]
+    .map(|role| dark.color(role));
+    assert_eq!(fill, hex("#5285ff"));
+    let l = |color: Rgba| color.oklch().l;
+    assert!(
+        l(hover) - l(fill) >= 0.04 && l(pressed) - l(hover) >= 0.04,
+        "one direction, lighter"
+    );
+    for state in [fill, hover, pressed] {
+        assert!(contrast(ink, state) >= 4.5, "{}", state.hex());
+    }
+    // Its derived danger solid carries white and still deepens.
+    let [fill, pressed] =
+        [Role::DangerSolid, Role::DangerSolidPressed].map(|role| dark.color(role));
+    assert!(l(pressed) < l(fill));
+
+    // A pale fill under dark text in light keeps a wide margin, so it deepens as every press does.
+    let pale: Pack = serde_json::from_str(
+        r##"{"name":"lime","version":1,"accent":{"seed":"#1b4fe0","derive":true},"appearance":{
+            "light":{"accent-solid":"#c6f36b","on-accent-solid":"#1a2410"}}}"##,
+    )
+    .unwrap();
+    let pale = complete(pale);
+    assert_eq!(check(&pale), Vec::new());
+    let light = resolve(&pale, &Prefs::default()).unwrap();
+    let [fill, hover, pressed] = [
+        Role::AccentSolid,
+        Role::AccentSolidHover,
+        Role::AccentSolidPressed,
+    ]
+    .map(|role| light.color(role));
+    assert!(
+        l(fill) - l(hover) >= 0.04 && l(hover) - l(pressed) >= 0.04,
+        "deeper"
+    );
+}
+
+#[test]
+fn a_written_fill_neither_direction_holds_is_refused_with_the_nearest_that_passes() {
+    // Deeper loses the dark label; lighter fades into the white surface.
+    let pack: Pack = serde_json::from_str(
+        r##"{"name":"mid","version":1,"accent":{"seed":"#1b4fe0","derive":true},"appearance":{
+            "light":{"accent-solid":"#6b8cff","on-accent-solid":"#0a1420"}}}"##,
+    )
+    .unwrap();
+    let problems = check(&complete(pack));
+    let light: Vec<_> = problems
+        .iter()
+        .filter(|problem| problem.appearance == "light")
+        .collect();
+    assert_eq!(light.len(), 1, "{problems:?}");
+    let message = &light[0].message;
+    assert!(
+        message.starts_with("accent-solid #6b8cff: its pressed state does not read under on-accent-solid #0a1420 either way (deeper, "),
+        "{message}"
+    );
+    assert!(message.contains("off the surface behind it"), "{message}");
+    let nearest = message
+        .rsplit_once("; ")
+        .and_then(|(_, tail)| tail.strip_suffix(" is the nearest that passes"))
+        .map(hex)
+        .expect(message);
+    let fixed: Pack = serde_json::from_str(&format!(
+        r##"{{"name":"mid","version":1,"accent":{{"seed":"#1b4fe0","derive":true}},"appearance":{{
+            "light":{{"accent-solid":"{}","on-accent-solid":"#0a1420"}}}}}}"##,
+        nearest.hex()
+    ))
+    .unwrap();
+    assert!(
+        check(&complete(fixed))
+            .iter()
+            .all(|problem| problem.appearance != "light"),
+        "the suggested fill passes"
+    );
+}

@@ -528,7 +528,46 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                 continue;
             }
         };
+        let need = if high_contrast { boosted(4.5) } else { 4.5 };
+        let grounds = [theme.color(Role::Surface), theme.color(Role::Canvas)];
+        let mut refused = Vec::new();
+        for (solid, hover, pressed) in derive::SHADES {
+            let label = if solid == Role::AccentSolid {
+                Role::OnAccentSolid
+            } else {
+                Role::OnDangerSolid
+            };
+            let (fill, ink) = (theme.color(solid), theme.color(label));
+            let Err(why) = derive::shade_states(fill, ink, &grounds, need) else {
+                continue;
+            };
+            refused.extend([hover, pressed]);
+            let lighter = match why.ground {
+                Some(ground) if why.lighter >= need => {
+                    format!("lighter, it stands {ground:.2}:1 off the surface behind it")
+                }
+                _ => format!("lighter, {:.2}:1", why.lighter),
+            };
+            let nearest = derive::nearest_passing(fill, ink, &grounds, need)
+                .map_or(String::new(), |near| {
+                    format!("; {} is the nearest that passes", near.hex())
+                });
+            problem(
+                name,
+                format!(
+                    "{} {}: its pressed state does not read under {} {} either way (deeper, {:.2}:1; {lighter}; needs {need:.1}:1){nearest}",
+                    solid.name(),
+                    fill.hex(),
+                    label.name(),
+                    ink.hex(),
+                    why.deeper,
+                ),
+            );
+        }
         for &(foreground, background, ratio) in CONTRAST {
+            if refused.contains(&background) {
+                continue;
+            }
             let needed = if high_contrast && !involves_selection(foreground, background) {
                 boosted(ratio)
             } else {

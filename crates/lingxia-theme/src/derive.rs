@@ -125,22 +125,98 @@ pub(crate) fn is_shade(role: Role) -> bool {
         .any(|&(_, hover, pressed)| role == hover || role == pressed)
 }
 
-/// `from` at least `SHADE_STEP` deeper, its hue and chroma-to-lightness ratio kept.
-fn deeper(from: Rgba) -> Rgba {
+/// `from` at least `SHADE_STEP` deeper, or lighter, its hue and chroma-to-lightness ratio kept.
+fn stepped(from: Rgba, lighter: bool) -> Rgba {
     let start = from.oklch();
+    let sign = if lighter { 1.0 } else { -1.0 };
     let mut l = start.l;
     loop {
-        l -= 0.002;
+        l += 0.002 * sign;
         let shade = Oklch {
             l,
-            c: start.c * l.max(0.0) / start.l.max(f64::EPSILON),
+            c: start.c * l.clamp(0.0, 1.0) / start.l.max(f64::EPSILON),
             h: start.h,
         }
         .rgba(from.0[3]);
-        if start.l - shade.oklch().l >= SHADE_STEP || l <= 0.0 {
+        if (shade.oklch().l - start.l) * sign >= SHADE_STEP || !(0.0..=1.0).contains(&l) {
             return shade;
         }
     }
+}
+
+/// Hover and pressed of `fill`, both a step past the state before.
+fn states(fill: Rgba, lighter: bool) -> [Rgba; 2] {
+    let hover = stepped(fill, lighter);
+    [hover, stepped(hover, lighter)]
+}
+
+/// A fill's states deepen; where that leaves `label` under `need`, they lighten, as long as the
+/// pressed state keeps the fill's own standing off each ground (3:1, or what the fill had).
+pub(crate) fn shade_states(
+    fill: Rgba,
+    label: Rgba,
+    grounds: &[Rgba],
+    need: f64,
+) -> Result<[Rgba; 2], Refused> {
+    let reads = |shades: [Rgba; 2]| shades.iter().all(|&shade| contrast(label, shade) >= need);
+    let deeper = states(fill, false);
+    if reads(deeper) {
+        return Ok(deeper);
+    }
+    let lighter = states(fill, true);
+    let ground = grounds
+        .iter()
+        .map(|&ground| {
+            (
+                contrast(lighter[1], ground),
+                contrast(fill, ground).min(3.0),
+            )
+        })
+        .min_by(|a, b| (a.0 - a.1).total_cmp(&(b.0 - b.1)));
+    if reads(lighter) && ground.is_none_or(|(has, keeps)| has + 1e-9 >= keeps) {
+        return Ok(lighter);
+    }
+    Err(Refused {
+        deeper: contrast(label, deeper[1]),
+        lighter: contrast(label, lighter[1]),
+        ground: ground.map(|(has, _)| has),
+    })
+}
+
+/// Why neither direction holds a fill's states: the label's contrast on the pressed state each
+/// way, and the lighter pressed state's contrast against its nearest ground.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Refused {
+    pub deeper: f64,
+    pub lighter: f64,
+    pub ground: Option<f64>,
+}
+
+/// The fill nearest `fill` in lightness, hue and chroma ratio kept, whose label and states read.
+pub(crate) fn nearest_passing(
+    fill: Rgba,
+    label: Rgba,
+    grounds: &[Rgba],
+    need: f64,
+) -> Option<Rgba> {
+    let start = fill.oklch();
+    (1..=500).find_map(|step| {
+        [1.0, -1.0].into_iter().find_map(|sign| {
+            let l = start.l + sign * f64::from(step) * 0.002;
+            if !(0.0..=1.0).contains(&l) {
+                return None;
+            }
+            let candidate = Oklch {
+                l,
+                c: start.c * l / start.l.max(f64::EPSILON),
+                h: start.h,
+            }
+            .rgba(fill.0[3]);
+            (contrast(label, candidate) >= need
+                && shade_states(candidate, label, grounds, need).is_ok())
+            .then_some(candidate)
+        })
+    })
 }
 
 /// White on a dark-appearance solid fill: past the 4.5 it needs, so rounding never takes it under.
@@ -529,9 +605,9 @@ impl Build<'_> {
             .unwrap_or(tries[0])
     }
 
-    /// Hover and pressed fills of `solid`, each a step deeper than the state before it. A
-    /// derived solid whose dark label would not read on the pressed step carries white instead,
-    /// so a press, labelled or not (a switch track), always deepens.
+    /// Hover and pressed fills of `solid`: deeper, or lighter where deeper would leave its label
+    /// hard to read. A derived solid moves to carry white first, so a derived press always deepens.
+    /// A written one neither way holds keeps the deeper states and [`crate::check`] refuses it.
     fn shade(&mut self, solid: Role) -> [Rgba; 2] {
         let need = self.need(4.5);
         let on = if solid == Role::AccentSolid {
@@ -539,18 +615,19 @@ impl Build<'_> {
         } else {
             Role::OnDangerSolid
         };
-        let steps = |fill: Rgba| {
-            let hover = deeper(fill);
-            [hover, deeper(hover)]
-        };
-        let [hover, pressed] = steps(self.get(solid));
-        if contrast(pressed, self.get(on)) >= need || self.has(solid) || self.has(on) {
-            return [hover, pressed];
+        let (fill, label) = (self.get(solid), self.get(on));
+        let deeper = states(fill, false);
+        if deeper.iter().all(|&shade| contrast(label, shade) >= need) {
+            return deeper;
         }
-        let fill = carrying_white(self.get(solid), need.max(SOLID_WHITE));
-        self.put(solid, fill);
-        self.put(on, WHITE);
-        steps(fill)
+        if !self.has(solid) && !self.has(on) {
+            let fill = carrying_white(fill, need.max(SOLID_WHITE));
+            self.put(solid, fill);
+            self.put(on, WHITE);
+            return states(fill, false);
+        }
+        let grounds = [self.get(Role::Surface), self.get(Role::Canvas)];
+        shade_states(fill, label, &grounds, need).unwrap_or(deeper)
     }
 
     /// The fill of a control that carries white marks and its text. In light the plain role is
