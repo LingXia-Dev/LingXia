@@ -71,8 +71,6 @@ export function UnderThePicture() {
 | `player` (required) | `Video` |  | The `useVideo` player it shows; the page and Logic drive the same one. |
 | `label` (required) | `string` |  | What the video shows, its accessible name. |
 | `labels` (required) | `VideoControlsLabels` |  | Every word the controls show or speak. |
-| `src` | `string` |  | One file or stream. Give it or `sources`. |
-| `sources` | `readonly VideoSource[]` |  | The same video at several qualities; their labels become the quality menu. |
 | `poster` | `string` |  | Shown until the first frame, here and full screen. |
 | `variant` | `VideoPlayerVariant` | `'overlay'` | `overlay` lays the controls over the picture; `bar` puts them in a row under it. |
 | `isAutoPlay` | `boolean` | `false` | Starts playing once it can, muted where the platform requires it. |
@@ -80,6 +78,8 @@ export function UnderThePicture() {
 | `onError` | `((error: VideoError) => void)` |  | Runs when the video fails; the controls already show the error and Retry. |
 | `className` | `string` |  | Classes for the frame, such as its aspect ratio or width. |
 | `data-testid` | `string` |  | On the video; the controls take `<id>-controls`. |
+| `src` | `string` |  |  |
+| `sources` | `readonly VideoSource[]` |  |  |
 
 ## Anatomy
 

@@ -20754,18 +20754,6 @@
           "description": "Every word the controls show or speak."
         },
         {
-          "name": "src",
-          "type": "string",
-          "required": false,
-          "description": "One file or stream. Give it or `sources`."
-        },
-        {
-          "name": "sources",
-          "type": "readonly VideoSource[]",
-          "required": false,
-          "description": "The same video at several qualities; their labels become the quality menu."
-        },
-        {
           "name": "poster",
           "type": "string",
           "required": false,
@@ -20809,6 +20797,18 @@
           "type": "string",
           "required": false,
           "description": "On the video; the controls take `<id>-controls`."
+        },
+        {
+          "name": "src",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "sources",
+          "type": "readonly VideoSource[]",
+          "required": false,
+          "description": ""
         }
       ],
       "otherProps": {},

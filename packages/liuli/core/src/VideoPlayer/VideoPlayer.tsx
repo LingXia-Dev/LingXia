@@ -1,20 +1,19 @@
-import { cx, type Video, type VideoSource, type VideoError } from '@lingxia/view';
+import { cx, type Video, type VideoError, type VideoSourceProps } from '@lingxia/view';
 import { VideoControls, type VideoControlsLabels } from '../VideoControls/VideoControls';
 import { videoPlayerRecipe as r } from './VideoPlayer.recipe';
 
 export type VideoPlayerVariant = 'overlay' | 'bar';
 
-export interface VideoPlayerProps {
+/** `src` for one file or stream, or `sources`, the same video at several qualities whose labels become the quality menu. */
+export type VideoPlayerProps = VideoPlayerOwnProps & VideoSourceProps;
+
+interface VideoPlayerOwnProps {
   /** The `useVideo` player it shows; the page and Logic drive the same one. */
   player: Video;
   /** What the video shows, its accessible name. */
   label: string;
   /** Every word the controls show or speak. */
   labels: VideoControlsLabels;
-  /** One file or stream. Give it or `sources`. */
-  src?: string;
-  /** The same video at several qualities; their labels become the quality menu. */
-  sources?: readonly VideoSource[];
   /** Shown until the first frame, here and full screen. */
   poster?: string;
   /** `overlay` lays the controls over the picture; `bar` puts them in a row under it. @default 'overlay' */
@@ -36,14 +35,13 @@ export interface VideoPlayerProps {
  * dialog over the page. The page keeps the player, so Logic can drive it too.
  */
 export function VideoPlayer({
-  player, label, labels, src, sources, poster, variant = 'overlay', isAutoPlay = false, isLooping = false, onError, className,
-  'data-testid': testId,
+  player, label, labels, poster, variant = 'overlay', isAutoPlay = false, isLooping = false, onError, className,
+  'data-testid': testId, ...source
 }: VideoPlayerProps) {
   const video = (
     <video
       player={player}
-      src={src}
-      sources={sources}
+      {...source}
       poster={poster}
       autoPlay={isAutoPlay}
       loop={isLooping}
