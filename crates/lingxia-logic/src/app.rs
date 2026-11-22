@@ -209,8 +209,17 @@ fn badge_text(value: JSValue) -> JSResult<String> {
         return value.to_rust::<String>();
     }
     if value.is_number() {
-        // A whole number prints without a fraction: `2`, not `2.0`.
-        return Ok(value.to_rust::<f64>()?.to_string());
+        let count = value.to_rust::<f64>()?;
+        if count.is_finite() && count >= 0.0 && count.fract() == 0.0 && count <= u64::MAX as f64 {
+            return Ok((count as u64).to_string());
+        }
+        return Err(rong::RongJSError::from(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!(
+                "lx.host.badge.set: a count is a whole number from 0, not {count}; pass a string for other text"
+            ),
+        ))
+        .at_argument(1));
     }
     Err(rong::HostError::new(
         rong::error::E_INVALID_ARG,
@@ -320,7 +329,7 @@ mod tests {
     use super::{BadgeSurface, badge_surface, badge_text};
     use rong::{JSEngine, JSObject, JSValue};
 
-    /// A number is a count to paint, and a wrong `surface` type is refused at argument 2.
+    /// A count is a whole number from 0; a wrong `surface` type is refused at argument 2.
     #[test]
     fn a_badge_number_paints_and_a_wrong_surface_is_refused() {
         let runtime = <rong::RongJS as JSEngine>::runtime();
@@ -328,7 +337,11 @@ mod tests {
         let number = |value: f64| JSValue::from_rust(&ctx, value);
         assert_eq!(badge_text(number(2.0)).unwrap(), "2");
         assert_eq!(badge_text(number(0.0)).unwrap(), "0");
-        assert_eq!(badge_text(number(1.5)).unwrap(), "1.5");
+        for refused in [1.5, -3.0, f64::NAN, f64::INFINITY] {
+            let error = badge_text(number(refused)).unwrap_err();
+            assert_eq!(error.code(), Some(rong::error::E_INVALID_ARG), "{refused}");
+        }
+        assert_eq!(badge_text(number(1e6)).unwrap(), "1000000");
         assert_eq!(badge_text(JSValue::from_rust(&ctx, "new")).unwrap(), "new");
 
         let options = JSObject::new(&ctx);

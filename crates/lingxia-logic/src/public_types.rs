@@ -2370,14 +2370,15 @@ true
         /// prompts, and a notification never sets one.
         type BadgeApi = r###"{
     /**
-     * Show `value` on the badge, such as an unread count; a count of `0` clears it.
+     * Show `value` on the badge, such as an unread count; a count of `0` clears it. Above 99,
+     * Windows paints `99+`; the other platforms draw the count as their system does for any app.
      * @supports host.badge
      * @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
      * @platform Windows: the taskbar and the notification-area item.
      * @platform iOS: the home-screen icon, numbers only; needs notification permission.
      * @platform HarmonyOS: the home-screen icon.
      * @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
-     * @throws {E_INVALID_ARG} An empty value, or text where the platform paints numbers only.
+     * @throws {E_INVALID_ARG} An empty value, a number that is not a whole count from 0, or text where the platform paints numbers only.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
     set(value: string | number, options?: BadgeOptions): Promise<BadgeResult>;
