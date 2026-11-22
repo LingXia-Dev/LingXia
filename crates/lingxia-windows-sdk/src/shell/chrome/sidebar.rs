@@ -132,7 +132,7 @@ fn draw_tab_bar_inner(
         };
 
         let item_top = item_rect.top + tabbar.item_offset;
-        let item_bottom = (item_rect.top + bottom_tab_item_height()).min(item_rect.bottom);
+        let item_bottom = (item_top + bottom_tab_item_height()).min(item_rect.bottom);
         let center_x = (item_rect.left + item_rect.right) / 2;
         let icon_top = item_top + bottom_tab_icon_top();
         let icon_rect = RECT {
