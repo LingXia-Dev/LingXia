@@ -507,6 +507,14 @@ fn refresh_device_frame_toolbar() {
     }
 }
 
+/// Naming no device keeps the current one and its posture: a folded device rotates folded.
+fn rotate() {
+    lingxia::dev::request_device_change(lingxia::dev::DeviceChange {
+        landscape: Some(!LANDSCAPE.load(Ordering::Acquire)),
+        ..Default::default()
+    });
+}
+
 fn apply_device(index: usize, posture_index: usize, landscape: bool) -> Result<(), String> {
     // Device switching, rotation, and DevTools live on the simulator frame's
     // toolbar (built in `frame_spec`), so the runner attaches no native menu
@@ -640,12 +648,7 @@ fn install_runner_commands(home_app_id: String) {
             }
 
             if command == ROTATE_COMMAND {
-                let index = CURRENT_DEVICE.load(Ordering::Acquire);
-                let landscape = !LANDSCAPE.load(Ordering::Acquire);
-                lingxia::dev::request_device_set(
-                    presets()[index].id().to_string(),
-                    Some(landscape),
-                );
+                rotate();
                 return;
             }
 
@@ -724,12 +727,7 @@ fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
                 return;
             }
             if command == ROTATE_COMMAND {
-                let index = CURRENT_DEVICE.load(Ordering::Acquire);
-                let landscape = !LANDSCAPE.load(Ordering::Acquire);
-                lingxia::dev::request_device_set(
-                    presets()[index].id().to_string(),
-                    Some(landscape),
-                );
+                rotate();
                 return;
             }
             if command == APPEARANCE_COMMAND {
