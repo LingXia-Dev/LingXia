@@ -98,36 +98,7 @@ async fn show_action_sheet(
     }
     let item_list: Vec<String> = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
-
-    // A test run watching the app records the sheet, or answers it instead
-    // of the user once its spec queued answers. Only this
-    // public call: sheets the runtime opens itself (a media source picker)
-    // are not the app's dialog.
-    let work = async {
-        let decision = match lxapp::dialogs::dialog_hook() {
-            Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
-                &lxapp.appid,
-                &ActionSheetShown {
-                    items: item_list.clone(),
-                },
-            ),
-            _ => DialogDecision::Present,
-        };
-        match decision {
-            DialogDecision::Present => {
-                present_action_sheet(&lxapp, item_list, None, item_color).await
-            }
-            DialogDecision::Draw(id) => {
-                let result = present_action_sheet(&lxapp, item_list, None, item_color).await;
-                if let Some(hook) = lxapp::dialogs::dialog_hook() {
-                    hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
-                }
-                result
-            }
-            DialogDecision::Answer(selection) => Ok(selection),
-            DialogDecision::Refuse(message) => Err(js_service_unavailable_error(message)),
-        }
-    };
+    let work = action_sheet(&lxapp, item_list, item_color);
     let selection =
         super::dismissable(&ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await?;
     let Some(index) = selection else {
@@ -145,7 +116,37 @@ async fn show_action_sheet(
     Ok(result)
 }
 
-pub(crate) async fn present_action_sheet(
+/// Every action sheet goes through here, the app's and the runtime's own (a media source
+/// choice): a test run watching the app records it, or answers it once its spec queued answers.
+pub(crate) async fn action_sheet(
+    lxapp: &Arc<LxApp>,
+    item_list: Vec<String>,
+    item_color: Option<String>,
+) -> Result<Option<usize>, RongJSError> {
+    let decision = match lxapp::dialogs::dialog_hook() {
+        Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
+            &lxapp.appid,
+            &ActionSheetShown {
+                items: item_list.clone(),
+            },
+        ),
+        _ => DialogDecision::Present,
+    };
+    match decision {
+        DialogDecision::Present => present_action_sheet(lxapp, item_list, None, item_color).await,
+        DialogDecision::Draw(id) => {
+            let result = present_action_sheet(lxapp, item_list, None, item_color).await;
+            if let Some(hook) = lxapp::dialogs::dialog_hook() {
+                hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+            }
+            result
+        }
+        DialogDecision::Answer(selection) => Ok(selection),
+        DialogDecision::Refuse(message) => Err(js_service_unavailable_error(message)),
+    }
+}
+
+async fn present_action_sheet(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
     cancel_text: Option<String>,
@@ -244,6 +245,45 @@ rong::js_api! {
 #[cfg(test)]
 mod tests {
     use super::classify_action_sheet_index;
+
+    /// A sheet that reaches the platform or the View any other way skips the test hook, the
+    /// cancel text and the dismissal the app's own sheets get.
+    #[test]
+    fn every_sheet_goes_through_action_sheet() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut dirs = vec![root.clone()];
+        while let Some(dir) = dirs.pop() {
+            for path in std::fs::read_dir(&dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+            {
+                if path.is_dir() {
+                    dirs.push(path);
+                    continue;
+                }
+                if path.ends_with("ui/action_sheet.rs")
+                    || path.extension().is_none_or(|ext| ext != "rs")
+                {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                let code = text.split("#[cfg(test)]").next().unwrap();
+                for direct in [
+                    "present_action_sheet",
+                    ".show_action_sheet(",
+                    "\"ui.showActionSheet\"",
+                ] {
+                    assert!(
+                        !code.contains(direct),
+                        "{} presents a sheet with `{direct}`; call `crate::ui::action_sheet`",
+                        path.display()
+                    );
+                }
+            }
+        }
+        let picker = std::fs::read_to_string(root.join("media/picker.rs")).unwrap();
+        assert!(picker.contains("crate::ui::action_sheet("));
+    }
 
     #[test]
     fn classifies_only_minus_one_as_canceled() {
