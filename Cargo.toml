@@ -147,27 +147,27 @@ raw-window-handle = "=0.6.2"
 parley = { version = "=0.12.0", default-features = false }
 taffy = "=0.14.0"
 pollster = "=0.4.0"
-rong_core = "=0.7.0"
+rong_core = "=0.8.0"
 rong_quickjs_sys = "=0.7.0"
 memmap2 = "0.9.11"
 libc = "0.2"
 
-# Rong v0.7 product release
-rong = { version = "0.7.0", default-features = false }
+# Rong v0.8 product release
+rong = { version = "0.8.0", default-features = false }
 rong_rt = { version = "0.6.4", default-features = false }
-rong_modules = { version = "0.7.0", default-features = false }
-rong_http = { version = "0.7.0", default-features = false }
-rong_console = "0.7.0"
-rong_event = "0.7.0"
-rong_storage = "0.7.0"
-rong_abort = "0.7.0"
-rong_assert = "0.7.0"
-rong_buffer = "0.7.0"
-rong_encoding = "0.7.0"
-rong_exception = "0.7.0"
-rong_stream = "0.7.0"
-rong_timer = "0.7.0"
-rong_url = "0.7.0"
+rong_modules = { version = "0.8.0", default-features = false }
+rong_http = { version = "0.8.0", default-features = false }
+rong_console = "0.8.0"
+rong_event = "0.8.0"
+rong_storage = "0.8.0"
+rong_abort = "0.8.0"
+rong_assert = "0.8.0"
+rong_buffer = "0.8.0"
+rong_encoding = "0.8.0"
+rong_exception = "0.8.0"
+rong_stream = "0.8.0"
+rong_timer = "0.8.0"
+rong_url = "0.8.0"
 
 [patch.crates-io]
 # taffy 0.14 with two flexbox fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.

@@ -9,6 +9,7 @@ mod clipboard;
 mod device;
 mod dismissal;
 mod display;
+mod errors;
 mod fs;
 mod host_target;
 pub mod i18n;
@@ -46,6 +47,7 @@ unsafe extern "Rust" {
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
+        errors::init(ctx)?;
         capability::init(ctx)?;
         // The host-bundled Terminal Settings package is a focused control UI,
         // not a general-purpose lxapp. Keep its cold path to the one API it is

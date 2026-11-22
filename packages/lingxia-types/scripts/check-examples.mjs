@@ -10,7 +10,7 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The test API (`automation/`) is checked with `@lingxia/test`.
 const SOURCES = ["src/index.ts", "src/page.ts", "src/error.ts", "src/mocks.ts", "src/generated/logic.ts"];
 const PLACEHOLDER = new Set([2304, 2552, 2582]);
-const PROVIDED = { "@lingxia/logic": ["definePage", "type", "isLxError", "lx"] };
+const PROVIDED = { "@lingxia/logic": ["definePage", "type", "isLxError", "LxError", "lx"] };
 
 export function examplesIn(file) {
   const text = readFileSync(file, "utf8");

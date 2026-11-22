@@ -28,29 +28,46 @@ export const LX_ERROR_CODES = [
 export type LxErrorCode = (typeof LX_ERROR_CODES)[number];
 
 /**
- * What an `lx` call rejects with. Branch on `code`, never on `message`:
+ * What an `lx` call throws or rejects with, argument refusals included, so one `catch` handles it.
+ * Branch on `code`, never on `message`; a refusal is `E_INVALID_ARG` with `data.argument`, `path`,
+ * `expected` and `got`:
  *
  * ```ts
  * async function pickFolder() {
  *   try {
  *     return await lx.pick.directory()
  *   } catch (e) {
- *     if (isLxError(e) && e.code === 'E_NOT_SUPPORTED') return null
+ *     if (e instanceof LxError && e.code === 'E_NOT_SUPPORTED') return null
  *     throw e
  *   }
  * }
  * ```
  */
-export interface LxError {
+export interface LxError extends Error {
   /** The JavaScript error kind, such as `TypeError`; branch on `code` instead. */
   readonly name: string;
   /** For a log line; it can change between releases. */
   readonly message: string;
   /** What went wrong, stable across releases. */
   readonly code: LxErrorCode;
+  /** Free-form detail for a log line. */
+  readonly detail?: string;
+  /** Structured facts about the failure, such as the refused argument. */
+  readonly data?: unknown;
 }
 
-/** Whether `error` is an `lx` rejection; works on every engine, where `instanceof` does not yet. */
+interface LxErrorConstructor {
+  new (message?: string): LxError;
+  /** The prototype every `lx` error shares, which `instanceof LxError` checks. */
+  readonly prototype: LxError;
+}
+
+/** The class the Logic runtime builds every host error from; a plain class elsewhere (Node tests). */
+export const LxError: LxErrorConstructor =
+  ((globalThis as Record<symbol, unknown>)[Symbol.for('lingxia.LxError')] as LxErrorConstructor | undefined) ??
+  (class LxError extends Error {} as unknown as LxErrorConstructor);
+
+/** Whether `error` is an `lx` rejection, including one from another context or a mock, where `instanceof` cannot see it. */
 export function isLxError(error: unknown): error is LxError {
   const target = toRecord(error);
   return Boolean(

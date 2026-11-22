@@ -1,4 +1,5 @@
 import type { Lx } from '../index.js';
+import { LxError } from '../error.js';
 import { LX_MOCK_SHAPE } from './lx-mock-shape.js';
 
 /** `T` with every namespace optional, down to its members; a function is given whole or not at all. */
@@ -6,8 +7,8 @@ export type LxMockOverrides<T = Lx> = {
   [K in keyof T]?: T[K] extends (...args: never[]) => unknown ? T[K] : T[K] extends object ? LxMockOverrides<T[K]> : T[K];
 };
 
-function notSupported(path: string): Error & { code: 'E_NOT_SUPPORTED' } {
-  return Object.assign(new Error(`${path} is not mocked: give it in createLxMock({ ... })`), {
+function notSupported(path: string): LxError {
+  return Object.assign(new LxError(`${path} is not mocked: give it in createLxMock({ ... })`), {
     code: 'E_NOT_SUPPORTED' as const,
   });
 }

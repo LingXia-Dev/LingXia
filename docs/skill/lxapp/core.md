@@ -106,20 +106,21 @@ if (scan.status === 'canceled') return                   // the user backed out
 lx.ui.toast(scan.value)                    // narrowed: the payload is present
 ```
 
-Branch on `code` with `isLxError`, never on the localized message:
+Everything an `lx` call throws or rejects with is an `LxError`, argument refusals included
+(`E_INVALID_ARG`, the argument in `data`); branch on `code`, never on the localized message:
 
 ```ts
-import { isLxError, lx } from '@lingxia/logic'
+import { LxError, lx } from '@lingxia/logic'
 
 try {
   await lx.media.saveToLibrary(path)
 } catch (e) {
-  if (isLxError(e) && e.code === 'E_PERMISSION_DENIED') return lx.ui.toast('Allow photo access in Settings')
+  if (e instanceof LxError && e.code === 'E_PERMISSION_DENIED') return lx.ui.toast('Allow photo access in Settings')
   throw e
 }
 ```
 
-`instanceof` does not work for these errors yet; `hostUpgradeRequired(e)` says the host app needs updating.
+`isLxError(e)` does the same check for an error from another context or a mock; `hostUpgradeRequired(e)` says the host app needs updating.
 
 ## Logic and native APIs
 
