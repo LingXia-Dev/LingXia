@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
     "strict": true, "noEmit": true, "skipLibCheck": true, "lib": ["ES2022"],
-    "types": ["@lingxia/types/logic-globals"]
+    "types": ["@lingxia/types/logic-globals"],
+    "allowImportingTsExtensions": true
   },
-  "files": ["types.ts"]
+  "files": ["types.ts", "node-shim.d.ts", "mount.test.ts"]
 }

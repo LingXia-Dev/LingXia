@@ -1013,3 +1013,6 @@ export type LxRuntimeKindGate = [
   AssertNever<Exclude<Extract<(typeof LX_RUNTIME_SURFACES)[number], { layer: 'logic' }>['name'], keyof RuntimeSurfaceTypes>>,
   AssertNever<Exclude<keyof RuntimeSurfaceTypes, RuntimeSurfaceName>>,
 ];
+
+export { createLxMock } from './mock.js';
+export type { LxMockOverrides } from './mock.js';

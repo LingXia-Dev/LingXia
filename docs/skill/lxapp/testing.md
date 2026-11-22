@@ -399,6 +399,10 @@ Pure Logic helpers are plain TypeScript: import them into a Node test runner
 (`node --test`, vitest) instead. `lxdev test` is for behaviour that needs the
 app running.
 
+A page's Logic runs in Node with `mount(page, { params, lx })` from `@lingxia/logic/testing` and
+`createLxMock({ pick: { file: async () => ({ status: 'ok', file }) } })` from `@lingxia/types/testing`:
+call `mounted.actions.x()`, read `mounted.data`; an `lx` member you did not give rejects `E_NOT_SUPPORTED`.
+
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `render(page, view)`
 compiles a page and runs it on the real View runtime, with a phone `env` you can override. Query by
 test id, text or the props you wrote; every element event has a screen method (`press`, `type`,
