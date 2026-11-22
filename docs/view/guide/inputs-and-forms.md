@@ -106,7 +106,45 @@ editor finishes the composition, so the last composed text is the value.
 
 Every action key calls `onSubmit`: `enterKeyHint` chooses its label, and focus does not move to the
 next field on its own. On a `<textarea>`, `enterKeyHint` `send`, `go`, `done` or `search` makes Return
-submit (Shift+Return inserts a newline); otherwise Return inserts a newline. `autoFocus` places focus on mount; `cell.focus()` focuses the editor bound to that `useLocal` cell.
+submit (Shift+Return inserts a newline); otherwise Return inserts a newline. `autoFocus` places focus on mount.
+
+### After a server error
+
+Refocus the field when the action refuses: await it in the handler, then `cell.focus()` the editor bound
+to the cell and show the error. The action's result decides; `data` in the handler is the old render's.
+
+```tsx
+import { useAction, useLocal } from '@lingxia/view';
+import type { View } from './$types';
+
+export function render({ actions }: View) {
+  const password = useLocal('password', '');
+  const signIn = useAction(actions.signIn);
+  const submit = async () => {
+    if (!(await signIn.run({ password: password.value })).ok) password.focus();
+  };
+  return (
+    <page className="p-4 gap-2">
+      <input type="password" bind={password} onSubmit={submit} aria-label="Password" />
+      {signIn.error && <text role="alert" className="text-sm text-danger">{signIn.error.message}</text>}
+    </page>
+  );
+}
+```
+
+A refusal is a thrown error, which `run` resolves as `{ ok: false, error }`:
+
+```ts
+import { definePage } from '@lingxia/logic';
+
+export default definePage({
+  actions: {
+    async signIn(form: { password: string }) {
+      if (form.password !== 'open sesame') throw new Error('Wrong password');
+    },
+  },
+});
+```
 
 `<input type="search">` has the search keyboard and room for its magnifier. `<textarea>` is 120 px tall until sized.
 

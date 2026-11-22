@@ -85,7 +85,10 @@ Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare str
 | `beforeunload` / router blockers | `useLeaveGuard` |
 
 There are no effects and no lifecycle callbacks in the View. Side effects happen in event handlers and
-in Logic. `render` is synchronous: no Suspense, `lazy`, async components, portals or error boundaries.
+in Logic. A handler may act after an `await` too: await the action, then act on its answer
+(`cell.focus()`, `.set`, `reveal`); see [after a server error](inputs-and-forms.md#after-a-server-error).
+The handler's closure keeps the `data` of the render that made it, so the action must answer for itself
+(its result says whether it passed) rather than the handler reading `data` afterwards. `render` is synchronous: no Suspense, `lazy`, async components, portals or error boundaries.
 A render that throws keeps the previous frame on screen ([Diagnostics](diagnostics.md)).
 
 ## Components and JSX

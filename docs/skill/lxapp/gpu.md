@@ -60,6 +60,8 @@ export function render({ data, actions }: View) {
 - The build reports every problem with `file:line:col`, split into unknown
   utilities, ones the renderer cannot draw, and ones the element ignores.
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
+- No effects: a handler acts, also after an `await` — `if (!(await signIn.run(form)).ok) password.focus()` (or `.set`, `reveal`). Its closure keeps the old render's `data`, so let the action's result answer, not `data` read after the await.
+- `cell.focus()` focuses the editor bound (`bind`) to that cell; from a handler, never in render.
 - `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
 - `reveal(id)` (from `@lingxia/view`, in a handler) scrolls the element with that `id` into view inside its `<scroll>`s, after the render the handler causes; a `<List>` row uses the list's `anchor`.
 - `const box = useBox(name)` + `<view box={box}>` reads the element's laid-out content size: `box.value` is `{ width, height, minContentWidth, maxContentWidth }` in points (the last two: its content at its narrowest and on one line, to choose a layout that fits), `null` until the first layout and one render behind a change (`onLayout={size => …}` is the callback form; on `view`, `text`, `vector`, `plot`, `scroll`).
@@ -132,7 +134,7 @@ export function render({ data, actions }: View) {
 - `<checkbox indeterminate>` is partly checked: a dash, announced as mixed, `indeterminate:` variant; a press calls `onChange(true)`. Automation reads `checked: "mixed"`.
 - A press that misses every box goes to the nearest small control within the platform touch target (44 pt, 48 dp on Android); `locator.touchTarget()` reads that box.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
-  (the last one submits); `cell.focus()` focuses the editor bound to that `useLocal` cell.
+  (the last one submits).
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
 - The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
