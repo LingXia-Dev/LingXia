@@ -71,3 +71,18 @@ test('an action rejection nobody observes reaches the page log once',async()=>{
   assert.deepEqual(takeActionErrors(),[],'a reset cancels quietly');
   void pending;
 });
+test('an action payload follows JSON for undefined and names what is not JSON',()=>{
+  configureActions({__names:['reserve','ticker'],__modes:{reserve:'call',ticker:'call'}});const {actions,channels}=createView({},{});
+  actions.reserve({replaces:undefined,slot:{from:1,to:undefined},seats:[1,undefined,{note:undefined}]}).catch(()=>{});
+  assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{slot:{from:1},seats:[1,null,{}]});
+  actions.reserve(undefined).catch(()=>{});
+  assert.equal(JSON.parse(takeActionRequests()[0]).params,undefined);
+  assert.throws(()=>actions.reserve({slot:{at:new Date(0)}}),{message:'UI_ACTION: reserve payload field slot.at is not JSON (Date)'});
+  assert.throws(()=>actions.reserve({seats:[1,()=>{}]}),{message:'UI_ACTION: reserve payload field seats[1] is not JSON (function)'});
+  assert.throws(()=>actions.reserve({n:NaN}),{message:'UI_ACTION: reserve payload field n is not JSON (NaN)'});
+  assert.throws(()=>actions.reserve(new Map()),{message:'UI_ACTION: reserve payload value is not JSON (Map)'});
+  channels.open('ticker',{symbol:'MSFT',since:undefined}).catch?.(()=>{});
+  assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{symbol:'MSFT'});
+  assert.throws(()=>channels.open('ticker',{at:1n}),{message:'UI_CHANNEL: ticker payload field at is not JSON (bigint)'});
+  assert.deepEqual(takeActionRequests(),[]);reset();
+});

@@ -1776,7 +1776,7 @@
   var nextToken = 1;
   var wakes = /* @__PURE__ */ new Map();
   var ENTER_MS = 200;
-  var reply = (id, ok, payload) => ok ? { kind: "res", id, ok: true, result: payload ?? null } : { kind: "res", id, ok: false, error: payload };
+  var reply = (id, ok, payload2) => ok ? { kind: "res", id, ok: true, result: payload2 ?? null } : { kind: "res", id, ok: false, error: payload2 };
   var text = (value, fallback = "") => typeof value === "string" ? value.slice(0, 4096) : fallback;
   function viewCall(call) {
     const { id, method } = call, params = call.params ?? {};
@@ -2278,9 +2278,9 @@
     };
     const handle2 = Object.freeze({
       id,
-      send(payload) {
+      send(payload2) {
         if (closed) throw error("STREAM_CLOSED", "Channel is closed");
-        send(payload);
+        send(payload2);
       },
       close(code = "done", reason = "") {
         if (!closed) close(code, reason);
@@ -2576,7 +2576,31 @@
       return super.then(onFulfilled, onRejected);
     }
   };
-  var bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
+  var kindOf2 = (value) => value === null ? "null" : typeof value === "number" ? String(value) : typeof value !== "object" ? typeof value : Array.isArray(value) ? "array" : value.constructor?.name ?? "object";
+  function payload(value, refuse, path, depth, budget) {
+    if (depth > 64) throw Error("UI_LOCAL: value too deep");
+    if ((budget.left -= typeof value === "string" ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (Array.isArray(value)) return Object.freeze(Array.from(value, (v, i) => v === void 0 ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget)));
+    if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (v === void 0) continue;
+        budget.left -= k.length + 3;
+        out[k] = payload(v, refuse, path ? `${path}.${k}` : k, depth + 1, budget);
+      }
+      return Object.freeze(out);
+    }
+    throw refuse(path, kindOf2(value));
+  }
+  var bounded = (value, what, who) => payload(
+    value,
+    (path, kind) => Error(`${what === "action" ? "UI_ACTION" : "UI_CHANNEL"}: ${who} payload ${path ? `field ${path}` : "value"} is not JSON (${kind})`),
+    "",
+    0,
+    { left: 65536, what }
+  );
   function configureActions(metadata) {
     outsideRender("configure actions");
     const names3 = metadata?.__names, modes = metadata?.__modes;
@@ -2591,7 +2615,7 @@
       if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page action");
       if (args.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
       admit("actions");
-      const params = args.length && args[0] !== void 0 ? bounded(args[0], "action") : void 0;
+      const params = args.length && args[0] !== void 0 ? bounded(args[0], "action", name) : void 0;
       const id = `ui-action:${nextRequest++}`;
       const encoded = { kind: "req", id, method: name, params };
       if (modes[name] === "stream") {
@@ -2639,14 +2663,14 @@
           throw Error("UI_CHANNEL: expected a page channel handler");
         admit("channels");
         const id = `ui-channel:${nextRequest++}`;
-        const encoded = { kind: "ch.open", id, topic, params: params === void 0 ? void 0 : bounded(params, "channel") };
+        const encoded = { kind: "ch.open", id, topic, params: params === void 0 ? void 0 : bounded(params, "channel", topic) };
         let outgoing = 0;
-        const channel = createChannel(id, (payload) => {
+        const channel = createChannel(id, (payload2) => {
           outsideRender("channel send");
           const entry = activeChannels.get(id);
           if (epoch2 !== actionEpoch || !entry?.open) throw bridgeError("STREAM_CLOSED", "Channel is closed");
           if (requests.length >= 256) throw Error("UI_LIMIT: too many pending channel frames");
-          requests.push({ kind: "ch.data", id, seq: outgoing, payload: bounded(payload, "channel") });
+          requests.push({ kind: "ch.data", id, seq: outgoing, payload: bounded(payload2, "channel", topic) });
           outgoing++;
         }, (code, reason, cause) => {
           outsideRender("channel close");
@@ -2708,12 +2732,12 @@
     code: typeof error?.code === "string" ? error.code : "UI_ACTION",
     message: String(error?.message ?? error)
   } });
-  function automationAction(call, name, payload) {
+  function automationAction(call, name, payload2) {
     const action = typeof name === "string" && has(actions, name) ? actions[name] : void 0;
     if (!action) return automationError(call, { code: "UI_ACTION", message: `no page action ${JSON.stringify(name)}` });
     if (actionModes.get(action) !== "call") return automationError(call, { code: "UI_ACTION", message: `${name} streams; automation calls only call actions` });
     try {
-      (payload === void 0 ? action() : action(payload)).then(
+      (payload2 === void 0 ? action() : action(payload2)).then(
         (value) => automationResults.push({ call, value: value === void 0 ? null : value }),
         (error) => automationError(call, error)
       );
@@ -3085,8 +3109,8 @@
       const tail = JSON.stringify(keys2.slice(parent.length));
       encoded = { payload: `${base.payload.slice(0, -1)},${tail.slice(1)}`, bytes: base.bytes + utf8Bytes(tail, limits.itemKeyBytes) - 1 };
     } else {
-      const payload = JSON.stringify(keys2);
-      encoded = { payload, bytes: utf8Bytes(payload, limits.itemKeyBytes) };
+      const payload2 = JSON.stringify(keys2);
+      encoded = { payload: payload2, bytes: utf8Bytes(payload2, limits.itemKeyBytes) };
     }
     if (Object.isFrozen(keys2)) payloads.set(keys2, encoded);
     return encoded;
@@ -3265,10 +3289,10 @@
         node.list.window = { ...window };
         output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
         if (props.itemKeys !== void 0) {
-          const { payload, bytes } = keyPayload(props.itemKeys);
+          const { payload: payload2, bytes } = keyPayload(props.itemKeys);
           itemKeyBytes += bytes;
           if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
-          output.push(field.listItemKeys, payload);
+          output.push(field.listItemKeys, payload2);
         }
         if (props.anchor !== void 0) output.push(field.listAnchor, JSON.stringify(props.anchor));
         candidate.lists.set(identity, node.list);
@@ -3690,14 +3714,14 @@
   function useRequest(name, action, ...params) {
     if (params.length > 1) throw Error("UI_REQUEST: expected at most one JSON payload");
     const target = pageAction(action, "UI_REQUEST", "call");
-    const payload = params[0] === void 0 ? void 0 : immutable(params[0]);
+    const payload2 = params[0] === void 0 ? void 0 : immutable(params[0]);
     const resource = own(
       name,
       { pending: false, stale: false, value: null, error: null },
       "request",
       "UI_REQUEST",
       requestResource,
-      { action: target?.action, params: payload, key: JSON.stringify(payload) }
+      { action: target?.action, params: payload2, key: JSON.stringify(payload2) }
     );
     return Object.freeze({
       get pending() {
@@ -4802,8 +4826,8 @@
       handlers.get(session).push(props.onFullscreenChange);
     }
     if (bareSession !== void 0) return;
-    on("onWebEvent", (payload) => {
-      const { events } = JSON.parse(payload);
+    on("onWebEvent", (payload2) => {
+      const { events } = JSON.parse(payload2);
       if (!Array.isArray(events)) return;
       for (const event of events) {
         try {
@@ -5276,8 +5300,8 @@
       if (onSnapChange !== void 0 && typeof onSnapChange !== "function") throw Error("UI_PROP: onSnapChange takes a function");
       const key = `${identity}#scroll`;
       wire("snapIndex", controlledSnap(key, snapIndex));
-      if (onSnapChange) on("onSnapChange", (payload) => {
-        const index = Number(payload);
+      if (onSnapChange) on("onSnapChange", (payload2) => {
+        const index = Number(payload2);
         if (!Number.isInteger(index) || index < 0) return;
         snapSettled(key, index, snapIndex, index !== snapIndex ? () => onSnapChange(index) : void 0);
       }, "text");
@@ -5287,8 +5311,8 @@
       if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || !Number.isInteger(cell2.value) || cell2.value < 0)
         throw Error("UI_PROP: bind on a <scroll> takes a mounted useLocal cell holding a snap index");
       wire("snapIndex", cell2.value);
-      on("onSnapChange", (payload) => {
-        const index = Number(payload);
+      on("onSnapChange", (payload2) => {
+        const index = Number(payload2);
         if (Number.isInteger(index) && index >= 0 && cell2.value !== index) cell2.set(index);
       }, "text");
     }
@@ -5304,7 +5328,7 @@
       const { onPointer, pointerAxis = "both" } = props;
       if (typeof onPointer !== "function") throw Error("UI_PROP: onPointer takes a function; pointerAxis goes with it");
       if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
-      on("onPointer", (payload) => onPointer(Object.freeze(JSON.parse(payload))), "text");
+      on("onPointer", (payload2) => onPointer(Object.freeze(JSON.parse(payload2))), "text");
       if (pointerAxis !== "both") wire("pointerAxis", pointerAxis);
     }
     if (props.onPage !== void 0) {
@@ -5316,7 +5340,7 @@
       if (!["view", "button", "link", "text"].includes(tag)) throw Error("UI_PROP: onContextMenu belongs to a <view>, <button>, <link> or <text>");
       const { onContextMenu } = props;
       if (typeof onContextMenu !== "function") throw Error("UI_PROP: onContextMenu takes a function");
-      on("onContextMenu", (payload) => onContextMenu(Object.freeze(JSON.parse(payload))), "text");
+      on("onContextMenu", (payload2) => onContextMenu(Object.freeze(JSON.parse(payload2))), "text");
     }
     if (props.onLayout !== void 0 || props.box !== void 0) {
       if (!boxTags.has(tag)) throw Error("UI_PROP: onLayout and box belong to a <view>, <text>, <vector>, <plot> or <scroll>");
@@ -5324,8 +5348,8 @@
       if (onLayout !== void 0 && typeof onLayout !== "function") throw Error("UI_PROP: onLayout takes a function");
       const binding = props.box === void 0 ? void 0 : boxBinding(props.box);
       if (props.box !== void 0 && !binding) throw Error("UI_PROP: box takes the handle useBox(name) returns");
-      on("onLayout", (payload) => {
-        const { width, height, minContentWidth, maxContentWidth } = JSON.parse(payload);
+      on("onLayout", (payload2) => {
+        const { width, height, minContentWidth, maxContentWidth } = JSON.parse(payload2);
         const size = { width, height, minContentWidth, maxContentWidth }, held2 = binding?.value;
         if (binding && !(held2 && Object.keys(size).every((key) => held2[key] === size[key]))) binding.set(size);
         onLayout?.(size);
@@ -5546,8 +5570,8 @@
           fullscreenHandler(name, props.onFullscreenChange);
         }
         const handlers = videoEvents.filter(([, prop]) => props[prop]);
-        if (name !== void 0 || handlers.length) on("onVideoEvent", (payload) => {
-          const { status, events } = JSON.parse(payload);
+        if (name !== void 0 || handlers.length) on("onVideoEvent", (payload2) => {
+          const { status, events } = JSON.parse(payload2);
           if (name !== void 0) videoStatus(name, status);
           for (const { type, ...detail } of events) {
             const handler = props[videoEvents.find(([event]) => event === type)?.[1]];
@@ -5602,8 +5626,8 @@
     if ((tag === "scroll" || tag === "list") && props.onScrollEdge !== void 0) {
       const { onScrollEdge } = props;
       if (typeof onScrollEdge !== "function") throw Error("UI_PROP: onScrollEdge takes a function");
-      on("onScrollEdge", (payload) => {
-        const { edge, at } = JSON.parse(payload);
+      on("onScrollEdge", (payload2) => {
+        const { edge, at } = JSON.parse(payload2);
         if ((edge === "start" || edge === "end") && typeof at === "boolean") onScrollEdge(Object.freeze({ edge, at }));
       }, "text");
     }
@@ -5854,8 +5878,8 @@
     const sent = cell2 === void 0 && snapIndex !== void 0 ? controlledSnap(key, index) : index;
     wire("drag", JSON.stringify({ axis, points, index: sent, ...release ? { release } : {} }));
     const close = props[dragClose];
-    on("onDragEvent", (payload) => {
-      const event = JSON.parse(payload);
+    on("onDragEvent", (payload2) => {
+      const event = JSON.parse(payload2);
       if (event.phase === "start") onDragStart?.();
       else if (event.phase === "end") onDragEnd?.({ index: event.index, velocity: event.velocity });
       else if (event.phase === "settle" && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {

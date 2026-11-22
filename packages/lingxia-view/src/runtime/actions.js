@@ -62,7 +62,31 @@ class ActionPromise extends Promise {
   }
 }
 
-const bounded = (value, what) => immutable(value, 0, false, { left: 65536, what });
+const kindOf = value => value === null ? 'null' : typeof value === 'number' ? String(value)
+  : typeof value !== 'object' ? typeof value : Array.isArray(value) ? 'array' : value.constructor?.name ?? 'object';
+
+// JSON's rule: an `undefined` field is left out and an `undefined` element is `null`.
+function payload(value, refuse, path, depth, budget) {
+  if (depth > 64) throw Error('UI_LOCAL: value too deep');
+  if ((budget.left -= typeof value === 'string' ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return Object.freeze(Array.from(value, (v, i) =>
+    v === undefined ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget)));
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue;
+      budget.left -= k.length + 3;
+      out[k] = payload(v, refuse, path ? `${path}.${k}` : k, depth + 1, budget);
+    }
+    return Object.freeze(out);
+  }
+  throw refuse(path, kindOf(value));
+}
+const bounded = (value, what, who) => payload(value, (path, kind) =>
+  Error(`${what === 'action' ? 'UI_ACTION' : 'UI_CHANNEL'}: ${who} payload ${path ? `field ${path}` : 'value'} is not JSON (${kind})`),
+  '', 0, { left: 65536, what });
 
 // Native supplies the same compiled action catalog used by WebView pages, after ready.
 export function configureActions(metadata) {
@@ -79,7 +103,7 @@ export function configureActions(metadata) {
     if (epoch !== actionEpoch) throw bridgeError('BRIDGE_CANCELED', 'Stale page action');
     if (args.length > 1) throw Error('UI_ACTION: expected at most one JSON payload');
     admit('actions');
-    const params = args.length && args[0] !== undefined ? bounded(args[0], 'action') : undefined;
+    const params = args.length && args[0] !== undefined ? bounded(args[0], 'action', name) : undefined;
     const id = `ui-action:${nextRequest++}`;
     const encoded = { kind: 'req', id, method: name, params };
     if (modes[name] === 'stream') {
@@ -123,14 +147,14 @@ export function configureActions(metadata) {
         throw Error('UI_CHANNEL: expected a page channel handler');
       admit('channels');
       const id = `ui-channel:${nextRequest++}`;
-      const encoded = { kind: 'ch.open', id, topic, params: params === undefined ? undefined : bounded(params, 'channel') };
+      const encoded = { kind: 'ch.open', id, topic, params: params === undefined ? undefined : bounded(params, 'channel', topic) };
       let outgoing = 0;
       const channel = createChannel(id, payload => {
         outsideRender('channel send');
         const entry = activeChannels.get(id);
         if (epoch !== actionEpoch || !entry?.open) throw bridgeError('STREAM_CLOSED', 'Channel is closed');
         if (requests.length >= 256) throw Error('UI_LIMIT: too many pending channel frames');
-        requests.push({ kind: 'ch.data', id, seq: outgoing, payload: bounded(payload, 'channel') });
+        requests.push({ kind: 'ch.data', id, seq: outgoing, payload: bounded(payload, 'channel', topic) });
         outgoing++;
       }, (code, reason, cause) => {
         outsideRender('channel close');
