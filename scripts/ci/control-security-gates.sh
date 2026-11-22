@@ -56,6 +56,8 @@ case "$profile" in
       -p lingxia-settings \
       -p lingxia-update \
       --lib
+    # Boots the whole `lx` surface; empty on macOS without the Swift-bridge stubs.
+    "$ROOT_DIR/scripts/ci/cargo-test-required.sh" -p lingxia-logic --test lx_surface
     # Update signing decides what code a device will execute, so its publish
     # side belongs on this gate too.
     cargo test -p lingxia-cli --bins -- signed_multipart update_public_key

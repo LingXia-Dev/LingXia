@@ -1584,9 +1584,19 @@
         }
       ],
       "types": [],
-      "tags": {},
+      "tags": {
+        "supports": [
+          "automation"
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "This build carries no automation."
+          }
+        ]
+      },
       "examples": [],
-      "source": "src/index.ts:33"
+      "source": "src/index.ts:35"
     },
     {
       "path": "lx.clipboard",
@@ -11072,7 +11082,7 @@
       "name": "LxFeature",
       "summary": "Feature contracts generated from the runtime registry.",
       "description": "Feature contracts generated from the runtime registry.",
-      "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
+      "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"automation\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
       "source": "src/generated/logic.ts:4496"
     },

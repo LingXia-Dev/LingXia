@@ -39,6 +39,8 @@ pub mod startup;
 pub mod terminal_automation;
 #[cfg(feature = "test-utils")]
 mod test_authority_harness;
+#[cfg(all(feature = "test-utils", feature = "js-appservice"))]
+pub mod test_context;
 mod update;
 pub(crate) mod view_call;
 

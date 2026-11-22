@@ -15,6 +15,8 @@ pub use js_runtime::PageSvc;
 pub(crate) use js_runtime::ServiceMessage;
 #[cfg(feature = "js-appservice")]
 pub(crate) use js_runtime::event_bus;
+#[cfg(all(feature = "test-utils", feature = "js-appservice"))]
+pub(crate) use js_runtime::prepare_test_context;
 #[cfg(feature = "js-appservice")]
 pub(crate) use js_worker_pool::LxAppWorkers;
 

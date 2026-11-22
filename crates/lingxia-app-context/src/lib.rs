@@ -1165,6 +1165,8 @@ pub struct HostBuild {
     pub browser: bool,
     pub terminal: bool,
     pub proxy: bool,
+    /// `lx.automation`, a development capability.
+    pub automation: bool,
 }
 
 static HOST_BUILD: OnceLock<HostBuild> = OnceLock::new();
@@ -1201,6 +1203,10 @@ pub mod capability {
 
         pub fn proxy() -> bool {
             super::super::host_build().proxy
+        }
+
+        pub fn automation() -> bool {
+            super::super::host_build().automation
         }
 
         /// Local notification API (`lx.host.notification`). Every host that

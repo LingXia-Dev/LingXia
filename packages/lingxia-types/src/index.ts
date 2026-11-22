@@ -29,6 +29,8 @@ declare global {
      * for it; `lingxia dev` and the Runner do not widen that. Test-run-only
      * members (`network`, nav `waitUntil: 'ready'`) belong to
      * `HostRunAutomation`, the root of an `lxdev test` program.
+     * @supports automation
+     * @throws {E_NOT_SUPPORTED} This build carries no automation.
      */
     automation(): Automation;
   }

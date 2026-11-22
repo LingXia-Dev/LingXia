@@ -14,6 +14,7 @@ pub(crate) fn host_build() -> HostBuild {
         browser: cfg!(feature = "browser-shell"),
         terminal: cfg!(feature = "terminal-runtime"),
         proxy: cfg!(feature = "proxy"),
+        automation: cfg!(feature = "automation"),
     }
 }
 

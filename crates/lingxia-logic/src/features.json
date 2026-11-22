@@ -1,4 +1,5 @@
 [
+  {"key":"automation","predicate":"Automation"},
   {"key":"host.autostart","predicate":"Autostart"},
   {"key":"host.notification","predicate":"Notifications"},
   {"key":"host.banner","predicate":"Banner"},

@@ -49,6 +49,14 @@ pub(crate) async fn shutdown_app_context(ctx: &JSContext) {
     let _ = ctx.runtime().run_pending_jobs();
 }
 
+/// Prepares `ctx` as the worker does before the Logic extension runs: app context, Rong modules, `lx`.
+#[cfg(feature = "test-utils")]
+pub(crate) fn prepare_test_context(ctx: &JSContext, lxapp: &Arc<LxApp>) -> JSResult<()> {
+    register_app_ctx(ctx, lxapp);
+    rong_modules::init(ctx, RONG_MODULES)?;
+    lx::init(ctx)
+}
+
 /// Rong modules initialized in every Logic worker. Every name must be backed
 /// by an enabled `rong_modules` Cargo feature: resolution fail-fasts on an
 /// uncompiled module and the worker aborts before `lx` exists (see the

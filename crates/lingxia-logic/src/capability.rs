@@ -38,6 +38,7 @@ enum Predicate {
     Haptics,
     PickDirectory,
     PickCamera,
+    Automation,
 }
 
 fn registry() -> &'static Result<Vec<FeatureEntry>, String> {
@@ -177,6 +178,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
                 ))
             }
             Predicate::PickCamera => !cfg!(target_os = "windows"),
+            Predicate::Automation => lingxia_app_context::capability::build::automation(),
         }
     })
     .map_err(js_internal_error)?;
@@ -212,6 +214,24 @@ fn stub_members(path: &str) -> impl Iterator<Item = &'static str> + '_ {
                 .and_then(|rest| rest.strip_prefix('.'))
                 .is_some_and(|member| !member.contains('.'))
         })
+}
+
+/// Without the automation build, `lx.automation` still exists and throws, as the real one is
+/// synchronous; with it, the automation extension installs the real member.
+pub(crate) fn unsupported_automation(ctx: &JSContext) -> JSResult<()> {
+    if lingxia_app_context::capability::build::automation() {
+        return Ok(());
+    }
+    let lx = ctx.global().get::<_, JSObject>("lx")?;
+    let stub = JSFunc::new(ctx, || -> JSResult<()> {
+        Err(HostError::new(
+            rong::error::E_NOT_SUPPORTED,
+            "automation is not part of this build",
+        )
+        .into())
+    })?;
+    lx.set("automation", stub)?;
+    Ok(())
 }
 
 /// A capability namespace stays present without the capability: each member

@@ -4493,4 +4493,4 @@ declare global {
 export {};
 
 /** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.terminal.conpty' | 'host.tray' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';
+export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'automation' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.terminal.conpty' | 'host.tray' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';
