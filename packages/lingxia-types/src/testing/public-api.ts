@@ -1024,4 +1024,6 @@ export type LxRuntimeKindGate = [
 ];
 
 export { createLxMock } from './mock.js';
+/** Every published `lx` member path and its kind, from the catalogue. */
+export { LX_MOCK_SHAPE as LX_CATALOGUE_KINDS } from './lx-mock-shape.js';
 export type { LxMockOverrides } from './mock.js';

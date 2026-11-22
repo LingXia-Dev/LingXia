@@ -3,6 +3,7 @@ import { rawAutomation } from '@lingxia/test/runner';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
 import { waitForCurrentPageVisible } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
+import { LX_CATALOGUE_KINDS } from '@lingxia/types/testing';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
 /** A host that did not build a driver throws on the getter rather than
@@ -104,6 +105,25 @@ const SHAPE_COVERS = [
       && !('optional' in surface && surface.optional))
     .flatMap((surface) => surface.members.map((member) => `shape:${surface.name}.${member}`)),
 ];
+
+// Every member the catalogue publishes exists on this host: one it lacks is a stub that rejects
+// `E_NOT_SUPPORTED`, never a missing key. Derived from the catalogue, so nothing is hand-listed.
+test('every catalogue member exists on this host', {
+  id: 'SHAPE-CATALOGUE',
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'SHAPE-CATALOGUE');
+  const paths = Object.keys(LX_CATALOGUE_KINDS);
+  const missing = await app.logic.eval(({ lx }, paths) => paths.filter((path) => {
+    let value: unknown = { lx };
+    for (const key of path.split('.')) {
+      if (value == null || !(key in Object(value))) return true;
+      value = (value as Record<string, unknown>)[key];
+    }
+    return value === undefined;
+  }), paths);
+  expect(missing).toEqual([]);
+});
 
 test('publish every public runtime and returned-object member', {
   id: 'SHAPE-RUNTIME',
