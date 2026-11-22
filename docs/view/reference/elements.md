@@ -335,13 +335,13 @@ Children: none.
 
 ## `<span>`
 
-Children: text, `<span>` and `<link>` runs. Only inside `<text>`. It takes, of the props every element takes, only `style`, `className`, `key`, `data-testid`, `dir`; the rest go on its `<text>` (`UI_PROP`).
+Children: text, `<span>` and `<link>` runs. Only inside `<text>`. It takes, of the props every element takes, only `style`, `className`, `key`, `data-testid`, `dir`, `aria-hidden`; the rest go on its `<text>` (`UI_PROP`). Its `data-testid` finds the run itself: its rect is the run's own words, so a tap lands on them.
 
 No element-specific props.
 
 ## `<link>`
 
-Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Elsewhere, a block link (`link-box`): a pressable box whose children are text, or noninteractive content elements (a composed control), styled like `<button>`; a block link never sits inside another (`UI_LINK`). As a run it takes, of the props every element takes, only `style`, `className`, `key`, `data-testid`, `dir`, `aria-describedby`; the rest go on its `<text>` (`UI_PROP`). Needs `to`, `onClick`, `popoverTarget` or `interestFor`, disabled or not: `disabled` only stops the press (`UI_LINK`). Enter activates it; Space does not.
+Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Elsewhere, a block link (`link-box`): a pressable box whose children are text, or noninteractive content elements (a composed control), styled like `<button>`; a block link never sits inside another (`UI_LINK`). As a run it takes, of the props every element takes, only `style`, `className`, `key`, `data-testid`, `dir`, `aria-describedby`; the rest go on its `<text>` (`UI_PROP`). Its `data-testid` finds the run itself: its rect is the run's own words, so a tap lands on them. Needs `to`, `onClick`, `popoverTarget` or `interestFor`, disabled or not: `disabled` only stops the press (`UI_LINK`). Enter activates it; Space does not.
 
 | Prop | Type | Required |
 | --- | --- | --- |

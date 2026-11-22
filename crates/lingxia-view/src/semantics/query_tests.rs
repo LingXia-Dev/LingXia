@@ -215,6 +215,20 @@ fn test_ids_reach_the_projection_for_spans_and_link_pieces() {
         (terms["tag"].as_str(), terms["role"].as_str()),
         (Some("a"), Some("link"))
     );
+    // A run's rect is its own words, so a tap on its test id lands on them, not the paragraph.
+    let rect = |id: &str| {
+        let found = i
+            .automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap();
+        let r = &found["rect"];
+        [r["left"].as_f64().unwrap(), r["width"].as_f64().unwrap()]
+    };
+    let [para_left, para_width] = rect("para");
+    for id in ["em", "terms"] {
+        let [left, width] = rect(id);
+        assert!(width > 0.0 && width < para_width / 2.0, "{id}: {width} of {para_width}");
+        assert!(left > para_left, "{id} starts after the paragraph's first word");
+    }
 }
 
 #[test]

@@ -751,7 +751,7 @@
         "needs": "{prop} controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself"}
     },
     "run": {
-      "span": ["style", "className", "key", "data-testid", "dir", "children"],
+      "span": ["style", "className", "key", "data-testid", "dir", "aria-hidden", "children"],
       "link": ["style", "className", "key", "data-testid", "dir", "children", "aria-describedby"]
     },
     "prop": {
