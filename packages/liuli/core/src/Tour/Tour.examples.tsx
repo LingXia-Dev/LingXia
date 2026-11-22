@@ -8,7 +8,7 @@ import { Tour, type TourStep } from './Tour';
 const steps: TourStep[] = [
   { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },
   { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },
-  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.', placement: 'top' },
+  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.' },
 ];
 
 /** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */
