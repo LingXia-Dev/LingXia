@@ -662,9 +662,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
         getContext().getContentResolver().registerContentObserver(
             android.provider.Settings.Secure.getUriFor(HIGH_TEXT_CONTRAST), false, animatorScale);
+        startFoldTracking();
         requestFrame();
     }
     @Override protected void onDetachedFromWindow() {
+        stopFoldTracking();
         getContext().getContentResolver().unregisterContentObserver(animatorScale);
         super.onDetachedFromWindow();
     }
@@ -715,6 +717,55 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public void updateEnvironment(String update) {
         if (destroyed) return;
         nativeUpdateEnvironment(host, update);
+    }
+
+    // The window's fold, in window pixels, from Jetpack WindowManager; projected per sample
+    // because this view moves (sidebar, aside) without the fold changing.
+    private Rect foldBounds;
+    private boolean foldHorizontal, foldHalfOpened;
+    private androidx.window.java.layout.WindowInfoTrackerCallbackAdapter foldTracker;
+    private final androidx.core.util.Consumer<androidx.window.layout.WindowLayoutInfo> foldListener = info -> {
+        Rect bounds = null;
+        boolean horizontal = false, halfOpened = false;
+        for (androidx.window.layout.DisplayFeature feature : info.getDisplayFeatures()) {
+            if (!(feature instanceof androidx.window.layout.FoldingFeature)) continue;
+            androidx.window.layout.FoldingFeature fold = (androidx.window.layout.FoldingFeature) feature;
+            bounds = fold.getBounds();
+            horizontal = fold.getOrientation() == androidx.window.layout.FoldingFeature.Orientation.HORIZONTAL;
+            halfOpened = fold.getState() == androidx.window.layout.FoldingFeature.State.HALF_OPENED;
+            break;
+        }
+        if (java.util.Objects.equals(bounds, foldBounds) && horizontal == foldHorizontal && halfOpened == foldHalfOpened) return;
+        foldBounds = bounds; foldHorizontal = horizontal; foldHalfOpened = halfOpened;
+        requestFrame();
+    };
+
+    private void startFoldTracking() {
+        android.app.Activity activity = activityOf(getContext());
+        if (activity == null || foldTracker != null) return;
+        foldTracker = new androidx.window.java.layout.WindowInfoTrackerCallbackAdapter(
+            androidx.window.layout.WindowInfoTracker.getOrCreate(activity));
+        foldTracker.addWindowLayoutInfoListener(activity, main::post, foldListener);
+    }
+
+    private void stopFoldTracking() {
+        if (foldTracker == null) return;
+        foldTracker.removeWindowLayoutInfoListener(foldListener);
+        foldTracker = null;
+    }
+
+    private static android.app.Activity activityOf(Context context) {
+        while (context instanceof android.content.ContextWrapper) {
+            if (context instanceof android.app.Activity) return (android.app.Activity) context;
+            context = ((android.content.ContextWrapper) context).getBaseContext();
+        }
+        return null;
+    }
+
+    /** The fold across this view in view-local dp, or JSON null. */
+    private Object localHinge() {
+        JSONObject hinge = GpuFoldAdapter.toLocalHingeJson(this, foldBounds, foldHorizontal, foldHalfOpened);
+        return hinge != null ? hinge : JSONObject.NULL;
     }
 
     /** Measured overlap in physical pixels, supplied by the native host after layout. */
@@ -808,7 +859,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 .put("text_scale", textScale)
                 // The user's clock and week settings, which the language alone gets wrong.
                 .put("hour_cycle", android.text.format.DateFormat.is24HourFormat(getContext()) ? "h23" : "h12")
-                .put("first_weekday", java.util.Calendar.getInstance(locale).getFirstDayOfWeek()).toString();
+                .put("first_weekday", java.util.Calendar.getInstance(locale).getFirstDayOfWeek())
+                .put("platform", "android")
+                .put("hinge", localHinge()).toString();
         } catch (org.json.JSONException error) { throw new IllegalStateException("Invalid native environment", error); }
     }
     public void dispose() {

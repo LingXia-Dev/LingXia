@@ -81,6 +81,15 @@ enum LxAppLayoutReconciler {
     /// `LayoutPresentationPlan` JSON returned by `surfaceDerivedLayout`). The
     /// reconciler acts on `asides` for now, but decodes the complete contract so
     /// any future skin binding has the full typed view.
+    private struct PlanHingeRect: Decodable {
+        let x: Double
+        let y: Double
+        let width: Double
+        let height: Double
+        let orientation: String
+        let posture: String
+    }
+
     private struct LayoutPresentationPlan: Decodable {
         let sequence: UInt64?
         let sizeClass: String
@@ -94,6 +103,7 @@ enum LxAppLayoutReconciler {
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
         let mainSwitcher: MainSwitcher?
+        let hinge: PlanHingeRect?
     }
 
     private struct MainSwitcher: Decodable {
@@ -197,7 +207,7 @@ enum LxAppLayoutReconciler {
 
         // The core already resolved breakpoints and hysteresis. Bind shell
         // chrome to that same plan so macOS cannot drift from Windows.
-        shell.applySurfaceLayoutProjection(plan.sizeClass)
+        shell.applySurfaceLayoutProjection(plan.sizeClass, switcherForm: plan.switcherForm)
         let workspace = shell.workspaceManager
 
         // Desired docked panel set from the core (panel id -> edge).

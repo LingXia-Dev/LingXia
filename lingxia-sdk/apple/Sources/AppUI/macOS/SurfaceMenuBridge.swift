@@ -185,6 +185,7 @@ final class SurfaceMenuPresenter: NSObject {
 
     private static func localizedTitle(for action: String?) -> String? {
         switch action {
+        case "moveToAside": L10n.string("lx_surface_move_to_aside")
         case "rename": L10n.string("lx_surface_rename")
         case "resetTitle": L10n.string("lx_surface_reset_title")
         case "close": L10n.string("lx_surface_close")

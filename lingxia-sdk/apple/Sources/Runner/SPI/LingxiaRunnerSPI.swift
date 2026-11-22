@@ -471,6 +471,18 @@ import WebKit
             GpuPages.simulatedPixelRatio = ratio
         }
 
+        /// The simulated foldable device's local hinge JSON (`{x,y,width,height,orientation,posture}`),
+        /// or nil when no hinge intersects the screen.
+        public static func setHinge(_ hingeJson: String?) {
+            GpuPages.simulatedHinge = hingeJson
+        }
+
+        /// Window points above the simulated screen in a shell window, so a docked page's
+        /// hinge is measured from the screen's top rather than the window's.
+        public static func setScreenTopInset(_ inset: CGFloat) {
+            GpuPages.simulatedScreenTopInset = inset
+        }
+
         /// The simulated device's system text size (a factor of the default) and its
         /// increased-contrast setting, which GPU pages read as their environment's. Nil
         /// follows the Mac.

@@ -2,6 +2,7 @@ import { display, window } from '@kit.ArkUI';
 import { i18n } from '@kit.LocalizationKit';
 import { common, Configuration } from '@kit.AbilityKit';
 import { accessibility } from '@kit.AccessibilityKit';
+import { GpuCanvasOrigin, GpuCanvasSize, HingeRect, readLocalHinge } from './GpuFoldAdapter';
 
 /**
  * The OS facts a GPU page's `env` is derived from, in device pixels, with the keys
@@ -26,6 +27,7 @@ export class GpuFacts {
   text_scale: number[][] | null = null;
   hour_cycle: string = 'h23';
   first_weekday: number = 1;
+  hinge: HingeRect | null = null;
 }
 
 /** A page rect on screen, device pixels. */
@@ -86,5 +88,8 @@ export function sampleFacts(context: common.UIAbilityContext, win: window.Window
   }
   facts.hour_cycle = i18n.System.is24HourClock() ? 'h23' : 'h12';
   facts.first_weekday = i18n.getCalendar(locale).getFirstDayOfWeek();
+  const origin: GpuCanvasOrigin = { x: rect.x, y: rect.y };
+  const size: GpuCanvasSize = { width: rect.width, height: rect.height };
+  facts.hinge = readLocalHinge(origin, size, facts.scale);
   return facts;
 }

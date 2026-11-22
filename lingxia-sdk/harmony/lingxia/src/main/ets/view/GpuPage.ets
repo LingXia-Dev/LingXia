@@ -11,6 +11,7 @@ import { localizedString } from '../app/DisplayLanguageResources';
 import { LingXiaWebView } from '../lxapp/LingXiaWebView';
 import { WebViewInfo, WebViewManager } from '../lxapp/WebViewBridge';
 import { GpuRect, sampleFacts } from './GpuEnvironment';
+import { observeFoldStatus } from './GpuFoldAdapter';
 import {
   gpuPageMount,
   gpuPageMeasured,
@@ -261,6 +262,8 @@ export struct GpuPage {
   /** The newest system configuration (font size, appearance) and the subscription that brings it. */
   private config: Configuration | null = null;
   private environment: number = -1;
+  /** Half-folding moves `env.hinge`'s posture without resizing the window. */
+  private unsubscribeFold: (() => void) | null = null;
   /** The failure whose action was pressed: its button waits for the next report. */
   @State retried: GpuRecovery | null = null;
   @State backed: GpuRecovery | null = null;
@@ -315,6 +318,7 @@ export struct GpuPage {
     } catch (_) {
       // Before API 23 there is no such setting to follow.
     }
+    this.unsubscribeFold = observeFoldStatus((): void => this.remeasure());
     // This component's own window: the last-created one is a float's sub-window while it exists.
     const named: window.Window | undefined = this.ownWindow();
     (named !== undefined ? Promise.resolve(named) : window.getLastWindow(context)).then((win: window.Window) => {
@@ -372,6 +376,8 @@ export struct GpuPage {
       accessibility.offAnimationReduceStateChange(this.onReduceMotion);
     } catch (_) {
     }
+    this.unsubscribeFold?.();
+    this.unsubscribeFold = null;
     if (this.environment >= 0) {
       (Lingxia.context as common.UIAbilityContext).getApplicationContext().off('environment', this.environment);
       this.environment = -1;
