@@ -384,7 +384,7 @@ export function rules(schema, common) {
   // At most one of an exclusive group, and a companion only with its own member.
   for (const [name, entry] of Object.entries(exclusive)) {
     known(`exclusive.${name}`, entry.on);
-    for (const member of [...entry.props, ...Object.values(entry.with ?? {}).flat()])
+    for (const member of [...entry.props, ...Object.values(entry.with ?? {}).flat(), ...(entry.orElse ? [entry.orElse] : [])])
       for (const tag of entry.on) if (!schema.elements[tag].props[member]) throw Error(`schema.json: rules.exclusive.${name}: <${tag}> has no prop ${member}`);
     out.exclusive[name] = entry;
     for (const member of entry.props) {
@@ -436,7 +436,9 @@ function exclusiveUnion(element, entry) {
   const never = props => props.map(prop => `${propName(prop)}?: never;`).join(' ');
   const all = [...entry.props, ...entry.props.flatMap(companions)];
   const one = prop => `{ ${member(prop, { ...element.props[prop], required: true })} ${companions(prop).map(other => member(other, { ...element.props[other], required: true })).join(' ')} ${never(all.filter(other => other !== prop && !companions(prop).includes(other)))} }`;
-  return `(${[...entry.props.map(one).reverse(), `{ ${never(all)} }`].join(' | ')})`;
+  // `orElse`: with none of the group set, that prop is required.
+  const none = `{ ${never(all)}${entry.orElse ? ` ${member(entry.orElse, { ...element.props[entry.orElse], required: true })}` : ''} }`;
+  return `(${[...entry.props.map(one).reverse(), none].join(' | ')})`;
 }
 
 /** The roles `<tag>` may carry: every role whose rules all admit it. */

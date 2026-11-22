@@ -371,7 +371,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 ## `<video>`
 
-Children: none.
+Children: none. At most one of `src` or `sources` (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -400,7 +400,7 @@ Children: none.
 | `onQualityChange` | `(event: VideoQualityChange) => void` |  |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
 
-`src` plays one file; `sources` offers the same video at several qualities. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
+`src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume` apply only when their value changes, so a handle's `play()` or `pause()` stands until that prop itself changes. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
 
 ## `<webview>`
 

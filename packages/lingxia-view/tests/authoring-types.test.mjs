@@ -80,6 +80,8 @@ test('tsc blames the trait a mistake breaks, not another trait of the element', 
     ['openAndSnap', /Property 'popover' is missing in type .* but required in type '\{ popover: true/],
     ['closeAndSnap', /Property 'drag' is missing in type .* but required in type '\{ drag: "x" \| "y";/],
     ['unheard', /Property 'onSnapChange' is missing in type .* but required in type '\{ snapIndex: number; onSnapChange: /],
+    ['silent', /Property 'player' is missing in type .* but required in type '\{ src\?: undefined; sources\?: undefined; player: Video; \}'/],
+    ['twice', /^Types of property 'sources' are incompatible\. +Type '\{ src: string; label: string; \}\[\]' is not assignable to type 'undefined'\.$/],
   ]) assert.match(reasons.get(name) ?? 'no error', reason, name);
-  assert.equal(reasons.size, 10);
+  assert.equal(reasons.size, 12);
 });

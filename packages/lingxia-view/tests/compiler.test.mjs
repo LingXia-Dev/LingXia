@@ -176,6 +176,17 @@ test('bind and snapIndex on one element fail the build; either alone passes', ()
   ]);
 });
 
+test('a <video> names one source, or a player that has one', () => {
+  clean('const a = <video src="a.mp4"/>;');
+  clean('const a = <video player={hero}/>;');
+  clean('const a = <video {...rest}/>;');
+  assert.deepEqual(audit('const a = <video/>;', 'page.tsx'), ['page.tsx:1:12: UI_PROP: a <video> needs a source: add src (one file) or sources (a choice of quality), or player={useVideo(name)} to show a player another <video> gives a source']);
+  assert.deepEqual(audit('const a = <video src="a.mp4" sources={list}/>;', 'page.tsx').map(problem => problem.split(': ').slice(1).join(': ')), [
+    'UI_PROP: src and sources both name the video; give src for one file, or sources for a choice of quality',
+    'UI_PROP: sources and src both name the video; give src for one file, or sources for a choice of quality',
+  ]);
+});
+
 test('a <span> outside <text> fails the build with the fix', () => {
   clean('const a = <text>A <span className="font-bold">b</span> <link to="/t"><span>c</span></link></text>;');
   clean('function Code() { return <span>x</span>; }');

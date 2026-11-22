@@ -60,6 +60,8 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `onDragStart` | on `<view>`, `<button>`, `<dialog>`: `onDragStart belongs to an element with drag; add drag="x" or drag="y"` |
 | `onDragEnd` | on `<view>`, `<button>`, `<dialog>`: `onDragEnd belongs to an element with drag; add drag="x" or drag="y"` |
 | `aria-actions` | on `<view>`, `<button>`, `<dialog>`: `aria-actions belongs to an element with drag; add drag="x" or drag="y"` |
+| `src` | on `<video>`: `src and sources both name the video; give src for one file, or sources for a choice of quality` |
+| `sources` | on `<video>`: `sources and src both name the video; give src for one file, or sources for a choice of quality` |
 | `aria-activedescendant` | `aria-activedescendant belongs on an <input> or <textarea>` |
 | `aria-valuenow` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `aria-valuemin` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |

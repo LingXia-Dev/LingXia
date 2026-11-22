@@ -83,6 +83,10 @@ export function admissionProblems(node, file) {
     const broken = (has(rules.role, value) ? rules.role[value] : []).find(rule => breaks(rule, value));
     if (broken) problems.push([role, `UI_PROP: ${broken.error}`]);
   }
+  // A group whose orElse prop stands in when none of it is set: only a spread may hide one.
+  if (!spread) for (const group of Object.values(rules.exclusive))
+    if (group.orElse && group.on.includes(kind) && ![...group.props, group.orElse].some(name => named.has(name)))
+      problems.push([node.tagName, `UI_PROP: ${group.missing}`]);
   for (const [name, list] of Object.entries(rules.prop)) {
     const attribute = named.get(name);
     const set = attribute && attributeValues(attribute);

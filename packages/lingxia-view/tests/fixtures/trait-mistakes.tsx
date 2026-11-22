@@ -11,3 +11,5 @@ export const actions = <button aria-actions="close" onClick={() => {}}>Close</bu
 export const openAndSnap = <view open aria-label="Sheet" dragSnapPoints={[0, 100]}/>;
 export const closeAndSnap = <view popover onCloseRequest={() => false} dragSnapPoints={[0]}/>;
 export const unheard = <scroll snapIndex={0}/>;
+export const silent = <video aria-label="Clip"/>;
+export const twice = <video src="a.mp4" sources={[{ src: 'b.mp4', label: '720p' }]}/>;

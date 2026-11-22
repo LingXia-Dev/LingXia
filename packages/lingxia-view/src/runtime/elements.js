@@ -730,7 +730,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const name = props.player === undefined ? undefined : playerName(props.player);
       if (props.player !== undefined && name === undefined) throw Error('UI_VIDEO: player takes the handle useVideo(name) returns');
       const source = props.src ?? props.sources;
-      if (source === undefined && name === undefined) throw Error('UI_VIDEO: a <video> needs src or sources, or a player another <video> gives one');
+      if (source === undefined && name === undefined) throw Error(`UI_PROP: ${authoringRules.exclusive.videoSource.missing}`);
       if (props.src !== undefined) wire('videoSrc', props.src);
       if (props.sources !== undefined) wire('videoSources', JSON.stringify(props.sources.map(({ src, label }) => ({ src, label }))));
       // A named player is the page's; a bare <video> owns one keyed by its place in the tree.

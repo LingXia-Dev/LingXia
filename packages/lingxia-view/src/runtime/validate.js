@@ -156,7 +156,6 @@ export function video(props) {
   if (props.src !== undefined && !source(props.src)) throw Error('UI_VIDEO: invalid source');
   if (props.poster !== undefined && !source(props.poster)) throw Error('UI_VIDEO: invalid poster');
   if (props.sources !== undefined) {
-    if (props.src !== undefined) throw Error('UI_VIDEO: give src or sources, not both');
     const labels = new Set();
     if (!Array.isArray(props.sources) || props.sources.length < 1 || props.sources.length > 8) throw Error('UI_VIDEO: sources takes 1..8 { src, label } entries');
     for (const entry of props.sources) {

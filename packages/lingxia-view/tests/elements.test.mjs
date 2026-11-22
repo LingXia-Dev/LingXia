@@ -40,7 +40,7 @@ test('image alternative text distinguishes descriptions from decorative images a
 test('image sources and fits are validated; objectFit is image and vector style', () => {
   const image = rendered(() => h('image', { src: 'assets/avatar.png', style: { width: 64, height: 64, objectFit: 'contain' } }));
   assert.deepEqual([image.tag, image.props.imageSrc, image.props.imageFit], ['image', 'assets/avatar.png', 'contain']);
-  for (const props of [{}, { src: 42 }, { src: '' }, { src: 'a\0b' }]) throwsOn(() => h('image', props), /UI_IMAGE/);
+  for (const props of [{ src: 42 }, { src: '' }, { src: 'a\0b' }]) throwsOn(() => h('image', props), /UI_IMAGE/);
   throwsOn(() => h('image', { src: 'ok', style: { objectFit: 'stretch' } }), /UI_STYLE_VALUE: objectFit/);
   throwsOn(() => h('image', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
   throwsOn(() => h('view', { src: 'a' }), /UI_PROP/);
@@ -51,7 +51,7 @@ test('video takes one source and the image placement styles', () => {
   const video = rendered(() => h('video', { src: 'public/clip.mp4', 'aria-label': 'Trailer', style: { objectFit: 'contain', objectPosition: 'top' } }));
   assert.deepEqual([video.tag, video.props.videoSrc, video.props.imageFit, video.props.accessibilityLabel], ['video', 'public/clip.mp4', 'contain', 'Trailer']);
   assert.ok(video.props.imagePosition);
-  for (const props of [{}, { src: 42 }, { src: '' }, { src: 'a\0b' }, { src: 'a', 'aria-label': ' ' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
+  for (const props of [{ src: 42 }, { src: '' }, { src: 'a\0b' }, { src: 'a', 'aria-label': ' ' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
   throwsOn(() => h('video', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
 });
 
@@ -72,7 +72,8 @@ test('video sources carry labelled files, one of src or sources', () => {
   assert.equal(props.videoPaused, 0);
   for (const bad of [[], [{ src: 'a.mp4' }], [{ src: 'a.mp4', label: 'auto' }], [{ src: 'a.mp4', label: 'x' }, { src: 'b.mp4', label: 'x' }]])
     throwsOn(() => h('video', { sources: bad }), /UI_VIDEO/);
-  throwsOn(() => h('video', { src: 'a.mp4', sources }), /UI_VIDEO: give src or sources/);
+  throwsOn(() => h('video', { src: 'a.mp4', sources }), /UI_PROP: src and sources both name the video/);
+  throwsOn(() => h('video', {}), /UI_PROP: a <video> needs a source: add src/);
 });
 
 test('useVideo names the player, re-renders only for read fields and rejects commands without a player', async () => {
