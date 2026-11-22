@@ -108,18 +108,73 @@ fn host_error_kind_for_code(code: u32) -> &'static str {
     rong::error::E_INTERNAL
 }
 
+/// The `reason` a Logic error carries for a business code: `None` where `code` already says it all.
+/// Every code in `i18n/error` has a row; `LxErrorReason` in `public_types.rs` is the same list.
+pub(crate) const REASONS: &[(u32, Option<&str>)] = &[
+    (1000, None),
+    (1001, None),
+    (1002, None),
+    (1003, None),
+    (1004, Some("initializationFailed")),
+    (1005, None),
+    (2000, Some("userCancelled")),
+    (2001, Some("userDeclined")),
+    (3000, None),
+    (3001, Some("cameraPermissionDenied")),
+    (3002, Some("locationPermissionDenied")),
+    (3003, Some("microphonePermissionDenied")),
+    (3004, Some("photosPermissionDenied")),
+    (3005, Some("storagePermissionDenied")),
+    (3006, Some("notificationsPermissionDenied")),
+    (3007, Some("bluetoothPermissionDenied")),
+    (3008, Some("clipboardPermissionDenied")),
+    (4000, Some("serviceUnavailable")),
+    (4001, Some("locationServicesDisabled")),
+    (4002, Some("bluetoothDisabled")),
+    (4003, Some("nfcDisabled")),
+    (4004, Some("featureDisabled")),
+    (5000, None),
+    (5001, Some("networkUnavailable")),
+    (5002, None),
+    (5003, Some("serverFailed")),
+    (5004, Some("connectionFailed")),
+    (6000, None),
+    (6001, Some("deviceUnsupported")),
+    (6002, Some("hostUpgradeRequired")),
+    (12000, Some("wifiUninitialized")),
+    (12001, Some("wifiFailed")),
+    (12002, Some("wifiPasswordWrong")),
+    (12003, Some("wifiTimedOut")),
+    (12004, Some("wifiRequestDuplicated")),
+    (12005, Some("wifiUnsupported")),
+    (12006, Some("wifiPermissionDenied")),
+    (12007, Some("wifiPromptUnanswered")),
+    (12008, Some("wifiConnectionDeclined")),
+    (12009, Some("wifiDisabled")),
+    (12010, Some("wifiNetworkNotFound")),
+];
+
+fn reason_for_code(code: u32) -> Option<&'static str> {
+    REASONS
+        .iter()
+        .find(|(known, _)| *known == code)
+        .and_then(|(_, reason)| *reason)
+}
+
 fn host_error_with_business_meta(
     host_code: &'static str,
     message: String,
     biz_code: u32,
     detail: Option<&str>,
 ) -> HostError {
-    if let Some(detail) = detail.map(str::trim).filter(|value| !value.is_empty()) {
-        return HostError::new(host_code, message)
-            .with_data(rong::err_data!({ bizCode: (biz_code), detail: (detail) }));
+    let mut error = HostError::new(host_code, message);
+    if let Some(reason) = reason_for_code(biz_code) {
+        error = error.with_reason(reason);
     }
-
-    HostError::new(host_code, message).with_data(rong::err_data!({ bizCode: (biz_code) }))
+    if let Some(detail) = detail.map(str::trim).filter(|value| !value.is_empty()) {
+        error = error.with_detail(detail);
+    }
+    error
 }
 
 fn error_data_from_json(value: &Value) -> ErrorData {
@@ -263,8 +318,25 @@ pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
         data: Some(data), ..
     } = error
     {
-        return HostError::new(host_error_kind_for_code(code), err_code_message(code))
-            .with_data(error_data_from_json(data));
+        // `bizCode` is the carrier a View reply reads; a Logic error says it as `reason`.
+        let mut data = data.clone();
+        let detail = data.as_object_mut().and_then(|fields| {
+            fields.remove("bizCode");
+            match fields.remove("detail") {
+                Some(Value::String(detail)) => Some(detail),
+                _ => None,
+            }
+        });
+        let error = host_error_with_business_meta(
+            host_error_kind_for_code(code),
+            err_code_message(code),
+            code,
+            detail.as_deref(),
+        );
+        return match data.as_object() {
+            Some(fields) if fields.is_empty() => error,
+            _ => error.with_data(error_data_from_json(&data)),
+        };
     }
     host_error_with_business_meta(
         host_error_kind_for_code(code),
@@ -315,6 +387,48 @@ pub fn js_error_from_platform_error(error: &PlatformError) -> RongJSError {
 mod tests {
     use super::*;
 
+    /// The table, the generated `LxErrorReason` and the catalogue's codes are one list.
+    #[test]
+    fn the_reason_table_matches_the_union_and_the_error_codes() {
+        let union = REASONS
+            .iter()
+            .filter_map(|(_, reason)| reason.map(|reason| format!("'{reason}'")))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let declared = format!("type LxErrorReason = r###\"{union}\"###;");
+        assert!(
+            include_str!("public_types.rs").contains(&declared),
+            "LxErrorReason in public_types.rs must read: {declared}"
+        );
+        let listed: String = REASONS
+            .iter()
+            .filter_map(|(code, reason)| {
+                let kind = host_error_kind_for_code(*code);
+                reason.map(|reason| format!("        /// - `{reason}` with `{kind}`\n"))
+            })
+            .collect();
+        assert!(
+            include_str!("public_types.rs").contains(&listed),
+            "LxErrorReason's doc must list each reason with its code:\n{listed}"
+        );
+        let catalogue = include_str!("../../../i18n/error/en-US.yaml");
+        let codes: Vec<u32> = catalogue
+            .lines()
+            .filter_map(|line| line.trim().split_once(':')?.0.parse().ok())
+            .collect();
+        let table: Vec<u32> = REASONS.iter().map(|(code, _)| *code).collect();
+        assert_eq!(table, codes, "every i18n error code needs a REASONS row");
+    }
+
+    #[test]
+    fn a_business_code_becomes_reason_and_detail() {
+        let error = host_error_from_business_code_with_detail(3002, "  denied in settings ");
+        assert_eq!(error.reason(), Some("locationPermissionDenied"));
+        assert_eq!(error.detail(), Some("denied in settings"));
+        assert!(error.data.is_none());
+        assert_eq!(host_error_from_business_code(1002).reason(), None);
+    }
+
     #[test]
     fn lxapp_host_errors_keep_structured_navigation_metadata() {
         let error = LxAppError::RongJSHost {
@@ -330,7 +444,7 @@ mod tests {
         };
 
         let host = host_error_from_lxapp_error(&error);
-        let ErrorData::Object(data) = host.data.unwrap() else {
+        let Some(ErrorData::Object(data)) = host.data.clone() else {
             panic!("expected structured error metadata");
         };
         assert_eq!(
@@ -341,5 +455,8 @@ mod tests {
             data.get("operation").and_then(ErrorData::as_str),
             Some("navigateTo")
         );
+        assert!(data.get("bizCode").is_none() && data.get("detail").is_none());
+        assert_eq!(host.detail(), Some("duplicate route"));
+        assert_eq!(host.reason(), None);
     }
 }

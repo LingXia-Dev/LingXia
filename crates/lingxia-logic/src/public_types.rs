@@ -1111,6 +1111,42 @@ rong::js_api! {
         /// What a managed path is: a regular file, a directory or a symbolic link.
         type FsEntryKind = r###"'file' | 'directory' | 'symlink'"###;
 
+        /// Why an `lx` call failed, where `code` alone does not say: `e.reason === 'wifiPasswordWrong'`.
+        ///
+        /// - `initializationFailed` with `E_INTERNAL`
+        /// - `userCancelled` with `E_ABORT`
+        /// - `userDeclined` with `E_ABORT`
+        /// - `cameraPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `locationPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `microphonePermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `photosPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `storagePermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `notificationsPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `bluetoothPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `clipboardPermissionDenied` with `E_PERMISSION_DENIED`
+        /// - `serviceUnavailable` with `E_INVALID_STATE`
+        /// - `locationServicesDisabled` with `E_INVALID_STATE`
+        /// - `bluetoothDisabled` with `E_INVALID_STATE`
+        /// - `nfcDisabled` with `E_INVALID_STATE`
+        /// - `featureDisabled` with `E_INVALID_STATE`
+        /// - `networkUnavailable` with `E_NETWORK`
+        /// - `serverFailed` with `E_NETWORK`
+        /// - `connectionFailed` with `E_NETWORK`
+        /// - `deviceUnsupported` with `E_NOT_SUPPORTED`
+        /// - `hostUpgradeRequired` with `E_NOT_SUPPORTED`
+        /// - `wifiUninitialized` with `E_INVALID_STATE`
+        /// - `wifiFailed` with `E_NETWORK`
+        /// - `wifiPasswordWrong` with `E_NETWORK`
+        /// - `wifiTimedOut` with `E_TIMEOUT`
+        /// - `wifiRequestDuplicated` with `E_NETWORK`
+        /// - `wifiUnsupported` with `E_NOT_SUPPORTED`
+        /// - `wifiPermissionDenied` with `E_NETWORK`
+        /// - `wifiPromptUnanswered` with `E_NETWORK`
+        /// - `wifiConnectionDeclined` with `E_NETWORK`
+        /// - `wifiDisabled` with `E_INVALID_STATE`
+        /// - `wifiNetworkNotFound` with `E_NOT_FOUND`
+        type LxErrorReason = r###"'initializationFailed' | 'userCancelled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'notificationsPermissionDenied' | 'bluetoothPermissionDenied' | 'clipboardPermissionDenied' | 'serviceUnavailable' | 'locationServicesDisabled' | 'bluetoothDisabled' | 'nfcDisabled' | 'featureDisabled' | 'networkUnavailable' | 'serverFailed' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiUninitialized' | 'wifiFailed' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiRequestDuplicated' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound'"###;
+
         /// A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for.
         type PermissionName = r###"'location' | 'camera' | 'photos' | 'notifications'"###;
 

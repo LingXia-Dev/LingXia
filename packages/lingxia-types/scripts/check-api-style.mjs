@@ -27,7 +27,7 @@ const rules = {
   "doc-length": "a member's doc is at most 12 lines; details go on its option and result fields",
   "jargon": "a summary says what the member does, without its own path or internal terms",
   "argument-shape": "a member takes `(subject?, options?)`: at most one positional subject (a callback for `watch`/`on<Event>`), then one `options` or `patch` object last; no boolean flag argument",
-  "literal-case": "a multi-word string literal is snake_case and a one-word literal lower case; HTTP methods are exempt",
+  "literal-case": "a multi-word string literal is snake_case and a one-word literal lower case; HTTP methods and `LxErrorReason` are exempt",
   "readonly-array-field": "an array field of an option or result type is `readonly`",
   "url-type": "a `url` parameter or field accepts `string | URL`",
   "supports-key": "a member that can reject `E_NOT_SUPPORTED` names its `@supports` key, and every key is one `lx.supports` answers (crates/lingxia-logic/src/features.json)",
@@ -196,7 +196,8 @@ for (const file of ["src/generated/logic.ts", "src/page.ts", "src/index.ts"]) {
 
 // Literals are read from the declarations, where a union alias such as `HostOs` is spelled out.
 for (const line of readFileSync(resolve(packageDir, "src/generated/logic.ts"), "utf8").split("\n")) {
-  if (/^\s*(\*|\/\/|\/\*)/.test(line) || /Brand\]:/.test(line)) continue;
+  // `LxErrorReason` names are camelCase, like the property an author compares them on.
+  if (/^\s*(\*|\/\/|\/\*)/.test(line) || /Brand\]:/.test(line) || /^export type LxErrorReason =/.test(line)) continue;
   for (const [, literal] of line.matchAll(/'([^'\s]+)'/g)) {
     if (/^[A-Z]+$/.test(literal) || /^[a-z0-9]+(_[a-z0-9]+)*$/.test(literal) || /:\/\/|\$\{/.test(literal)) continue;
     if (/^[a-z][\w.]*\.\w/.test(literal) || /^on[A-Z]\w*$|^[a-z]+$/.test(literal)) continue;

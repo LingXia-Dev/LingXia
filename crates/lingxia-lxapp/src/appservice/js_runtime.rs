@@ -2314,6 +2314,6 @@ impl http::NetworkAccessGuard for LxAppCtx {
 
 fn network_access_denied_error(detail: impl AsRef<str>) -> RongJSError {
     HostError::new(rong::error::E_PERMISSION_DENIED, "Permission denied")
-        .with_data(rong::err_data!({ bizCode: (3000), detail: (detail.as_ref()) }))
+        .with_detail(detail.as_ref())
         .into()
 }

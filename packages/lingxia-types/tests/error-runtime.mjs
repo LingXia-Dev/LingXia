@@ -18,10 +18,9 @@ for (const code of SURFACE_ERROR_CODES) {
 }
 for (const code of ["unknown", "", 1000, null]) assert.equal(surfaceErrorCode({ data: { code } }), null);
 
-// The runtime floor rides on `data.bizCode`; `code` alone is the wide E_NOT_SUPPORTED bucket.
-assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", data: { bizCode: 6002, detail: "update host" } }), true);
-assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", data: { bizCode: "6002" } }), true);
-assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", data: { bizCode: 6001 } }), false);
-assert.equal(hostUpgradeRequired({ code: "E_NOT_FOUND", data: { bizCode: 1003 } }), false);
+// The runtime floor is a `reason`; `code` alone is the wide E_NOT_SUPPORTED bucket.
+assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", reason: "hostUpgradeRequired", detail: "update host" }), true);
+assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", reason: "deviceUnsupported" }), false);
+assert.equal(hostUpgradeRequired({ code: "E_NOT_SUPPORTED", data: { bizCode: 6002 } }), false);
 assert.equal(hostUpgradeRequired(new Error("x")), false);
 console.log("lx error guard passed.");

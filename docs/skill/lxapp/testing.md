@@ -248,7 +248,7 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
   Top-level void is allowed; nested undefined, Date, methods and DOM handles reject
   instead of being silently transformed. An error thrown in `fn` fails the eval
   with `E_EVAL_SCRIPT`; an `lx.*` error keeps its own `code` for `t.reject` and
-  `expected.code`, and its `data` (e.g. `bizCode`) is readable inside `fn`.
+  `expected.code`, and its `reason` and `data` are readable inside `fn`.
 - Options go first: `{ timeout }`. An eval may take 10 s by default, clamped
   to what the test has left. A timed-out eval fails the test even if caught
   (its script may still run); the next test starts from a relaunched app.

@@ -160,3 +160,35 @@ test('reject malformed clipboard arguments without touching the OS clipboard', {
     },
   ]);
 });
+
+test('raise every lx failure as an LxError, refusals included', {
+  id: 'ARGS-ERROR-001',
+  covers: ['lx.fs.exists', 'lx.ui.confirm'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'ARGS-ERROR-001');
+  const seen = await app.logic.eval(async ({ lx }) => {
+    const LxError = (globalThis as Record<symbol, unknown>)[Symbol.for('lingxia.LxError')] as new () => Error;
+    const shape = async (run: () => unknown) => {
+      try {
+        await run();
+        return 'ACCEPTED';
+      } catch (error) {
+        const e = error as { code?: string; name?: string; reason?: string; data?: { argument?: unknown } };
+        return [error instanceof LxError, e.code, e.name, typeof e.data?.argument, e.reason ?? '-'].join(' ');
+      }
+    };
+    const aborted = new AbortController();
+    aborted.abort();
+    // A page object kept after its page unloaded: the call names it by an instance id no page has.
+    const pageNative = (globalThis as { __LX_PAGE_NATIVE__?: { startRefresh(id: string): void } }).__LX_PAGE_NATIVE__;
+    return {
+      refusal: await shape(() => lx.fs.exists(undefined as never)),
+      abort: await shape(() => lx.ui.confirm({ title: 'never shown', signal: aborted.signal })),
+      reasoned: await shape(() => pageNative?.startRefresh('no-such-page')),
+    };
+  });
+  expect(seen.refusal).toBe('true E_INVALID_ARG TypeError number -');
+  expect(seen.abort.split(' ').slice(0, 2)).toEqual(['true', 'E_ABORT']);
+  expect(seen.reasoned).toBe('true E_INVALID_STATE Error undefined serviceUnavailable');
+});

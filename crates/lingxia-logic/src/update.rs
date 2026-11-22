@@ -156,14 +156,9 @@ impl JSUpdateManager {
 impl JSUpdateManager {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(HostError::new(
-            rong::error::E_TYPE,
-            err_code_message(1002),
-        )
-        .with_data(
-            rong::err_data!({ bizCode: (1002), detail: ("UpdateManager cannot be directly constructed") }),
-        )
-        .into())
+        Err(HostError::new(rong::error::E_TYPE, err_code_message(1002))
+            .with_detail("UpdateManager cannot be directly constructed")
+            .into())
     }
 
     /// Apply update by restarting the app

@@ -1,4 +1,4 @@
-import type { SurfaceErrorCode } from './generated/logic.js';
+import type { LxErrorReason, SurfaceErrorCode } from './generated/logic.js';
 
 /** Every code an `lx` call documents with `@throws`. */
 export const LX_ERROR_CODES = [
@@ -50,6 +50,8 @@ export interface LxError extends Error {
   readonly message: string;
   /** What went wrong, stable across releases. */
   readonly code: LxErrorCode;
+  /** Why it failed, where `code` alone does not say, such as `'locationPermissionDenied'`. */
+  readonly reason?: LxErrorReason | (string & {});
   /** Free-form detail for a log line. */
   readonly detail?: string;
   /** Structured facts about the failure, such as the refused argument. */
@@ -151,7 +153,7 @@ export function lxAppUnavailableReason(error: unknown): LxAppUnavailableReason |
  * ```
  */
 export function hostUpgradeRequired(error: unknown): boolean {
-  return Number(toRecord(toRecord(error)?.data)?.bizCode) === HOST_UPGRADE_REQUIRED;
+  return toRecord(error)?.reason === 'hostUpgradeRequired';
 }
 
 /** Every member of `SurfaceErrorCode`, for runtime narrowing. */
@@ -167,7 +169,6 @@ export const SURFACE_ERROR_CODES = [
   'failed',
 ] as const satisfies readonly SurfaceErrorCode[];
 
-const HOST_UPGRADE_REQUIRED = 6002;
 
 function toRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) return null;
