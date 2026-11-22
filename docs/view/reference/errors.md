@@ -68,7 +68,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_REQUEST` | runtime | Invalid `useRequest` call. |
 | `UI_ROOT` | runtime, native | The page did not return exactly one element. |
 | `UI_SCALE` | build, runtime, native | A value that combines a theme step with arithmetic it cannot follow at run time (two steps, a step times a step, min/max over steps), or a step on a field that does not take it. |
-| `UI_SCOPE` | runtime | A hook or JSX used outside render. |
+| `UI_SCOPE` | build, runtime | A hook or JSX used outside render. JSX at module scope fails the build: build it inside the component, or make it a function. |
 | `UI_SCROLL` | native | Invalid scroll position from the host. |
 | `UI_SELECT` | runtime, native | Invalid `<select>` options, value or selection reply. |
 | `UI_SESSION` | native | A call reached a page session that is not loaded. |

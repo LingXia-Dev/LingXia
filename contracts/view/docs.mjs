@@ -514,7 +514,7 @@ const errorNotes = {
   UI_REQUEST: 'Invalid `useRequest` call.',
   UI_ROOT: 'The page did not return exactly one element.',
   UI_SCALE: 'A value that combines a theme step with arithmetic it cannot follow at run time (two steps, a step times a step, min/max over steps), or a step on a field that does not take it.',
-  UI_SCOPE: 'A hook or JSX used outside render.',
+  UI_SCOPE: 'A hook or JSX used outside render. JSX at module scope fails the build: build it inside the component, or make it a function.',
   UI_I18N: '`t` names a key no catalogue has, or the lxapp has no `i18n/` catalogues.',
   UI_SCROLL: 'Invalid scroll position from the host.',
   UI_SESSION: 'A call reached a page session that is not loaded.',

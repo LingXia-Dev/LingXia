@@ -7,6 +7,7 @@ import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-
 import { spliceInserts, insertionMapComment } from './insertion-map.mjs';
 import { staticStyleWarnings } from './static-style.mjs';
 import { inertControlWarnings } from './inert-controls.mjs';
+import { moduleJsxProblems } from './module-jsx.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
@@ -540,6 +541,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const ownFile = file => !file.fileName.includes(`${sep}node_modules${sep}`);
     const transformed = transformedHolderProblems(sourceFiles, checker, rulesByName, ownFile);
     problems.push(...transformed.errors);
+    problems.push(...moduleJsxProblems(sourceFiles.filter(ownFile)));
     if (problems.length) {
       const lines = report(problems.map(line => packageRelative(root, line)), rel);
       failures.push(`${page}: ${lines.count} authoring problem${lines.count === 1 ? '' : 's'}\n${lines.text}`);

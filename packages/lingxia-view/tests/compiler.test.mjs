@@ -911,3 +911,13 @@ test('classes in a map checked with `satisfies Record<…>` are traced like any 
     });
   }
 });
+
+test('JSX at module scope fails the build with the fix; inside a function or component it builds', async () => {
+  await project({ 'rows.tsx': 'export const header = <text>Head</text>;\nexport const row = () => <text>Row</text>;' }, async (root, build) => {
+    await writeFile(join(root, 'page.tsx'), "import {header} from './rows'; export function render(){return <view>{header}</view>}");
+    await assert.rejects(build(), /rows.tsx:1:23: UI_SCOPE: JSX at module scope runs when the page loads, outside render; build it inside the component, or make it a function/);
+    await writeFile(join(root, 'rows.tsx'), 'export const row = () => <text>Row</text>;\nexport class Rows { make() { return <text>Row</text>; } }');
+    await writeFile(join(root, 'page.tsx'), "import {row} from './rows'; const cached = () => <view/>; export function render(){return <view>{row()}{cached()}</view>}");
+    await build();
+  });
+});
