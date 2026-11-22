@@ -140,6 +140,15 @@ function styles(schema) {
     'authored ones and the accent seed, unless a pack sets them.', '',
     table(['Role', 'Set by', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name), { authored: 'the pack', fixed: 'fixed', derived: 'derived' }[role.tier],
       Object.entries(role.on ?? {}).map(([background, ratio]) => `${ratio}:1 on ${code(background)}`).join(', '), role.doc])), '');
+  out.push('### Hover and pressed fills', '',
+    'A pressed or hovered fill deepens; where that would make its label hard to read, it lightens instead. A pack decides',
+    'the direction once per fill, from its pressed state: a brand fill with dark text in dark appearance brightens on press.',
+    'A lighter press keeps its label at 4.5:1 and the fill at 3:1 (or its rest contrast) against `surface` and `canvas`; a',
+    'written fill that holds neither way fails the build, naming the nearest fill that passes.', '',
+    table(['Fill and label', 'Rest', 'Hover', 'Pressed'], [
+      ['`#c6f36b` under `#1a2410` (light): deeper', '`#c6f36b` 12.6:1', '`#bae564` 11.1:1', '`#aed65d` 9.6:1'],
+      ['`#5285ff` under `#0a1420` (dark): lighter', '`#5285ff` 5.4:1', '`#5e97ff` 6.5:1', '`#69a8ff` 7.6:1'],
+    ]), '');
   return out.join('\n');
 }
 

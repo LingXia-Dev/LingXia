@@ -474,10 +474,10 @@
     {"name": "on-accent-solid", "tier": "derived", "on": {"accent-solid": 4.5, "accent-solid-hover": 4.5, "accent-solid-pressed": 4.5}, "doc": "Text and icons on accent-solid."},
     {"name": "danger-solid", "tier": "derived", "doc": "Fill of a destructive control that is pressed and carries white marks; danger in light, a deeper danger in dark. A danger badge or label keeps danger."},
     {"name": "on-danger-solid", "tier": "derived", "on": {"danger-solid": 4.5, "danger-solid-hover": 4.5, "danger-solid-pressed": 4.5}, "doc": "Text and icons on danger-solid."},
-    {"name": "accent-solid-hover", "tier": "derived", "doc": "accent-solid under a hovering pointer: a visible step deeper in both appearances, hue kept. Always derived; a pack does not write it."},
-    {"name": "accent-solid-pressed", "tier": "derived", "doc": "accent-solid while pressed: the same step again past hover, so a press always goes deeper. Always derived; a pack does not write it."},
-    {"name": "danger-solid-hover", "tier": "derived", "doc": "danger-solid under a hovering pointer: a visible step deeper, hue kept. Always derived; a pack does not write it."},
-    {"name": "danger-solid-pressed", "tier": "derived", "doc": "danger-solid while pressed: the same step again past hover. Always derived; a pack does not write it."}
+    {"name": "accent-solid-hover", "tier": "derived", "doc": "accent-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it."},
+    {"name": "accent-solid-pressed", "tier": "derived", "doc": "accent-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it."},
+    {"name": "danger-solid-hover", "tier": "derived", "doc": "danger-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it."},
+    {"name": "danger-solid-pressed", "tier": "derived", "doc": "danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it."}
   ],
   "frame": {
     "doc": "Every message the core hands a platform adapter: the presented frame snapshot, semantic nodes, automation exchanges, input-protocol replies and the text menu. Type grammar: string, bool, u8, u32, u64, i64, usize, f32, f64, any; T? may be absent or null; T[] is a list; T[n] a fixed list; other names refer to types below.",

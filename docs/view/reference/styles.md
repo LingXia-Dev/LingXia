@@ -293,7 +293,19 @@ authored ones and the accent seed, unless a pack sets them.
 | `on-accent-solid` | derived | 4.5:1 on `accent-solid`, 4.5:1 on `accent-solid-hover`, 4.5:1 on `accent-solid-pressed` | Text and icons on accent-solid. |
 | `danger-solid` | derived |  | Fill of a destructive control that is pressed and carries white marks; danger in light, a deeper danger in dark. A danger badge or label keeps danger. |
 | `on-danger-solid` | derived | 4.5:1 on `danger-solid`, 4.5:1 on `danger-solid-hover`, 4.5:1 on `danger-solid-pressed` | Text and icons on danger-solid. |
-| `accent-solid-hover` | derived |  | accent-solid under a hovering pointer: a visible step deeper in both appearances, hue kept. Always derived; a pack does not write it. |
-| `accent-solid-pressed` | derived |  | accent-solid while pressed: the same step again past hover, so a press always goes deeper. Always derived; a pack does not write it. |
-| `danger-solid-hover` | derived |  | danger-solid under a hovering pointer: a visible step deeper, hue kept. Always derived; a pack does not write it. |
-| `danger-solid-pressed` | derived |  | danger-solid while pressed: the same step again past hover. Always derived; a pack does not write it. |
+| `accent-solid-hover` | derived |  | accent-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it. |
+| `accent-solid-pressed` | derived |  | accent-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
+| `danger-solid-hover` | derived |  | danger-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it. |
+| `danger-solid-pressed` | derived |  | danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
+
+### Hover and pressed fills
+
+A pressed or hovered fill deepens; where that would make its label hard to read, it lightens instead. A pack decides
+the direction once per fill, from its pressed state: a brand fill with dark text in dark appearance brightens on press.
+A lighter press keeps its label at 4.5:1 and the fill at 3:1 (or its rest contrast) against `surface` and `canvas`; a
+written fill that holds neither way fails the build, naming the nearest fill that passes.
+
+| Fill and label | Rest | Hover | Pressed |
+| --- | --- | --- | --- |
+| `#c6f36b` under `#1a2410` (light): deeper | `#c6f36b` 12.6:1 | `#bae564` 11.1:1 | `#aed65d` 9.6:1 |
+| `#5285ff` under `#0a1420` (dark): lighter | `#5285ff` 5.4:1 | `#5e97ff` 6.5:1 | `#69a8ff` 7.6:1 |

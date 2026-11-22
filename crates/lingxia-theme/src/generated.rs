@@ -136,13 +136,13 @@ pub enum Role {
     DangerSolid = 64,
     /// Text and icons on danger-solid.
     OnDangerSolid = 65,
-    /// accent-solid under a hovering pointer: a visible step deeper in both appearances, hue kept. Always derived; a pack does not write it.
+    /// accent-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it.
     AccentSolidHover = 66,
-    /// accent-solid while pressed: the same step again past hover, so a press always goes deeper. Always derived; a pack does not write it.
+    /// accent-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it.
     AccentSolidPressed = 67,
-    /// danger-solid under a hovering pointer: a visible step deeper, hue kept. Always derived; a pack does not write it.
+    /// danger-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it.
     DangerSolidHover = 68,
-    /// danger-solid while pressed: the same step again past hover. Always derived; a pack does not write it.
+    /// danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it.
     DangerSolidPressed = 69,
 }
 
