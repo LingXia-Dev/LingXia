@@ -226,6 +226,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_str().is_some_and(|text| text.len() <= 4096),
             "UI_PROP: invalid aria-valuetext",
         ),
+        field::PAGE_TITLE => ensure(bounded_str(value, 4096), "UI_PROP: invalid page title"),
         field::ACCESSIBILITY_HIDDEN => ensure(
             value.as_u64() == Some(1),
             "UI_PROP: invalid accessibilityHidden",

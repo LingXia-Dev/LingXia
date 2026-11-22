@@ -45,6 +45,10 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageRaster")]
         fn gpu_page_raster(token: i64, scale: f32);
 
+        // Page-local simulated fold hinge JSON for Runner foldable postures; empty string clears it.
+        #[swift_bridge(swift_name = "gpuPageSetSimulatedHinge")]
+        fn gpu_page_set_simulated_hinge(token: i64, hinge_json: &str);
+
         #[swift_bridge(swift_name = "gpuPageSetVisible")]
         fn gpu_page_set_visible(token: i64, visible: bool);
 
@@ -445,8 +449,53 @@ fn gpu_page_measured(
             .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
         hour_cycle: Some(hour_cycle.to_owned()),
         first_weekday: Some(first_weekday),
+        hinge: current_simulated_hinge(token),
     };
     with_page(token, |page| page.measured(facts));
+}
+
+static SIMULATED_HINGES: std::sync::Mutex<
+    Option<std::collections::HashMap<i64, serde_json::Value>>,
+> = std::sync::Mutex::new(None);
+
+fn current_simulated_hinge(token: i64) -> Option<serde_json::Value> {
+    SIMULATED_HINGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .and_then(|map| map.get(&token).cloned())
+}
+
+fn clear_simulated_hinge(token: i64) {
+    if let Some(map) = SIMULATED_HINGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+    {
+        map.remove(&token);
+    }
+}
+
+fn gpu_page_set_simulated_hinge(token: i64, hinge_json: &str) {
+    let trimmed = hinge_json.trim();
+    let parsed = if trimmed.is_empty() {
+        None
+    } else {
+        serde_json::from_str::<serde_json::Value>(trimmed).ok()
+    };
+    let mut guard = SIMULATED_HINGES.lock().unwrap_or_else(|e| e.into_inner());
+    match parsed {
+        Some(value) => {
+            guard
+                .get_or_insert_with(Default::default)
+                .insert(token, value);
+        }
+        None => {
+            if let Some(map) = guard.as_mut() {
+                map.remove(&token);
+            }
+        }
+    }
 }
 
 fn gpu_page_raster(token: i64, scale: f32) {
@@ -1362,6 +1411,7 @@ mod live {
 
         fn dispose(&self, token: Token) {
             lingxia_view_apple::post_main(Box::new(move || {
+                super::clear_simulated_hinge(token);
                 let page = PAGES.with(|pages| pages.borrow_mut().remove(&token));
                 drop(page);
                 super::bridge::gpu_pages_dispose(token);

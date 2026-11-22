@@ -601,6 +601,12 @@ impl LxApp {
         info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 
         if stack_size <= 1 {
+            if self
+                .current_page()
+                .is_ok_and(|page| page.is_leave_guarded())
+            {
+                return self.user_leave(LeaveReason::Back).is_ok();
+            }
             // The home root has nothing to leave: unhandled, so the host backgrounds the app.
             if self.is_home_lxapp {
                 return false;
@@ -617,13 +623,14 @@ impl LxApp {
         self.user_leave(LeaveReason::Back).is_ok()
     }
 
-    /// Leave the top page the way the user does: a pushed page whose View
-    /// guards leaving is asked and stays; otherwise the action happens.
-    /// Every user back and home path lands here.
+    /// Leave the top page the way the user does: a page whose View guards
+    /// leaving is asked and stays (including `useBackHandler` on a root page
+    /// for `Back`); otherwise the action happens.
     pub fn user_leave(self: &Arc<Self>, reason: LeaveReason) -> Result<(), crate::LxAppError> {
         let page = self.current_page()?;
-        // Only a pushed page can hold the user; the root has nothing to pop.
-        if self.get_page_stack_size() > 1 && page.is_leave_guarded() {
+        if (self.get_page_stack_size() > 1 || matches!(reason, LeaveReason::Back))
+            && page.is_leave_guarded()
+        {
             page.request_leave(reason);
             return Ok(());
         }
@@ -661,6 +668,17 @@ impl LxApp {
         reason: LeaveReason,
     ) -> Result<(), crate::LxAppError> {
         if self.current_page()?.instance_id() != page.instance_id() {
+            return Ok(());
+        }
+        if matches!(reason, LeaveReason::Back) && self.get_page_stack_size() <= 1 {
+            if !self.is_home_lxapp {
+                if let Some(manager) = lxapp::get_lxapps_manager() {
+                    manager.remove_from_stack(&self.appid);
+                }
+                let _ = self
+                    .runtime
+                    .hide_lxapp(self.appid.clone(), self.session_id());
+            }
             return Ok(());
         }
         self.leave(page, reason)

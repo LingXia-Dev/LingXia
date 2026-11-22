@@ -62,6 +62,7 @@ const environmentChecks = {
   edges: key => `["top", "right", "bottom", "left"].iter().all(|edge| value[${JSON.stringify(key)}][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))`,
   capsule: key => `(value[${JSON.stringify(key)}].is_null() || (["x", "y", "width", "height"].iter().all(|side| value[${JSON.stringify(key)}][side].as_f64().is_some_and(|n| n.is_finite() && (-16384.0..=16384.0).contains(&n))) && ["width", "height"].iter().all(|side| value[${JSON.stringify(key)}][side].as_f64().is_some_and(|n| n >= 0.0))))`,
   keyboard: key => `value[${JSON.stringify(key)}]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))`,
+  hinge: key => `(value[${JSON.stringify(key)}].is_null() || (value[${JSON.stringify(key)}].is_object() && ["x", "y", "width", "height"].iter().all(|k| value[${JSON.stringify(key)}][k].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))) && matches!(value[${JSON.stringify(key)}]["orientation"].as_str(), Some("vertical" | "horizontal")) && matches!(value[${JSON.stringify(key)}]["posture"].as_str(), Some("flat" | "half-opened"))))`,
   renderer: key => `(matches!(value[${JSON.stringify(key)}]["fallback"].as_str(), None | Some("driver")) && value[${JSON.stringify(key)}].as_object().is_some_and(|r| r.len() == 1))`,
 };
 

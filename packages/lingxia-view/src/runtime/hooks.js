@@ -3,8 +3,29 @@ import { render, page, outsideRender } from './state.js';
 import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
 import { actionResource, streamResource, requestResource } from './resources.js';
 import { channelResource } from './channel-resource.js';
-import { noteRead, noteView } from './memo.js';
-import { classesReadTheme } from '../style/classes.js';
+import { noteRead, noteView, noteContext } from './memo.js';
+import { classesReadTheme, classesReadSizeClass } from '../style/classes.js';
+import { createContext, lookup } from './context.js';
+import { h } from './nodes.js';
+
+const SIZE_CLASS_CONTEXT_ID = '@lingxia/view:SizeClassScope';
+const SizeClassContext = createContext(null);
+Object.defineProperty(SizeClassContext, '__lxid', { value: SIZE_CLASS_CONTEXT_ID });
+
+/** Overrides `env.sizeClass` and `regular:` class matching for its subtree. */
+export function SizeClassScope({ value, children }) {
+  if (value !== 'compact' && value !== 'regular')
+    throw Error('UI_PROP: SizeClassScope value must be "compact" or "regular"');
+  return h(SizeClassContext.Provider, { value }, children);
+}
+
+/** Active `SizeClassScope` value in the current render context chain, or undefined. */
+export function scopedSizeClass(contexts = render.contexts, track = true) {
+  const entry = lookup(contexts, SIZE_CLASS_CONTEXT_ID);
+  if (!entry) return undefined;
+  if (track) noteContext(SIZE_CLASS_CONTEXT_ID, SizeClassContext, entry.value);
+  return entry.value;
+}
 
 const bindings = new WeakMap();
 
@@ -85,7 +106,20 @@ export function useView() {
   if (!render.active) throw Error('UI_SCOPE: useView outside render');
   render.readsView = true;
   noteView();
-  return render.view;
+  const scoped = scopedSizeClass();
+  const raw = envOf(render.view);
+  if (!scoped || !raw || raw.sizeClass === scoped) return render.view;
+  const base = Object.freeze({ ...raw, sizeClass: scoped });
+  const env = rawEnvs.has(render.view) ? new Proxy(base, {
+    get(target, key, receiver) {
+      if (key !== 'sizeClass' && hostContextKeys.has(key)) hostContextRead = true;
+      if (appearanceKeys.has(key)) appearanceRead = true;
+      return Reflect.get(target, key, receiver);
+    },
+  }) : base;
+  const scopedView = Object.freeze({ ...render.view, env });
+  rawEnvs.set(scopedView, base);
+  return scopedView;
 }
 
 // Before the catalog arrives a page renders with no actions; resources wait for it.
@@ -193,6 +227,17 @@ export function useLeaveGuard(name, options) {
   });
 }
 
+/** LIFO back-navigation handler (intercepts Back only, never Home). */
+export function useBackHandler(enabled, onBack) {
+  if (!render.active || render.scope === null) throw Error('UI_SCOPE: useBackHandler outside render');
+  if (typeof enabled !== 'boolean') throw Error('UI_BACK: enabled must be a boolean');
+  if (typeof onBack !== 'function') throw Error('UI_BACK: onBack must be a function');
+  const counts = render.candidate.backOrder ??= new Map();
+  const order = counts.get(render.scope) ?? 0;
+  counts.set(render.scope, order + 1);
+  own(`#${order}`, null, 'back', 'UI_BACK', leaveGuards.backHandler, { enabled, onBack });
+}
+
 // The host pushes these when the lxapp's surface changes; it repaints only pages whose View read one.
 const hostContextKeys = new Set(['sizeClass', 'canDock']);
 let hostContextRead = false;
@@ -219,12 +264,48 @@ export function syncData(from, revision, ops) {
   return true;
 }
 
+/** Adds logical `inlineStart` / `inlineEnd` fields to an edges object based on direction. */
+export function withLogicalEdges(edges, rtl) {
+  if (!edges || typeof edges !== 'object') return edges;
+  const inlineStart = rtl ? edges.right : edges.left;
+  const inlineEnd = rtl ? edges.left : edges.right;
+  if (edges.inlineStart === inlineStart && edges.inlineEnd === inlineEnd) return edges;
+  return Object.freeze({
+    ...edges,
+    inlineStart,
+    inlineEnd,
+  });
+}
+
+/** Normalizes `insets`, `safeArea`, and `hinge` on an environment snapshot. */
+export function normalizeEnv(env) {
+  if (!env || typeof env !== 'object') return env;
+  const rtl = env.direction === 'rtl';
+  const insets = env.insets ? withLogicalEdges(env.insets, rtl) : undefined;
+  const safeArea = env.safeArea ? withLogicalEdges(env.safeArea, rtl) : undefined;
+  if (insets === env.insets && safeArea === env.safeArea && env.hinge !== undefined) return env;
+  return {
+    ...env,
+    ...(insets ? { insets } : {}),
+    ...(safeArea ? { safeArea } : {}),
+    ...(env.hinge === undefined ? { hinge: null } : {}),
+  };
+}
+
+/** Ensures raw `{ env }` test inputs carry normalized logical edges and `hinge: null`. */
+export function ensureNormalizedView(view) {
+  if (!view || typeof view !== 'object' || rawEnvs.has(view) || !view.env || typeof view.env !== 'object') return view;
+  const env = normalizeEnv(view.env);
+  return env === view.env ? view : { ...view, env };
+}
+
 /** `data` undefined: the isolate's own copy, already synced by `syncData`. */
 export function createView(data, env, revision) {
   const { actions, channels } = currentActions();
   hostContextRead = false;
   // A host that does not report the capsule shows none.
-  const frozen = immutable(env && typeof env === 'object' && !Object.hasOwn(env, 'capsule') ? { ...env, capsule: null } : env);
+  const withCapsule = env && typeof env === 'object' && !Object.hasOwn(env, 'capsule') ? { ...env, capsule: null } : env;
+  const frozen = immutable(normalizeEnv(withCapsule));
   const watched = frozen && typeof frozen === 'object' ? new Proxy(frozen, {
     get(target, key, receiver) {
       if (hostContextKeys.has(key)) hostContextRead = true;
@@ -244,5 +325,5 @@ export const envOf = view => (view && rawEnvs.get(view)) ?? view?.env;
 /** Whether the View read a host-context key since its view was created. */
 export const readsHostContext = () => hostContextRead;
 /** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `theme` or `highContrast`, or a class has a theme condition). */
-export const envReads = () => (hostContextRead ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+export const envReads = () => ((hostContextRead || classesReadSizeClass()) ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
 export function resetEnvReads() { appearanceRead = false; }

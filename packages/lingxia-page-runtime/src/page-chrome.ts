@@ -73,10 +73,30 @@ function projectPageChromeLayout(layout: PageChromeLayoutSnapshot): void {
   }
 }
 
+const COMPACT_MAX = 600;
+const HYSTERESIS = 24;
+
+function resolveDomSizeClass(prev: "compact" | "regular" | null, width: number): "compact" | "regular" {
+  const raw = width < COMPACT_MAX ? "compact" : "regular";
+  if (prev === null || prev === raw) return raw;
+  return Math.abs(width - COMPACT_MAX) < HYSTERESIS ? prev : raw;
+}
+
 /** Ensure browser previews have the same synchronous contract as native pages. */
 export function installPageChromeRuntime(): LxPageChrome | undefined {
   if (typeof window === "undefined") return undefined;
   if (window.lxPageChrome) return window.lxPageChrome;
+
+  let currentSizeClass = resolveDomSizeClass(null, window.innerWidth);
+  const syncSizeClass = () => {
+    const next = resolveDomSizeClass(currentSizeClass, window.innerWidth);
+    currentSizeClass = next;
+    const root = document.documentElement;
+    root?.setAttribute("data-size-class", next);
+    root?.style.setProperty("--lx-size-class", next);
+  };
+  syncSizeClass();
+  window.addEventListener("resize", syncSizeClass, { passive: true });
 
   let layout = initialLayout;
   const api = Object.freeze({

@@ -4,13 +4,13 @@ import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
 import { validInputText } from './data.js';
-import { report, resetActions, actionEpochNow, hasActionEpoch } from './actions.js';
+import { report, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle } from './actions.js';
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
 import { resetReveals } from './reveal.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
-import { envOf, resetEnvReads } from './hooks.js';
+import { envOf, ensureNormalizedView, resetEnvReads } from './hooks.js';
 import { keysOf } from './keys.js';
 import { finishTopLayer, resetTopLayer } from './toplayer.js';
 import { fullscreenFallback, fullscreenDrawn, resolveBare } from './fullscreen.js';
@@ -45,6 +45,7 @@ function warnUnfrozen(props, renderItem) {
 
 function runCandidate(view, lookup, build, recall = null) {
   if (render.active) throw Error('UI_RENDER: recursive render');
+  view = ensureNormalizedView(view);
   render.thrown = '';
   resetArena();
   Object.assign(render, { active: true, view, lookupLocals: lookup, recall: recall?.memo, recallClosures: recall?.closures });
@@ -172,6 +173,8 @@ function commitCandidate() {
   const pressable = new Map();
   for (const entry of candidate.callbacks.values()) if (entry.press) pressable.set(entry.press.identity, entry.press.callback);
   refreshPresses(pressable);
+  // Read from the committed root, which may be a recalled subtree that did not resolve again.
+  syncPageTitle(candidate.tree?.wire?.find(([key]) => key === 'pageTitle')?.[1]);
 }
 
 // Native drops the candidate. A frame the target merely declined keeps pending updates

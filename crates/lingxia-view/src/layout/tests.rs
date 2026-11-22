@@ -1062,3 +1062,100 @@ fn row_items_never_shrink_below_their_min_content_width() {
         .unwrap();
     assert_eq!(image.bounds[2], 40.0);
 }
+
+mod bleed {
+    use crate::layout::style::SafeArea;
+    use crate::protocol::{field, tag};
+    use crate::scene::test_prelude::*;
+
+    #[test]
+    fn bleed_direct_page_children_extend_to_physical_edges() {
+        let records = vec![
+            node(tag::PAGE, None, "page", &[]),
+            node(
+                tag::IMAGE,
+                Some(0),
+                "hero",
+                &[
+                    (field::IMAGE_SRC, json!("cover.png")),
+                    (field::BLEED, json!("all")),
+                    (field::GROW, json!(1)),
+                ],
+            ),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "fab",
+                &[
+                    (field::POSITION, json!("fixed")),
+                    (field::INSET_BOTTOM, json!(16)),
+                    (field::INSET_INLINE_END, json!(16)),
+                    (field::WIDTH, json!(48)),
+                    (field::HEIGHT, json!(48)),
+                ],
+            ),
+        ];
+        let mut renderer = Renderer {
+            safe_area: SafeArea {
+                insets: [44.0, 16.0, 34.0, 16.0],
+                keyboard: 0.0,
+            },
+            ..Default::default()
+        };
+        let display = renderer.layout(&records, 400, 800, 1.0).unwrap();
+        assert_eq!(
+            display.nodes[1].bounds,
+            [0.0, 0.0, 400.0, 800.0],
+            "bleed child spans physical viewport beneath bars and side insets"
+        );
+        assert_eq!(
+            display.nodes[2].bounds,
+            [
+                400.0 - 16.0 - 16.0 - 48.0,
+                800.0 - 34.0 - 16.0 - 48.0,
+                48.0,
+                48.0
+            ],
+            "non-bleed fixed control stays inside safe insets"
+        );
+    }
+
+    #[test]
+    fn bleed_reaches_only_the_page_edges_its_child_touches() {
+        let records = vec![
+            node(tag::PAGE, None, "page", &[]),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "header",
+                &[(field::HEIGHT, json!(40))],
+            ),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "band",
+                &[(field::BLEED, json!("all")), (field::HEIGHT, json!(100))],
+            ),
+            node(
+                tag::COLUMN,
+                Some(0),
+                "footer",
+                &[(field::HEIGHT, json!(40))],
+            ),
+        ];
+        let mut renderer = Renderer {
+            safe_area: SafeArea {
+                insets: [44.0, 16.0, 34.0, 16.0],
+                keyboard: 0.0,
+            },
+            ..Default::default()
+        };
+        let display = renderer.layout(&records, 400, 800, 1.0).unwrap();
+        assert_eq!(
+            display.nodes[2].bounds,
+            [0.0, 44.0 + 40.0, 400.0, 100.0],
+            "a middle child bleeds sideways but neither overlaps its siblings nor shifts them"
+        );
+        assert_eq!(display.nodes[3].bounds[1], 44.0 + 40.0 + 100.0);
+    }
+}

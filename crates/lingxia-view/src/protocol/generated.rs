@@ -315,6 +315,8 @@ pub mod field {
     pub const SIDE_BOTTOM_STYLE: usize = 277;
     pub const SIDE_START_STYLE: usize = 278;
     pub const SIDE_END_STYLE: usize = 279;
+    pub const BLEED: usize = 280;
+    pub const PAGE_TITLE: usize = 281;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -601,6 +603,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("sideBottomStyle", "state-style"),
     ("sideStartStyle", "state-style"),
     ("sideEndStyle", "state-style"),
+    ("bleed", "bleed"),
+    ("title", "string"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -646,6 +650,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "user-select" => Some(&["none", "text", "all"]),
         "touch-target" => Some(&["auto", "none"]),
         "pointer-axis" => Some(&["x", "y", "both"]),
+        "bleed" => Some(&["all", "top", "bottom", "horizontal"]),
         _ => None,
     }
 }
@@ -704,9 +709,11 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("viewport", "session"),
     ("insets", "device"),
     ("safeArea", "device"),
+    ("hinge", "device"),
     ("keyboard", "device"),
     ("capsule", "push"),
     ("pointer", "device"),
+    ("platform", "device"),
     ("os", "device"),
     ("formFactor", "device"),
     ("sizeClass", "push"),
@@ -730,9 +737,11 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && matches!(value["theme"].as_str(), Some("light") | Some("dark"))
         && ["top", "right", "bottom", "left"].iter().all(|edge| value["insets"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))
         && (value.get("safeArea").is_none() || ["top", "right", "bottom", "left"].iter().all(|edge| value["safeArea"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))))
+        && (value.get("hinge").is_none() || (value["hinge"].is_null() || (value["hinge"].is_object() && ["x", "y", "width", "height"].iter().all(|k| value["hinge"][k].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))) && matches!(value["hinge"]["orientation"].as_str(), Some("vertical" | "horizontal")) && matches!(value["hinge"]["posture"].as_str(), Some("flat" | "half-opened")))))
         && value["keyboard"]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
         && (value.get("capsule").is_none() || (value["capsule"].is_null() || (["x", "y", "width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n.is_finite() && (-16384.0..=16384.0).contains(&n))) && ["width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n >= 0.0)))))
         && matches!(value["pointer"].as_str(), Some("fine") | Some("coarse"))
+        && (value.get("platform").is_none() || matches!(value["platform"].as_str(), Some("apple") | Some("android") | Some("harmony") | Some("windows") | Some("web")))
         && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && value["formFactor"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && (value.get("sizeClass").is_none() || matches!(value["sizeClass"].as_str(), Some("compact") | Some("regular")))
@@ -1141,4 +1150,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::COLUMN, tag::SCROLL, tag::LIST, tag::IMAGE, tag::VIDEO, tag::WEBVIEW, tag::VECTOR]), parent: Some(tag::PAGE) },
+    FieldAdmission { tags: Some(&[tag::PAGE]), parent: None },
 ];

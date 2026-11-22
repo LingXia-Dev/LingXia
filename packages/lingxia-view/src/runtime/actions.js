@@ -35,6 +35,7 @@ export function actionInfo(action) {
 export function cancelActions() {
   actionEpoch++;
   leaveGuards.reset();
+  sentTitle = undefined;
   const pending = [...pendingActions.values()];
   pendingActions.clear(); requests = []; actions = Object.freeze(Object.create(null));
   const oldChannels = [...activeChannels.values()]; activeChannels.clear();
@@ -151,7 +152,7 @@ export function configureActions(metadata) {
 
 function callLeaveHost(method, params) {
   outsideRender('leave control');
-  if (!['navigation.setLeaveGuard', 'navigation.leave'].includes(method)) throw Error('UI_LEAVE: invalid control');
+  if (!['navigation.setLeaveGuard', 'navigation.leave', 'navigation.setTitle'].includes(method)) throw Error('UI_LEAVE: invalid control');
   admit('actions');
   const id = `ui-action:${nextRequest++}`;
   const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
@@ -168,6 +169,16 @@ export function requestNavigation(to) {
   const promise = new Promise((resolve, reject) => pendingActions.set(id, { resolve, reject }));
   promise.catch(report);
   requests.push({ kind: 'req', id, method: 'nav.go', params: bounded(to, 'link') });
+}
+
+// The `<page title>` last sent to the host; `undefined` until the page first declares one.
+let sentTitle;
+/** Sends a changed `<page title>` to the host navigation bar; `null` restores the configured title. */
+export function syncPageTitle(title) {
+  const next = typeof title === 'string' ? title : null;
+  if (next === sentTitle || (sentTitle === undefined && next === null)) return;
+  sentTitle = next;
+  try { callLeaveHost('navigation.setTitle', { title: next }).catch(report); } catch (error) { report(error); }
 }
 
 export function requestLeave(reason) {

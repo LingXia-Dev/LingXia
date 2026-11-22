@@ -161,6 +161,8 @@ pub struct Simulation {
     /// System text size as a factor of the default.
     pub text_scale: f32,
     pub high_contrast: bool,
+    /// Simulated physical display hinge/crease in device logical pixels, if any.
+    pub hinge: Option<serde_json::Value>,
 }
 
 static SIMULATION: Mutex<Option<Simulation>> = Mutex::new(None);
@@ -672,6 +674,7 @@ impl Page {
             text_scale,
             hour_cycle: Some(environment::hour_cycle()),
             first_weekday: Some(environment::first_weekday()),
+            hinge: simulated.as_ref().and_then(|s| s.hinge.clone()),
         };
         // A simulated device lays out at its own pixels; frames draw at the window's.
         let raster = simulated

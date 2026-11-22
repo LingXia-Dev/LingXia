@@ -11,6 +11,8 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_A11Y` | build, runtime, native | An image without `alt`, or a control, editor, plot, select, dialog or webview without an accessible name. |
 | `UI_ACTION` | runtime, native | An action call was malformed or its reply invalid. |
 | `UI_ANIMATION` | build, runtime, native | An invalid or over-budget animation definition, or an inline `style.animation`. |
+| `UI_BACK` | runtime | Invalid `useBackHandler` arguments. |
+| `UI_BLEED_PARENT` | runtime | `bleed` was placed on an element that is not a direct child of `<page>`. |
 | `UI_BOOTSTRAP_TIMEOUT` | native | Logic did not deliver the first page state in time. |
 | `UI_BRIDGE` | native | The View-Logic connection failed or was replaced. |
 | `UI_BUDGET` | runtime, native | A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed. |

@@ -351,6 +351,35 @@ export interface LeaveGuard {
 }
 export declare function useLeaveGuard(name: string, options: { enabled: boolean }): LeaveGuard;
 
+/** Logical edge insets (in logical dp/pt). `inlineStart`/`inlineEnd` mirror `left`/`right` in LTR and flip in RTL. */
+export interface Edges {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly inlineStart?: number;
+  readonly inlineEnd?: number;
+}
+
+/** Physical display hinge/crease intersecting the page canvas, in page-local logical coordinates. */
+export interface HingeRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly orientation: "vertical" | "horizontal";
+  readonly posture: "flat" | "half-opened";
+}
+
+/** Edges on which a direct child of `<page>` extends to the physical screen edge beneath bars and cutouts. */
+export type BleedEdge = boolean | "top" | "bottom" | "horizontal";
+
+/** Overrides `env.sizeClass` and `regular:` class matching for its subtree (used by `<ListDetail>` / `<Split>`). */
+export declare function SizeClassScope(props: { value: "compact" | "regular"; key?: string; children?: JSX.Element | null | false }): JSX.Element;
+
+/** LIFO back-navigation handler (intercepts Back only, never Home). */
+export declare function useBackHandler(enabled: boolean, onBack: () => void): void;
+
 /** Nearest-rank percentiles, in ms. */
 export interface Percentiles { readonly p50: number; readonly p95: number; readonly p99: number; readonly max: number }
 /**

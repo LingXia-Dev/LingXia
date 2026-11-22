@@ -3034,7 +3034,11 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         serde_json::json!({"confirm": false, "cancel": true})
     );
     // Logic's dismiss closes the dialogs on screen, each settling as cancelled.
-    call("lv_9", "ui.showModal", serde_json::json!({"title":"Wait"}));
+    call(
+        "lv_9",
+        "ui.showModal",
+        serde_json::json!({"title":"Wait"}),
+    );
     call(
         "lv_10",
         "ui.showActionSheet",
@@ -3048,10 +3052,7 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         answer("lv_9")["result"],
         serde_json::json!({"confirm": false, "cancel": true})
     );
-    assert_eq!(
-        answer("lv_10")["result"],
-        serde_json::json!({"tapIndex": -1})
-    );
+    assert_eq!(answer("lv_10")["result"], serde_json::json!({"tapIndex": -1}));
     assert_eq!(answer("lv_11")["ok"], true);
     assert_eq!(query("[data-testid=\"lx-modal\"]")["exists"], false);
     assert_eq!(query("[data-testid=\"lx-action-sheet\"]")["exists"], false);
@@ -5712,10 +5713,12 @@ fn close_request_case(reduced: bool, blur: bool) {
 mod appearance;
 #[path = "automation_blur.rs"]
 mod automation_blur;
-#[path = "block_link.rs"]
-mod block_link;
 #[path = "box_reading.rs"]
 mod box_reading;
+#[path = "block_link.rs"]
+mod block_link;
+#[path = "space_key.rs"]
+mod space_key;
 #[path = "clipped_focus.rs"]
 mod clipped_focus;
 #[path = "close_request.rs"]
@@ -5748,8 +5751,6 @@ mod popover_anchor;
 mod range_slider;
 #[path = "reveal_element.rs"]
 mod reveal_element;
-#[path = "space_key.rs"]
-mod space_key;
 #[path = "submenu.rs"]
 mod submenu;
 #[path = "tree_keys.rs"]

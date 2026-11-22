@@ -301,7 +301,9 @@ function variants(schema, system, rules) {
     'side-top': 'any element in an anchored popover, the popover included; while that popover sits above its anchor, after any flip; paint only', 'side-bottom': 'any element in an anchored popover, the popover included; while that popover sits below its anchor, after any flip; paint only',
     'side-start': 'any element in an anchored popover, the popover included; while that popover sits at the inline start of its anchor (its left in LTR), after any flip; paint only', 'side-end': 'any element in an anchored popover, the popover included; while that popover sits at the inline end of its anchor (its right in LTR), after any flip; paint only',
     ...parts,
-    data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included', exit: 'any element; paint only, the values a removed element leaves toward',
+    data: 'any element; matches its own `data-*` prop (`data-active:`, `data-[state=open]:`), layout included',
+    regular: 'any element; matches when the nearest `<SizeClassScope>` (or `env.sizeClass`) is `"regular"`, layout included',
+    exit: 'any element; paint only, the values a removed element leaves toward',
   };
   const supported = [], refused = [];
   for (const [name, candidate] of candidates) {
@@ -451,6 +453,8 @@ const errorNotes = {
   UI_GPU_LOST: 'The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
+  UI_BACK: 'Invalid `useBackHandler` arguments.',
+  UI_BLEED_PARENT: '`bleed` was placed on an element that is not a direct child of `<page>`.',
   UI_ANIMATION: 'An invalid or over-budget animation definition, or an inline `style.animation`.',
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
   UI_BRIDGE: 'The View-Logic connection failed or was replaced.',

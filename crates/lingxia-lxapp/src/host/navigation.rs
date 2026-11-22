@@ -239,6 +239,42 @@ impl super::HostHandler for Leave {
     }
 }
 
+#[derive(Deserialize)]
+struct SetTitleOptions {
+    title: Option<String>,
+}
+
+/// `navigation.setTitle({ title })`: a GPU View's declarative `<page title>`
+/// sets its own page's navigation bar title; `null` returns to the configured one.
+struct SetTitle;
+
+impl super::HostHandler for SetTitle {
+    fn call<'a>(
+        &'a self,
+        invocation: super::HostInvocationContext,
+        input: Option<String>,
+        _cancel: HostCancel,
+    ) -> super::HostFuture<'a> {
+        Box::pin(async move {
+            let options: SetTitleOptions = super::parse_input(input.as_deref())?;
+            let result = match calling_page(&invocation, "setTitle") {
+                Ok(page) => {
+                    let patch = crate::lxapp::navbar::NavigationBarPatch {
+                        title: match options.title {
+                            Some(title) => crate::lxapp::page_chrome::PatchField::Value(title),
+                            None => crate::lxapp::page_chrome::PatchField::Null,
+                        },
+                        ..Default::default()
+                    };
+                    invocation.lxapp().commit_navigation_bar(page, patch).await
+                }
+                Err(error) => Err(error),
+            };
+            super::serialize_result(result)
+        })
+    }
+}
+
 fn calling_page(
     invocation: &super::HostInvocationContext,
     route: &str,
@@ -256,6 +292,7 @@ pub(crate) fn register_all() {
         "navigateBack" => Arc::new(NavigateBack),
         "setLeaveGuard" => Arc::new(SetLeaveGuard),
         "leave" => Arc::new(Leave),
+        "setTitle" => Arc::new(SetTitle),
         "redirectTo" => Arc::new(RedirectTo),
         "switchTab" => Arc::new(SwitchTab),
         "reLaunch" => Arc::new(ReLaunch)

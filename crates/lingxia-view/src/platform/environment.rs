@@ -41,6 +41,36 @@ pub struct DeviceFacts {
     pub hour_cycle: Option<String>,
     /// The user's first day of the week, 1 = Sunday to 7 = Saturday; `None` follows the display language.
     pub first_weekday: Option<u8>,
+    /// Physical display hinge/crease intersecting the page canvas in local logical pixels, if any.
+    pub hinge: Option<serde_json::Value>,
+}
+
+fn platform_family(os: &str) -> &'static str {
+    match os {
+        "ios" | "ipados" | "macos" | "visionos" => "apple",
+        "android" => "android",
+        "harmony" | "harmonyos" | "ohos" => "harmony",
+        "windows" => "windows",
+        _ => "web",
+    }
+}
+
+fn sanitize_hinge(hinge: Option<&serde_json::Value>) -> serde_json::Value {
+    let Some(raw) = hinge.filter(|v| v.is_object()) else {
+        return serde_json::Value::Null;
+    };
+    let coords_ok = ["x", "y", "width", "height"].iter().all(|k| {
+        raw[k]
+            .as_f64()
+            .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
+    });
+    let orient_ok = matches!(raw["orientation"].as_str(), Some("vertical" | "horizontal"));
+    let posture_ok = matches!(raw["posture"].as_str(), Some("flat" | "half-opened"));
+    if coords_ok && orient_ok && posture_ok {
+        raw.clone()
+    } else {
+        serde_json::Value::Null
+    }
 }
 
 impl DeviceFacts {
@@ -75,8 +105,10 @@ impl DeviceFacts {
                 "bottom": logical(self.system_insets[2].min(f32::from(height))),
                 "left": logical(self.system_insets[3].min(f32::from(width))),
             },
+            "hinge": sanitize_hinge(self.hinge.as_ref()),
             "keyboard": {"height": logical(self.keyboard.min(f32::from(height)))},
             "os": self.os,
+            "platform": platform_family(&self.os),
             "pointer": if self.fine_pointer { "fine" } else { "coarse" },
             "formFactor": if self.smallest_width >= TABLET_SMALLEST_WIDTH { "tablet" } else { "phone" },
             "language": self.locale,

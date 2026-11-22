@@ -81,5 +81,34 @@ export function createLeaveGuards(callHost, report) {
         dispose() { mounted = false; enabled = false; decide(false); if (holders.delete(holder)) sync(); },
       };
     },
+    backHandler() {
+      let enabled = false, callback = null, registeredEpoch = epoch;
+      const holder = {
+        cancel() {},
+        ask(reason) {
+          // Only intercept Back, never Home.
+          if (!enabled || reason !== 'back') return Promise.resolve(true);
+          try {
+            callback?.();
+          } catch (error) {
+            report(error);
+          }
+          return Promise.resolve(false);
+        },
+        fail(error) { report(error); },
+      };
+      return {
+        commit(next) {
+          callback = next.onBack;
+          if (enabled === next.enabled && registeredEpoch === epoch) return;
+          registeredEpoch = epoch;
+          enabled = next.enabled;
+          if (enabled) holders.add(holder);
+          else holders.delete(holder);
+          sync();
+        },
+        dispose() { enabled = false; callback = null; if (holders.delete(holder)) sync(); },
+      };
+    },
   };
 }

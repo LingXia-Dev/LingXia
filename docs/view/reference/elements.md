@@ -44,6 +44,7 @@ Children: any elements and text. Renders as `column`. `open`, `onToggle`, `close
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `onPage` | `(direction: "previous" \| "next") => void` |  |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  |
 | `anchor` | `string` |  |
@@ -74,6 +75,8 @@ Children: any elements and text. The page root.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `title` | `string` |  |
+| `headerActions` | `Child` |  |
 | `aria-label` | `string` |  |
 
 ## `<text>`
@@ -119,6 +122,7 @@ Children: any elements and text. At most one of `bind` or `snapIndex` (and its `
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |
 | `box` | `Box` |  |
 | `onReachStart` | `() => void` |  |
@@ -142,6 +146,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 | `getKey` | `(item: T, index: number) => string` | yes |
 | `renderItem` | `(item: T, index: number) => JSX.Element` | yes |
 | `getItemHeight` | `(item: T, index: number) => number` |  |
+| `bleed` | `BleedEdge` |  |
 | `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number; duration?: number }` |  |
 | `onReachStart` | `() => void` |  |
 | `onReachEnd` | `() => void` |  |
@@ -154,6 +159,7 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `src` | `string` | yes |
 | `placeholder` | `string` |  |
 | `alt` | `string` |  |
@@ -325,6 +331,7 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `onPointer` | `(event: PointerEvent) => void` |  |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  |
 | `onLayout` | `(box: BoxSize) => void` |  |
@@ -375,6 +382,7 @@ Children: none.
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `src` | `string` |  |
 | `sources` | `readonly VideoSource[]` |  |
 | `player` | `Video` |  |
@@ -408,6 +416,7 @@ Children: none. Not allowed inside a pressable control (`UI_BUTTON`). Moves live
 
 | Prop | Type | Required |
 | --- | --- | --- |
+| `bleed` | `BleedEdge` |  |
 | `src` | `string` |  |
 | `web` | `WebView` |  |
 | `aria-label` | `string` | yes |
