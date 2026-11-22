@@ -33,7 +33,7 @@ export function InBody() {
 export function Disabled() {
   return (
     <text className="text-footnote text-muted">
-      No code yet? <Link label="Send it again" isDisabled data-testid="resend" /> in 30 seconds.
+      No code yet? <Link label="Send it again" onClick={unused} isDisabled data-testid="resend" /> in 30 seconds.
     </text>
   );
 }

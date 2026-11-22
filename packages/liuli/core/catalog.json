@@ -10520,7 +10520,7 @@
         {
           "name": "Disabled",
           "title": "Not available yet",
-          "source": "import { Link } from '@liulidesign/core/Link';\n\n/** A link that cannot be followed yet. */\nexport function Disabled() {\n  return (\n    <text className=\"text-footnote text-muted\">\n      No code yet? <Link label=\"Send it again\" isDisabled data-testid=\"resend\" /> in 30 seconds.\n    </text>\n  );\n}"
+          "source": "import { unused } from '../example';\nimport { Link } from '@liulidesign/core/Link';\n\n/** A link that cannot be followed yet. */\nexport function Disabled() {\n  return (\n    <text className=\"text-footnote text-muted\">\n      No code yet? <Link label=\"Send it again\" onClick={unused} isDisabled data-testid=\"resend\" /> in 30 seconds.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [],

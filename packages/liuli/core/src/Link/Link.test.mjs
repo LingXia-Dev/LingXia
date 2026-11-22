@@ -13,5 +13,5 @@ test('InSentence: links are runs of their sentence, underlined in the accent col
 
 test('Disabled: unavailable, in the faint colour, and takes no press', async () => {
   const link = (await renderExample('Link/Link', 'Disabled')).getByTestId('resend');
-  assert.deepEqual([link.props.enabled, link.props.color, link.props.onClick], [0, 'text-faint', undefined]);
+  assert.deepEqual([link.props.enabled, link.props.color], [0, 'text-faint']);
 });

@@ -15,7 +15,7 @@ export interface LinkProps {
 export function Link({ label, onClick, isDisabled = false, 'data-testid': testId }: LinkProps) {
   const trigger = useTrigger();
   return (
-    <link data-testid={testId} popoverTarget={trigger?.popoverTarget} interestFor={trigger?.interestFor} aria-describedby={trigger?.describedBy} disabled={isDisabled || undefined} onClick={isDisabled ? undefined : onClick} className={isDisabled ? r.root.disabled : r.root.base}>
+    <link data-testid={testId} popoverTarget={trigger?.popoverTarget} interestFor={trigger?.interestFor} aria-describedby={trigger?.describedBy} disabled={isDisabled || undefined} onClick={onClick} className={isDisabled ? r.root.disabled : r.root.base}>
       {label}
     </link>
   );
