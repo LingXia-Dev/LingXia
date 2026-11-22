@@ -34,7 +34,6 @@ export function Confirm() {
         description="It leaves every device you are signed in on."
         size="sm"
         isAlert
-        hasCloseButton={false}
         dismissOn="closeRequest"
         data-testid="confirm-dialog"
         actions={
@@ -167,7 +166,7 @@ export function Hero() {
 | `media` | `Child` |  | A picture or an illustration above the title, edge to edge under the panel's top corners: for a dialog that introduces something. Give it its own height or aspect ratio. The close button, if any, sits over it. |
 | `children` | `Child` |  | The body; it scrolls when the panel reaches its maximum height. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
-| `hasCloseButton` | `boolean` | `true` | Shows a close button in the header. |
+| `hasCloseButton` | `boolean` |  | Shows a close button in the header. An alert has none unless you ask for one; any other dialog has one unless you turn it off. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish. |
 | `size` | `DialogSize` | `'md'` | Maximum width: 360, 480 or 640. `full` covers the screen, for a task with its own scrolling content: an editor, a long form on a phone. |
@@ -182,7 +181,7 @@ export function Hero() {
 | media | `<view>` | no | `media`: a picture above the title, reaching the panel's top edges; hidden from assistive tech. |
 | mediaClose | `<button>` | no | With `media`, the close button sits over the picture on its own dock. |
 | title | `<text>` | yes | `label` as a level-2 heading, unless `isLabelHidden`. |
-| close | `<button>` | no | A close button, unless `hasCloseButton` is false; `closeLabel` names it. |
+| close | `<button>` | no | A close button: an alert has none unless you ask for one; any other dialog has one unless you turn it off. `closeLabel` names it. |
 | description | `<text>` | no | Text under the title. |
 | body | `<scroll>` | no | `children`, in a scroll that takes the remaining height. |
 | footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |

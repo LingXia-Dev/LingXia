@@ -14,13 +14,14 @@ test('Confirm: the scrim arrives and leaves with the dialog, on its timing', asy
   assert.deepEqual(presence(screen.getByTestId('confirm-dialog-backdrop')), timing(screen.getByTestId('confirm-dialog')));
 });
 
-test('Confirm: closed renders nothing; open, an alert dialog named by its title and described by its text', async () => {
+test('Confirm: closed renders nothing; open, an alert dialog named by its title and described by its text, answered by its actions with no close button', async () => {
   const screen = await renderExample('Dialog/Dialog', 'Confirm');
   assert.equal(dialogs(screen).length, 0);
   screen.press(screen.getByTestId('confirm-open'));
   const dialog = screen.getByTestId('confirm-dialog');
   assert.equal(dialog.props.accessibilityLabel, 'Delete this note?');
   assert.equal(dialog.props.role, 'alertdialog');
+  assert.equal(screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'Close').length, 0);
   assert.deepEqual(described(screen, dialog), ['It leaves every device you are signed in on.']);
   const heading = screen.getByText('Delete this note?');
   assert.equal(heading.props.role, 'heading');

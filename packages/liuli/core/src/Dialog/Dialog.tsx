@@ -34,7 +34,7 @@ export interface DialogProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
-  /** Shows a close button in the header. @default true */
+  /** Shows a close button in the header. An alert has none unless you ask for one; any other dialog has one unless you turn it off. */
   hasCloseButton?: boolean;
   /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
@@ -67,7 +67,7 @@ export function Dialog({
   media,
   children,
   actions,
-  hasCloseButton = true,
+  hasCloseButton = !isAlert,
   closeLabel = liuliText('@liuli.close'),
   dismissOn = 'any',
   size = 'md',

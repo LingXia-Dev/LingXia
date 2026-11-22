@@ -129,7 +129,7 @@ export function Required() {
 | `description` | `string` |  | One or two sentences under the title, read as the sheet's description. |
 | `children` | `Child` |  | The body; it scrolls when the sheet reaches its height. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
-| `hasCloseButton` | `boolean` | `false` | Shows a close button; without it a drag, a tap outside or Back closes the sheet. |
+| `hasCloseButton` | `boolean` | `false` | Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |
 | `detents` | `BottomSheetDetents` | `'fit'` |  |
@@ -164,6 +164,7 @@ export function Required() {
 - Up, Down: With the sheet focused, the next detent up or down..
 - Screen readers announce the sheet as adjustable: increment and decrement step it between detents.
 - Android back, the screen reader dismiss gesture and a drag off screen are close requests, like Escape.
+- Without a close button, a mouse closes it by clicking outside and a keyboard by Escape; with `dismissOn` other than `any` and no `actions`, set `hasCloseButton`.
 - The sheet pads its bottom by the safe area, so its last control clears the home indicator.
 
 | Contrast | Pair | Minimum | Light | Dark |

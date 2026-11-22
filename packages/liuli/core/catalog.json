@@ -1242,7 +1242,7 @@
           "name": "hasCloseButton",
           "type": "boolean",
           "required": false,
-          "description": "Shows a close button; without it a drag, a tap outside or Back closes the sheet.",
+          "description": "Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out.",
           "default": "false"
         },
         {
@@ -1333,6 +1333,7 @@
         "notes": [
           "Screen readers announce the sheet as adjustable: increment and decrement step it between detents.",
           "Android back, the screen reader dismiss gesture and a drag off screen are close requests, like Escape.",
+          "Without a close button, a mouse closes it by clicking outside and a keyboard by Escape; with `dismissOn` other than `any` and no `actions`, set `hasCloseButton`.",
           "The sheet pads its bottom by the safe area, so its last control clears the home indicator."
         ]
       },
@@ -6631,8 +6632,7 @@
           "name": "hasCloseButton",
           "type": "boolean",
           "required": false,
-          "description": "Shows a close button in the header.",
-          "default": "true"
+          "description": "Shows a close button in the header. An alert has none unless you ask for one; any other dialog has one unless you turn it off."
         },
         {
           "name": "closeLabel",
@@ -6750,7 +6750,7 @@
         {
           "name": "Confirm",
           "title": "Confirm a destructive action, as an alert dialog",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        hasCloseButton={false}\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Form",

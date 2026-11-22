@@ -22,7 +22,6 @@ export function Confirm() {
         description="It leaves every device you are signed in on."
         size="sm"
         isAlert
-        hasCloseButton={false}
         dismissOn="closeRequest"
         data-testid="confirm-dialog"
         actions={

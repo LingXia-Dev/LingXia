@@ -24,7 +24,7 @@ export interface BottomSheetProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
-  /** Shows a close button; without it a drag, a tap outside or Back closes the sheet. @default false */
+  /** Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. @default false */
   hasCloseButton?: boolean;
   /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;

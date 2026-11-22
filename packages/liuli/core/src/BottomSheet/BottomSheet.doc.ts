@@ -37,6 +37,7 @@ export const doc: ComponentDoc = {
     notes: [
       'Screen readers announce the sheet as adjustable: increment and decrement step it between detents.',
       'Android back, the screen reader dismiss gesture and a drag off screen are close requests, like Escape.',
+      'Without a close button, a mouse closes it by clicking outside and a keyboard by Escape; with `dismissOn` other than `any` and no `actions`, set `hasCloseButton`.',
       'The sheet pads its bottom by the safe area, so its last control clears the home indicator.',
     ],
   },
