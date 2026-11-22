@@ -2876,6 +2876,7 @@ impl LxApp {
     }
 
     /// Resolved orientation for a page, in the order [`resolve_orientation`] states.
+    /// Locks are read from the topmost instance of `path`, so a page open twice keeps each instance's own.
     pub fn get_page_orientation(&self, path: &str) -> OrientationConfig {
         let page = self.get_page(path);
         resolve_orientation(
@@ -6124,6 +6125,50 @@ mod manifest_reload_tests {
         );
         detail.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
         assert_eq!(detail.orientation_lock(), None, "leaving releases the lock");
+    }
+
+    #[test]
+    fn the_same_page_twice_keeps_each_instances_orientation_lock() {
+        let (_temp, app, _) = popped_fixture("gpu");
+        let path = "pages/detail/index.js";
+        let first = PageInstance::new_headless(app.appid.clone(), path.into(), &app);
+        let second = PageInstance::new_headless(app.appid.clone(), path.into(), &app);
+        {
+            let state = app.state.lock().unwrap();
+            let mut pages = state.pages_by_id.lock().unwrap();
+            let mut stack = state.page_stack.lock().unwrap();
+            for page in [&first, &second] {
+                pages.insert(page.instance_id_string(), page.clone());
+                stack.push_back(page.instance_id_string());
+            }
+        }
+        let mode = |app: &LxApp| app.get_page_orientation(path).mode;
+        first.set_orientation_lock(OrientationConfig::from_label("landscape"));
+        assert_eq!(
+            app.get_page_orientation(path),
+            OrientationConfig::default(),
+            "the instance in front has no lock of its own"
+        );
+        second.set_orientation_lock(OrientationConfig::from_label("portrait"));
+        assert_eq!(mode(&app), crate::PageOrientation::Portrait);
+
+        second.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
+        {
+            let state = app.state.lock().unwrap();
+            state.page_stack.lock().unwrap().pop_back();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .remove(&second.instance_id_string());
+        }
+        assert_eq!(
+            mode(&app),
+            crate::PageOrientation::Landscape,
+            "back on the first instance, its lock applies again"
+        );
+        first.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
+        assert_eq!(first.orientation_lock(), None);
     }
 
     fn live(app: &LxApp, page: &PageInstance) -> bool {
