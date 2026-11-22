@@ -90,16 +90,17 @@ export function actionResource(state) {
     get state() { return snapshot; },
     async run(...params) {
       if (params.length > 1) throw Error('UI_ACTION: expected at most one JSON payload');
-      if (!mounted || !definition.action) return undefined;
+      if (!mounted || !definition.action) return Object.freeze({ ok: false, error: Object.freeze({ code: 'UI_ACTION', message: 'the component is no longer mounted' }) });
       const current = ++ticket;
       update({ pending: true, error: null });
       try {
         const value = await definition.action(...params);
         if (mounted && current === ticket) update({ pending: false });
-        return value;
+        return Object.freeze({ ok: true, value });
       } catch (error) {
-        if (mounted && current === ticket) update({ pending: false, error: resourceError(error) });
-        return undefined;
+        const failure = resourceError(error);
+        if (mounted && current === ticket) update({ pending: false, error: failure });
+        return Object.freeze({ ok: false, error: failure });
       }
     },
     commit(next) { definition = next; mounted = true; },

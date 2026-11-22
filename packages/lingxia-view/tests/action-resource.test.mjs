@@ -17,18 +17,21 @@ test('useAction tracks the latest call: pending, then the result or the error, n
   const [frame] = frames(); assert.equal(frame.method, 'save'); assert.deepEqual(frame.params, { n: 1 });
   assert.equal(save.pending, true);
   reply(frame.id, true, 'saved');
-  assert.equal(await first, 'saved');
+  assert.deepEqual(await first, { ok: true, value: 'saved' });
   assert.deepEqual([save.pending, save.error], [false, null]);
   const failed = save.run();
   const [next] = frames();
   reply(next.id, false, 'disk full');
-  assert.equal(await failed, undefined, 'a failed run resolves');
+  assert.deepEqual(await failed, { ok: false, error: { code: 'E_DISK', message: 'disk full' } }, 'a failed run resolves with its error');
   assert.deepEqual([save.pending, save.error], [false, { code: 'E_DISK', message: 'disk full' }]);
   await flush();
   assert.deepEqual(takeActionErrors(), [], 'the error is shown by the page, not reported');
   const retry = save.run();
   assert.equal(save.error, null, 'a new run clears the error');
   reply(frames()[0].id, true, 'ok'); await retry;
+  const done = save.run();
+  reply(frames()[0].id, true, null);
+  assert.deepEqual(await done, { ok: true, value: null }, 'an action that returns nothing still succeeds');
 });
 
 test('useAction keys by call order or by name, and refuses what is not an action', () => {

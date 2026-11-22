@@ -63,6 +63,7 @@ export function render({ data, actions }: View) {
 - `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
 - `reveal(id)` (from `@lingxia/view`, in a handler) scrolls the element with that `id` into view inside its `<scroll>`s, after the render the handler causes; a `<List>` row uses the list's `anchor`.
 - `const box = useBox(name)` + `<view box={box}>` reads the element's laid-out content size: `box.value` is `{ width, height, minContentWidth, maxContentWidth }` in points (the last two: its content at its narrowest and on one line, to choose a layout that fits), `null` until the first layout and one render behind a change (`onLayout={size => …}` is the callback form; on `view`, `text`, `vector`, `plot`, `scroll`).
+- `useAction(actions.x)` gives `pending`, `error` and `run`, which never rejects and resolves `{ ok: true, value }` or `{ ok: false, error }`.
 - `useRequest`, `useStream(name, action, { onData? })`,
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.

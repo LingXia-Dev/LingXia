@@ -143,9 +143,11 @@ export interface ActionResource<P extends unknown[], R> {
   readonly pending: boolean;
   /** The latest `run`'s failure, or `null`; cleared when the next one starts. */
   readonly error: ResourceError | null;
-  /** Call the action; resolves to its result, or `undefined` when it failed (see `error`). Usable as a handler. */
-  run(...params: P): Promise<ReadonlyData<R> | undefined>;
+  /** Call the action. Never rejects: resolves `{ ok: true, value }`, or `{ ok: false, error }` as `error` also shows. Usable as a handler. */
+  run(...params: P): Promise<ActionOutcome<R>>;
 }
+/** How one `run` settled; an action that returns nothing succeeds with `value` `null`, as JSON carries it. */
+export type ActionOutcome<R> = { readonly ok: true; readonly value: ReadonlyData<R> } | { readonly ok: false; readonly error: ResourceError };
 /** One action called from handlers, with its busy and failed state; keyed by call order in the component. */
 export declare function useAction<P extends [] | [unknown?], R>(action: (...params: P) => Promise<R>): ActionResource<P, R>;
 /** `useAction` keyed by `name`, for a second use of one action in a component. */
