@@ -13,7 +13,7 @@ export function label(value, code, required = false) {
 
 const finiteWithin = (value, bound) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= bound;
 const hexColor = value => typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
-const pathKeys = ['d', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap', 'strokeLinejoin', 'transform', 'vectorEffect'];
+const pathKeys = ['key', 'd', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap', 'strokeLinejoin', 'transform', 'vectorEffect', 'pathLength'];
 const gradientKeys = ['type', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr', 'from', 'units', 'spread', 'stops'];
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
 
@@ -42,6 +42,7 @@ export function vector(props, fit) {
   const gradients = props.gradients ?? {};
   if (!plain(gradients) || Object.keys(gradients).length > 8) throw Error('UI_VECTOR: at most 8 gradients');
   for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
+  const keys = new Set();
   for (const path of props.paths) {
     if (!plain(path) || Object.keys(path).some(k => !pathKeys.includes(k)) ||
         typeof path.d !== 'string' || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error('UI_VECTOR: invalid path');
@@ -53,6 +54,10 @@ export function vector(props, fit) {
       if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
     }
     if (path.vectorEffect !== undefined && !['none', 'non-scaling-stroke'].includes(path.vectorEffect)) throw Error('UI_VECTOR: invalid vector effect');
+    if (path.key !== undefined && (typeof path.key !== 'string' || !path.key || path.key.length > 64)) throw Error('UI_VECTOR: a path key is 1..64 characters');
+    if (path.key !== undefined && keys.has(path.key)) throw Error('UI_VECTOR: path keys are unique');
+    if (path.key !== undefined) keys.add(path.key);
+    if (path.pathLength !== undefined && (!finiteWithin(path.pathLength, 16384) || path.pathLength <= 0)) throw Error('UI_VECTOR: invalid pathLength');
     if (path.strokeLinecap !== undefined && !['butt', 'round', 'square'].includes(path.strokeLinecap)) throw Error('UI_VECTOR: invalid stroke-linecap');
     if (path.strokeLinejoin !== undefined && !['miter', 'round', 'bevel'].includes(path.strokeLinejoin)) throw Error('UI_VECTOR: invalid stroke-linejoin');
     if (path.strokeDashoffset !== undefined && !finiteWithin(path.strokeDashoffset, 16384)) throw Error('UI_VECTOR: invalid dash offset');

@@ -642,7 +642,7 @@ pub fn options(kind: &str) -> Option<&'static [&'static str]> {
         "auto-complete" => Some(&["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"]),
         "enter-key-hint" => Some(&["enter", "done", "go", "next", "previous", "search", "send"]),
         "auto-capitalize" => Some(&["none", "sentences", "words", "characters"]),
-        "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size"]),
+        "transition-property" => Some(&["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size", "d"]),
         "user-select" => Some(&["none", "text", "all"]),
         "touch-target" => Some(&["auto", "none"]),
         "pointer-axis" => Some(&["x", "y", "both"]),

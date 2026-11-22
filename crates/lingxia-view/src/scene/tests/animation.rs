@@ -368,6 +368,100 @@ fn group_surfaces_cover_what_they_paint_and_the_backdrop_they_read() {
 }
 
 #[test]
+fn a_morphing_vector_paints_the_sampled_geometry_with_its_own_fill() {
+    use crate::animation::transition::Overrides;
+    let mut page = crate::ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',width:40,height:40}},h('vector',{'data-testid':'v',viewBox:[0,0,40,40],paths:[{d:'M0 0H20V40H0Z',fill:'#000000'}],style:{width:40,height:40}}))}",
+    ))
+    .unwrap();
+    let display = page.layout(40, 40, 1.0).unwrap();
+    let index = display.nodes.iter().position(|n| n.test_id == "v").unwrap();
+    let moved = crate::scene::vector::Vector::parse(
+        r##"{"viewBox":[0,0,40,40],"paths":[{"d":"M20 0H40V40H20Z","fill":"#ff0000"}]}"##,
+    )
+    .unwrap()
+    .values(|_| None)
+    .into();
+    let painted = display
+        .animate_for_test(
+            index,
+            Visual {
+                transition: Overrides {
+                    paths: Some(moved),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .rasterize()
+        .unwrap();
+    let at = |x: usize, y: usize| &painted.pixels.data_as_u8_slice()[(y * 40 + x) * 4..][..4];
+    assert_eq!(
+        at(30, 20),
+        [0, 0, 0, 255],
+        "the geometry moved; with no solid colour sampled the fill stayed"
+    );
+    assert_eq!(at(10, 20), [255, 255, 255, 255]);
+}
+
+#[test]
+fn a_vector_transition_paints_the_sampled_dash_and_colour_against_its_path_length() {
+    use crate::animation::transition::Overrides;
+    let mut page = crate::ViewSession::new(&crate::session::tests::source(
+        "function render(){return h('view',{style:{backgroundColor:'#ffffff',width:40,height:40}},h('vector',{'data-testid':'v',viewBox:[0,0,40,40],paths:[{d:'M0 20H40',stroke:'#000000',strokeWidth:8,pathLength:1,strokeDasharray:[1],strokeDashoffset:0}],style:{width:40,height:40}}))}",
+    ))
+    .unwrap();
+    let index = page
+        .layout(40, 40, 1.0)
+        .unwrap()
+        .nodes
+        .iter()
+        .position(|n| n.test_id == "v")
+        .unwrap();
+    let sampled = |offset: f64| -> std::sync::Arc<crate::scene::vector::PathValues> {
+        crate::scene::vector::Vector::parse(&format!(
+            r##"{{"viewBox":[0,0,40,40],"paths":[{{"d":"M0 20H40","stroke":"#ff0000","strokeWidth":8,"pathLength":1,"strokeDasharray":[1],"strokeDashoffset":{offset}}}]}}"##
+        ))
+        .unwrap()
+        .values(|_| Some([255, 0, 0, 255]))
+        .into()
+    };
+    let mut paint = |offset: f64| {
+        page.layout(40, 40, 1.0)
+            .unwrap()
+            .animate_for_test(
+                index,
+                Visual {
+                    transition: Overrides {
+                        paths: Some(sampled(offset)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )
+            .rasterize()
+            .unwrap()
+    };
+    let half = paint(0.5);
+    let at = |x: usize| half.pixels.data_as_u8_slice()[(20 * 40 + x) * 4..][..4].to_vec();
+    assert_eq!(
+        at(10),
+        [255, 0, 0, 255],
+        "half the length drawn, in the sampled colour"
+    );
+    assert_eq!(at(30), [255, 255, 255, 255], "the rest not yet");
+    let hidden = paint(1.0);
+    assert!(
+        hidden
+            .pixels
+            .data_as_u8_slice()
+            .chunks(4)
+            .all(|pixel| pixel == [255, 255, 255, 255]),
+        "an offset of the whole length hides the line"
+    );
+}
+
+#[test]
 fn a_transitioning_background_is_painted_on_a_node_that_has_none() {
     use crate::animation::transition::Overrides;
     let mut page = crate::ViewSession::new(&crate::session::tests::source(

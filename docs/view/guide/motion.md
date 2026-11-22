@@ -163,6 +163,37 @@ same render is gone before the box closes. What sits
 after the box jumps to its new place unless it takes `transition-layout` with the same duration
 and ease. Taps and assistive tech see the final size from the first frame.
 
+## Paths
+
+`transition-[d]` on a `<vector>` moves its paths when `paths` changes: a chart line moving to new
+data, an icon changing shape, a line drawing in. Each path's `strokeWidth`, `strokeDasharray`,
+`strokeDashoffset` and solid `fill` and `stroke` colours move with it. Each new path pairs with an old one by `key` when every path on both
+sides has one, otherwise by position. A pair morphs only when both paths have the same commands in
+the same order (`M`, `L`, `C`, …, after arcs become curves); otherwise the new source shows at once.
+A dash list of another length, a gradient, caps, joins and the viewBox are the new source's throughout.
+
+```tsx
+import { useLocal } from '@lingxia/view';
+
+const weeks = [[12, 18, 15, 26, 22], [24, 14, 20, 12, 28]];
+const line = (values: number[]) => values.map((v, i) => `${i ? 'L' : 'M'}${i * 25} ${40 - v}`).join(' ');
+
+export function render() {
+  const week = useLocal('week', 0);
+  return (
+    <page className="p-4 gap-3">
+      <vector viewBox={[0, 0, 100, 40]} className="w-full h-24 text-accent transition-[d] duration-300"
+        paths={[{ key: 'line', d: line(weeks[week.value]), fill: 'none', stroke: 'currentColor', strokeWidth: 2 }]} />
+      <button onClick={() => week.set(1 - week.value)} className="h-11 rounded-lg bg-accent-solid text-on-accent-solid">Switch week</button>
+    </page>
+  );
+}
+```
+
+To draw a line in without knowing its length, give it `pathLength: 1` so the whole path counts as 1,
+then one dash of that length: `strokeDasharray: [1]` with `strokeDashoffset` going from `1` (hidden)
+to `0` (drawn). Butt caps keep the hidden line from showing a dot at its ends.
+
 ## Layout motion
 
 `transition-layout` slides an element from where layout last put it to its new position, with the

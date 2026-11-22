@@ -9,6 +9,7 @@ use vello_cpu::peniko::{Extend, Gradient};
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Path {
+    key: Option<String>,
     d: String,
     fill: Option<String>,
     stroke: Option<String>,
@@ -19,6 +20,7 @@ struct Path {
     stroke_linejoin: Option<String>,
     transform: Option<String>,
     vector_effect: Option<String>,
+    path_length: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -70,9 +72,162 @@ pub(crate) enum Tint {
 pub(crate) struct Vector {
     view_box: [f64; 4],
     pub shapes: Vec<(BezPath, Tint)>,
+    /// Per shape, a stroke outlined only after the viewBox scale, keeping its pixel width.
+    fixed: Vec<Option<Fixed>>,
     pub work: usize,
     fill_bounds: bool,
-    fixed_strokes: std::collections::HashMap<usize, Stroke>,
+    /// Each source path's own geometry and stroke: what a vector's transition moves.
+    base: PathValues,
+    /// How each source path becomes shapes, in `shapes` order.
+    recipes: Vec<Recipe>,
+}
+
+/// A non-scaling stroke and the `pathLength` its dashes are measured against.
+type Fixed = (Stroke, Option<f64>);
+
+/// A shape in viewBox space, with the stroke still to outline after the viewBox scale.
+type Outline = (BezPath, Option<Fixed>);
+
+/// A shape on screen, with the solid colour it paints in when it has one.
+type Painted = (BezPath, Option<[u8; 4]>);
+
+struct Recipe {
+    transform: Affine,
+    fill: bool,
+    /// Caps and join of the stroke, and whether it keeps its pixel width.
+    line: Option<(Cap, Join, bool)>,
+    /// `pathLength`: what the path's length counts as when measuring dashes.
+    length: Option<f64>,
+}
+
+/// One source path's stroke, which a transition moves with its geometry.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PathStroke {
+    width: f64,
+    dashes: Vec<f64>,
+    offset: f64,
+    /// Solid fill and stroke colours; `None` for none or a gradient, which do not interpolate.
+    fill: Option<[u8; 4]>,
+    stroke: Option<[u8; 4]>,
+}
+
+/// A vector's source paths, keyed for pairing with another source's.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PathValues {
+    keys: Vec<Option<String>>,
+    paths: Vec<BezPath>,
+    strokes: Vec<PathStroke>,
+}
+
+impl PathValues {
+    /// `self` reordered to pair with `to`, path by path, when every pair has the same
+    /// commands: by key when both sides key every path alike, otherwise by position. A dash
+    /// pattern of another length, and a colour either side lacks, take `to`'s at once.
+    pub(crate) fn aligned(&self, to: &Self) -> Option<Self> {
+        let keyed = |values: &Self| values.keys.iter().all(Option::is_some);
+        let order = if keyed(self) && keyed(to) && self.keys.len() == to.keys.len() {
+            to.keys
+                .iter()
+                .map(|key| self.keys.iter().position(|own| own == key))
+                .collect::<Option<Vec<_>>>()?
+        } else if self.paths.len() == to.paths.len() {
+            (0..self.paths.len()).collect()
+        } else {
+            return None;
+        };
+        let same = |a: &BezPath, b: &BezPath| {
+            a.elements().len() == b.elements().len()
+                && a.elements()
+                    .iter()
+                    .zip(b.elements())
+                    .all(|(a, b)| std::mem::discriminant(a) == std::mem::discriminant(b))
+        };
+        if !order
+            .iter()
+            .zip(&to.paths)
+            .all(|(&at, b)| same(&self.paths[at], b))
+        {
+            return None;
+        }
+        let strokes = order
+            .iter()
+            .zip(&to.strokes)
+            .map(|(&at, end)| {
+                let mut start = self.strokes[at].clone();
+                if start.dashes.len() != end.dashes.len() {
+                    start.dashes.clone_from(&end.dashes);
+                }
+                if start.fill.is_none() || end.fill.is_none() {
+                    start.fill = end.fill;
+                }
+                if start.stroke.is_none() || end.stroke.is_none() {
+                    start.stroke = end.stroke;
+                }
+                start
+            })
+            .collect();
+        Some(Self {
+            keys: to.keys.clone(),
+            paths: order.iter().map(|&at| self.paths[at].clone()).collect(),
+            strokes,
+        })
+    }
+
+    /// Point-wise and value-wise mix of two aligned values.
+    pub(crate) fn mix(&self, to: &Self, t: f64) -> Self {
+        use vello_cpu::kurbo::PathEl::{ClosePath, CurveTo, LineTo, MoveTo, QuadTo};
+        let lerp = |a: f64, b: f64| a + (b - a) * t;
+        let color = |a: Option<[u8; 4]>, b: Option<[u8; 4]>| match (a, b) {
+            (Some(a), Some(b)) => Some(crate::animation::transition::mix_oklab(a, b, t)),
+            (_, b) => b,
+        };
+        let paths = self
+            .paths
+            .iter()
+            .zip(&to.paths)
+            .map(|(a, b)| {
+                let mixed = a
+                    .elements()
+                    .iter()
+                    .zip(b.elements())
+                    .map(|pair| match pair {
+                        (MoveTo(a), MoveTo(b)) => MoveTo(a.lerp(*b, t)),
+                        (LineTo(a), LineTo(b)) => LineTo(a.lerp(*b, t)),
+                        (QuadTo(a1, a2), QuadTo(b1, b2)) => {
+                            QuadTo(a1.lerp(*b1, t), a2.lerp(*b2, t))
+                        }
+                        (CurveTo(a1, a2, a3), CurveTo(b1, b2, b3)) => {
+                            CurveTo(a1.lerp(*b1, t), a2.lerp(*b2, t), a3.lerp(*b3, t))
+                        }
+                        (ClosePath, _) => ClosePath,
+                        (_, other) => *other,
+                    });
+                BezPath::from_vec(mixed.collect())
+            })
+            .collect();
+        let strokes = self
+            .strokes
+            .iter()
+            .zip(&to.strokes)
+            .map(|(a, b)| PathStroke {
+                width: lerp(a.width, b.width),
+                dashes: a
+                    .dashes
+                    .iter()
+                    .zip(&b.dashes)
+                    .map(|(a, b)| lerp(*a, *b))
+                    .collect(),
+                offset: lerp(a.offset, b.offset),
+                fill: color(a.fill, b.fill),
+                stroke: color(a.stroke, b.stroke),
+            })
+            .collect();
+        Self {
+            keys: to.keys.clone(),
+            paths,
+            strokes,
+        }
+    }
 }
 
 fn tint<'a>(
@@ -268,10 +423,17 @@ impl Vector {
             return Err("UI_VECTOR: invalid fit".into());
         }
         let fill_bounds = source.fit.as_deref() == Some("fill");
-        let mut fixed_strokes = std::collections::HashMap::new();
-        let mut shapes = Vec::new();
-        let mut work = 0;
+        let mut tints = Vec::new();
+        let mut strokes = Vec::new();
+        let mut recipes = Vec::new();
+        let mut keys = Vec::new();
+        let mut locals = Vec::new();
         for path_source in &source.paths {
+            if path_source.key.as_ref().is_some_and(|key| {
+                key.is_empty() || key.len() > 64 || keys.contains(&Some(key.clone()))
+            }) {
+                return Err("UI_VECTOR: path keys are unique and 1..64 characters".into());
+            }
             if path_source.d.is_empty()
                 || path_source.d.len() > crate::protocol::limits::VECTOR_PATH_BYTES
             {
@@ -341,38 +503,103 @@ impl Vector {
                     palette,
                 ))),
             };
-            let style = Stroke::new(width)
-                .with_caps(cap)
-                .with_join(join)
-                .with_dashes(offset, &dashes);
-            work += path.elements().len();
-            if let Some(fill) = fill {
-                shapes.push((path.clone(), resolve(fill)));
-            }
-            if let Some(line) = line
-                && width > 0.0
+            if path_source
+                .path_length
+                .is_some_and(|length| !length.is_finite() || length <= 0.0 || length > 16384.0)
             {
-                if path_source.vector_effect.as_deref() == Some("non-scaling-stroke") {
-                    fixed_strokes.insert(shapes.len(), style);
-                    shapes.push((path.clone(), resolve(line)));
+                return Err("UI_VECTOR: invalid pathLength".into());
+            }
+            let line = line.filter(|_| width > 0.0);
+            let fixed = path_source.vector_effect.as_deref() == Some("non-scaling-stroke");
+            recipes.push(Recipe {
+                transform,
+                fill: fill.is_some(),
+                line: line.is_some().then_some((cap, join, fixed)),
+                length: path_source.path_length,
+            });
+            tints.extend(fill.into_iter().chain(line).map(resolve));
+            keys.push(path_source.key.clone());
+            locals.push(local);
+            strokes.push(PathStroke {
+                width,
+                dashes,
+                offset,
+                fill: None,
+                stroke: None,
+            });
+        }
+        let mut vector = Self {
+            view_box: source.view_box,
+            fill_bounds,
+            shapes: Vec::new(),
+            fixed: Vec::new(),
+            work: 0,
+            base: PathValues {
+                keys,
+                paths: locals,
+                strokes,
+            },
+            recipes,
+        };
+        let (shapes, work) = vector.shape_paths(&vector.base)?;
+        (vector.shapes, vector.fixed) = shapes
+            .into_iter()
+            .zip(tints)
+            .map(|((path, fixed), tint)| ((path, tint), fixed))
+            .unzip();
+        vector.work = work;
+        Ok(vector)
+    }
+
+    /// The source paths and strokes, with solid colours as `color` resolves each shape's tint.
+    pub fn values(&self, color: impl Fn(&Tint) -> Option<[u8; 4]>) -> PathValues {
+        let mut values = self.base.clone();
+        let mut shape = 0;
+        for (recipe, stroke) in self.recipes.iter().zip(&mut values.strokes) {
+            if recipe.fill {
+                stroke.fill = color(&self.shapes[shape].1);
+                shape += 1;
+            }
+            if recipe.line.is_some() {
+                stroke.stroke = color(&self.shapes[shape].1);
+                shape += 1;
+            }
+        }
+        values
+    }
+
+    /// The shapes `values` make under this vector's recipes, in viewBox space, each with the
+    /// stroke still to outline after the viewBox scale; and their work.
+    fn shape_paths(&self, values: &PathValues) -> Result<(Vec<Outline>, usize), String> {
+        let mut shapes = Vec::new();
+        let mut work = 0;
+        for ((recipe, local), stroke) in self.recipes.iter().zip(&values.paths).zip(&values.strokes)
+        {
+            let path = recipe.transform * local.clone();
+            work += path.elements().len();
+            if recipe.fill {
+                shapes.push((path.clone(), None));
+            }
+            if let Some((cap, join, fixed)) = recipe.line {
+                let style = Stroke::new(stroke.width)
+                    .with_caps(cap)
+                    .with_join(join)
+                    .with_dashes(stroke.offset, stroke.dashes.iter().copied());
+                if fixed {
+                    shapes.push((path, Some((style, recipe.length))));
                 } else {
                     // Strokes scale with the path transform, as in SVG.
-                    let outline = transform * stroke_outline(&local, &style)?;
+                    let outline = recipe.transform
+                        * stroke_outline(local, &measured(style, local, recipe.length))?;
                     work += outline.elements().len();
-                    shapes.push((outline, resolve(line)));
+                    shapes.push((outline, None));
                 }
             }
             if work > crate::protocol::limits::VECTOR_PATH_WORK {
                 return Err("UI_VECTOR: geometry budget exceeded".into());
             }
         }
-        Ok(Self {
-            view_box: source.view_box,
-            fill_bounds,
-            fixed_strokes,
-            shapes,
-            work,
-        })
+        Ok((shapes, work))
     }
 
     pub fn resolved_shapes(
@@ -380,11 +607,59 @@ impl Vector {
         bounds: [f32; 4],
     ) -> Result<(Vec<(BezPath, Tint)>, usize), String> {
         let transform = self.transform(bounds);
-        let mut work = self.work;
-        let mut shapes = Vec::new();
-        for (index, (path, tint)) in self.shapes.iter().enumerate() {
-            let mut path = transform * path.clone();
-            if let Some(style) = self.fixed_strokes.get(&index) {
+        let shapes = self
+            .shapes
+            .iter()
+            .zip(&self.fixed)
+            .map(|((path, _), fixed)| (path.clone(), fixed.clone()))
+            .collect();
+        let (paths, work) = self.resolved_paths(shapes, self.work, bounds)?;
+        let shapes = paths
+            .into_iter()
+            .zip(&self.shapes)
+            .map(|(path, (_, tint))| {
+                let tint = match tint {
+                    Tint::Gradient(brush) => Tint::Gradient(Arc::new(brush.then(transform))),
+                    color => color.clone(),
+                };
+                (path, tint)
+            })
+            .collect();
+        Ok((shapes, work))
+    }
+
+    /// The screen paths of `values`, a transition's mix of this vector's own, in `shapes`
+    /// order, each with the solid colour it paints in when it has one.
+    pub fn resolved_morph(
+        &self,
+        values: &PathValues,
+        bounds: [f32; 4],
+    ) -> Result<Vec<Painted>, String> {
+        let (shapes, work) = self.shape_paths(values)?;
+        let paths = self.resolved_paths(shapes, work, bounds)?.0;
+        let mut colors = Vec::with_capacity(paths.len());
+        for (recipe, stroke) in self.recipes.iter().zip(&values.strokes) {
+            if recipe.fill {
+                colors.push(stroke.fill);
+            }
+            if recipe.line.is_some() {
+                colors.push(stroke.stroke);
+            }
+        }
+        Ok(paths.into_iter().zip(colors).collect())
+    }
+
+    fn resolved_paths(
+        &self,
+        shapes: Vec<Outline>,
+        mut work: usize,
+        bounds: [f32; 4],
+    ) -> Result<(Vec<BezPath>, usize), String> {
+        let transform = self.transform(bounds);
+        let mut resolved = Vec::with_capacity(shapes.len());
+        for (path, fixed) in shapes {
+            let mut path = transform * path;
+            if let Some((style, length)) = fixed {
                 let bbox = path.control_box();
                 if !path.is_finite() || bbox.width() > 32768.0 || bbox.height() > 32768.0 {
                     return Err("UI_VECTOR: transformed stroke exceeds geometry limit".into());
@@ -395,19 +670,15 @@ impl Vector {
                 {
                     return Err("UI_VECTOR: transformed stroke exceeds coordinate limit".into());
                 }
-                path = stroke_outline(&path, style)?;
+                path = stroke_outline(&path, &measured(style, &path, length))?;
                 work += path.elements().len();
                 if work > crate::protocol::limits::VECTOR_PATH_WORK {
                     return Err("UI_VECTOR: geometry budget exceeded".into());
                 }
             }
-            let tint = match tint {
-                Tint::Gradient(brush) => Tint::Gradient(Arc::new(brush.then(transform))),
-                color => color.clone(),
-            };
-            shapes.push((path, tint));
+            resolved.push(path);
         }
-        Ok((shapes, work))
+        Ok((resolved, work))
     }
 
     pub fn transform(&self, bounds: [f32; 4]) -> Affine {
@@ -477,6 +748,19 @@ fn parse_transform(source: &str) -> Result<Affine, String> {
         return Err(invalid());
     }
     Ok(result)
+}
+
+/// `style` with its dashes in `path`'s own units: a `pathLength` stands for the whole path.
+fn measured(style: Stroke, path: &BezPath, length: Option<f64>) -> Stroke {
+    match length {
+        Some(length) if !style.dash_pattern.is_empty() => {
+            let scale = path.perimeter(0.01) / length;
+            let offset = style.dash_offset * scale;
+            let dashes: Vec<f64> = style.dash_pattern.iter().map(|dash| dash * scale).collect();
+            style.with_dashes(offset, dashes)
+        }
+        _ => style,
+    }
 }
 
 fn stroke_outline(path: &BezPath, style: &Stroke) -> Result<BezPath, String> {

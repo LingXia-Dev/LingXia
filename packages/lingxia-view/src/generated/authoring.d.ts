@@ -348,6 +348,10 @@ export type BackgroundGradient =
 export interface PieLayout { center: readonly [number, number]; innerRadius: number; outerRadius: number; emphasisScale?: number }
 /** `fill`/`stroke` take a colour role (`'line-strong/65'`), a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
 export interface VectorPath {
+  /** Pairs this path with the previous source's path of the same key for `transition-[d]`; unkeyed paths pair by position. */
+  key?: string;
+  /** What the path's whole length counts as for `strokeDasharray`/`strokeDashoffset`: with `1`, a dash of `[1]` offset from 1 to 0 under `transition-[d]` draws the line in. */
+  pathLength?: number;
   d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
   strokeLinecap?: "butt" | "round" | "square"; strokeLinejoin?: "miter" | "round" | "bevel";
   /** An SVG transform list: matrix, translate, scale, rotate, skewX, skewY. */

@@ -753,6 +753,8 @@ const transitionTargets = {
   width: ['size'], height: ['size'],
   color: ['fg'], fill: ['fg'], stroke: ['fg'], 'text-decoration-color': ['fg'], 'background-color': ['bg'],
   '--tw-gradient-from': ['bg'], '--tw-gradient-via': ['bg'], '--tw-gradient-to': ['bg'], 'border-color': ['border'], 'box-shadow': ['shadow'],
+  // `transition-[d]`: a <vector>'s paths, strokes and solid colours move between sources of the same shape.
+  d: ['d'],
   all: ['opacity', 'transform', 'bg', 'fg', 'border', 'shadow'],
 };
 // Listed by Tailwind's defaults but without a native paint to animate; they never animate in CSS terms here either.

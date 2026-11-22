@@ -39,6 +39,22 @@ pub(crate) struct RingSlot {
     pub(crate) border: [f32; 4],
 }
 
+/// A vector's shapes in `commands`, and what redraws them from morphed geometry.
+#[derive(Clone)]
+pub(crate) struct VectorSlot {
+    pub(crate) commands: Vec<usize>,
+    pub(crate) vector: Arc<crate::scene::vector::Vector>,
+    /// The paths and strokes as built, solid colours resolved: a transition's end point.
+    pub(crate) values: Arc<crate::scene::vector::PathValues>,
+    pub(crate) bounds: [f32; 4],
+}
+
+impl std::fmt::Debug for VectorSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VectorSlot({:?})", self.commands)
+    }
+}
+
 /// Where a node's transitionable paint sits in `commands`, as the scene resolved it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PaintStyle {
@@ -60,6 +76,7 @@ pub(crate) struct PaintStyle {
     pub(crate) slider: Option<crate::scene::slider::SliderPaint>,
     /// A `bg-clip-text` gradient and the box it was laid out in, for an animated position.
     pub(crate) text_gradient: Option<(Arc<crate::scene::gradient::BackgroundGradient>, [f32; 4])>,
+    pub(crate) vector: Option<VectorSlot>,
 }
 
 /// Unscrolled geometry and shaped glyphs from one committed View render.
@@ -303,6 +320,12 @@ impl RetainedLayout {
                 if let Some(ring) = &mut style.ring {
                     ring.commands = shift(ring.commands.start)..shift(ring.commands.end);
                 }
+                if let Some(vector) = &mut style.vector {
+                    vector
+                        .commands
+                        .iter_mut()
+                        .for_each(|command| *command = shift(*command));
+                }
                 style.texts = style
                     .texts
                     .into_iter()
@@ -411,6 +434,7 @@ impl RetainedLayout {
                 .slider
                 .as_ref()
                 .map(|slider| slider.values(&self.commands)),
+            paths: style.vector.as_ref().map(|slot| slot.values.clone()),
         }
     }
 
@@ -925,6 +949,9 @@ impl RetainedLayout {
                 });
             let first = self.ranges[index].start;
             let reshaped;
+            let morph = overrides
+                .and_then(|o| o.paths.as_ref())
+                .zip(paint_style.vector.as_ref());
             let own = match (
                 overrides.and_then(|o| o.parts.as_ref()),
                 &paint_style.slider,
@@ -934,7 +961,28 @@ impl RetainedLayout {
                         slider.apply(&self.commands[self.ranges[index].clone()], first, parts);
                     &reshaped[..]
                 }
-                _ => &self.commands[self.ranges[index].clone()],
+                _ => match morph {
+                    Some((values, slot)) => {
+                        let mut paths =
+                            slot.vector.resolved_morph(values, slot.bounds)?.into_iter();
+                        let mut own = self.commands[self.ranges[index].clone()].to_vec();
+                        for &command in &slot.commands {
+                            if let (
+                                Some(Paint::Vector { path, color, .. }),
+                                Some((morphed, tint)),
+                            ) = (own.get_mut(command - first), paths.next())
+                            {
+                                *path = Arc::new(morphed);
+                                if let Some(tint) = tint {
+                                    *color = tint;
+                                }
+                            }
+                        }
+                        reshaped = own;
+                        &reshaped[..]
+                    }
+                    None => &self.commands[self.ranges[index].clone()],
+                },
             };
             for (offset, paint) in own.iter().enumerate() {
                 let command = first + offset;

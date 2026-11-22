@@ -22,3 +22,15 @@ test('a panel opens to its full height, the row after it moves down, and it clos
   await expect(state).toHaveAttribute('data-state', 'open=false');
   await expect.poll(async () => await gap() - before).toBe(0);
 });
+
+// The line's box stays put while its path moves; a wrong pairing would show at once instead.
+test('a chart line morphs to the other data set and draws itself in', { covers: ['view:transition-path'], start: openDemo('morph') }, async (t) => {
+  const view = t.app.view;
+  const state = view.testId('motion-morph-state');
+  await expect(state).toHaveAttribute('data-state', 'week=0');
+  await view.testId('motion-morph-next').click();
+  await expect(state).toHaveAttribute('data-state', 'week=1');
+  await view.testId('motion-morph-next').click();
+  await expect(state).toHaveAttribute('data-state', 'week=0');
+  await expect(view.testId('motion-draw-chart')).toBeVisible();
+});

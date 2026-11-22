@@ -606,6 +606,19 @@ impl Renderer {
                     (control_bounds[3] - layout.padding.top - layout.padding.bottom).max(0.0),
                 ];
                 let (shapes, work) = vector.resolved_shapes(vector_bounds)?;
+                let values = vector.values(|tint| match tint {
+                    crate::scene::vector::Tint::Color(tint) if tint == "currentColor" => {
+                        color(colors[index]).ok()
+                    }
+                    crate::scene::vector::Tint::Color(tint) => color(tint).ok(),
+                    crate::scene::vector::Tint::Gradient(_) => None,
+                });
+                let mut slot = crate::scene::retained::VectorSlot {
+                    commands: Vec::with_capacity(shapes.len()),
+                    vector: Arc::new(vector),
+                    values: Arc::new(values),
+                    bounds: vector_bounds,
+                };
                 vector_work += work;
                 if vector_work > crate::protocol::limits::VECTOR_WORK {
                     return Err("UI_LIMIT: vector geometry budget exceeded".into());
@@ -631,6 +644,7 @@ impl Renderer {
                         crate::scene::vector::Tint::Gradient(brush) => ([0; 4], Some(brush)),
                     };
                     // Clipped at the border box: padding gives a stroke on an edge point room.
+                    slot.commands.push(commands.len());
                     commands.push(Paint::Vector {
                         path: Arc::new(path),
                         color: tint,
@@ -638,6 +652,7 @@ impl Renderer {
                         bounds,
                     });
                 }
+                paint_style.vector = Some(slot);
             }
             let mut plot_snapshot = None;
             if record.tag == tag::PLOT {

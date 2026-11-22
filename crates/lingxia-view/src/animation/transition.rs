@@ -22,10 +22,12 @@ pub enum Property {
     Ring,
     /// How much larger the box paints than layout made it, animating to zero.
     Size,
+    /// A `<vector>`'s path geometry.
+    Path,
 }
 
 /// The paint properties; `Layout` is reconciled on its own.
-const PROPERTIES: [Property; 8] = [
+const PROPERTIES: [Property; 9] = [
     Property::Opacity,
     Property::Transform,
     Property::Background,
@@ -34,11 +36,12 @@ const PROPERTIES: [Property; 8] = [
     Property::Shadow,
     Property::Parts,
     Property::Ring,
+    Property::Path,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TransitionDef {
-    properties: [bool; 10],
+    properties: [bool; 11],
     duration: Duration,
     delay: Duration,
     timing: Timing,
@@ -67,28 +70,20 @@ impl TransitionDef {
             return Err(invalid());
         }
         let wire: Wire = serde_json::from_str(source).map_err(|_| invalid())?;
-        let mut properties = [false; 10];
+        let mut properties = [false; 11];
         for name in &wire.properties {
-            let index = [
-                "opacity",
-                "transform",
-                "bg",
-                "fg",
-                "border",
-                "shadow",
-                "layout",
-                "size",
-            ]
-            .iter()
-            .position(|known| known == name)
-            .map(|index| {
-                if index == 7 {
-                    Property::Size as usize
-                } else {
-                    index
-                }
-            })
-            .ok_or_else(invalid)?;
+            let index = match name.as_str() {
+                "opacity" => Property::Opacity,
+                "transform" => Property::Transform,
+                "bg" => Property::Background,
+                "fg" => Property::Foreground,
+                "border" => Property::Border,
+                "shadow" => Property::Shadow,
+                "layout" => Property::Layout,
+                "size" => Property::Size,
+                "d" => Property::Path,
+                _ => return Err(invalid()),
+            } as usize;
             if std::mem::replace(&mut properties[index], true) {
                 return Err(invalid());
             }
@@ -124,7 +119,7 @@ impl TransitionDef {
 
     /// Only slider parts: 150 ms on the standard ease, as Tailwind's default transition.
     pub fn parts() -> Self {
-        let mut properties = [false; 10];
+        let mut properties = [false; 11];
         properties[Property::Parts as usize] = true;
         Self {
             properties,
@@ -262,6 +257,8 @@ pub struct Resolved {
     pub parts: Option<crate::scene::slider::PartValues>,
     /// The box layout made; `None` when it has none to resize.
     pub size: Option<[f64; 2]>,
+    /// A vector's source paths.
+    pub(crate) paths: Option<std::sync::Arc<crate::scene::vector::PathValues>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -273,6 +270,7 @@ enum Value {
     Ring(crate::scene::ring::RingValue),
     Offset([f64; 2]),
     Parts(crate::scene::slider::PartValues),
+    Paths(std::sync::Arc<crate::scene::vector::PathValues>),
 }
 
 impl Resolved {
@@ -287,6 +285,7 @@ impl Resolved {
             Property::Layout | Property::Size => None,
             Property::Parts => self.parts.clone().map(Value::Parts),
             Property::Ring => self.ring.map(Value::Ring),
+            Property::Path => self.paths.clone().map(Value::Paths),
         }
     }
 }
@@ -300,6 +299,7 @@ fn mix(from: &Value, to: &Value, t: f64) -> Value {
             Value::Offset([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
         }
         (Value::Parts(a), Value::Parts(b)) => Value::Parts(a.mix(b, t)),
+        (Value::Paths(a), Value::Paths(b)) => Value::Paths(std::sync::Arc::new(a.mix(b, t))),
         (Value::Ring(a), Value::Ring(b)) => {
             let lerp = |x: f32, y: f32| (f64::from(x) + (f64::from(y) - f64::from(x)) * t) as f32;
             Value::Ring(crate::scene::ring::RingValue {
@@ -454,6 +454,23 @@ impl Instance {
     ) -> Result<Self, String> {
         let duration = definition.duration.mul_f64(policy.scale);
         let delay = definition.delay.mul_f64(policy.scale);
+        // Paths morph only between sources of the same commands; others jump, already finished.
+        let from = match (&from, &to) {
+            (Value::Paths(a), Value::Paths(b)) => match a.aligned(b) {
+                Some(aligned) => Value::Paths(std::sync::Arc::new(aligned)),
+                None => {
+                    return Ok(Self {
+                        from: to.clone(),
+                        to,
+                        duration: Duration::ZERO,
+                        delay: Duration::ZERO,
+                        curve: Curve::Ease(Easing::STEP_END),
+                        started: None,
+                    });
+                }
+            },
+            _ => from,
+        };
         let bounce = match definition.timing {
             Timing::Spring(bounce) => bounce,
             Timing::Ease(easing) => {
@@ -735,6 +752,7 @@ pub struct Overrides {
     pub parts: Option<crate::scene::slider::PartValues>,
     /// Added to the laid-out width and height of the painted box, which clips its children.
     pub size: Option<[f64; 2]>,
+    pub(crate) paths: Option<std::sync::Arc<crate::scene::vector::PathValues>>,
 }
 
 impl Overrides {
@@ -1024,6 +1042,7 @@ impl Transitions {
                 (Property::Size, Value::Offset(v)) => overrides.size = Some(v),
                 (Property::Parts, Value::Parts(v)) => overrides.parts = Some(v),
                 (Property::Ring, Value::Ring(v)) => overrides.ring = Some(v),
+                (Property::Path, Value::Paths(v)) => overrides.paths = Some(v),
                 _ => return Err("UI_TRANSITION: mismatched value".into()),
             }
         }
@@ -1111,6 +1130,7 @@ mod tests {
             position: Some([0.0; 2]),
             size: Some([0.0; 2]),
             parts: None,
+            paths: None,
         }
     }
 
@@ -1170,6 +1190,103 @@ mod tests {
             .unwrap();
         slow.start(ms(0));
         assert_eq!(slow.overrides("a", ms(200)).unwrap().opacity, Some(0.5));
+    }
+
+    #[test]
+    fn paths_morph_between_sources_of_the_same_commands_and_jump_otherwise() {
+        let def = TransitionDef::decode(
+            r#"{"properties":["d"],"durationMs":200,"delayMs":0,"easing":"linear"}"#,
+        )
+        .unwrap();
+        let geometry = |paths: &str| {
+            crate::scene::vector::Vector::parse(&format!(
+                r#"{{"viewBox":[0,0,10,10],"paths":{paths}}}"#
+            ))
+            .unwrap()
+            .values(|_| None)
+            .into()
+        };
+        let line = |a: u8, b: u8| geometry(&format!(r#"[{{"key":"l","d":"M0 {a}L10 {b}"}}]"#));
+        let input = |paths| {
+            let target = Resolved {
+                paths: Some(paths),
+                ..style(1.0)
+            };
+            [("v".to_owned(), def, target)]
+        };
+        let first = Transitions::default()
+            .reconcile(input(line(0, 0)), ms(0), MOVE)
+            .unwrap();
+        let mut moving = first.reconcile(input(line(10, 4)), ms(0), MOVE).unwrap();
+        moving.start(ms(0));
+        assert_eq!(
+            moving.overrides("v", ms(100)).unwrap().paths,
+            Some(line(5, 2))
+        );
+        assert!(moving.overrides("v", ms(200)).unwrap().paths.is_none());
+
+        // Other commands: the new source shows at once.
+        let curve = geometry(r#"[{"key":"l","d":"M0 0Q5 5 10 0"}]"#);
+        let mut jumped = moving.reconcile(input(curve), ms(100), MOVE).unwrap();
+        jumped.start(ms(100));
+        assert!(jumped.overrides("v", ms(100)).unwrap().paths.is_none());
+
+        // Keys pair paths the new source reorders.
+        let pair = |a: u8, b: u8| {
+            geometry(&format!(
+                r#"[{{"key":"a","d":"M0 0L10 {a}"}},{{"key":"b","d":"M0 10L10 {b}"}}]"#
+            ))
+        };
+        let swapped = |a: u8, b: u8| {
+            geometry(&format!(
+                r#"[{{"key":"b","d":"M0 10L10 {b}"}},{{"key":"a","d":"M0 0L10 {a}"}}]"#
+            ))
+        };
+        let start = Transitions::default()
+            .reconcile(input(pair(0, 10)), ms(0), MOVE)
+            .unwrap();
+        let mut reordered = start.reconcile(input(swapped(10, 0)), ms(0), MOVE).unwrap();
+        reordered.start(ms(0));
+        assert_eq!(
+            reordered.overrides("v", ms(100)).unwrap().paths,
+            Some(swapped(5, 5))
+        );
+    }
+
+    #[test]
+    fn a_path_dash_offset_and_width_move_with_the_vector_transition() {
+        let def = TransitionDef::decode(
+            r#"{"properties":["d"],"durationMs":200,"delayMs":0,"easing":"linear"}"#,
+        )
+        .unwrap();
+        let stroke = |offset: f64,
+                      width: f64|
+         -> std::sync::Arc<crate::scene::vector::PathValues> {
+            crate::scene::vector::Vector::parse(&format!(
+                r##"{{"viewBox":[0,0,10,10],"paths":[{{"d":"M0 5H10","stroke":"#000000","strokeWidth":{width},"pathLength":1,"strokeDasharray":[1],"strokeDashoffset":{offset}}}]}}"##
+            ))
+            .unwrap()
+            .values(|_| None)
+            .into()
+        };
+        let input = |paths| {
+            let target = Resolved {
+                paths: Some(paths),
+                ..style(1.0)
+            };
+            [("v".to_owned(), def, target)]
+        };
+        let hidden = Transitions::default()
+            .reconcile(input(stroke(1.0, 2.0)), ms(0), MOVE)
+            .unwrap();
+        let mut drawing = hidden
+            .reconcile(input(stroke(0.0, 4.0)), ms(0), MOVE)
+            .unwrap();
+        drawing.start(ms(0));
+        assert_eq!(
+            drawing.overrides("v", ms(100)).unwrap().paths,
+            Some(stroke(0.5, 3.0))
+        );
     }
 
     #[test]

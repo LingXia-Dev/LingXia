@@ -105,6 +105,42 @@ export function PushDemo() {
   );
 }
 
+const weeks = [[12, 18, 15, 26, 22, 30, 28], [24, 14, 20, 12, 28, 18, 34]];
+// One command per point, so every data set morphs into every other.
+const chartLine = (values: readonly number[]) =>
+  values.map((value, i) => `${i ? 'L' : 'M'}${i * 20} ${40 - value}`).join(' ');
+
+export function MorphDemo() {
+  const week = useLocal('morph-week', 0);
+  const t = useSay();
+  return (
+    <>
+      <vector data-testid="motion-morph-chart" aria-hidden viewBox={[0, 0, 120, 40]} className="w-full h-24 text-accent transition-[d] duration-500 ease-in-out"
+        paths={[{ key: 'line', d: chartLine(weeks[week.value]), fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' }]} />
+      <view className="flex-row items-center gap-3">
+        <Button testId="motion-morph-next" size="sm" onClick={() => week.set(1 - week.value)}>{t(week.value ? labels.thisWeek : labels.lastWeek)}</Button>
+        <Readout testId="motion-morph-state" state={`week=${week.value}`}>{t(readouts.week(week.value))}</Readout>
+      </view>
+    </>
+  );
+}
+
+// The whole line counts as 1, so one dash of 1 offset from 1 to 0 reveals it end to end.
+export function DrawInDemo() {
+  const drawn = useLocal('draw-in-drawn', false);
+  const t = useSay();
+  const values = weeks[0];
+  return (
+    <>
+      <vector data-testid="motion-draw-chart" aria-hidden viewBox={[0, 0, 120, 40]} onLayout={() => { if (!drawn.value) drawn.set(true); }} className="w-full h-24 text-accent transition-[d] duration-700 ease-out"
+        paths={[{ key: 'line', d: chartLine(values), pathLength: 1, strokeDasharray: [1], strokeDashoffset: drawn.value ? 0 : 1, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' }]} />
+      <view className="flex-row">
+        <Button testId="motion-draw-again" size="sm" onClick={() => drawn.set(!drawn.value)}>{t(drawn.value ? labels.erase : labels.draw)}</Button>
+      </view>
+    </>
+  );
+}
+
 /** The Motion group: every demo the text table names, drawn by its body. */
 export const motionDemos = {
   press: PressDemo,
@@ -115,4 +151,6 @@ export const motionDemos = {
   reduce: ReduceDemo,
   push: PushDemo,
   panel: PanelDemo,
+  morph: MorphDemo,
+  drawIn: DrawInDemo,
 };
