@@ -4,7 +4,7 @@ import { textOf } from '@lingxia/view/testing';
 import { renderExample } from '../testing/harness.mjs';
 
 const callout = screen => screen.queryAll(node => node.testId === 'tour')[0];
-const shownTitle = screen => { const node = callout(screen); return node && node.children.length > 0 ? textOf(node.children[0]) : null; };
+const shownTitle = screen => { const heading = callout(screen)?.children.find(child => child.props.role === 'heading'); return heading ? textOf(heading) : null; };
 
 test('Welcome: nothing shows until the tour starts; then one callout, anchored to its target and named for it', async () => {
   const screen = await renderExample('Tour/Tour', 'Welcome');
@@ -34,13 +34,16 @@ test('Welcome: Next and Back step through; the last step says Done and ends the 
   assert.equal(screen.queryAll(node => /^On step/.test(node.text ?? '')).length, 0, 'the tour is not running: no step line');
 });
 
-test('Welcome: a caret is anchored to the same target by itself, and is not read', async () => {
+test('Welcome: the callout is anchored to its target with a margin; four carets on its edges, each shown on the side it lands, none read', async () => {
   const screen = await renderExample('Tour/Tour', 'Welcome');
   screen.press(screen.getByTestId('tour-start'));
-  const caret = screen.getByTestId('tour-caret');
-  assert.deepEqual([caret.props.anchorArea, caret.props.accessibilityHidden, caret.props.width, caret.children.length], ['bottom', 1, 12, 1]);
-  const callout = screen.getByTestId('tour');
-  assert.equal(typeof callout.props.anchorTo, 'string', 'the callout hangs from the caret');
+  const node = callout(screen);
+  assert.deepEqual([node.props.marginTop, node.props.marginBottom], [12, 12], 'clear of the target on either side');
+  const carets = ['bottom', 'top', 'end', 'start'].map(side => screen.getByTestId(`tour-caret-${side}`));
+  assert.ok(carets.every(caret => caret.parent === node && caret.props.accessibilityHidden === 1 && caret.props.position === 'absolute' && caret.props.opacity === 0));
+  assert.deepEqual(carets.map((caret, index) => (index < 2 ? caret.props.insetInlineStart : caret.props.insetTop)), ['anchor(center)', 'anchor(center)', 'anchor(center)', 'anchor(center)'], 'each on the target\'s centre line');
+  assert.deepEqual(carets.map(caret => Object.keys(caret.props).find(key => /^side.*Style$/.test(key))), ['sideBottomStyle', 'sideTopStyle', 'sideEndStyle', 'sideStartStyle']);
+  assert.deepEqual(carets.map(caret => caret.props.sideBottomStyle?.opacity ?? caret.props.sideTopStyle?.opacity ?? caret.props.sideEndStyle?.opacity ?? caret.props.sideStartStyle?.opacity), [1, 1, 1, 1]);
 });
 
 test('Welcome: the row around the search target wraps, so at large text the field takes its own line instead of shrinking', async () => {

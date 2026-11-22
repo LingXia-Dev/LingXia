@@ -86,8 +86,8 @@ export function Welcome() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| caret | `<view>` | yes | A small point on the edge facing the target, anchored to the target, so it stays on the target's centre when the callout is shifted to fit. |
-| callout | `<view>` | yes | A popover hung from the caret, on the inverted surface. |
+| callout | `<view>` | yes | A popover anchored to the target, on the inverted surface, clear of the target by its margin. |
+| caret | `<view>` | yes | A small point on the edge facing the target, on the target's centre line even when the callout is shifted to fit; it follows a flip. |
 | title | `<text>` | yes | The step's title, a heading. |
 | text | `<text>` | yes | One or two sentences. |
 | count | `<text>` | yes | Where the tour is, from `stepLabel`. |
@@ -128,9 +128,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Limits
 
-- The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.
-- The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret's point is moved across that gap as a child.
-- A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.
 - No dimmed backdrop with a cut-out around the target: the View has no mask.
 - A step does not wait for the user to do something; it moves on from its buttons.
 - Focus is not moved into the callout or back by the component.

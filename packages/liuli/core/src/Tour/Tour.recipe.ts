@@ -1,9 +1,8 @@
 import type { TourPlacement } from './Tour';
 
 export const tourParts = {
-  caret: 'view',
-  point: 'view',
   callout: 'view',
+  caret: 'view',
   title: 'text',
   text: 'text',
   footer: 'view',
@@ -14,19 +13,22 @@ export const tourParts = {
 
 /** A callout on the inverted surface, as InfoTip\'s note is, so it reads as apart from the page it points at. */
 export const tourRecipe = {
+  /** Anchored to the target and kept clear of it by its margin, on whichever side it lands. */
+  callout: {
+    base: 'w-72 m-3 p-4 gap-2 rounded-container bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+  },
   /**
-   * A square turned on its corner, anchored to the target: it stays on the target's centre. The
-   * callout hangs from the caret, is shifted to fit the screen, and covers the caret's far half.
+   * A square turned on its corner, half out of the callout's edge facing the target, on the target's
+   * centre line even when the callout is pushed in from a screen edge. Hidden until the callout lands on its side.
    */
   caret: {
-    base: 'size-3 overflow-visible bg-transparent transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
-    point: 'size-3 rotate-45 rounded-[2px] bg-text',
-    /** Moved across the gap the View keeps between an anchor and its popover, so its far half tucks under the callout. */
-    offset: { bottom: 'translate-y-2', top: '-translate-y-2', end: 'translate-x-2 rtl:-translate-x-2', start: '-translate-x-2 rtl:translate-x-2' } satisfies Record<TourPlacement, string>,
-  },
-  callout: {
-    base: 'w-72 p-4 gap-2 rounded-container bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
-    offset: { bottom: '', top: '', end: '', start: '' } satisfies Record<TourPlacement, string>,
+    base: 'absolute size-3 rotate-45 rounded-[2px] bg-text opacity-0',
+    side: {
+      bottom: '-top-1.5 start-[anchor(center)] -ms-1.5 side-bottom:opacity-100',
+      top: '-bottom-1.5 start-[anchor(center)] -ms-1.5 side-top:opacity-100',
+      end: '-start-1.5 top-[anchor(center)] -mt-1.5 side-end:opacity-100',
+      start: '-end-1.5 top-[anchor(center)] -mt-1.5 side-start:opacity-100',
+    } satisfies Record<TourPlacement, string>,
   },
   title: {
     base: 'text-body font-semibold text-surface',

@@ -14,8 +14,8 @@ export const doc: ComponentDoc = {
   propsType: 'TourProps',
   recipe: { map: 'tourRecipe', parts: 'tourParts' },
   anatomy: [
-    { part: 'caret', required: true, description: 'A small point on the edge facing the target, anchored to the target, so it stays on the target\'s centre when the callout is shifted to fit.' },
-    { part: 'callout', required: true, description: 'A popover hung from the caret, on the inverted surface.' },
+    { part: 'callout', required: true, description: 'A popover anchored to the target, on the inverted surface, clear of the target by its margin.' },
+    { part: 'caret', required: true, description: 'A small point on the edge facing the target, on the target\'s centre line even when the callout is shifted to fit; it follows a flip.' },
     { part: 'title', required: true, description: 'The step\'s title, a heading.' },
     { part: 'text', required: true, description: 'One or two sentences.' },
     { part: 'count', required: true, description: 'Where the tour is, from `stepLabel`.' },
@@ -54,9 +54,6 @@ export const doc: ComponentDoc = {
   examples: [{ name: 'Welcome', title: 'Three steps' }],
   gaps: [],
   limits: [
-    'The caret is anchored to the target and the callout hangs from the caret, because the View anchors one popover to an element.',
-    'The View keeps about 8 px between an anchor and its popover whatever the margin, so the caret\'s point is moved across that gap as a child.',
-    'A transform on a popover itself is ignored; the point inside the caret carries the turn and the move.',
     'No dimmed backdrop with a cut-out around the target: the View has no mask.',
     'A step does not wait for the user to do something; it moves on from its buttons.',
     'Focus is not moved into the callout or back by the component.',

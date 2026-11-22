@@ -39,6 +39,7 @@ export interface TourProps {
 }
 
 const areas = { bottom: 'bottom', top: 'top', end: 'inline-end', start: 'inline-start' } as const satisfies Record<TourPlacement, string>;
+const sides = ['bottom', 'top', 'end', 'start'] as const satisfies readonly TourPlacement[];
 
 /** A few callouts, one at a time, each pointing at something on the page. */
 export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel, backLabel, skipLabel, doneLabel, stepLabel, 'data-testid': testId }: TourProps) {
@@ -50,32 +51,20 @@ export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nex
   const go = (next: number | null) => { if (next !== null) reveal(steps[next].target); onStepChange(next); };
   const isLast = at !== null && at === steps.length - 1;
   return (
-    <>
-    <view
-      id={`${id}-caret`}
-      popover="manual"
-      aria-hidden
-      anchor={current?.target ?? steps[0]?.target}
-      open={current !== undefined}
-      data-testid={testId && `${testId}-caret`}
-      style={{ positionArea: areas[placement] }}
-      className={r.caret.base}
-    >
-      <view className={cx(r.caret.point, r.caret.offset[placement])} />
-    </view>
     <view
       id={id}
       popover="manual"
-      // Anchored to the caret, not the target: an element anchors one popover, and the caret is the one that must stay on the target's centre.
-      anchor={`${id}-caret`}
+      anchor={current?.target ?? steps[0]?.target}
       open={current !== undefined}
       onToggle={isOpen => { if (!isOpen) onStepChange(null); }}
       role="group"
       aria-label={current === undefined ? undefined : `${current.targetLabel}: ${current.title}`}
       data-testid={testId}
       style={{ positionArea: areas[placement] }}
-      className={cx(r.callout.base, r.callout.offset[placement])}
+      className={r.callout.base}
     >
+      {/* One caret per edge, on the target's centre line; each shows only on the side the callout ended on. */}
+      {sides.map(side => <view key={side} aria-hidden className={cx(r.caret.base, r.caret.side[side])} data-testid={testId && `${testId}-caret-${side}`} />)}
       {current !== undefined && at !== null && (
         <>
           <text role="heading" headingLevel={2} className={r.title.base}>{current.title}</text>
@@ -96,6 +85,5 @@ export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nex
         </>
       )}
     </view>
-    </>
   );
 }
