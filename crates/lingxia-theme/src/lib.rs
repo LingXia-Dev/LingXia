@@ -116,9 +116,9 @@ pub struct Appearances {
     pub high_contrast_dark: Option<Colors>,
 }
 
-/// The colour every derived role starts from. With `derive`, the accent family (accent,
-/// on-accent, accent-soft, on-accent-soft, focus) always comes from the seed, and a user accent
-/// preference replaces the seed; without it, accent roles the pack wrote are used as written.
+/// The colour every derived role starts from. Accent roles the pack wrote are used as written and
+/// the rest come from the seed. With `derive`, a user accent preference replaces the seed and the
+/// whole accent family then comes from it.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Accent {
@@ -280,10 +280,12 @@ const NEAR_BLACKS: [Role; 3] = [Role::Scrim, Role::Media, Role::MediaCanvas];
 pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     let (base, explicit_high_contrast) = colors_for(pack, prefs.appearance, prefs.high_contrast);
     let seeded = pack.accent.filter(|accent| accent.derive);
+    // Only a user accent overrides what the pack wrote for its own seed.
+    let picked = seeded.is_some_and(|accent| prefs.accent.is_some_and(|user| user != accent.seed));
     let mut palette = [Rgba([0, 0, 0, 255]); ROLE_COUNT];
     let mut written = [false; ROLE_COUNT];
     for role in Role::ALL {
-        if seeded.is_some() && ACCENT_FAMILY.contains(&role) {
+        if picked && ACCENT_FAMILY.contains(&role) {
             continue;
         }
         let slot = role as usize;

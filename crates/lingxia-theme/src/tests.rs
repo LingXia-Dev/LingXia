@@ -1378,3 +1378,57 @@ fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
     let theme = resolve(&own, &Prefs::default()).unwrap();
     assert_eq!(theme.color(Role::AccentSolidPressed), hex("#2948b0"));
 }
+
+#[test]
+fn a_derived_accent_keeps_the_solids_the_pack_wrote_until_the_user_picks_an_accent() {
+    let pack: Pack = serde_json::from_str(
+        r##"{"name":"brand","version":1,"accent":{"seed":"#1b4fe0","derive":true},"appearance":{
+            "light":{"accent-solid":"#1b4fe0","on-accent-solid":"#ffffff"},
+            "dark":{"accent":"#5285ff","on-accent":"#0a1420","accent-solid":"#5285ff","on-accent-solid":"#0a1420"}}}"##,
+    )
+    .unwrap();
+    let pack = complete(pack);
+    let dark = Prefs {
+        appearance: Appearance::Dark,
+        ..Prefs::default()
+    };
+    let theme = resolve(&pack, &dark).unwrap();
+    for (role, written) in [
+        (Role::Accent, "#5285ff"),
+        (Role::OnAccent, "#0a1420"),
+        (Role::AccentSolid, "#5285ff"),
+        (Role::OnAccentSolid, "#0a1420"),
+    ] {
+        assert_eq!(theme.color(role), hex(written), "{}", role.name());
+    }
+    let light = resolve(&pack, &Prefs::default()).unwrap();
+    assert_eq!(light.color(Role::AccentSolid), hex("#1b4fe0"));
+    // A user accent replaces the seed, and the whole family follows it.
+    let picked = resolve(
+        &pack,
+        &Prefs {
+            accent: Some(hex("#019954")),
+            ..dark
+        },
+    )
+    .unwrap();
+    assert_ne!(picked.color(Role::AccentSolid), hex("#5285ff"));
+    assert_ne!(picked.color(Role::Accent), hex("#5285ff"));
+}
+
+#[test]
+fn a_written_solid_whose_text_does_not_read_is_caught_at_build() {
+    let pack: Pack = serde_json::from_str(
+        r##"{"name":"brand","version":1,"accent":{"seed":"#1b4fe0","derive":true},"appearance":{
+            "dark":{"accent-solid":"#5285ff","on-accent-solid":"#ffffff"}}}"##,
+    )
+    .unwrap();
+    let problems = check(&complete(pack));
+    assert!(
+        problems.iter().any(|problem| problem.appearance == "dark"
+            && problem
+                .message
+                .starts_with("on-accent-solid on accent-solid is ")),
+        "{problems:?}"
+    );
+}
