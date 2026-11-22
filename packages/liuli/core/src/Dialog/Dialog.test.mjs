@@ -30,7 +30,7 @@ test('Confirm: closed renders nothing; open, an alert dialog named by its title 
   assert.equal(textOf(screen.getByTestId('outcome')), 'Deleted');
 });
 
-test('Form: the close button is named by closeLabel and closes; Save waits for a name', async () => {
+test('Form: the close button is named "Close" by default and closes; Save waits for a name', async () => {
   const screen = await renderExample('Dialog/Dialog', 'Form');
   screen.press(screen.getByTestId('rename-open'));
   assert.equal(screen.getByTestId('rename-dialog').props.role, 'dialog');

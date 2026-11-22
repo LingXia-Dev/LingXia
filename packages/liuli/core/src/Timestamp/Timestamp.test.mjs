@@ -24,5 +24,5 @@ test('Formats: one moment in each form; the full form needs no second reading', 
 
 test('Chinese: a Chinese page writes the same moments in Chinese', async () => {
   const screen = await renderExample('Timestamp/Timestamp', 'Activity', { env: { language: 'zh-CN' } });
-  assert.deepEqual([1, 3, 5].map(index => screen.getByTestId(`when-${index}`).text), ['23 分钟前', '昨天 下午6:30', '2025年12月19日']);
+  assert.deepEqual([1, 3, 5].map(index => screen.getByTestId(`when-${index}`).text), ['23分钟前', '昨天 下午6:30', '2025年12月19日']);
 });

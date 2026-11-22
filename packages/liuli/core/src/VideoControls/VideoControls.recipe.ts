@@ -102,7 +102,7 @@ export const videoControlsRecipe = {
     bar: 'shrink-0 ps-3.5 pe-3 text-caption tabular-nums text-muted',
   },
   live: {
-    base: 'ps-1 text-caption font-semibold',
+    base: 'ps-1 text-caption font-semibold uppercase',
     overlay: 'text-on-media',
     bar: 'text-accent',
   },

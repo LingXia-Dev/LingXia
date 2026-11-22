@@ -16,7 +16,6 @@ export function Notes() {
         label="Search notes"
         isLabelHidden
         placeholder="Search notes"
-        clearLabel="Clear search"
         bind={query}
         resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}
         data-testid="notes"
@@ -30,7 +29,7 @@ export function Notes() {
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 
 /** With a label above, where the field is one of several on a form. */
@@ -51,19 +50,19 @@ export function Sizes() {
 }
 
 export function StateEmpty() {
-  return <Held value="">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} />}</Held>;
+  return <Held value="">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" value={query} onChange={set} />}</Held>;
 }
 
 export function StateFilled() {
-  return <Held value="lisbon">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'lisbon' ? '1 of 6 notes' : undefined} data-testid="filled" />}</Held>;
+  return <Held value="lisbon">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" value={query} onChange={set} resultsLabel={query === 'lisbon' ? '1 of 6 notes' : undefined} data-testid="filled" />}</Held>;
 }
 
 export function StateNothing() {
-  return <Held value="zebra">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value={query} onChange={set} resultsLabel={query === 'zebra' ? 'No notes match' : undefined} />}</Held>;
+  return <Held value="zebra">{(query, set) => <SearchField label="Search notes" isLabelHidden placeholder="Search notes" value={query} onChange={set} resultsLabel={query === 'zebra' ? 'No notes match' : undefined} />}</Held>;
 }
 
 export function StateDisabled() {
-  return <SearchField label="Search notes" isLabelHidden placeholder="Search notes" clearLabel="Clear search" value="" onChange={unused} isDisabled data-testid="disabled" />;
+  return <SearchField label="Search notes" isLabelHidden placeholder="Search notes" value="" onChange={unused} isDisabled data-testid="disabled" />;
 }
 
 /** The home tile. */

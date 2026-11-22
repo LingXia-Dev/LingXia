@@ -36,8 +36,8 @@
     "description": "Accessible name of the time part of a date and time field."
   },
   "@liuli.chooseFiles": {
-    "defaultMessage": "Choose files",
-    "description": "Button that opens the file picker."
+    "defaultMessage": "{multiple, select, yes {Choose files} other {Choose a file}}",
+    "description": "Button that opens the file picker; `multiple` is yes when it takes several files."
   },
   "@liuli.removeNamed": {
     "defaultMessage": "Remove {name}",
@@ -71,9 +71,13 @@
     "defaultMessage": "Page {page}",
     "description": "A page button or dot; `page` from 1."
   },
-  "@liuli.pageOf": {
+  "@liuli.pictureOf": {
     "defaultMessage": "{page} of {count}",
-    "description": "Where a viewer or carousel is; `page` from 1."
+    "description": "Which picture a viewer shows; `page` from 1."
+  },
+  "@liuli.itemOf": {
+    "defaultMessage": "{page} of {count}",
+    "description": "Which item a carousel shows; `page` from 1."
   },
   "@liuli.previousPage": {
     "defaultMessage": "Previous page",
@@ -90,10 +94,6 @@
   "@liuli.clear": {
     "defaultMessage": "Clear",
     "description": "Button that empties a text field."
-  },
-  "@liuli.sidebar": {
-    "defaultMessage": "Sidebar",
-    "description": "Accessible name of a split view's sidebar."
   },
   "@liuli.next": {
     "defaultMessage": "Next",
@@ -192,8 +192,8 @@
     "description": "Button that shows the video full screen."
   },
   "@liuli.video.live": {
-    "defaultMessage": "LIVE",
-    "description": "Badge on a live stream."
+    "defaultMessage": "Live",
+    "description": "Badge on a live stream; any capitals come from its style."
   },
   "@liuli.video.loading": {
     "defaultMessage": "Loading",

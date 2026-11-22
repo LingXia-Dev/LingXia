@@ -37,7 +37,7 @@ const railGap = 12;
 
 /** A few pages to swipe through, one at a time, with dots that follow; or a rail of cards. */
 export function Carousel({
-  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.pageOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId,
+  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId,
 }: CarouselProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;

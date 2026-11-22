@@ -33,7 +33,6 @@ export function Filters() {
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Filters"
-        closeLabel="Close"
         data-testid="filters"
         actions={
           <>
@@ -92,7 +91,8 @@ export function Navigation() {
 | `description` | `string` |  | A sentence under the title, read as the drawer's description. |
 | `children` | `Child` |  | The body; it scrolls when it is taller than the drawer. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
-| `closeLabel` | `string` |  | Shows a close button in the header, named by this text. |
+| `hasCloseButton` | `boolean` | `true` | Shows a close button. |
+| `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `side` | `DrawerSide` | `'end'` | `end` for details and filters of what is on the page; `start` for navigation. |
 | `size` | `DrawerSize` | `'md'` | Maximum width: 320, 420 or 560; never more than most of the screen. |
 | `dismissOn` | `DialogDismissOn` | `'any'` |  |
@@ -105,7 +105,7 @@ export function Navigation() {
 | --- | --- | --- | --- |
 | panel | `<dialog>` | yes | The dialog primitive on a side edge, rounded on its inner side. |
 | title | `<text>` | yes | `label` as a level-2 heading. |
-| close | `<button>` | no | A close button named by `closeLabel`. |
+| close | `<button>` | no | A close button, unless `hasCloseButton` is false; `closeLabel` names it. |
 | description | `<text>` | no | Text under the title. |
 | body | `<scroll>` | no | `children`, in a scroll that takes the height left. |
 | footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |

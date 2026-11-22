@@ -30,7 +30,6 @@ export function Payment() {
       message="Update it before 30 June to keep syncing across devices."
       action={{ label: updated.value ? 'Card updated' : 'Update card', onClick: () => updated.set(true) }}
       onDismiss={() => shown.set(false)}
-      dismissLabel="Dismiss"
       data-testid="payment"
     />
   );
@@ -100,7 +99,6 @@ export function Collapsible() {
           message="Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends."
           action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}
           isCollapsible
-          toggleLabel="Details"
           isDefaultOpen={false}
           data-testid="maintenance"
         />

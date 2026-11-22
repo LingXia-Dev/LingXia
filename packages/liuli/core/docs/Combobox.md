@@ -36,7 +36,7 @@ export function Country() {
       searchLabel="Search countries"
       searchPlaceholder="Search"
       emptyLabel="No country matches"
-      closeLabel="Close"
+      hasCloseButton
       data-testid="country"
     />
   );
@@ -183,7 +183,8 @@ export function Shipping() {
 | `searchPlaceholder` | `string` |  | Shown in the search field while it is empty. |
 | `emptyLabel` | `string` |  | Shown in place of the list when no option matches: "No country matches". Defaults to "No matches" in the page's language. |
 | `moreLabel` | `string` |  | Shown under the list when more than fifty options match: "Keep typing to see more". |
-| `closeLabel` | `string` |  | Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. |
+| `hasCloseButton` | `boolean` | `false` | Shows a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. |
+| `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `onQueryChange` | `((query: string) => void)` |  | Runs with each change of the search text. With it the list shows `items` as given, so the app does the matching: by its own rule, or by asking a server. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in place of the list while the app fetches options. |
 | `className` | `string` |  |  |

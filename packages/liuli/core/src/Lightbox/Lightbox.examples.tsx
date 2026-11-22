@@ -27,8 +27,6 @@ export function FromGrid() {
         label="Photos of the house"
         images={photos}
         bind={page}
-        closeLabel="Close"
-        pageLabel={(at, count) => `${at + 1} of ${count}`}
         data-testid="viewer"
       />
     </view>
@@ -41,7 +39,7 @@ export function Single() {
   return (
     <view className="items-start">
       <Thumbnail src={photo(5)} alt="Dunes at noon" size="lg" ratio="landscape" onClick={() => open.set(true)} data-testid="one-open" />
-      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label="Dunes at noon" images={[{ src: photo(5), alt: 'Dunes at noon' }]} closeLabel="Close" pageLabel={() => ''} data-testid="one" />
+      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label="Dunes at noon" images={[{ src: photo(5), alt: 'Dunes at noon' }]} pageLabel={() => ''} data-testid="one" />
     </view>
   );
 }

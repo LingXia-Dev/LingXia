@@ -19,7 +19,6 @@ export function Filters() {
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Filters"
-        closeLabel="Close"
         data-testid="filters"
         actions={
           <>

@@ -20,7 +20,6 @@ export function Labels() {
       label="Labels"
       items={labels}
       addLabel="Add a label"
-      removeLabel={name => `Remove ${name}`}
       description="A note can carry several."
       data-testid="labels"
     />
@@ -37,7 +36,6 @@ export function Empty() {
       items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
       placeholder="No teams yet"
       addLabel="Add a team"
-      removeLabel={name => `Remove ${name}`}
       isRequired
       status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}
       data-testid="teams"
@@ -46,12 +44,12 @@ export function Empty() {
 }
 
 export function StateDisabled() {
-  return <MultiSelect value={['travel']} onChange={unused} label="Labels" items={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} isDisabled disabledMessage="Labels are set by the owner." />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" items={labels} addLabel="Add a label" isDisabled disabledMessage="Labels are set by the owner." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden items={labels} addLabel="Add a label" removeLabel={name => `Remove ${name}`} className="w-36" />;
+  return <MultiSelect value={['travel']} onChange={unused} label="Labels" isLabelHidden items={labels} addLabel="Add a label" className="w-36" />;
 }
 
 /** The playground's props that are not plain values. */

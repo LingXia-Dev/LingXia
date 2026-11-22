@@ -23,8 +23,10 @@ export type FileInputProps = FieldOwnProps & {
   files: readonly FileInputFile[];
   /** Opens the app\'s own picker, in Logic. Liuli cannot read files. */
   onPick: () => void;
-  /** The words on the button: "Choose files", "Add a photo". Defaults to "Choose files" in the page's language. */
+  /** The words on the button: "Choose files", "Add a photo". Defaults to "Choose files", or "Choose a file" without `isMultiple`, in the page's language. */
   pickLabel?: string;
+  /** Whether the app's picker takes several files; words the default button. @default true */
+  isMultiple?: boolean;
   /** A line under them: what may be chosen. "PDF or image, up to 25 MB each". */
   hint?: string;
   /** Takes a file out of the list. */
@@ -40,7 +42,7 @@ export type FileInputProps = FieldOwnProps & {
 
 /** Files the user chose, with a button that opens the app\'s picker. */
 export function FileInput(props: FileInputProps) {
-  const { files, onPick, pickLabel = liuliText('@liuli.chooseFiles'), hint, onRemove, removeLabel = (name: string) => liuliText('@liuli.removeNamed', { name }), progressLabel = (name: string) => liuliText('@liuli.uploadingNamed', { name }), className, 'data-testid': testId, ...field } = props;
+  const { files, onPick, isMultiple = true, pickLabel = liuliText('@liuli.chooseFiles', { multiple: isMultiple ? 'yes' : 'no' }), hint, onRemove, removeLabel = (name: string) => liuliText('@liuli.removeNamed', { name }), progressLabel = (name: string) => liuliText('@liuli.uploadingNamed', { name }), className, 'data-testid': testId, ...field } = props;
   const { status, isDisabled = false } = field;
   return (
     <Field {...field} className={className}>

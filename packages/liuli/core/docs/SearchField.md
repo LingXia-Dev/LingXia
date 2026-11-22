@@ -32,7 +32,6 @@ export function Notes() {
         label="Search notes"
         isLabelHidden
         placeholder="Search notes"
-        clearLabel="Clear search"
         bind={query}
         resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}
         data-testid="notes"
@@ -53,7 +52,7 @@ import { SearchField } from '@liulidesign/core/SearchField';
 
 /** While a search runs elsewhere, the magnifier gives way to a spinner. */
 export function Loading() {
-  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" clearLabel="Clear search" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
+  return <Held value="lamp">{(query, set) => <SearchField label="Search the catalogue" isLabelHidden placeholder="Search the catalogue" value={query} onChange={set} isLoading resultsLabel="Searching" data-testid="catalogue" />}</Held>;
 }
 ```
 

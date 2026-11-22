@@ -17,7 +17,7 @@ export const doc: ComponentDoc = {
     { part: 'media', required: false, description: '`media`: a picture above the title, reaching the panel\'s top edges; hidden from assistive tech.' },
     { part: 'mediaClose', required: false, description: 'With `media`, the close button sits over the picture on its own dock.' },
     { part: 'title', required: true, description: '`label` as a level-2 heading, unless `isLabelHidden`.' },
-    { part: 'close', required: false, description: 'A close button named by `closeLabel`.' },
+    { part: 'close', required: false, description: 'A close button, unless `hasCloseButton` is false; `closeLabel` names it.' },
     { part: 'description', required: false, description: 'Text under the title.' },
     { part: 'body', required: false, description: '`children`, in a scroll that takes the remaining height.' },
     { part: 'footer', required: false, description: '`actions`, end-aligned, wrapping when narrow.' },
@@ -66,7 +66,7 @@ export const doc: ComponentDoc = {
       today: 'duration-200 ease-out in the recipe.',
     },
   ],
-  playground: { props: { isOpen: false, label: 'Delete the file?', description: 'It goes to the bin for 30 days.', closeLabel: 'Close' }, fixture: true, opener: 'Delete the file' },
+  playground: { props: { isOpen: false, label: 'Delete the file?', description: 'It goes to the bin for 30 days.' }, fixture: true, opener: 'Delete the file' },
   related: ['Button', 'DropdownMenu'],
   gallery: {
     specimen: 'Specimen',

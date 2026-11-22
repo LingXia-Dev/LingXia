@@ -36,10 +36,6 @@ export function Welcome() {
             steps={steps}
             value={step.value}
             onChange={next => step.set(next)}
-            nextLabel="Next"
-            backLabel="Back"
-            skipLabel="Skip"
-            doneLabel="Done"
             stepLabel={(at, count) => `${at + 1} of ${count}`}
             data-testid="tour"
           />

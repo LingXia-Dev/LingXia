@@ -47,7 +47,7 @@ export function Comments() {
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Comments"
-        closeLabel="Close"
+        hasCloseButton
         detents="expandable"
         data-testid="comments"
       >

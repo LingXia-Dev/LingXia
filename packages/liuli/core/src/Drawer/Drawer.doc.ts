@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'panel', required: true, description: 'The dialog primitive on a side edge, rounded on its inner side.' },
     { part: 'title', required: true, description: '`label` as a level-2 heading.' },
-    { part: 'close', required: false, description: 'A close button named by `closeLabel`.' },
+    { part: 'close', required: false, description: 'A close button, unless `hasCloseButton` is false; `closeLabel` names it.' },
     { part: 'description', required: false, description: 'Text under the title.' },
     { part: 'body', required: false, description: '`children`, in a scroll that takes the height left.' },
     { part: 'footer', required: false, description: '`actions`, end-aligned, wrapping when narrow.' },
@@ -60,7 +60,7 @@ export const doc: ComponentDoc = {
     'It does not follow the finger; it opens and closes as a whole.',
     'It is always modal: a panel that stays open beside the page is SplitView.',
   ],
-  playground: { props: { isOpen: false, label: 'Filters', closeLabel: 'Close' }, fixture: true, opener: 'Show filters' },
+  playground: { props: { isOpen: false, label: 'Filters' }, fixture: true, opener: 'Show filters' },
   related: ['Dialog', 'BottomSheet', 'SplitView'],
   gallery: {
     specimen: 'Specimen',

@@ -36,7 +36,6 @@ export function Labels() {
       label="Labels"
       items={labels}
       addLabel="Add a label"
-      removeLabel={name => `Remove ${name}`}
       description="A note can carry several."
       data-testid="labels"
     />
@@ -60,7 +59,6 @@ export function Empty() {
       items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}
       placeholder="No teams yet"
       addLabel="Add a team"
-      removeLabel={name => `Remove ${name}`}
       isRequired
       status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}
       data-testid="teams"

@@ -19,11 +19,8 @@ export function Documents() {
       description="We keep them until the request is closed."
       files={files.value}
       onPick={() => { if (!files.value.some(file => file.id === more.id)) files.set([...files.value, more]); }}
-      pickLabel="Choose files"
       hint="PDF or image, up to 25 MB each"
       onRemove={id => files.set(files.value.filter(file => file.id !== id))}
-      removeLabel={name => `Remove ${name}`}
-      progressLabel={name => `Uploading ${name}`}
       data-testid="documents"
     />
   );
@@ -41,8 +38,6 @@ export function Empty() {
       onPick={() => files.set([more])}
       pickLabel="Add a document"
       onRemove={() => files.set([])}
-      removeLabel={name => `Remove ${name}`}
-      progressLabel={name => `Uploading ${name}`}
       data-testid="proof"
     />
   );
@@ -56,10 +51,7 @@ export function StateDisabled() {
       disabledMessage="The request is closed."
       files={[first[0]]}
       onPick={unused}
-      pickLabel="Choose files"
       onRemove={unused}
-      removeLabel={name => `Remove ${name}`}
-      progressLabel={name => `Uploading ${name}`}
     />
   );
 }
@@ -67,7 +59,7 @@ export function StateDisabled() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <FileInput label="Files" isLabelHidden files={[]} onPick={unused} pickLabel="Choose files" onRemove={unused} removeLabel={name => `Remove ${name}`} progressLabel={name => `Uploading ${name}`} className="w-36" />
+    <FileInput label="Files" isLabelHidden files={[]} onPick={unused} onRemove={unused} className="w-36" />
   );
 }
 

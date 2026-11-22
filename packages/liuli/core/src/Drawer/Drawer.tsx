@@ -1,6 +1,8 @@
 import { cx, useId, type Child } from '@lingxia/view';
 import type { DialogDismissOn } from '../Dialog/Dialog';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
+import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { drawerRecipe as r } from './Drawer.recipe';
 
@@ -20,7 +22,9 @@ export interface DrawerProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
-  /** Shows a close button in the header, named by this text. */
+  /** Shows a close button. @default true */
+  hasCloseButton?: boolean;
+  /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
   /** `end` for details and filters of what is on the page; `start` for navigation. @default 'end' */
   side?: DrawerSide;
@@ -43,13 +47,17 @@ export function Drawer({
   description,
   children,
   actions,
-  closeLabel,
+  hasCloseButton = true,
+  closeLabel = liuliText('@liuli.close'),
   side = 'end',
   size = 'md',
   dismissOn = 'any',
   className,
   'data-testid': testId,
 }: DrawerProps) {
+  if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
+    warnOnce(`Drawer "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
+  }
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
   return (
@@ -64,7 +72,7 @@ export function Drawer({
     >
       <view className={r.header.base}>
         <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
-        {closeLabel !== undefined && (
+        {hasCloseButton && (
           <button aria-label={closeLabel} onClick={close} className={r.close.base}>
             <Glyph name="close" className={r.closeIcon.base} />
           </button>

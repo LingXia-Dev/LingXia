@@ -22,6 +22,7 @@ export function Confirm() {
         description="It leaves every device you are signed in on."
         size="sm"
         isAlert
+        hasCloseButton={false}
         dismissOn="closeRequest"
         data-testid="confirm-dialog"
         actions={
@@ -49,7 +50,6 @@ export function Form() {
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Rename notebook"
-        closeLabel="Close"
         dismissOn="closeRequest"
         data-testid="rename-dialog"
         actions={<Button label="Save" variant="primary" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid="save" />}
@@ -71,7 +71,6 @@ export function Hero() {
         onOpenChange={next => open.set(next)}
         label="Shared notebooks"
         description="Invite people to a notebook and write in it together. Changes show as they are made."
-        closeLabel="Close"
         size="sm"
         media={<image src="public/photos/photo-2.png" alt="" className="h-40 w-full object-cover" />}
         data-testid="hero-dialog"
@@ -144,7 +143,6 @@ export function Full() {
         onOpenChange={next => open.set(next)}
         label="New note"
         size="full"
-        closeLabel="Close"
         dismissOn="closeRequest"
         data-testid="full-dialog"
         actions={

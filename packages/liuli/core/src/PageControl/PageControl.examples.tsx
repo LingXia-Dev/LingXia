@@ -35,7 +35,7 @@ export function OnMedia() {
 
 /** The home tile. */
 export function Specimen() {
-  return <PageControl label="Pages" count={4} value={1} onChange={unused} pageLabel={at => `Page ${at + 1}`} />;
+  return <PageControl label="Pages" count={4} value={1} onChange={unused} />;
 }
 
 /** The playground's props that are not plain values. */

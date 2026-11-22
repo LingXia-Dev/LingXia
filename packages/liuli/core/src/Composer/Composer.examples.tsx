@@ -18,7 +18,6 @@ export function Reply() {
         bind={draft}
         label="Message"
         placeholder="Message Kai"
-        sendLabel="Send"
         onSubmit={text => { sent.set([...sent.value, text]); draft.set(''); }}
         data-testid="reply"
       />
@@ -36,7 +35,6 @@ export function RowWithAttach() {
         bind={draft}
         label="Message"
         placeholder="Message Kai"
-        sendLabel="Send"
         onSubmit={text => { said.set(`Sent "${text}"`); draft.set(''); }}
         startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
         data-testid="short"
@@ -56,7 +54,6 @@ export function WithAttach() {
         bind={draft}
         label="Message"
         placeholder="Message Kai"
-        sendLabel="Send"
         onSubmit={text => { said.set(`Sent ${text.split('\n').length} lines`); draft.set(''); }}
         startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => said.set('Asked for a file')} />}
         data-testid="long"
@@ -75,11 +72,10 @@ export function Attached() {
       bind={draft}
       label="Message"
       placeholder="Message Kai"
-      sendLabel="Send"
       onSubmit={() => { draft.set(''); files.set([]); }}
       startContent={<IconButton label="Attach a file" icon="attach" variant="ghost" onClick={() => files.set([...files.value, `File ${files.value.length + 1}.pdf`])} />}
       attachments={files.value.length === 0 ? undefined : files.value.map(name => (
-        <Token key={name} label={name} removeLabel={`Remove ${name}`} onRemove={() => files.set(files.value.filter(each => each !== name))} />
+        <Token key={name} label={name} onRemove={() => files.set(files.value.filter(each => each !== name))} />
       ))}
       data-testid="attached"
     />
@@ -87,7 +83,7 @@ export function Attached() {
 }
 
 export function StateSending() {
-  return <Composer value="On my way." onChange={unused} label="Message" sendLabel="Send" onSubmit={unused} isSending data-testid="sending" />;
+  return <Composer value="On my way." onChange={unused} label="Message" onSubmit={unused} isSending data-testid="sending" />;
 }
 
 /** While a reply is being written the send button stops it; the next draft can be written meanwhile. */
@@ -97,19 +93,19 @@ export function Stoppable() {
   return (
     <view className="gap-2">
       <text className="text-footnote text-muted" data-testid="stoppable-status">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>
-      <Composer bind={draft} label="Message" placeholder="Message" sendLabel="Send" onSubmit={() => isWriting.set(true)}
-        isSending={isWriting.value} onStop={() => isWriting.set(false)} stopLabel="Stop" data-testid="stoppable" />
+      <Composer bind={draft} label="Message" placeholder="Message" onSubmit={() => isWriting.set(true)}
+        isSending={isWriting.value} onStop={() => isWriting.set(false)} data-testid="stoppable" />
     </view>
   );
 }
 
 export function StateDisabled() {
-  return <Composer value="" onChange={unused} label="Message" placeholder="Message" sendLabel="Send" onSubmit={unused} isDisabled disabledMessage="Only members can reply." />;
+  return <Composer value="" onChange={unused} label="Message" placeholder="Message" onSubmit={unused} isDisabled disabledMessage="Only members can reply." />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Composer value="" onChange={unused} label="Message" placeholder="Message" sendLabel="Send" onSubmit={unused} className="w-36" />;
+  return <Composer value="" onChange={unused} label="Message" placeholder="Message" onSubmit={unused} className="w-36" />;
 }
 
 /** The playground's props that are not plain values. */

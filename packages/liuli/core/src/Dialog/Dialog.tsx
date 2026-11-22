@@ -1,5 +1,7 @@
 import { cx, useId, type Child } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
+import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 
@@ -32,7 +34,9 @@ export interface DialogProps {
   children?: Child;
   /** The footer, typically Buttons, the main action last. */
   actions?: Child;
-  /** Shows a close button in the header, named by this text. */
+  /** Shows a close button in the header. @default true */
+  hasCloseButton?: boolean;
+  /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
   /**
    * Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none`
@@ -63,7 +67,8 @@ export function Dialog({
   media,
   children,
   actions,
-  closeLabel,
+  hasCloseButton = true,
+  closeLabel = liuliText('@liuli.close'),
   dismissOn = 'any',
   size = 'md',
   className,
@@ -71,6 +76,10 @@ export function Dialog({
 }: DialogProps) {
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
+  if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
+    warnOnce(`Dialog "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
+  }
+
   return (
     <dialog
       open={isOpen}
@@ -85,17 +94,17 @@ export function Dialog({
       {media !== undefined && (
         <view className={cx(r.media.base, size !== 'full' && r.media.floating)}>
           <view aria-hidden className={r.media.picture}>{media}</view>
-          {closeLabel !== undefined && (
+          {hasCloseButton && (
             <button aria-label={closeLabel} onClick={close} className={r.mediaClose.base}>
               <Glyph name="close" className={r.closeIcon.base} />
             </button>
           )}
         </view>
       )}
-      {(!isLabelHidden || (closeLabel !== undefined && media === undefined)) && (
+      {(!isLabelHidden || (hasCloseButton && media === undefined)) && (
         <view className={r.header.base}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
-          {closeLabel !== undefined && media === undefined && (
+          {hasCloseButton && media === undefined && (
             <button aria-label={closeLabel} onClick={close} className={r.close.base}>
               <Glyph name="close" className={r.closeIcon.base} />
             </button>

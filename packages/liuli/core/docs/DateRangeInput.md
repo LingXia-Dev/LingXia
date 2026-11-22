@@ -35,7 +35,6 @@ export function Stay() {
       format={short}
       today={today}
       min={today}
-      closeLabel="Close"
       data-testid="stay"
     />
   );
@@ -94,7 +93,8 @@ export function Empty() {
 | `min` | `string` |  |  |
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  |  |
-| `closeLabel` | `string` |  | Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. |
+| `hasCloseButton` | `boolean` | `true` | Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. |
+| `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the field's button; the calendar is `<id>-calendar`. |
 

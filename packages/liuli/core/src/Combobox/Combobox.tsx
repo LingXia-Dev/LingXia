@@ -47,7 +47,9 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
   emptyLabel?: string;
   /** Shown under the list when more than fifty options match: "Keep typing to see more". */
   moreLabel?: string;
-  /** Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. */
+  /** Shows a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. @default false */
+  hasCloseButton?: boolean;
+  /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
   /**
    * Runs with each change of the search text. With it the list shows `items` as given, so the
@@ -292,7 +294,7 @@ function ComboboxTypeahead({
 export function Combobox(props: ComboboxProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    items, placeholder, searchLabel = liuliText('@liuli.search'), searchPlaceholder, emptyLabel = liuliText('@liuli.noMatches'), moreLabel, closeLabel, onQueryChange, isLoading = false,
+    items, placeholder, searchLabel = liuliText('@liuli.search'), searchPlaceholder, emptyLabel = liuliText('@liuli.noMatches'), moreLabel, hasCloseButton = false, closeLabel = liuliText('@liuli.close'), onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
@@ -369,7 +371,7 @@ export function Combobox(props: ComboboxProps) {
             <view aria-hidden className={r.grabber.base} />
             <view className={r.header.base}>
               <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
-              {closeLabel !== undefined && (
+              {hasCloseButton && (
                 <button aria-label={closeLabel} onClick={() => open.set(false)} data-testid={testId && `${testId}-close`} className={r.close.base}>
                   <Glyph name="close" className={r.close.icon} />
                 </button>

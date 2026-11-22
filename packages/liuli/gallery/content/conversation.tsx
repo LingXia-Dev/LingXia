@@ -80,7 +80,7 @@ export function Content() {
           className="grow basis-0 min-h-0 px-3 pt-3 overscroll-contain"
         />
         <view className="px-3 py-2 border-t border-text/8 bg-surface">
-          <Composer bind={draft} label="Message to Kai Chen" placeholder="Message Kai" sendLabel="Send" onSubmit={send} startContent={<IconButton label="Attach a file" icon="attach" onClick={() => last.set('Opened the file picker')} />} data-testid="composer" />
+          <Composer bind={draft} label="Message to Kai Chen" placeholder="Message Kai" onSubmit={send} startContent={<IconButton label="Attach a file" icon="attach" onClick={() => last.set('Opened the file picker')} />} data-testid="composer" />
         </view>
       </view>
       {last.value !== '' && <text role="status" className="text-footnote text-muted">{last.value}</text>}

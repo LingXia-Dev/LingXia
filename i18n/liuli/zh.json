@@ -27,7 +27,7 @@
     "defaultMessage": "时间"
   },
   "@liuli.chooseFiles": {
-    "defaultMessage": "选择文件"
+    "defaultMessage": "{multiple, select, yes {选择文件} other {选择文件}}"
   },
   "@liuli.removeNamed": {
     "defaultMessage": "移除{name}"
@@ -39,7 +39,7 @@
     "defaultMessage": "添加"
   },
   "@liuli.removeItem": {
-    "defaultMessage": "移除第 {number} 项"
+    "defaultMessage": "移除第{number}项"
   },
   "@liuli.remove": {
     "defaultMessage": "移除"
@@ -51,10 +51,13 @@
     "defaultMessage": "增加"
   },
   "@liuli.page": {
-    "defaultMessage": "第 {page} 页"
+    "defaultMessage": "第{page}页"
   },
-  "@liuli.pageOf": {
-    "defaultMessage": "第 {page} 页，共 {count} 页"
+  "@liuli.pictureOf": {
+    "defaultMessage": "第{page}张，共{count}张"
+  },
+  "@liuli.itemOf": {
+    "defaultMessage": "第{page}项，共{count}项"
   },
   "@liuli.previousPage": {
     "defaultMessage": "上一页"
@@ -67,9 +70,6 @@
   },
   "@liuli.clear": {
     "defaultMessage": "清除"
-  },
-  "@liuli.sidebar": {
-    "defaultMessage": "侧边栏"
   },
   "@liuli.next": {
     "defaultMessage": "下一步"
@@ -84,7 +84,7 @@
     "defaultMessage": "完成"
   },
   "@liuli.stepOf": {
-    "defaultMessage": "第 {step} 步，共 {count} 步"
+    "defaultMessage": "第{step}步，共{count}步"
   },
   "@liuli.monthName": {
     "defaultMessage": "{month, select, jan {1月} feb {2月} mar {3月} apr {4月} may {5月} jun {6月} jul {7月} aug {8月} sep {9月} oct {10月} nov {11月} dec {12月} other {}}"
@@ -111,10 +111,10 @@
     "defaultMessage": "刚刚"
   },
   "@liuli.timestamp.minutesAgo": {
-    "defaultMessage": "{minutes, plural, other {# 分钟前}}"
+    "defaultMessage": "{minutes, plural, other {#分钟前}}"
   },
   "@liuli.timestamp.hoursAgo": {
-    "defaultMessage": "{hours, plural, other {# 小时前}}"
+    "defaultMessage": "{hours, plural, other {#小时前}}"
   },
   "@liuli.timestamp.yesterday": {
     "defaultMessage": "昨天"

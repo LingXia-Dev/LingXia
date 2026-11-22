@@ -68,7 +68,7 @@ export function Comments() {
         isOpen={open.value}
         onOpenChange={next => open.set(next)}
         label="Comments"
-        closeLabel="Close"
+        hasCloseButton
         detents="expandable"
         data-testid="comments"
       >
@@ -129,7 +129,8 @@ export function Required() {
 | `description` | `string` |  | One or two sentences under the title, read as the sheet's description. |
 | `children` | `Child` |  | The body; it scrolls when the sheet reaches its height. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
-| `closeLabel` | `string` |  | Shows a close button in the header, named by this text. |
+| `hasCloseButton` | `boolean` | `false` | Shows a close button; without it a drag, a tap outside or Back closes the sheet. |
+| `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |
 | `detents` | `BottomSheetDetents` | `'fit'` |  |
 | `className` | `string` |  | Classes for the panel. |
@@ -141,7 +142,7 @@ export function Required() {
 | --- | --- | --- | --- |
 | panel | `<dialog>` | yes | The dialog on the bottom edge, rounded at the top; it follows the finger between its detents. |
 | grabber | `<view>` | yes | The handle at the top edge; decoration, hidden from assistive tech. |
-| header | `<view>` | no | The title, and the close button when `closeLabel` is set. |
+| header | `<view>` | no | The title, and the close button with `hasCloseButton`. |
 | description | `<text>` | no | One or two sentences under the title, read as the description. |
 | body | `<scroll>` | no | `children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first. |
 | footer | `<view>` | no | `actions`, end-aligned, wrapping when narrow. |

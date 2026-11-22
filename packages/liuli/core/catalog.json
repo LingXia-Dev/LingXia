@@ -1070,7 +1070,7 @@
         {
           "name": "Payment",
           "title": "A problem with one action, dismissible",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** A problem with one way out, that the person can also put aside. */\nexport function Payment() {\n  const shown = useLocal(true);\n  const updated = useLocal(false);\n  if (!shown.value) return <text className=\"text-footnote text-muted\">Dismissed. It comes back on the next visit.</text>;\n  return (\n    <Banner\n      tone=\"warning\"\n      title=\"Your card expires this month\"\n      message=\"Update it before 30 June to keep syncing across devices.\"\n      action={{ label: updated.value ? 'Card updated' : 'Update card', onClick: () => updated.set(true) }}\n      onDismiss={() => shown.set(false)}\n      dismissLabel=\"Dismiss\"\n      data-testid=\"payment\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** A problem with one way out, that the person can also put aside. */\nexport function Payment() {\n  const shown = useLocal(true);\n  const updated = useLocal(false);\n  if (!shown.value) return <text className=\"text-footnote text-muted\">Dismissed. It comes back on the next visit.</text>;\n  return (\n    <Banner\n      tone=\"warning\"\n      title=\"Your card expires this month\"\n      message=\"Update it before 30 June to keep syncing across devices.\"\n      action={{ label: updated.value ? 'Card updated' : 'Update card', onClick: () => updated.set(true) }}\n      onDismiss={() => shown.set(false)}\n      data-testid=\"payment\"\n    />\n  );\n}"
         },
         {
           "name": "Tones",
@@ -1085,7 +1085,7 @@
         {
           "name": "Collapsible",
           "title": "Folded to its title",
-          "source": "import { Said } from '../example';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** Folded to its title until someone wants the rest: for a notice that stays for days. */\nexport function Collapsible() {\n  return (\n    <Said>\n      {say => (\n        <Banner\n          tone=\"warning\"\n          title=\"Scheduled maintenance on Sunday\"\n          message=\"Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends.\"\n          action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}\n          isCollapsible\n          toggleLabel=\"Details\"\n          isDefaultOpen={false}\n          data-testid=\"maintenance\"\n        />\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** Folded to its title until someone wants the rest: for a notice that stays for days. */\nexport function Collapsible() {\n  return (\n    <Said>\n      {say => (\n        <Banner\n          tone=\"warning\"\n          title=\"Scheduled maintenance on Sunday\"\n          message=\"Sync pauses from 02:00 to 04:00 UTC. Notes you write then are kept on this device and sent when it ends.\"\n          action={{ label: 'See the schedule', onClick: () => say('Opened the schedule') }}\n          isCollapsible\n          isDefaultOpen={false}\n          data-testid=\"maintenance\"\n        />\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -1239,10 +1239,17 @@
           "description": "The footer, typically Buttons, the main action last."
         },
         {
+          "name": "hasCloseButton",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a close button; without it a drag, a tap outside or Back closes the sheet.",
+          "default": "false"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
-          "description": "Shows a close button in the header, named by this text."
+          "description": "Names the close button. Defaults to \"Close\" in the page's language."
         },
         {
           "name": "dismissOn",
@@ -1338,7 +1345,7 @@
         {
           "name": "Comments",
           "title": "A long list, opening halfway",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { BottomSheet } from '@liulidesign/core/BottomSheet';\n\nconst comments = [\n  ['Ana', 'Can we move the review to Thursday?'],\n  ['Kai', 'Thursday works. I will update the plan.'],\n  ['Mira', 'Added the budget numbers under Q3.'],\n  ['Ana', 'Thanks. The hiring section still needs dates.'],\n  ['Kai', 'I will add them after the sync.'],\n  ['Mira', 'Linked the research notes as well.'],\n] as const;\n\n/** A long list: the sheet opens halfway and drags up to nearly the full height. */\nexport function Comments() {\n  const open = useLocal('open', false);\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Show comments\" width=\"content\" onClick={() => open.set(true)} data-testid=\"comments-open\" />\n      <BottomSheet\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Comments\"\n        closeLabel=\"Close\"\n        detents=\"expandable\"\n        data-testid=\"comments\"\n      >\n        {comments.map(([who, text], index) => (\n          <view key={`c${index}`} className=\"gap-0.5\">\n            <text className=\"text-footnote font-semibold text-text\">{who}</text>\n            <text className=\"text-body text-text\">{text}</text>\n          </view>\n        ))}\n      </BottomSheet>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { BottomSheet } from '@liulidesign/core/BottomSheet';\n\nconst comments = [\n  ['Ana', 'Can we move the review to Thursday?'],\n  ['Kai', 'Thursday works. I will update the plan.'],\n  ['Mira', 'Added the budget numbers under Q3.'],\n  ['Ana', 'Thanks. The hiring section still needs dates.'],\n  ['Kai', 'I will add them after the sync.'],\n  ['Mira', 'Linked the research notes as well.'],\n] as const;\n\n/** A long list: the sheet opens halfway and drags up to nearly the full height. */\nexport function Comments() {\n  const open = useLocal('open', false);\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Show comments\" width=\"content\" onClick={() => open.set(true)} data-testid=\"comments-open\" />\n      <BottomSheet\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Comments\"\n        hasCloseButton\n        detents=\"expandable\"\n        data-testid=\"comments\"\n      >\n        {comments.map(([who, text], index) => (\n          <view key={`c${index}`} className=\"gap-0.5\">\n            <text className=\"text-footnote font-semibold text-text\">{who}</text>\n            <text className=\"text-body text-text\">{text}</text>\n          </view>\n        ))}\n      </BottomSheet>\n    </view>\n  );\n}"
         },
         {
           "name": "Required",
@@ -4332,10 +4339,17 @@
           "description": "Shown under the list when more than fifty options match: \"Keep typing to see more\"."
         },
         {
+          "name": "hasCloseButton",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back.",
+          "default": "false"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
-          "description": "Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back."
+          "description": "Names the close button. Defaults to \"Close\" in the page's language."
         },
         {
           "name": "onQueryChange",
@@ -4512,7 +4526,7 @@
         {
           "name": "Country",
           "title": "A long list, found by typing",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** A long list found by typing: the field opens a search over its options. */\nexport function Country() {\n  const country = useLocal('country', '');\n  return (\n    <Combobox\n      label=\"Country\"\n      bind={country}\n      items={countries}\n      placeholder=\"Choose a country\"\n      searchLabel=\"Search countries\"\n      searchPlaceholder=\"Search\"\n      emptyLabel=\"No country matches\"\n      closeLabel=\"Close\"\n      data-testid=\"country\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** A long list found by typing: the field opens a search over its options. */\nexport function Country() {\n  const country = useLocal('country', '');\n  return (\n    <Combobox\n      label=\"Country\"\n      bind={country}\n      items={countries}\n      placeholder=\"Choose a country\"\n      searchLabel=\"Search countries\"\n      searchPlaceholder=\"Search\"\n      emptyLabel=\"No country matches\"\n      hasCloseButton\n      data-testid=\"country\"\n    />\n  );\n}"
         },
         {
           "name": "Assignee",
@@ -5043,27 +5057,27 @@
         {
           "name": "Reply",
           "title": "Write and send",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** Write and send: the button wakes when there is something to send, and the draft empties once it is sent. */\nexport function Reply() {\n  const draft = useLocal('draft', '');\n  const sent = useLocal<readonly string[]>('sent', ['See you at eight.']);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"gap-1\">\n        {sent.value.map((text, index) => <MessageBubble key={`sent-${index}`} side=\"end\" text={text} />)}\n      </view>\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        sendLabel=\"Send\"\n        onSubmit={text => { sent.set([...sent.value, text]); draft.set(''); }}\n        data-testid=\"reply\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** Write and send: the button wakes when there is something to send, and the draft empties once it is sent. */\nexport function Reply() {\n  const draft = useLocal('draft', '');\n  const sent = useLocal<readonly string[]>('sent', ['See you at eight.']);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"gap-1\">\n        {sent.value.map((text, index) => <MessageBubble key={`sent-${index}`} side=\"end\" text={text} />)}\n      </view>\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        onSubmit={text => { sent.set([...sent.value, text]); draft.set(''); }}\n        data-testid=\"reply\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "RowWithAttach",
           "title": "With a way to attach",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** With a way to attach, and a draft that fits on one line: attach, text and send in a row. */\nexport function RowWithAttach() {\n  const draft = useLocal('short', 'On my way.');\n  const said = useLocal('said', '');\n  return (\n    <view className=\"gap-2\">\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        sendLabel=\"Send\"\n        onSubmit={text => { said.set(`Sent \"${text}\"`); draft.set(''); }}\n        startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => said.set('Asked for a file')} />}\n        data-testid=\"short\"\n      />\n      {said.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{said.value}</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** With a way to attach, and a draft that fits on one line: attach, text and send in a row. */\nexport function RowWithAttach() {\n  const draft = useLocal('short', 'On my way.');\n  const said = useLocal('said', '');\n  return (\n    <view className=\"gap-2\">\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        onSubmit={text => { said.set(`Sent \"${text}\"`); draft.set(''); }}\n        startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => said.set('Asked for a file')} />}\n        data-testid=\"short\"\n      />\n      {said.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{said.value}</text>}\n    </view>\n  );\n}"
         },
         {
           "name": "WithAttach",
           "title": "A draft past one line",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** A draft past one line: the text takes the full width, to five lines and then scrolling, and the buttons go under it. */\nexport function WithAttach() {\n  const draft = useLocal('long', 'Leaving at eight from the east gate.\\nBring the tent and the stove.\\nI have the maps and water for two days.\\nKai has the first-aid kit.\\nBack on Sunday before dark.\\nCall if the road is closed.');\n  const said = useLocal('said', '');\n  return (\n    <view className=\"gap-2\">\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        sendLabel=\"Send\"\n        onSubmit={text => { said.set(`Sent ${text.split('\\n').length} lines`); draft.set(''); }}\n        startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => said.set('Asked for a file')} />}\n        data-testid=\"long\"\n      />\n      {said.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{said.value}</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** A draft past one line: the text takes the full width, to five lines and then scrolling, and the buttons go under it. */\nexport function WithAttach() {\n  const draft = useLocal('long', 'Leaving at eight from the east gate.\\nBring the tent and the stove.\\nI have the maps and water for two days.\\nKai has the first-aid kit.\\nBack on Sunday before dark.\\nCall if the road is closed.');\n  const said = useLocal('said', '');\n  return (\n    <view className=\"gap-2\">\n      <Composer\n        bind={draft}\n        label=\"Message\"\n        placeholder=\"Message Kai\"\n        onSubmit={text => { said.set(`Sent ${text.split('\\n').length} lines`); draft.set(''); }}\n        startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => said.set('Asked for a file')} />}\n        data-testid=\"long\"\n      />\n      {said.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{said.value}</text>}\n    </view>\n  );\n}"
         },
         {
           "name": "Attached",
           "title": "With attachments",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Token } from '@liulidesign/core/Token';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** What is attached sits inside the composer, over the text. */\nexport function Attached() {\n  const draft = useLocal('note', 'The route and the packing list.');\n  const files = useLocal<readonly string[]>('files', ['Route.gpx', 'Packing list.pdf']);\n  return (\n    <Composer\n      bind={draft}\n      label=\"Message\"\n      placeholder=\"Message Kai\"\n      sendLabel=\"Send\"\n      onSubmit={() => { draft.set(''); files.set([]); }}\n      startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => files.set([...files.value, `File ${files.value.length + 1}.pdf`])} />}\n      attachments={files.value.length === 0 ? undefined : files.value.map(name => (\n        <Token key={name} label={name} removeLabel={`Remove ${name}`} onRemove={() => files.set(files.value.filter(each => each !== name))} />\n      ))}\n      data-testid=\"attached\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Token } from '@liulidesign/core/Token';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** What is attached sits inside the composer, over the text. */\nexport function Attached() {\n  const draft = useLocal('note', 'The route and the packing list.');\n  const files = useLocal<readonly string[]>('files', ['Route.gpx', 'Packing list.pdf']);\n  return (\n    <Composer\n      bind={draft}\n      label=\"Message\"\n      placeholder=\"Message Kai\"\n      onSubmit={() => { draft.set(''); files.set([]); }}\n      startContent={<IconButton label=\"Attach a file\" icon=\"attach\" variant=\"ghost\" onClick={() => files.set([...files.value, `File ${files.value.length + 1}.pdf`])} />}\n      attachments={files.value.length === 0 ? undefined : files.value.map(name => (\n        <Token key={name} label={name} onRemove={() => files.set(files.value.filter(each => each !== name))} />\n      ))}\n      data-testid=\"attached\"\n    />\n  );\n}"
         },
         {
           "name": "Stoppable",
           "title": "A stop button while sending",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** While a reply is being written the send button stops it; the next draft can be written meanwhile. */\nexport function Stoppable() {\n  const draft = useLocal('draft', '');\n  const isWriting = useLocal('writing', true);\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-footnote text-muted\" data-testid=\"stoppable-status\">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>\n      <Composer bind={draft} label=\"Message\" placeholder=\"Message\" sendLabel=\"Send\" onSubmit={() => isWriting.set(true)}\n        isSending={isWriting.value} onStop={() => isWriting.set(false)} stopLabel=\"Stop\" data-testid=\"stoppable\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** While a reply is being written the send button stops it; the next draft can be written meanwhile. */\nexport function Stoppable() {\n  const draft = useLocal('draft', '');\n  const isWriting = useLocal('writing', true);\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-footnote text-muted\" data-testid=\"stoppable-status\">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>\n      <Composer bind={draft} label=\"Message\" placeholder=\"Message\" onSubmit={() => isWriting.set(true)}\n        isSending={isWriting.value} onStop={() => isWriting.set(false)} data-testid=\"stoppable\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -5810,10 +5824,17 @@
           "description": ""
         },
         {
+          "name": "hasCloseButton",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back.",
+          "default": "true"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
-          "description": "Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back."
+          "description": "Names the close button. Defaults to \"Close\" in the page's language."
         },
         {
           "name": "className",
@@ -5928,7 +5949,7 @@
         {
           "name": "Stay",
           "title": "A span of days",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      value={stay.value}\n      onChange={stay.set}\n      format={short}\n      today={today}\n      min={today}\n      closeLabel=\"Close\"\n      data-testid=\"stay\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      value={stay.value}\n      onChange={stay.set}\n      format={short}\n      today={today}\n      min={today}\n      data-testid=\"stay\"\n    />\n  );\n}"
         },
         {
           "name": "Empty",
@@ -5956,8 +5977,7 @@
       "playground": {
         "props": {
           "label": "Stay",
-          "today": "2026-11-15",
-          "closeLabel": "Close"
+          "today": "2026-11-15"
         },
         "fixture": true
       },
@@ -6602,10 +6622,17 @@
           "description": "The footer, typically Buttons, the main action last."
         },
         {
+          "name": "hasCloseButton",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a close button in the header.",
+          "default": "true"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
-          "description": "Shows a close button in the header, named by this text."
+          "description": "Names the close button. Defaults to \"Close\" in the page's language."
         },
         {
           "name": "dismissOn",
@@ -6717,22 +6744,22 @@
         {
           "name": "Confirm",
           "title": "Confirm a destructive action, as an alert dialog",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        hasCloseButton={false}\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Form",
           "title": "A short form",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"rename-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"rename-dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/**\n * A short form. The draft lives outside the dialog, since closing discards the dialog's own state.\n * Only Escape and back cancel, so a stray backdrop tap does not lose the typing.\n */\nexport function Form() {\n  const open = useLocal('open', false);\n  const name = useLocal('name', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Rename\" width=\"content\" onClick={() => open.set(true)} data-testid=\"rename-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Rename notebook\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"rename-dialog\"\n        actions={<Button label=\"Save\" variant=\"primary\" isDisabled={name.value.trim() === ''} onClick={() => open.set(false)} data-testid=\"save\" />}\n      >\n        <TextInput bind={name} label=\"Name\" hasAutoFocus enterKeyHint=\"done\" onSubmit={() => open.set(false)} data-testid=\"name\" />\n      </Dialog>\n    </view>\n  );\n}"
         },
         {
           "name": "Full",
           "title": "Full screen",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** Full screen: a task with its own content to scroll, closed from its header. */\nexport function Full() {\n  const open = useLocal('open', false);\n  const title = useLocal('title', 'Trip to the coast');\n  const body = useLocal('body', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"New note\" variant=\"primary\" width=\"content\" onClick={() => open.set(true)} data-testid=\"full-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"New note\"\n        size=\"full\"\n        closeLabel=\"Close\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"full-dialog\"\n        actions={\n          <>\n            <Button label=\"Discard\" onClick={() => open.set(false)} data-testid=\"full-discard\" />\n            <Button label=\"Save note\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"full-save\" />\n          </>\n        }\n      >\n        <TextInput bind={title} label=\"Title\" />\n        <TextArea bind={body} label=\"Note\" rows={8} maxRows={16} />\n      </Dialog>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextArea } from '@liulidesign/core/TextArea';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** Full screen: a task with its own content to scroll, closed from its header. */\nexport function Full() {\n  const open = useLocal('open', false);\n  const title = useLocal('title', 'Trip to the coast');\n  const body = useLocal('body', '');\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"New note\" variant=\"primary\" width=\"content\" onClick={() => open.set(true)} data-testid=\"full-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"New note\"\n        size=\"full\"\n        dismissOn=\"closeRequest\"\n        data-testid=\"full-dialog\"\n        actions={\n          <>\n            <Button label=\"Discard\" onClick={() => open.set(false)} data-testid=\"full-discard\" />\n            <Button label=\"Save note\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"full-save\" />\n          </>\n        }\n      >\n        <TextInput bind={title} label=\"Title\" />\n        <TextArea bind={body} label=\"Note\" rows={8} maxRows={16} />\n      </Dialog>\n    </view>\n  );\n}"
         },
         {
           "name": "Hero",
           "title": "With a picture above the title",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A dialog that introduces something: a picture reaches the panel's top edges, with the close button over it. */\nexport function Hero() {\n  const open = useLocal('open', false);\n  return (\n    <view className=\"flex-row\">\n      <Button label=\"What is new\" width=\"content\" onClick={() => open.set(true)} data-testid=\"hero-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Shared notebooks\"\n        description=\"Invite people to a notebook and write in it together. Changes show as they are made.\"\n        closeLabel=\"Close\"\n        size=\"sm\"\n        media={<image src=\"public/photos/photo-2.png\" alt=\"\" className=\"h-40 w-full object-cover\" />}\n        data-testid=\"hero-dialog\"\n        actions={\n          <>\n            <Button label=\"Not now\" onClick={() => open.set(false)} />\n            <Button label=\"Try it\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"hero-try\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A dialog that introduces something: a picture reaches the panel's top edges, with the close button over it. */\nexport function Hero() {\n  const open = useLocal('open', false);\n  return (\n    <view className=\"flex-row\">\n      <Button label=\"What is new\" width=\"content\" onClick={() => open.set(true)} data-testid=\"hero-open\" />\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Shared notebooks\"\n        description=\"Invite people to a notebook and write in it together. Changes show as they are made.\"\n        size=\"sm\"\n        media={<image src=\"public/photos/photo-2.png\" alt=\"\" className=\"h-40 w-full object-cover\" />}\n        data-testid=\"hero-dialog\"\n        actions={\n          <>\n            <Button label=\"Not now\" onClick={() => open.set(false)} />\n            <Button label=\"Try it\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"hero-try\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -6746,8 +6773,7 @@
         "props": {
           "isOpen": false,
           "label": "Delete the file?",
-          "description": "It goes to the bin for 30 days.",
-          "closeLabel": "Close"
+          "description": "It goes to the bin for 30 days."
         },
         "fixture": true,
         "opener": "Delete the file"
@@ -7010,10 +7036,17 @@
           "description": "The footer, typically Buttons, the main action last."
         },
         {
+          "name": "hasCloseButton",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows a close button.",
+          "default": "true"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
-          "description": "Shows a close button in the header, named by this text."
+          "description": "Names the close button. Defaults to \"Close\" in the page's language."
         },
         {
           "name": "side",
@@ -7108,7 +7141,7 @@
         {
           "name": "Filters",
           "title": "Filters, from the end edge",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\nimport { Drawer } from '@liulidesign/core/Drawer';\n\n/** Filters for the list behind it: the list stays in view while they are chosen. */\nexport function Filters() {\n  const open = useLocal('open', false);\n  const sort = useLocal<string | null>('sort', 'edited');\n  const kinds = useLocal<readonly string[]>('kinds', ['notes', 'lists']);\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Filters\" startIcon=\"filter\" onClick={() => open.set(true)} data-testid=\"filters-open\" />\n      <Drawer\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Filters\"\n        closeLabel=\"Close\"\n        data-testid=\"filters\"\n        actions={\n          <>\n            <Button label=\"Clear\" onClick={() => { kinds.set([]); sort.set('edited'); }} />\n            <Button label=\"Show results\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"filters-apply\" />\n          </>\n        }\n      >\n        <RadioGroup bind={sort} label=\"Sort by\" items={[{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Created' }, { value: 'title', label: 'Title' }]} />\n        <CheckboxList\n          label=\"Show\"\n          value={kinds.value}\n          onChange={next => kinds.set(next)}\n          items={[{ value: 'notes', label: 'Notes' }, { value: 'lists', label: 'Lists' }, { value: 'photos', label: 'Photos' }, { value: 'archived', label: 'Archived' }]}\n        />\n      </Drawer>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\nimport { Drawer } from '@liulidesign/core/Drawer';\n\n/** Filters for the list behind it: the list stays in view while they are chosen. */\nexport function Filters() {\n  const open = useLocal('open', false);\n  const sort = useLocal<string | null>('sort', 'edited');\n  const kinds = useLocal<readonly string[]>('kinds', ['notes', 'lists']);\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Filters\" startIcon=\"filter\" onClick={() => open.set(true)} data-testid=\"filters-open\" />\n      <Drawer\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Filters\"\n        data-testid=\"filters\"\n        actions={\n          <>\n            <Button label=\"Clear\" onClick={() => { kinds.set([]); sort.set('edited'); }} />\n            <Button label=\"Show results\" variant=\"primary\" onClick={() => open.set(false)} data-testid=\"filters-apply\" />\n          </>\n        }\n      >\n        <RadioGroup bind={sort} label=\"Sort by\" items={[{ value: 'edited', label: 'Last edited' }, { value: 'created', label: 'Created' }, { value: 'title', label: 'Title' }]} />\n        <CheckboxList\n          label=\"Show\"\n          value={kinds.value}\n          onChange={next => kinds.set(next)}\n          items={[{ value: 'notes', label: 'Notes' }, { value: 'lists', label: 'Lists' }, { value: 'photos', label: 'Photos' }, { value: 'archived', label: 'Archived' }]}\n        />\n      </Drawer>\n    </view>\n  );\n}"
         },
         {
           "name": "Navigation",
@@ -7124,8 +7157,7 @@
       "playground": {
         "props": {
           "isOpen": false,
-          "label": "Filters",
-          "closeLabel": "Close"
+          "label": "Filters"
         },
         "fixture": true,
         "opener": "Show filters"
@@ -8262,7 +8294,14 @@
           "name": "pickLabel",
           "type": "string",
           "required": false,
-          "description": "The words on the button: \"Choose files\", \"Add a photo\". Defaults to \"Choose files\" in the page's language."
+          "description": "The words on the button: \"Choose files\", \"Add a photo\". Defaults to \"Choose files\", or \"Choose a file\" without `isMultiple`, in the page's language."
+        },
+        {
+          "name": "isMultiple",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the app's picker takes several files; words the default button.",
+          "default": "true"
         },
         {
           "name": "hint",
@@ -8377,12 +8416,12 @@
         {
           "name": "Documents",
           "title": "Documents for a request",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';\n\nconst first: FileInputFile[] = [\n  { id: 'lease', name: 'Lease agreement.pdf', detail: '1.8 MB' },\n  { id: 'meter', name: 'Meter reading, November.jpg', detail: 'Uploading, 64%', progress: 64 },\n  { id: 'scan', name: 'Passport scan.tiff', detail: 'Too large: 25 MB at most', isFailed: true },\n];\nconst more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };\n\n/** Documents for a request: the app opens its picker and owns the list; each row says how its file stands. */\nexport function Documents() {\n  const files = useLocal<readonly FileInputFile[]>('files', first);\n  return (\n    <FileInput\n      label=\"Documents\"\n      description=\"We keep them until the request is closed.\"\n      files={files.value}\n      onPick={() => { if (!files.value.some(file => file.id === more.id)) files.set([...files.value, more]); }}\n      pickLabel=\"Choose files\"\n      hint=\"PDF or image, up to 25 MB each\"\n      onRemove={id => files.set(files.value.filter(file => file.id !== id))}\n      removeLabel={name => `Remove ${name}`}\n      progressLabel={name => `Uploading ${name}`}\n      data-testid=\"documents\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';\n\nconst first: FileInputFile[] = [\n  { id: 'lease', name: 'Lease agreement.pdf', detail: '1.8 MB' },\n  { id: 'meter', name: 'Meter reading, November.jpg', detail: 'Uploading, 64%', progress: 64 },\n  { id: 'scan', name: 'Passport scan.tiff', detail: 'Too large: 25 MB at most', isFailed: true },\n];\nconst more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };\n\n/** Documents for a request: the app opens its picker and owns the list; each row says how its file stands. */\nexport function Documents() {\n  const files = useLocal<readonly FileInputFile[]>('files', first);\n  return (\n    <FileInput\n      label=\"Documents\"\n      description=\"We keep them until the request is closed.\"\n      files={files.value}\n      onPick={() => { if (!files.value.some(file => file.id === more.id)) files.set([...files.value, more]); }}\n      hint=\"PDF or image, up to 25 MB each\"\n      onRemove={id => files.set(files.value.filter(file => file.id !== id))}\n      data-testid=\"documents\"\n    />\n  );\n}"
         },
         {
           "name": "Empty",
           "title": "Nothing chosen, with an error",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';\n\nconst more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };\n\n/** Nothing chosen, on a required field after a failed send. */\nexport function Empty() {\n  const files = useLocal<readonly FileInputFile[]>('proof', []);\n  return (\n    <FileInput\n      label=\"Proof of address\"\n      isRequired\n      status={files.value.length === 0 ? { type: 'error', message: 'Add one document.' } : undefined}\n      files={files.value}\n      onPick={() => files.set([more])}\n      pickLabel=\"Add a document\"\n      onRemove={() => files.set([])}\n      removeLabel={name => `Remove ${name}`}\n      progressLabel={name => `Uploading ${name}`}\n      data-testid=\"proof\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { FileInput, type FileInputFile } from '@liulidesign/core/FileInput';\n\nconst more: FileInputFile = { id: 'bill', name: 'Electricity bill.pdf', detail: 'Waiting to upload', progress: true };\n\n/** Nothing chosen, on a required field after a failed send. */\nexport function Empty() {\n  const files = useLocal<readonly FileInputFile[]>('proof', []);\n  return (\n    <FileInput\n      label=\"Proof of address\"\n      isRequired\n      status={files.value.length === 0 ? { type: 'error', message: 'Add one document.' } : undefined}\n      files={files.value}\n      onPick={() => files.set([more])}\n      pickLabel=\"Add a document\"\n      onRemove={() => files.set([])}\n      data-testid=\"proof\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],
@@ -10298,12 +10337,12 @@
         {
           "name": "FromGrid",
           "title": "Opened from a grid of thumbnails",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photos = [\n  { src: photo(1), alt: 'The bay at sunrise', caption: 'The bay at sunrise, from the terrace' },\n  { src: photo(2), alt: 'Fields behind the house', caption: 'Fields behind the house' },\n  { src: photo(3), alt: 'Dusk over the ridge', caption: 'Dusk over the ridge' },\n  { src: photo(4), alt: 'Morning fog in the valley' },\n] as const;\n\n/** A grid of thumbnails: pressing one opens the pictures at that one. */\nexport function FromGrid() {\n  const open = useLocal('open', false);\n  const page = useLocal('page', 0);\n  return (\n    <view className=\"gap-2\">\n      <view className=\"grid grid-cols-4 gap-2\">\n        {photos.map((each, index) => (\n          <Thumbnail key={each.alt} src={each.src} alt={each.alt} size=\"fill\" onClick={() => { page.set(index); open.set(true); }} data-testid={`open-${index}`} />\n        ))}\n      </view>\n      <Lightbox\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Photos of the house\"\n        images={photos}\n        bind={page}\n        closeLabel=\"Close\"\n        pageLabel={(at, count) => `${at + 1} of ${count}`}\n        data-testid=\"viewer\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photos = [\n  { src: photo(1), alt: 'The bay at sunrise', caption: 'The bay at sunrise, from the terrace' },\n  { src: photo(2), alt: 'Fields behind the house', caption: 'Fields behind the house' },\n  { src: photo(3), alt: 'Dusk over the ridge', caption: 'Dusk over the ridge' },\n  { src: photo(4), alt: 'Morning fog in the valley' },\n] as const;\n\n/** A grid of thumbnails: pressing one opens the pictures at that one. */\nexport function FromGrid() {\n  const open = useLocal('open', false);\n  const page = useLocal('page', 0);\n  return (\n    <view className=\"gap-2\">\n      <view className=\"grid grid-cols-4 gap-2\">\n        {photos.map((each, index) => (\n          <Thumbnail key={each.alt} src={each.src} alt={each.alt} size=\"fill\" onClick={() => { page.set(index); open.set(true); }} data-testid={`open-${index}`} />\n        ))}\n      </view>\n      <Lightbox\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Photos of the house\"\n        images={photos}\n        bind={page}\n        data-testid=\"viewer\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Single",
           "title": "One picture",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\n\n/** One picture: no count and no dots. */\nexport function Single() {\n  const open = useLocal('one', false);\n  return (\n    <view className=\"items-start\">\n      <Thumbnail src={photo(5)} alt=\"Dunes at noon\" size=\"lg\" ratio=\"landscape\" onClick={() => open.set(true)} data-testid=\"one-open\" />\n      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Dunes at noon\" images={[{ src: photo(5), alt: 'Dunes at noon' }]} closeLabel=\"Close\" pageLabel={() => ''} data-testid=\"one\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\n\n/** One picture: no count and no dots. */\nexport function Single() {\n  const open = useLocal('one', false);\n  return (\n    <view className=\"items-start\">\n      <Thumbnail src={photo(5)} alt=\"Dunes at noon\" size=\"lg\" ratio=\"landscape\" onClick={() => open.set(true)} data-testid=\"one-open\" />\n      <Lightbox isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Dunes at noon\" images={[{ src: photo(5), alt: 'Dunes at noon' }]} pageLabel={() => ''} data-testid=\"one\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -10314,8 +10353,7 @@
       "playground": {
         "props": {
           "isOpen": false,
-          "label": "Photos of the house",
-          "closeLabel": "Close"
+          "label": "Photos of the house"
         },
         "fixture": true,
         "opener": "View photos"
@@ -11794,12 +11832,12 @@
         {
           "name": "Labels",
           "title": "Labels for a note",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\nconst labels = [\n  { value: 'travel', label: 'Travel' },\n  { value: 'work', label: 'Work' },\n  { value: 'recipes', label: 'Recipes' },\n  { value: 'garden', label: 'Garden' },\n  { value: 'money', label: 'Money' },\n  { value: 'archive', label: 'Archive', isDisabled: true },\n];\n\n/** Labels for a note: the chosen ones are tokens in the field, the list opens from its end. */\nexport function Labels() {\n  const chosen = useLocal<readonly string[]>('chosen', ['travel', 'recipes']);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Labels\"\n      items={labels}\n      addLabel=\"Add a label\"\n      removeLabel={name => `Remove ${name}`}\n      description=\"A note can carry several.\"\n      data-testid=\"labels\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\nconst labels = [\n  { value: 'travel', label: 'Travel' },\n  { value: 'work', label: 'Work' },\n  { value: 'recipes', label: 'Recipes' },\n  { value: 'garden', label: 'Garden' },\n  { value: 'money', label: 'Money' },\n  { value: 'archive', label: 'Archive', isDisabled: true },\n];\n\n/** Labels for a note: the chosen ones are tokens in the field, the list opens from its end. */\nexport function Labels() {\n  const chosen = useLocal<readonly string[]>('chosen', ['travel', 'recipes']);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Labels\"\n      items={labels}\n      addLabel=\"Add a label\"\n      description=\"A note can carry several.\"\n      data-testid=\"labels\"\n    />\n  );\n}"
         },
         {
           "name": "Empty",
           "title": "Nothing chosen, with an error",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\n/** Nothing chosen yet, on a required field after a failed send. */\nexport function Empty() {\n  const chosen = useLocal<readonly string[]>('none', []);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Share with teams\"\n      items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}\n      placeholder=\"No teams yet\"\n      addLabel=\"Add a team\"\n      removeLabel={name => `Remove ${name}`}\n      isRequired\n      status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}\n      data-testid=\"teams\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\n/** Nothing chosen yet, on a required field after a failed send. */\nexport function Empty() {\n  const chosen = useLocal<readonly string[]>('none', []);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Share with teams\"\n      items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}\n      placeholder=\"No teams yet\"\n      addLabel=\"Add a team\"\n      isRequired\n      status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}\n      data-testid=\"teams\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],
@@ -14154,12 +14192,12 @@
         {
           "name": "Notes",
           "title": "A list that narrows as you type",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nconst notes = ['Budget for Q3', 'Kitchen plans', 'Reading list', 'Recipes to try', 'Trip to Lisbon', 'Weekly review'];\n\n/** The list under the field narrows as you type, and the line between them says how many are left. */\nexport function Notes() {\n  const query = useLocal('query', '');\n  const text = query.value.trim().toLowerCase();\n  const found = notes.filter(note => note.toLowerCase().includes(text));\n  return (\n    <view className=\"gap-3\">\n      <SearchField\n        label=\"Search notes\"\n        isLabelHidden\n        placeholder=\"Search notes\"\n        clearLabel=\"Clear search\"\n        bind={query}\n        resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}\n        data-testid=\"notes\"\n      />\n      <ItemList label=\"Notes\">\n        {found.map(note => <Item key={note} label={note} />)}\n      </ItemList>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\nconst notes = ['Budget for Q3', 'Kitchen plans', 'Reading list', 'Recipes to try', 'Trip to Lisbon', 'Weekly review'];\n\n/** The list under the field narrows as you type, and the line between them says how many are left. */\nexport function Notes() {\n  const query = useLocal('query', '');\n  const text = query.value.trim().toLowerCase();\n  const found = notes.filter(note => note.toLowerCase().includes(text));\n  return (\n    <view className=\"gap-3\">\n      <SearchField\n        label=\"Search notes\"\n        isLabelHidden\n        placeholder=\"Search notes\"\n        bind={query}\n        resultsLabel={text === '' ? undefined : found.length === 0 ? 'No notes match' : `${found.length} of ${notes.length} notes`}\n        data-testid=\"notes\"\n      />\n      <ItemList label=\"Notes\">\n        {found.map(note => <Item key={note} label={note} />)}\n      </ItemList>\n    </view>\n  );\n}"
         },
         {
           "name": "Loading",
           "title": "While a search runs",
-          "source": "import { Held } from '../example';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** While a search runs elsewhere, the magnifier gives way to a spinner. */\nexport function Loading() {\n  return <Held value=\"lamp\">{(query, set) => <SearchField label=\"Search the catalogue\" isLabelHidden placeholder=\"Search the catalogue\" clearLabel=\"Clear search\" value={query} onChange={set} isLoading resultsLabel=\"Searching\" data-testid=\"catalogue\" />}</Held>;\n}"
+          "source": "import { Held } from '../example';\nimport { SearchField } from '@liulidesign/core/SearchField';\n\n/** While a search runs elsewhere, the magnifier gives way to a spinner. */\nexport function Loading() {\n  return <Held value=\"lamp\">{(query, set) => <SearchField label=\"Search the catalogue\" isLabelHidden placeholder=\"Search the catalogue\" value={query} onChange={set} isLoading resultsLabel=\"Searching\" data-testid=\"catalogue\" />}</Held>;\n}"
         },
         {
           "name": "Labelled",
@@ -15525,8 +15563,8 @@
         {
           "name": "sidebarLabel",
           "type": "string",
-          "required": false,
-          "description": "Names the sidebar for assistive tech: \"Components\". Defaults to \"Sidebar\" in the page's language."
+          "required": true,
+          "description": "Names the sidebar for assistive tech: what it lists, \"Mailboxes\", \"Components\"."
         },
         {
           "name": "contentLabel",
@@ -18975,22 +19013,22 @@
         {
           "name": "Archive",
           "title": "Archive with Undo",
-          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** Archiving a note, with Undo: the toast stays until Undo, dismiss or a swipe closes it. */\nexport function Archive() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <Notes />\n    </ToastRegion>\n  );\n}"
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** Archiving a note, with Undo: the toast stays until Undo, dismiss or a swipe closes it. */\nexport function Archive() {\n  return (\n    <ToastRegion>\n      <Notes />\n    </ToastRegion>\n  );\n}"
         },
         {
           "name": "Tones",
           "title": "Tones, queued",
-          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** One per tone; pressed in a row, they queue and show one at a time. */\nexport function Tones() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <ToneButtons />\n    </ToastRegion>\n  );\n}"
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** One per tone; pressed in a row, they queue and show one at a time. */\nexport function Tones() {\n  return (\n    <ToastRegion>\n      <ToneButtons />\n    </ToastRegion>\n  );\n}"
         },
         {
           "name": "Progress",
           "title": "Updated in place",
-          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** A progress message updated in place by its id, rather than queued behind itself. */\nexport function Progress() {\n  return (\n    <ToastRegion dismissLabel=\"Dismiss\">\n      <Uploader />\n    </ToastRegion>\n  );\n}"
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** A progress message updated in place by its id, rather than queued behind itself. */\nexport function Progress() {\n  return (\n    <ToastRegion>\n      <Uploader />\n    </ToastRegion>\n  );\n}"
         },
         {
           "name": "Faces",
           "title": "Each face, at phone width",
-          "source": "import { Said } from '../example';\nimport { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each\n * shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-8 pb-8\">\n          <Toast message=\"Note moved to Travel\" onDismiss={() => say('Dismissed')} dismissLabel=\"Dismiss\" />\n          <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => say('Dismissed')} dismissLabel=\"Dismiss\" />\n          <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} dismissLabel=\"Dismiss\" />\n          <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} dismissLabel=\"Dismiss\" />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each\n * shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-8 pb-8\">\n          <Toast message=\"Note moved to Travel\" onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => say('Dismissed')} />\n          <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -19601,7 +19639,7 @@
         {
           "name": "Recipients",
           "title": "People, each removable",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** People a note is shared with: each can be taken away. */\nexport function Recipients() {\n  const people = useLocal<readonly string[]>('people', ['Ana Lima', 'Kai Chen', 'Mira Patel']);\n  return (\n    <view className=\"gap-2\">\n      <TokenList label=\"Shared with\" data-testid=\"shared\">\n        {people.value.map(name => (\n          <Token key={name} label={name} startIcon=\"user\" removeLabel={`Remove ${name}`} onRemove={() => people.set(people.value.filter(each => each !== name))} data-testid={`person-${name.split(' ')[0].toLowerCase()}`} />\n        ))}\n      </TokenList>\n      <text role=\"status\" className=\"text-footnote text-muted\">{`${people.value.length} people`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** People a note is shared with: each can be taken away. */\nexport function Recipients() {\n  const people = useLocal<readonly string[]>('people', ['Ana Lima', 'Kai Chen', 'Mira Patel']);\n  return (\n    <view className=\"gap-2\">\n      <TokenList label=\"Shared with\" data-testid=\"shared\">\n        {people.value.map(name => (\n          <Token key={name} label={name} startIcon=\"user\" onRemove={() => people.set(people.value.filter(each => each !== name))} data-testid={`person-${name.split(' ')[0].toLowerCase()}`} />\n        ))}\n      </TokenList>\n      <text role=\"status\" className=\"text-footnote text-muted\">{`${people.value.length} people`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Filters",
@@ -19611,7 +19649,7 @@
         {
           "name": "Labels",
           "title": "Labels, each in its hue",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** Labels keep their hue wherever they appear; removing one takes it off the issue. */\nexport function Labels() {\n  const labels = useLocal('labels', [\n    { name: 'bug', hue: 5 as const },\n    { name: 'design', hue: 6 as const },\n    { name: 'needs triage', hue: 4 as const },\n    { name: 'mobile', hue: 2 as const },\n  ]);\n  return (\n    <TokenList label=\"Labels\" data-testid=\"labels\">\n      {labels.value.map(each => (\n        <Token\n          key={each.name}\n          label={each.name}\n          hue={each.hue}\n          size=\"sm\"\n          onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}\n          removeLabel={`Remove ${each.name}`}\n          data-testid={`label-${each.name.replace(/ /g, '-')}`}\n        />\n      ))}\n    </TokenList>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Token, TokenList } from '@liulidesign/core/Token';\n\n/** Labels keep their hue wherever they appear; removing one takes it off the issue. */\nexport function Labels() {\n  const labels = useLocal('labels', [\n    { name: 'bug', hue: 5 as const },\n    { name: 'design', hue: 6 as const },\n    { name: 'needs triage', hue: 4 as const },\n    { name: 'mobile', hue: 2 as const },\n  ]);\n  return (\n    <TokenList label=\"Labels\" data-testid=\"labels\">\n      {labels.value.map(each => (\n        <Token\n          key={each.name}\n          label={each.name}\n          hue={each.hue}\n          size=\"sm\"\n          onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}\n          data-testid={`label-${each.name.replace(/ /g, '-')}`}\n        />\n      ))}\n    </TokenList>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -20001,7 +20039,7 @@
         {
           "name": "Welcome",
           "title": "Three steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}\n          <view className=\"flex-row flex-wrap items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-40\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            value={step.value}\n            onChange={next => step.set(next)}\n            nextLabel=\"Next\"\n            backLabel=\"Back\"\n            skipLabel=\"Skip\"\n            doneLabel=\"Done\"\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}\n          <view className=\"flex-row flex-wrap items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-40\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            value={step.value}\n            onChange={next => step.set(next)}\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],

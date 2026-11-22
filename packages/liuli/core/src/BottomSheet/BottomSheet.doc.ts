@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'panel', required: true, description: 'The dialog on the bottom edge, rounded at the top; it follows the finger between its detents.' },
     { part: 'grabber', required: true, description: 'The handle at the top edge; decoration, hidden from assistive tech.' },
-    { part: 'header', required: false, description: 'The title, and the close button when `closeLabel` is set.' },
+    { part: 'header', required: false, description: 'The title, and the close button with `hasCloseButton`.' },
     { part: 'description', required: false, description: 'One or two sentences under the title, read as the description.' },
     { part: 'body', required: false, description: '`children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first.' },
     { part: 'footer', required: false, description: '`actions`, end-aligned, wrapping when narrow.' },

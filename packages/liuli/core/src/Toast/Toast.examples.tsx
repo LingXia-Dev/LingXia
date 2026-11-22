@@ -36,7 +36,7 @@ function Notes() {
 /** Archiving a note, with Undo: the toast stays until Undo, dismiss or a swipe closes it. */
 export function Archive() {
   return (
-    <ToastRegion dismissLabel="Dismiss">
+    <ToastRegion>
       <Notes />
     </ToastRegion>
   );
@@ -57,7 +57,7 @@ function ToneButtons() {
 /** One per tone; pressed in a row, they queue and show one at a time. */
 export function Tones() {
   return (
-    <ToastRegion dismissLabel="Dismiss">
+    <ToastRegion>
       <ToneButtons />
     </ToastRegion>
   );
@@ -77,7 +77,7 @@ function Uploader() {
 /** A progress message updated in place by its id, rather than queued behind itself. */
 export function Progress() {
   return (
-    <ToastRegion dismissLabel="Dismiss">
+    <ToastRegion>
       <Uploader />
     </ToastRegion>
   );
@@ -93,10 +93,10 @@ export function Faces() {
     <Said>
       {say => (
         <view className="gap-8 pb-8">
-          <Toast message="Note moved to Travel" onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
-          <Toast message="Changes saved" tone="success" onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
-          <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
-          <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} dismissLabel="Dismiss" />
+          <Toast message="Note moved to Travel" onDismiss={() => say('Dismissed')} />
+          <Toast message="Changes saved" tone="success" onDismiss={() => say('Dismissed')} />
+          <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />
+          <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />
         </view>
       )}
     </Said>

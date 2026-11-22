@@ -436,6 +436,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "hasCloseButton",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "closeLabel",
         "required": false,
         "kind": "text"
@@ -1290,6 +1295,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "hasCloseButton",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "closeLabel",
         "required": false,
         "kind": "text"
@@ -1513,8 +1523,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "component": "DateRangeInput",
     "defaults": {
       "label": "Stay",
-      "today": "2026-11-15",
-      "closeLabel": "Close"
+      "today": "2026-11-15"
     },
     "controls": [
       {
@@ -1586,6 +1595,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "max",
         "required": false,
         "kind": "text"
+      },
+      {
+        "name": "hasCloseButton",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "closeLabel",
@@ -1848,8 +1862,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "defaults": {
       "isOpen": false,
       "label": "Delete the file?",
-      "description": "It goes to the bin for 30 days.",
-      "closeLabel": "Close"
+      "description": "It goes to the bin for 30 days."
     },
     "controls": [
       {
@@ -1874,6 +1887,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "isAlert",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "hasCloseButton",
         "required": false,
         "kind": "boolean"
       },
@@ -1952,8 +1970,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "component": "Drawer",
     "defaults": {
       "isOpen": false,
-      "label": "Filters",
-      "closeLabel": "Close"
+      "label": "Filters"
     },
     "controls": [
       {
@@ -1970,6 +1987,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "description",
         "required": false,
         "kind": "text"
+      },
+      {
+        "name": "hasCloseButton",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "closeLabel",
@@ -2230,6 +2252,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "pickLabel",
         "required": false,
         "kind": "text"
+      },
+      {
+        "name": "isMultiple",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "hint",
@@ -2835,8 +2862,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "component": "Lightbox",
     "defaults": {
       "isOpen": false,
-      "label": "Photos of the house",
-      "closeLabel": "Close"
+      "label": "Photos of the house"
     },
     "controls": [
       {

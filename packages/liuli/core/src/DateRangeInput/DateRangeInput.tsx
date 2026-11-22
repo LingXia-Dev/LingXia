@@ -3,6 +3,7 @@ import { useControlSize } from '../density';
 import { Calendar, type CalendarDate, type CalendarRange } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
 import { Field, type FieldOwnProps } from '../Field/Field';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dateRangeInputRecipe as r } from './DateRangeInput.recipe';
@@ -21,7 +22,9 @@ export type DateRangeInputProps = FieldOwnProps & {
   min?: CalendarDate;
   max?: CalendarDate;
   isDateDisabled?: (date: CalendarDate) => boolean;
-  /** Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. */
+  /** Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. @default true */
+  hasCloseButton?: boolean;
+  /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
   className?: string;
   /** On the field's button; the calendar is `<id>-calendar`. */
@@ -32,7 +35,7 @@ export type DateRangeInputProps = FieldOwnProps & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
+    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const { env } = useView();
@@ -106,7 +109,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
               <view aria-hidden className={c.grabber.base} />
               <view className={c.header.base}>
                 <text role="heading" headingLevel={2} className={c.title.base}>{label}</text>
-                {closeLabel !== undefined && (
+                {hasCloseButton && (
                   <button aria-label={closeLabel} onClick={() => open.set(false)} data-testid={testId && `${testId}-close`} className={c.close.base}>
                     <Glyph name="close" className={c.close.icon} />
                   </button>

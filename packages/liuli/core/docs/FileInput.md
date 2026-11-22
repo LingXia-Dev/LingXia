@@ -34,11 +34,8 @@ export function Documents() {
       description="We keep them until the request is closed."
       files={files.value}
       onPick={() => { if (!files.value.some(file => file.id === more.id)) files.set([...files.value, more]); }}
-      pickLabel="Choose files"
       hint="PDF or image, up to 25 MB each"
       onRemove={id => files.set(files.value.filter(file => file.id !== id))}
-      removeLabel={name => `Remove ${name}`}
-      progressLabel={name => `Uploading ${name}`}
       data-testid="documents"
     />
   );
@@ -65,8 +62,6 @@ export function Empty() {
       onPick={() => files.set([more])}
       pickLabel="Add a document"
       onRemove={() => files.set([])}
-      removeLabel={name => `Remove ${name}`}
-      progressLabel={name => `Uploading ${name}`}
       data-testid="proof"
     />
   );
@@ -90,7 +85,8 @@ export function Empty() {
 | `size` | `FieldSize` | `'md'` |  |
 | `files` (required) | `readonly FileInputFile[]` |  | The chosen files, in order. The app owns the list. |
 | `onPick` (required) | `() => void` |  | Opens the app\'s own picker, in Logic. Liuli cannot read files. |
-| `pickLabel` | `string` |  | The words on the button: "Choose files", "Add a photo". Defaults to "Choose files" in the page's language. |
+| `pickLabel` | `string` |  | The words on the button: "Choose files", "Add a photo". Defaults to "Choose files", or "Choose a file" without `isMultiple`, in the page's language. |
+| `isMultiple` | `boolean` | `true` | Whether the app's picker takes several files; words the default button. |
 | `hint` | `string` |  | A line under them: what may be chosen. "PDF or image, up to 25 MB each". |
 | `onRemove` (required) | `(id: string) => void` |  | Takes a file out of the list. |
 | `removeLabel` | `((name: string) => string)` |  | Each remove button, named with what it removes: `name => \`Remove ${name}\``. Defaults to "Remove <name>" in the page's language. |

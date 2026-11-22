@@ -19,7 +19,6 @@ export function Stay() {
       format={short}
       today={today}
       min={today}
-      closeLabel="Close"
       data-testid="stay"
     />
   );

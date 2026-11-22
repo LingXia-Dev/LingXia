@@ -21,7 +21,7 @@ export function Country() {
       searchLabel="Search countries"
       searchPlaceholder="Search"
       emptyLabel="No country matches"
-      closeLabel="Close"
+      hasCloseButton
       data-testid="country"
     />
   );

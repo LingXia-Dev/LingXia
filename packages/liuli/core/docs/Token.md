@@ -25,7 +25,7 @@ export function Recipients() {
     <view className="gap-2">
       <TokenList label="Shared with" data-testid="shared">
         {people.value.map(name => (
-          <Token key={name} label={name} startIcon="user" removeLabel={`Remove ${name}`} onRemove={() => people.set(people.value.filter(each => each !== name))} data-testid={`person-${name.split(' ')[0].toLowerCase()}`} />
+          <Token key={name} label={name} startIcon="user" onRemove={() => people.set(people.value.filter(each => each !== name))} data-testid={`person-${name.split(' ')[0].toLowerCase()}`} />
         ))}
       </TokenList>
       <text role="status" className="text-footnote text-muted">{`${people.value.length} people`}</text>
@@ -77,7 +77,6 @@ export function Labels() {
           hue={each.hue}
           size="sm"
           onRemove={() => labels.set(labels.value.filter(other => other.name !== each.name))}
-          removeLabel={`Remove ${each.name}`}
           data-testid={`label-${each.name.replace(/ /g, '-')}`}
         />
       ))}
