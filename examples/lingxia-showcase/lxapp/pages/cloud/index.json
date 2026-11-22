@@ -3,8 +3,7 @@
   "pageOrientation": "auto",
   "navigationBar": {
     "title": {
-      "default": "Cloud",
-      "zh-CN": "云服务"
+      "message": "title.cloud"
     }
   }
 }

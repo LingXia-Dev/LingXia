@@ -9,10 +9,10 @@ export const doc: ComponentDoc = {
   description:
     'Calendar draws a month in the page and lets people press a day, or two days for a span: a due date beside its task, the nights of a stay. ' +
     'Days are `YYYY-MM-DD` text. The chosen day is a filled circle, a span is a soft band between its ends, and today is ringed. ' +
-    'Its words come from a `locale` object; English and Chinese ones are ready to import. For a date typed into a form, DateInput opens the platform\'s own picker.',
+    'Its words follow the page\'s language and its weeks start on the user\'s first weekday. For a date typed into a form, DateInput opens the platform\'s own picker.',
   keywords: ['calendar', 'date picker', 'date range', 'month', 'day picker', 'range picker', 'schedule'],
   propsType: 'CalendarProps',
-  otherPropsTypes: ['CalendarLocale', 'CalendarRange'],
+  otherPropsTypes: ['CalendarRange'],
   recipe: { map: 'calendarRecipe', parts: 'calendarParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The calendar, a group named by `label`.' },
@@ -44,7 +44,7 @@ export const doc: ComponentDoc = {
       { what: 'ring on today', pair: ['line-strong', 'surface'], minimum: '3:1' },
     ],
     notes: [
-      'Each day is named in full by the locale, "Thursday 19 November 2026", with "Today" said where it is today, so the weekday row is not read.',
+      'Each day is named in full, "Thursday 19 November 2026", with "Today" said where it is today, so the weekday row is not read.',
       'A chosen day, both ends of a span and the days between them report selected.',
       'The month\'s title is a status: moving to another month announces it.',
       'A day that cannot be chosen stays in the grid, dimmed and disabled, so the weeks keep their shape.',
@@ -56,7 +56,6 @@ export const doc: ComponentDoc = {
       'Use it where the days themselves matter: seeing a span, weekdays against weekends, what is taken.',
       'Pass `today` from the page\'s Logic, which knows the time and the person\'s time zone; a View has no clock.',
       'Show the chosen span in words beside the calendar, as the app formats dates.',
-      'Spread a ready-made locale to change the first day of the week or a word.',
       'At large text, a day\'s circle widens to hold two digits, up to its seventh of the row; give the calendar the full width.',
     ],
     dont: [
@@ -68,14 +67,13 @@ export const doc: ComponentDoc = {
     { name: 'Day', title: 'One day' },
     { name: 'Stay', title: 'A span of days' },
     { name: 'Weekdays', title: 'Days ruled out' },
-    { name: 'Chinese', title: 'Another language' },
   ],
   gaps: [
     { missing: 'A field that opens the calendar, for a span typed into a form.', needs: 'nothing from the View', today: 'The calendar sits in the page; put it in a Popover or a BottomSheet.' },
     { missing: 'Jumping to a month or year, and two months side by side.', needs: 'nothing from the View', today: 'One month, a month at a time.' },
-    { missing: 'Month and weekday names from the device\'s own language.', needs: 'date formatting in the View\'s engine', today: 'The app passes a `locale`.' },
+    { missing: 'Month and weekday names in a language Liuli does not translate.', needs: 'date formatting in the View\'s engine', today: 'English and Chinese; an lxapp adds a language by naming `@liuli.monthName` and `@liuli.weekdayName` in its catalogue.' },
   ],
-  playground: { props: { value: '2026-11-19', label: 'Due date', today: '2026-11-15' }, fixture: true },
+  playground: { props: { value: '2026-11-19', label: 'Due date', today: '2026-11-15' } },
   related: ['DateInput', 'TimeInput', 'Popover'],
   gallery: {
     specimen: 'Specimen',
@@ -87,7 +85,6 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Stay', title: 'A span: the first press starts it, the second ends it; past days cannot be chosen' },
         { name: 'Weekdays', title: 'Days the app rules out are dimmed' },
-        { name: 'Chinese', title: 'Words and week start from the locale' },
       ],
     },
   },

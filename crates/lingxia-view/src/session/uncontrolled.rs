@@ -267,11 +267,7 @@ impl super::ViewSession {
             return;
         }
         let env = &self.environment;
-        let language = env["contentLanguage"]
-            .as_str()
-            .or_else(|| env["displayLanguage"].as_str())
-            .unwrap_or_default()
-            .to_owned();
+        let language = env["language"].as_str().unwrap_or_default().to_owned();
         let cycle = env["hourCycle"].as_str().unwrap_or_default().to_owned();
         let ids = identities(render_records);
         let live: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();

@@ -1,2 +1,7 @@
 /.gitattributes text eol=lf
 *.sh text eol=lf
+# Generated files: identical bytes on every OS, so a Windows regenerate shows no drift.
+packages/lingxia-types/api.json text eol=lf
+packages/lingxia-types/src/generated/** text eol=lf
+packages/lingxia-types/src/testing/lx-mock-shape.ts text eol=lf
+docs/internal/logic-api-members.md text eol=lf

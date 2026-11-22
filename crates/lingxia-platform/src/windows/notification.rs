@@ -87,7 +87,7 @@ pub(super) fn show(
     let now_ms = unix_now_ms();
     let scheduled = request.deliver_at_ms.filter(|at| *at > now_ms + 500);
     let id = request.id.clone();
-    if scheduled.is_none() && process_is_frontmost() {
+    if scheduled.is_none() && !request.post_when_frontmost && process_is_frontmost() {
         // Still an upsert: whatever the id held must not outlive this call.
         cancel(platform, &id)?;
         return Ok(LocalNotificationStatus::Suppressed);

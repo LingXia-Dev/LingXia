@@ -208,7 +208,7 @@ pub(crate) fn teardown_runner_display_language_session() {
     lxapp::clear_active_display_language_session_override();
 }
 
-fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
+fn seed_display_language(app_data_dir: &std::path::Path, system: &str, languages: &[String]) {
     let saved = match lingxia_service::settings::display_language(app_data_dir) {
         Ok(saved) => saved,
         Err(error) => {
@@ -216,11 +216,13 @@ fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
             None
         }
     };
-    match lxapp::initialize_display_language(saved, system, None) {
+    match lxapp::initialize_display_language(saved, system, languages, None) {
         Ok(_) => {}
         Err(error) => {
             log::warn!("Failed to initialize display language: {error}; following system language");
-            if let Err(fallback_error) = lxapp::initialize_display_language(None, system, None) {
+            if let Err(fallback_error) =
+                lxapp::initialize_display_language(None, system, languages, None)
+            {
                 log::warn!("Failed to initialize system display language: {fallback_error}");
             }
         }
@@ -335,7 +337,11 @@ pub(crate) fn init_with_platform(
     {
         log::warn!("service env resolution failed ({err}); using build env");
     }
-    seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
+    seed_display_language(
+        &runtime.app_data_dir(),
+        runtime.get_system_locale(),
+        &app_config.product_languages(),
+    );
     // Before any lxapp exists: the home app resolves `auto` once while loading
     // its config and bakes the answer into its document-start script, so a
     // pinned preference read afterwards would miss the product's first paint.
@@ -482,7 +488,7 @@ mod tests {
         lingxia_service::settings::set_display_language(dir.path(), Some("zh-CN"))
             .expect("save display language");
 
-        seed_display_language(dir.path(), "en-US");
+        seed_display_language(dir.path(), "en-US", &[]);
 
         assert_eq!(crate::app::display_language().as_str(), "zh-CN");
         assert_eq!(
@@ -496,6 +502,7 @@ mod tests {
         let owner = lxapp::initialize_display_language(
             Some("zh-CN".to_string()),
             "en-US",
+            &[],
             Some("ja-jp".parse().unwrap()),
         )
         .unwrap()

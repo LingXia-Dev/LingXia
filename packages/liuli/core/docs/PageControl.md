@@ -66,7 +66,7 @@ export function OnMedia() {
 | `onChange` | `((page: number) => void)` |  | Runs with the page of the dot that was pressed. |
 | `label` (required) | `string` |  | Names the dots for assistive tech: "Photos". |
 | `count` (required) | `number` |  | How many pages there are. Past ten or so, show a count in words. |
-| `pageLabel` (required) | `(page: number) => string` |  | Each dot's accessible name, written by the app: `page => \`Photo ${page + 1}\``. |
+| `pageLabel` | `((page: number) => string)` |  | Each dot's accessible name, written by the app: `page => \`Photo ${page + 1}\``. Defaults to "Page 2" in the page's language. |
 | `tone` | `PageControlTone` | `'accent'` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the row; each dot gets `<testid>-<page>`. |

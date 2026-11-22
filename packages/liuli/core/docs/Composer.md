@@ -154,11 +154,11 @@ export function Stoppable() {
 | `value` | `string` |  | The draft; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  |  |
 | `onStop` | `(() => void)` |  | While sending, the send button becomes a stop button that runs this, as when a reply is being written. |
-| `stopLabel` | `string` |  | The stop button's name: "Stop". |
+| `stopLabel` | `string` |  | The stop button's name: "Stop". Defaults to "Stop" in the page's language. |
 | `label` (required) | `string` |  | The field\'s accessible name: "Message", "Reply to Kai". Not drawn. |
 | `placeholder` | `string` |  | A hint shown while the draft is empty. |
 | `onSubmit` (required) | `(text: string) => void` |  | Runs with the draft, trimmed, from the send button or the keyboard\'s send key. The app sends it and empties the draft. |
-| `sendLabel` (required) | `string` |  | The send button\'s name: "Send". |
+| `sendLabel` | `string` |  | The send button\'s name: "Send". Defaults to "Send" in the page's language. |
 | `isSending` | `boolean` | `false` | The send button shows a spinner and takes no press, or becomes the stop button with `onStop`; the draft stays editable. |
 | `startContent` | `Child` |  | Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. |
 | `attachments` | `Child` |  | What is attached, shown inside the composer over the text: Tokens or Thumbnails, each with its own way to remove it. |

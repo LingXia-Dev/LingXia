@@ -31,6 +31,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: Some("app.lingxia.demo".into()),
@@ -300,6 +301,7 @@ fn generated_app_json_excludes_ui_fields() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: Some(LingxiaServer::Single("http://127.0.0.1:8080".into())),
             lingxia_id: Some("demo".into()),
@@ -402,6 +404,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -438,6 +441,11 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["devWsUrl"], "ws://192.168.1.20:12345/?token=abc");
+    // The host must let a preference for the dev build's pseudo-language through to its lxapps.
+    assert_eq!(
+        value["languages"],
+        serde_json::json!(["en-US", "zh-CN", "en-XA"])
+    );
     assert_eq!(
         value["devBundleBaseUrl"],
         "http://192.168.1.20:12345/__lingxia/dev?token=abc"
@@ -453,6 +461,7 @@ fn generated_app_json_includes_app_link_hosts() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -503,6 +512,7 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -573,6 +583,7 @@ fn generated_app_json_keeps_both_lingxia_servers() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: Some(LingxiaServer::PerEnv(PerEnvServer {
                 dev: Some("https://dev.example".into()),
@@ -630,6 +641,7 @@ fn generated_app_json_includes_capabilities() {
             package_id: "com.example.demo".into(),
             product_name: "Demo".into(),
             product_names: Default::default(),
+            languages: Vec::new(),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,

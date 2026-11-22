@@ -85,6 +85,8 @@ pub(super) struct ProjectConfig {
     pub(super) platforms: Vec<Platform>,
     pub(super) package_id: String,
     pub(super) app_link_hosts: Vec<String>,
+    /// `--languages`; empty writes the default.
+    pub(super) languages: Vec<String>,
     pub(super) target_dir: PathBuf,
 }
 

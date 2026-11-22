@@ -1,4 +1,4 @@
-import { List, useAction, useLocal } from '@lingxia/view';
+import { t, List, useAction, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, EmptyState, ErrorState, Icon, Segmented } from '../../shared/ui';
 import type { View } from './$types';
@@ -6,9 +6,9 @@ import type { View } from './$types';
 type Todo = View['data']['todos'][number];
 
 const filters = [
-  { value: 'all', label: 'All' },
-  { value: 'active', label: 'Active' },
-  { value: 'completed', label: 'Completed' },
+  { value: 'all', label: 'todo.filter.all' },
+  { value: 'active', label: 'todo.filter.active' },
+  { value: 'completed', label: 'todo.filter.completed' },
 ] as const;
 
 function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: boolean; onToggle: () => unknown; onDelete: () => unknown }) {
@@ -68,7 +68,7 @@ export function render({ data, actions, env }: View) {
   };
   return (
     <page data-testid="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
-      <text className="text-7xl font-thin tracking-tighter text-accent">todos</text>
+      <text className="text-7xl font-thin tracking-tighter text-accent">{t('todo.todos')}</text>
       <view
         data-testid="todo-panel"
         className="w-full max-w-xl grow basis-0 min-h-0 rounded-2xl bg-surface/90 backdrop-blur-xl shadow-lg border border-line"
@@ -77,7 +77,7 @@ export function render({ data, actions, env }: View) {
           {todos.length > 0 ? (
             <button
               data-testid="todo-toggle-all"
-              aria-label={active ? 'Mark all as complete' : 'Mark all as active'}
+              aria-label={active ? t('todo.markAllComplete') : t('todo.markAllActive')}
               disabled={blocked}
               onClick={() => toggleAll.run()}
               className="w-12 h-12 p-3 bg-transparent"
@@ -90,17 +90,17 @@ export function render({ data, actions, env }: View) {
           <input
             data-testid="todo-input"
             data-controlled-value={draft.value}
-            aria-label="New task"
+            aria-label={t('todo.newTask')}
             bind={draft}
             disabled={blocked}
-            placeholder="What needs to be done?"
+            placeholder={t('todo.whatNeedsToBe')}
             onSubmit={submit}
             className="grow basis-0 min-w-0 min-h-14 py-4 pr-4 bg-transparent text-base placeholder:text-muted focus:bg-surface-sunken/40"
           />
         </view>
         {data.loading && (
           <text data-testid="todo-loading" className="p-4 text-sm text-muted">
-            Loading saved tasks...
+            {t('todo.loadingSavedTasks')}
           </text>
         )}
         {(data.loadError || failure) && (
@@ -110,7 +110,7 @@ export function render({ data, actions, env }: View) {
           </view>
         )}
         {!todos.length && !data.loading && !data.loadError ? (
-          <EmptyState testId="todo-empty" title="No tasks yet" message="Add a task above to get started" />
+          <EmptyState testId="todo-empty" title={t('todo.noTasksYet')} message={t('todo.addATaskAbove')} />
         ) : (
           <List
             data-testid="todo-list"
@@ -139,13 +139,13 @@ export function render({ data, actions, env }: View) {
             <Segmented
               testId="todo-filter"
               value={filter}
-              options={filters}
+              options={filters.map(filter => ({ ...filter, label: t(filter.label) }))}
               disabled={blocked}
               onChange={value => setFilter.run({ filter: value })}
             />
             {completed > 0 && (
               <Button variant="ghost" testId="todo-clear-completed" disabled={blocked} onClick={() => clearCompleted.run()}>
-                Clear completed
+                {t('todo.clearCompleted')}
               </Button>
             )}
           </view>

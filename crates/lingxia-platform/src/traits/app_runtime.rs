@@ -69,6 +69,9 @@ pub struct LocalNotificationShow {
     pub activation_token: String,
     pub deliver_at_ms: Option<u64>,
     pub silent: bool,
+    /// Post an immediate notification even while the product is frontmost.
+    /// Windows and Android honour it; Apple and HarmonyOS suppress regardless.
+    pub post_when_frontmost: bool,
 }
 
 /// One button on a desktop banner.

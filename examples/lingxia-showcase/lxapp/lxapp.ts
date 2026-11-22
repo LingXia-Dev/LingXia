@@ -7,8 +7,6 @@ import {
 } from '@lingxia/logic';
 import { appState, setIpAddr } from './shared/lib/app';
 import { openFeedback } from './shared/lib/feedback';
-import { getAppMessages } from './logic/app-messages';
-import { resolveDisplayLanguage } from './shared/display-language';
 
 const PRODUCT_LINK_PREFIX = '/showcase/';
 
@@ -25,17 +23,17 @@ function targetOfLink(link: OpenLink): NavTarget | undefined {
   return { page: page as ConfiguredPageName, params };
 }
 
-/** Sidebar actions and the "More" menu, in the display language; re-run when it changes. */
-async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
-  const language = resolveDisplayLanguage(tag);
-  const { t } = getAppMessages(language);
+/** Sidebar actions and the "More" menu, in this lxapp's language; re-run when it changes. */
+async function applyHostChrome(os: typeof lx.host.info.os) {
+  const t = lx.app.t;
+  const language = lx.app.language.get();
   type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
   const sidebarActions: SidebarAction[] = [
     {
       id: 'downloads',
       placement: 'header',
       icon: 'public/sidebar-downloads.svg',
-      label: t('sidebarDownloads'),
+      label: t('app.sidebar.downloads'),
       onSelect: () => {
         void lx.shell.openBuiltin('downloads')
           .catch((error) => console.warn('downloads action failed', error));
@@ -45,7 +43,7 @@ async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
       id: 'chat',
       placement: 'footer',
       icon: 'public/sidebar-chat.svg',
-      label: t('sidebarChat'),
+      label: t('app.sidebar.chat'),
       onSelect: () => {
         void lx.surface.openDeclared('lingxia-showcase-web')
           .catch((error) => console.warn('chat action failed', error));
@@ -57,7 +55,7 @@ async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
       id: 'terminal-settings',
       placement: 'footer',
       icon: 'public/sidebar-terminal-settings.svg',
-      label: t('sidebarTerminalSettings'),
+      label: t('app.sidebar.terminalSettings'),
       onSelect: () => {
         void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' })
           .catch((error) => console.warn('terminal settings action failed', error));
@@ -67,7 +65,7 @@ async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
       id: 'terminal',
       placement: 'footer',
       icon: 'public/sidebar-terminal.svg',
-      label: t('sidebarTerminal'),
+      label: t('app.sidebar.terminal'),
       onSelect: () => {
         void lx.surface.openDeclared('terminal')
           .catch((error) => console.warn('terminal action failed', error));
@@ -78,9 +76,9 @@ async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
     id: 'ping',
     placement: 'footer',
     icon: 'public/activator.svg',
-    label: t('sidebarPing'),
+    label: t('app.sidebar.ping'),
     onSelect: () => {
-      lx.ui.toast(t('pingToast'), { tone: 'success' });
+      lx.ui.toast(t('app.sidebar.pingToast'), { tone: 'success' });
     },
   });
   // The one action with a `value`: the display language is a fact that changes, drawn beside
@@ -89,18 +87,18 @@ async function applyHostChrome(os: typeof lx.host.info.os, tag: string) {
     id: 'language',
     placement: 'footer',
     icon: 'public/sidebar-language.svg',
-    label: t('sidebarLanguage'),
-    value: t('languageName'),
+    label: t('app.sidebar.language'),
+    value: t('app.sidebar.languageName'),
     onSelect: () => {
-      const next = language === 'zh-CN' ? 'en-US' : 'zh-CN';
-      void lx.host.displayLanguage.preference.set(next)
+      const next = language.startsWith('zh') ? 'en-US' : 'zh-CN';
+      void lx.host.displayLanguage.set(next)
         .catch((error) => console.warn('language action failed', error));
     },
   });
   await lx.shell.sidebarActions.replace(sidebarActions);
   lx.app.moreActions.replace([{
     icon: 'public/showcase-icon.png',
-    label: t('moreFeedback'),
+    label: t('app.moreFeedback'),
     onSelect: async () => {
       try { await openFeedback(); }
       catch (error) { console.warn('failed to open feedback surface', error); }
@@ -115,22 +113,21 @@ App({
     appState.lifecycle.launches++;
     appState.lifecycle.last = 'launch';
     const { os } = lx.host.info;
-    const applyChrome = (tag = lx.host.displayLanguage.get()) => {
-      void applyHostChrome(os, tag)
+    const applyChrome = () => {
+      void applyHostChrome(os)
         .catch((error) => console.warn('host chrome language update failed', error));
     };
-    // A preference click always moves the preference event; the effective-tag watch alone can
+    // A preference click always moves the preference event; the language watch alone can
     // miss a Harmony dispatch.
-    lx.host.displayLanguage.watch((tag) => applyChrome(tag));
-    lx.host.displayLanguage.preference.watch(() => applyChrome());
+    lx.app.language.watch(() => applyChrome());
+    lx.host.displayLanguage.watch(() => applyChrome());
 
     lx.app.update.onReady(async () => {
-      const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       const applyNow = await lx.ui.confirm({
-        title: t('updateTitle'),
-        message: t('updateBody'),
-        cancelText: t('updateLater'),
-        confirmText: t('updateApply'),
+        title: lx.app.t('app.update.title'),
+        message: lx.app.t('app.update.body'),
+        cancelText: lx.app.t('app.update.later'),
+        confirmText: lx.app.t('app.update.apply'),
       });
       if (applyNow) lx.app.update.apply();
     });

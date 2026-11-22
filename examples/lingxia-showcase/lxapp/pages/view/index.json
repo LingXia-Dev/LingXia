@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "View lab",
-      "zh-CN": "视图实验"
+      "message": "title.view"
     }
   },
   "pageOrientation": "auto"

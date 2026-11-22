@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "Annuler"
+  },
+  "@view.done": {
+    "defaultMessage": "OK"
+  },
+  "@view.ok": {
+    "defaultMessage": "OK"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "Mois précédent"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "Mois suivant"
+  },
+  "@view.hour": {
+    "defaultMessage": "Heure"
+  },
+  "@view.minute": {
+    "defaultMessage": "Minute"
+  },
+  "@view.period": {
+    "defaultMessage": "AM/PM"
+  },
+  "@view.options": {
+    "defaultMessage": "Options"
+  },
+  "@view.dialog": {
+    "defaultMessage": "Boîte de dialogue"
+  },
+  "@view.actions": {
+    "defaultMessage": "Actions"
+  }
+}

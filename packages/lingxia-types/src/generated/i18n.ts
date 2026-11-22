@@ -68,6 +68,7 @@ export const I18N_KEYS = [
   "common_forward",
   "common_loading",
   "common_ok",
+  "common_open",
   "common_refresh",
   "common_version",
   "date_last_30_days",

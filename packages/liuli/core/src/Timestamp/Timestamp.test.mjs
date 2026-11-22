@@ -22,7 +22,7 @@ test('Formats: one moment in each form; the full form needs no second reading', 
   assert.equal(at('date-time').props.accessibilityLabel, undefined);
 });
 
-test('Chinese: the shipped locale writes the same moments', async () => {
-  const screen = await renderExample('Timestamp/Timestamp', 'Chinese');
-  assert.deepEqual([screen.getByTestId('zh-today').text, screen.getByTestId('zh-year').text], ['23 分钟前', '2025年12月19日']);
+test('Chinese: a Chinese page writes the same moments in Chinese', async () => {
+  const screen = await renderExample('Timestamp/Timestamp', 'Activity', { env: { language: 'zh-CN' } });
+  assert.deepEqual([1, 3, 5].map(index => screen.getByTestId(`when-${index}`).text), ['23 分钟前', '昨天 下午6:30', '2025年12月19日']);
 });

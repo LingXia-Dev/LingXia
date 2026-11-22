@@ -124,7 +124,7 @@ export function GroupsDemo() {
         ))}
       </view>
       <view role="tabpanel" aria-label="Range view" data-testid="lab-range-panel">
-        <text className="text-sm">{t({ en: `Showing the ${range.value}`, zh: `显示：${names[values.indexOf(range.value)]}` })}</text>
+        <text className="text-sm">{t(readouts.showing(range.value))}</text>
       </view>
       <view role="toolbar" aria-label="Format" className="flex-row gap-2">
         <button data-testid="lab-tool-bold" aria-pressed={bold.value} onClick={() => bold.set(!bold.value)} className={`${chip} ${bold.value ? 'bg-accent-soft' : 'bg-surface-sunken'}`}>{t(labels.bold)}</button>

@@ -184,7 +184,7 @@ const table = [
   "| --- | --- | --- | --- |",
   ...members.map(member => `| \`${member.path}\` | ${member.kind === "method" ? `\`${shapeText(member)}\`` : ""} | ${member.signatures.map(signature => `\`${signature.text.replace(/\|/g, "\\|")}\``).join("<br>") || member.kind} | ${member.summary.replace(/\|/g, "\\|")} |`),
   "",
-].join("\n");
+].join("\n").replace(/\r\n?/g, "\n");
 
 // A `@throws` code must be one `LxErrorCode` names, or `e.code === …` on it would not type-check.
 const declaredCodes = new Set(readFileSync(resolve(packageDir, "src/error.ts"), "utf8").match(/LX_ERROR_CODES = \[([^]*?)\]/)[1].match(/E_[A-Z_]+/g));

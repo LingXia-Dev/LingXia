@@ -46,8 +46,8 @@ async function waitForTabBar(
 
 async function appearanceOf(app: TestApp): Promise<{ preference: string; resolved: string }> {
   return app.logic.eval(({ lx }) => ({
-    preference: String(lx.host.appearance.preference.get()),
-    resolved: String(lx.host.appearance.get()),
+    preference: String(lx.host.appearance.get()),
+    resolved: String(lx.app.appearance.get()),
   }));
 }
 
@@ -134,7 +134,7 @@ test("apply navigationBar title, colors, home button, and reset", {
     await ui.view.testId('navbar-reset').click();
     await waitForNavBar(
       app,
-      // The manifest title is declared per language; either is the reset.
+      // The manifest title names a catalogue key; either language's text is the reset.
       (state) => (state.title === 'User Interface' || state.title === '界面')
         && state.runtimeStyle.backgroundColor === null
         && state.runtimeStyle.foregroundColor === null
@@ -165,13 +165,13 @@ test("apply navigationBar title, colors, home button, and reset", {
 
 test("round-trip appearance preference through the ui controls", {
   id: "UI-APPEARANCE-001",
-  covers: ['lx.host.appearance.get', 'lx.host.appearance.watch', 'lx.host.appearance.preference.get', 'lx.host.appearance.preference.set'],
+  covers: ['lx.app.appearance.get', 'lx.app.appearance.watch', 'lx.host.appearance.get', 'lx.host.appearance.set'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-APPEARANCE-001");
   defer(async () => {
-    await app.logic.eval(async ({ lx }) => { await lx.host.appearance.preference.set('auto'); })
+    await app.logic.eval(async ({ lx }) => { await lx.host.appearance.set('auto'); })
       .catch(() => undefined);
   });
 
@@ -199,8 +199,8 @@ test("round-trip appearance preference through the ui controls", {
     const before = await appearanceOf(app);
     const rejected: Caught = await app.logic.eval(async ({ lx }, preference) => {
       try {
-        const appearance = lx.host.appearance;
-        await (appearance.preference.set as (preference: unknown) => Promise<void>)(preference);
+        const appearance = lx.host.appearance!;
+        await (appearance.set as (preference: unknown) => Promise<void>)(preference);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

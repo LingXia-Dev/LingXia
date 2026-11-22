@@ -1,21 +1,21 @@
-import { useAction, useLocal } from '@lingxia/view';
+import { t, useAction, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Notice, Segmented } from '../../shared/ui';
-import { resolveDisplayLanguage } from '../../shared/display-language';
-import { getMessages } from './messages';
 import type { View } from './$types';
 
 export function render({ data, actions, env }: View) {
   const name = useLocal('home-name', '');
   const send = useAction(actions.greet);
   const photo = useLocal('home-photo', false);
-  const language = resolveDisplayLanguage(data.displayLanguage.resolved ?? env.displayLanguage);
-  const { t } = getMessages(language);
   const trimmed = name.value.trim();
   const greet = () => {
     if (trimmed && !send.pending) send.run({ name: trimmed });
   };
-  const greeting = send.error ? t('sendFailed') : data.greeting;
+  const greeting = send.error
+    ? t('home.sendFailed')
+    : data.greetCount > 0
+      ? t('home.greeting', { name: data.greetName, count: data.greetCount, at: data.greetedAt })
+      : t('home.defaultGreeting');
   return (
     <page data-testid="home-page" className="bg-canvas">
       {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
@@ -29,21 +29,21 @@ export function render({ data, actions, env }: View) {
                 LingXia
               </text>
               <text data-testid="home-tagline" className="text-[13px] text-muted text-center line-clamp-2">
-                {t('tagline')}
+                {t('home.tagline')}
               </text>
             </view>
             <input
               data-testid="home-name"
               data-controlled-value={name.value}
-              aria-label={t('nameLabel')}
+              aria-label={t('home.nameLabel')}
               bind={name}
               disabled={send.pending}
-              placeholder={t('namePlaceholder')}
+              placeholder={t('home.namePlaceholder')}
               onSubmit={greet}
               className="min-h-11 px-4 py-2 rounded-lg bg-surface-sunken text-[17px] placeholder:text-muted focus:ring-2 focus:ring-focus/30"
             />
             <Button testId="home-greet" onClick={greet} disabled={!trimmed || send.pending} className="min-h-12 text-[17px] font-semibold">
-              {send.pending ? t('sending') : t('sayHello')}
+              {send.pending ? t('home.sending') : t('home.sayHello')}
             </Button>
             {Boolean(greeting) && (
               <Notice tone={send.error ? 'error' : 'success'} testId="home-greeting">
@@ -52,9 +52,9 @@ export function render({ data, actions, env }: View) {
             )}
             <view data-testid="home-appearance" className="gap-1.5 pt-2">
               <view className="flex-row justify-between">
-                <text className="text-[11px] font-medium text-muted">{t('appearance')}</text>
+                <text className="text-[11px] font-medium text-muted">{t('home.appearance')}</text>
                 <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
-                  {env.theme === 'dark' ? t('appearanceDark') : t('appearanceLight')}
+                  {env.theme === 'dark' ? t('home.appearanceDark') : t('home.appearanceLight')}
                 </text>
               </view>
               <Segmented
@@ -62,27 +62,27 @@ export function render({ data, actions, env }: View) {
                 value={data.appearance.preference}
                 onChange={preference => actions.setAppearance({ preference })}
                 options={[
-                  { value: 'auto', label: t('appearanceAuto') },
-                  { value: 'light', label: t('appearanceLight') },
-                  { value: 'dark', label: t('appearanceDark') },
+                  { value: 'auto', label: t('home.appearanceAuto') },
+                  { value: 'light', label: t('home.appearanceLight') },
+                  { value: 'dark', label: t('home.appearanceDark') },
                 ]}
               />
             </view>
             <view data-testid="home-language" className="gap-1.5 pt-1">
               <view className="flex-row justify-between">
-                <text className="text-[11px] font-medium text-muted">{t('language')}</text>
+                <text className="text-[11px] font-medium text-muted">{t('home.language')}</text>
                 <text data-testid="home-language-resolved" className="text-[11px] text-muted">
-                  {language === 'zh-CN' ? t('languageZh') : t('languageEn')}
+                  {env.language.startsWith('zh') ? t('home.languageZh') : t('home.languageEn')}
                 </text>
               </view>
               <Segmented
                 testId="home-language"
-                value={data.displayLanguage.preference}
+                value={data.languagePreference}
                 onChange={preference => actions.setDisplayLanguage({ preference })}
                 options={[
-                  { value: 'auto', label: t('languageAuto') },
-                  { value: 'en-US', label: t('languageEn') },
-                  { value: 'zh-CN', label: t('languageZh') },
+                  { value: 'auto', label: t('home.languageAuto') },
+                  { value: 'en-US', label: t('home.languageEn') },
+                  { value: 'zh-CN', label: t('home.languageZh') },
                 ]}
               />
             </view>
@@ -95,7 +95,7 @@ export function render({ data, actions, env }: View) {
           {Boolean(data.ipAddr) && (
             <view className="flex-row max-w-full px-4 py-2 gap-2 items-center rounded-full bg-surface/70 backdrop-blur-md">
               <view className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
-              <text className="shrink-0 text-xs font-medium tracking-wide text-text">{t('myIp')}</text>
+              <text className="shrink-0 text-xs font-medium tracking-wide text-text">{t('home.myIp')}</text>
               <text data-testid="home-ip" className="min-w-0 grow truncate text-xs font-mono text-muted">
                 {data.ipAddr}
               </text>

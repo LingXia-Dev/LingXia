@@ -1,23 +1,10 @@
-import { cx, useLocal } from '@lingxia/view';
+import { cx, useLocal, useView } from '@lingxia/view';
+import { liuliText, monthName, weekdayInitial, weekdayName } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { calendarRecipe as r } from './Calendar.recipe';
 import { isDate, parts, shiftMonth, toDate, weekdayOf, weeksOf, type CalendarDate } from './dates';
 
 export type { CalendarDate } from './dates';
-
-/** The words a calendar shows and speaks; `@liulidesign/core/Calendar/en` and `/zh` are ready made. */
-export interface CalendarLocale {
-  /** The day a week starts on: 0 for Sunday, 1 for Monday. */
-  firstDay: number;
-  /** Seven short weekday names, Sunday first: "S", "M", … */
-  weekdays: readonly string[];
-  /** The month's title: "November 2026". `month` is 1 to 12. */
-  monthTitle: (year: number, month: number) => string;
-  /** A day's accessible name: "Sunday 15 November 2026", saying so when it is today. `weekday` is 0 for Sunday. */
-  dayLabel: (year: number, month: number, day: number, weekday: number, isToday: boolean) => string;
-  previousMonth: string;
-  nextMonth: string;
-}
 
 export interface CalendarRange {
   start: CalendarDate | null;
@@ -44,7 +31,6 @@ export type CalendarSelection =
 export type CalendarProps = CalendarSelection & {
   /** Names the calendar for assistive tech: "Due date", "Stay". */
   label: string;
-  locale: CalendarLocale;
   /** The month shown, as `YYYY-MM`; pass it with `onMonthChange` to control it. By default the chosen day's month, else today's. */
   month?: string;
   onMonthChange?: (month: string) => void;
@@ -63,9 +49,13 @@ export type CalendarProps = CalendarSelection & {
 /** A day's weekday, 0 for Sunday to 6 for Saturday: for an `isDateDisabled` that rules out weekends. */
 export const calendarWeekday = (date: CalendarDate) => weekdayOf(...parts(date));
 
-/** A month of days to choose one day or a span from, drawn in the page. */
+/**
+ * A month of days to choose one day or a span from, drawn in the page. Its words follow the page's
+ * language and its weeks start on the user's first weekday.
+ */
 export function Calendar(props: CalendarProps) {
-  const { label, locale, min, max, isDateDisabled, className, 'data-testid': testId } = props;
+  const { label, min, max, isDateDisabled, className, 'data-testid': testId } = props;
+  const firstDay = ((useView().env.firstWeekday ?? 1) - 1) % 7;
   const now = props.today;
   const anchor = props.isRange ? props.value.start : props.value;
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));
@@ -85,15 +75,16 @@ export function Calendar(props: CalendarProps) {
     if (from !== null && to === null) return props.onChange(date < from ? { start: date, end: from } : { start: from, end: date });
     return props.onChange({ start: date, end: null });
   };
-  const ordered = Array.from({ length: 7 }, (_, index) => locale.weekdays[(locale.firstDay + index) % 7]);
+  const ordered = Array.from({ length: 7 }, (_, index) => weekdayInitial((firstDay + index) % 7));
+  const title = liuliText('@liuli.calendar.title', { monthName: monthName(month), year: String(year) });
   const isOff = (date: CalendarDate) => (min !== undefined && date < min) || (max !== undefined && date > max) || isDateDisabled?.(date) === true;
   const [previous, following] = [shiftMonth(year, month, -1), shiftMonth(year, month, 1)];
   return (
     <view role="group" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
-        <text role="status" className={r.title.base}>{locale.monthTitle(year, month)}</text>
+        <text role="status" className={r.title.base}>{title}</text>
         <IconButton
-          label={locale.previousMonth}
+          label={liuliText('@liuli.calendar.previousMonth')}
           icon="chevron-start"
           size="sm"
           isDisabled={min !== undefined && toDate(previous[0], previous[1], 31) < min}
@@ -101,7 +92,7 @@ export function Calendar(props: CalendarProps) {
           data-testid={testId && `${testId}-previous`}
         />
         <IconButton
-          label={locale.nextMonth}
+          label={liuliText('@liuli.calendar.nextMonth')}
           icon="chevron-end"
           size="sm"
           isDisabled={max !== undefined && toDate(following[0], following[1], 1) > max}
@@ -109,11 +100,11 @@ export function Calendar(props: CalendarProps) {
           data-testid={testId && `${testId}-next`}
         />
       </view>
-      <view role="grid" aria-label={locale.monthTitle(year, month)} onPage={direction => go(direction === 'next' ? 1 : -1)} className={r.grid.base}>
+      <view role="grid" aria-label={title} onPage={direction => go(direction === 'next' ? 1 : -1)} className={r.grid.base}>
         <view aria-hidden className={r.week.base}>
           {ordered.map((name, index) => <text key={String(index)} className={r.weekday.base}>{name}</text>)}
         </view>
-        {weeksOf(year, month, locale.firstDay).map((week, row) => (
+        {weeksOf(year, month, firstDay).map((week, row) => (
           <view key={String(row)} role="row" className={r.week.base}>
             {week.map((day, column) => {
               if (day === null) return <view key={`blank-${column}`} className={r.slot.base} />;
@@ -127,7 +118,9 @@ export function Calendar(props: CalendarProps) {
                 <view key={date} className={cx(r.slot.base, isBetween && r.slot.between, isSpan && isStart && r.slot.start, isSpan && isEnd && r.slot.end)}>
                   <button
                     role="gridcell"
-                    aria-label={locale.dayLabel(year, month, day, weekdayOf(year, month, day), date === now)}
+                    aria-label={liuliText('@liuli.calendar.day', {
+                      today: date === now ? 'yes' : 'no', weekdayName: weekdayName(weekdayOf(year, month, day)), day, monthName: monthName(month), year: String(year),
+                    })}
                     aria-selected={isChosen || isBetween}
                     disabled={isOff(date)}
                     onClick={() => press(date)}

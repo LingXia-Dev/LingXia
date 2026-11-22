@@ -49,6 +49,22 @@ fn render_host_config(
         yaml_string(&config.product_name),
     );
     vars.insert("PACKAGE_ID".to_string(), yaml_string(&config.package_id));
+    let languages = if config.languages.is_empty() {
+        vec!["en-US".to_string(), "zh-CN".to_string()]
+    } else {
+        config.languages.clone()
+    };
+    vars.insert(
+        "LANGUAGES".to_string(),
+        format!(
+            "[{}]",
+            languages
+                .iter()
+                .map(|tag| yaml_string(tag))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    );
     vars.insert(
         "LINGXIA_ID".to_string(),
         yaml_string(&super::types::default_lingxia_id(&config.name)),
@@ -233,6 +249,7 @@ mod tests {
             platforms: vec![Platform::Android],
             package_id: "com.example.demo".to_string(),
             app_link_hosts: vec!["demo.example.com".to_string()],
+            languages: Vec::new(),
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
@@ -283,6 +300,7 @@ mod tests {
                 ],
                 package_id: config.package_id.clone(),
                 app_link_hosts: config.app_link_hosts.clone(),
+                languages: Vec::new(),
                 target_dir: config.target_dir.clone(),
             },
             Some(&lxapp),
@@ -363,6 +381,7 @@ mod tests {
             ],
             package_id: "com.example.demo".to_string(),
             app_link_hosts: Vec::new(),
+            languages: Vec::new(),
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
@@ -413,6 +432,7 @@ mod tests {
             platforms: vec![Platform::Macos],
             package_id: "com.example.demo".to_string(),
             app_link_hosts: vec!["demo.example.com".to_string()],
+            languages: Vec::new(),
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
@@ -449,6 +469,7 @@ mod tests {
             platforms: vec![Platform::Macos, Platform::Windows],
             package_id: "com.example.terminal".to_string(),
             app_link_hosts: Vec::new(),
+            languages: Vec::new(),
             target_dir: PathBuf::from("/tmp/terminal-host"),
         };
 
@@ -481,6 +502,7 @@ mod tests {
             platforms: vec![Platform::Windows],
             package_id: "com.example.browser".to_string(),
             app_link_hosts: Vec::new(),
+            languages: Vec::new(),
             target_dir: PathBuf::from("/tmp/browser-host"),
         };
         let lxapp = LxAppInfo {

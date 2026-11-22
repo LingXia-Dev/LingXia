@@ -71,8 +71,8 @@ The simulated device and display language (Runner sessions only).
 - `set --text-scale 1.3` / `--contrast standard|high` — the simulated system text size (0.5 to 3)
   and contrast, which GPU pages read as `env`'s; macOS Runner only.
 
-`--language` shadows `lx.host.displayLanguage` until the session ends and is
-not saved.
+`--language` shadows the product's display language until the session ends and
+is not saved.
 
 Switching between desktop and handheld presets restarts Logic, so app state
 resets.

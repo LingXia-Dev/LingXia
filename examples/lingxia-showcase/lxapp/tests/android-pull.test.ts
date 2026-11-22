@@ -27,6 +27,6 @@ test('pull down from the screen to refresh, then refresh again', {
     await expect(view.testId('pull-refresh-count')).toHaveText(String(before + 1));
     await view.testId('pull-refresh-stop').click();
     await expect.poll(async () => (await page.data()).isRefreshing).toBe(false);
-    await expect(view.testId('pull-refresh-status')).toContainText('Idle');
+    await expect(view.testId('pull-refresh-status')).toContainText(/Idle|空闲/);
   }
 });

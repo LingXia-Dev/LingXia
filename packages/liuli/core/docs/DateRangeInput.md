@@ -17,7 +17,6 @@ DateRangeInput asks for a first and a last day: a stay, time off, a report's per
 ```tsx
 import { useLocal } from '@lingxia/view';
 import type { CalendarRange } from '@liulidesign/core/Calendar';
-import { calendarEn } from '../Calendar/locale/en';
 import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
 
 const today = '2026-11-15';
@@ -34,7 +33,6 @@ export function Stay() {
       value={stay.value}
       onChange={stay.set}
       format={short}
-      locale={calendarEn}
       today={today}
       min={today}
       closeLabel="Close"
@@ -49,7 +47,6 @@ export function Stay() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import type { CalendarRange } from '@liulidesign/core/Calendar';
-import { calendarEn } from '../Calendar/locale/en';
 import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
 
 const today = '2026-11-15';
@@ -67,7 +64,6 @@ export function Empty() {
       value={leave.value}
       onChange={leave.set}
       format={short}
-      locale={calendarEn}
       today={today}
       data-testid="leave"
     />
@@ -93,7 +89,6 @@ export function Empty() {
 | `value` (required) | `CalendarRange` |  | The chosen span; both ends `null` shows the placeholder. |
 | `onChange` (required) | `(range: CalendarRange) => void` |  | Runs with each press in the calendar: the first day alone, then the finished span. |
 | `format` (required) | `(date: string) => string` |  | Turns a day into the text the field shows: "18 Nov". The app formats dates. |
-| `locale` (required) | `CalendarLocale` |  | The calendar's words; see Calendar. |
 | `today` (required) | `string` |  | Today, from the page's Logic. |
 | `placeholder` | `string` |  | Shown while no day is chosen. |
 | `min` | `string` |  |  |

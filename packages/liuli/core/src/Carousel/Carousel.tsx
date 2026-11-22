@@ -1,5 +1,6 @@
 import { childrenToArray, cx, useBox, useLocal, type Child, type Local } from '@lingxia/view';
 import { IconButton } from '../IconButton/IconButton';
+import { liuliText } from '../i18n/text';
 import { PageControl } from '../PageControl/PageControl';
 import { carouselRecipe as r } from './Carousel.recipe';
 
@@ -12,8 +13,8 @@ export interface CarouselProps {
   children: Child;
   /** A View-local cell holding the page, from 0, to read or set it from outside. */
   bind?: Local<number>;
-  /** Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. */
-  pageLabel: (page: number, count: number) => string;
+  /** Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. */
+  pageLabel?: (page: number, count: number) => string;
   /** `over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe and the buttons. @default 'below' */
   dots?: CarouselDots;
   /** Each item's width in points: a rail of cards, several in view, that stops on each. Without it a page fills the carousel. */
@@ -36,7 +37,7 @@ const railGap = 12;
 
 /** A few pages to swipe through, one at a time, with dots that follow; or a rail of cards. */
 export function Carousel({
-  label, children, bind, pageLabel, dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId,
+  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.pageOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId,
 }: CarouselProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;

@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import type { FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
@@ -27,8 +28,8 @@ export type SearchFieldProps = SearchFieldBinding & {
   isLabelHidden?: boolean;
   /** A hint shown while empty: "Search notes". */
   placeholder?: string;
-  /** The clear button's accessible name: "Clear search". The button shows while there is text. */
-  clearLabel: string;
+  /** The clear button's accessible name: "Clear search". The button shows while there is text. Defaults to "Clear search" in the page's language. */
+  clearLabel?: string;
   /** What the search found, as the app words it: "12 notes", "No notes match". Announced when it changes. */
   resultsLabel?: string;
   /** Keeps `resultsLabel` for assistive tech only, when the list under the field already shows it. @default false */
@@ -51,7 +52,7 @@ export type SearchFieldProps = SearchFieldBinding & {
 /** A field for searching what is on the page: a magnifier, the text, a clear button, and a line that says what was found. */
 export function SearchField(props: SearchFieldProps) {
   const {
-    label, isLabelHidden = false, placeholder, clearLabel, resultsLabel, isResultsLabelHidden = false, isLoading = false, onSubmit,
+    label, isLabelHidden = false, placeholder, clearLabel = liuliText('@liuli.clearSearch'), resultsLabel, isResultsLabelHidden = false, isLoading = false, onSubmit,
     hasAutoFocus = false, size: ownSize, isDisabled = false, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);

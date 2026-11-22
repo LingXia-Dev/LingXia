@@ -1,5 +1,5 @@
-//! Top-right banner card: a per-pixel-alpha layered window pinned to the host
-//! window, or to the work area while the host is minimized or hidden.
+//! Top-right banner card: a per-pixel-alpha layered window pinned to the top
+//! right of the work area of the monitor the host is on.
 
 // The presenter is compiled out of test builds; only the pure layout is tested.
 #![cfg_attr(test, allow(dead_code))]
@@ -12,15 +12,15 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
-use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
     CLEARTYPE_QUALITY, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreateRoundRectRgn,
     DIB_RGB_COLORS, DT_CALCRECT, DT_CENTER, DT_EDITCONTROL, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX,
     DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteDC, DeleteObject, DrawTextW, FONT_CHARSET,
     FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, FW_NORMAL, FW_SEMIBOLD, GdiFlush,
-    GetDC, GetTextFaceW, GetTextMetricsW, HBITMAP, HDC, HFONT, HGDIOBJ, ReleaseDC, RestoreDC,
-    SaveDC, SelectClipRgn, SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT,
+    GetDC, GetMonitorInfoW, GetTextFaceW, GetTextMetricsW, HBITMAP, HDC, HFONT, HGDIOBJ,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, ReleaseDC, RestoreDC, SaveDC,
+    SelectClipRgn, SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentProcessId;
@@ -606,29 +606,20 @@ unsafe extern "system" fn owner_event(
     }
 }
 
-/// Visible frame of a host the card can sit on; `None` while it is minimized,
-/// hidden, or gone. `GetWindowRect` would include the invisible resize border.
-fn owner_frame(owner: HWND) -> Option<RECT> {
+/// Work area of the monitor the host is on, so the card follows the host to
+/// another screen; the taskbar stays clear.
+fn monitor_work_area(owner: HWND) -> Option<RECT> {
+    let mut monitor = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
     unsafe {
-        if !IsWindow(Some(owner)).as_bool()
-            || !IsWindowVisible(owner).as_bool()
-            || IsIconic(owner).as_bool()
-        {
-            return None;
-        }
-        let mut rect = RECT::default();
-        if DwmGetWindowAttribute(
-            owner,
-            DWMWA_EXTENDED_FRAME_BOUNDS,
-            &mut rect as *mut _ as *mut _,
-            std::mem::size_of::<RECT>() as u32,
+        GetMonitorInfoW(
+            MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST),
+            &mut monitor,
         )
-        .is_ok()
-            && rect.right > rect.left
-        {
-            return Some(rect);
-        }
-        GetWindowRect(owner, &mut rect).ok().map(|_| rect)
+        .as_bool()
+        .then_some(monitor.rcWork)
     }
 }
 
@@ -670,7 +661,10 @@ fn commit(hwnd: HWND, card: &Card) {
     let Some(surface) = card.surface.as_ref() else {
         return;
     };
-    let anchor = card.owner.and_then(owner_frame).unwrap_or_else(work_area);
+    let anchor = card
+        .owner
+        .and_then(monitor_work_area)
+        .unwrap_or_else(work_area);
     let width = card.layout.card.right - card.layout.card.left;
     let (x, y) = banner_origin(anchor, width, px(MARGIN, card.scale));
     let (slide, opacity) = animation_state(card);

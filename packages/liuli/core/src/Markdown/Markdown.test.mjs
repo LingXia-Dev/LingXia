@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { transformSync } from 'esbuild';
 import { textOf } from '@lingxia/view/testing';
 import { renderExample, renderPage } from '../testing/harness.mjs';
@@ -10,7 +11,7 @@ import { renderExample, renderPage } from '../testing/harness.mjs';
 const parser = (async () => {
   const dir = mkdtempSync(join(tmpdir(), 'liuli-markdown-'));
   writeFileSync(join(dir, 'parse.mjs'), transformSync(readFileSync(new URL('./parse.ts', import.meta.url), 'utf8'), { loader: 'ts' }).code);
-  return import(join(dir, 'parse.mjs'));
+  return import(pathToFileURL(join(dir, 'parse.mjs')).href);
 })();
 
 test('inline: marks nest, a link carries its runs, and what is not Markdown stays text', async () => {

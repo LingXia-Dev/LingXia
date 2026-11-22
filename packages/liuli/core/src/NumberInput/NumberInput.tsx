@@ -1,4 +1,5 @@
 import { cx, useId, useLocal, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { textInputRecipe as t } from '../TextInput/TextInput.recipe';
@@ -28,10 +29,10 @@ export type NumberInputProps = FieldOwnProps & NumberInputBinding & {
   max?: number;
   /** How much a stepper adds or takes away; its decimals are the number's. @default 1 */
   step?: number;
-  /** The minus stepper's accessible name: "Fewer guests". */
-  decrementLabel: string;
-  /** The plus stepper's accessible name: "More guests". */
-  incrementLabel: string;
+  /** The minus stepper's accessible name: "Fewer guests". Defaults to "Decrease" in the page's language. */
+  decrementLabel?: string;
+  /** The plus stepper's accessible name: "More guests". Defaults to "Increase" in the page's language. */
+  incrementLabel?: string;
   /** Leaves the steppers out, for a number people type and never nudge. @default true */
   hasSteppers?: boolean;
   /** Fixed text before the number: a currency sign. Read with the description. */
@@ -61,7 +62,7 @@ const decimalsOf = (value: number) => (String(value).split('.')[1] ?? '').length
 export function NumberInput(props: NumberInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    min, max, step = 1, decrementLabel, incrementLabel, hasSteppers = true, prefix, suffix, placeholder, className, 'data-testid': testId,
+    min, max, step = 1, decrementLabel = liuliText('@liuli.decrease'), incrementLabel = liuliText('@liuli.increase'), hasSteppers = true, prefix, suffix, placeholder, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const current = props.bind ? props.bind.value : props.value;

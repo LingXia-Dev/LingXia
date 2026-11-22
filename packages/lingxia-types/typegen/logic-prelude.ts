@@ -244,7 +244,37 @@ export type OpenPageArgs<N> = {} extends NavParams<N>
     ? [options?: OpenPageOptions & { params?: NavParams<N> }]
     : [options: OpenPageOptions & { params: NavParams<N> }];
 
+/** Arguments `lx.app.t` takes for a message: its tags keep their text, so they take nothing. */
+type LogicMessageArgs<A> = { [P in keyof A as A[P] extends (...args: any) => any ? never : P]: A[P] };
+
+declare const messageKey: unique symbol;
+/** A key built at run time, named `as LxAppMessageKey`: still one of the lxapp's keys, its arguments unchecked. */
+export type LxAppMessageKey = (keyof LxAppMessages extends never ? string : keyof LxAppMessages & string) & { readonly [messageKey]: true };
+
+/** `lx.app.t`'s key and arguments, checked against `LxAppMessages` once the build generates it. */
+export type LxAppMessageCall = keyof LxAppMessages extends never
+  ? readonly [key: string, args?: Readonly<Record<string, unknown>>]
+  : {
+      [K in keyof LxAppMessages & string]: {} extends LogicMessageArgs<LxAppMessages[K]>
+        ? readonly [key: K, args?: LogicMessageArgs<LxAppMessages[K]>]
+        : readonly [key: K, args: LogicMessageArgs<LxAppMessages[K]>];
+    }[keyof LxAppMessages & string]
+    | readonly [key: LxAppMessageKey, args?: Readonly<Record<string, unknown>>];
+
 declare global {
+  /**
+   * The lxapp's messages, each with the arguments it takes. Empty here: the build generates the
+   * source catalogue's keys into it, and until then any key compiles.
+   */
+  interface LxAppMessages {}
+
+  interface LxAppApi {
+    /** The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`. */
+    readonly language: AppLanguageApi;
+    /** The light/dark scheme this lxapp renders in. */
+    readonly appearance: AppAppearanceApi;
+  }
+
   /**
    * The lxapp's configured page names, one key per page.
    *
@@ -352,23 +382,31 @@ declare global {
     readonly notification: NotificationApi;
 
     /**
-     * A banner the product draws at the top right of the desktop.
+     * A banner the product draws at the top right of the desktop. Phones have
+     * none by design: use `lx.ui.toast` for a notice and a modal for a choice.
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     readonly banner: BannerApi;
 
     /**
-     * The language this lxapp renders in. Every lxapp follows it; only the
-     * Control app changes it.
+     * A mark on the product's own system chrome, such as an unread count.
+     * Control app only.
+     * @supports host.badge
      */
-    readonly displayLanguage: DisplayLanguageApi;
+    readonly badge: BadgeApi;
 
     /**
-     * The light/dark scheme this lxapp renders in. Every lxapp follows it;
-     * only the Control app changes it.
+     * The product's language preference. Only the Control app may read or set
+     * it; an lxapp reads the language it renders in from `lx.app.language`.
      */
-    readonly appearance: AppearanceApi;
+    readonly displayLanguage: HostDisplayLanguageApi;
+
+    /**
+     * The product's light/dark preference. Only the Control app may read or set
+     * it; an lxapp reads the scheme it renders in from `lx.app.appearance`.
+     */
+    readonly appearance: HostAppearanceApi;
 
     /**
      * The product-wide cache, reported and cleared for a settings screen.

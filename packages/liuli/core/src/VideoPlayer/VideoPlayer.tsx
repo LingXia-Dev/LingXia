@@ -12,8 +12,8 @@ interface VideoPlayerOwnProps {
   player: Video;
   /** What the video shows, its accessible name. */
   label: string;
-  /** Every word the controls show or speak. */
-  labels: VideoControlsLabels;
+  /** Words for the controls to use instead of Liuli's, which follow the page's language. */
+  labels?: Partial<VideoControlsLabels>;
   /** Shown until the first frame, here and full screen. */
   poster?: string;
   /** `overlay` lays the controls over the picture; `bar` puts them in a row under it. @default 'overlay' */

@@ -16,14 +16,13 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `os` | `string` |  |
 | `formFactor` | `string` | `phone` or `tablet` from the smallest screen width; other hosts may report their own. |
 | `sizeClass` | `"compact" \| "regular"` | `compact` below 600 logical pixels of page width, else `regular`. |
-| `displayLanguage` | `string` |  |
-| `contentLanguage` | `string` | The language the lxapp's text is in: `displayLanguage` narrowed to the `languages` its lxapp.json lists. Built-in words, direction and glyph forms follow it. |
+| `language` | `string` | The language the page's text is in: the host's display language narrowed to the `languages` its lxapp.json lists. `t`, built-in words, direction and glyph forms follow it. |
 | `reducedMotion` | `boolean` | The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. |
 | `highContrast` | `boolean` | The system asks for increased contrast; the palette resolves its high-contrast variant. |
 | `animatorDurationScale` | `number` | The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`. |
-| `hourCycle` | `"h12" \| "h23"` | 12- or 24-hour clock: the user's system setting, else the custom of `displayLanguage`. |
-| `firstWeekday` | `number` | The first day of the week, 1 = Sunday to 7 = Saturday: the user's system setting, else the custom of `displayLanguage`. |
-| `direction` | `"ltr" \| "rtl"` | Inline direction derived from `contentLanguage`. |
+| `hourCycle` | `"h12" \| "h23"` | 12- or 24-hour clock: the user's system setting, else the custom of the system language. |
+| `firstWeekday` | `number` | The first day of the week, 1 = Sunday to 7 = Saturday: the user's system setting, else the custom of the system language. |
+| `direction` | `"ltr" \| "rtl"` | Inline direction derived from `language`. |
 | `canDock` | `boolean` | Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. |
 | `renderer?` | `Readonly<{ fallback: "driver" \| null }>` | `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU. |
 | `textScale` | `number` | How much the system's text size grows body text: 1 at the default size, 2 when it is twice as large, after the lxapp's `maxTextScale`. Sizes already follow it; read it only for a layout that must change shape, such as fewer columns. |

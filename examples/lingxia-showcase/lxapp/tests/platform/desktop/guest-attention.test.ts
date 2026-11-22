@@ -88,19 +88,17 @@ test('a guest lxapp gets attention for itself only', {
       shellActivate = (error as { code?: string }).code ?? String(error);
     }
     return {
-      activate: await code({ kind: 'activate' }),
-      page: await code({ kind: 'page', page: 'chat' }),
-      route: await code({ kind: 'route', name: 'anything' }),
-      appLink: await code({ kind: 'appLink', url: 'https://example.com/x' }),
-      otherApp: await code({ kind: 'app', appId: otherAppId }),
-      bannerActivate: await bannerCode({ kind: 'activate' }),
-      bannerOtherApp: await bannerCode({ kind: 'app', appId: otherAppId }),
+      activate: await code({ activate: true }),
+      route: await code({ route: 'anything' }),
+      appLink: await code({ appLink: 'https://example.com/x' }),
+      otherApp: await code({ app: otherAppId }),
+      bannerActivate: await bannerCode({ activate: true }),
+      bannerOtherApp: await bannerCode({ app: otherAppId }),
       shellActivate,
     };
   }, SHOWCASE_APP_ID);
   expect(refused).toEqual({
     activate: 'E_PERMISSION_DENIED',
-    page: 'E_PERMISSION_DENIED',
     route: 'E_PERMISSION_DENIED',
     appLink: 'E_PERMISSION_DENIED',
     otherApp: 'E_PERMISSION_DENIED',
@@ -129,7 +127,7 @@ test('a guest lxapp gets attention for itself only', {
     }
   });
   if (own.permission === 'granted' || own.error === null) {
-    expect({ id: own.id, posted: own.status === 'posted' || own.status === 'suppressed' })
+    expect({ id: own.id, posted: ['posted', 'presented', 'suppressed'].includes(own.status ?? '') })
       .toEqual({ id: 'guest-own', posted: true });
   }
 

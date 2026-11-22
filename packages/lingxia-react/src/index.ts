@@ -2,6 +2,7 @@ export {
   useLxPage,
   type LxPage,
   useLxHost,
+  useText,
   useLxLeaveGuard,
   useLxStream,
   useLxChannel,
@@ -11,7 +12,7 @@ export {
   type LxChannelOptions,
   type LxChannelState,
 } from "./hook.js";
-export type { LxHost, LxLeaveHandler, LxLeaveReason, LxLeaveRequest } from "@lingxia/bridge";
+export type { LxHost, LxLeaveHandler, LxLeaveReason, LxLeaveRequest, MessageKey } from "@lingxia/bridge";
 export type { DeepReadonly } from "@lingxia/page-runtime";
 export { LxMediaSwiper, type LxMediaSwiperProps, type LxMediaSwiperRef } from "./LxMediaSwiper.js";
 export { LxPicker, type LxPickerProps } from "./LxPicker.js";

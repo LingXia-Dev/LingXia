@@ -35,7 +35,9 @@ function Page() {
 
   const host: LxHost = useLxHost();
   const workspace = host.sizeClass === "regular" && host.formFactor === "desktop";
-  const language: string = host.displayLanguage;
+  const language: string = host.language;
+  // @ts-expect-error folded into `language`, the narrowed tag
+  void host.displayLanguage;
   // @ts-expect-error the size class is `compact` or `regular`, nothing wider
   const wide = host.sizeClass === "wide";
   // @ts-expect-error form factor is a word, not a boolean pair
@@ -45,7 +47,7 @@ function Page() {
 void Page;
 
 // The page-level hooks are these two; the ones they replace are gone.
-// @ts-expect-error folded into useLxHost().displayLanguage
+// @ts-expect-error folded into useLxHost().language
 void LxReact.useDisplayLanguage;
 // @ts-expect-error folded into useLxHost()
 void LxReact.usePlatform;

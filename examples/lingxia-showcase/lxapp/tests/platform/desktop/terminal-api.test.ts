@@ -37,7 +37,7 @@ interface SettingsRoundTrip {
   schemes: { count: number; first: string; background: string };
   imported: { name: string; source: string; listed: boolean };
   preview: string;
-  windows: string;
+  windows: { type: string; supported: boolean };
 }
 
 test('read, revise, reset, and preview terminal settings inside the bundled settings lxapp', {
@@ -102,11 +102,11 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     // blank document a WebView shows before its first navigation commits.
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
     await settings.view.css('#type-heading').first().waitFor({ state: 'visible', timeout: 30_000 });
-    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.preference.get());
+    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.get());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
-          await lx.host.displayLanguage.preference.set(language);
+          await lx.host.displayLanguage.set(language);
         }, language);
         await eventually(
           // The bridge also writes the HTML language tag. Check translated
@@ -121,7 +121,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {
-        await lx.host.displayLanguage.preference.set(preference);
+        await lx.host.displayLanguage.set(preference);
       }, preference);
     }
   });
@@ -175,7 +175,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       schemes: { count: schemes.length, first: source.name, background: source.scheme.background ?? null },
       imported: { name: imported.name, source: imported.source, listed },
       preview: 'shown, cleared, closed',
-      windows: typeof t.windows,
+      windows: { type: typeof t.windows, supported: lx.supports('host.terminal.windows') },
     };
   }, stateKey, PROBE_SCHEME);
 
@@ -210,8 +210,8 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     expect(result.preview).toBe('shown, cleared, closed');
   });
 
-  await t.step('the Windows-only integration namespace follows the platform', async () => {
-    expect(result.windows).toBe(platform === 'windows' ? 'object' : 'undefined');
+  await t.step('the Windows runtime namespace is always there; support follows the platform', async () => {
+    expect(result.windows).toEqual({ type: 'object', supported: platform === 'windows' });
   });
 
   await t.step('hand the host back its own settings and its root main', async () => {

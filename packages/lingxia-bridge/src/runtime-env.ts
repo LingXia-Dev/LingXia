@@ -77,7 +77,7 @@ export function textDirection(tag: string): 'ltr' | 'rtl' {
  */
 function stampDocumentLanguage(): void {
   if (typeof document !== 'undefined' && document.documentElement) {
-    const language = getContentLanguage();
+    const language = getLanguage();
     document.documentElement.lang = language;
     document.documentElement.dir = textDirection(language);
   }
@@ -108,7 +108,7 @@ function applyDisplayLanguage(next: unknown, revision?: unknown, content?: unkno
   }
   if (!normalized) return;
   const before = current.value;
-  const beforeContent = getContentLanguage();
+  const beforeContent = getLanguage();
   // Without a narrowing, text that followed the display language keeps following it.
   const nextContent = narrowed || (beforeContent === before ? normalized : beforeContent);
   if (normalized === before && nextContent === beforeContent) return;
@@ -126,25 +126,20 @@ if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
   });
 }
 
-export function getDisplayLanguage(): string {
-  return store().value;
-}
-
-/** The display language narrowed to the `languages` the lxapp's lxapp.json lists. */
-export function getContentLanguage(): string {
+/** The language the page's text is in: the host's display language narrowed to the `languages` in lxapp.json. */
+export function getLanguage(): string {
   const current = store();
   return current.content || current.value;
 }
 
 /**
- * Subscribe to host display-language changes. Returns an unsubscribe.
+ * Subscribe to language changes. Returns an unsubscribe.
  *
  * Change-only, so that this composes with `useSyncExternalStore`: the listener
  * runs when the language changes, never on subscribe. Read the current value
- * with `getDisplayLanguage()`. Logic's `lx.host.displayLanguage.watch` differs
- * deliberately — it has no render loop to feed, so it delivers immediately.
+ * with `getLanguage()`.
  */
-export function subscribeDisplayLanguage(
+export function subscribeLanguage(
   listener: (language: string) => void,
 ): () => void {
   const listeners = store().listeners;

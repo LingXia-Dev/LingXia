@@ -3,7 +3,8 @@ import { errorMessage } from "../../shared/lib/errors";
 
 export default definePage({
   data: {
-    statusText: "Ready",
+    statusText: "wifi.state.ready",
+    statusArgs: {} as Record<string, number>,
     scanning: false,
     wifiList: null as WifiInfo[] | null,
     connectedWifi: null as WifiInfo | null,
@@ -55,19 +56,20 @@ export default definePage({
         if (page.data.scanning) return;
         page.update(d => {
           d.scanning = true;
-          d.statusText = "Scanning nearby networks…";
+          d.statusText = "wifi.state.scanning";
         });
         try {
           const wifiList = await lx.network.wifi.list();
           console.log("WiFi list:", wifiList);
           page.update(d => {
             d.wifiList = wifiList;
-            d.statusText = `Found ${wifiList.length} networks`;
+            d.statusText = "wifi.state.found";
+            d.statusArgs = { count: wifiList.length };
           });
         } catch (error) {
           console.error("Failed to get WiFi list:", error);
-          page.update(d => { d.statusText = errorMessage(error, "Wi-Fi scan failed"); });
-          lx.ui.toast(errorMessage(error, "Wi-Fi request failed"));
+          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.scanFailed')); });
+          lx.ui.toast(errorMessage(error, lx.app.t('wifi.requestFailed')));
         } finally {
           page.update(d => { d.scanning = false; });
         }
@@ -82,17 +84,17 @@ export default definePage({
           });
         } catch (error) {
           console.error("Failed to get connected WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, "Unable to read connected network"); });
+          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.readFailed')); });
         }
       },
       async connectWifi(options: ConnectWifiOptions) {
         try {
           await lx.network.wifi.connect(options);
-          page.update(d => { d.statusText = "Connection requested"; });
+          page.update(d => { d.statusText = "wifi.state.requested"; });
           console.log("WiFi connection requested:", options?.ssid);
         } catch (error) {
           console.error("Failed to connect to WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, "Connection request failed"); });
+          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.connectFailed')); });
         }
       },
       onWifiConnected() {

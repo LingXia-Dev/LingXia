@@ -7,7 +7,7 @@ import { renderPage } from './harness.mjs';
 
 // The README is the first thing a stranger reads: what it shows must compile, and what it names must exist.
 const core = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const readme = readFileSync(join(core, 'README.md'), 'utf8');
+const readme = readFileSync(join(core, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
 const pkg = JSON.parse(readFileSync(join(core, 'package.json'), 'utf8'));
 
 test('README: every page it shows compiles and renders', async () => {

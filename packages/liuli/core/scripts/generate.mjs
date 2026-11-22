@@ -67,7 +67,8 @@ function props(name, typeName) {
     const written = defaults.get(property.name);
     if (fallback !== undefined && written !== undefined && fallback !== written)
       problems.push(`src/${name}/${name}.tsx: ${property.name}: @default ${fallback} but the code defaults to ${written}`);
-    if (fallback === undefined && written !== undefined && !/^!/.test(written))
+    // A word from Liuli's catalogue is named in the description, in English; it reads in the page's language.
+    if (fallback === undefined && written !== undefined && !/^!/.test(written) && !written.includes('liuliText('))
       problems.push(`src/${name}/${name}.tsx: ${property.name}: defaults to ${written} without an @default tag`);
     return {
       name: property.name,
@@ -126,7 +127,7 @@ function exampleSources(name) {
       const kept = specifiers.filter(each => new RegExp(`\\b${each.replace(/^type\s+/, '').split(/\s+as\s+/).pop()}\\b`).test([body, ...used].join('\n')));
       return kept.length ? line.replace(/\{[^}]*\}/, `{ ${kept.join(', ')} }`) : null;
     }).filter(Boolean);
-    sources.set(statement.name.text, [...needed, '', ...used, ...(used.length ? [''] : []), body].join('\n'));
+    sources.set(statement.name.text, [...needed, '', ...used, ...(used.length ? [''] : []), body].join('\n').replace(/\r\n/g, '\n'));
   }
   return sources;
 }
@@ -579,7 +580,7 @@ if (isCore) {
 // The README's component list: how many there are and what each import gives, between two markers.
 const readmePath = join(core, 'README.md');
 if (existsSync(readmePath)) {
-  const readme = readFileSync(readmePath, 'utf8');
+  const readme = readFileSync(readmePath, 'utf8').replace(/\r\n/g, '\n');
   const [start, end] = ['<!-- components:start -->', '<!-- components:end -->'];
   const [from, to] = [readme.indexOf(start), readme.indexOf(end)];
   if (from < 0 || to < from) problems.push('README.md: the component list needs its <!-- components:start --> and <!-- components:end --> markers');
@@ -664,7 +665,8 @@ if (problems.length) {
 }
 const stale = [];
 for (const [path, contents] of outputs) {
-  const current = existsSync(path) ? readFileSync(path, 'utf8') : null;
+  // A Windows checkout writes CRLF; the line endings are not drift.
+  const current = existsSync(path) ? readFileSync(path, 'utf8').replace(/\r\n/g, '\n') : null;
   if (current === contents) continue;
   stale.push(relative(resolve(core, '..'), path));
   if (!check) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, contents); }

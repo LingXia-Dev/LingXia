@@ -4,11 +4,18 @@ use lingxia_platform::traits::app_runtime::{
     AppRuntime, DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
     DesktopBannerOutcome, DesktopBannerShow, DesktopBannerSource,
 };
-use lingxia_service::navigation::{self, NavigationError, NavigationRequest, NavigationSource};
+use lingxia_service::navigation::{
+    self, NavigationError, NavigationRequest, NavigationSource, NavigationTarget,
+};
+use lxapp::LxApp;
 use rong::{FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use std::sync::Arc;
 
 const MAX_ID_CHARS: usize = 64;
 const MAX_ACTIONS: usize = 2;
+/// A notification banner has a button, so it would otherwise wait for one.
+const NOTIFICATION_TIMEOUT_MS: u64 = 8_000;
+const NOTIFICATION_OPEN: &str = "open";
 
 #[derive(Debug, Clone, Default, FromJSObject)]
 #[ts_skip]
@@ -69,13 +76,7 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let caller_id = request.id.clone();
     let mut request = request;
     request.id = scope.platform_id(&caller_id);
-    let source = scope.owner().map(|app_id| DesktopBannerSource {
-        app_id: app_id.to_string(),
-        name: Some(app.listing_name())
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| app_id.to_string()),
-        icon_path: lxapp::lxapp_display_icon(app_id).file().map(str::to_string),
-    });
+    let source = source_of(&scope, &app);
     let turn = call_order::take();
     let outcome = spawn_blocking(move || {
         let pending = call_order::in_turn(turn, || match &source {
@@ -88,14 +89,113 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     if let DesktopBannerOutcome::Action { action, .. } = &outcome
         && let Some((_, target)) = targets.into_iter().find(|(id, _)| id == action)
     {
-        navigation::activate();
-        if let Err(error) =
-            navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
-        {
-            log::warn!("banner action target failed: {}", error.message());
-        }
+        go(target);
     }
     encode_outcome(&ctx, &caller_id, outcome)
+}
+
+fn go(target: NavigationTarget) {
+    navigation::activate();
+    if let Err(error) =
+        navigation::dispatch(NavigationRequest::new(target, NavigationSource::Banner))
+    {
+        log::warn!("banner action target failed: {}", error.message());
+    }
+}
+
+fn source_of(scope: &AttentionScope, app: &Arc<LxApp>) -> Option<DesktopBannerSource> {
+    scope.owner().map(|app_id| DesktopBannerSource {
+        app_id: app_id.to_string(),
+        name: Some(app.listing_name())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| app_id.to_string()),
+        icon_path: lxapp::lxapp_display_icon(app_id).file().map(str::to_string),
+    })
+}
+
+/// The banner id a notification shown while the product is frontmost uses,
+/// kept apart from `lx.host.banner` ids.
+pub(super) fn notification_banner_id(platform_id: &str) -> String {
+    format!("notification:{platform_id}")
+}
+
+/// Show a notification as a banner because the product is frontmost. Returns
+/// once it is queued; an Open button, when there is somewhere to go, follows
+/// `target` like a tap on the notification would.
+pub(super) async fn present_notification(
+    app: Arc<LxApp>,
+    scope: AttentionScope,
+    platform_id: &str,
+    title: String,
+    body: String,
+    target: NavigationTarget,
+) -> JSResult<()> {
+    let actions = if target == NavigationTarget::Activate {
+        Vec::new()
+    } else {
+        vec![DesktopBannerAction {
+            id: NOTIFICATION_OPEN.to_string(),
+            label: crate::i18n::t(crate::I18nKey::CommonOpen),
+            style: DesktopBannerActionStyle::Primary,
+        }]
+    };
+    let request = DesktopBannerShow {
+        id: notification_banner_id(platform_id),
+        title,
+        body,
+        actions,
+        timeout_ms: Some(NOTIFICATION_TIMEOUT_MS),
+        background: DesktopBannerBackground::System,
+    };
+    let source = source_of(&scope, &app);
+    let runtime = app.runtime.clone();
+    let turn = call_order::take();
+    let pending = spawn_blocking(move || {
+        call_order::in_turn(turn, || match &source {
+            Some(source) => runtime.banner_enqueue_from(&request, source),
+            None => runtime.banner_enqueue(&request),
+        })
+    })
+    .await?;
+    let live = platform_id.to_string();
+    live_notifications().insert(live.clone(), scope.owner().map(str::to_string));
+    std::thread::spawn(move || {
+        let outcome = pending.wait();
+        live_notifications().remove(&live);
+        if let Ok(DesktopBannerOutcome::Action { .. }) = outcome {
+            go(target);
+        }
+    });
+    Ok(())
+}
+
+/// Platform id → the guest that posted it.
+type LiveNotifications = std::collections::HashMap<String, Option<String>>;
+
+fn live_notifications() -> std::sync::MutexGuard<'static, LiveNotifications> {
+    static LIVE: std::sync::OnceLock<std::sync::Mutex<LiveNotifications>> =
+        std::sync::OnceLock::new();
+    LIVE.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+/// Close the frontmost-notification banners that `matches` (platform id,
+/// posting guest), as cancelling those notifications must.
+pub(super) fn dismiss_notifications(
+    runtime: &lingxia_platform::Platform,
+    matches: impl Fn(&str, Option<&str>) -> bool,
+) {
+    let ids: Vec<String> = live_notifications()
+        .iter()
+        .filter(|(id, owner)| matches(id, owner.as_deref()))
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in ids {
+        if let Err(error) = runtime.banner_dismiss(&notification_banner_id(&id)) {
+            log::warn!("dismissing notification banner failed: {error}");
+        }
+    }
 }
 
 async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {

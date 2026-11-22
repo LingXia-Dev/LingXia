@@ -2,8 +2,7 @@
   "pageOrientation": "auto",
   "navigationBar": {
     "title": {
-      "default": "Location",
-      "zh-CN": "位置"
+      "message": "title.location"
     }
   }
 }

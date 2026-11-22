@@ -70,7 +70,7 @@ export function ScreenFacts() {
       </view>
       <view className={row}>
         <text className={name}>{t(labels.envLanguage)}</text>
-        <Readout testId="lab-env-content-language" state={env.contentLanguage}>{env.contentLanguage}</Readout>
+        <Readout testId="lab-env-language" state={env.language}>{env.language}</Readout>
         <Readout testId="lab-env-direction" state={env.direction}>{env.direction}</Readout>
         <Readout testId="lab-env-hour-cycle" state={env.hourCycle}>{env.hourCycle}</Readout>
       </view>

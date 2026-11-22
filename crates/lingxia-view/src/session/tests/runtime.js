@@ -31,6 +31,7 @@
     prepareWindows: () => prepareWindows,
     readsHostContext: () => readsHostContext,
     receiveActionResponse: () => receiveActionResponse,
+    registerCatalogues: () => registerCatalogues,
     requestLeave: () => requestLeave,
     reset: () => reset,
     reveal: () => reveal,
@@ -1596,6 +1597,177 @@
     return true;
   }
 
+  // src/generated/words.js
+  var source = "en";
+  var words = {
+    "ar": {
+      "@view.actions": (a, f) => "\u0625\u062C\u0631\u0627\u0621\u0627\u062A",
+      "@view.cancel": (a, f) => "\u0625\u0644\u063A\u0627\u0621",
+      "@view.dialog": (a, f) => "\u0645\u0631\u0628\u0639 \u062D\u0648\u0627\u0631",
+      "@view.done": (a, f) => "\u062A\u0645",
+      "@view.hour": (a, f) => "\u0627\u0644\u0633\u0627\u0639\u0629",
+      "@view.minute": (a, f) => "\u0627\u0644\u062F\u0642\u064A\u0642\u0629",
+      "@view.nextMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
+      "@view.ok": (a, f) => "\u062D\u0633\u0646\u064B\u0627",
+      "@view.options": (a, f) => "\u062E\u064A\u0627\u0631\u0627\u062A",
+      "@view.period": (a, f) => "\u0635/\u0645",
+      "@view.previousMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642"
+    },
+    "de": {
+      "@view.actions": (a, f) => "Aktionen",
+      "@view.cancel": (a, f) => "Abbrechen",
+      "@view.dialog": (a, f) => "Dialog",
+      "@view.done": (a, f) => "Fertig",
+      "@view.hour": (a, f) => "Stunde",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "N\xE4chster Monat",
+      "@view.ok": (a, f) => "OK",
+      "@view.options": (a, f) => "Optionen",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Vorheriger Monat"
+    },
+    "en": {
+      "@view.actions": (a, f) => "Actions",
+      "@view.cancel": (a, f) => "Cancel",
+      "@view.dialog": (a, f) => "Dialog",
+      "@view.done": (a, f) => "Done",
+      "@view.hour": (a, f) => "Hour",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "Next month",
+      "@view.ok": (a, f) => "OK",
+      "@view.options": (a, f) => "Options",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Previous month"
+    },
+    "es": {
+      "@view.actions": (a, f) => "Acciones",
+      "@view.cancel": (a, f) => "Cancelar",
+      "@view.dialog": (a, f) => "Cuadro de di\xE1logo",
+      "@view.done": (a, f) => "Listo",
+      "@view.hour": (a, f) => "Hora",
+      "@view.minute": (a, f) => "Minuto",
+      "@view.nextMonth": (a, f) => "Mes siguiente",
+      "@view.ok": (a, f) => "Aceptar",
+      "@view.options": (a, f) => "Opciones",
+      "@view.period": (a, f) => "a. m./p. m.",
+      "@view.previousMonth": (a, f) => "Mes anterior"
+    },
+    "fr": {
+      "@view.actions": (a, f) => "Actions",
+      "@view.cancel": (a, f) => "Annuler",
+      "@view.dialog": (a, f) => "Bo\xEEte de dialogue",
+      "@view.done": (a, f) => "OK",
+      "@view.hour": (a, f) => "Heure",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "Mois suivant",
+      "@view.ok": (a, f) => "OK",
+      "@view.options": (a, f) => "Options",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Mois pr\xE9c\xE9dent"
+    },
+    "ja": {
+      "@view.actions": (a, f) => "\u30A2\u30AF\u30B7\u30E7\u30F3",
+      "@view.cancel": (a, f) => "\u30AD\u30E3\u30F3\u30BB\u30EB",
+      "@view.dialog": (a, f) => "\u30C0\u30A4\u30A2\u30ED\u30B0",
+      "@view.done": (a, f) => "\u5B8C\u4E86",
+      "@view.hour": (a, f) => "\u6642",
+      "@view.minute": (a, f) => "\u5206",
+      "@view.nextMonth": (a, f) => "\u6B21\u306E\u6708",
+      "@view.ok": (a, f) => "OK",
+      "@view.options": (a, f) => "\u30AA\u30D7\u30B7\u30E7\u30F3",
+      "@view.period": (a, f) => "\u5348\u524D/\u5348\u5F8C",
+      "@view.previousMonth": (a, f) => "\u524D\u306E\u6708"
+    },
+    "ko": {
+      "@view.actions": (a, f) => "\uC791\uC5C5",
+      "@view.cancel": (a, f) => "\uCDE8\uC18C",
+      "@view.dialog": (a, f) => "\uB300\uD654\uC0C1\uC790",
+      "@view.done": (a, f) => "\uC644\uB8CC",
+      "@view.hour": (a, f) => "\uC2DC",
+      "@view.minute": (a, f) => "\uBD84",
+      "@view.nextMonth": (a, f) => "\uB2E4\uC74C \uB2EC",
+      "@view.ok": (a, f) => "\uD655\uC778",
+      "@view.options": (a, f) => "\uC635\uC158",
+      "@view.period": (a, f) => "\uC624\uC804/\uC624\uD6C4",
+      "@view.previousMonth": (a, f) => "\uC774\uC804 \uB2EC"
+    },
+    "pt": {
+      "@view.actions": (a, f) => "A\xE7\xF5es",
+      "@view.cancel": (a, f) => "Cancelar",
+      "@view.dialog": (a, f) => "Caixa de di\xE1logo",
+      "@view.done": (a, f) => "OK",
+      "@view.hour": (a, f) => "Hora",
+      "@view.minute": (a, f) => "Minuto",
+      "@view.nextMonth": (a, f) => "Pr\xF3ximo m\xEAs",
+      "@view.ok": (a, f) => "OK",
+      "@view.options": (a, f) => "Op\xE7\xF5es",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "M\xEAs anterior"
+    },
+    "ru": {
+      "@view.actions": (a, f) => "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F",
+      "@view.cancel": (a, f) => "\u041E\u0442\u043C\u0435\u043D\u0430",
+      "@view.dialog": (a, f) => "\u0414\u0438\u0430\u043B\u043E\u0433\u043E\u0432\u043E\u0435 \u043E\u043A\u043D\u043E",
+      "@view.done": (a, f) => "\u0413\u043E\u0442\u043E\u0432\u043E",
+      "@view.hour": (a, f) => "\u0427\u0430\u0441",
+      "@view.minute": (a, f) => "\u041C\u0438\u043D\u0443\u0442\u0430",
+      "@view.nextMonth": (a, f) => "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
+      "@view.ok": (a, f) => "\u041E\u041A",
+      "@view.options": (a, f) => "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446"
+    },
+    "zh": {
+      "@view.actions": (a, f) => "\u64CD\u4F5C",
+      "@view.cancel": (a, f) => "\u53D6\u6D88",
+      "@view.dialog": (a, f) => "\u5BF9\u8BDD\u6846",
+      "@view.done": (a, f) => "\u5B8C\u6210",
+      "@view.hour": (a, f) => "\u65F6",
+      "@view.minute": (a, f) => "\u5206",
+      "@view.nextMonth": (a, f) => "\u4E0B\u4E2A\u6708",
+      "@view.ok": (a, f) => "\u786E\u5B9A",
+      "@view.options": (a, f) => "\u9009\u9879",
+      "@view.period": (a, f) => "\u4E0A\u5348/\u4E0B\u5348",
+      "@view.previousMonth": (a, f) => "\u4E0A\u4E2A\u6708"
+    }
+  };
+
+  // src/runtime/i18n.js
+  var catalogues = null;
+  function registerCatalogues(compiled) {
+    catalogues = compiled;
+    formatters.clear();
+  }
+  function catalogueFor(language) {
+    const tags2 = Object.keys(catalogues.languages);
+    const lower = String(language ?? "").toLowerCase();
+    const exact = tags2.find((tag2) => tag2.toLowerCase() === lower);
+    const primary = lower.split("-")[0];
+    const tag = exact ?? tags2.find((tag2) => tag2.toLowerCase().split("-")[0] === primary) ?? catalogues.source;
+    return { tag, messages: catalogues.languages[tag] };
+  }
+  var join = (text2) => Array.isArray(text2) ? text2.join("") : String(text2);
+  function lxappText(key, language, args) {
+    if (!catalogues) return void 0;
+    const { tag, messages } = catalogueFor(language);
+    const message = messages[key];
+    return message ? join(message(args ?? {}, formatter(tag))) : void 0;
+  }
+  var formatters = /* @__PURE__ */ new Map();
+  function formatter(tag) {
+    let f = formatters.get(tag);
+    if (!f) formatters.set(tag, f = catalogues.formatter(tag));
+    return f;
+  }
+
+  // src/runtime/words.js
+  function word(key, language) {
+    const own2 = lxappText(key, language);
+    if (own2 !== void 0) return own2;
+    const table = words[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? words[source];
+    return (table[key] ?? words[source][key])({}, null);
+  }
+
   // src/runtime/overlay.js
   var toast = null;
   var modals = [];
@@ -1645,8 +1817,8 @@
           title: text(params.title),
           content: text(params.content),
           showCancel: params.showCancel !== false,
-          cancelText: text(params.cancelText, "Cancel"),
-          confirmText: text(params.confirmText, "OK")
+          cancelText: text(params.cancelText, null),
+          confirmText: text(params.confirmText, null)
         });
         changed2 = modals.length === 1;
         break;
@@ -1656,7 +1828,7 @@
           replies.push(reply(id, false, { code: "E_INVALID_ARGUMENT", message: "showActionSheet needs itemList" }));
           break;
         }
-        sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, "Cancel") });
+        sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, null) });
         changed2 = sheets.length === 1;
         break;
       }
@@ -1776,8 +1948,9 @@
       } }, box)
     );
   }
-  function modalNode() {
+  function modalNode(env) {
     const modal = modals[0];
+    const language = env?.language;
     const button = (testId, label2, confirm, color) => h("button", { "data-testid": testId, onClick: () => settleModal(confirm), style: {
       flexGrow: 1,
       flexBasis: 0,
@@ -1797,7 +1970,7 @@
         key: `modal-${modal.key}`,
         open: true,
         onClose: () => settleModal(false),
-        "aria-label": modal.title || modal.content || "Dialog",
+        "aria-label": modal.title || modal.content || word("@view.dialog", language),
         style: { width: 320, maxWidth: "86%", borderRadius: 14, backgroundColor: "surface-overlay", overflow: "hidden", transition: fade }
       },
       h(
@@ -1809,8 +1982,8 @@
       h(
         "view",
         { style: { flexDirection: "row", borderTopWidth: 1, borderColor: "line" } },
-        modal.showCancel && button("lx-modal-cancel", modal.cancelText, false, "text-muted"),
-        button("lx-modal-confirm", modal.confirmText, true, "accent")
+        modal.showCancel && button("lx-modal-cancel", modal.cancelText ?? word("@view.cancel", language), false, "text-muted"),
+        button("lx-modal-confirm", modal.confirmText ?? word("@view.ok", language), true, "accent")
       )
     );
   }
@@ -1833,7 +2006,7 @@
         open: true,
         closedby: "any",
         onClose: () => settleSheet(-1),
-        "aria-label": "Actions",
+        "aria-label": word("@view.actions", env?.language),
         style: { ...place, gap: 8, transition: fade }
       },
       h(
@@ -1848,7 +2021,7 @@
       h(
         "view",
         { style: { borderRadius: 14, backgroundColor: "surface-overlay", overflow: "hidden" } },
-        item("lx-action-sheet-cancel", sheet.cancelText, -1, "text")
+        item("lx-action-sheet-cancel", sheet.cancelText ?? word("@view.cancel", env?.language), -1, "text")
       )
     );
   }
@@ -1858,7 +2031,7 @@
       "view",
       { key: "lx-overlay", style: { position: "absolute", top: 0, left: 0, width: 0, height: 0 } },
       sheets.length > 0 && sheetNode(env),
-      modals.length > 0 && modalNode(),
+      modals.length > 0 && modalNode(env),
       toast && toastNode()
     );
   }
@@ -1910,7 +2083,7 @@
   var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   function decode() {
     const lines = [];
-    let source2 = 0, line = 0, column = 0;
+    let source3 = 0, line = 0, column = 0;
     for (const text2 of sourceMap.mappings.split(";")) {
       const segments = [];
       let generated = 0;
@@ -1930,10 +2103,10 @@
         }
         generated += values[0];
         if (values.length < 4) continue;
-        source2 += values[1];
+        source3 += values[1];
         line += values[2];
         column += values[3];
-        segments.push([generated, source2, line, column]);
+        segments.push([generated, source3, line, column]);
       }
       lines.push(segments);
     }
@@ -3650,9 +3823,9 @@
       if (path.strokeWidth !== void 0 && (typeof path.strokeWidth !== "number" || !Number.isFinite(path.strokeWidth) || path.strokeWidth < 0 || path.strokeWidth > 1024))
         throw Error("UI_VECTOR: invalid stroke width");
     }
-    const source2 = JSON.stringify({ viewBox: box, paths: props.paths, ...Object.keys(gradients).length ? { gradients } : {}, ...fit === void 0 ? {} : { fit } });
-    if (source2.length > limits.vectorSourceBytes) throw Error("UI_VECTOR: source too large");
-    return source2;
+    const source3 = JSON.stringify({ viewBox: box, paths: props.paths, ...Object.keys(gradients).length ? { gradients } : {}, ...fit === void 0 ? {} : { fit } });
+    if (source3.length > limits.vectorSourceBytes) throw Error("UI_VECTOR: source too large");
+    return source3;
   }
   function plot(props) {
     if (["smooth", "area"].some((name) => props[name] !== void 0 && typeof props[name] !== "boolean") || props.kind !== "line" && (props.smooth || props.area))
@@ -3711,16 +3884,16 @@
       throw Error("UI_IMAGE: invalid placeholder source");
     for (const name of ["onLoad", "onError"]) if (props[name] !== void 0 && typeof props[name] !== "function") throw Error("UI_IMAGE: invalid callback");
   }
-  var source = (value) => typeof value === "string" && value.length > 0 && value.length <= limits.sourceBytes && !value.includes("\0");
+  var source2 = (value) => typeof value === "string" && value.length > 0 && value.length <= limits.sourceBytes && !value.includes("\0");
   function video(props) {
-    if (props.src !== void 0 && !source(props.src)) throw Error("UI_VIDEO: invalid source");
-    if (props.poster !== void 0 && !source(props.poster)) throw Error("UI_VIDEO: invalid poster");
+    if (props.src !== void 0 && !source2(props.src)) throw Error("UI_VIDEO: invalid source");
+    if (props.poster !== void 0 && !source2(props.poster)) throw Error("UI_VIDEO: invalid poster");
     if (props.sources !== void 0) {
       if (props.src !== void 0) throw Error("UI_VIDEO: give src or sources, not both");
       const labels = /* @__PURE__ */ new Set();
       if (!Array.isArray(props.sources) || props.sources.length < 1 || props.sources.length > 8) throw Error("UI_VIDEO: sources takes 1..8 { src, label } entries");
       for (const entry of props.sources) {
-        if (!entry || !source(entry.src)) throw Error("UI_VIDEO: each of sources needs a valid src");
+        if (!entry || !source2(entry.src)) throw Error("UI_VIDEO: each of sources needs a valid src");
         if (typeof entry.label !== "string" || !/^[^\s].{0,31}$/.test(entry.label) || entry.label === "auto" || labels.has(entry.label))
           throw Error('UI_VIDEO: each of sources needs a unique label of 1..32 characters other than "auto"');
         labels.add(entry.label);
@@ -3732,7 +3905,7 @@
     for (const [name, value] of Object.entries(props)) if (/^on[A-Z]/.test(name) && value !== void 0 && typeof value !== "function") throw Error(`UI_VIDEO: ${name} takes a function`);
   }
   function webview(props) {
-    if (props.src !== void 0 && !source(props.src)) throw Error("UI_WEBVIEW: invalid source");
+    if (props.src !== void 0 && !source2(props.src)) throw Error("UI_WEBVIEW: invalid source");
     label(props.accessibilityLabel, "UI_WEBVIEW", true);
     if (props.handlesDrags !== void 0 && typeof props.handlesDrags !== "boolean") throw Error("UI_WEBVIEW: handlesDrags takes a boolean");
     for (const name of ["onFullscreenChange", "onLoad", "onMessage", "onBlocked", "onError"])
@@ -4133,14 +4306,7 @@
       title: (month, year) => `${month} ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}, ${month} ${day}, ${year}`,
       am: "AM",
-      pm: "PM",
-      cancel: "Cancel",
-      done: "Done",
-      previous: "Previous month",
-      next: "Next month",
-      hour: "Hour",
-      minute: "Minute",
-      period: "AM/PM"
+      pm: "PM"
     },
     zh: {
       months: ["1\u6708", "2\u6708", "3\u6708", "4\u6708", "5\u6708", "6\u6708", "7\u6708", "8\u6708", "9\u6708", "10\u6708", "11\u6708", "12\u6708"],
@@ -4149,14 +4315,7 @@
       title: (month, year) => `${year}\u5E74${month}`,
       full: (day, month, year, weekday2) => `${year}\u5E74${month}${day}\u65E5${weekday2}`,
       am: "\u4E0A\u5348",
-      pm: "\u4E0B\u5348",
-      cancel: "\u53D6\u6D88",
-      done: "\u5B8C\u6210",
-      previous: "\u4E0A\u4E2A\u6708",
-      next: "\u4E0B\u4E2A\u6708",
-      hour: "\u65F6",
-      minute: "\u5206",
-      period: "\u4E0A\u5348/\u4E0B\u5348"
+      pm: "\u4E0B\u5348"
     },
     ja: {
       months: ["1\u6708", "2\u6708", "3\u6708", "4\u6708", "5\u6708", "6\u6708", "7\u6708", "8\u6708", "9\u6708", "10\u6708", "11\u6708", "12\u6708"],
@@ -4165,14 +4324,7 @@
       title: (month, year) => `${year}\u5E74${month}`,
       full: (day, month, year, weekday2) => `${year}\u5E74${month}${day}\u65E5 ${weekday2}`,
       am: "\u5348\u524D",
-      pm: "\u5348\u5F8C",
-      cancel: "\u30AD\u30E3\u30F3\u30BB\u30EB",
-      done: "\u5B8C\u4E86",
-      previous: "\u524D\u306E\u6708",
-      next: "\u6B21\u306E\u6708",
-      hour: "\u6642",
-      minute: "\u5206",
-      period: "\u5348\u524D/\u5348\u5F8C"
+      pm: "\u5348\u5F8C"
     },
     ko: {
       months: ["1\uC6D4", "2\uC6D4", "3\uC6D4", "4\uC6D4", "5\uC6D4", "6\uC6D4", "7\uC6D4", "8\uC6D4", "9\uC6D4", "10\uC6D4", "11\uC6D4", "12\uC6D4"],
@@ -4181,14 +4333,7 @@
       title: (month, year) => `${year}\uB144 ${month}`,
       full: (day, month, year, weekday2) => `${year}\uB144 ${month} ${day}\uC77C ${weekday2}`,
       am: "\uC624\uC804",
-      pm: "\uC624\uD6C4",
-      cancel: "\uCDE8\uC18C",
-      done: "\uC644\uB8CC",
-      previous: "\uC774\uC804 \uB2EC",
-      next: "\uB2E4\uC74C \uB2EC",
-      hour: "\uC2DC",
-      minute: "\uBD84",
-      period: "\uC624\uC804/\uC624\uD6C4"
+      pm: "\uC624\uD6C4"
     },
     de: {
       months: ["Januar", "Februar", "M\xE4rz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
@@ -4197,14 +4342,7 @@
       title: (month, year) => `${month} ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}, ${day}. ${month} ${year}`,
       am: "AM",
-      pm: "PM",
-      cancel: "Abbrechen",
-      done: "Fertig",
-      previous: "Vorheriger Monat",
-      next: "N\xE4chster Monat",
-      hour: "Stunde",
-      minute: "Minute",
-      period: "AM/PM"
+      pm: "PM"
     },
     fr: {
       months: ["janvier", "f\xE9vrier", "mars", "avril", "mai", "juin", "juillet", "ao\xFBt", "septembre", "octobre", "novembre", "d\xE9cembre"],
@@ -4213,14 +4351,7 @@
       title: (month, year) => `${month} ${year}`,
       full: (day, month, year, weekday2) => `${weekday2} ${day} ${month} ${year}`,
       am: "AM",
-      pm: "PM",
-      cancel: "Annuler",
-      done: "OK",
-      previous: "Mois pr\xE9c\xE9dent",
-      next: "Mois suivant",
-      hour: "Heure",
-      minute: "Minute",
-      period: "AM/PM"
+      pm: "PM"
     },
     es: {
       months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
@@ -4229,14 +4360,7 @@
       title: (month, year) => `${month} de ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}, ${day} de ${month} de ${year}`,
       am: "a. m.",
-      pm: "p. m.",
-      cancel: "Cancelar",
-      done: "Listo",
-      previous: "Mes anterior",
-      next: "Mes siguiente",
-      hour: "Hora",
-      minute: "Minuto",
-      period: "a. m./p. m."
+      pm: "p. m."
     },
     pt: {
       months: ["janeiro", "fevereiro", "mar\xE7o", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"],
@@ -4245,14 +4369,7 @@
       title: (month, year) => `${month} de ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}, ${day} de ${month} de ${year}`,
       am: "AM",
-      pm: "PM",
-      cancel: "Cancelar",
-      done: "OK",
-      previous: "M\xEAs anterior",
-      next: "Pr\xF3ximo m\xEAs",
-      hour: "Hora",
-      minute: "Minuto",
-      period: "AM/PM"
+      pm: "PM"
     },
     ru: {
       months: ["\u044F\u043D\u0432\u0430\u0440\u044C", "\u0444\u0435\u0432\u0440\u0430\u043B\u044C", "\u043C\u0430\u0440\u0442", "\u0430\u043F\u0440\u0435\u043B\u044C", "\u043C\u0430\u0439", "\u0438\u044E\u043D\u044C", "\u0438\u044E\u043B\u044C", "\u0430\u0432\u0433\u0443\u0441\u0442", "\u0441\u0435\u043D\u0442\u044F\u0431\u0440\u044C", "\u043E\u043A\u0442\u044F\u0431\u0440\u044C", "\u043D\u043E\u044F\u0431\u0440\u044C", "\u0434\u0435\u043A\u0430\u0431\u0440\u044C"],
@@ -4261,14 +4378,7 @@
       title: (month, year) => `${month} ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}, ${day} ${month} ${year}`,
       am: "AM",
-      pm: "PM",
-      cancel: "\u041E\u0442\u043C\u0435\u043D\u0430",
-      done: "\u0413\u043E\u0442\u043E\u0432\u043E",
-      previous: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
-      next: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
-      hour: "\u0427\u0430\u0441",
-      minute: "\u041C\u0438\u043D\u0443\u0442\u0430",
-      period: "AM/PM"
+      pm: "PM"
     },
     ar: {
       months: ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"],
@@ -4277,20 +4387,13 @@
       title: (month, year) => `${month} ${year}`,
       full: (day, month, year, weekday2) => `${weekday2}\u060C ${day} ${month} ${year}`,
       am: "\u0635",
-      pm: "\u0645",
-      cancel: "\u0625\u0644\u063A\u0627\u0621",
-      done: "\u062A\u0645",
-      previous: "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642",
-      next: "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
-      hour: "\u0627\u0644\u0633\u0627\u0639\u0629",
-      minute: "\u0627\u0644\u062F\u0642\u064A\u0642\u0629",
-      period: "\u0635/\u0645"
+      pm: "\u0645"
     }
   };
-  function clockText({ hour, minute, second }, words, hourCycle) {
+  function clockText({ hour, minute, second }, words2, hourCycle) {
     const rest = `:${pad(minute)}${second === void 0 ? "" : `:${pad(second)}`}`;
     if (hourCycle !== "h12") return `${pad(hour)}${rest}`;
-    return `${hour % 12 || 12}${rest} ${hour < 12 ? words.am : words.pm}`;
+    return `${hour % 12 || 12}${rest} ${hour < 12 ? words2.am : words2.pm}`;
   }
   function fieldText(kind, value, { seconds, language, hourCycle }) {
     if (kind === "date") {
@@ -4299,12 +4402,12 @@
       const sizeText2 = [...new Set(Array.from({ length: 12 }, (_, month) => format({ year: 2e3, month: month + 1, day: 10 }).replace(/\d/g, "0")))].join("\n");
       return { displayValue: date ? format(date) : value, sizeText: sizeText2 };
     }
-    const words = wordsFor(language);
+    const words2 = wordsFor(language);
     const time = parseTime(value);
     const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
-    const widest = (second) => [words.am, words.pm].map((period) => clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, "0"));
+    const widest = (second) => [words2.am, words2.pm].map((period) => clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, "0"));
     const sizeText = [...new Set(widest(seconds || shown?.second !== void 0 ? 0 : void 0))].join("\n");
-    return { displayValue: shown ? clockText(shown, words, hourCycle) : value, sizeText };
+    return { displayValue: shown ? clockText(shown, words2, hourCycle) : value, sizeText };
   }
   var shortMonths = {
     en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
@@ -4342,7 +4445,19 @@
     }
   }
   function wordsFor(language) {
-    return names2[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? names2.en;
+    const table = names2[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? names2.en;
+    const w = (key) => word(`@view.${key}`, language);
+    return {
+      ...table,
+      cancel: w("cancel"),
+      done: w("done"),
+      previous: w("previousMonth"),
+      next: w("nextMonth"),
+      hour: w("hour"),
+      minute: w("minute"),
+      period: w("period"),
+      options: w("options")
+    };
   }
   var pad = (value, width = 2) => String(value).padStart(width, "0");
   var isLeap = (year) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -5256,7 +5371,7 @@
           const env = envOf(render.view);
           const shown = fieldText(keyboard, props.value ?? "", {
             seconds: typeof props.step === "number" && props.step < 60,
-            language: env?.contentLanguage ?? env?.displayLanguage,
+            language: env?.language,
             hourCycle: env?.hourCycle
           });
           if (props.value !== void 0) wire("displayValue", shown.displayValue);
@@ -5331,14 +5446,14 @@
         video(props);
         const name = props.player === void 0 ? void 0 : playerName(props.player);
         if (props.player !== void 0 && name === void 0) throw Error("UI_VIDEO: player takes the handle useVideo(name) returns");
-        const source2 = props.src ?? props.sources;
-        if (source2 === void 0 && name === void 0) throw Error("UI_VIDEO: a <video> needs src or sources, or a player another <video> gives one");
+        const source3 = props.src ?? props.sources;
+        if (source3 === void 0 && name === void 0) throw Error("UI_VIDEO: a <video> needs src or sources, or a player another <video> gives one");
         if (props.src !== void 0) wire("videoSrc", props.src);
         if (props.sources !== void 0) wire("videoSources", JSON.stringify(props.sources.map(({ src, label: label2 }) => ({ src, label: label2 }))));
         wire("videoPlayer", name === void 0 ? `el:${identity}` : `name:${name}`);
         if (name !== void 0 && parent.inDialog) shownInDialog(name);
         if (props.poster !== void 0) wire("videoPoster", props.poster);
-        if (source2 !== void 0) wire("videoPaused", +(props.paused ?? !props.autoPlay));
+        if (source3 !== void 0) wire("videoPaused", +(props.paused ?? !props.autoPlay));
         for (const [key, prop] of videoFlags) if (props[prop] !== void 0) wire(key, +props[prop]);
         if (props.playbackRate !== void 0) wire("videoRate", props.playbackRate);
         if (props.volume !== void 0) wire("videoVolume", props.volume);
@@ -5706,13 +5821,13 @@
     });
   }
   function reusableRows(old, props, rowEnv, direction) {
-    const source2 = props.row?.__lxRows, before = old?.rowSource;
-    if (!source2 || !before || before.site !== source2.site || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
-    const same4 = before.items === source2.items;
+    const source3 = props.row?.__lxRows, before = old?.rowSource;
+    if (!source3 || !before || before.site !== source3.site || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
+    const same4 = before.items === source3.items;
     const rows = /* @__PURE__ */ new Map();
     for (const i of old.pure) {
       if (!old.cache.has(i)) continue;
-      const item = source2.items[i];
+      const item = source3.items[i];
       if (same4 || item === before.items[i] && (item === null || typeof item !== "object" || Object.isFrozen(item))) rows.set(i, old.cache.get(i));
     }
     return rows.size ? { rows, typography: old.typography } : null;
@@ -5936,7 +6051,7 @@
     else picker.value = { ...picker.value, minute: minutes[index] };
     return true;
   }
-  function dateBody(words, env, titled) {
+  function dateBody(words2, env, titled) {
     const { focus, value, min, max } = picker;
     const first = env?.firstWeekday ?? 1, now2 = today();
     const shift = (months) => {
@@ -5956,14 +6071,14 @@
         style: { width: 20, height: 20 }
       })
     );
-    const title = words.title(words.months[focus.month - 1], focus.year);
+    const title = words2.title(words2.months[focus.month - 1], focus.year);
     const cells = monthGrid(focus, first);
     const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
     const cell2 = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
       const selected = titled ? value && compare(date, value) === 0 : picker.pick !== null && compare(date, picker.pick) === 0;
       const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now2) === 0;
-      const name = words.full(date.day, words.months[date.month - 1], date.year, words.longDays[weekday(date.year, date.month, date.day)]);
+      const name = words2.full(date.day, words2.months[date.month - 1], date.year, words2.longDays[weekday(date.year, date.month, date.day)]);
       return h(
         "button",
         {
@@ -6001,8 +6116,8 @@
         "view",
         { style: { flexDirection: "row", alignItems: "center", gap: 4, justifyContent: titled ? "start" : "space-between" } },
         titled && h("text", { "data-testid": "lx-picker-title", "aria-live": "polite", style: { flexGrow: 1, fontSize: 16, fontWeight: 600, color: "text", paddingLeft: 8 } }, title),
-        iconButton("lx-picker-previous", words.previous, "M12.5 4l-6 6 6 6", -1),
-        iconButton("lx-picker-next", words.next, "M7.5 4l6 6-6 6", 1)
+        iconButton("lx-picker-previous", words2.previous, "M12.5 4l-6 6 6 6", -1),
+        iconButton("lx-picker-next", words2.next, "M7.5 4l6 6-6 6", 1)
       ),
       h(
         "view",
@@ -6010,7 +6125,7 @@
         h("view", { "aria-hidden": true, style: { flexDirection: "row", gap: 2 } }, ...weekdayOrder(first).map((day) => h("text", {
           key: `w${day}`,
           style: { width: 36, textAlign: "center", fontSize: 12, color: "text-muted" }
-        }, words.days[day]))),
+        }, words2.days[day]))),
         ...rows.map((week, index) => h("view", { key: `r${index}`, style: { flexDirection: "row", gap: 2 } }, ...week.map(cell2)))
       )
     );
@@ -6058,7 +6173,7 @@
       })
     );
   }
-  function timeBody(words, env) {
+  function timeBody(words2, env) {
     const cycle = env?.hourCycle === "h12" ? "h12" : "h23";
     const { hour, minute } = picker.value;
     const two = (value) => String(value).padStart(2, "0");
@@ -6069,32 +6184,32 @@
     const columns = [
       timeColumn(
         "lx-picker-hour",
-        words.hour,
+        words2.hour,
         hourValues(cycle),
         cycle === "h12" ? hour % 12 || 12 : hour,
         cycle === "h12" ? String : two,
         (value) => set({ hour: cycle === "h12" ? value % 12 + (hour >= 12 ? 12 : 0) : value }),
         true
       ),
-      timeColumn("lx-picker-minute", words.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }), true)
+      timeColumn("lx-picker-minute", words2.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }), true)
     ];
     if (cycle === "h12") columns.push(timeColumn(
       "lx-picker-period",
-      words.period,
+      words2.period,
       ["am", "pm"],
       hour >= 12 ? "pm" : "am",
-      (period) => words[period],
+      (period) => words2[period],
       (period) => set({ hour: hour % 12 + (period === "pm" ? 12 : 0) })
     ));
     return h("view", { style: { flexDirection: "row", gap: 8, justifyContent: "center" } }, ...columns);
   }
-  function selectBody(touch) {
+  function selectBody(touch, words2) {
     const { options: options2, focus } = picker;
     const selected = touch ? picker.pick : picker.selected;
     const check = "M4 10.5l4 4 8-9";
     return h(
       "view",
-      { role: "listbox", "aria-label": picker.label || "Options", style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
+      { role: "listbox", "aria-label": picker.label || words2.options, style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
       ...options2.map((option2, index) => h(
         "button",
         {
@@ -6134,22 +6249,22 @@
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
   var sheetStyle = ({ borderRadius, ...rest }) => rest;
-  var clock2 = ({ hour, minute }, words, env) => clockText({ hour, minute }, words, env?.hourCycle);
+  var clock2 = ({ hour, minute }, words2, env) => clockText({ hour, minute }, words2, env?.hourCycle);
   function pickerNode(env) {
     if (!picker) return null;
-    const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
+    const words2 = wordsFor(env?.language);
     const touch = (env?.pointer ?? "coarse") === "coarse";
-    const body = picker.kind === "date" ? dateBody(words, env, !touch) : picker.kind === "time" ? timeBody(words, env) : selectBody(touch);
+    const body = picker.kind === "date" ? dateBody(words2, env, !touch) : picker.kind === "time" ? timeBody(words2, env) : selectBody(touch, words2);
     const unpicked = picker.kind === "date" && picker.pick === null;
     const commit2 = () => picker.kind === "date" ? picker.pick !== null && settle(iso2(picker.pick)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
-    const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words.cancel);
+    const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words2.cancel);
     const done = (style2) => h("button", {
       "data-testid": "lx-picker-done",
       onClick: commit2,
       disabled: unpicked,
       style: unpicked ? { ...style2, color: "text-faint" } : style2
-    }, words.done);
-    const monthTitle = picker.kind === "date" && words.title(words.months[picker.focus.month - 1], picker.focus.year);
+    }, words2.done);
+    const monthTitle = picker.kind === "date" && words2.title(words2.months[picker.focus.month - 1], picker.focus.year);
     const text2 = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: "transparent" };
     const toolbar = touch && h(
       "view",
@@ -6162,7 +6277,7 @@
           "aria-live": "polite",
           style: { flexGrow: 1, flexBasis: 0, minWidth: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "text", lineClamp: 1 }
         },
-        monthTitle || (picker.kind === "time" ? clock2(picker.value, words, env) : picker.label || "")
+        monthTitle || (picker.kind === "time" ? clock2(picker.value, words2, env) : picker.label || "")
       ),
       done({ ...text2, color: "accent", fontWeight: 600 })
     );
@@ -6173,7 +6288,7 @@
       cancel({ ...button, color: "text" }),
       done({ ...button, backgroundColor: "accent-solid", color: "on-accent-solid", fontWeight: 600 })
     );
-    const name = picker.kind === "date" ? monthTitle : picker.kind === "time" ? words.hour : picker.label || "Options";
+    const name = picker.kind === "date" ? monthTitle : picker.kind === "time" ? words2.hour : picker.label || words2.options;
     const panel = {
       "data-testid": "lx-picker",
       key: `picker-${picker.key}`,
@@ -6522,7 +6637,7 @@
       const env = envOf(page.committed?.view);
       return fieldText(kind, iso3, {
         seconds: opts?.seconds === true,
-        language: opts?.language || (env?.contentLanguage ?? env?.displayLanguage),
+        language: opts?.language || env?.language,
         hourCycle: opts?.hourCycle || env?.hourCycle
       }).displayValue;
     } catch {

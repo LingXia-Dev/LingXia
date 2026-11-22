@@ -81,9 +81,15 @@ events.close();
 
 The product's language and light/dark scheme each have one value and one
 writer: the product's Settings screen in the [Control app](../app/control-app.md).
-No lxapp keeps its own copy or offers its own picker. Read them with
-`lx.host.displayLanguage` and `lx.host.appearance`, and re-set the strings you
-hand to native chrome (titles, tab labels, dialogs) from their `watch`.
+No lxapp keeps its own copy or offers its own picker.
+
+- What this lxapp renders in is on `lx.app`: `language` and `appearance`; every
+  lxapp has them. Re-set the strings you hand to native chrome (modals, action
+  sheets) when they change.
+- `lx.host.displayLanguage` / `lx.host.appearance` are the user's choice
+  (`'auto'` or a value) and can be set. Only the Control app may call them;
+  elsewhere they reject `E_PERMISSION_DENIED`. A system change under `'auto'`
+  moves only the first pair.
 
 ## Features and permission
 

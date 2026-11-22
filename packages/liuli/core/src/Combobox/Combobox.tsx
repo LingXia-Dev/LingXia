@@ -1,4 +1,5 @@
 import { cx, reveal, useBox, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
@@ -38,12 +39,12 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
   items: readonly ComboboxOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
-  /** The search field's accessible name: "Search countries". */
-  searchLabel: string;
+  /** The search field's accessible name: "Search countries". Defaults to "Search" in the page's language. */
+  searchLabel?: string;
   /** Shown in the search field while it is empty. */
   searchPlaceholder?: string;
-  /** Shown in place of the list when no option matches: "No country matches". */
-  emptyLabel: string;
+  /** Shown in place of the list when no option matches: "No country matches". Defaults to "No matches" in the page's language. */
+  emptyLabel?: string;
   /** Shown under the list when more than fifty options match: "Keep typing to see more". */
   moreLabel?: string;
   /** Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. */
@@ -291,7 +292,7 @@ function ComboboxTypeahead({
 export function Combobox(props: ComboboxProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    items, placeholder, searchLabel, searchPlaceholder, emptyLabel, moreLabel, closeLabel, onQueryChange, isLoading = false,
+    items, placeholder, searchLabel = liuliText('@liuli.search'), searchPlaceholder, emptyLabel = liuliText('@liuli.noMatches'), moreLabel, closeLabel, onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);

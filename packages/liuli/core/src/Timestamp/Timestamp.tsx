@@ -1,22 +1,9 @@
 import { cx, useView } from '@lingxia/view';
+import { liuliText, monthName } from '../i18n/text';
 import { timestampRecipe as r } from './Timestamp.recipe';
 
 /** A moment in the user's own time: `2026-11-14T09:42`. The app converts from its clock and zone. */
 export type LocalDateTime = string;
-
-/** The words a timestamp is written in. Liuli ships `timestampEn` and `timestampZh`; spread one to change a phrase. */
-export interface TimestampLocale {
-  justNow: string;
-  minutesAgo: (minutes: number) => string;
-  hoursAgo: (hours: number) => string;
-  yesterday: string;
-  /** `month` from 1. `hasYear` is false for a date in the current year. */
-  date: (year: number, month: number, day: number, hasYear: boolean) => string;
-  /** `hour` from 0 to 23; `isTwelveHour` follows the user's clock. */
-  time: (hour: number, minute: number, isTwelveHour: boolean) => string;
-  /** A date and a time together: "14 November, 09:42". */
-  dateTime: (date: string, time: string) => string;
-}
 
 export type TimestampFormat = 'relative' | 'date' | 'time' | 'date-time';
 
@@ -25,7 +12,6 @@ export interface TimestampProps {
   value: LocalDateTime;
   /** The present, in the same form. The app passes it and refreshes it; Liuli has no clock. */
   now: LocalDateTime;
-  locale: TimestampLocale;
   /** `relative` says how long ago for today, "yesterday" with the time for yesterday, and the date before that. @default 'relative' */
   format?: TimestampFormat;
   className?: string;
@@ -50,29 +36,35 @@ function dayNumber({ year, month, day }: Parts): number {
   return era * 146097 + yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear - 719468;
 }
 
-/** The words for `value` seen from `now`. */
-export function formatTimestamp(value: LocalDateTime, now: LocalDateTime, locale: TimestampLocale, format: TimestampFormat, isTwelveHour: boolean): string {
+const two = (n: number) => String(n).padStart(2, '0');
+
+/** The words for `value` seen from `now`, in the page's language. During render only. */
+export function formatTimestamp(value: LocalDateTime, now: LocalDateTime, format: TimestampFormat, isTwelveHour: boolean): string {
   const [then, present] = [parse(value), parse(now)];
-  const time = locale.time(then.hour, then.minute, isTwelveHour);
-  const date = locale.date(then.year, then.month, then.day, then.year !== present.year);
+  const time = isTwelveHour
+    ? liuliText('@liuli.timestamp.time12', { hour: String(then.hour % 12 || 12), minute: two(then.minute), period: then.hour < 12 ? 'am' : 'pm' })
+    : `${two(then.hour)}:${two(then.minute)}`;
+  const day = { day: String(then.day), monthName: monthName(then.month), year: String(then.year) };
+  const date = then.year !== present.year ? liuliText('@liuli.timestamp.dateWithYear', day) : liuliText('@liuli.timestamp.date', { day: day.day, monthName: day.monthName });
+  const dateTime = (date: string) => liuliText('@liuli.timestamp.dateTime', { date, time });
   if (format === 'time') return time;
   if (format === 'date') return date;
-  if (format === 'date-time') return locale.dateTime(date, time);
+  if (format === 'date-time') return dateTime(date);
   const days = dayNumber(present) - dayNumber(then);
   const minutes = days * 1440 + (present.hour - then.hour) * 60 + (present.minute - then.minute);
-  if (minutes < 0) return locale.dateTime(date, time);
-  if (minutes < 1) return locale.justNow;
-  if (minutes < 60) return locale.minutesAgo(minutes);
-  if (days === 0) return locale.hoursAgo(Math.floor(minutes / 60));
-  if (days === 1) return locale.dateTime(locale.yesterday, time);
+  if (minutes < 0) return dateTime(date);
+  if (minutes < 1) return liuliText('@liuli.timestamp.justNow');
+  if (minutes < 60) return liuliText('@liuli.timestamp.minutesAgo', { minutes });
+  if (days === 0) return liuliText('@liuli.timestamp.hoursAgo', { hours: Math.floor(minutes / 60) });
+  if (days === 1) return dateTime(liuliText('@liuli.timestamp.yesterday'));
   return date;
 }
 
 /** When something happened, in the words people use for it. Read in full: the date and the time. */
-export function Timestamp({ value, now, locale, format = 'relative', className, 'data-testid': testId }: TimestampProps) {
+export function Timestamp({ value, now, format = 'relative', className, 'data-testid': testId }: TimestampProps) {
   const isTwelveHour = useView().env.hourCycle === 'h12';
-  const shown = formatTimestamp(value, now, locale, format, isTwelveHour);
-  const full = formatTimestamp(value, now, locale, 'date-time', isTwelveHour);
+  const shown = formatTimestamp(value, now, format, isTwelveHour);
+  const full = formatTimestamp(value, now, 'date-time', isTwelveHour);
   return (
     <text data-testid={testId} aria-label={shown === full ? undefined : full} className={cx(r.root.base, className)}>
       {shown}

@@ -1,5 +1,6 @@
-import { type Child } from '@lingxia/view';
+import { t, type Child } from '@lingxia/view';
 import '../../theme/index.css';
+import { said } from '../../shared/lib/said';
 import { Button, Card, ErrorState, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
 
@@ -94,25 +95,25 @@ function Capture({ data, actions }: Pane) {
   const scan = data.mediaType === 'scanCode';
   return (
     <Page
-      intro={scan ? 'Scan QR codes and barcodes using camera or album' : 'Capture photo or video and save to device album'}
+      intro={scan ? t('media.scanIntro') : t('media.captureIntro')}
     >
       {scan ? (
         <view className="gap-4">
           <Card className="divide-y divide-line">
             <Setting
               testId="media-openScanSourcePicker"
-              label="Source"
-              value={data.scanOnlyCamera ? 'Camera' : 'Camera & Album'}
+              label={t('media.source')}
+              value={data.scanOnlyCamera ? t('media.camera') : t('media.cameraAlbum')}
               onClick={() => actions.openScanSourcePicker()}
             />
             <Setting
               testId="media-openScanTypePicker"
-              label="Scan Type"
+              label={t('media.scanType')}
               value={String(data.scanTypeKey || 'all')}
               onClick={() => actions.openScanTypePicker()}
             />
           </Card>
-          <Section title="Scan Result">
+          <Section title={t('media.scanResult')}>
             <text
               data-testid="media-scan-result"
               className={
@@ -121,19 +122,19 @@ function Capture({ data, actions }: Pane) {
                   : 'min-h-32 px-4 py-3 rounded-xl border border-line bg-surface-sunken font-mono break-all text-muted'
               }
             >
-              {String(data.scanResult || 'No result yet')}
+              {String(data.scanResult || t('media.noResult'))}
             </text>
-            <InfoRow label="Type" value={data.scanType} testId="media-scan-type" />
+            <InfoRow label={t('media.type')} value={data.scanType} testId="media-scan-type" />
             <Button testId="media-startScan" disabled={!!data.scanBusy} onClick={() => actions.startScan()}>
-              {data.scanBusy ? 'Scanning...' : 'Start Scan'}
+              {data.scanBusy ? t('media.scanning') : t('media.startScan')}
             </Button>
           </Section>
         </view>
       ) : (
-        <Section title="Capture" description="Capture photo or video, then save to album. Check your device album to view saved media.">
+        <Section title={t('media.capture')} description={t('media.capturePhotoOrVideo')}>
           <view className="grid gap-3 grid-cols-2">
             <Button testId="media-captureImageForAlbum" disabled={!!data.saveToAlbumBusy} onClick={() => actions.captureImageForAlbum()}>
-              {data.saveToAlbumBusy ? 'Saving...' : 'Capture Image'}
+              {data.saveToAlbumBusy ? t('media.saving') : t('media.captureImage')}
             </Button>
             <Button
               variant="secondary"
@@ -141,7 +142,7 @@ function Capture({ data, actions }: Pane) {
               disabled={!!data.saveToAlbumBusy}
               onClick={() => actions.captureVideoForAlbum()}
             >
-              {data.saveToAlbumBusy ? 'Saving...' : 'Capture Video'}
+              {data.saveToAlbumBusy ? t('media.saving') : t('media.captureVideo')}
             </Button>
           </view>
         </Section>
@@ -154,10 +155,10 @@ function ImageSummary({ title, info, prefix }: { title: string; info: Data; pref
   return (
     <Section title={title}>
       <InfoList>
-        <InfoRow label="Width" value={info.width || 0} testId={`${prefix}-width`} />
-        <InfoRow label="Height" value={info.height || 0} testId={`${prefix}-height`} />
-        <InfoRow label="Type" value={info.type} testId={`${prefix}-type`} />
-        <InfoRow label="File Size" value={fileSize(info.size)} testId={`${prefix}-size`} />
+        <InfoRow label={t('media.width')} value={info.width || 0} testId={`${prefix}-width`} />
+        <InfoRow label={t('media.height')} value={info.height || 0} testId={`${prefix}-height`} />
+        <InfoRow label={t('media.type')} value={info.type} testId={`${prefix}-type`} />
+        <InfoRow label={t('media.fileSize')} value={fileSize(info.size)} testId={`${prefix}-size`} />
       </InfoList>
       {!!info.path && <Path value={info.path} testId={`${prefix}-path`} />}
     </Section>
@@ -168,27 +169,27 @@ function ImageTools({ data, actions }: Pane) {
   const source = data.imageInfoResult as Data | null;
   const result = data.compressResult as Data | null;
   return (
-    <Page intro="lx.media.imageInfo and lx.media.compressImage: inspect an image and make a compressed copy">
+    <Page intro={t('media.lxMediaImageinfoAnd')}>
       <Button testId="media-pickImageForInfo" disabled={!!data.imageInfoBusy} onClick={() => actions.pickImageForInfo()}>
-        {data.imageInfoBusy ? 'Getting Info...' : 'Pick Image'}
+        {data.imageInfoBusy ? t('media.gettingInfo') : t('media.pickImage')}
       </Button>
       <ErrorState testId="media-imageInfoError" error={data.imageInfoError ? String(data.imageInfoError) : null} />
       {!!source && (
         <view className="gap-4">
-          <ImageSummary title="Source Image" info={source} prefix="media-imageInfoResult" />
-          <Section title="Compress">
+          <ImageSummary title={t('media.sourceImage')} info={source} prefix="media-imageInfoResult" />
+          <Section title={t('media.compress')}>
             <Inputs
               data={data}
               actions={actions}
               columns={3}
               fields={[
-                ['compressQuality', 'Quality', 'onCompressQualityInput', ''],
-                ['compressedWidth', 'Width', 'onCompressedWidthInput', String(source.width || '')],
-                ['compressedHeight', 'Height', 'onCompressedHeightInput', String(source.height || '')],
+                ['compressQuality', t('media.quality'), 'onCompressQualityInput', ''],
+                ['compressedWidth', t('media.width'), 'onCompressedWidthInput', String(source.width || '')],
+                ['compressedHeight', t('media.height'), 'onCompressedHeightInput', String(source.height || '')],
               ]}
             />
             <Button testId="media-compressSelectedImage" disabled={!!data.compressing} onClick={() => actions.compressSelectedImage()}>
-              {data.compressing ? 'Compressing...' : 'Compress Image'}
+              {data.compressing ? t('media.compressing') : t('media.compressImage')}
             </Button>
             <ErrorState testId="media-compressError" error={data.compressError ? String(data.compressError) : null} />
           </Section>
@@ -196,9 +197,9 @@ function ImageTools({ data, actions }: Pane) {
       )}
       {!!result && (
         <view className="gap-4">
-          <ImageSummary title="Compressed Image" info={result} prefix="media-compressResult" />
+          <ImageSummary title={t('media.compressedImage')} info={result} prefix="media-compressResult" />
           <Button variant="secondary" testId="media-previewCompressedImage" onClick={() => actions.previewCompressedImage()}>
-            Preview Image
+            {t('media.previewImage')}
           </Button>
         </view>
       )}
@@ -227,98 +228,98 @@ function VideoTools({ data, actions }: Pane) {
   const progress = Math.max(0, Math.min(100, Number(data.videoCompressProgress) || 0));
   const ratio = thumb ? Number(thumb.width || 1) / Math.max(1, Number(thumb.height || 1)) : 1;
   return (
-    <Page intro="lx.media.videoInfo, lx.media.videoThumbnail and lx.media.compressVideo">
+    <Page intro={t('media.lxMediaVideoinfoLx')}>
       <Button testId="media-pickVideoForTools" disabled={!!data.thumbnailBusy || !!data.videoInfoBusy} onClick={() => actions.pickVideoForTools()}>
-        {data.thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video'}
+        {data.thumbnailVideoPath ? t('media.pickAnother') : t('media.pickVideo')}
       </Button>
       {!!data.thumbnailVideoPath && <Path value={String(data.thumbnailVideoPath)} />}
       <ErrorState testId="media-videoInfoError" error={data.videoInfoError ? String(data.videoInfoError) : null} />
       {!!info && (
         <Facts
-          title="Upload Preflight Metadata"
+          title={t('media.uploadPreflightMetadata')}
           rows={[
-            ['File Size', fileSize(info.size), 'media-videoInfoResult-size'],
-            ['Resolution', dimensions(info), 'media-videoInfoResult-resolution'],
-            ['Duration', seconds(info.durationMs), 'media-videoInfoResult-durationMs'],
-            ['Rotation', info.rotation],
-            ['Bitrate', info.bitrate > 0 ? `${Math.round(info.bitrate / 100) / 10} kbps` : '--'],
+            [t('media.fileSize'), fileSize(info.size), 'media-videoInfoResult-size'],
+            [t('media.resolution'), dimensions(info), 'media-videoInfoResult-resolution'],
+            [t('media.duration'), seconds(info.durationMs), 'media-videoInfoResult-durationMs'],
+            [t('media.rotation'), info.rotation],
+            [t('media.bitrate'), info.bitrate > 0 ? `${Math.round(info.bitrate / 100) / 10} kbps` : '--'],
             ['FPS', info.fps],
-            ['Container MIME', info.type || 'Not reported'],
-            ['Video Codec', info.videoCodec || 'Not reported'],
-            ['Has Audio', info.hasAudio == null ? 'Not reported' : info.hasAudio ? 'Yes' : 'No'],
-            ['Audio Codec', info.hasAudio === false ? 'N/A' : info.audioCodec || 'Not reported'],
+            [t('media.container'), info.type || t('media.notReported')],
+            [t('media.videoCodec'), info.videoCodec || t('media.notReported')],
+            [t('media.hasAudio'), info.hasAudio == null ? t('media.notReported') : info.hasAudio ? t('common.yes') : t('common.no')],
+            [t('media.audioCodec'), info.hasAudio === false ? 'N/A' : info.audioCodec || t('media.notReported')],
           ]}
         >
           <text className="text-[11px] text-muted">
-            Track metadata is best-effort. The receiving service must validate uploaded bytes.
+            {t('media.trackMetadataIsBest')}
           </text>
           <Path value={String(info.path || '')} />
         </Facts>
       )}
       {!!source && (
         <Facts
-          title="Source Video"
+          title={t('media.sourceVideo')}
           rows={[
-            ['Resolution', dimensions(source)],
-            ['Duration', seconds(source.durationMs)],
+            [t('media.resolution'), dimensions(source)],
+            [t('media.duration'), seconds(source.durationMs)],
             ['Type', source.type],
           ]}
         />
       )}
       <Section
-        title="Thumbnail"
-        description="Time 0 is the first frame. Empty sizes keep the source size; thumbnails scale proportionally and never crop."
+        title={t('media.thumbnail')}
+        description={t('media.time0IsThe')}
       >
         <Inputs
           data={data}
           actions={actions}
           fields={[
-            ['thumbnailQuality', 'Quality', 'onThumbnailQualityInput', '80'],
-            ['thumbnailTimeMs', 'Time (ms)', 'onThumbnailTimeInput', '0'],
-            ['thumbnailMaxWidth', 'Max Width (px)', 'onThumbnailMaxWidthInput', source?.width ? `e.g. ${source.width}` : 'leave empty'],
-            ['thumbnailMaxHeight', 'Max Height (px)', 'onThumbnailMaxHeightInput', source?.height ? `e.g. ${source.height}` : 'leave empty'],
+            ['thumbnailQuality', t('media.quality'), 'onThumbnailQualityInput', '80'],
+            ['thumbnailTimeMs', t('media.timeMs'), 'onThumbnailTimeInput', '0'],
+            ['thumbnailMaxWidth', t('media.maxWidth'), 'onThumbnailMaxWidthInput', source?.width ? t('media.example', { value: source.width }) : t('media.leaveEmpty')],
+            ['thumbnailMaxHeight', t('media.maxHeight'), 'onThumbnailMaxHeightInput', source?.height ? t('media.example', { value: source.height }) : t('media.leaveEmpty')],
           ]}
         />
         <Button testId="media-createVideoThumbnail" disabled={!!data.thumbnailBusy} onClick={() => actions.createVideoThumbnail()}>
-          {data.thumbnailBusy ? 'Generating...' : 'Generate Thumbnail'}
+          {data.thumbnailBusy ? t('media.generating') : t('media.generateThumbnail')}
         </Button>
         <ErrorState testId="media-thumbnailError" error={data.thumbnailError ? String(data.thumbnailError) : null} />
       </Section>
       {!!thumb?.path && (
         <Facts
-          title="Thumbnail Result"
+          title={t('media.thumbnailResult')}
           rows={[
-            ['Width', `${thumb.width ?? '--'} px`, 'media-thumbnailResult-width'],
-            ['Height', `${thumb.height ?? '--'} px`, 'media-thumbnailResult-height'],
+            [t('media.width'), `${thumb.width ?? '--'} px`, 'media-thumbnailResult-width'],
+            [t('media.height'), `${thumb.height ?? '--'} px`, 'media-thumbnailResult-height'],
             ['Type', thumb.type],
           ]}
         >
           <image
             data-testid="media-thumbnail-image"
             src={String(thumb.path)}
-            alt="Thumbnail of the selected video"
+            alt={t('media.thumbnailAlt')}
             className="w-full rounded-lg border border-line bg-text/5 object-contain"
             style={{ height: 280 / Math.max(0.25, ratio) }}
           />
           <Path value={String(thumb.path)} />
           <Button testId="media-previewVideoThumbnail" onClick={() => actions.previewVideoThumbnail()}>
-            Preview Thumbnail
+            {t('media.previewThumbnail')}
           </Button>
         </Facts>
       )}
-      <Section title="Compress Video" description="Quality low, medium or high overrides bitrate (kbps), FPS and resolution ratio (0, 1].">
+      <Section title={t('media.compressVideo')} description={t('media.qualityLowMediumOr')}>
         <Inputs
           data={data}
           actions={actions}
           fields={[
-            ['videoCompressQuality', 'Quality', 'onVideoCompressQualityInput', 'medium'],
-            ['videoCompressBitrate', 'Bitrate (kbps)', 'onVideoCompressBitrateInput', '1200'],
+            ['videoCompressQuality', t('media.quality'), 'onVideoCompressQualityInput', 'medium'],
+            ['videoCompressBitrate', t('media.bitrateKbps'), 'onVideoCompressBitrateInput', '1200'],
             ['videoCompressFps', 'FPS', 'onVideoCompressFpsInput', '30'],
-            ['videoCompressResolution', 'Resolution Ratio', 'onVideoCompressResolutionInput', '0.8'],
+            ['videoCompressResolution', t('media.resolutionRatio'), 'onVideoCompressResolutionInput', '0.8'],
           ]}
         />
         <Button testId="media-compressSelectedVideo" disabled={!!data.videoCompressBusy} onClick={() => actions.compressSelectedVideo()}>
-          {data.videoCompressBusy ? `Compressing...${typeof data.videoCompressProgress === 'number' ? ` ${progress}%` : ''}` : 'Compress Video'}
+          {data.videoCompressBusy ? typeof data.videoCompressProgress === 'number' ? t('media.compressingPercent', { progress }) : t('media.compressing') : t('media.compressVideo')}
         </Button>
         {!!data.videoCompressBusy && (
           <view className="gap-3">
@@ -326,7 +327,7 @@ function VideoTools({ data, actions }: Pane) {
               <view className="h-2 rounded-full bg-success" style={{ width: `${progress}%` }} />
             </view>
             <Button variant="secondary" testId="media-cancelVideoCompress" onClick={() => actions.cancelVideoCompress()}>
-              Cancel
+              {t('media.cancel')}
             </Button>
           </view>
         )}
@@ -334,17 +335,17 @@ function VideoTools({ data, actions }: Pane) {
       </Section>
       {!!result?.path && (
         <Facts
-          title="Compressed Video"
+          title={t('media.compressedVideo')}
           rows={[
-            ['Resolution', dimensions(result), 'media-videoCompressResult-resolution'],
-            ['Duration', seconds(result.durationMs), 'media-videoCompressResult-durationMs'],
+            [t('media.resolution'), dimensions(result), 'media-videoCompressResult-resolution'],
+            [t('media.duration'), seconds(result.durationMs), 'media-videoCompressResult-durationMs'],
             ['Type', result.type],
-            ['File Size', fileSize(result.size), 'media-videoCompressResult-size'],
+            [t('media.fileSize'), fileSize(result.size), 'media-videoCompressResult-size'],
           ]}
         >
           <Path value={String(result.path)} testId="media-videoCompressResult-path" />
           <Button testId="media-previewCompressedVideo" onClick={() => actions.previewCompressedVideo()}>
-            Preview Compressed Video
+            {t('media.previewCompressedVideo')}
           </Button>
         </Facts>
       )}
@@ -360,11 +361,11 @@ function Gallery({ data, actions }: Pane) {
   const cameraOnly = data.sourceKey === 'camera';
   const limit = cameraOnly ? 1 : Number(data.countLimit ?? data.countKey ?? 9);
   const canAdd = !limit || items.length < limit;
-  const source = ({ album: 'Album', camera: 'Camera', either: 'Album or Camera' } as Record<string, string>)[String(data.sourceKey)] || 'Album';
+  const source = ({ album: t('media.album'), camera: t('media.camera'), either: t('media.albumOrCamera') } as Record<string, string>)[String(data.sourceKey)] || t('media.album');
   const rotate = data.previewRotateKey && data.previewRotateKey !== 'meta' ? `${data.previewRotateKey}°` : 'Meta (Default)';
-  const fit = data.previewObjectFitKey && data.previewObjectFitKey !== 'default' ? String(data.previewObjectFitKey) : 'Default (Optional)';
+  const fit = data.previewObjectFitKey && data.previewObjectFitKey !== 'default' ? String(data.previewObjectFitKey) : t('media.fitDefault');
   const behavior =
-    ({ manual: 'Manual Only', next: 'Auto Next', loop: 'Loop' } as Record<string, string>)[String(data.previewBehaviorKey)] || 'Manual Only';
+    ({ manual: t('media.manual'), next: t('media.autoNext'), loop: t('media.loop') } as Record<string, string>)[String(data.previewBehaviorKey)] || t('media.manual');
   const result = data.previewSessionResult as { reason: string; index: number; source?: { path?: string } } | null;
   const option = (action: string, label: string, id = action) => (
     <Button variant="secondary" size="sm" testId={`media-${id}`} onClick={() => actions[action]()}>
@@ -374,7 +375,7 @@ function Gallery({ data, actions }: Pane) {
   const add = (
     <button
       data-testid="media-launchMediaDemo"
-      aria-label={String(data.addLabel)}
+      aria-label={said(String(data.addLabel))}
       disabled={!!data.isRunning || !canAdd}
       onClick={() => actions.launchMediaDemo()}
       className={
@@ -385,7 +386,7 @@ function Gallery({ data, actions }: Pane) {
     >
       <view className="items-center-safe justify-center gap-2">
         <text className="text-4xl text-accent">+</text>
-        <text className="text-xs font-medium text-accent">{data.isRunning ? 'Opening...' : String(data.addLabel)}</text>
+        <text className="text-xs font-medium text-accent">{data.isRunning ? t('media.opening') : said(String(data.addLabel))}</text>
       </view>
     </button>
   );
@@ -393,13 +394,13 @@ function Gallery({ data, actions }: Pane) {
     <Page intro={String(data.headerSubtitle || 'lx.pick.media / lx.media.preview')}>
       <Card className="divide-y divide-line">
         <Setting
-          label={video ? 'Video Source' : 'Photo Source'}
+          label={video ? t('media.videoSource') : t('media.photoSource')}
           value={source}
           testId="media-openSourcePicker"
           onClick={() => actions.openSourcePicker()}
         />
         <Setting
-          label="Count Limit"
+          label={t('media.countLimit')}
           value={String(limit)}
           testId="media-openCountPicker"
           disabled={cameraOnly}
@@ -407,15 +408,15 @@ function Gallery({ data, actions }: Pane) {
         />
         {video && (
           <Setting
-            label="Camera"
-            value={data.cameraKey === 'front' ? 'Front Camera' : 'Rear Camera'}
+            label={t('media.camera')}
+            value={data.cameraKey === 'front' ? t('media.frontCamera') : t('media.rearCamera')}
             testId="media-openCameraPicker"
             onClick={() => actions.openCameraPicker()}
           />
         )}
         {video && (
           <Setting
-            label="Duration"
+            label={t('media.duration')}
             value={`${data.durationValue || 60} seconds`}
             testId="media-openDurationPicker"
             onClick={() => actions.openDurationPicker()}
@@ -423,8 +424,8 @@ function Gallery({ data, actions }: Pane) {
         )}
       </Card>
       <Section
-        title="Selection"
-        description={String(items.length ? data.previewHint : data.emptyHint)}
+        title={t('media.selection')}
+        description={said(String(items.length ? data.previewHint : data.emptyHint))}
         action={
           limit > 0 ? (
             <text
@@ -435,18 +436,18 @@ function Gallery({ data, actions }: Pane) {
         }
       >
         <view className="grid gap-2 grid-cols-2">
-          {option('openPreviewBehaviorPicker', `Preview Flow: ${behavior}`)}
-          {option('openPreviewRotatePicker', `Preview Rotate: ${rotate}`)}
-          {option('openPreviewObjectFitPicker', `Preview Fit: ${fit}`)}
-          {option('togglePreviewIndexIndicator', `Index Indicator: ${data.previewHideIndexIndicator ? 'Hidden' : 'Auto'}`, 'preview-index')}
+          {option('openPreviewBehaviorPicker', t('media.previewFlow', { value: behavior }))}
+          {option('openPreviewRotatePicker', t('media.previewRotate', { value: rotate }))}
+          {option('openPreviewObjectFitPicker', t('media.previewFit', { value: fit }))}
+          {option('togglePreviewIndexIndicator', t('media.indexIndicator', { value: data.previewHideIndexIndicator ? t('media.hidden') : t('media.auto') }), 'preview-index')}
         </view>
-        <text className="text-[11px] text-muted">`next` advances and finishes on the last item; `loop` wraps back to the first.</text>
+        <text className="text-[11px] text-muted">{t('media.nextAdvancesAndFinishes')}</text>
         {!video && (
           <view className="gap-1">
-            <text className="text-xs font-medium text-muted">Image Duration (ms)</text>
+            <text className="text-xs font-medium text-muted">{t('media.imageDurationMs')}</text>
             <input
               data-testid="media-previewImageDurationMs"
-              aria-label="Image Duration (ms)"
+              aria-label={t('media.imageDurationMs')}
               type="number"
               value={String(data.previewImageDurationMs ?? '2000')}
               onInput={value => actions.onPreviewImageDurationInput({ detail: { value } })}
@@ -459,18 +460,18 @@ function Gallery({ data, actions }: Pane) {
           disabled={!items.length || !!data.previewSessionBusy}
           onClick={() => actions.previewSelectedMedia()}
         >
-          Preview Selection
+          {t('media.previewSelection')}
         </Button>
         {!!data.previewSessionBusy && (
           <Button variant="destructive" size="sm" testId="media-cancelPreviewSession" onClick={() => actions.cancelPreviewSession()}>
-            Cancel Active Preview
+            {t('media.cancelActivePreview')}
           </Button>
         )}
         {!!result && (
           <InfoList>
-            <InfoRow label="Reason" value={result.reason} testId="media-preview-reason" />
-            <InfoRow label="Index" value={result.index} testId="media-preview-index-result" />
-            <InfoRow label="Source" value={result.source?.path} testId="media-preview-source" />
+            <InfoRow label={t('media.reason')} value={result.reason} testId="media-preview-reason" />
+            <InfoRow label={t('media.index')} value={result.index} testId="media-preview-index-result" />
+            <InfoRow label={t('media.source')} value={result.source?.path} testId="media-preview-source" />
           </InfoList>
         )}
         <ErrorState testId="media-previewSessionError" error={data.previewSessionError ? String(data.previewSessionError) : null} />
@@ -481,7 +482,7 @@ function Gallery({ data, actions }: Pane) {
             {items.map((item, index) => (
               <Card key={`${item.path}-${index}`} className="px-4 py-3 gap-1">
                 <text className="text-sm font-semibold">{`Video ${index + 1}`}</text>
-                <text className="text-xs text-muted">Tap Preview for fullscreen playback</text>
+                <text className="text-xs text-muted">{t('media.tapPreviewForFullscreen')}</text>
                 {!!item.displayWidth && !!item.displayHeight && (
                   <text className="text-[11px] text-muted">{`${item.displayWidth} × ${item.displayHeight}`}</text>
                 )}
@@ -496,7 +497,7 @@ function Gallery({ data, actions }: Pane) {
                 <image
                   data-testid={`media-image-${index}`}
                   src={item.path}
-                  alt={`Selected image ${index + 1}`}
+                  alt={t('media.selectedImage', { n: index + 1 })}
                   className="h-32 w-full bg-surface-sunken object-cover"
                 />
                 <text className="px-3 py-3 text-xs font-medium">{`Image ${index + 1}`}</text>

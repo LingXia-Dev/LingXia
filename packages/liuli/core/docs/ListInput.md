@@ -102,9 +102,9 @@ export function Links() {
 | `rowKeys` (required) | `readonly string[]` |  | One stable key per row, in order: an id, never the row's place. The app owns the rows. |
 | `renderRow` (required) | `(index: number) => Child` |  | A row's controls, by its place from 0. Give each control its own label, hidden: "Phone 2". |
 | `onAdd` (required) | `() => void` |  | Adds a row at the end. |
-| `addLabel` (required) | `string` |  | The words on the add button: "Add a phone number". |
+| `addLabel` | `string` |  | The words on the add button: "Add a phone number". Defaults to "Add" in the page's language. |
 | `onRemove` (required) | `(index: number) => void` |  | Takes the row at this place away. |
-| `removeLabel` (required) | `(index: number) => string` |  | Each remove button, named with what it removes: `index => \`Remove phone ${index + 1}\``. |
+| `removeLabel` | `((index: number) => string)` |  | Each remove button, named with what it removes: `index => \`Remove phone ${index + 1}\``. Defaults to "Remove item 2" in the page's language. |
 | `max` | `number` |  | The add button is disabled once there are this many rows. |
 | `min` | `number` | `0` | Rows cannot be removed at or below this many. |
 | `className` | `string` |  |  |

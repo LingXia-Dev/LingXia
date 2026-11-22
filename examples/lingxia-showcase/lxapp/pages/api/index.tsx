@@ -1,4 +1,4 @@
-import { useLocal, type Child, type LinkTarget } from '@lingxia/view';
+import { t, useLocal, type Child, type LinkTarget, type MessageKey } from '@lingxia/view';
 import { Card, Icon, Page, type IconName } from '../../shared/ui';
 import '../../theme/index.css';
 import type { View } from './$types';
@@ -15,96 +15,96 @@ const media = (id: string, type: string, label: string) => entry(`api-media-${id
 export const groups: Group[] = [
   {
     id: 'cloud',
-    label: 'Cloud',
+    label: 'api.group.cloud',
     entries: [
-      entry('api-other-app', 'Open another app', a => a.openOtherApp()),
-      entry('api-cloud-auth', 'Cloud authentication', { page: 'cloud', params: { type: 'auth' } }),
-      entry('api-cloud-mqtt', 'Cloud MQTT', { page: 'cloud', params: { type: 'mqtt' } }),
-      entry('api-cloud-functions', 'Cloud functions', { page: 'cloud', params: { type: 'functions' } }),
+      entry('api-other-app', 'api.otherApp', a => a.openOtherApp()),
+      entry('api-cloud-auth', 'api.cloudAuth', { page: 'cloud', params: { type: 'auth' } }),
+      entry('api-cloud-mqtt', 'api.cloudMqtt', { page: 'cloud', params: { type: 'mqtt' } }),
+      entry('api-cloud-functions', 'api.cloudFunctions', { page: 'cloud', params: { type: 'functions' } }),
     ],
   },
   {
     id: 'bridge',
-    label: 'Bridge',
+    label: 'api.group.bridge',
     entries: [
-      entry('api-stream', 'Stream', { page: 'stream' }, 'Async generator streaming with a chat demo'),
-      entry('api-channel', 'Channel', { page: 'channel' }, 'Bidirectional sessions with a live ticker'),
-      entry('api-bridge', 'Bridge resilience', { page: 'bridge-repro' }, 'Startup, streaming, reconnect and teardown'),
+      entry('api-stream', 'api.stream', { page: 'stream' }, 'api.streamDetail'),
+      entry('api-channel', 'api.channel', { page: 'channel' }, 'api.channelDetail'),
+      entry('api-bridge', 'api.bridge', { page: 'bridge-repro' }, 'api.bridgeDetail'),
     ],
   },
-  { id: 'navigation', label: 'Navigation', entries: [entry('api-deepseek', 'Open DeepSeek', a => a.openDeepSeek())] },
+  { id: 'navigation', label: 'api.group.navigation', entries: [entry('api-deepseek', 'api.deepseek', a => a.openDeepSeek())] },
   {
     id: 'interface',
-    label: 'User Interface',
+    label: 'api.group.interface',
     entries: [
-      ui('navigation', 'Page navigation'),
-      ui('toast', 'Toast'),
-      ui('modal', 'Modal'),
-      ui('navbar', 'Navigation bar'),
-      ui('tabbar', 'Tab bar'),
-      ui('appearance', 'Appearance'),
-      ui('actionsheet', 'Action sheet'),
-      entry('api-surface', 'Surface', { page: 'ui', params: { type: 'surface' } }),
-      entry('api-refresh', 'Pull to refresh', { page: 'pullToRefresh' }),
+      ui('navigation', 'api.uiNavigation'),
+      ui('toast', 'api.uiToast'),
+      ui('modal', 'api.uiModal'),
+      ui('navbar', 'api.uiNavbar'),
+      ui('tabbar', 'api.uiTabbar'),
+      ui('appearance', 'api.uiAppearance'),
+      ui('actionsheet', 'api.uiActionsheet'),
+      entry('api-surface', 'api.surface', { page: 'ui', params: { type: 'surface' } }),
+      entry('api-refresh', 'api.refresh', { page: 'pullToRefresh' }),
     ],
   },
   {
     id: 'system',
-    label: 'System',
+    label: 'api.group.system',
     entries: [
-      entry('api-system-appBaseInfo', 'App information', { page: 'system', params: { type: 'appBaseInfo' } }),
-      entry('api-system-systemSetting', 'System settings', { page: 'system', params: { type: 'systemSetting' } }),
-      entry('api-system-autostart', 'Launch at login', { page: 'system', params: { type: 'autostart' } }, 'Start automatically on macOS or Windows'),
+      entry('api-system-appBaseInfo', 'api.systemAppBaseInfo', { page: 'system', params: { type: 'appBaseInfo' } }),
+      entry('api-system-systemSetting', 'api.systemSystemSetting', { page: 'system', params: { type: 'systemSetting' } }),
+      entry('api-system-autostart', 'api.systemAutostart', { page: 'system', params: { type: 'autostart' } }, 'api.systemAutostartDetail'),
       entry(
         'api-system-notification',
-        'Local notifications',
+        'api.systemNotification',
         { page: 'system', params: { type: 'notification' } },
-        'Post and cancel notifications from the Control app',
+        'api.systemNotificationDetail',
       ),
-      entry('api-system-cache', 'Product cache', { page: 'system', params: { type: 'cache' } }, 'View and clear app caches from the home app'),
+      entry('api-system-cache', 'api.systemCache', { page: 'system', params: { type: 'cache' } }, 'api.systemCacheDetail'),
       {
-        ...entry('api-system-banner', 'Desktop banner', { page: 'system', params: { type: 'banner' } }, 'A corner notification with optional actions'),
+        ...entry('api-system-banner', 'api.systemBanner', { page: 'system', params: { type: 'banner' } }, 'api.systemBannerDetail'),
         desktopOnly: true,
       },
-      entry('api-exit', 'Exit app', a => a.exitApp(), 'Confirm before closing the app'),
+      entry('api-exit', 'api.exit', a => a.exitApp(), 'api.exitDetail'),
     ],
   },
   {
     id: 'device',
-    label: 'Device',
+    label: 'api.group.device',
     entries: [
-      device('device', 'device', 'Device Info'),
-      device('screen', 'screen', 'Screen Info'),
-      device('vibrate', 'vibrate', 'Vibration'),
-      device('phone', 'dial', 'Phone Call'),
-      device('orientation', 'orientation', 'Device Orientation'),
-      device('network', 'networkType', 'Network Type'),
-      device('localIP', 'localIP', 'Local IP Address'),
-      device('networkStatus', 'networkStatus', 'Network Status Listener'),
-      entry('api-wifi', 'WiFi', { page: 'wifi' }),
-      entry('api-share', 'Share', { page: 'share' }, 'Share text, pages, images and files'),
-      entry('api-clipboard', 'Clipboard', { page: 'clipboard' }, 'Copy and paste text and images'),
-      entry('api-leaveguard', 'Leave confirmation', { page: 'leaveGuard' }, 'Ask before discarding unsaved changes'),
+      device('device', 'device', 'api.deviceDevice'),
+      device('screen', 'screen', 'api.deviceScreen'),
+      device('vibrate', 'vibrate', 'api.deviceVibrate'),
+      device('phone', 'dial', 'api.devicePhone'),
+      device('orientation', 'orientation', 'api.deviceOrientation'),
+      device('network', 'networkType', 'api.deviceNetwork'),
+      device('localIP', 'localIP', 'api.deviceLocalIP'),
+      device('networkStatus', 'networkStatus', 'api.deviceNetworkStatus'),
+      entry('api-wifi', 'api.wifi', { page: 'wifi' }),
+      entry('api-share', 'api.share', { page: 'share' }, 'api.shareDetail'),
+      entry('api-clipboard', 'api.clipboard', { page: 'clipboard' }, 'api.clipboardDetail'),
+      entry('api-leaveguard', 'api.leaveguard', { page: 'leaveGuard' }, 'api.leaveguardDetail'),
     ],
   },
   {
     id: 'media',
-    label: 'Media & Camera',
+    label: 'api.group.media',
     entries: [
-      media('Pictures', 'Pictures', 'Pictures'),
-      media('Videos', 'Videos', 'Videos'),
-      media('ScanCode', 'scanCode', 'Scan code'),
-      media('ImageInfo', 'imageInfo', 'Image tools'),
-      media('VideoTools', 'videoTools', 'Video tools'),
-      media('SaveToAlbum', 'saveToAlbum', 'Save to album'),
+      media('Pictures', 'Pictures', 'api.mediaPictures'),
+      media('Videos', 'Videos', 'api.mediaVideos'),
+      media('ScanCode', 'scanCode', 'api.mediaScanCode'),
+      media('ImageInfo', 'imageInfo', 'api.mediaImageInfo'),
+      media('VideoTools', 'videoTools', 'api.mediaVideoTools'),
+      media('SaveToAlbum', 'saveToAlbum', 'api.mediaSaveToAlbum'),
     ],
   },
   {
     id: 'file',
-    label: 'File',
+    label: 'api.group.file',
     entries: [
-      entry('api-file', 'Open file', { page: 'file', params: { section: 'openFile' } }),
-      entry('api-choose-file', 'Choose file', { page: 'file', params: { section: 'chooseFile' } }),
+      entry('api-file', 'api.file', { page: 'file', params: { section: 'openFile' } }),
+      entry('api-choose-file', 'api.chooseFile', { page: 'file', params: { section: 'chooseFile' } }),
     ],
   },
 ];
@@ -128,7 +128,7 @@ export function render({ data, actions, env }: View) {
     <Page testId="api-page">
       <Card className="px-4 py-6 items-center gap-3">
         <Icon name="bolt" className="w-12 h-12 text-accent" />
-        <text className="text-center text-base font-medium line-clamp-3">Explore what you can do with LingXia.</text>
+        <text className="text-center text-base font-medium line-clamp-3">{t('api.intro')}</text>
       </Card>
       {groups
         .filter(group => group.id !== 'cloud' || Boolean(data.cloudAvailable))
@@ -136,12 +136,12 @@ export function render({ data, actions, env }: View) {
           <Card key={group.id} className="">
             <button
               data-testid={`api-${group.id}-section`}
-              aria-label={`${group.label}, ${expanded.value[group.id] ? 'expanded' : 'collapsed'}`}
+              aria-label={t('api.sectionState', { name: t(group.label as MessageKey), state: expanded.value[group.id] ? 'expanded' : 'collapsed' })}
               onClick={() => toggle(group.id)}
               className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
             >
               <view className="flex-row items-center justify-between gap-3">
-                <text className="text-base">{group.label}</text>
+                <text className="text-base">{t(group.label as MessageKey)}</text>
                 <Icon name={group.id} />
               </view>
             </button>
@@ -153,8 +153,8 @@ export function render({ data, actions, env }: View) {
                     <EntryRow key={item.id} item={item} actions={actions}>
                       <view className="flex-row items-center gap-3">
                         <view className="grow basis-0 min-w-0 gap-1">
-                          <text className="text-sm">{item.label}</text>
-                          {item.description && <text className="text-xs text-muted line-clamp-3">{item.description}</text>}
+                          <text className="text-sm">{t(item.label as MessageKey)}</text>
+                          {item.description && <text className="text-xs text-muted line-clamp-3">{t(item.description as MessageKey)}</text>}
                         </view>
                         <Icon name={item.id === 'api-exit' ? 'exit' : 'chevron'} className="w-4 h-4 text-muted" />
                       </view>
@@ -171,7 +171,7 @@ export function render({ data, actions, env }: View) {
           className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
         >
           <view className="flex-row items-center justify-between">
-            <text className="text-base">Location</text>
+            <text className="text-base">{t('api.location')}</text>
             <Icon name="location" />
           </view>
         </link>

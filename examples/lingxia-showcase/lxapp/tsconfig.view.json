@@ -9,6 +9,6 @@
   },
   "files": ["./.lingxia/run-lingxia-gen-types.d.ts"],
   "include": ["pages/**/*.tsx", "shared/**/*.tsx", "shared/**/*.ts", ".lingxia/types/**/*.d.ts", ".lingxia/types/**/$types.ts"],
-  "exclude": ["shared/lib/**", "shared/display-language.ts"],
+  "exclude": ["shared/lib/**"],
   "references": [{ "path": "./tsconfig.logic.json" }]
 }

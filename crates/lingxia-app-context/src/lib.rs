@@ -345,6 +345,17 @@ pub struct AppConfig {
         skip_serializing_if = "BTreeMap::is_empty"
     )]
     pub product_names: BTreeMap<String, String>,
+    /// The languages the product speaks, in preference order: the host's language is one of
+    /// them. Empty reads as [`DEFAULT_LANGUAGES`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
+    /// The host project's own words for SDK strings: language → key → ICU text.
+    #[serde(
+        rename = "sdkText",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub sdk_text: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(rename = "productVersion")]
     pub product_version: String,
 
@@ -825,6 +836,23 @@ pub fn set_app_config(config: AppConfig) -> Result<(), AppContextError> {
             )
         })
         .map(|_| ())
+}
+
+/// What a product speaks when `lingxia.yaml` names no `languages`.
+pub const DEFAULT_LANGUAGES: [&str; 2] = ["en-US", "zh-CN"];
+
+impl AppConfig {
+    /// [`Self::languages`], or the default when none are named.
+    pub fn product_languages(&self) -> Vec<String> {
+        if self.languages.is_empty() {
+            DEFAULT_LANGUAGES
+                .iter()
+                .map(|tag| tag.to_string())
+                .collect()
+        } else {
+            self.languages.clone()
+        }
+    }
 }
 
 pub fn app_config() -> Option<&'static AppConfig> {
@@ -1414,6 +1442,8 @@ mod tests {
         AppConfig {
             product_name: product_name.to_string(),
             product_names: Default::default(),
+            languages: Vec::new(),
+            sdk_text: Default::default(),
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
             lingxia_server: None,

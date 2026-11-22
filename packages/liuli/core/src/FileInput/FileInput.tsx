@@ -1,4 +1,5 @@
 import { cx } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { CircularProgress } from '../CircularProgress/CircularProgress';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { IconButton } from '../IconButton/IconButton';
@@ -22,16 +23,16 @@ export type FileInputProps = FieldOwnProps & {
   files: readonly FileInputFile[];
   /** Opens the app\'s own picker, in Logic. Liuli cannot read files. */
   onPick: () => void;
-  /** The words on the button: "Choose files", "Add a photo". */
-  pickLabel: string;
+  /** The words on the button: "Choose files", "Add a photo". Defaults to "Choose files" in the page's language. */
+  pickLabel?: string;
   /** A line under them: what may be chosen. "PDF or image, up to 25 MB each". */
   hint?: string;
   /** Takes a file out of the list. */
   onRemove: (id: string) => void;
-  /** Each remove button, named with what it removes: `name => \`Remove ${name}\``. */
-  removeLabel: (name: string) => string;
-  /** Each ring, named with what is sending: `name => \`Uploading ${name}\``. */
-  progressLabel: (name: string) => string;
+  /** Each remove button, named with what it removes: `name => \`Remove ${name}\``. Defaults to "Remove <name>" in the page's language. */
+  removeLabel?: (name: string) => string;
+  /** Each ring, named with what is sending: `name => \`Uploading ${name}\``. Defaults to "Uploading <name>" in the page's language. */
+  progressLabel?: (name: string) => string;
   className?: string;
   /** On the button; the list gets `<testid>-files`. */
   'data-testid'?: string;
@@ -39,7 +40,7 @@ export type FileInputProps = FieldOwnProps & {
 
 /** Files the user chose, with a button that opens the app\'s picker. */
 export function FileInput(props: FileInputProps) {
-  const { files, onPick, pickLabel, hint, onRemove, removeLabel, progressLabel, className, 'data-testid': testId, ...field } = props;
+  const { files, onPick, pickLabel = liuliText('@liuli.chooseFiles'), hint, onRemove, removeLabel = (name: string) => liuliText('@liuli.removeNamed', { name }), progressLabel = (name: string) => liuliText('@liuli.uploadingNamed', { name }), className, 'data-testid': testId, ...field } = props;
   const { status, isDisabled = false } = field;
   return (
     <Field {...field} className={className}>

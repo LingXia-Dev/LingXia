@@ -30,6 +30,7 @@ mod resolver;
 mod runner_cache;
 mod runtime;
 mod sdk_cache;
+mod sdk_text;
 mod splash;
 mod state_root;
 mod update;
@@ -256,6 +257,10 @@ enum Commands {
         /// Package ID (e.g., com.example.app)
         #[arg(long)]
         package_id: Option<String>,
+
+        /// Languages the product speaks, comma-separated, first = fallback (default en-US,zh-CN)
+        #[arg(long, value_delimiter = ',')]
+        languages: Vec<String>,
 
         /// Main experience for a native host: lxapp, terminal, browser
         #[arg(long, value_name = "SURFACE")]
@@ -1005,6 +1010,7 @@ fn run() -> Result<()> {
             project_type,
             platform,
             package_id,
+            languages,
             main,
             control,
             icon,
@@ -1018,6 +1024,7 @@ fn run() -> Result<()> {
                 project_type,
                 platform,
                 package_id,
+                languages,
                 main,
                 control,
                 icon,

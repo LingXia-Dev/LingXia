@@ -156,7 +156,7 @@ export function Rail() {
 | `label` (required) | `string` |  | Names the pages for assistive tech: "Photos of the house". |
 | `children` (required) | `Child` |  | The pages, one child each; every page is as wide as the carousel, or `itemWidth`. |
 | `bind` | `Local<number>` |  | A View-local cell holding the page, from 0, to read or set it from outside. |
-| `pageLabel` (required) | `(page: number, count: number) => string` |  | Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. |
+| `pageLabel` | `((page: number, count: number) => string)` |  | Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. |
 | `dots` | `CarouselDots` | `'below'` | `over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe and the buttons. |
 | `itemWidth` | `number` |  | Each item's width in points: a rail of cards, several in view, that stops on each. Without it a page fills the carousel. |
 | `hasButtons` | `boolean` | `false` | Round buttons over the side edges that move a page; with a pointer, where a swipe is not to hand. |

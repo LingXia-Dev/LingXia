@@ -142,7 +142,7 @@ export function ReadOnly() {
 | `value` | `string` |  | The app's value; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  | Runs with the new value; the app passes it back as `value`. |
 | `hasClear` | `boolean` | `false` | A button that empties the text, shown while there is text. |
-| `clearLabel` | `string` |  | The clear button's accessible name; required with `hasClear`. |
+| `clearLabel` | `string` |  | The clear button's accessible name. Defaults to "Clear" in the page's language. |
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
 | `type` | `"email" \| "number" \| "password" \| "search" \| "tel" \| "text"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. |
 | `inputMode` | `"decimal" \| "email" \| "numeric" \| "tel" \| "text"` |  |  |

@@ -191,8 +191,15 @@ pub(crate) fn prepare_configured_host_assets(
         dev,
         &mut cache,
     )?;
-    let app_json =
+    let mut app_json =
         build_app_json_from_config(config, home_bundle.as_ref(), dev_ws_url, resolved_env)?;
+    if let Some(app) = config.app.as_ref()
+        && let Some(text) = crate::sdk_text::load(project_root, &app.product_languages())?
+    {
+        let mut value: serde_json::Value = serde_json::from_str(&app_json)?;
+        value["sdkText"] = text.app_json()?;
+        app_json = serde_json::to_string_pretty(&value)?;
+    }
     let app_json_hash = sha256_hex(app_json.as_bytes());
     let mut common_bundles = home_bundle.into_iter().collect::<Vec<_>>();
     common_bundles.extend(prepare_resource_lxapp_bundles(

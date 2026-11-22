@@ -14,8 +14,8 @@ function runI18n(source, hostLanguage) {
   };
   const window = {
     LingXiaBridge: {
-      displayLanguage: {
-        get: () => hostLanguage.value,
+      host: {
+        get: () => ({ language: hostLanguage.value }),
         subscribe(listener) {
           listeners.add(listener);
           return () => listeners.delete(listener);

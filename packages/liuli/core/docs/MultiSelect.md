@@ -89,8 +89,8 @@ export function Empty() {
 | `onChange` | `((value: readonly string[]) => void)` |  | Runs with the chosen values, in the options' order. |
 | `items` (required) | `readonly MultiSelectOption[]` |  | The choices, in order. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
-| `addLabel` (required) | `string` |  | The name of the button that opens the list: "Add a label". |
-| `removeLabel` (required) | `(label: string) => string` |  | Each token's remove button, named with what it removes: `label => \`Remove ${label}\``. |
+| `addLabel` | `string` |  | The name of the button that opens the list: "Add a label". Defaults to "Add" in the page's language. |
+| `removeLabel` | `((label: string) => string)` |  | Each token's remove button, named with what it removes: `label => \`Remove ${label}\``. Defaults to "Remove <label>" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the box; the add button gets `<testid>-add`, each option `<testid>-<value>`. |
 

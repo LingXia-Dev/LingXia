@@ -387,41 +387,20 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Text the runtime resolves per display language: a string, or an object
-/// with a `default` and language tags (`{ "default": "Profiles", "zh-CN": "节点" }`).
-/// Mirrors `LocalizedText` in `lingxia-lxapp`, so a manifest the runtime would
-/// reject fails here, at build time.
+/// Manifest text: a string, or `{ "message": "<catalogue key>" }`. Mirrors `LocalizedText` in
+/// `lingxia-lxapp`, so a manifest the runtime would reject fails here, at build time; the i18n
+/// check then finds each key in the source catalogue.
 pub(crate) fn validate_localized_text(value: &Value) -> std::result::Result<(), String> {
     match value {
         Value::String(_) => Ok(()),
-        Value::Object(entries) => {
-            if !entries.contains_key("default") {
-                return Err(
-                    "a language map needs a \"default\" entry, shown when no language matches"
-                        .to_string(),
-                );
+        Value::Object(fields) => match (fields.len(), fields.get("message")) {
+            (1, Some(Value::String(key))) if lingxia_i18n::valid_key(key) => Ok(()),
+            (1, Some(Value::String(key))) => {
+                Err(format!("'{key}' is not a catalogue key (write it like \"tab.home\")"))
             }
-            let mut seen: Vec<String> = Vec::new();
-            for (key, text) in entries {
-                if !text.is_string() {
-                    return Err(format!("'{key}': expected a string"));
-                }
-                if key == "default" {
-                    continue;
-                }
-                if key.parse::<language_tags::LanguageTag>().is_err() {
-                    return Err(format!(
-                        "'{key}' is not a language tag (write it like \"zh-CN\")"
-                    ));
-                }
-                if seen.iter().any(|seen| seen.eq_ignore_ascii_case(key)) {
-                    return Err(format!("duplicate language tag '{key}'"));
-                }
-                seen.push(key.to_string());
-            }
-            Ok(())
-        }
-        _ => Err("expected a string, or an object with \"default\" and language tags".to_string()),
+            _ => Err("expected { \"message\": \"<catalogue key>\" }; per-language maps are gone, the text lives in i18n/".to_string()),
+        },
+        _ => Err("expected a string, or { \"message\": \"<catalogue key>\" }".to_string()),
     }
 }
 
@@ -652,16 +631,14 @@ fn non_empty_str(value: Option<&Value>, field: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn localized_text_accepts_a_string_or_a_language_map() {
+    fn localized_text_names_a_catalogue_key() {
         use super::validate_localized_text;
-        assert!(validate_localized_text(&serde_json::json!("Home")).is_ok());
-        let map = |value| validate_localized_text(&value);
-        assert!(map(serde_json::json!({ "default": "Profiles", "zh-CN": "节点" })).is_ok());
-        assert!(map(serde_json::json!({})).is_err());
-        assert!(map(serde_json::json!({ "en-US": "Profiles", "zh-CN": "节点" })).is_err());
-        assert!(map(serde_json::json!({ "default": "a", "en": 1 })).is_err());
-        assert!(map(serde_json::json!({ "default": "a", "zh_cn ": "b" })).is_err());
-        assert!(validate_localized_text(&serde_json::json!(["Home"])).is_err());
+        let check = |value| validate_localized_text(&value);
+        assert!(check(serde_json::json!("Home")).is_ok());
+        assert!(check(serde_json::json!({ "message": "tab.home" })).is_ok());
+        assert!(check(serde_json::json!({ "message": "Home" })).is_err());
+        assert!(check(serde_json::json!({ "default": "Profiles", "zh-CN": "节点" })).is_err());
+        assert!(check(serde_json::json!(["Home"])).is_err());
     }
 
     use super::*;

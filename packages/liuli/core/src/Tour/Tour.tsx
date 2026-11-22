@@ -1,4 +1,5 @@
 import { cx, reveal, useId } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { tourRecipe as r } from './Tour.recipe';
 
@@ -24,16 +25,16 @@ export interface TourProps {
   onChange: (step: number | null) => void;
   /** Runs when the last step\'s button is pressed, before the tour ends. */
   onFinish?: () => void;
-  /** "Next". */
-  nextLabel: string;
-  /** "Back". */
-  backLabel: string;
-  /** "Skip": ends the tour from any step but the last. */
-  skipLabel: string;
-  /** "Done": on the last step. */
-  doneLabel: string;
-  /** Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. */
-  stepLabel: (step: number, count: number) => string;
+  /** "Next". Defaults to "Next" in the page's language. */
+  nextLabel?: string;
+  /** "Back". Defaults to "Back" in the page's language. */
+  backLabel?: string;
+  /** "Skip": ends the tour from any step but the last. Defaults to "Skip" in the page's language. */
+  skipLabel?: string;
+  /** "Done": on the last step. Defaults to "Done" in the page's language. */
+  doneLabel?: string;
+  /** Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. */
+  stepLabel?: (step: number, count: number) => string;
   /** On the callout. */
   'data-testid'?: string;
 }
@@ -42,7 +43,7 @@ const areas = { bottom: 'bottom', top: 'top', end: 'inline-end', start: 'inline-
 const sides = ['bottom', 'top', 'end', 'start'] as const satisfies readonly TourPlacement[];
 
 /** A few callouts, one at a time, each pointing at something on the page. */
-export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel, backLabel, skipLabel, doneLabel, stepLabel, 'data-testid': testId }: TourProps) {
+export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel = liuliText('@liuli.next'), backLabel = liuliText('@liuli.back'), skipLabel = liuliText('@liuli.skip'), doneLabel = liuliText('@liuli.done'), stepLabel = (step: number, count: number) => liuliText('@liuli.stepOf', { step: step + 1, count }), 'data-testid': testId }: TourProps) {
   const id = useId();
   const at = step === null ? null : Math.min(Math.max(0, step), steps.length - 1);
   const current = at === null ? undefined : steps[at];

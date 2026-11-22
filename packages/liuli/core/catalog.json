@@ -891,7 +891,7 @@
           "name": "dismissLabel",
           "type": "string",
           "required": false,
-          "description": "The dismiss button's name: \"Dismiss\"."
+          "description": "The dismiss button's name: \"Dismiss\". Defaults to \"Dismiss\" in the page's language."
         },
         {
           "name": "isCollapsible",
@@ -904,7 +904,7 @@
           "name": "toggleLabel",
           "type": "string",
           "required": false,
-          "description": "The chevron button's name: \"Details\". Read with whether it is open."
+          "description": "The chevron button's name: \"Details\". Read with whether it is open. Defaults to \"Details\" in the page's language."
         },
         {
           "name": "isDefaultOpen",
@@ -2217,7 +2217,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "A month of days in the page, to choose one day or a span",
-      "description": "Calendar draws a month in the page and lets people press a day, or two days for a span: a due date beside its task, the nights of a stay. Days are `YYYY-MM-DD` text. The chosen day is a filled circle, a span is a soft band between its ends, and today is ringed. Its words come from a `locale` object; English and Chinese ones are ready to import. For a date typed into a form, DateInput opens the platform's own picker.",
+      "description": "Calendar draws a month in the page and lets people press a day, or two days for a span: a due date beside its task, the nights of a stay. Days are `YYYY-MM-DD` text. The chosen day is a filled circle, a span is a soft band between its ends, and today is ringed. Its words follow the page's language and its weeks start on the user's first weekday. For a date typed into a form, DateInput opens the platform's own picker.",
       "keywords": [
         "calendar",
         "date picker",
@@ -2252,12 +2252,6 @@
           "type": "string",
           "required": true,
           "description": "Names the calendar for assistive tech: \"Due date\", \"Stay\"."
-        },
-        {
-          "name": "locale",
-          "type": "CalendarLocale",
-          "required": true,
-          "description": ""
         },
         {
           "name": "month",
@@ -2309,44 +2303,6 @@
         }
       ],
       "otherProps": {
-        "CalendarLocale": [
-          {
-            "name": "firstDay",
-            "type": "number",
-            "required": true,
-            "description": "The day a week starts on: 0 for Sunday, 1 for Monday."
-          },
-          {
-            "name": "weekdays",
-            "type": "readonly string[]",
-            "required": true,
-            "description": "Seven short weekday names, Sunday first: \"S\", \"M\", …"
-          },
-          {
-            "name": "monthTitle",
-            "type": "(year: number, month: number) => string",
-            "required": true,
-            "description": "The month's title: \"November 2026\". `month` is 1 to 12."
-          },
-          {
-            "name": "dayLabel",
-            "type": "(year: number, month: number, day: number, weekday: number, isToday: boolean) => string",
-            "required": true,
-            "description": "A day's accessible name: \"Sunday 15 November 2026\", saying so when it is today. `weekday` is 0 for Sunday."
-          },
-          {
-            "name": "previousMonth",
-            "type": "string",
-            "required": true,
-            "description": ""
-          },
-          {
-            "name": "nextMonth",
-            "type": "string",
-            "required": true,
-            "description": ""
-          }
-        ],
         "CalendarRange": [
           {
             "name": "start",
@@ -2455,7 +2411,7 @@
           }
         ],
         "notes": [
-          "Each day is named in full by the locale, \"Thursday 19 November 2026\", with \"Today\" said where it is today, so the weekday row is not read.",
+          "Each day is named in full, \"Thursday 19 November 2026\", with \"Today\" said where it is today, so the weekday row is not read.",
           "A chosen day, both ends of a span and the days between them report selected.",
           "The month's title is a status: moving to another month announces it.",
           "A day that cannot be chosen stays in the grid, dimmed and disabled, so the weeks keep their shape.",
@@ -2466,22 +2422,17 @@
         {
           "name": "Day",
           "title": "One day",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\n\n/** One day: the chosen day is filled, today is ringed. */\nexport function Day() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"Due date\" locale={calendarEn} value={day.value} onChange={day.set} today={today} data-testid=\"due\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** One day: the chosen day is filled, today is ringed. */\nexport function Day() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"Due date\" value={day.value} onChange={day.set} today={today} data-testid=\"due\" />;\n}"
         },
         {
           "name": "Stay",
           "title": "A span of days",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, type CalendarRange } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\n\n/** A span: the first press starts it, the second ends it. Days before today cannot be chosen. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <view className=\"gap-2\">\n      <Calendar label=\"Stay\" locale={calendarEn} isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid=\"stay\" />\n      <text role=\"status\" className=\"px-2 text-footnote text-muted tabular-nums\">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, type CalendarRange } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A span: the first press starts it, the second ends it. Days before today cannot be chosen. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <view className=\"gap-2\">\n      <Calendar label=\"Stay\" isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid=\"stay\" />\n      <text role=\"status\" className=\"px-2 text-footnote text-muted tabular-nums\">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Weekdays",
           "title": "Days ruled out",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\nimport { calendarEn } from './locale/en';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) % 6 === 0;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" locale={calendarEn} value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
-        },
-        {
-          "name": "Chinese",
-          "title": "Another language",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\nimport { calendarZh } from './locale/zh';\n\nconst today = '2026-11-15';\n\n/** Another language: the words and the first day of the week come from the locale. */\nexport function Chinese() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"截止日期\" locale={calendarZh} value={day.value} onChange={day.set} today={today} data-testid=\"zh\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) % 6 === 0;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
         }
       ],
       "gaps": [
@@ -2496,9 +2447,9 @@
           "today": "One month, a month at a time."
         },
         {
-          "missing": "Month and weekday names from the device's own language.",
+          "missing": "Month and weekday names in a language Liuli does not translate.",
           "needs": "date formatting in the View's engine",
-          "today": "The app passes a `locale`."
+          "today": "English and Chinese; an lxapp adds a language by naming `@liuli.monthName` and `@liuli.weekdayName` in its catalogue."
         }
       ],
       "playground": {
@@ -2506,8 +2457,7 @@
           "value": "2026-11-19",
           "label": "Due date",
           "today": "2026-11-15"
-        },
-        "fixture": true
+        }
       },
       "theming": {
         "classProps": [
@@ -2553,10 +2503,6 @@
             {
               "name": "Weekdays",
               "title": "Days the app rules out are dimmed"
-            },
-            {
-              "name": "Chinese",
-              "title": "Words and week start from the locale"
             }
           ]
         }
@@ -2935,9 +2881,9 @@
         },
         {
           "name": "pageLabel",
-          "type": "(page: number, count: number) => string",
-          "required": true,
-          "description": "Each dot's accessible name, written by the app: `(page, count) => \\`Photo ${page + 1} of ${count}\\``."
+          "type": "((page: number, count: number) => string)",
+          "required": false,
+          "description": "Each dot's accessible name, written by the app: `(page, count) => \\`Photo ${page + 1} of ${count}\\``. Defaults to \"2 of 5\" in the page's language."
         },
         {
           "name": "dots",
@@ -4364,8 +4310,8 @@
         {
           "name": "searchLabel",
           "type": "string",
-          "required": true,
-          "description": "The search field's accessible name: \"Search countries\"."
+          "required": false,
+          "description": "The search field's accessible name: \"Search countries\". Defaults to \"Search\" in the page's language."
         },
         {
           "name": "searchPlaceholder",
@@ -4376,8 +4322,8 @@
         {
           "name": "emptyLabel",
           "type": "string",
-          "required": true,
-          "description": "Shown in place of the list when no option matches: \"No country matches\"."
+          "required": false,
+          "description": "Shown in place of the list when no option matches: \"No country matches\". Defaults to \"No matches\" in the page's language."
         },
         {
           "name": "moreLabel",
@@ -4779,8 +4725,8 @@
         {
           "name": "emptyLabel",
           "type": "string",
-          "required": true,
-          "description": "Shown when nothing matches: \"No commands match\"."
+          "required": false,
+          "description": "Shown when nothing matches: \"No commands match\". Defaults to \"No matches\" in the page's language."
         },
         {
           "name": "data-testid",
@@ -4971,7 +4917,7 @@
           "name": "stopLabel",
           "type": "string",
           "required": false,
-          "description": "The stop button's name: \"Stop\"."
+          "description": "The stop button's name: \"Stop\". Defaults to \"Stop\" in the page's language."
         },
         {
           "name": "label",
@@ -4994,8 +4940,8 @@
         {
           "name": "sendLabel",
           "type": "string",
-          "required": true,
-          "description": "The send button\\'s name: \"Send\"."
+          "required": false,
+          "description": "The send button\\'s name: \"Send\". Defaults to \"Send\" in the page's language."
         },
         {
           "name": "isSending",
@@ -5834,12 +5780,6 @@
           "description": "Turns a day into the text the field shows: \"18 Nov\". The app formats dates."
         },
         {
-          "name": "locale",
-          "type": "CalendarLocale",
-          "required": true,
-          "description": "The calendar's words; see Calendar."
-        },
-        {
           "name": "today",
           "type": "string",
           "required": true,
@@ -5988,12 +5928,12 @@
         {
           "name": "Stay",
           "title": "A span of days",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { calendarEn } from '../Calendar/locale/en';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      value={stay.value}\n      onChange={stay.set}\n      format={short}\n      locale={calendarEn}\n      today={today}\n      min={today}\n      closeLabel=\"Close\"\n      data-testid=\"stay\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      value={stay.value}\n      onChange={stay.set}\n      format={short}\n      today={today}\n      min={today}\n      closeLabel=\"Close\"\n      data-testid=\"stay\"\n    />\n  );\n}"
         },
         {
           "name": "Empty",
           "title": "Nothing chosen yet",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { calendarEn } from '../Calendar/locale/en';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      value={leave.value}\n      onChange={leave.set}\n      format={short}\n      locale={calendarEn}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      value={leave.value}\n      onChange={leave.set}\n      format={short}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -6183,14 +6123,14 @@
         {
           "name": "dateLabel",
           "type": "string",
-          "required": true,
-          "description": "The date part's accessible name: \"Start date\"."
+          "required": false,
+          "description": "The date part's accessible name: \"Start date\". Defaults to \"Date\" in the page's language."
         },
         {
           "name": "timeLabel",
           "type": "string",
-          "required": true,
-          "description": "The time part's accessible name: \"Start time\"."
+          "required": false,
+          "description": "The time part's accessible name: \"Start time\". Defaults to \"Time\" in the page's language."
         },
         {
           "name": "minDate",
@@ -8321,8 +8261,8 @@
         {
           "name": "pickLabel",
           "type": "string",
-          "required": true,
-          "description": "The words on the button: \"Choose files\", \"Add a photo\"."
+          "required": false,
+          "description": "The words on the button: \"Choose files\", \"Add a photo\". Defaults to \"Choose files\" in the page's language."
         },
         {
           "name": "hint",
@@ -8338,15 +8278,15 @@
         },
         {
           "name": "removeLabel",
-          "type": "(name: string) => string",
-          "required": true,
-          "description": "Each remove button, named with what it removes: `name => \\`Remove ${name}\\``."
+          "type": "((name: string) => string)",
+          "required": false,
+          "description": "Each remove button, named with what it removes: `name => \\`Remove ${name}\\``. Defaults to \"Remove <name>\" in the page's language."
         },
         {
           "name": "progressLabel",
-          "type": "(name: string) => string",
-          "required": true,
-          "description": "Each ring, named with what is sending: `name => \\`Uploading ${name}\\``."
+          "type": "((name: string) => string)",
+          "required": false,
+          "description": "Each ring, named with what is sending: `name => \\`Uploading ${name}\\``. Defaults to \"Uploading <name>\" in the page's language."
         },
         {
           "name": "className",
@@ -10287,14 +10227,14 @@
         {
           "name": "closeLabel",
           "type": "string",
-          "required": true,
-          "description": "The close button's name: \"Close\"."
+          "required": false,
+          "description": "The close button's name: \"Close\". Defaults to \"Close\" in the page's language."
         },
         {
           "name": "pageLabel",
-          "type": "(page: number, count: number) => string",
-          "required": true,
-          "description": "Where the viewer is, written by the app: `(page, count) => \\`${page + 1} of ${count}\\``. Shown at the top, and each dot's name."
+          "type": "((page: number, count: number) => string)",
+          "required": false,
+          "description": "Where the viewer is, written by the app: `(page, count) => \\`${page + 1} of ${count}\\``. Shown at the top, and each dot's name. Defaults to \"2 of 5\" in the page's language."
         },
         {
           "name": "data-testid",
@@ -10677,8 +10617,8 @@
         {
           "name": "addLabel",
           "type": "string",
-          "required": true,
-          "description": "The words on the add button: \"Add a phone number\"."
+          "required": false,
+          "description": "The words on the add button: \"Add a phone number\". Defaults to \"Add\" in the page's language."
         },
         {
           "name": "onRemove",
@@ -10688,9 +10628,9 @@
         },
         {
           "name": "removeLabel",
-          "type": "(index: number) => string",
-          "required": true,
-          "description": "Each remove button, named with what it removes: `index => \\`Remove phone ${index + 1}\\``."
+          "type": "((index: number) => string)",
+          "required": false,
+          "description": "Each remove button, named with what it removes: `index => \\`Remove phone ${index + 1}\\``. Defaults to \"Remove item 2\" in the page's language."
         },
         {
           "name": "max",
@@ -11764,14 +11704,14 @@
         {
           "name": "addLabel",
           "type": "string",
-          "required": true,
-          "description": "The name of the button that opens the list: \"Add a label\"."
+          "required": false,
+          "description": "The name of the button that opens the list: \"Add a label\". Defaults to \"Add\" in the page's language."
         },
         {
           "name": "removeLabel",
-          "type": "(label: string) => string",
-          "required": true,
-          "description": "Each token's remove button, named with what it removes: `label => \\`Remove ${label}\\``."
+          "type": "((label: string) => string)",
+          "required": false,
+          "description": "Each token's remove button, named with what it removes: `label => \\`Remove ${label}\\``. Defaults to \"Remove <label>\" in the page's language."
         },
         {
           "name": "className",
@@ -12283,14 +12223,14 @@
         {
           "name": "decrementLabel",
           "type": "string",
-          "required": true,
-          "description": "The minus stepper's accessible name: \"Fewer guests\"."
+          "required": false,
+          "description": "The minus stepper's accessible name: \"Fewer guests\". Defaults to \"Decrease\" in the page's language."
         },
         {
           "name": "incrementLabel",
           "type": "string",
-          "required": true,
-          "description": "The plus stepper's accessible name: \"More guests\"."
+          "required": false,
+          "description": "The plus stepper's accessible name: \"More guests\". Defaults to \"Increase\" in the page's language."
         },
         {
           "name": "hasSteppers",
@@ -12598,9 +12538,9 @@
         },
         {
           "name": "pageLabel",
-          "type": "(page: number) => string",
-          "required": true,
-          "description": "Each dot's accessible name, written by the app: `page => \\`Photo ${page + 1}\\``."
+          "type": "((page: number) => string)",
+          "required": false,
+          "description": "Each dot's accessible name, written by the app: `page => \\`Photo ${page + 1}\\``. Defaults to \"Page 2\" in the page's language."
         },
         {
           "name": "tone",
@@ -12795,20 +12735,20 @@
         },
         {
           "name": "pageLabel",
-          "type": "(page: number) => string",
-          "required": true,
-          "description": "A page button's accessible name: `page => \\`Page ${page}\\``."
+          "type": "((page: number) => string)",
+          "required": false,
+          "description": "A page button's accessible name: `page => \\`Page ${page}\\``. Defaults to \"Page 2\" in the page's language."
         },
         {
           "name": "previousLabel",
           "type": "string",
-          "required": true,
+          "required": false,
           "description": ""
         },
         {
           "name": "nextLabel",
           "type": "string",
-          "required": true,
+          "required": false,
           "description": ""
         },
         {
@@ -14071,8 +14011,8 @@
         {
           "name": "clearLabel",
           "type": "string",
-          "required": true,
-          "description": "The clear button's accessible name: \"Clear search\". The button shows while there is text."
+          "required": false,
+          "description": "The clear button's accessible name: \"Clear search\". The button shows while there is text. Defaults to \"Clear search\" in the page's language."
         },
         {
           "name": "resultsLabel",
@@ -15585,8 +15525,8 @@
         {
           "name": "sidebarLabel",
           "type": "string",
-          "required": true,
-          "description": "Names the sidebar for assistive tech: \"Components\"."
+          "required": false,
+          "description": "Names the sidebar for assistive tech: \"Components\". Defaults to \"Sidebar\" in the page's language."
         },
         {
           "name": "contentLabel",
@@ -16060,9 +16000,9 @@
         },
         {
           "name": "stateLabels",
-          "type": "Record<StepState, string>",
-          "required": true,
-          "description": "What a screen reader hears for a step's state: `{ done: 'Done', current: 'Current step', upcoming: 'Not started' }`."
+          "type": "Partial<Record<StepState, string>>",
+          "required": false,
+          "description": "What a screen reader hears for a step's state, instead of Liuli's \"Done\", \"Current step\" and \"Not started\" in the page's language."
         },
         {
           "name": "onChange",
@@ -16190,12 +16130,12 @@
         {
           "name": "Checkout",
           "title": "A task in four steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\nconst states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };\nconst checkout = [\n  { key: 'cart', label: 'Cart', description: 'Three items' },\n  { key: 'address', label: 'Address', description: 'Where to deliver' },\n  { key: 'payment', label: 'Payment', description: 'Card or transfer' },\n  { key: 'review', label: 'Review', description: 'Check and place the order' },\n];\n\n/** A task in four steps: finished steps go back, the button moves on. */\nexport function Checkout() {\n  const at = useLocal('at', 1);\n  return (\n    <view className=\"gap-4\">\n      <Stepper label=\"Checkout steps\" steps={checkout} value={at.value} stateLabels={states} onChange={at.set} data-testid=\"checkout\" />\n      <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant=\"primary\" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid=\"continue\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\nconst checkout = [\n  { key: 'cart', label: 'Cart', description: 'Three items' },\n  { key: 'address', label: 'Address', description: 'Where to deliver' },\n  { key: 'payment', label: 'Payment', description: 'Card or transfer' },\n  { key: 'review', label: 'Review', description: 'Check and place the order' },\n];\n\n/** A task in four steps: finished steps go back, the button moves on. */\nexport function Checkout() {\n  const at = useLocal('at', 1);\n  return (\n    <view className=\"gap-4\">\n      <Stepper label=\"Checkout steps\" steps={checkout} value={at.value} onChange={at.set} data-testid=\"checkout\" />\n      <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant=\"primary\" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid=\"continue\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Across",
           "title": "Across the top of a form",
-          "source": "import { Stepper } from '@liulidesign/core/Stepper';\n\nconst states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };\n\n/** Across the top of a wide form: up to four short labels. */\nexport function Across() {\n  return <Stepper label=\"Sign-up steps\" orientation=\"horizontal\" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} stateLabels={states} data-testid=\"across\" />;\n}"
+          "source": "import { Stepper } from '@liulidesign/core/Stepper';\n\n/** Across the top of a wide form: up to four short labels. */\nexport function Across() {\n  return <Stepper label=\"Sign-up steps\" orientation=\"horizontal\" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} data-testid=\"across\" />;\n}"
         }
       ],
       "gaps": [
@@ -17705,7 +17645,7 @@
           "name": "clearLabel",
           "type": "string",
           "required": false,
-          "description": "The clear button's accessible name; required with `hasClear`."
+          "description": "The clear button's accessible name. Defaults to \"Clear\" in the page's language."
         },
         {
           "name": "placeholder",
@@ -18778,7 +18718,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "When something happened, in the words people use",
-      "description": "Timestamp writes a moment as people say it: \"12 minutes ago\" for today, \"Yesterday, 18:30\", then the date, with the year only when it is another year. It takes the moment and the present as local date-times from the app, and its words from a locale: Liuli ships English and Chinese, and an app can pass its own. The time follows the user's 12- or 24-hour clock.",
+      "description": "Timestamp writes a moment as people say it: \"12 minutes ago\" for today, \"Yesterday, 18:30\", then the date, with the year only when it is another year. It takes the moment and the present as local date-times from the app, in the page's language: Liuli ships English and Chinese, and an lxapp changes a phrase by naming its `@liuli.timestamp.*` key. The time follows the user's 12- or 24-hour clock.",
       "keywords": [
         "timestamp",
         "time",
@@ -18799,12 +18739,6 @@
           "type": "string",
           "required": true,
           "description": "The present, in the same form. The app passes it and refreshes it; Liuli has no clock."
-        },
-        {
-          "name": "locale",
-          "type": "TimestampLocale",
-          "required": true,
-          "description": ""
         },
         {
           "name": "format",
@@ -18856,30 +18790,24 @@
         {
           "name": "Activity",
           "title": "An activity list",
-          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampEn } from './locale/en';\n\nconst now = '2026-11-14T10:05';\nconst activity = [\n  { who: 'Ana Lima', what: 'commented on Trip to the coast', when: '2026-11-14T10:05' },\n  { who: 'Kai Chen', what: 'shared Reading list with you', when: '2026-11-14T09:42' },\n  { who: 'Mira Patel', what: 'edited Ideas for the garden', when: '2026-11-14T07:10' },\n  { who: 'Sam Ortiz', what: 'archived Gift list', when: '2026-11-13T18:30' },\n  { who: 'Tomás Reis', what: 'joined the workspace', when: '2026-11-02T11:15' },\n  { who: 'Ana Lima', what: 'created the workspace', when: '2025-12-19T16:00' },\n] as const;\n\n/** An activity list: how long ago for today, then yesterday, then the date. */\nexport function Activity() {\n  return (\n    <view className=\"gap-3\">\n      {activity.map((entry, index) => (\n        <view key={entry.when + entry.who} className=\"flex-row items-center gap-3\">\n          <Avatar name={entry.who} size=\"sm\" isDecorative />\n          <view className=\"grow basis-0 min-w-0 gap-0.5\">\n            <text className=\"text-body text-text\">{`${entry.who} ${entry.what}`}</text>\n            <Timestamp value={entry.when} now={now} locale={timestampEn} className=\"text-footnote text-muted\" data-testid={`when-${index}`} />\n          </view>\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { Timestamp } from '@liulidesign/core/Timestamp';\n\nconst now = '2026-11-14T10:05';\nconst activity = [\n  { who: 'Ana Lima', what: 'commented on Trip to the coast', when: '2026-11-14T10:05' },\n  { who: 'Kai Chen', what: 'shared Reading list with you', when: '2026-11-14T09:42' },\n  { who: 'Mira Patel', what: 'edited Ideas for the garden', when: '2026-11-14T07:10' },\n  { who: 'Sam Ortiz', what: 'archived Gift list', when: '2026-11-13T18:30' },\n  { who: 'Tomás Reis', what: 'joined the workspace', when: '2026-11-02T11:15' },\n  { who: 'Ana Lima', what: 'created the workspace', when: '2025-12-19T16:00' },\n] as const;\n\n/** An activity list: how long ago for today, then yesterday, then the date. */\nexport function Activity() {\n  return (\n    <view className=\"gap-3\">\n      {activity.map((entry, index) => (\n        <view key={entry.when + entry.who} className=\"flex-row items-center gap-3\">\n          <Avatar name={entry.who} size=\"sm\" isDecorative />\n          <view className=\"grow basis-0 min-w-0 gap-0.5\">\n            <text className=\"text-body text-text\">{`${entry.who} ${entry.what}`}</text>\n            <Timestamp value={entry.when} now={now} className=\"text-footnote text-muted\" data-testid={`when-${index}`} />\n          </view>\n        </view>\n      ))}\n    </view>\n  );\n}"
         },
         {
           "name": "Formats",
           "title": "The four forms",
-          "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampEn } from './locale/en';\n\nconst now = '2026-11-14T10:05';\n\n/** The same moment in each form. */\nexport function Formats() {\n  const value = '2026-11-13T18:30';\n  return (\n    <view className=\"gap-2\">\n      {(['relative', 'date', 'time', 'date-time'] as const).map(format => (\n        <view key={format} className=\"flex-row items-baseline justify-between gap-4\">\n          <text className=\"text-footnote text-muted\">{format}</text>\n          <Timestamp value={value} now={now} locale={timestampEn} format={format} className=\"text-body text-text\" data-testid={`format-${format}`} />\n        </view>\n      ))}\n    </view>\n  );\n}"
-        },
-        {
-          "name": "Chinese",
-          "title": "In Chinese",
-          "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\nimport { timestampZh } from './locale/zh';\n\nconst now = '2026-11-14T10:05';\n\n/** In Chinese, from the locale module Liuli ships. */\nexport function Chinese() {\n  return (\n    <view className=\"gap-2\">\n      <Timestamp value=\"2026-11-14T09:42\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-today\" />\n      <Timestamp value=\"2026-11-13T18:30\" now={now} locale={timestampZh} className=\"text-body text-text\" />\n      <Timestamp value=\"2025-12-19T16:00\" now={now} locale={timestampZh} className=\"text-body text-text\" data-testid=\"zh-year\" />\n    </view>\n  );\n}"
+          "source": "import { Timestamp } from '@liulidesign/core/Timestamp';\n\nconst now = '2026-11-14T10:05';\n\n/** The same moment in each form. */\nexport function Formats() {\n  const value = '2026-11-13T18:30';\n  return (\n    <view className=\"gap-2\">\n      {(['relative', 'date', 'time', 'date-time'] as const).map(format => (\n        <view key={format} className=\"flex-row items-baseline justify-between gap-4\">\n          <text className=\"text-footnote text-muted\">{format}</text>\n          <Timestamp value={value} now={now} format={format} className=\"text-body text-text\" data-testid={`format-${format}`} />\n        </view>\n      ))}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
       "limits": [
         "There is no clock and no time zone in the View: the app passes `now` and local date-times.",
-        "Words come from a locale module, not from the system; two locales ship."
+        "Words follow the page's language; Liuli ships English and Chinese."
       ],
       "playground": {
         "props": {
           "value": "2026-11-14T09:42",
           "now": "2026-11-14T10:05"
-        },
-        "fixture": true
+        }
       },
       "theming": {
         "classProps": [
@@ -18908,10 +18836,6 @@
             {
               "name": "Formats",
               "title": "Relative, date, time, and date with time"
-            },
-            {
-              "name": "Chinese",
-              "title": "From the Chinese locale module"
             }
           ]
         }
@@ -19411,7 +19335,7 @@
           "name": "removeLabel",
           "type": "string",
           "required": false,
-          "description": "The remove button's name, with what it removes: \"Remove Ana Lima\"."
+          "description": "The remove button's name, with what it removes: \"Remove Ana Lima\". Defaults to \"Remove <label>\" in the page's language."
         },
         {
           "name": "label",
@@ -19994,32 +19918,32 @@
         {
           "name": "nextLabel",
           "type": "string",
-          "required": true,
-          "description": "\"Next\"."
+          "required": false,
+          "description": "\"Next\". Defaults to \"Next\" in the page's language."
         },
         {
           "name": "backLabel",
           "type": "string",
-          "required": true,
-          "description": "\"Back\"."
+          "required": false,
+          "description": "\"Back\". Defaults to \"Back\" in the page's language."
         },
         {
           "name": "skipLabel",
           "type": "string",
-          "required": true,
-          "description": "\"Skip\": ends the tour from any step but the last."
+          "required": false,
+          "description": "\"Skip\": ends the tour from any step but the last. Defaults to \"Skip\" in the page's language."
         },
         {
           "name": "doneLabel",
           "type": "string",
-          "required": true,
-          "description": "\"Done\": on the last step."
+          "required": false,
+          "description": "\"Done\": on the last step. Defaults to \"Done\" in the page's language."
         },
         {
           "name": "stepLabel",
-          "type": "(step: number, count: number) => string",
-          "required": true,
-          "description": "Where the tour is, written by the app: `(step, count) => \\`${step + 1} of ${count}\\``."
+          "type": "((step: number, count: number) => string)",
+          "required": false,
+          "description": "Where the tour is, written by the app: `(step, count) => \\`${step + 1} of ${count}\\``. Defaults to \"2 of 5\" in the page's language."
         },
         {
           "name": "data-testid",
@@ -20401,9 +20325,9 @@
         },
         {
           "name": "labels",
-          "type": "VideoControlsLabels",
-          "required": true,
-          "description": "Every word they show or speak."
+          "type": "Partial<VideoControlsLabels>",
+          "required": false,
+          "description": "Words to use instead of Liuli's, which follow the page's language."
         },
         {
           "name": "variant",
@@ -20640,12 +20564,12 @@
         {
           "name": "Overlay",
           "title": "Over the picture",
-          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** Over the picture: a large play first, then a quiet bar that hides on touch while it plays. */\nexport function Overlay() {\n  const player = useVideo('liuli-controls-overlay');\n  return (\n    <view className=\"relative aspect-video overflow-hidden rounded-xl\">\n      <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      <VideoControls player={player} labels={labels} poster={poster} data-testid=\"overlay-controls\" />\n    </view>\n  );\n}"
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\n\n/** Over the picture: a large play first, then a quiet bar that hides on touch while it plays. */\nexport function Overlay() {\n  const player = useVideo('liuli-controls-overlay');\n  return (\n    <view className=\"relative aspect-video overflow-hidden rounded-xl\">\n      <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      <VideoControls player={player} poster={poster} data-testid=\"overlay-controls\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Bar",
           "title": "As a row under the picture",
-          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** A row under the picture, for a small player or a page that keeps the picture clear. */\nexport function Bar() {\n  const player = useVideo('liuli-controls-bar');\n  return (\n    <view className=\"gap-1\">\n      <view className=\"aspect-video overflow-hidden rounded-xl\">\n        <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      </view>\n      <VideoControls player={player} labels={labels} variant=\"bar\" poster={poster} data-testid=\"bar-controls\" />\n    </view>\n  );\n}"
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoControls } from '@liulidesign/core/VideoControls';\n\nconst clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\n\n/** A row under the picture, for a small player or a page that keeps the picture clear. */\nexport function Bar() {\n  const player = useVideo('liuli-controls-bar');\n  return (\n    <view className=\"gap-1\">\n      <view className=\"aspect-video overflow-hidden rounded-xl\">\n        <video player={player} src={clip} poster={poster} aria-label=\"Big Buck Bunny\" className=\"size-full\" />\n      </view>\n      <VideoControls player={player} variant=\"bar\" poster={poster} data-testid=\"bar-controls\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -20749,9 +20673,9 @@
         },
         {
           "name": "labels",
-          "type": "VideoControlsLabels",
-          "required": true,
-          "description": "Every word the controls show or speak."
+          "type": "Partial<VideoControlsLabels>",
+          "required": false,
+          "description": "Words for the controls to use instead of Liuli's, which follow the page's language."
         },
         {
           "name": "poster",
@@ -20842,12 +20766,12 @@
         {
           "name": "Standard",
           "title": "Controls over the picture",
-          "source": "import { useVideo } from '@lingxia/view';\nimport type { VideoControlsLabels } from '@liulidesign/core/VideoControls';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** The picture with its controls over it; the qualities fill the settings menu. */\nexport function Standard() {\n  const player = useVideo('liuli-player-standard');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" labels={labels} sources={sources} poster={poster} data-testid=\"standard\" />;\n}"
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\n\n/** The picture with its controls over it; the qualities fill the settings menu. */\nexport function Standard() {\n  const player = useVideo('liuli-player-standard');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" sources={sources} poster={poster} data-testid=\"standard\" />;\n}"
         },
         {
           "name": "UnderThePicture",
           "title": "Controls under the picture",
-          "source": "import { useVideo } from '@lingxia/view';\nimport type { VideoControlsLabels } from '@liulidesign/core/VideoControls';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\nconst labels: VideoControlsLabels = {\n  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',\n  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',\n  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',\n  failed: 'This video cannot play right now', retry: 'Retry',\n};\n\n/** The controls in a row under the picture. */\nexport function UnderThePicture() {\n  const player = useVideo('liuli-player-bar');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" labels={labels} src={sources[0].src} poster={poster} variant=\"bar\" data-testid=\"under\" />;\n}"
+          "source": "import { useVideo } from '@lingxia/view';\nimport { VideoPlayer } from '@liulidesign/core/VideoPlayer';\n\nconst sources = [360, 720, 1080].map(height => ({\n  src: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/${height}/Big_Buck_Bunny_${height}_10s_1MB.mp4`,\n  label: `${height}p`,\n}));\nconst poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';\n\n/** The controls in a row under the picture. */\nexport function UnderThePicture() {\n  const player = useVideo('liuli-player-bar');\n  return <VideoPlayer player={player} label=\"Big Buck Bunny\" src={sources[0].src} poster={poster} variant=\"bar\" data-testid=\"under\" />;\n}"
         }
       ],
       "gaps": [],

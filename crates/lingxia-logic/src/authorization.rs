@@ -12,7 +12,8 @@ pub(crate) enum LogicRoute {
     AppExit,
     AppServiceEnv,
     AppSetServiceEnv,
-    AppSetBadge,
+    AppBadgeSet,
+    AppBadgeClear,
     AppCacheSize,
     AppCacheClear,
     AppAppearancePreferenceGet,
@@ -73,7 +74,8 @@ impl LogicRoute {
         Self::AppExit,
         Self::AppServiceEnv,
         Self::AppSetServiceEnv,
-        Self::AppSetBadge,
+        Self::AppBadgeSet,
+        Self::AppBadgeClear,
         Self::AppCacheSize,
         Self::AppCacheClear,
         Self::AppAppearancePreferenceGet,
@@ -143,7 +145,8 @@ impl LogicRoute {
             Self::AppExit
             | Self::AppServiceEnv
             | Self::AppSetServiceEnv
-            | Self::AppSetBadge
+            | Self::AppBadgeSet
+            | Self::AppBadgeClear
             | Self::AppCacheSize
             | Self::AppCacheClear
             | Self::AppAppearancePreferenceGet
@@ -203,15 +206,16 @@ impl LogicRoute {
             Self::AppExit => "lx.host.exit",
             Self::AppServiceEnv => "lx.host.serviceEnv",
             Self::AppSetServiceEnv => "lx.host.setServiceEnv",
-            Self::AppSetBadge => "lx.host.setBadge",
+            Self::AppBadgeSet => "lx.host.badge.set",
+            Self::AppBadgeClear => "lx.host.badge.clear",
             Self::AppCacheSize => "lx.host.cache.size",
             Self::AppCacheClear => "lx.host.cache.clear",
-            Self::AppAppearancePreferenceGet => "lx.host.appearance.preference.get",
-            Self::AppAppearancePreferenceSet => "lx.host.appearance.preference.set",
-            Self::AppAppearancePreferenceWatch => "lx.host.appearance.preference.watch",
-            Self::AppDisplayLanguagePreferenceGet => "lx.host.displayLanguage.preference.get",
-            Self::AppDisplayLanguagePreferenceSet => "lx.host.displayLanguage.preference.set",
-            Self::AppDisplayLanguagePreferenceWatch => "lx.host.displayLanguage.preference.watch",
+            Self::AppAppearancePreferenceGet => "lx.host.appearance.get",
+            Self::AppAppearancePreferenceSet => "lx.host.appearance.set",
+            Self::AppAppearancePreferenceWatch => "lx.host.appearance.watch",
+            Self::AppDisplayLanguagePreferenceGet => "lx.host.displayLanguage.get",
+            Self::AppDisplayLanguagePreferenceSet => "lx.host.displayLanguage.set",
+            Self::AppDisplayLanguagePreferenceWatch => "lx.host.displayLanguage.watch",
             Self::AppCheckUpdate => "lx.host.update.check",
             Self::AppClaimUpdate => "lx.host.update.claim",
             Self::AppApplyUpdate => "lx.host.update.check.apply",
@@ -567,10 +571,9 @@ mod audience_tests {
     /// The badge paints the same product chrome, so it answers to the same gate.
     #[test]
     fn the_badge_route_is_control_app_only() {
-        assert_eq!(
-            LogicRoute::AppSetBadge.audience(),
-            RouteAudience::ControlAppOnly
-        );
+        for route in [LogicRoute::AppBadgeSet, LogicRoute::AppBadgeClear] {
+            assert_eq!(route.audience(), RouteAudience::ControlAppOnly);
+        }
     }
 }
 

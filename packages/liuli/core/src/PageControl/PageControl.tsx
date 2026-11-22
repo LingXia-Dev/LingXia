@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { pageControlRecipe as r } from './PageControl.recipe';
 
 /** `on-media` for dots laid over a picture. */
@@ -24,8 +25,8 @@ export type PageControlProps = PageControlBinding & {
   label: string;
   /** How many pages there are. Past ten or so, show a count in words. */
   count: number;
-  /** Each dot's accessible name, written by the app: `page => \`Photo ${page + 1}\``. */
-  pageLabel: (page: number) => string;
+  /** Each dot's accessible name, written by the app: `page => \`Photo ${page + 1}\``. Defaults to "Page 2" in the page's language. */
+  pageLabel?: (page: number) => string;
   /** @default 'accent' */
   tone?: PageControlTone;
   className?: string;
@@ -35,7 +36,7 @@ export type PageControlProps = PageControlBinding & {
 
 /** Dots that show which page of a few is in view, and go to one when pressed. */
 export function PageControl(props: PageControlProps) {
-  const { label, count, pageLabel, tone = 'accent', className, 'data-testid': testId } = props;
+  const { label, count, pageLabel = (page: number) => liuliText('@liuli.page', { page: page + 1 }), tone = 'accent', className, 'data-testid': testId } = props;
   const raw = props.bind ? props.bind.value : props.value;
   // A bound scroll reports fractions while it moves; the dot follows the nearest page.
   const at = Math.min(Math.max(0, Math.round(raw)), Math.max(0, count - 1));

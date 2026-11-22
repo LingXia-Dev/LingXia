@@ -1,3 +1,4 @@
+import { t } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
@@ -10,35 +11,35 @@ export function render({ data, actions }: View) {
   return (
     <Page
       testId="pull-refresh-page"
-      intro="Pull down on this page to trigger refresh, or use the buttons below to control it programmatically."
+      intro={t('pulltorefresh.pullDownOnThis')}
     >
       <text data-testid="pull-refresh-title" className="text-xs text-muted text-center">
-        Pull down to refresh
+        {t('pulltorefresh.pullDownToRefresh')}
       </text>
-      <Section title="Refresh Status">
+      <Section title={t('pulltorefresh.refreshStatus')}>
         <InfoList>
           <view className="flex-row items-center justify-between gap-3 py-2.5">
-            <text className="text-sm text-muted">Status</text>
+            <text className="text-sm text-muted">{t('pulltorefresh.status')}</text>
             <text data-testid="pull-refresh-status" className={refreshing ? 'text-sm font-medium text-accent' : 'text-sm font-medium text-success'}>
-              {refreshing ? 'Refreshing...' : 'Idle'}
+              {refreshing ? t('refresh.refreshing') : t('refresh.idle')}
             </text>
           </view>
-          <InfoRow label="Refresh Count" value={String(data.refreshCount ?? 0)} testId="pull-refresh-count" />
-          <InfoRow label="Last Refresh" value={data.lastRefreshTime || 'Never'} testId="pull-refresh-time" />
+          <InfoRow label={t('pulltorefresh.refreshCount')} value={String(data.refreshCount ?? 0)} testId="pull-refresh-count" />
+          <InfoRow label={t('pulltorefresh.lastRefresh')} value={data.lastRefreshTime || t('pulltorefresh.never')} testId="pull-refresh-time" />
         </InfoList>
       </Section>
-      <Section title="API Controls" description="Control refresh programmatically">
+      <Section title={t('pulltorefresh.apiControls')} description={t('pulltorefresh.controlRefreshProgrammatically')}>
         <Button testId="pull-refresh-start" disabled={refreshing} onClick={() => actions.startRefresh()}>
           page.refresh()
         </Button>
         <Button variant="secondary" testId="pull-refresh-stop" onClick={() => actions.stopRefresh()}>
-          Finish refresh
+          {t('pulltorefresh.finishRefresh')}
         </Button>
       </Section>
-      <Section title="Sample Rows" description="Scroll the page: a pull refreshes only from the top">
+      <Section title={t('pulltorefresh.sampleRows')} description={t('pulltorefresh.scrollThePageA')}>
         <InfoList>
           {ROWS.map((row) => (
-            <text key={String(row)} data-testid="pull-refresh-row" className="text-sm py-2.5">Row {row}</text>
+            <text key={String(row)} data-testid="pull-refresh-row" className="text-sm py-2.5">{t('video.row', { id: row })}</text>
           ))}
         </InfoList>
       </Section>

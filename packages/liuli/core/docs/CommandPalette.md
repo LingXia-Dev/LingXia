@@ -68,7 +68,7 @@ export function Commands() {
 | `onSelect` (required) | `(id: string) => void` |  | Runs with the chosen item\'s id; the palette then closes. |
 | `onQueryChange` | `((query: string) => void)` |  | Hands filtering to the app: called with the text as it is typed, and `groups` is shown as given. For results fetched from Logic. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in the search line while the app fetches. |
-| `emptyLabel` (required) | `string` |  | Shown when nothing matches: "No commands match". |
+| `emptyLabel` | `string` |  | Shown when nothing matches: "No commands match". Defaults to "No matches" in the page's language. |
 | `data-testid` | `string` |  |  |
 
 ## Anatomy

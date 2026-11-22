@@ -66,7 +66,7 @@ export default definePage({
     officeUrl: "https://example-files.online-convert.com/document/docx/example.docx",
     officeFileType: "docx",
     chooseFileDefaultPath: "",
-    chooseFileStatusText: "Choose a file",
+    chooseFileStatusText: "file.state.choose",
     chooseFileSelectedPath: "",
     chooseFileSelectedType: "",
     isOfficeFetching: false,
@@ -119,7 +119,7 @@ export default definePage({
           });
           if (result.status === 'canceled') {
             page.update(d => {
-              d.chooseFileStatusText = "File selection canceled";
+              d.chooseFileStatusText = "file.state.canceled";
               d.chooseFileSelectedPath = "";
               d.chooseFileSelectedType = "";
             });
@@ -129,19 +129,19 @@ export default definePage({
           const selectedPath = result.file.path;
           const fileType = detectFileTypeFromPath(result.file.name);
           page.update(d => {
-            d.chooseFileStatusText = "File selected";
+            d.chooseFileStatusText = "file.state.selected";
             d.chooseFileSelectedPath = selectedPath;
             d.chooseFileSelectedType = fileType || "unknown";
           });
         } catch (error) {
-          lx.ui.toast(errorMessage(error, "pick.file failed"));
-          page.update(d => { d.chooseFileStatusText = errorMessage(error, "pick.file failed"); });
+          lx.ui.toast(errorMessage(error, lx.app.t('file.pickFailed')));
+          page.update(d => { d.chooseFileStatusText = errorMessage(error, lx.app.t('file.pickFailed')); });
         }
       },
       async openChosenFile() {
         const filePath = page.data.chooseFileSelectedPath;
         if (!filePath) {
-          lx.ui.toast("Choose a file first");
+          lx.ui.toast(lx.app.t('file.chooseFirst'));
           return;
         }
 
@@ -155,17 +155,17 @@ export default definePage({
         const url = page.data.officeUrl?.trim();
         const fileType = page.data.officeFileType?.trim();
         if (!url) {
-          lx.ui.toast("Please enter document URL");
+          lx.ui.toast(lx.app.t('file.enterDocUrl'));
           return;
         }
         if (!fileType) {
-          lx.ui.toast("Please enter file type");
+          lx.ui.toast(lx.app.t('file.enterType'));
           return;
         }
         if (page.data.isOfficeFetching) return;
         page.update(d => {
           d.isOfficeFetching = true;
-          d.officeStatusText = "Fetching document...";
+          d.officeStatusText = lx.app.t('file.fetchingDocument');
         });
         try {
           const response = await fetch(url);
@@ -179,12 +179,12 @@ export default definePage({
           );
           const filePath = userDataFilePath(fileName);
           await lx.fs.write(filePath, { data: buffer, overwrite: true });
-          page.update(d => { d.officeStatusText = `Fetched ${formatBytes(buffer.byteLength)}, opening...`; });
+          page.update(d => { d.officeStatusText = lx.app.t('file.fetchedOpening', { size: formatBytes(buffer.byteLength) }); });
           await lx.openFile(filePath, { mode: "auto" });
-          page.update(d => { d.officeStatusText = `Opened ${filePath}`; });
+          page.update(d => { d.officeStatusText = lx.app.t('file.opened', { path: filePath }); });
         } catch (error) {
-          page.update(d => { d.officeStatusText = errorMessage(error, "Fetch failed"); });
-          lx.ui.toast(errorMessage(error, "Fetch failed"));
+          page.update(d => { d.officeStatusText = errorMessage(error, lx.app.t('file.fetchFailed')); });
+          lx.ui.toast(errorMessage(error, lx.app.t('file.fetchFailed')));
         } finally {
           page.update(d => { d.isOfficeFetching = false; });
         }
@@ -196,7 +196,7 @@ export default definePage({
         page.update(d => {
           d.activeDemo = requestedSection;
           d.chooseFileDefaultPath = lx.fs.userData || "";
-          d.chooseFileStatusText = "Choose a file";
+          d.chooseFileStatusText = "file.state.choose";
           d.isOfficeFetching = false;
           d.officeStatusText = "";
         });

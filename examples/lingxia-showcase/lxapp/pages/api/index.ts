@@ -9,11 +9,11 @@ export default definePage({
     const actions = {
       async openOtherApp() {
         try { await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' }); }
-        catch (error) { await lx.ui.toast(errorMessage(error, 'Unable to open the app. Please try again.')); }
+        catch (error) { await lx.ui.toast(errorMessage(error, lx.app.t('api.openAppFailed'))); }
       },
       async openDeepSeek() {
         const choice = await lx.ui.actionSheet({
-          items: [{ id: 'self', label: 'This window' }, { id: 'aside', label: 'Side panel' }, { id: 'external', label: 'Default browser' }],
+          items: [{ id: 'self', label: lx.app.t('api.openIn.self') }, { id: 'aside', label: lx.app.t('api.openIn.aside') }, { id: 'external', label: lx.app.t('api.openIn.external') }],
         });
         if (choice.status === 'canceled') return;
         try {
@@ -22,11 +22,11 @@ export default definePage({
           else if (choice.id === 'aside') await lx.surface.openUrl(url, { as: 'aside' });
           else await lx.surface.openUrl(url);
         } catch (error) {
-          await lx.ui.toast(errorMessage(error, 'Unable to open the page. Please try again.'));
+          await lx.ui.toast(errorMessage(error, lx.app.t('api.openPageFailed')));
         }
       },
       async exitApp() {
-        const exit = await lx.ui.confirm({ title: 'Exit app', message: 'Close the app now?', tone: 'danger', confirmText: 'Exit', cancelText: 'Cancel' });
+        const exit = await lx.ui.confirm({ title: lx.app.t('api.exit'), message: lx.app.t('api.exitConfirm'), tone: 'danger', confirmText: lx.app.t('api.exitAction'), cancelText: lx.app.t('common.cancel') });
         if (exit) await lx.host.exit();
       },
       async openFeedback() { await openFeedback(); },

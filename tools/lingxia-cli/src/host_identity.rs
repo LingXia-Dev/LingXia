@@ -114,6 +114,24 @@ pub fn validate_product_names(names: &BTreeMap<String, String>) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_languages(languages: &[String]) -> Result<()> {
+    let mut seen = std::collections::HashSet::new();
+    for tag in languages {
+        if tag.eq_ignore_ascii_case("auto") {
+            return Err(anyhow!("app.languages: 'auto' is not a language"));
+        }
+        let invalid = |error: &dyn std::fmt::Display| {
+            anyhow!("app.languages: '{tag}' is not a valid BCP-47 tag: {error}")
+        };
+        let parsed = language_tags::LanguageTag::parse(tag).map_err(|error| invalid(&error))?;
+        parsed.validate().map_err(|error| invalid(&error))?;
+        if !seen.insert(parsed.to_string().to_ascii_lowercase()) {
+            return Err(anyhow!("app.languages lists '{tag}' twice"));
+        }
+    }
+    Ok(())
+}
+
 pub fn missing_app_package_id_error() -> anyhow::Error {
     anyhow!(
         "app.packageId is required. Package ids no longer live on each \

@@ -36,7 +36,7 @@ export function RichTextDemo() {
   const t = useSay();
   return (
     <>
-      {t({ en: '', zh: 'zh' }) ? (
+      {useView().env.language.startsWith('zh') ? (
         <text data-testid="lab-rich-paragraph" className="text-sm leading-relaxed">
           套餐<span className="font-semibold text-text">按月</span>续订，除非你先<span className="bg-surface-sunken font-mono">取消</span>。请在
           <span className="italic line-through text-muted">签署</span>同意之前阅读

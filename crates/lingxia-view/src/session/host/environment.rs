@@ -304,8 +304,12 @@ impl HostEnvironment {
         }
         self.limit_text_scale(env);
         if let Some((_, language, content)) = &self.language {
-            env["displayLanguage"] = language.as_str().into();
-            env["contentLanguage"] = content.as_deref().unwrap_or(language).into();
+            // Until the host narrows it to the lxapp's languages, the page reads the host's.
+            env["language"] = content
+                .as_deref()
+                .filter(|tag| !tag.is_empty())
+                .unwrap_or(language)
+                .into();
         }
         let surface = self.surface.as_ref().map(|s| &s.1);
         if let Some(context) = surface {
@@ -481,9 +485,9 @@ mod tests {
     #[test]
     fn pushes_overlay_the_measured_environment_by_revision() {
         let mut host = HostEnvironment::default();
-        let mut env = json!({"displayLanguage": "en-US"});
+        let mut env = json!({"language": "en-US"});
         host.apply(&mut env);
-        assert_eq!(env, json!({"displayLanguage": "en-US", "canDock": false}));
+        assert_eq!(env, json!({"language": "en-US", "canDock": false}));
 
         let surface = |revision: u64, size: &str, dock: bool| {
             json!({"kind": "surface", "revision": revision,
@@ -502,8 +506,7 @@ mod tests {
         host.apply(&mut env);
         assert_eq!(
             env,
-            json!({"displayLanguage": "zh-Hans-CN", "contentLanguage": "zh-Hans-CN",
-                "sizeClass": "regular", "canDock": true})
+            json!({"language": "zh-Hans-CN", "sizeClass": "regular", "canDock": true})
         );
         assert!(
             host.update(
@@ -512,10 +515,9 @@ mod tests {
             .unwrap()
         );
         host.apply(&mut env);
-        assert_eq!(env["displayLanguage"], "zh-Hans-CN");
         assert_eq!(
-            env["contentLanguage"], "en",
-            "the lxapp's narrowing rides with the language"
+            env["language"], "en",
+            "the page reads the lxapp's narrowing of the host language"
         );
     }
 

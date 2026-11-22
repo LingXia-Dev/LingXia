@@ -14,8 +14,9 @@ const walk = dir => readdirSync(dir).flatMap(name => {
   const path = join(dir, name);
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
-const files = walk(src).filter(path => /\.(tsx?|mjs)$/.test(path));
-const rel = path => relative(core, path);
+const rel = path => relative(core, path).replaceAll('\\', '/');
+// The generated words module holds the catalogue formatter, not component code.
+const files = walk(src).filter(path => /\.(tsx?|mjs)$/.test(path) && rel(path) !== 'src/i18n/words.ts');
 
 const kind = path => {
   const name = basename(path);

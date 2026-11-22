@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "LxMediaSwiper",
-      "zh-CN": "LxMediaSwiper"
-    }
+    "title": { "message": "title.swiper" }
   }
 }

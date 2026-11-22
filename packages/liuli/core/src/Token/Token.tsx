@@ -1,4 +1,5 @@
 import { cx, type Child } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import type { Hue } from '../hue';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
@@ -10,8 +11,8 @@ export type TokenRemove =
   | {
       /** Takes the token away; the app stops rendering it. */
       onRemove: () => void;
-      /** The remove button's name, with what it removes: "Remove Ana Lima". */
-      removeLabel: string;
+      /** The remove button's name, with what it removes: "Remove Ana Lima". Defaults to "Remove <label>" in the page's language. */
+      removeLabel?: string;
     }
   | { onRemove?: never; removeLabel?: never };
 
@@ -45,7 +46,7 @@ export function Token({ label, startIcon, hue, onClick, isSelected = false, size
     </>
   );
   const remove = onRemove !== undefined && (
-    <button aria-label={removeLabel} disabled={isDisabled} onClick={onRemove} data-testid={testId && `${testId}-remove`} className={cx(r.remove.base, r.remove.size[size])}>
+    <button aria-label={removeLabel ?? liuliText('@liuli.removeNamed', { name: label })} disabled={isDisabled} onClick={onRemove} data-testid={testId && `${testId}-remove`} className={cx(r.remove.base, r.remove.size[size])}>
       <Glyph name="close" weight={2.5} className={r.removeIcon.size[size]} />
     </button>
   );

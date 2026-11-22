@@ -117,8 +117,8 @@ export function Sizes() {
 | `min` | `number` |  | The lowest number the steppers reach and the field keeps. |
 | `max` | `number` |  | The highest number the steppers reach and the field keeps. |
 | `step` | `number` | `1` | How much a stepper adds or takes away; its decimals are the number's. |
-| `decrementLabel` (required) | `string` |  | The minus stepper's accessible name: "Fewer guests". |
-| `incrementLabel` (required) | `string` |  | The plus stepper's accessible name: "More guests". |
+| `decrementLabel` | `string` |  | The minus stepper's accessible name: "Fewer guests". Defaults to "Decrease" in the page's language. |
+| `incrementLabel` | `string` |  | The plus stepper's accessible name: "More guests". Defaults to "Increase" in the page's language. |
 | `hasSteppers` | `boolean` | `true` | Leaves the steppers out, for a number people type and never nudge. |
 | `prefix` | `string` |  | Fixed text before the number: a currency sign. Read with the description. |
 | `suffix` | `string` |  | Fixed text after the number: a unit. Read with the description. |

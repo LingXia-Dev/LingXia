@@ -43,7 +43,7 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
     let read = request(serde_json::json!({"read": true})).unwrap();
     assert_eq!(
         read,
-        serde_json::json!({"theme": "dark", "still": true, "contrast": null, "textScale": null, "displayLanguage": "en"})
+        serde_json::json!({"theme": "dark", "still": true, "contrast": null, "textScale": null, "language": "en"})
     );
     assert!(
         last(&host).contains(&"dark true".to_owned()),

@@ -22,6 +22,7 @@ export const LAYERS = {
   update: 1,
   "control-protocol": 1,
   theme: 1,
+  i18n: 1,
   webview: 2,
   platform: 2,
   "windows-contract": 2,

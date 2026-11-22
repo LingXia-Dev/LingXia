@@ -68,41 +68,42 @@ test('capture a host app screenshot into the lxapp sandbox', {
 
 test('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set', 'lx.host.badge.clear'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
+  // Android has no badge surface; HOSTAPP-BADGE-003 covers the refusal.
+  if (!await app.logic.eval(({ lx }) => !!lx.supports('host.badge'))) return;
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
   const painted = await app.logic.eval(async ({ lx }) => {
-    const first = await lx.host.setBadge(12);
-    const cleared = await lx.host.setBadge(null);
+    const first = await lx.host.badge.set(12);
+    const cleared = await lx.host.badge.clear();
     // Clearing an already-clear badge must stay a no-op, not an error.
-    const clearedAgain = await lx.host.setBadge(null);
-    const empty = await lx.host.setBadge('');
-    return [first, cleared, clearedAgain, empty];
+    const clearedAgain = await lx.host.badge.clear();
+    return [first, cleared, clearedAgain];
   });
 
   // Support does not guarantee painting: permission and visible chrome vary.
-  expect(painted.length).toBe(4);
+  expect(painted.length).toBe(3);
   for (const result of painted) {
     expect(typeof result.painted).toBe('boolean');
   }
 });
 
-test('tell a hidden tray from a shown one in what setBadge reports', {
+test('tell a hidden tray from a shown one in what badge.set reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.host.setBadge', 'lx.host.tray.update'],
+  covers: ['lx.host.badge.set', 'lx.host.tray.update'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); lx.host.tray.update({ visible: false }); } catch {} return true;
+      try { await lx.host.badge.clear(); lx.host.tray.update({ visible: false }); } catch {} return true;
     });
   });
 
@@ -110,10 +111,10 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
   // `visible: true`, so "the item took the value" is not "the user can see it".
   // A host without a tray rejects `E_NOT_SUPPORTED`, which reads as not painted.
   const hidden = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.update({ visible: false }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
+    try { lx.host.tray.update({ visible: false }); return (await lx.host.badge.set(4, { surface: 'tray' })).painted; } catch { return false; }
   });
   const shown = await app.logic.eval(async ({ lx }) => {
-    try { lx.host.tray.update({ visible: true }); return (await lx.host.setBadge(4, { surface: 'tray' })).painted; } catch { return false; }
+    try { lx.host.tray.update({ visible: true }); return (await lx.host.badge.set(4, { surface: 'tray' })).painted; } catch { return false; }
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -125,13 +126,13 @@ test('tell a hidden tray from a shown one in what setBadge reports', {
 
 test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   id: 'HOSTAPP-BADGE-003',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
@@ -139,7 +140,7 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   // but declines resolves `painted: false`.
   const outcome = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
-      const value = await lx.host.setBadge(2, { surface: 'tray' });
+      const value = await lx.host.badge.set(2, { surface: 'tray' });
       return { ok: true, value: value.painted ? 'painted' : 'declined' };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -152,7 +153,7 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   const bad = await app.logic.eval(async ({ lx }): Promise<Caught> => {
     try {
       // `dock` is not a surface the typings offer; the probe asks for it on purpose.
-      const value = await (lx.host.setBadge as unknown as (value: number, options: { surface: string }) => Promise<unknown>)(2, { surface: 'dock' });
+      const value = await (lx.host.badge.set as unknown as (value: number, options: { surface: string }) => Promise<unknown>)(2, { surface: 'dock' });
       return { ok: true, value };
     } catch (error) {
       const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -163,21 +164,22 @@ test('reject a surface this platform does not have with E_NOT_SUPPORTED', {
   expect(bad.code).toBe('E_INVALID_ARG');
 });
 
-test('reject a badge value that is neither a string, a number, nor null', {
+test('reject an empty badge, or one that is neither a string nor a number', {
   id: 'HOSTAPP-BADGE-002',
-  covers: ['lx.host.setBadge'],
+  covers: ['lx.host.badge.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
     await app.logic.eval(async ({ lx }) => {
-      try { await lx.host.setBadge(null); } catch {} return true;
+      try { await lx.host.badge.clear(); } catch {} return true;
     });
   });
 
-  // Coercing these would paint "[object Object]" on the dock instead of failing.
-  for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
-    await t.step(`lx.host.setBadge(${literal})`, async () => {
+  // Coercing these would paint "[object Object]" on the dock instead of failing;
+  // an empty one would be a second way to clear.
+  for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}', 'null', "''"]) {
+    await t.step(`lx.host.badge.set(${literal})`, async () => {
       const outcome = await app.logic.eval(async ({ lx }, literal): Promise<Caught> => {
         // Values the typings refuse on purpose; a function cannot cross as JSON.
         const values: Record<string, unknown> = {
@@ -185,9 +187,11 @@ test('reject a badge value that is neither a string, a number, nor null', {
           '[1, 2]': [1, 2],
           true: true,
           '() => {}': () => {},
+          null: null,
+          "''": '',
         };
         try {
-          await (lx.host.setBadge as unknown as (value: unknown) => Promise<unknown>)(values[literal]);
+          await (lx.host.badge.set as unknown as (value: unknown) => Promise<unknown>)(values[literal]);
           return { ok: true };
         } catch (error) {
           const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -230,18 +234,18 @@ test('answer update.check with an update or null instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.displayLanguage.preference.set'],
+  covers: ['lx.host.displayLanguage.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.preference?.set);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage.set);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.displayLanguage.preference.set(language);
+        await lx.host.displayLanguage.set(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -255,14 +259,14 @@ test('reject an invalid host display language', {
 
 test('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
-  covers: ['lx.host.displayLanguage.watch'],
+  covers: ['lx.app.language.watch'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const first = lx.host.displayLanguage.watch(() => {});
-    const second = lx.host.displayLanguage.watch(() => {});
+    const first = lx.app.language.watch(() => {});
+    const second = lx.app.language.watch(() => {});
     first();
     second();
     first();
@@ -368,7 +372,7 @@ test('request permission and replace local notifications by id', {
   }
   if (result.immediate) {
     expect(result.immediate.id).toBe('automation-local');
-    expect(['posted', 'suppressed']).toContain(result.immediate.delivery);
+    expect(['posted', 'presented', 'suppressed']).toContain(result.immediate.delivery);
   }
   if (result.permission === 'granted' && !result.scheduleUnsupported) {
     expect(result.scheduled).toEqual({ id: 'automation-local', delivery: 'scheduled' });
@@ -460,6 +464,71 @@ test('show a toast, dismiss a prompt, and reject bad banner options', {
     reason: 'dismissed',
   });
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
+});
+
+test('show a frontmost notification unless told to suppress it', {
+  id: 'HOSTAPP-NOTIFICATION-002',
+  covers: ['lx.host.notification.show', 'lx.host.notification.cancel'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-002');
+  t.defer(async () => {
+    await app.logic.eval(async ({ lx }) => {
+      try { await lx.host.notification.cancel('automation-frontmost'); } catch {} return true;
+    });
+  });
+
+  const platform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase() ?? '';
+  if (DESKTOP_HOSTS.has(platform)) {
+    // Windows may refuse a background process the foreground even when focus
+    // reports success; a click on the title bar is a real user's.
+    const desktop = t.automation.desktop;
+    const host = (await desktop.windows())
+      .filter((window) => window.visible && window.bounds.w >= 320 && window.bounds.h >= 320
+        && (/lingxia/i.test(window.title) || /lingxiademo/i.test(window.process)))
+      .sort((left, right) => right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h)[0];
+    if (host) {
+      await desktop.window.raise({ window: host.id }).catch(() => undefined);
+      await desktop.pointer.click({ at: [host.bounds.x + Math.round(host.bounds.w / 2), host.bounds.y + 12] });
+    }
+  }
+
+  const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+    const n = lx.host.notification;
+    const permission = await lx.device.permission('notifications');
+    const base = { id: 'automation-frontmost', title: 'LingXia automation', target: { page: 'system' }, silent: true };
+    // Posting needs permission; without it the OS refusal stands in for `posted`.
+    const show = async (whenFrontmost?: 'banner' | 'system' | 'suppress') => {
+      try {
+        return (await n.show(whenFrontmost ? { ...base, whenFrontmost } : base)).delivery as string;
+      } catch (error) {
+        if (permission === 'granted') return String(error);
+        return 'posted';
+      }
+    };
+    const shown = await show();
+    const quiet = await show('suppress');
+    const system = await show('system');
+    await n.cancel('automation-frontmost');
+    let bad = '';
+    try {
+      await (n.show as (options: unknown) => Promise<unknown>)({ ...base, whenFrontmost: 'always' });
+    } catch (error) {
+      bad = (error as { code?: string }).code ?? String(error);
+    }
+    return { shown, quiet, system, bad };
+  });
+
+  // Frontmost: desktops show a banner; phones, having none, post it. Only
+  // Windows and Android decide frontmost where `system` can reach them.
+  const posts = platform === 'windows' || platform === 'android';
+  expect(result).toEqual({
+    shown: DESKTOP_HOSTS.has(platform) ? 'presented' : posts ? 'posted' : 'suppressed',
+    quiet: 'suppressed',
+    system: posts ? 'posted' : 'suppressed',
+    bad: 'E_INVALID_ARG',
+  });
 });
 
 test('report autostart state and accept an idempotent write', {

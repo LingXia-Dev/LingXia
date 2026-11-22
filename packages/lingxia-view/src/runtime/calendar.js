@@ -1,48 +1,49 @@
 // Calendar arithmetic and names for the View's own date and time pickers. The runtime has no
 // Intl, so names come from these tables; other languages read English names with their own
-// week start and clock from `env`.
+// week start and clock from `env`. The words (Cancel, Done, …) are `@view.*`.
+import { word } from './words.js';
 
 const names = {
   en: { months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], longDays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     title: (month, year) => `${month} ${year}`, full: (day, month, year, weekday) => `${weekday}, ${month} ${day}, ${year}`,
-    am: 'AM', pm: 'PM', cancel: 'Cancel', done: 'Done', previous: 'Previous month', next: 'Next month', hour: 'Hour', minute: 'Minute', period: 'AM/PM' },
+    am: 'AM', pm: 'PM' },
   zh: { months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
     days: ['日', '一', '二', '三', '四', '五', '六'], longDays: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
     title: (month, year) => `${year}年${month}`, full: (day, month, year, weekday) => `${year}年${month}${day}日${weekday}`,
-    am: '上午', pm: '下午', cancel: '取消', done: '完成', previous: '上个月', next: '下个月', hour: '时', minute: '分', period: '上午/下午' },
+    am: '上午', pm: '下午' },
   ja: { months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
     days: ['日', '月', '火', '水', '木', '金', '土'], longDays: ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'],
     title: (month, year) => `${year}年${month}`, full: (day, month, year, weekday) => `${year}年${month}${day}日 ${weekday}`,
-    am: '午前', pm: '午後', cancel: 'キャンセル', done: '完了', previous: '前の月', next: '次の月', hour: '時', minute: '分', period: '午前/午後' },
+    am: '午前', pm: '午後' },
   ko: { months: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
     days: ['일', '월', '화', '수', '목', '금', '토'], longDays: ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'],
     title: (month, year) => `${year}년 ${month}`, full: (day, month, year, weekday) => `${year}년 ${month} ${day}일 ${weekday}`,
-    am: '오전', pm: '오후', cancel: '취소', done: '완료', previous: '이전 달', next: '다음 달', hour: '시', minute: '분', period: '오전/오후' },
+    am: '오전', pm: '오후' },
   de: { months: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
     days: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'], longDays: ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'],
     title: (month, year) => `${month} ${year}`, full: (day, month, year, weekday) => `${weekday}, ${day}. ${month} ${year}`,
-    am: 'AM', pm: 'PM', cancel: 'Abbrechen', done: 'Fertig', previous: 'Vorheriger Monat', next: 'Nächster Monat', hour: 'Stunde', minute: 'Minute', period: 'AM/PM' },
+    am: 'AM', pm: 'PM' },
   fr: { months: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
     days: ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'], longDays: ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'],
     title: (month, year) => `${month} ${year}`, full: (day, month, year, weekday) => `${weekday} ${day} ${month} ${year}`,
-    am: 'AM', pm: 'PM', cancel: 'Annuler', done: 'OK', previous: 'Mois précédent', next: 'Mois suivant', hour: 'Heure', minute: 'Minute', period: 'AM/PM' },
+    am: 'AM', pm: 'PM' },
   es: { months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
     days: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], longDays: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
     title: (month, year) => `${month} de ${year}`, full: (day, month, year, weekday) => `${weekday}, ${day} de ${month} de ${year}`,
-    am: 'a. m.', pm: 'p. m.', cancel: 'Cancelar', done: 'Listo', previous: 'Mes anterior', next: 'Mes siguiente', hour: 'Hora', minute: 'Minuto', period: 'a. m./p. m.' },
+    am: 'a. m.', pm: 'p. m.' },
   pt: { months: ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
     days: ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.'], longDays: ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'],
     title: (month, year) => `${month} de ${year}`, full: (day, month, year, weekday) => `${weekday}, ${day} de ${month} de ${year}`,
-    am: 'AM', pm: 'PM', cancel: 'Cancelar', done: 'OK', previous: 'Mês anterior', next: 'Próximo mês', hour: 'Hora', minute: 'Minuto', period: 'AM/PM' },
+    am: 'AM', pm: 'PM' },
   ru: { months: ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'],
     days: ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], longDays: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
     title: (month, year) => `${month} ${year}`, full: (day, month, year, weekday) => `${weekday}, ${day} ${month} ${year}`,
-    am: 'AM', pm: 'PM', cancel: 'Отмена', done: 'Готово', previous: 'Предыдущий месяц', next: 'Следующий месяц', hour: 'Час', minute: 'Минута', period: 'AM/PM' },
+    am: 'AM', pm: 'PM' },
   ar: { months: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
     days: ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'], longDays: ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
     title: (month, year) => `${month} ${year}`, full: (day, month, year, weekday) => `${weekday}، ${day} ${month} ${year}`,
-    am: 'ص', pm: 'م', cancel: 'إلغاء', done: 'تم', previous: 'الشهر السابق', next: 'الشهر التالي', hour: 'الساعة', minute: 'الدقيقة', period: 'ص/م' },
+    am: 'ص', pm: 'م' },
 };
 
 /** A time as the user's clock shows it: `21:30` (h23) or `9:30 PM` (h12), seconds when given. */
@@ -110,9 +111,12 @@ export function dateFormat(language) {
   }
 }
 
-/** Picker words for a BCP 47 display language; English when it has no table. */
+/** Picker names and words for a BCP 47 language; names in English when it has no table. */
 export function wordsFor(language) {
-  return names[String(language ?? '').split(/[-_]/)[0].toLowerCase()] ?? names.en;
+  const table = names[String(language ?? '').split(/[-_]/)[0].toLowerCase()] ?? names.en;
+  const w = key => word(`@view.${key}`, language);
+  return { ...table, cancel: w('cancel'), done: w('done'), previous: w('previousMonth'), next: w('nextMonth'),
+    hour: w('hour'), minute: w('minute'), period: w('period'), options: w('options') };
 }
 
 const pad = (value, width = 2) => String(value).padStart(width, '0');

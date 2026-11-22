@@ -59,6 +59,7 @@ pub fn execute(
     project_type: Option<String>,
     platforms: Vec<String>,
     package_id: Option<String>,
+    languages: Vec<String>,
     main: Option<String>,
     control: Option<String>,
     icon: Option<String>,
@@ -199,6 +200,8 @@ pub fn execute(
     let mut config =
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     config.target_dir = target.dir.clone();
+    crate::host_identity::validate_languages(&languages)?;
+    config.languages = languages;
     validate_native_main_platforms(main, &config.platforms)?;
     let control = gather_control_mode(control, main, yes)?;
     let theme = ColorfulTheme::default();
@@ -397,6 +400,7 @@ mod native_main_scaffold_tests {
             platforms: vec![Platform::Windows],
             package_id: "com.example.terminal".to_string(),
             app_link_hosts: Vec::new(),
+            languages: Vec::new(),
             target_dir: target_dir.clone(),
         };
         let versions = current_versions();

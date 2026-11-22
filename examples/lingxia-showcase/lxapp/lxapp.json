@@ -3,6 +3,10 @@
   "appName": "LingXia Showcase",
   "version": "1.7.0",
   "minRuntime": "0.30.0",
+  "languages": [
+    "en-US",
+    "zh-CN"
+  ],
   "pages": [
     {
       "name": "home",
@@ -194,48 +198,42 @@
     "items": [
       {
         "text": {
-          "default": "Home",
-          "zh-CN": "首页"
+          "message": "tab.home"
         },
         "page": "home",
         "iconPath": "public/tab-home.svg"
       },
       {
         "text": {
-          "default": "API",
-          "zh-CN": "接口"
+          "message": "tab.api"
         },
         "page": "api",
         "iconPath": "public/tab-api.svg"
       },
       {
         "text": {
-          "default": "View Lab",
-          "zh-CN": "实验室"
+          "message": "tab.view"
         },
         "page": "view",
         "iconPath": "public/tab-lab.svg"
       },
       {
         "text": {
-          "default": "Perf",
-          "zh-CN": "性能"
+          "message": "tab.perfLab"
         },
         "page": "perf-lab",
         "iconPath": "public/tab-perf.svg"
       },
       {
         "text": {
-          "default": "ToDo",
-          "zh-CN": "待办"
+          "message": "tab.todo"
         },
         "page": "todo",
         "iconPath": "public/tab-todo.svg"
       },
       {
         "text": {
-          "default": "Surface",
-          "zh-CN": "窗口"
+          "message": "tab.surface"
         },
         "page": "surface",
         "iconPath": "public/tab-surface.svg",

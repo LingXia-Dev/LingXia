@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "LxPicker",
-      "zh-CN": "LxPicker"
-    }
+    "title": { "message": "title.picker" }
   }
 }

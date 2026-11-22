@@ -250,7 +250,7 @@ Read `useLxPage()` during component setup/render; pass its actions into helpers.
 ### Host facts
 
 ```ts
-const { sizeClass, canDock, displayLanguage, contentLanguage, formFactor, os, runner } = useLxHost();
+const { sizeClass, canDock, language, formFactor, os, runner } = useLxHost();
 ```
 
 `getHost()` / `subscribeHost(cb)` in `@lingxia/html`;
@@ -264,9 +264,8 @@ nothing. It never changes while a window is dragged.
   unfolded fold is `mobile`.
 - `os` — `'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unknown'` (Logic's `HostOs`), for
   OS-specific features only. `runner` is `true` in the dev Runner.
-- `displayLanguage` — the product language; `contentLanguage` — it narrowed to
-  lxapp.json `languages`, which sets `<html lang>` and `<html dir>`; pick copy by
-  it. See [Product settings](./core.md#product-settings).
+- `language` — the product language narrowed to lxapp.json `languages`; it sets
+  `<html lang>` and `<html dir>`. See [Product settings](./core.md#product-settings).
 
 `formFactor`, `os`, and `runner` are fixed for a page's life. A Runner phone
 frame reports `mobile` while `os` names the desktop; switching form factor
@@ -419,8 +418,8 @@ host `surfaces`.
   Desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
   Indices stay as declared, and each host needs at least two items.
-- `text` is a string, or one per language — see
-  [localized labels and titles](#localized-labels-and-titles).
+- `text` is a string, or a catalogue key `{ "message": "tab.home" }` — see
+  [text in several languages](#text-in-several-languages).
 
 ### Icons
 
@@ -490,34 +489,48 @@ mobile the capsule stays over the page's header.
 calls `page.orientation.lock()`; the lock ends with `unlock()` or when that page
 unloads. `lx.device.orientation.get()` / `watch(cb)` report the orientation in effect.
 
-### Localized labels and titles
+### Text in several languages
 
-`tabBar.items[].text` and `navigationBar.title` take a string, or an object
-with a required `default` plus BCP-47 language tags. The host resolves it
-against the effective display language and repaints when the language
-changes — no Logic needed. Other manifest strings are not localizable.
+List the languages in `lxapp.json` (`"languages": ["en-US", "zh-CN"]`; the first is the source) and
+put one catalogue per language in `i18n/<tag>.json`:
 
 ```json
-{ "page": "profiles", "text": { "default": "Profiles", "zh-CN": "节点" } }
+{
+  "cart.title": { "defaultMessage": "Cart", "description": "Heading of the cart page." },
+  "cart.items": { "defaultMessage": "{count, plural, one {# item} other {# items}}", "description": "count = items in the cart." }
+}
 ```
 
-```json
-{ "navigationBar": { "title": { "default": "Profiles", "zh-CN": "节点" } } }
-```
+Keys are dot-separated camelCase. The source catalogue needs a `description` per key; a translation
+has only `defaultMessage`. Messages are ICU MessageFormat: `{arg}`, `{n, number}`, `{d, date, short}`,
+`plural`, `selectordinal`, `select`, paired tags. `lingxia build` fails on a missing translation, an
+argument a translation adds or drops, and a catalogue for an undeclared language.
 
-Resolution: the exact tag; else an entry of the same language, matching
-script first, then region (a Chinese region implies its script, so
-`zh-Hant-TW` reads a `zh-TW` entry and never a `zh-CN` one); else `default`.
-Key order does not matter. A runtime value from `lx.app.tabBar.update` / `page.navigationBar.update`
-wins until reset with `null`, so do not also translate the declared text
-through those calls. The map form needs a runtime that has it: raise
-`minRuntime` when you adopt it.
+- View: `t('cart.items', { count })` from `@lingxia/view`, called while rendering; module-level code
+  cannot call it. It follows a language switch.
+- Logic: `lx.app.t('cart.items', { count })` for toasts, dialogs and action sheets.
+- WebView (React): `const t = useText()` from `@lingxia/react`; `t` from `@lingxia/bridge` elsewhere.
+- The View's own words (picker Cancel/Done, dialog OK) are `@view.*` keys; a catalogue that names
+  one, e.g. `"@view.done"`, overrides it in that language only.
+- A dev session also builds `en-XA`: the source accented, ~40% longer and bracketed, to find
+  clipped or untranslated text. Pick it with `lx.host.displayLanguage.set('en-XA')` from
+  the Control app (`lxdev lxapp eval`); it never ships.
+- Keys and arguments are typed from the source catalogue: an unknown key, or a missing or wrong-kind
+  argument, fails `tsc`, and a literal key the catalogue lacks fails the build. A key built at run
+  time takes a cast, `` t(`state.${s}` as MessageKey) `` (`LxAppMessageKey` in Logic), and its
+  arguments go unchecked.
+- Never put translated text in `data`: it would not change on a switch. Store a key (and its
+  arguments) and let the View call `t`.
+- Tab labels and titles name a key: `"text": { "message": "tab.home" }`,
+  `"navigationBar": { "title": { "message": "title.cart" } }`. A plain string is one text for every
+  language. The build fails on a key the source catalogue lacks.
 
-The language is the host's display language. A host app that keeps its own
-language setting must forward it with
-`lingxia::app::set_display_language_preference` (or
-`lx.host.displayLanguage.preference.set` from Logic); otherwise the
-page content follows the app's setting and the declared chrome text does not.
+The language is the host's display language narrowed to the declared ones: the exact tag, else the
+same language, else the source. A runtime value from `lx.app.tabBar.update` /
+`page.navigationBar.update` wins until reset with `null`, so do not also translate the declared text
+through those calls. A host app that keeps its own language setting must forward it with
+`lingxia::app::set_display_language_preference` (or `lx.host.displayLanguage.set` from the
+Control app's Logic).
 
 ### Leaving a page with unsaved changes
 

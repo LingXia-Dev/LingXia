@@ -1,0 +1,29 @@
+{
+  "title.bridgeRepro": {
+    "defaultMessage": "桥接复现"
+  },
+  "title.channel": {
+    "defaultMessage": "通道"
+  },
+  "title.home": {
+    "defaultMessage": "WebView 演示"
+  },
+  "title.navigator": {
+    "defaultMessage": "导航"
+  },
+  "title.picker": {
+    "defaultMessage": "LxPicker"
+  },
+  "title.pulltorefresh": {
+    "defaultMessage": "下拉刷新"
+  },
+  "title.specEmbedded": {
+    "defaultMessage": "嵌入文档"
+  },
+  "title.swiper": {
+    "defaultMessage": "LxMediaSwiper"
+  },
+  "title.video": {
+    "defaultMessage": "视频"
+  }
+}

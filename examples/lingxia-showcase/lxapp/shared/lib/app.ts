@@ -13,7 +13,6 @@ export const appState = {
     /** The last App `onShow` options, for reopen probes in specs. */
     lastShow: undefined as AppLifecycleEventArgs | undefined,
   },
-  greeting: "This is from the app's shared state",
   ipAddr: "loading",
 };
 

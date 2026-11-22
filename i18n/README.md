@@ -30,6 +30,13 @@ scopes is the normal way to change its audience.
 - `permission.schema.json` — Apple CLI build-time keys (`permission/cli/`).
 - `native.schema.json` — single-audience scopes (`logic/`, `desktop/`, `android/`, `apple/`, `harmony/`).
 
+## Arguments
+
+A value is an ICU message with plain arguments: `"Showing {filter}"`. The generator
+writes them as each platform reads them — `%1$s` for Android and Harmony, `%1$@` for
+Apple, numbered in the `en-US` order — and stops when a translation drops, adds or
+renames one. Pass them positionally (`getString(id, filter)`, `L10n.string(key, filter)`).
+
 ## Regenerating
 
 The bare command picks up every workspace default and writes all five

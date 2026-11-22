@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "WebView Demos",
-      "zh-CN": "WebView 演示"
-    }
+    "title": { "message": "title.home" }
   }
 }

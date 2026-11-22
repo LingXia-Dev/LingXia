@@ -510,7 +510,7 @@
   function hostLocale() {
     var bridge = global.LingXiaBridge;
     if (bridge && bridge.host) {
-      var narrowed = normalizeLocale(bridge.host.get().displayLanguage);
+      var narrowed = normalizeLocale(bridge.host.get().language);
       if (narrowed) return narrowed;
     }
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length

@@ -1,26 +1,17 @@
-import { useLocal } from '@lingxia/view';
+import { t, useLocal, type MessageKey } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
 
-const titles: Record<string, string> = {
-  device: 'Device information',
-  screen: 'Screen information',
-  vibrate: 'Device vibration',
-  dial: 'Phone call',
-  networkType: 'Network type',
-  localIP: 'Local IP addresses',
-  networkStatus: 'Network status listener',
-  orientation: 'Device orientation',
-};
-const yesNo = (value: unknown) => (value === undefined ? '--' : value ? 'Yes' : 'No');
+const titles = ['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus', 'orientation'];
+const yesNo = (value: unknown) => (value === undefined ? '--' : value ? t('common.yes') : t('common.no'));
 const number = (value: unknown, suffix = '') =>
   typeof value === 'number' && Number.isFinite(value) ? `${Number.isInteger(value) ? value : value.toFixed(2)}${suffix}` : '--';
 
 export function render({ data, actions }: View) {
   const phone = useLocal('phone', '');
   const requested = String(data.currentType ?? 'device');
-  const type = titles[requested] ? requested : 'device';
+  const type = titles.includes(requested) ? requested : 'device';
   const info = (data.deviceInfo ?? {}) as Record<string, unknown>;
   const screen = (data.screenInfo ?? {}) as Record<string, unknown>;
   const network = (data.networkInfo ?? {}) as Record<string, unknown>;
@@ -29,71 +20,71 @@ export function render({ data, actions }: View) {
   return (
     <Page testId="device-page" data={{ 'data-mode': type }}>
       <text data-testid="device-mode-title" className="text-2xl font-light text-center">
-        {titles[type]}
+        {t(`device.title.${type}` as MessageKey)}
       </text>
       {type === 'device' && (
         <Section
-          title="Get device information"
-          description="Brand, model and OS version"
+          title={t('device.getDeviceInformation')}
+          description={t('device.brandModelAndOs')}
           action={
             <Button testId="device-get-info" onClick={() => actions.getDeviceInfo()}>
-              Get info
+              {t('device.getInfo')}
             </Button>
           }
         >
           {!!data.deviceInfo && (
             <InfoList testId="device-info-result">
-              <InfoRow label="Brand" value={info.brand} />
-              <InfoRow label="Market name" value={info.marketName || info.model} />
-              <InfoRow label="Model" value={info.model} testId="device-info-model" />
-              <InfoRow label="OS name" value={info.osName} testId="device-info-osName" />
-              <InfoRow label="OS version" value={info.osVersion} />
+              <InfoRow label={t('device.brand')} value={info.brand} />
+              <InfoRow label={t('device.marketName')} value={info.marketName || info.model} />
+              <InfoRow label={t('device.model')} value={info.model} testId="device-info-model" />
+              <InfoRow label={t('device.osName')} value={info.osName} testId="device-info-osName" />
+              <InfoRow label={t('device.osVersion')} value={info.osVersion} />
             </InfoList>
           )}
         </Section>
       )}
       {type === 'screen' && (
         <Section
-          title="Get screen information"
-          description="Screen dimensions and scale"
+          title={t('device.getScreenInformation')}
+          description={t('device.screenDimensionsAndScale')}
           action={
             <Button testId="device-screen-get-info" onClick={() => actions.getScreenInfo()}>
-              Get info
+              {t('device.getInfo')}
             </Button>
           }
         >
           {!!data.screenInfo && (
             <InfoList testId="device-screen-result">
-              <InfoRow label="Width" value={number(screen.width, 'px')} testId="device-screen-width" />
-              <InfoRow label="Height" value={number(screen.height, 'px')} />
-              <InfoRow label="Scale" value={number(screen.scale)} testId="device-screen-scale" />
+              <InfoRow label={t('device.width')} value={number(screen.width, 'px')} testId="device-screen-width" />
+              <InfoRow label={t('device.height')} value={number(screen.height, 'px')} />
+              <InfoRow label={t('device.scale')} value={number(screen.scale)} testId="device-screen-scale" />
             </InfoList>
           )}
         </Section>
       )}
       {type === 'networkType' && (
         <Section
-          title="Get network type"
-          description="Wi-Fi, mobile data, Ethernet or offline"
+          title={t('device.getNetworkType')}
+          description={t('device.wiFiMobileData')}
           action={
             <Button testId="device-network-get-info" onClick={() => actions.getNetworkInfo()}>
-              Get info
+              {t('device.getInfo')}
             </Button>
           }
         >
           <InfoList testId="device-network-result">
-            <InfoRow label="Connected" value={yesNo(network.isConnected)} />
-            <InfoRow label="Network type" value={network.networkType} testId="device-network-type" />
+            <InfoRow label={t('device.connected')} value={yesNo(network.isConnected)} />
+            <InfoRow label={t('device.networkType')} value={network.networkType} testId="device-network-type" />
           </InfoList>
         </Section>
       )}
       {type === 'localIP' && (
         <Section
-          title="Get local IP addresses"
-          description="IPv4 and IPv6 on the active network"
+          title={t('device.getLocalIpAddresses')}
+          description={t('device.ipv4AndIpv6On')}
           action={
             <Button testId="device-network-get-info" onClick={() => actions.getNetworkInfo()}>
-              Get IP
+              {t('device.getIp')}
             </Button>
           }
         >
@@ -104,73 +95,73 @@ export function render({ data, actions }: View) {
         </Section>
       )}
       {type === 'networkStatus' && (
-        <Section title="Network status listener" description="Report connectivity changes as they happen">
+        <Section title={t('device.networkStatusListener')} description={t('device.reportConnectivityChangesAs')}>
           <view className="grid gap-3 grid-cols-2">
             <Button testId="device-network-listen-start" onClick={() => actions.startNetworkChangeListen()}>
-              Start listening
+              {t('device.startListening')}
             </Button>
             <Button variant="secondary" testId="device-network-listen-stop" onClick={() => actions.stopNetworkChangeListen()}>
-              Stop listening
+              {t('device.stopListening')}
             </Button>
           </view>
           <InfoList testId="device-network-status">
-            <InfoRow label="Listening" value={data.networkListening ? 'Yes' : 'No'} testId="device-network-listening" />
-            <InfoRow label="Connected" value={yesNo(changed.isConnected)} />
-            <InfoRow label="Network type" value={changed.networkType} />
+            <InfoRow label={t('device.listening')} value={yesNo(Boolean(data.networkListening))} testId="device-network-listening" />
+            <InfoRow label={t('device.connected')} value={yesNo(changed.isConnected)} />
+            <InfoRow label={t('device.networkType')} value={changed.networkType} />
             <InfoRow label="IPv4" value={changed.ipv4} />
             <InfoRow label="IPv6" value={changed.ipv6} />
           </InfoList>
         </Section>
       )}
       {type === 'vibrate' && (
-        <Section title="Trigger vibration" description="Try a short or long vibration">
+        <Section title={t('device.triggerVibration')} description={t('device.tryAShortOr')}>
           <view className="grid gap-3 grid-cols-2">
             <Button testId="device-vibrate-short" onClick={() => actions.vibrateShort()}>
-              Short
+              {t('device.short')}
             </Button>
             <Button variant="secondary" testId="device-vibrate-long" onClick={() => actions.vibrateLong()}>
-              Long
+              {t('device.long')}
             </Button>
           </view>
         </Section>
       )}
       {type === 'dial' && (
-        <Section title="Dial a phone number" description="Open the native phone dialer">
-          <Field testId="device-phone-number" label="Phone number" bind={phone} type="tel" placeholder="Enter phone number" />
+        <Section title={t('device.dialAPhoneNumber')} description={t('device.openTheNativePhone')}>
+          <Field testId="device-phone-number" label={t('device.phoneNumber')} bind={phone} type="tel" placeholder={t('device.enterPhoneNumber')} />
           <Button
             testId="device-phone-call"
             disabled={!phone.value.trim()}
             onClick={() => actions.makePhoneCall({ phoneNumber: phone.value.trim() })}
           >
-            Call
+            {t('device.call')}
           </Button>
         </Section>
       )}
       {type === 'orientation' && (
-        <Section title="Lock and follow orientation" description="Choose an orientation and listen for changes">
+        <Section title={t('device.lockAndFollowOrientation')} description={t('device.chooseAnOrientationAnd')}>
           <view className="grid gap-3 grid-cols-2">
             <Button testId="device-orientation-portrait" onClick={() => actions.setOrientationPortrait()}>
-              Lock portrait
+              {t('device.lockPortrait')}
             </Button>
             <Button testId="device-orientation-landscape" onClick={() => actions.setOrientationLandscape()}>
-              Lock landscape
+              {t('device.lockLandscape')}
             </Button>
             <Button variant="secondary" testId="device-orientation-listen-start" onClick={() => actions.startDeviceOrientationListen()}>
-              Start listening
+              {t('device.startListening')}
             </Button>
             <Button variant="secondary" testId="device-orientation-listen-stop" onClick={() => actions.stopDeviceOrientationListen()}>
-              Stop listening
+              {t('device.stopListening')}
             </Button>
           </view>
           <InfoList>
-            <InfoRow label="Listening" value={data.orientationListening ? 'Yes' : 'No'} />
-            <InfoRow label="Lock target" value={data.orientationLock} testId="device-orientation-lock" />
-            <InfoRow label="Current value" value={data.deviceOrientationValue} testId="device-orientation-value" />
+            <InfoRow label={t('device.listening')} value={yesNo(Boolean(data.orientationListening))} />
+            <InfoRow label={t('device.lockTarget')} value={data.orientationLock} testId="device-orientation-lock" />
+            <InfoRow label={t('device.currentValue')} value={data.deviceOrientationValue} testId="device-orientation-value" />
           </InfoList>
           <view className="flex-row items-center justify-between gap-3">
-            <text className="text-sm font-semibold">Orientation events</text>
+            <text className="text-sm font-semibold">{t('device.orientationEvents')}</text>
             <Button variant="ghost" size="sm" testId="device-orientation-clear" onClick={() => actions.clearOrientationEvents()}>
-              Clear logs
+              {t('device.clearLogs')}
             </Button>
           </view>
           <scroll data-testid="device-orientation-event-scroll" className="max-h-56 p-3 rounded-lg border border-line bg-surface-sunken">

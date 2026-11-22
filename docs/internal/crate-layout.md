@@ -12,7 +12,7 @@ it has no layer for: give a new crate one there and a line below.
 
 | Layer | Crates | Owns |
 |---|---|---|
-| 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol`, `theme` | Types, policy, wire formats. No runtime. |
+| 1. Contracts | `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol`, `theme`, `i18n` | Types, policy, wire formats. No runtime. |
 | 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS, WebView hosting and HTTP transfer. Knows nothing of lxapps. |
 | 3. Runtime | `lxapp`, `view`, `view-android`, `view-apple`, `view-harmony`, `view-windows`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
@@ -58,6 +58,7 @@ Names omit the `lingxia-` prefix.
 - `update`: update domain models and policy.
 - `control-protocol`: control and dev-session wire types and method names.
 - `theme`: theme packs, colour roles, preference resolution and the contrast proof.
+- `i18n`: message catalogues: the ICU MessageFormat subset, the FormatJS JSON file and the translation checks.
 - `webview`: generic WebView hosting; no lxapp knowledge.
 - `platform`: the platform layer for Android, iOS, macOS, HarmonyOS, Windows.
 - `windows-contract`: Windows host UI traits shared by `platform` and `windows-sdk`.

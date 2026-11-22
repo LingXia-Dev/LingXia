@@ -8,6 +8,8 @@ app:
   productName: {{PRODUCT_NAME}}
   # productNames:          # locale → name; do not repeat productName
   #   zh-CN: 我的应用
+  # What ships and what the host and the OS offer; first = fallback.
+  languages: {{LANGUAGES}}
   # Stamped into every platform package. Do not set versionCode / CFBundleVersion
   # in the platform project.
   productVersion: 0.0.1

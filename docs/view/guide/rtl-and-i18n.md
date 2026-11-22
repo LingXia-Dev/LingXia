@@ -1,22 +1,23 @@
 # RTL and i18n
 
-```tsx
-import { useView, type VectorPath } from '@lingxia/view';
+```json i18n/en-US.json
+{
+  "settings.title": { "defaultMessage": "Settings", "description": "Heading of the settings page." },
+  "settings.account": { "defaultMessage": "Account", "description": "Settings row." },
+  "settings.language": { "defaultMessage": "Language", "description": "Settings row." }
+}
+```
 
-const messages = {
-  en: { title: 'Settings', account: 'Account', language: 'Language' },
-  ar: { title: 'الإعدادات', account: 'الحساب', language: 'اللغة' },
-} as const;
+```tsx
+import { t, type VectorPath } from '@lingxia/view';
 
 const chevron: VectorPath[] = [{ d: 'M9 6l6 6-6 6', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }];
 
 export function render() {
-  const { env } = useView();
-  const t = env.contentLanguage.startsWith('ar') ? messages.ar : messages.en;
   return (
     <page className="p-4 gap-2">
-      <text role="heading" className="text-xl font-semibold text-start">{t.title}</text>
-      {[t.account, t.language].map(label => (
+      <text role="heading" className="text-xl font-semibold text-start">{t('settings.title')}</text>
+      {[t('settings.account'), t('settings.language')].map(label => (
         <button key={label} onClick={() => {}} className="rounded-xl bg-surface text-text ps-4 pe-2 py-3">
           <view className="flex-row items-center gap-3">
             <text className="grow text-start text-sm">{label}</text>
@@ -89,16 +90,17 @@ Do not mirror icons that show real-world things (a clock, a play button, a check
 
 ## Display language
 
-`env.displayLanguage` is the BCP 47 tag of the UI language (`en-US`, `zh-CN`, `ar`); the page
-re-renders when it changes. `env.contentLanguage` is that language narrowed to the `languages` your
-lxapp.json lists (`["en", "ar"]`: `ar-EG` gives `ar`, `ja-JP` gives `en`); pick your messages by it.
+`env.language` is the BCP 47 tag the page's text is in: the UI language narrowed to the `languages`
+your lxapp.json lists (`["en", "ar"]`: `ar-EG` gives `ar`, `ja-JP` gives `en`). The page re-renders
+when it changes.
 It is also the shaping locale and sets `env.direction`, so Han characters use the regional face the
 text's language expects.
 
-The View has no `Intl`. Keep message tables in plain objects as above, or let Logic translate and pass
-strings in `view.data`. Format numbers, currencies, dates and plural forms in Logic. Localize the
-navigation bar title in the page config:
+Put your text in `i18n/<tag>.json` catalogues, one per language in `languages`, and render it with
+`t('settings.title')` from `@lingxia/view`: `t` picks the catalogue for `env.language` and
+re-renders on a switch. Logic shows text natively with `lx.app.t`. The navigation bar title names a
+key the same way:
 
 ```json
-{ "navigationBar": { "title": { "default": "Settings", "ar": "الإعدادات" } } }
+{ "navigationBar": { "title": { "message": "title.settings" } } }
 ```

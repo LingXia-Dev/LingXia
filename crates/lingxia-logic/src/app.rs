@@ -2,7 +2,7 @@ use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
 use lingxia_app_context::{app_config, env};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue, function::Optional};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 
 mod appearance;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -17,8 +17,7 @@ mod service_env;
 mod update;
 
 /// Host app identity. Everything here is fixed for the life of the process;
-/// the language the app renders in is not, and lives on
-/// `lx.host.displayLanguage`.
+/// the language the app renders in is not, and lives on `lx.app.language`.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostInfo {
     /// Platform family, lower case.
@@ -67,38 +66,55 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// Mark the product in system chrome, such as with an unread count; `null` or
-/// `''` clears it. Control app only. Resolves whether anything was painted.
-/// A badge never prompts, and a notification never sets one.
-///
-/// @supports host.badge
-/// @platform macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.
-/// @platform Windows: the taskbar and the notification-area item.
-/// @platform iOS: the home-screen icon, numbers only; needs notification permission.
-/// @platform HarmonyOS: the home-screen icon.
-/// @throws {E_NOT_SUPPORTED} The platform has no badge surface of the requested kind, such as on Android.
-/// @throws {E_INVALID_ARG} Text where the platform paints numbers only.
-/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-async fn set_app_badge(
+/// `lx.host.badge`: a mark on the product's own system chrome, such as an unread count.
+fn init_badge(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+    let badge = JSObject::new(ctx);
+    badge.set("set", JSFunc::new(ctx, set_badge)?.name("set")?)?;
+    badge.set("clear", JSFunc::new(ctx, clear_badge)?.name("clear")?)?;
+    app.set("badge", badge)?;
+    Ok(())
+}
+
+async fn set_badge(
     ctx: JSContext,
     value: JSValue,
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
-    let lxapp = invocation.lxapp();
-    let surface = badge_surface(options.0)?;
-    let available = lingxia_platform::badge_surfaces();
-    let text = badge_text(value, "lx.host.setBadge")?;
-    if available.numeric_only && !text.is_empty() && text.parse::<i64>().is_err() {
+    let invocation = authorization::require(&ctx, LogicRoute::AppBadgeSet)?;
+    let text = badge_text(value)?;
+    if text.is_empty() {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "lx.host.badge.set needs a count or text; remove a badge with lx.host.badge.clear()",
+        )
+        .into());
+    }
+    if lingxia_platform::badge_surfaces().numeric_only && text.parse::<i64>().is_err() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
             format!(
-                "lx.host.setBadge on this platform paints a count, so {text:?} is not a badge it can draw; pass a number or null"
+                "lx.host.badge.set on this platform paints a count, so {text:?} is not a badge it can draw; pass a number"
             ),
         )
         .into());
     }
+    paint_badge(&ctx, invocation.lxapp(), text, options.0).await
+}
 
+async fn clear_badge(ctx: JSContext, options: Optional<JSObject>) -> JSResult<JSObject> {
+    let invocation = authorization::require(&ctx, LogicRoute::AppBadgeClear)?;
+    paint_badge(&ctx, invocation.lxapp(), String::new(), options.0).await
+}
+
+/// Paints `text` (empty clears) on the surfaces `options` names.
+async fn paint_badge(
+    ctx: &JSContext,
+    lxapp: std::sync::Arc<lxapp::LxApp>,
+    text: String,
+    options: Option<JSObject>,
+) -> JSResult<JSObject> {
+    let surface = badge_surface(options)?;
+    let available = lingxia_platform::badge_surfaces();
     // A surface that exists but declined, such as a hidden macOS status item,
     // resolves `painted: false`; a surface the platform lacks rejects.
     let mut painted = false;
@@ -124,7 +140,7 @@ async fn set_app_badge(
         )
         .into());
     }
-    let result = JSObject::new(&ctx);
+    let result = JSObject::new(ctx);
     result.set("painted", painted)?;
     Ok(result)
 }
@@ -138,7 +154,7 @@ where
         .map_err(|error| {
             rong::HostError::new(
                 rong::error::E_INTERNAL,
-                format!("lx.host.setBadge task failed: {error}"),
+                format!("lx.host.badge task failed: {error}"),
             )
         })?
         .map_err(|error| js_error_from_platform_error(&error))
@@ -164,27 +180,22 @@ fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
         "tray" => Ok(BadgeSurface::Tray),
         other => Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!(
-                "lx.host.setBadge surface must be auto, app_icon, or tray (received {other:?})"
-            ),
+            format!("lx.host.badge surface must be auto, app_icon, or tray (received {other:?})"),
         )
         .into()),
     }
 }
 
-/// A badge is `string | number | null`. Coercing anything else would paint
+/// A badge is a string or a number. Coercing anything else would paint
 /// `[object Object]` on the dock, so reject it at the boundary instead.
-pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
-    if value.is_undefined() || value.is_null() {
-        return Ok(String::new());
-    }
+fn badge_text(value: JSValue) -> JSResult<String> {
     if value.is_string() || value.is_number() {
         return value.to_rust::<String>();
     }
     Err(rong::HostError::new(
         rong::error::E_INVALID_ARG,
         format!(
-            "{api} value must be a string, a number, or null (received {})",
+            "lx.host.badge.set value must be a string or a number (received {})",
             value.type_of()
         ),
     )
@@ -212,6 +223,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     autostart::init(ctx, &app)?;
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     unsupported_autostart(ctx, &app)?;
+    init_badge(ctx, &app)?;
     banner::init(ctx, &app)?;
     notification::init(ctx, &app)?;
     cache::init(ctx, &app)?;
@@ -225,14 +237,19 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 /// Register read-only host identity for every lxapp context, including focused
 /// system apps that intentionally do not receive the broader `lx.*` surface.
 ///
-/// `lx.host.displayLanguage` belongs here: rendering in the product's language
-/// is what every context does, control surfaces included.
+/// `lx.app.language` and `lx.app.appearance` belong here: rendering in the
+/// product's language and scheme is what every context does, control surfaces
+/// included. The preferences beside them on `lx.host` authorize on each call,
+/// so only the Control app gets past them.
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
     register_app_base_api(ctx)?;
-    let app = app_namespace(ctx)?;
-    display_language::init_follower(ctx, &app)?;
-    appearance::init_follower(ctx, &app)
+    let lxapp_namespace = crate::namespace::app(ctx)?;
+    display_language::init_app(ctx, &lxapp_namespace)?;
+    appearance::init_app(ctx, &lxapp_namespace)?;
+    let host = app_namespace(ctx)?;
+    display_language::init_host(ctx, &host)?;
+    appearance::init_host(ctx, &host)
 }
 
 rong::js_api! {
@@ -254,10 +271,6 @@ rong::js_api! {
     fn register_app_controls(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
-        fn setBadge(
-            ts_params = "value: string | number | null, options?: SetBadgeOptions",
-            ts_return = "Promise<SetBadgeResult>"
-        ) = set_app_badge;
     }
 }
 
@@ -274,6 +287,7 @@ pub(crate) fn unsupported_terminal(ctx: &JSContext) -> JSResult<()> {
         "lx.host.terminal.settings",
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",
+        "lx.host.terminal.windows",
     ] {
         crate::capability::unsupported_namespace(ctx, &terminal, path, "host.terminal")?;
     }

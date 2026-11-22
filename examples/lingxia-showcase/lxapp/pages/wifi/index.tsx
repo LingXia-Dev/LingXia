@@ -1,5 +1,6 @@
-import { useLocal } from '@lingxia/view';
+import { t, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
+import { said } from '../../shared/lib/said';
 import { Button, EmptyState, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
 
@@ -16,17 +17,17 @@ export function render({ data, actions }: View) {
   const events = (data.wifiConnectedEvents ?? []) as WifiEvent[];
   return (
     <Page>
-      {data.statusText !== 'Ready' && (
+      {data.statusText !== 'wifi.state.ready' && (
         <text data-testid="wifi-status" className="text-xs text-muted">
-          {String(data.statusText || '')}
+          {said(String(data.statusText || ''), data.statusArgs as Record<string, unknown>)}
         </text>
       )}
       <Section
-        title="Connected WiFi"
-        description="Get current WiFi connection info"
+        title={t('wifi.connectedWifi')}
+        description={t('wifi.getCurrentWifiConnection')}
         action={
           <Button size="sm" testId="wifi-current" onClick={() => actions.getConnectedWifi()}>
-            Get Info
+            {t('wifi.getInfo')}
           </Button>
         }
       >
@@ -34,22 +35,22 @@ export function render({ data, actions }: View) {
           <InfoList testId="wifi-connected">
             <InfoRow label="SSID" value={connected.ssid} />
             <InfoRow label="BSSID" value={connected.bssid} />
-            <InfoRow label="Secure" value={connected.secure ? 'Yes' : 'No'} />
-            <InfoRow label="Signal" value={percent(connected.signalStrength)} />
-            <InfoRow label="Frequency" value={connected.frequency === undefined ? undefined : `${connected.frequency} MHz`} />
+            <InfoRow label={t('wifi.secure')} value={connected.secure ? 'Yes' : 'No'} />
+            <InfoRow label={t('wifi.signal')} value={percent(connected.signalStrength)} />
+            <InfoRow label={t('wifi.frequency')} value={connected.frequency === undefined ? undefined : `${connected.frequency} MHz`} />
           </InfoList>
         )}
       </Section>
       <Section
-        title="WiFi Connected Events"
-        description="Listen to WiFi connection changes"
+        title={t('wifi.wifiConnectedEvents')}
+        description={t('wifi.listenToWifiConnection')}
         action={
           <view className="flex-row gap-2">
             <Button size="sm" testId="wifi-listener-on" disabled={listening} onClick={() => actions.onWifiConnected()}>
-              On
+              {t('wifi.on')}
             </Button>
             <Button size="sm" variant="secondary" testId="wifi-listener-off" disabled={!listening} onClick={() => actions.offWifiConnected()}>
-              Off
+              {t('wifi.off')}
             </Button>
           </view>
         }
@@ -58,13 +59,13 @@ export function render({ data, actions }: View) {
           <text data-testid="wifi-listener-status" className="text-xs text-muted">{`Listening: ${listening ? 'On' : 'Off'}`}</text>
           {events.length > 0 && (
             <Button variant="ghost" size="sm" testId="wifi-clear-events" onClick={() => actions.clearWifiConnectedEvents()}>
-              Clear
+              {t('wifi.clear')}
             </Button>
           )}
         </view>
         {!events.length ? (
           <text data-testid="wifi-events" className="text-sm text-muted">
-            No events yet.
+            {t('wifi.noEventsYet')}
           </text>
         ) : (
           <view data-testid="wifi-events" className="gap-2">
@@ -76,7 +77,7 @@ export function render({ data, actions }: View) {
                 </view>
                 <text className="text-sm font-semibold">{event.ssid || '--'}</text>
                 <text className="text-[11px] text-muted">
-                  {`State: ${event.state ?? (event.connected === undefined ? '--' : event.connected ? 'Connected' : 'Disconnected')}`}
+                  {t('wifi.eventState', { state: event.state ?? (event.connected === undefined ? '--' : event.connected ? t('wifi.connected') : t('wifi.disconnected')) })}
                 </text>
                 <text className="text-[11px] text-muted">{`Secure: ${event.secure === undefined ? '--' : event.secure ? 'Yes' : 'No'}`}</text>
               </view>
@@ -85,18 +86,18 @@ export function render({ data, actions }: View) {
         )}
       </Section>
       <Section
-        title="Scan WiFi Networks"
-        description="Get list of available networks"
+        title={t('wifi.scanWifiNetworks')}
+        description={t('wifi.getListOfAvailable')}
         action={
           <Button size="sm" testId="wifi-scan" disabled={!!data.scanning} onClick={() => actions.getWifiList()}>
-            {data.scanning ? 'Scanning...' : 'Scan'}
+            {data.scanning ? t('wifi.scanning') : t('wifi.scan')}
           </Button>
         }
       >
         {data.wifiList !== null && (
           <text data-testid="wifi-scan-count" className="text-sm font-semibold">{`Available Networks (${networks.length})`}</text>
         )}
-        {data.wifiList !== null && !networks.length && <EmptyState icon="device" title="No networks found" />}
+        {data.wifiList !== null && !networks.length && <EmptyState icon="device" title={t('wifi.noNetworksFound')} />}
         <scroll className="max-h-96 gap-2">
           {networks.map((wifi, index) => (
             <button
@@ -118,17 +119,17 @@ export function render({ data, actions }: View) {
         </scroll>
       </Section>
       <Section
-        title="Connect to WiFi"
-        description={networks.length ? 'Select a network above or enter SSID manually' : 'Provide SSID and password'}
+        title={t('wifi.connectToWifi')}
+        description={networks.length ? t('wifi.connectPick') : t('wifi.connectManual')}
       >
         <Field testId="wifi-ssid" label="SSID" bind={ssid} placeholder={networks.length ? 'Enter SSID or select a network above' : 'SSID'} />
-        <Field testId="wifi-password" label="Password" bind={password} type="password" placeholder="Password (optional)" />
+        <Field testId="wifi-password" label={t('wifi.password')} bind={password} type="password" placeholder={t('wifi.passwordOptional')} />
         <Button
           testId="wifi-connect"
           disabled={!ssid.value.trim()}
           onClick={() => actions.connectWifi({ ssid: ssid.value.trim(), password: password.value || undefined })}
         >
-          Connect
+          {t('wifi.connect')}
         </Button>
       </Section>
     </Page>

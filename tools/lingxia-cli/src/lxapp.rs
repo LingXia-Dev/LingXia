@@ -2,6 +2,7 @@ mod build;
 mod bundle;
 mod framework;
 mod hardening;
+mod i18n;
 mod logic;
 mod options;
 mod package;

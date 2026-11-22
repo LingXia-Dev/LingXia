@@ -18,12 +18,12 @@ export function rootOf(demo: DemoName): string {
   return `view-group-${groupOf(demo).id}`;
 }
 
-/** A spec's `start` for a demo: its page, in English unless the spec is about another language. */
-export function openDemo(demo: DemoName, lang: 'en' | 'zh' = 'en'): { page: string; params: { lang: string } } {
-  return { page: pageOf(demo), params: { lang } };
+/** A spec's `start` for a demo: its page. */
+export function openDemo(demo: DemoName): { page: string } {
+  return { page: pageOf(demo) };
 }
 
 /** A spec's `start` for a demo under the tab bar: the View tab showing the demo's group in place. */
-export function openUnderTabs(demo: DemoName, lang: 'en' | 'zh' = 'en'): { page: string; params: { group: string; lang: string } } {
-  return { page: 'view', params: { group: groupOf(demo).id, lang } };
+export function openUnderTabs(demo: DemoName): { page: string; params: { group: string } } {
+  return { page: 'view', params: { group: groupOf(demo).id } };
 }

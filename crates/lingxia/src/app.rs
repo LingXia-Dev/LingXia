@@ -509,6 +509,7 @@ pub mod notification {
             activation_token: staged.token.clone(),
             deliver_at_ms: request.deliver_at_ms,
             silent: request.silent,
+            post_when_frontmost: false,
         });
         match outcome {
             // Suppressed posts nothing, so nothing may resolve this token.

@@ -31,7 +31,7 @@ export function harnessFor(packageDir) {
       for (const { dir, name } of links) {
         const linked = join(app, 'node_modules', name);
         await mkdir(dirname(linked), { recursive: true });
-        await symlink(dir, linked, 'dir');
+        await symlink(dir, linked, 'junction');
       }
       const linked = join(app, 'node_modules', links[0].name);
       await writeFile(join(app, 'page.tsx'), typeof page === 'function' ? page(linked) : page);

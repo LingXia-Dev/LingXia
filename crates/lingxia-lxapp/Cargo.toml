@@ -65,6 +65,7 @@ rong_console = { workspace = true, optional = true }
 rong_event = { workspace = true, optional = true }
 rong_timer = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true }
+lingxia-i18n = { workspace = true }
 lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-settings = { workspace = true }

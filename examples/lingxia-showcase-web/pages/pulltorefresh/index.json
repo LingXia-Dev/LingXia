@@ -1,9 +1,6 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "Pull Down Refresh",
-      "zh-CN": "下拉刷新"
-    }
+    "title": { "message": "title.pulltorefresh" }
   },
   "enablePullDownRefresh": true
 }

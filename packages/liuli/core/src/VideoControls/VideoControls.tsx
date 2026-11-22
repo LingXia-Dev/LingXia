@@ -1,4 +1,5 @@
 import { cx, Fragment, useLocal, useView, type Video, type VectorPath } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { videoControlsRecipe as r } from './VideoControls.recipe';
 
 export type VideoControlsVariant = 'overlay' | 'bar';
@@ -13,8 +14,8 @@ export interface VideoControlsLabels {
 export interface VideoControlsProps {
   /** The `useVideo` player they drive. */
   player: Video;
-  /** Every word they show or speak. */
-  labels: VideoControlsLabels;
+  /** Words to use instead of Liuli's, which follow the page's language. */
+  labels?: Partial<VideoControlsLabels>;
   /**
    * `overlay` lays them over the picture: put them after the `<video>` in a `relative` parent that
    * holds only that video. `bar` is a row under it. @default 'overlay'
@@ -26,6 +27,13 @@ export interface VideoControlsProps {
   /** Prefixes each control's test id: `<id>-play`, `<id>-scrub`, `<id>-fullscreen`. */
   'data-testid'?: string;
 }
+
+const names: (keyof VideoControlsLabels)[] = [
+  'play', 'pause', 'replay', 'mute', 'unmute', 'seek', 'fullscreen', 'exitFullscreen', 'settings', 'rate', 'quality', 'auto', 'live',
+  'loading', 'failed', 'retry',
+];
+const videoLabels = (given: Partial<VideoControlsLabels> = {}): VideoControlsLabels =>
+  Object.fromEntries(names.map(name => [name, given[name] ?? liuliText(`@liuli.video.${name}`)])) as unknown as VideoControlsLabels;
 
 // One set on a 24 grid with one round line: play and pause filled, the rest drawn.
 const W = 1.75;
@@ -77,7 +85,8 @@ function clock(seconds: number) {
  * and quality, full screen, and a recoverable error's Retry. Full screen is a dialog over the page
  * that shows the same player again with these controls.
  */
-export function VideoControls({ player, labels, variant = 'overlay', poster, className, 'data-testid': testId }: VideoControlsProps) {
+export function VideoControls({ player, labels: given, variant = 'overlay', poster, className, 'data-testid': testId }: VideoControlsProps) {
+  const labels = videoLabels(given);
   // The dialog follows the inline controls, so entering full screen keeps their state.
   return (
     <Fragment>

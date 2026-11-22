@@ -19,7 +19,7 @@ export function localizedString(resMgr: resourceManager.ResourceManager, name: s
   }
 }
 
+// The host has narrowed it to a product language; resource lookup picks the nearest qualifier.
 function localeForDisplayLanguage(tag: string): string {
-  const normalized: string = tag.replace('_', '-').toLowerCase();
-  return normalized === 'zh' || normalized.startsWith('zh-') ? 'zh_CN' : 'en_US';
+  return tag.replace(/-/g, '_');
 }

@@ -309,6 +309,8 @@ impl PageConfig {
             Err(LxAppError::ResourceNotFound(_)) => Ok(Self::default()),
             Err(error) => Err(error),
         }?;
+        let mut config = config;
+        lxapp.bind_text(&mut config.navigation_bar.title);
         Ok(config)
     }
 
@@ -494,18 +496,5 @@ mod tests {
             config.navigation_bar.title,
             crate::lxapp::localized_text::LocalizedText::from("Home")
         );
-    }
-
-    #[test]
-    fn accepts_a_title_per_language() {
-        let config = PageConfig::from_value(
-            "pages/profiles/index.json",
-            serde_json::json!({
-                "navigationBar": {"title": {"default": "Profiles", "zh-CN": "节点"}}
-            }),
-        )
-        .unwrap();
-        assert_eq!(config.navigation_bar.title.resolve("zh-CN"), "节点");
-        assert_eq!(config.navigation_bar.title.resolve("en-GB"), "Profiles");
     }
 }

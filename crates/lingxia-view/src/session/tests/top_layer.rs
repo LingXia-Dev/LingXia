@@ -12,7 +12,7 @@ fn frame_time(index: u64) -> Duration {
 }
 
 fn environment() -> serde_json::Value {
-    serde_json::json!({"theme":"light","insets":{"top":20,"right":0,"bottom":10,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","displayLanguage":"en","canDock":false,"reducedMotion":false})
+    serde_json::json!({"theme":"light","insets":{"top":20,"right":0,"bottom":10,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","language":"en","canDock":false,"reducedMotion":false})
 }
 
 /// A red page with a button inside the top chrome zone, a toggle, and a sheet that slides out.

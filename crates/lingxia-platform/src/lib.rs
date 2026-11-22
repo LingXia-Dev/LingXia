@@ -139,7 +139,7 @@ pub fn banner_supported() -> bool {
 
 /// The product-owned chrome this platform can actually paint a count on.
 ///
-/// `lx.host.setBadge` skips unsupported surfaces and returns `false` when
+/// `lx.host.badge` skips unsupported surfaces and returns `false` when
 /// none can be painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BadgeSurfaces {

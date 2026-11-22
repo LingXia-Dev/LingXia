@@ -170,8 +170,10 @@ ${shape.join("\n")}
 
 function main(argv) {
   const catalogue = apiCatalogue();
-  const json = `${JSON.stringify(catalogue, null, 2)}\n`;
-  const shape = mockShapeSource(catalogue);
+  // Doc text read on a CRLF checkout carries `\r`; the output is the same on every OS.
+  const lf = (_key, value) => (typeof value === "string" ? value.replace(/\r\n?/g, "\n") : value);
+  const json = `${JSON.stringify(catalogue, lf, 2)}\n`;
+  const shape = mockShapeSource(catalogue).replace(/\r\n?/g, "\n");
   if (argv.includes("--check")) {
     let current = null;
     try { current = readFileSync(checkedIn, "utf8"); } catch {}

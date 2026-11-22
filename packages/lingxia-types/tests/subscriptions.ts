@@ -47,9 +47,9 @@ lx.device.orientation.watch(() => {}, { signal: lifetime.signal });
 lx.network.status.watch(() => {}, { once: true });
 
 // Every value that changes is one `Live<T>`: `get()` and `watch()` agree on the value type.
-const appearance: Live<ResolvedAppearance> = lx.host.appearance;
-const appearancePreference: Live<AppearancePreference> = lx.host.appearance.preference;
-const language: Live<string> = lx.host.displayLanguage;
+const appearance: Live<ResolvedAppearance> = lx.app.appearance;
+const appearancePreference: Live<AppearancePreference> = lx.host.appearance;
+const language: Live<string> = lx.app.language;
 const orientation: Live<DeviceOrientation> = lx.device.orientation;
 const orientationNow: DeviceOrientation = lx.device.orientation.get();
 lx.device.orientation.watch((value: DeviceOrientation) => void value);

@@ -1,4 +1,5 @@
 import { cx, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { DropdownMenu, DropdownMenuCheckboxItem } from '../DropdownMenu/DropdownMenu';
 import { IconButton } from '../IconButton/IconButton';
@@ -35,10 +36,10 @@ export type MultiSelectProps = FieldOwnProps & MultiSelectBinding & {
   items: readonly MultiSelectOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
-  /** The name of the button that opens the list: "Add a label". */
-  addLabel: string;
-  /** Each token's remove button, named with what it removes: `label => \`Remove ${label}\``. */
-  removeLabel: (label: string) => string;
+  /** The name of the button that opens the list: "Add a label". Defaults to "Add" in the page's language. */
+  addLabel?: string;
+  /** Each token's remove button, named with what it removes: `label => \`Remove ${label}\``. Defaults to "Remove <label>" in the page's language. */
+  removeLabel?: (label: string) => string;
   className?: string;
   /** On the box; the add button gets `<testid>-add`, each option `<testid>-<value>`. */
   'data-testid'?: string;
@@ -48,7 +49,7 @@ export type MultiSelectProps = FieldOwnProps & MultiSelectBinding & {
 export function MultiSelect(props: MultiSelectProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    items, placeholder, addLabel, removeLabel, className, 'data-testid': testId,
+    items, placeholder, addLabel = liuliText('@liuli.add'), removeLabel = (label: string) => liuliText('@liuli.removeNamed', { name: label }), className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const chosen = props.bind ? props.bind.value : props.value;

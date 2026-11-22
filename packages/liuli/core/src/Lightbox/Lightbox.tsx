@@ -1,4 +1,5 @@
 import { useLocal, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { PageControl } from '../PageControl/PageControl';
 import { lightboxRecipe as r } from './Lightbox.recipe';
@@ -21,15 +22,15 @@ export interface LightboxProps {
   images: readonly LightboxImage[];
   /** A View-local cell holding which picture is in view, from 0. Set it before opening to start there. */
   bind?: Local<number>;
-  /** The close button's name: "Close". */
-  closeLabel: string;
-  /** Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. */
-  pageLabel: (page: number, count: number) => string;
+  /** The close button's name: "Close". Defaults to "Close" in the page's language. */
+  closeLabel?: string;
+  /** Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. Defaults to "2 of 5" in the page's language. */
+  pageLabel?: (page: number, count: number) => string;
   'data-testid'?: string;
 }
 
 /** Pictures one at a time over the whole screen, shown whole. */
-export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel, pageLabel, 'data-testid': testId }: LightboxProps) {
+export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel = liuliText('@liuli.close'), pageLabel = (page: number, count: number) => liuliText('@liuli.pageOf', { page: page + 1, count }), 'data-testid': testId }: LightboxProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;
   const at = Math.min(Math.max(0, Math.round(page.value)), Math.max(0, images.length - 1));

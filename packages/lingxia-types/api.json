@@ -10,6 +10,7 @@
       "ActivateTarget",
       "AlertOptions",
       "AnySurface",
+      "AppAppearanceApi",
       "AppCacheApi",
       "AppConfig",
       "AppDisplayPatch",
@@ -17,6 +18,7 @@
       "AppDownloadOptions",
       "AppDownloadResult",
       "AppInfo",
+      "AppLanguageApi",
       "AppLifecycleEventArgs",
       "AppLifecycleName",
       "AppLinkTarget",
@@ -26,10 +28,12 @@
       "AppSurface",
       "AppTarget",
       "AppTempDownloadResult",
-      "AppearanceApi",
       "AppearancePreference",
       "Automation",
       "AutostartApi",
+      "BadgeApi",
+      "BadgeOptions",
+      "BadgeResult",
       "BannerApi",
       "BinaryFileData",
       "BuiltinShellPage",
@@ -59,7 +63,6 @@
       "DeviceInfo",
       "DeviceOrientation",
       "DirEntry",
-      "DisplayLanguageApi",
       "DisplayLanguagePreference",
       "DownloadOptions",
       "DownloadOptionsBase",
@@ -85,6 +88,8 @@
       "HostAppUpdateInfo",
       "HostAppUpdateResult",
       "HostAppUpdateTask",
+      "HostAppearanceApi",
+      "HostDisplayLanguageApi",
       "HostInfo",
       "HostOs",
       "HostServiceEnvState",
@@ -105,6 +110,8 @@
       "LocationInfo",
       "Lx",
       "LxAppApi",
+      "LxAppMessageCall",
+      "LxAppMessageKey",
       "LxAppReleaseType",
       "LxAppUnavailableReason",
       "LxAppUpdateApi",
@@ -188,8 +195,6 @@
       "RouteTarget",
       "SURFACE_ERROR_CODES",
       "ScreenInfo",
-      "SetBadgeOptions",
-      "SetBadgeResult",
       "ShareFilesOptions",
       "ShareOptions",
       "SharePage",
@@ -314,6 +319,7 @@
       "ActivateTarget",
       "AlertOptions",
       "AnySurface",
+      "AppAppearanceApi",
       "AppCacheApi",
       "AppConfig",
       "AppDisplayPatch",
@@ -321,6 +327,7 @@
       "AppDownloadOptions",
       "AppDownloadResult",
       "AppInfo",
+      "AppLanguageApi",
       "AppLifecycleEventArgs",
       "AppLifecycleName",
       "AppLinkTarget",
@@ -330,10 +337,12 @@
       "AppSurface",
       "AppTarget",
       "AppTempDownloadResult",
-      "AppearanceApi",
       "AppearancePreference",
       "Automation",
       "AutostartApi",
+      "BadgeApi",
+      "BadgeOptions",
+      "BadgeResult",
       "BannerApi",
       "BinaryFileData",
       "BuiltinShellPage",
@@ -364,7 +373,6 @@
       "DeviceInfo",
       "DeviceOrientation",
       "DirEntry",
-      "DisplayLanguageApi",
       "DisplayLanguagePreference",
       "DownloadOptions",
       "DownloadOptionsBase",
@@ -390,6 +398,8 @@
       "HostAppUpdateInfo",
       "HostAppUpdateResult",
       "HostAppUpdateTask",
+      "HostAppearanceApi",
+      "HostDisplayLanguageApi",
       "HostInfo",
       "HostOs",
       "HostServiceEnvState",
@@ -410,6 +420,8 @@
       "LocationInfo",
       "Lx",
       "LxAppApi",
+      "LxAppMessageCall",
+      "LxAppMessageKey",
       "LxAppReleaseType",
       "LxAppUnavailableReason",
       "LxAppUpdateApi",
@@ -501,8 +513,6 @@
       "RouteTarget",
       "SURFACE_ERROR_CODES",
       "ScreenInfo",
-      "SetBadgeOptions",
-      "SetBadgeResult",
       "ShareFilesOptions",
       "ShareOptions",
       "SharePage",
@@ -773,7 +783,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:749"
+      "source": "src/generated/logic.ts:793"
     },
     {
       "path": "App.onLaunch",
@@ -791,7 +801,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:738"
+      "source": "src/generated/logic.ts:782"
     },
     {
       "path": "App.onOpen",
@@ -823,7 +833,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:745"
+      "source": "src/generated/logic.ts:789"
     },
     {
       "path": "App.onScreenshot",
@@ -841,7 +851,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:751"
+      "source": "src/generated/logic.ts:795"
     },
     {
       "path": "App.onShow",
@@ -867,7 +877,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:747"
+      "source": "src/generated/logic.ts:791"
     },
     {
       "path": "LXAPP_UNAVAILABLE_REASONS",
@@ -1139,7 +1149,71 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:521"
+      "source": "src/generated/logic.ts:559"
+    },
+    {
+      "path": "lx.app.appearance",
+      "kind": "namespace",
+      "entry": "global",
+      "summary": "The light/dark scheme this lxapp renders in.",
+      "description": "The light/dark scheme this lxapp renders in.",
+      "signatures": [],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:278"
+    },
+    {
+      "path": "lx.app.appearance.get",
+      "kind": "function",
+      "entry": "global",
+      "summary": "The value now.",
+      "description": "The value now.",
+      "signatures": [
+        {
+          "text": "get(): T",
+          "parameters": [],
+          "returns": "ResolvedAppearance"
+        }
+      ],
+      "types": [
+        "ResolvedAppearance"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:60"
+    },
+    {
+      "path": "lx.app.appearance.watch",
+      "kind": "watcher",
+      "entry": "global",
+      "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+      "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it.",
+      "signatures": [
+        {
+          "text": "watch(callback: (value: T) => void, options?: SignalOptions): () => void",
+          "parameters": [
+            {
+              "name": "callback",
+              "type": "(value: T) => void",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "SignalOptions",
+              "required": false
+            }
+          ],
+          "returns": "() => void"
+        }
+      ],
+      "types": [
+        "ResolvedAppearance",
+        "SignalOptions"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:66"
     },
     {
       "path": "lx.app.info",
@@ -1151,7 +1225,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:409"
+      "source": "src/generated/logic.ts:447"
     },
     {
       "path": "lx.app.info.appId",
@@ -1164,7 +1238,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3442"
+      "source": "src/generated/logic.ts:3539"
     },
     {
       "path": "lx.app.info.channel",
@@ -1179,7 +1253,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3448"
+      "source": "src/generated/logic.ts:3545"
     },
     {
       "path": "lx.app.info.name",
@@ -1192,7 +1266,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3444"
+      "source": "src/generated/logic.ts:3541"
     },
     {
       "path": "lx.app.info.role",
@@ -1205,7 +1279,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3454"
+      "source": "src/generated/logic.ts:3551"
     },
     {
       "path": "lx.app.info.version",
@@ -1218,7 +1292,68 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3446"
+      "source": "src/generated/logic.ts:3543"
+    },
+    {
+      "path": "lx.app.language",
+      "kind": "namespace",
+      "entry": "global",
+      "summary": "The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`.",
+      "description": "The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`.",
+      "signatures": [],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:276"
+    },
+    {
+      "path": "lx.app.language.get",
+      "kind": "function",
+      "entry": "global",
+      "summary": "The value now.",
+      "description": "The value now.",
+      "signatures": [
+        {
+          "text": "get(): T",
+          "parameters": [],
+          "returns": "string"
+        }
+      ],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:60"
+    },
+    {
+      "path": "lx.app.language.watch",
+      "kind": "watcher",
+      "entry": "global",
+      "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+      "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it.",
+      "signatures": [
+        {
+          "text": "watch(callback: (value: T) => void, options?: SignalOptions): () => void",
+          "parameters": [
+            {
+              "name": "callback",
+              "type": "(value: T) => void",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "SignalOptions",
+              "required": false
+            }
+          ],
+          "returns": "() => void"
+        }
+      ],
+      "types": [
+        "SignalOptions"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:66"
     },
     {
       "path": "lx.app.moreActions",
@@ -1230,7 +1365,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:418"
+      "source": "src/generated/logic.ts:456"
     },
     {
       "path": "lx.app.moreActions.replace",
@@ -1258,7 +1393,31 @@
       "examples": [
         "lx.app.moreActions.replace([\n{ icon: 'public/feedback.svg', label: 'Feedback', onSelect: () => openFeedback() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4068"
+      "source": "src/generated/logic.ts:4155"
+    },
+    {
+      "path": "lx.app.t",
+      "kind": "function",
+      "entry": "global",
+      "summary": "The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`; tags keep their text.",
+      "description": "The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`;\ntags keep their text. Read it when the text is shown: a later language switch does not change it.",
+      "signatures": [
+        {
+          "text": "t(...message: LxAppMessageCall): string",
+          "parameters": [
+            {
+              "name": "message",
+              "type": "LxAppMessageCall",
+              "required": true
+            }
+          ],
+          "returns": "string"
+        }
+      ],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/generated/logic.ts:4041"
     },
     {
       "path": "lx.app.tabBar",
@@ -1270,7 +1429,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:412"
+      "source": "src/generated/logic.ts:450"
     },
     {
       "path": "lx.app.tabBar.update",
@@ -1308,7 +1467,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4274"
+      "source": "src/generated/logic.ts:4361"
     },
     {
       "path": "lx.app.update",
@@ -1320,7 +1479,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:415"
+      "source": "src/generated/logic.ts:453"
     },
     {
       "path": "lx.app.update.apply",
@@ -1338,7 +1497,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3964"
+      "source": "src/generated/logic.ts:4051"
     },
     {
       "path": "lx.app.update.onFailed",
@@ -1370,7 +1529,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3972"
+      "source": "src/generated/logic.ts:4059"
     },
     {
       "path": "lx.app.update.onReady",
@@ -1402,7 +1561,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3970"
+      "source": "src/generated/logic.ts:4057"
     },
     {
       "path": "lx.automation",
@@ -1432,7 +1591,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:513"
+      "source": "src/generated/logic.ts:551"
     },
     {
       "path": "lx.clipboard.clear",
@@ -1457,7 +1616,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3661"
+      "source": "src/generated/logic.ts:3757"
     },
     {
       "path": "lx.clipboard.read",
@@ -1500,7 +1659,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3656"
+      "source": "src/generated/logic.ts:3752"
     },
     {
       "path": "lx.clipboard.readText",
@@ -1534,7 +1693,7 @@
       "examples": [
         "const read = await lx.clipboard.readText();\nif (read.status === 'ok' && read.text) paste(read.text);"
       ],
-      "source": "src/generated/logic.ts:3640"
+      "source": "src/generated/logic.ts:3736"
     },
     {
       "path": "lx.clipboard.types",
@@ -1561,7 +1720,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3671"
+      "source": "src/generated/logic.ts:3767"
     },
     {
       "path": "lx.clipboard.write",
@@ -1595,7 +1754,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3645"
+      "source": "src/generated/logic.ts:3741"
     },
     {
       "path": "lx.clipboard.writeText",
@@ -1626,7 +1785,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3628"
+      "source": "src/generated/logic.ts:3724"
     },
     {
       "path": "lx.device",
@@ -1638,7 +1797,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:515"
+      "source": "src/generated/logic.ts:553"
     },
     {
       "path": "lx.device.haptics",
@@ -1673,7 +1832,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3683"
+      "source": "src/generated/logic.ts:3779"
     },
     {
       "path": "lx.device.info",
@@ -1685,7 +1844,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:433"
+      "source": "src/generated/logic.ts:471"
     },
     {
       "path": "lx.device.info.brand",
@@ -1698,7 +1857,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3460"
+      "source": "src/generated/logic.ts:3557"
     },
     {
       "path": "lx.device.info.marketName",
@@ -1711,7 +1870,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3464"
+      "source": "src/generated/logic.ts:3561"
     },
     {
       "path": "lx.device.info.model",
@@ -1724,7 +1883,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3462"
+      "source": "src/generated/logic.ts:3559"
     },
     {
       "path": "lx.device.info.osName",
@@ -1739,7 +1898,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3466"
+      "source": "src/generated/logic.ts:3563"
     },
     {
       "path": "lx.device.info.osVersion",
@@ -1752,7 +1911,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3468"
+      "source": "src/generated/logic.ts:3565"
     },
     {
       "path": "lx.device.location",
@@ -1803,7 +1962,7 @@
       "examples": [
         "const { latitude, longitude } = await lx.device.location();\nshowOnMap(latitude, longitude);"
       ],
-      "source": "src/generated/logic.ts:3729"
+      "source": "src/generated/logic.ts:3825"
     },
     {
       "path": "lx.device.onKeyDown",
@@ -1836,7 +1995,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3712"
+      "source": "src/generated/logic.ts:3808"
     },
     {
       "path": "lx.device.onKeyUp",
@@ -1869,7 +2028,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3714"
+      "source": "src/generated/logic.ts:3810"
     },
     {
       "path": "lx.device.orientation",
@@ -1881,7 +2040,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:436"
+      "source": "src/generated/logic.ts:474"
     },
     {
       "path": "lx.device.orientation.get",
@@ -1901,7 +2060,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4098"
+      "source": "src/generated/logic.ts:4185"
     },
     {
       "path": "lx.device.orientation.watch",
@@ -1933,7 +2092,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4103"
+      "source": "src/generated/logic.ts:4190"
     },
     {
       "path": "lx.device.permission",
@@ -1976,7 +2135,7 @@
       "examples": [
         "if (await lx.device.permission('notifications') === 'prompt') showEnableButton();"
       ],
-      "source": "src/generated/logic.ts:3699"
+      "source": "src/generated/logic.ts:3795"
     },
     {
       "path": "lx.device.requestPermission",
@@ -2023,7 +2182,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3710"
+      "source": "src/generated/logic.ts:3806"
     },
     {
       "path": "lx.device.screen",
@@ -2043,7 +2202,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3687"
+      "source": "src/generated/logic.ts:3783"
     },
     {
       "path": "lx.device.systemSettings",
@@ -2063,7 +2222,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3731"
+      "source": "src/generated/logic.ts:3827"
     },
     {
       "path": "lx.fs",
@@ -2075,7 +2234,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:519"
+      "source": "src/generated/logic.ts:557"
     },
     {
       "path": "lx.fs.copy",
@@ -2121,7 +2280,7 @@
       "examples": [
         "await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });"
       ],
-      "source": "src/generated/logic.ts:3789"
+      "source": "src/generated/logic.ts:3885"
     },
     {
       "path": "lx.fs.exists",
@@ -2148,7 +2307,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3749"
+      "source": "src/generated/logic.ts:3845"
     },
     {
       "path": "lx.fs.file",
@@ -2177,7 +2336,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3744"
+      "source": "src/generated/logic.ts:3840"
     },
     {
       "path": "lx.fs.mkdir",
@@ -2221,7 +2380,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3768"
+      "source": "src/generated/logic.ts:3864"
     },
     {
       "path": "lx.fs.readDir",
@@ -2261,7 +2420,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3762"
+      "source": "src/generated/logic.ts:3858"
     },
     {
       "path": "lx.fs.remove",
@@ -2309,7 +2468,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3807"
+      "source": "src/generated/logic.ts:3903"
     },
     {
       "path": "lx.fs.rename",
@@ -2355,7 +2514,7 @@
       "examples": [
         "await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });"
       ],
-      "source": "src/generated/logic.ts:3800"
+      "source": "src/generated/logic.ts:3896"
     },
     {
       "path": "lx.fs.stat",
@@ -2399,7 +2558,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3756"
+      "source": "src/generated/logic.ts:3852"
     },
     {
       "path": "lx.fs.userCache",
@@ -2412,7 +2571,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:464"
+      "source": "src/generated/logic.ts:502"
     },
     {
       "path": "lx.fs.userData",
@@ -2425,7 +2584,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:462"
+      "source": "src/generated/logic.ts:500"
     },
     {
       "path": "lx.fs.write",
@@ -2469,7 +2628,7 @@
       "examples": [
         "await lx.fs.write('notes/today.md', { data: '# Today' });"
       ],
-      "source": "src/generated/logic.ts:3778"
+      "source": "src/generated/logic.ts:3874"
     },
     {
       "path": "lx.host",
@@ -2481,54 +2640,22 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:511"
+      "source": "src/generated/logic.ts:549"
     },
     {
       "path": "lx.host.appearance",
       "kind": "namespace",
       "entry": "global",
-      "summary": "The light/dark scheme this lxapp renders in.",
-      "description": "The light/dark scheme this lxapp renders in. Every lxapp follows it;\nonly the Control app changes it.",
+      "summary": "The product's light/dark preference.",
+      "description": "The product's light/dark preference. Only the Control app may read or set\nit; an lxapp reads the scheme it renders in from `lx.app.appearance`.",
       "signatures": [],
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:374"
+      "source": "src/generated/logic.ts:412"
     },
     {
       "path": "lx.host.appearance.get",
-      "kind": "function",
-      "entry": "global",
-      "summary": "The value now.",
-      "description": "The value now.",
-      "signatures": [
-        {
-          "text": "get(): T",
-          "parameters": [],
-          "returns": "ResolvedAppearance"
-        }
-      ],
-      "types": [
-        "ResolvedAppearance"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:60"
-    },
-    {
-      "path": "lx.host.appearance.preference",
-      "kind": "namespace",
-      "entry": "global",
-      "summary": "What the user chose for the whole product.",
-      "description": "What the user chose for the whole product. Control app only. A system\nflip under `'auto'` moves the resolved scheme and leaves this quiet.",
-      "signatures": [],
-      "types": [],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:882"
-    },
-    {
-      "path": "lx.host.appearance.preference.get",
       "kind": "function",
       "entry": "global",
       "summary": "The value now.",
@@ -2548,11 +2675,11 @@
       "source": "src/generated/logic.ts:60"
     },
     {
-      "path": "lx.host.appearance.preference.set",
+      "path": "lx.host.appearance.set",
       "kind": "function",
       "entry": "global",
       "summary": "Pin the product to `'light'` or `'dark'`, or follow the system with `'auto'`.",
-      "description": "Pin the product to `'light'` or `'dark'`, or follow the system with\n`'auto'`. An lxapp that pinned a scheme in its manifest keeps it.",
+      "description": "Pin the product to `'light'` or `'dark'`, or follow the system with\n`'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves\nonce this lxapp's own `lx.app.appearance` follows.",
       "signatures": [
         {
           "text": "set(preference: AppearancePreference): Promise<void>",
@@ -2582,10 +2709,10 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:889"
+      "source": "src/generated/logic.ts:1574"
     },
     {
-      "path": "lx.host.appearance.preference.watch",
+      "path": "lx.host.appearance.watch",
       "kind": "watcher",
       "entry": "global",
       "summary": "Follow it, starting with the current value; returns an unsubscribe.",
@@ -2617,38 +2744,6 @@
       "source": "src/generated/logic.ts:66"
     },
     {
-      "path": "lx.host.appearance.watch",
-      "kind": "watcher",
-      "entry": "global",
-      "summary": "Follow it, starting with the current value; returns an unsubscribe.",
-      "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it.",
-      "signatures": [
-        {
-          "text": "watch(callback: (value: T) => void, options?: SignalOptions): () => void",
-          "parameters": [
-            {
-              "name": "callback",
-              "type": "(value: T) => void",
-              "required": true
-            },
-            {
-              "name": "options",
-              "type": "SignalOptions",
-              "required": false
-            }
-          ],
-          "returns": "() => void"
-        }
-      ],
-      "types": [
-        "ResolvedAppearance",
-        "SignalOptions"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:66"
-    },
-    {
       "path": "lx.host.autostart",
       "kind": "namespace",
       "entry": "global",
@@ -2668,7 +2763,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:348"
+      "source": "src/generated/logic.ts:378"
     },
     {
       "path": "lx.host.autostart.disable",
@@ -2700,7 +2795,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:944"
+      "source": "src/generated/logic.ts:977"
     },
     {
       "path": "lx.host.autostart.enable",
@@ -2735,7 +2830,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:937"
+      "source": "src/generated/logic.ts:970"
     },
     {
       "path": "lx.host.autostart.isEnabled",
@@ -2771,14 +2866,127 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:928"
+      "source": "src/generated/logic.ts:961"
+    },
+    {
+      "path": "lx.host.badge",
+      "kind": "namespace",
+      "entry": "global",
+      "summary": "A mark on the product's own system chrome, such as an unread count.",
+      "description": "A mark on the product's own system chrome, such as an unread count.\nControl app only.",
+      "signatures": [],
+      "types": [],
+      "tags": {
+        "supports": [
+          "host.badge"
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:400"
+    },
+    {
+      "path": "lx.host.badge.clear",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Remove the badge.",
+      "description": "Remove the badge.",
+      "signatures": [
+        {
+          "text": "clear(options?: BadgeOptions): Promise<BadgeResult>",
+          "parameters": [
+            {
+              "name": "options",
+              "type": "BadgeOptions",
+              "required": false
+            }
+          ],
+          "returns": "Promise<BadgeResult>"
+        }
+      ],
+      "types": [
+        "BadgeOptions",
+        "BadgeResult"
+      ],
+      "tags": {
+        "supports": [
+          "host.badge"
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "The platform has no badge surface of the requested kind, such as on Android."
+          },
+          {
+            "code": "E_PERMISSION_DENIED",
+            "when": "From an lxapp other than the Control app."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:1003"
+    },
+    {
+      "path": "lx.host.badge.set",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Show `value` on the badge, such as an unread count.",
+      "description": "Show `value` on the badge, such as an unread count.",
+      "signatures": [
+        {
+          "text": "set(value: string | number, options?: BadgeOptions): Promise<BadgeResult>",
+          "parameters": [
+            {
+              "name": "value",
+              "type": "string | number",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "BadgeOptions",
+              "required": false
+            }
+          ],
+          "returns": "Promise<BadgeResult>"
+        }
+      ],
+      "types": [
+        "BadgeOptions",
+        "BadgeResult"
+      ],
+      "tags": {
+        "supports": [
+          "host.badge"
+        ],
+        "platform": [
+          "macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.",
+          "Windows: the taskbar and the notification-area item.",
+          "iOS: the home-screen icon, numbers only; needs notification permission.",
+          "HarmonyOS: the home-screen icon."
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "The platform has no badge surface of the requested kind, such as on Android."
+          },
+          {
+            "code": "E_INVALID_ARG",
+            "when": "An empty value, or text where the platform paints numbers only."
+          },
+          {
+            "code": "E_PERMISSION_DENIED",
+            "when": "From an lxapp other than the Control app."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:996"
     },
     {
       "path": "lx.host.banner",
       "kind": "namespace",
       "entry": "global",
       "summary": "A banner the product draws at the top right of the desktop.",
-      "description": "A banner the product draws at the top right of the desktop.",
+      "description": "A banner the product draws at the top right of the desktop. Phones have\nnone by design: use `lx.ui.toast` for a notice and a modal for a choice.",
       "signatures": [],
       "types": [],
       "tags": {
@@ -2793,7 +3001,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:362"
+      "source": "src/generated/logic.ts:393"
     },
     {
       "path": "lx.host.banner.dismiss",
@@ -2831,7 +3039,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1030"
+      "source": "src/generated/logic.ts:1104"
     },
     {
       "path": "lx.host.banner.show",
@@ -2883,7 +3091,7 @@
       "examples": [
         "const picked = await lx.host.banner.show({\n  title: 'Run finished',\n  actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: '42' } } }],\n});"
       ],
-      "source": "src/generated/logic.ts:975"
+      "source": "src/generated/logic.ts:1049"
     },
     {
       "path": "lx.host.cache",
@@ -2902,7 +3110,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:380"
+      "source": "src/generated/logic.ts:418"
     },
     {
       "path": "lx.host.cache.clear",
@@ -2933,7 +3141,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:723"
+      "source": "src/generated/logic.ts:767"
     },
     {
       "path": "lx.host.cache.size",
@@ -2958,52 +3166,22 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:714"
+      "source": "src/generated/logic.ts:758"
     },
     {
       "path": "lx.host.displayLanguage",
       "kind": "namespace",
       "entry": "global",
-      "summary": "The language this lxapp renders in.",
-      "description": "The language this lxapp renders in. Every lxapp follows it; only the\nControl app changes it.",
+      "summary": "The product's language preference.",
+      "description": "The product's language preference. Only the Control app may read or set\nit; an lxapp reads the language it renders in from `lx.app.language`.",
       "signatures": [],
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:368"
+      "source": "src/generated/logic.ts:406"
     },
     {
       "path": "lx.host.displayLanguage.get",
-      "kind": "function",
-      "entry": "global",
-      "summary": "The value now.",
-      "description": "The value now.",
-      "signatures": [
-        {
-          "text": "get(): T",
-          "parameters": [],
-          "returns": "string"
-        }
-      ],
-      "types": [],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:60"
-    },
-    {
-      "path": "lx.host.displayLanguage.preference",
-      "kind": "namespace",
-      "entry": "global",
-      "summary": "What the user chose: `'auto'`, or a canonical BCP-47 tag.",
-      "description": "What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app\nonly. A system locale change under `'auto'` moves the language and\nleaves this quiet.",
-      "signatures": [],
-      "types": [],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:1288"
-    },
-    {
-      "path": "lx.host.displayLanguage.preference.get",
       "kind": "function",
       "entry": "global",
       "summary": "The value now.",
@@ -3023,7 +3201,7 @@
       "source": "src/generated/logic.ts:60"
     },
     {
-      "path": "lx.host.displayLanguage.preference.set",
+      "path": "lx.host.displayLanguage.set",
       "kind": "function",
       "entry": "global",
       "summary": "Persist the product's language.",
@@ -3057,10 +3235,10 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1294"
+      "source": "src/generated/logic.ts:1588"
     },
     {
-      "path": "lx.host.displayLanguage.preference.watch",
+      "path": "lx.host.displayLanguage.watch",
       "kind": "watcher",
       "entry": "global",
       "summary": "Follow it, starting with the current value; returns an unsubscribe.",
@@ -3092,37 +3270,6 @@
       "source": "src/generated/logic.ts:66"
     },
     {
-      "path": "lx.host.displayLanguage.watch",
-      "kind": "watcher",
-      "entry": "global",
-      "summary": "Follow it, starting with the current value; returns an unsubscribe.",
-      "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it.",
-      "signatures": [
-        {
-          "text": "watch(callback: (value: T) => void, options?: SignalOptions): () => void",
-          "parameters": [
-            {
-              "name": "callback",
-              "type": "(value: T) => void",
-              "required": true
-            },
-            {
-              "name": "options",
-              "type": "SignalOptions",
-              "required": false
-            }
-          ],
-          "returns": "() => void"
-        }
-      ],
-      "types": [
-        "SignalOptions"
-      ],
-      "tags": {},
-      "examples": [],
-      "source": "src/generated/logic.ts:66"
-    },
-    {
       "path": "lx.host.env",
       "kind": "property",
       "entry": "global",
@@ -3137,7 +3284,7 @@
         "default": "'prod'"
       },
       "examples": [],
-      "source": "src/generated/logic.ts:341"
+      "source": "src/generated/logic.ts:371"
     },
     {
       "path": "lx.host.exit",
@@ -3155,7 +3302,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3844"
+      "source": "src/generated/logic.ts:3940"
     },
     {
       "path": "lx.host.info",
@@ -3167,7 +3314,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:396"
+      "source": "src/generated/logic.ts:434"
     },
     {
       "path": "lx.host.info.os",
@@ -3182,7 +3329,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3500"
+      "source": "src/generated/logic.ts:3596"
     },
     {
       "path": "lx.host.info.productName",
@@ -3195,7 +3342,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3502"
+      "source": "src/generated/logic.ts:3598"
     },
     {
       "path": "lx.host.info.sdkVersion",
@@ -3208,7 +3355,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3506"
+      "source": "src/generated/logic.ts:3602"
     },
     {
       "path": "lx.host.info.version",
@@ -3221,7 +3368,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3504"
+      "source": "src/generated/logic.ts:3600"
     },
     {
       "path": "lx.host.notification",
@@ -3243,7 +3390,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:355"
+      "source": "src/generated/logic.ts:385"
     },
     {
       "path": "lx.host.notification.cancel",
@@ -3281,7 +3428,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1764"
+      "source": "src/generated/logic.ts:1853"
     },
     {
       "path": "lx.host.notification.cancelAll",
@@ -3309,7 +3456,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1771"
+      "source": "src/generated/logic.ts:1860"
     },
     {
       "path": "lx.host.notification.show",
@@ -3319,15 +3466,15 @@
       "description": "Post a local notification now or at `schedule`, replacing any under the same `id`.\nAn invalid target, unknown page or route, or an unconfigured host rejects here,\nbefore anything is posted. A tap whose target is gone by then brings the\nproduct forward and says it is unavailable.",
       "signatures": [
         {
-          "text": "show(options: { id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; }): Promise<{ id: string; delivery: 'posted' | 'scheduled' | 'suppressed'; }>",
+          "text": "show(options: { id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; whenFrontmost?: 'banner' | 'system' | 'suppress'; }): Promise<{ id: string; delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed'; }>",
           "parameters": [
             {
               "name": "options",
-              "type": "{ id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; }",
+              "type": "{ id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; whenFrontmost?: 'banner' | 'system' | 'suppress'; }",
               "required": true
             }
           ],
-          "returns": "Promise<{ id: string; delivery: \"posted\" | \"scheduled\" | \"suppressed\"; }>"
+          "returns": "Promise<{ id: string; delivery: \"posted\" | \"scheduled\" | \"presented\" | \"suppressed\"; }>"
         }
       ],
       "types": [
@@ -3354,7 +3501,7 @@
       "examples": [
         "await lx.host.notification.show({ title: 'Upload finished', target: { page: 'files' } });"
       ],
-      "source": "src/generated/logic.ts:1717"
+      "source": "src/generated/logic.ts:1797"
     },
     {
       "path": "lx.host.screenshot",
@@ -3396,7 +3543,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3824"
+      "source": "src/generated/logic.ts:3920"
     },
     {
       "path": "lx.host.serviceEnv",
@@ -3417,63 +3564,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3826"
-    },
-    {
-      "path": "lx.host.setBadge",
-      "kind": "function",
-      "entry": "global",
-      "summary": "Mark the product in system chrome, such as with an unread count; `null` or `''` clears it.",
-      "description": "Mark the product in system chrome, such as with an unread count; `null` or\n`''` clears it. Control app only. Resolves whether anything was painted.\nA badge never prompts, and a notification never sets one.",
-      "signatures": [
-        {
-          "text": "setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<SetBadgeResult>",
-          "parameters": [
-            {
-              "name": "value",
-              "type": "string | number | null",
-              "required": true
-            },
-            {
-              "name": "options",
-              "type": "SetBadgeOptions",
-              "required": false
-            }
-          ],
-          "returns": "Promise<SetBadgeResult>"
-        }
-      ],
-      "types": [
-        "SetBadgeOptions",
-        "SetBadgeResult"
-      ],
-      "tags": {
-        "supports": [
-          "host.badge"
-        ],
-        "platform": [
-          "macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.",
-          "Windows: the taskbar and the notification-area item.",
-          "iOS: the home-screen icon, numbers only; needs notification permission.",
-          "HarmonyOS: the home-screen icon."
-        ],
-        "throws": [
-          {
-            "code": "E_NOT_SUPPORTED",
-            "when": "The platform has no badge surface of the requested kind, such as on Android."
-          },
-          {
-            "code": "E_INVALID_ARG",
-            "when": "Text where the platform paints numbers only."
-          },
-          {
-            "code": "E_PERMISSION_DENIED",
-            "when": "From an lxapp other than the Control app."
-          }
-        ]
-      },
-      "examples": [],
-      "source": "src/generated/logic.ts:3858"
+      "source": "src/generated/logic.ts:3922"
     },
     {
       "path": "lx.host.setServiceEnv",
@@ -3501,7 +3592,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3833"
+      "source": "src/generated/logic.ts:3929"
     },
     {
       "path": "lx.host.terminal",
@@ -3523,7 +3614,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:387"
+      "source": "src/generated/logic.ts:425"
     },
     {
       "path": "lx.host.terminal.colorSchemes",
@@ -3535,7 +3626,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2870"
+      "source": "src/generated/logic.ts:2944"
     },
     {
       "path": "lx.host.terminal.colorSchemes.createPreview",
@@ -3556,7 +3647,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2958"
+      "source": "src/generated/logic.ts:3032"
     },
     {
       "path": "lx.host.terminal.colorSchemes.import",
@@ -3603,7 +3694,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:2949"
+      "source": "src/generated/logic.ts:3023"
     },
     {
       "path": "lx.host.terminal.colorSchemes.list",
@@ -3631,7 +3722,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:2941"
+      "source": "src/generated/logic.ts:3015"
     },
     {
       "path": "lx.host.terminal.fonts",
@@ -3643,7 +3734,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2872"
+      "source": "src/generated/logic.ts:2946"
     },
     {
       "path": "lx.host.terminal.fonts.list",
@@ -3670,7 +3761,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:2985"
+      "source": "src/generated/logic.ts:3059"
     },
     {
       "path": "lx.host.terminal.settings",
@@ -3682,7 +3773,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2868"
+      "source": "src/generated/logic.ts:2942"
     },
     {
       "path": "lx.host.terminal.settings.get",
@@ -3716,7 +3807,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3005"
+      "source": "src/generated/logic.ts:3079"
     },
     {
       "path": "lx.host.terminal.settings.onChange",
@@ -3751,7 +3842,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3025"
+      "source": "src/generated/logic.ts:3099"
     },
     {
       "path": "lx.host.terminal.settings.reset",
@@ -3788,7 +3879,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3018"
+      "source": "src/generated/logic.ts:3092"
     },
     {
       "path": "lx.host.terminal.settings.update",
@@ -3827,23 +3918,143 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3010"
+      "source": "src/generated/logic.ts:3084"
     },
     {
       "path": "lx.host.terminal.windows",
-      "kind": "property",
+      "kind": "namespace",
       "entry": "global",
-      "summary": "Windows-only optional inline-image compatibility runtime.",
-      "description": "Windows-only optional inline-image compatibility runtime.",
+      "summary": "The optional Windows runtime that passes inline images through.",
+      "description": "The optional Windows runtime that passes inline images through.",
       "signatures": [],
-      "type": "WindowsTerminalApi | undefined",
-      "types": [
-        "WindowsTerminalApi",
-        "WindowsTerminalInlineImageStatus"
-      ],
+      "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2874"
+      "source": "src/generated/logic.ts:2948"
+    },
+    {
+      "path": "lx.host.terminal.windows.install",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.",
+      "description": "Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.",
+      "signatures": [
+        {
+          "text": "install(options: { path: string; }): Promise<WindowsTerminalInlineImageStatus>",
+          "parameters": [
+            {
+              "name": "options",
+              "type": "{ path: string; }",
+              "required": true
+            }
+          ],
+          "returns": "Promise<WindowsTerminalInlineImageStatus>"
+        }
+      ],
+      "types": [
+        "WindowsTerminalInlineImageStatus",
+        "lx.host.terminal.windows.install(options)"
+      ],
+      "tags": {
+        "supports": [
+          "host.terminal.windows"
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "Off Windows."
+          },
+          {
+            "code": "E_PERMISSION_DENIED",
+            "when": "Outside the host's own control surface, or `path` is not this lxapp's temp file."
+          },
+          {
+            "code": "E_INVALID_DATA",
+            "when": "The package fails verification."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:3500"
+    },
+    {
+      "path": "lx.host.terminal.windows.setEnabled",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Select the installed runtime for new terminal sessions.",
+      "description": "Select the installed runtime for new terminal sessions.",
+      "signatures": [
+        {
+          "text": "setEnabled(options: { enabled: boolean; }): Promise<WindowsTerminalInlineImageStatus>",
+          "parameters": [
+            {
+              "name": "options",
+              "type": "{ enabled: boolean; }",
+              "required": true
+            }
+          ],
+          "returns": "Promise<WindowsTerminalInlineImageStatus>"
+        }
+      ],
+      "types": [
+        "WindowsTerminalInlineImageStatus",
+        "lx.host.terminal.windows.setEnabled(options)"
+      ],
+      "tags": {
+        "supports": [
+          "host.terminal.windows"
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "Off Windows."
+          },
+          {
+            "code": "E_PERMISSION_DENIED",
+            "when": "Outside the host's own control surface."
+          },
+          {
+            "code": "E_INVALID_STATE",
+            "when": "Enabling before the runtime is installed."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:3511"
+    },
+    {
+      "path": "lx.host.terminal.windows.status",
+      "kind": "function",
+      "entry": "global",
+      "summary": "Whether the runtime is installed and selected.",
+      "description": "Whether the runtime is installed and selected.",
+      "signatures": [
+        {
+          "text": "status(): Promise<WindowsTerminalInlineImageStatus>",
+          "parameters": [],
+          "returns": "Promise<WindowsTerminalInlineImageStatus>"
+        }
+      ],
+      "types": [
+        "WindowsTerminalInlineImageStatus"
+      ],
+      "tags": {
+        "supports": [
+          "host.terminal.windows"
+        ],
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "Off Windows."
+          },
+          {
+            "code": "E_PERMISSION_DENIED",
+            "when": "Outside the host's own control surface."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/generated/logic.ts:3492"
     },
     {
       "path": "lx.host.tray",
@@ -3865,7 +4076,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:403"
+      "source": "src/generated/logic.ts:441"
     },
     {
       "path": "lx.host.tray.menu",
@@ -3877,7 +4088,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:427"
+      "source": "src/generated/logic.ts:465"
     },
     {
       "path": "lx.host.tray.menu.replace",
@@ -3914,7 +4125,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4305"
+      "source": "src/generated/logic.ts:4392"
     },
     {
       "path": "lx.host.tray.onClick",
@@ -3955,7 +4166,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4294"
+      "source": "src/generated/logic.ts:4381"
     },
     {
       "path": "lx.host.tray.update",
@@ -3991,7 +4202,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4287"
+      "source": "src/generated/logic.ts:4374"
     },
     {
       "path": "lx.host.update",
@@ -4003,7 +4214,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:393"
+      "source": "src/generated/logic.ts:431"
     },
     {
       "path": "lx.host.update.check",
@@ -4046,7 +4257,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3877"
+      "source": "src/generated/logic.ts:3959"
     },
     {
       "path": "lx.host.update.claim",
@@ -4064,7 +4275,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3884"
+      "source": "src/generated/logic.ts:3966"
     },
     {
       "path": "lx.media",
@@ -4076,7 +4287,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:523"
+      "source": "src/generated/logic.ts:561"
     },
     {
       "path": "lx.media.compressImage",
@@ -4125,7 +4336,7 @@
       "examples": [
         "const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });"
       ],
-      "source": "src/generated/logic.ts:3999"
+      "source": "src/generated/logic.ts:4086"
     },
     {
       "path": "lx.media.compressVideo",
@@ -4177,7 +4388,7 @@
       "examples": [
         "const task = lx.media.compressVideo(clip, { quality: 'medium' });\nfor await (const { fraction } of task) render(fraction);\nconst { path, size } = await task.result;"
       ],
-      "source": "src/generated/logic.ts:4051"
+      "source": "src/generated/logic.ts:4138"
     },
     {
       "path": "lx.media.imageInfo",
@@ -4220,7 +4431,7 @@
       "examples": [
         "const { width, height } = await lx.media.imageInfo('images/cover.png');"
       ],
-      "source": "src/generated/logic.ts:3988"
+      "source": "src/generated/logic.ts:4075"
     },
     {
       "path": "lx.media.preview",
@@ -4254,7 +4465,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4004"
+      "source": "src/generated/logic.ts:4091"
     },
     {
       "path": "lx.media.saveToLibrary",
@@ -4285,7 +4496,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4010"
+      "source": "src/generated/logic.ts:4097"
     },
     {
       "path": "lx.media.videoInfo",
@@ -4328,7 +4539,7 @@
       "examples": [
         "const { durationMs, size } = await lx.media.videoInfo(clip);"
       ],
-      "source": "src/generated/logic.ts:4025"
+      "source": "src/generated/logic.ts:4112"
     },
     {
       "path": "lx.media.videoThumbnail",
@@ -4377,7 +4588,7 @@
       "examples": [
         "const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });"
       ],
-      "source": "src/generated/logic.ts:4036"
+      "source": "src/generated/logic.ts:4123"
     },
     {
       "path": "lx.nav",
@@ -4389,7 +4600,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:529"
+      "source": "src/generated/logic.ts:567"
     },
     {
       "path": "lx.nav.back",
@@ -4420,7 +4631,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:315"
+      "source": "src/generated/logic.ts:345"
     },
     {
       "path": "lx.nav.go",
@@ -4506,7 +4717,7 @@
       "examples": [
         "const picker = lx.nav.go({ page: 'pick-contact' });\nconst contact = await picker.result;"
       ],
-      "source": "src/generated/logic.ts:298"
+      "source": "src/generated/logic.ts:328"
     },
     {
       "path": "lx.nav.leaveApp",
@@ -4531,7 +4742,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:326"
+      "source": "src/generated/logic.ts:356"
     },
     {
       "path": "lx.nav.reset",
@@ -4572,7 +4783,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:321"
+      "source": "src/generated/logic.ts:351"
     },
     {
       "path": "lx.network",
@@ -4584,7 +4795,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:517"
+      "source": "src/generated/logic.ts:555"
     },
     {
       "path": "lx.network.download",
@@ -4713,7 +4924,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:492"
+      "source": "src/generated/logic.ts:530"
     },
     {
       "path": "lx.network.status",
@@ -4727,7 +4938,7 @@
       "examples": [
         "const { isConnected, networkType } = lx.network.status.get();"
       ],
-      "source": "src/generated/logic.ts:480"
+      "source": "src/generated/logic.ts:518"
     },
     {
       "path": "lx.network.status.get",
@@ -4835,7 +5046,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4088"
+      "source": "src/generated/logic.ts:4175"
     },
     {
       "path": "lx.network.wifi",
@@ -4847,7 +5058,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:470"
+      "source": "src/generated/logic.ts:508"
     },
     {
       "path": "lx.network.wifi.connect",
@@ -4896,7 +5107,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4359"
+      "source": "src/generated/logic.ts:4446"
     },
     {
       "path": "lx.network.wifi.current",
@@ -4927,7 +5138,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4372"
+      "source": "src/generated/logic.ts:4459"
     },
     {
       "path": "lx.network.wifi.list",
@@ -4969,7 +5180,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4366"
+      "source": "src/generated/logic.ts:4453"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -5002,7 +5213,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4374"
+      "source": "src/generated/logic.ts:4461"
     },
     {
       "path": "lx.openExternal",
@@ -5039,7 +5250,7 @@
       "examples": [
         "await lx.openExternal('mailto:help@example.com');"
       ],
-      "source": "src/generated/logic.ts:3944"
+      "source": "src/generated/logic.ts:4026"
     },
     {
       "path": "lx.openFile",
@@ -5083,7 +5294,7 @@
       "examples": [
         "await lx.openFile('lx://userdata/report.pdf');"
       ],
-      "source": "src/generated/logic.ts:3916"
+      "source": "src/generated/logic.ts:3998"
     },
     {
       "path": "lx.pick",
@@ -5095,7 +5306,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:525"
+      "source": "src/generated/logic.ts:563"
     },
     {
       "path": "lx.pick.capture",
@@ -5143,7 +5354,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4156"
+      "source": "src/generated/logic.ts:4243"
     },
     {
       "path": "lx.pick.code",
@@ -5183,7 +5394,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4165"
+      "source": "src/generated/logic.ts:4252"
     },
     {
       "path": "lx.pick.directory",
@@ -5226,7 +5437,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4137"
+      "source": "src/generated/logic.ts:4224"
     },
     {
       "path": "lx.pick.file",
@@ -5270,7 +5481,7 @@
       "examples": [
         "const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });\nif (picked.status === 'ok') await attach(picked.file.path);"
       ],
-      "source": "src/generated/logic.ts:4120"
+      "source": "src/generated/logic.ts:4207"
     },
     {
       "path": "lx.pick.files",
@@ -5312,7 +5523,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4127"
+      "source": "src/generated/logic.ts:4214"
     },
     {
       "path": "lx.pick.media",
@@ -5353,7 +5564,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4146"
+      "source": "src/generated/logic.ts:4233"
     },
     {
       "path": "lx.share",
@@ -5397,7 +5608,7 @@
       "examples": [
         "const { outcome } = await lx.share({ title: 'LingXia', text: 'Try this app' });"
       ],
-      "source": "src/generated/logic.ts:3932"
+      "source": "src/generated/logic.ts:4014"
     },
     {
       "path": "lx.shell",
@@ -5409,7 +5620,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:531"
+      "source": "src/generated/logic.ts:569"
     },
     {
       "path": "lx.shell.activate",
@@ -5427,7 +5638,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4186"
+      "source": "src/generated/logic.ts:4273"
     },
     {
       "path": "lx.shell.openBuiltin",
@@ -5467,7 +5678,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4176"
+      "source": "src/generated/logic.ts:4263"
     },
     {
       "path": "lx.shell.setAppDisplay",
@@ -5504,7 +5715,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4184"
+      "source": "src/generated/logic.ts:4271"
     },
     {
       "path": "lx.shell.sidebarActions",
@@ -5516,7 +5727,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:456"
+      "source": "src/generated/logic.ts:494"
     },
     {
       "path": "lx.shell.sidebarActions.remove",
@@ -5547,7 +5758,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4219"
+      "source": "src/generated/logic.ts:4306"
     },
     {
       "path": "lx.shell.sidebarActions.replace",
@@ -5584,7 +5795,7 @@
       "examples": [
         "await lx.shell.sidebarActions.replace([\n{ id: 'new', placement: 'header', icon: 'public/plus.svg', label: 'New', onSelect: () => createDraft() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4206"
+      "source": "src/generated/logic.ts:4293"
     },
     {
       "path": "lx.shell.sidebarActions.update",
@@ -5626,7 +5837,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4214"
+      "source": "src/generated/logic.ts:4301"
     },
     {
       "path": "lx.storage",
@@ -5640,7 +5851,7 @@
       "examples": [
         "declare global { interface LxStorageSchema { token: string } }\nawait lx.storage.set('token', token);"
       ],
-      "source": "src/generated/logic.ts:545"
+      "source": "src/generated/logic.ts:583"
     },
     {
       "path": "lx.storage.clear",
@@ -5669,7 +5880,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:637"
+      "source": "src/generated/logic.ts:675"
     },
     {
       "path": "lx.storage.delete",
@@ -5704,7 +5915,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:631"
+      "source": "src/generated/logic.ts:669"
     },
     {
       "path": "lx.storage.get",
@@ -5775,7 +5986,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:605"
+      "source": "src/generated/logic.ts:643"
     },
     {
       "path": "lx.storage.has",
@@ -5810,7 +6021,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:625"
+      "source": "src/generated/logic.ts:663"
     },
     {
       "path": "lx.storage.info",
@@ -5841,7 +6052,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:649"
+      "source": "src/generated/logic.ts:687"
     },
     {
       "path": "lx.storage.list",
@@ -5876,7 +6087,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:643"
+      "source": "src/generated/logic.ts:681"
     },
     {
       "path": "lx.storage.set",
@@ -5917,7 +6128,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:619"
+      "source": "src/generated/logic.ts:657"
     },
     {
       "path": "lx.supports",
@@ -5945,7 +6156,7 @@
       "examples": [
         "if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });"
       ],
-      "source": "src/generated/logic.ts:3901"
+      "source": "src/generated/logic.ts:3983"
     },
     {
       "path": "lx.surface",
@@ -5957,7 +6168,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:527"
+      "source": "src/generated/logic.ts:565"
     },
     {
       "path": "lx.surface.app",
@@ -5987,7 +6198,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4256"
+      "source": "src/generated/logic.ts:4343"
     },
     {
       "path": "lx.surface.declared",
@@ -6025,7 +6236,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4262"
+      "source": "src/generated/logic.ts:4349"
     },
     {
       "path": "lx.surface.get",
@@ -6059,7 +6270,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4250"
+      "source": "src/generated/logic.ts:4337"
     },
     {
       "path": "lx.surface.openApp",
@@ -6117,7 +6328,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4238"
+      "source": "src/generated/logic.ts:4325"
     },
     {
       "path": "lx.surface.openDeclared",
@@ -6175,7 +6386,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4248"
+      "source": "src/generated/logic.ts:4335"
     },
     {
       "path": "lx.surface.openPage",
@@ -6239,7 +6450,7 @@
       "examples": [
         "const sheet = lx.surface.openPage('settings', { as: 'float' });\nawait sheet.opened;"
       ],
-      "source": "src/generated/logic.ts:281"
+      "source": "src/generated/logic.ts:311"
     },
     {
       "path": "lx.surface.openUrl",
@@ -6286,7 +6497,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4230"
+      "source": "src/generated/logic.ts:4317"
     },
     {
       "path": "lx.ui",
@@ -6298,7 +6509,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:533"
+      "source": "src/generated/logic.ts:571"
     },
     {
       "path": "lx.ui.actionSheet",
@@ -6342,7 +6553,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4320"
+      "source": "src/generated/logic.ts:4407"
     },
     {
       "path": "lx.ui.alert",
@@ -6383,7 +6594,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4327"
+      "source": "src/generated/logic.ts:4414"
     },
     {
       "path": "lx.ui.confirm",
@@ -6424,7 +6635,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4334"
+      "source": "src/generated/logic.ts:4421"
     },
     {
       "path": "lx.ui.toast",
@@ -6458,7 +6669,7 @@
       "examples": [
         "lx.ui.toast('Saved', { tone: 'success' });\nconst busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });\nbusy.dismiss();"
       ],
-      "source": "src/generated/logic.ts:4344"
+      "source": "src/generated/logic.ts:4431"
     },
     {
       "path": "lxAppUnavailableReason",
@@ -6875,7 +7086,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2624"
+      "source": "src/generated/logic.ts:2698"
     },
     {
       "path": "page.surface.close",
@@ -6911,7 +7122,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2768"
+      "source": "src/generated/logic.ts:2842"
     },
     {
       "path": "page.surface.key",
@@ -6924,7 +7135,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2616"
+      "source": "src/generated/logic.ts:2690"
     },
     {
       "path": "page.surface.kind",
@@ -6937,7 +7148,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2614"
+      "source": "src/generated/logic.ts:2688"
     },
     {
       "path": "page.surface.onClose",
@@ -6970,7 +7181,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2636"
+      "source": "src/generated/logic.ts:2710"
     },
     {
       "path": "page.surface.onHide",
@@ -7002,7 +7213,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2772"
+      "source": "src/generated/logic.ts:2846"
     },
     {
       "path": "page.surface.onShow",
@@ -7034,7 +7245,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2770"
+      "source": "src/generated/logic.ts:2844"
     },
     {
       "path": "page.surface.realized",
@@ -7047,7 +7258,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2622"
+      "source": "src/generated/logic.ts:2696"
     },
     {
       "path": "page.surface.show",
@@ -7065,7 +7276,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2763"
+      "source": "src/generated/logic.ts:2837"
     },
     {
       "path": "page.surface.visible",
@@ -7078,7 +7289,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2629"
+      "source": "src/generated/logic.ts:2703"
     },
     {
       "path": "page.update",
@@ -7208,7 +7419,7 @@
           "description": "Aborting it closes the sheet, and the call rejects."
         }
       ],
-      "source": "src/generated/logic.ts:653"
+      "source": "src/generated/logic.ts:691"
     },
     {
       "name": "ActionSheetOptions.items",
@@ -7230,7 +7441,7 @@
           "description": "Text shown."
         }
       ],
-      "source": "src/generated/logic.ts:655"
+      "source": "src/generated/logic.ts:693"
     },
     {
       "name": "ActionSheetResult",
@@ -7238,7 +7449,7 @@
       "description": "Result of `lx.ui.actionSheet`. Branch on `status` before reading\nthe selected item id.",
       "text": "{ status: 'ok'; id: string; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:671"
+      "source": "src/generated/logic.ts:709"
     },
     {
       "name": "ActivateTarget",
@@ -7288,7 +7499,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:679"
+      "source": "src/generated/logic.ts:717"
     },
     {
       "name": "AlertOptions",
@@ -7324,7 +7535,7 @@
           "description": "Aborting it closes the dialog, and the call rejects."
         }
       ],
-      "source": "src/generated/logic.ts:690"
+      "source": "src/generated/logic.ts:728"
     },
     {
       "name": "AnySurface",
@@ -7332,7 +7543,7 @@
       "description": "Every surface handle, narrowable by `kind`.",
       "text": "PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface",
       "fields": [],
-      "source": "src/generated/logic.ts:702"
+      "source": "src/generated/logic.ts:740"
     },
     {
       "name": "App.onOpen()",
@@ -7369,6 +7580,28 @@
         }
       ],
       "source": "src/generated/logic.ts:191"
+    },
+    {
+      "name": "AppAppearanceApi",
+      "summary": "`lx.app.appearance` — the scheme this lxapp renders in: the one its `lxapp.json` pins, else the product's.",
+      "description": "`lx.app.appearance` — the scheme this lxapp renders in: the one its\n`lxapp.json` pins, else the product's.",
+      "fields": [
+        {
+          "name": "get",
+          "type": "() => ResolvedAppearance",
+          "required": true,
+          "summary": "The value now.",
+          "description": "The value now."
+        },
+        {
+          "name": "watch",
+          "type": "(callback: (value: ResolvedAppearance) => void, options?: SignalOptions) => () => void",
+          "required": true,
+          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
+        }
+      ],
+      "source": "src/generated/logic.ts:746"
     },
     {
       "name": "AppCacheApi",
@@ -7410,7 +7643,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:709"
+      "source": "src/generated/logic.ts:753"
     },
     {
       "name": "AppConfig",
@@ -7453,7 +7686,7 @@
           "description": "Runs after the person takes a screenshot while the lxapp is in front."
         }
       ],
-      "source": "src/generated/logic.ts:736"
+      "source": "src/generated/logic.ts:780"
     },
     {
       "name": "AppDisplayPatch",
@@ -7475,14 +7708,14 @@
           "description": "A bundled path or `lx://` file: PNG, JPEG, WebP or SVG of at most 1 MiB,\nraster images at most 4096 px on a side; SVG content is not validated.\nCopied, so the source may go."
         }
       ],
-      "source": "src/generated/logic.ts:759"
+      "source": "src/generated/logic.ts:803"
     },
     {
       "name": "AppDownloadFilePath",
       "summary": "Runtime-managed app download path, usually under `lx://userdata`.",
       "description": "Runtime-managed app download path, usually under `lx://userdata`.",
       "fields": [],
-      "source": "src/generated/logic.ts:771"
+      "source": "src/generated/logic.ts:815"
     },
     {
       "name": "AppDownloadOptions",
@@ -7518,7 +7751,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:776"
+      "source": "src/generated/logic.ts:820"
     },
     {
       "name": "AppDownloadResult",
@@ -7526,7 +7759,7 @@
       "description": "Where a download into this lxapp's storage landed: a temporary file, or the `to` path under `lx://userdata`.",
       "text": "{ path: AppDownloadFilePath; storage: 'temp'; type?: string; size: number; } | { path: AppDownloadFilePath; storage: 'userdata'; type?: string; size: number; }",
       "fields": [],
-      "source": "src/generated/logic.ts:787"
+      "source": "src/generated/logic.ts:831"
     },
     {
       "name": "AppInfo",
@@ -7569,7 +7802,29 @@
           "description": "What this lxapp may call. `control`: the product's own lxapp, admitted to\nControl-only members. `control_surface`: a host-bundled settings lxapp the\nControl app opens, admitted only to its own members. `guest`: any other."
         }
       ],
-      "source": "src/generated/logic.ts:3440"
+      "source": "src/generated/logic.ts:3537"
+    },
+    {
+      "name": "AppLanguageApi",
+      "summary": "`lx.app.language` — the language this lxapp renders in, as a BCP-47 tag: the product's language narrowed to the `languages` its lxapp.json lists (the exact tag, else the same language, else the first).",
+      "description": "`lx.app.language` — the language this lxapp renders in, as a BCP-47 tag:\nthe product's language narrowed to the `languages` its lxapp.json lists\n(the exact tag, else the same language, else the first). Pages read it\nas `env.language`; `watch` fires only when the narrowed value changes.\nLogic follows it for text it hands to native chrome, which nothing\nre-renders on its behalf.",
+      "fields": [
+        {
+          "name": "get",
+          "type": "() => string",
+          "required": true,
+          "summary": "The value now.",
+          "description": "The value now."
+        },
+        {
+          "name": "watch",
+          "type": "(callback: (value: string) => void, options?: SignalOptions) => () => void",
+          "required": true,
+          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
+        }
+      ],
+      "source": "src/generated/logic.ts:859"
     },
     {
       "name": "AppLifecycleEventArgs",
@@ -7605,7 +7860,7 @@
           "description": "That page's query."
         }
       ],
-      "source": "src/generated/logic.ts:808"
+      "source": "src/generated/logic.ts:862"
     },
     {
       "name": "AppLifecycleName",
@@ -7656,7 +7911,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:820"
+      "source": "src/generated/logic.ts:874"
     },
     {
       "name": "AppPersistedDownloadResult",
@@ -7699,7 +7954,7 @@
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:771"
+      "source": "src/generated/logic.ts:815"
     },
     {
       "name": "AppScreenshotOptions",
@@ -7714,7 +7969,7 @@
           "description": "Platform-specific window id to capture (desktop only). Omit to let the\nplatform pick: the key/main window on desktop, the sole window on mobile."
         }
       ],
-      "source": "src/generated/logic.ts:830"
+      "source": "src/generated/logic.ts:884"
     },
     {
       "name": "AppScreenshotResult",
@@ -7743,7 +7998,7 @@
           "description": "Image height in pixels, when the runtime could read it from the PNG."
         }
       ],
-      "source": "src/generated/logic.ts:839"
+      "source": "src/generated/logic.ts:893"
     },
     {
       "name": "AppSurface",
@@ -7828,7 +8083,7 @@
           "description": "Fires on a real transition to hidden, whichever side drove it."
         }
       ],
-      "source": "src/generated/logic.ts:849"
+      "source": "src/generated/logic.ts:903"
     },
     {
       "name": "AppTarget",
@@ -7885,7 +8140,7 @@
           "description": "Install this version first if it is newer than the installed one; older versions are refused."
         }
       ],
-      "source": "src/generated/logic.ts:857"
+      "source": "src/generated/logic.ts:911"
     },
     {
       "name": "AppTempDownloadResult",
@@ -7928,36 +8183,7 @@
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:771"
-    },
-    {
-      "name": "AppearanceApi",
-      "summary": "`lx.host.appearance` — the scheme this lxapp renders in.",
-      "description": "`lx.host.appearance` — the scheme this lxapp renders in. An lxapp that\npinned one in its `lxapp.json` reports that; every other lxapp reports\nthe product's.",
-      "fields": [
-        {
-          "name": "get",
-          "type": "() => ResolvedAppearance",
-          "required": true,
-          "summary": "The value now.",
-          "description": "The value now."
-        },
-        {
-          "name": "watch",
-          "type": "(callback: (value: ResolvedAppearance) => void, options?: SignalOptions) => () => void",
-          "required": true,
-          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
-          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
-        },
-        {
-          "name": "preference",
-          "type": "Live<AppearancePreference> & { set(preference: AppearancePreference): Promise<void>; }",
-          "required": true,
-          "summary": "What the user chose for the whole product.",
-          "description": "What the user chose for the whole product. Control app only. A system\nflip under `'auto'` moves the resolved scheme and leaves this quiet."
-        }
-      ],
-      "source": "src/generated/logic.ts:877"
+      "source": "src/generated/logic.ts:815"
     },
     {
       "name": "AppearancePreference",
@@ -7965,7 +8191,7 @@
       "description": "What the product's light/dark scheme is set to. `'auto'` follows\nthe system.",
       "text": "\"light\" | \"dark\" | \"auto\"",
       "fields": [],
-      "source": "src/generated/logic.ts:897"
+      "source": "src/generated/logic.ts:930"
     },
     {
       "name": "AutostartApi",
@@ -8046,7 +8272,100 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:917"
+      "source": "src/generated/logic.ts:950"
+    },
+    {
+      "name": "BadgeApi",
+      "summary": "A mark on the product's own system chrome, such as an unread count.",
+      "description": "A mark on the product's own system chrome, such as an unread count. A badge never\nprompts, and a notification never sets one.",
+      "fields": [
+        {
+          "name": "set",
+          "type": "(value: string | number, options?: BadgeOptions) => Promise<BadgeResult>",
+          "required": true,
+          "summary": "Show `value` on the badge, such as an unread count.",
+          "description": "Show `value` on the badge, such as an unread count.",
+          "tags": {
+            "supports": [
+              "host.badge"
+            ],
+            "platform": [
+              "macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.",
+              "Windows: the taskbar and the notification-area item.",
+              "iOS: the home-screen icon, numbers only; needs notification permission.",
+              "HarmonyOS: the home-screen icon."
+            ],
+            "throws": [
+              {
+                "code": "E_NOT_SUPPORTED",
+                "when": "The platform has no badge surface of the requested kind, such as on Android."
+              },
+              {
+                "code": "E_INVALID_ARG",
+                "when": "An empty value, or text where the platform paints numbers only."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "From an lxapp other than the Control app."
+              }
+            ]
+          }
+        },
+        {
+          "name": "clear",
+          "type": "(options?: BadgeOptions) => Promise<BadgeResult>",
+          "required": true,
+          "summary": "Remove the badge.",
+          "description": "Remove the badge.",
+          "tags": {
+            "supports": [
+              "host.badge"
+            ],
+            "throws": [
+              {
+                "code": "E_NOT_SUPPORTED",
+                "when": "The platform has no badge surface of the requested kind, such as on Android."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "From an lxapp other than the Control app."
+              }
+            ]
+          }
+        }
+      ],
+      "source": "src/generated/logic.ts:984"
+    },
+    {
+      "name": "BadgeOptions",
+      "summary": "Where `lx.host.badge.set` and `clear` paint.",
+      "description": "Where `lx.host.badge.set` and `clear` paint.",
+      "fields": [
+        {
+          "name": "surface",
+          "type": "\"auto\" | \"app_icon\" | \"tray\" | undefined",
+          "required": false,
+          "summary": "Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.",
+          "description": "Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.",
+          "default": "'auto'"
+        }
+      ],
+      "source": "src/generated/logic.ts:1007"
+    },
+    {
+      "name": "BadgeResult",
+      "summary": "What a badge call changed.",
+      "description": "What a badge call changed.",
+      "fields": [
+        {
+          "name": "painted",
+          "type": "boolean",
+          "required": true,
+          "summary": "Whether any surface took the change; `false` when one exists but declined, such as a hidden tray item.",
+          "description": "Whether any surface took the change; `false` when one exists but declined, such as a hidden tray item."
+        }
+      ],
+      "source": "src/generated/logic.ts:1016"
     },
     {
       "name": "BannerApi",
@@ -8098,7 +8417,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:961"
+      "source": "src/generated/logic.ts:1035"
     },
     {
       "name": "BinaryFileData",
@@ -8106,7 +8425,7 @@
       "description": "Bytes `lx.fs.write` and the clipboard accept.",
       "text": "ArrayBuffer | ArrayBufferView",
       "fields": [],
-      "source": "src/generated/logic.ts:1034"
+      "source": "src/generated/logic.ts:1108"
     },
     {
       "name": "BuiltinShellPage",
@@ -8114,7 +8433,7 @@
       "description": "Built-in browser product page. Opening one requires\n`capabilities.browser` and is restricted to the native-assigned Control app.",
       "text": "'downloads'",
       "fields": [],
-      "source": "src/generated/logic.ts:1040"
+      "source": "src/generated/logic.ts:1114"
     },
     {
       "name": "BuiltinSurface",
@@ -8157,7 +8476,7 @@
           "description": "True until `close()` fires; afterwards the page instance is torn down."
         }
       ],
-      "source": "src/generated/logic.ts:1047"
+      "source": "src/generated/logic.ts:1121"
     },
     {
       "name": "CancelableTask",
@@ -8202,7 +8521,7 @@
           "description": "The person dismissed it."
         }
       ],
-      "source": "src/generated/logic.ts:1053"
+      "source": "src/generated/logic.ts:1127"
     },
     {
       "name": "CaptureOptions",
@@ -8232,7 +8551,7 @@
           "description": "Longest video to record, in milliseconds; rounded up to whole seconds."
         }
       ],
-      "source": "src/generated/logic.ts:1059"
+      "source": "src/generated/logic.ts:1133"
     },
     {
       "name": "ChannelHandle",
@@ -8366,7 +8685,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:440"
+      "source": "src/generated/logic.ts:478"
     },
     {
       "name": "ClipboardItem",
@@ -8374,7 +8693,7 @@
       "description": "One clipboard representation: text, or an image file.",
       "text": "{ type: 'text'; text: string; } | { type: 'image'; path: string; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1074"
+      "source": "src/generated/logic.ts:1148"
     },
     {
       "name": "ClipboardReadOptions",
@@ -8389,7 +8708,7 @@
           "description": "Omit to receive every representation the host can surface."
         }
       ],
-      "source": "src/generated/logic.ts:1090"
+      "source": "src/generated/logic.ts:1164"
     },
     {
       "name": "ClipboardReadResult",
@@ -8397,7 +8716,7 @@
       "description": "Result of `lx.clipboard.read`. Omit `type` to receive every\nrepresentation this host can surface. A requested type that is\nabsent leaves `items` empty, not an error.",
       "text": "{ status: 'ok'; items: readonly ClipboardItem[]; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:1100"
+      "source": "src/generated/logic.ts:1174"
     },
     {
       "name": "ClipboardTextResult",
@@ -8405,7 +8724,7 @@
       "description": "Result of `lx.clipboard.readText`. Branch on `status`.\nA copied empty string is `{ status: 'ok', text: '' }`;\nan image-only clipboard has no `text`.",
       "text": "{ status: 'ok'; text?: string; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:1112"
+      "source": "src/generated/logic.ts:1186"
     },
     {
       "name": "ClipboardType",
@@ -8413,7 +8732,7 @@
       "description": "Representations the runtime can round-trip. Closed union.",
       "text": "\"text\" | \"image\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1120"
+      "source": "src/generated/logic.ts:1194"
     },
     {
       "name": "ClipboardWriteItem",
@@ -8421,7 +8740,7 @@
       "description": "One clipboard write. Every host accepts both: `image` takes a PNG or\nJPEG file and re-encodes it as the platform's native image format.",
       "text": "{ type: 'text'; text: string; } | { type: 'image'; path: string; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1126"
+      "source": "src/generated/logic.ts:1200"
     },
     {
       "name": "CompressImageOptions",
@@ -8451,7 +8770,7 @@
           "description": "Largest output height in pixels; the aspect ratio is kept."
         }
       ],
-      "source": "src/generated/logic.ts:1143"
+      "source": "src/generated/logic.ts:1217"
     },
     {
       "name": "CompressImageResult",
@@ -8466,7 +8785,7 @@
           "description": "The compressed JPEG, a temporary `lx://` path."
         }
       ],
-      "source": "src/generated/logic.ts:1156"
+      "source": "src/generated/logic.ts:1230"
     },
     {
       "name": "CompressVideoOptions",
@@ -8474,7 +8793,7 @@
       "description": "Where `lx.media.compressVideo` writes and how hard it compresses.",
       "text": "{ signal?: AbortSignal; to?: string; } & ({ quality: VideoCompressQuality; bitrate?: never; fps?: never; resolution?: never; } | { quality?: never; bitrate?: number; fps?: number; resolution?: number; })",
       "fields": [],
-      "source": "src/generated/logic.ts:1162"
+      "source": "src/generated/logic.ts:1236"
     },
     {
       "name": "CompressVideoResult",
@@ -8524,7 +8843,7 @@
           "description": "MIME type, e.g. `video/mp4`."
         }
       ],
-      "source": "src/generated/logic.ts:1199"
+      "source": "src/generated/logic.ts:1273"
     },
     {
       "name": "CompressVideoTask",
@@ -8554,7 +8873,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:1221"
+      "source": "src/generated/logic.ts:1295"
     },
     {
       "name": "ConfiguredPageName",
@@ -8562,7 +8881,7 @@
       "description": "Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript\nnavigation accepts only this name; full routes such as\n`/pages/home/index` are internal runtime details. Discover names\nwith `lxdev lxapp pages`.\nNarrows to the project's own names once `lingxia dev` or\n`lingxia build` has generated them; plain `string` before that, so\na project that never ran a build still compiles.",
       "text": "keyof LxAppPages extends never ? string : keyof LxAppPages",
       "fields": [],
-      "source": "src/generated/logic.ts:1232"
+      "source": "src/generated/logic.ts:1306"
     },
     {
       "name": "ConfirmOptions",
@@ -8612,7 +8931,7 @@
           "description": "Aborting it closes the dialog, and the call rejects."
         }
       ],
-      "source": "src/generated/logic.ts:1235"
+      "source": "src/generated/logic.ts:1309"
     },
     {
       "name": "ConnectWifiOptions",
@@ -8641,7 +8960,7 @@
           "description": "Aborting it stops waiting for the system, and the call rejects."
         }
       ],
-      "source": "src/generated/logic.ts:1251"
+      "source": "src/generated/logic.ts:1325"
     },
     {
       "name": "Declared",
@@ -8733,7 +9052,7 @@
           "description": "Fires on a real transition to hidden, whichever side drove it."
         }
       ],
-      "source": "src/generated/logic.ts:1264"
+      "source": "src/generated/logic.ts:1338"
     },
     {
       "name": "DeepReadonly",
@@ -8891,7 +9210,7 @@
           "description": "Read system switches the lxapp may branch on, such as location and WiFi."
         }
       ],
-      "source": "src/generated/logic.ts:431"
+      "source": "src/generated/logic.ts:469"
     },
     {
       "name": "DeviceInfo",
@@ -8934,7 +9253,7 @@
           "description": "Operating system version, e.g. `18.2`."
         }
       ],
-      "source": "src/generated/logic.ts:3458"
+      "source": "src/generated/logic.ts:3555"
     },
     {
       "name": "DeviceOrientation",
@@ -8942,7 +9261,7 @@
       "description": "The screen's orientation.",
       "text": "\"portrait\" | \"landscape\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1272"
+      "source": "src/generated/logic.ts:1346"
     },
     {
       "name": "DirEntry",
@@ -8964,36 +9283,7 @@
           "description": "What the entry is; a `symlink` is not followed."
         }
       ],
-      "source": "src/generated/logic.ts:3472"
-    },
-    {
-      "name": "DisplayLanguageApi",
-      "summary": "`lx.host.displayLanguage` — the language this lxapp renders in, as a canonical BCP-47 tag.",
-      "description": "`lx.host.displayLanguage` — the language this lxapp renders in, as a\ncanonical BCP-47 tag. Map it to the catalogs this lxapp ships (its\n`lxapp.json` `languages`) and fall back where it has none; the View's\n`contentLanguage` is this value narrowed to them. Logic follows it\nbecause the strings it hands to native chrome (titles, tab labels,\ndialog text) are its own and nothing re-renders them.",
-      "fields": [
-        {
-          "name": "get",
-          "type": "() => string",
-          "required": true,
-          "summary": "The value now.",
-          "description": "The value now."
-        },
-        {
-          "name": "watch",
-          "type": "(callback: (value: string) => void, options?: SignalOptions) => () => void",
-          "required": true,
-          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
-          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
-        },
-        {
-          "name": "preference",
-          "type": "Live<DisplayLanguagePreference> & { set(preference: DisplayLanguagePreference): Promise<void>; }",
-          "required": true,
-          "summary": "What the user chose: `'auto'`, or a canonical BCP-47 tag.",
-          "description": "What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app\nonly. A system locale change under `'auto'` moves the language and\nleaves this quiet."
-        }
-      ],
-      "source": "src/generated/logic.ts:1282"
+      "source": "src/generated/logic.ts:3569"
     },
     {
       "name": "DisplayLanguagePreference",
@@ -9001,7 +9291,7 @@
       "description": "What the product's language is set to: `'auto'` follows the system,\nor any canonical BCP-47 tag. `string & {}` keeps `'auto'` in\nautocomplete while still accepting a tag.",
       "text": "'auto' | (string & {})",
       "fields": [],
-      "source": "src/generated/logic.ts:1303"
+      "source": "src/generated/logic.ts:1353"
     },
     {
       "name": "DownloadOptions",
@@ -9031,7 +9321,7 @@
           "description": "Aborting it cancels the download, and the task's `result` rejects."
         }
       ],
-      "source": "src/generated/logic.ts:1306"
+      "source": "src/generated/logic.ts:1356"
     },
     {
       "name": "DownloadResult",
@@ -9039,7 +9329,7 @@
       "description": "Where any download landed.",
       "text": "AppDownloadResult | DownloadsDownloadResult",
       "fields": [],
-      "source": "src/generated/logic.ts:1317"
+      "source": "src/generated/logic.ts:1367"
     },
     {
       "name": "DownloadTask",
@@ -9119,7 +9409,7 @@
           "description": "Filename hint; the host picks a free name next to it."
         }
       ],
-      "source": "src/generated/logic.ts:1320"
+      "source": "src/generated/logic.ts:1370"
     },
     {
       "name": "DownloadsDownloadResult",
@@ -9155,14 +9445,14 @@
           "description": "File size in bytes."
         }
       ],
-      "source": "src/generated/logic.ts:1328"
+      "source": "src/generated/logic.ts:1378"
     },
     {
       "name": "DownloadsDownloadResult.path",
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:2788"
+      "source": "src/generated/logic.ts:2862"
     },
     {
       "name": "ExternalPageName",
@@ -9170,7 +9460,7 @@
       "description": "Configured page name belonging to *another* lxapp. This app's own\npage union cannot check it, so it stays a plain string and the\ntarget runtime rejects a name it does not have.",
       "text": "string",
       "fields": [],
-      "source": "src/generated/logic.ts:1344"
+      "source": "src/generated/logic.ts:1394"
     },
     {
       "name": "FileDialogFilter",
@@ -9192,7 +9482,7 @@
           "description": "Allowed extensions without dots, e.g. ['pdf', 'txt']."
         }
       ],
-      "source": "src/generated/logic.ts:1347"
+      "source": "src/generated/logic.ts:1397"
     },
     {
       "name": "FileStats",
@@ -9235,7 +9525,7 @@
           "description": "Epoch milliseconds; absent where the file system does not record it."
         }
       ],
-      "source": "src/generated/logic.ts:3480"
+      "source": "src/generated/logic.ts:3577"
     },
     {
       "name": "FileSystemApi",
@@ -9408,7 +9698,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:460"
+      "source": "src/generated/logic.ts:498"
     },
     {
       "name": "FsCopyOptions",
@@ -9431,7 +9721,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:1357"
+      "source": "src/generated/logic.ts:1407"
     },
     {
       "name": "FsCopyOptions.to",
@@ -9446,7 +9736,7 @@
       "description": "What a managed path is: a regular file, a directory or a symbolic link.",
       "text": "\"file\" | \"directory\" | \"symlink\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1368"
+      "source": "src/generated/logic.ts:1418"
     },
     {
       "name": "FsMkdirOptions",
@@ -9462,7 +9752,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:1371"
+      "source": "src/generated/logic.ts:1421"
     },
     {
       "name": "FsRemoveOptions",
@@ -9478,7 +9768,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:1380"
+      "source": "src/generated/logic.ts:1430"
     },
     {
       "name": "FsRenameOptions",
@@ -9501,7 +9791,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:1389"
+      "source": "src/generated/logic.ts:1439"
     },
     {
       "name": "FsRenameOptions.to",
@@ -9516,7 +9806,7 @@
       "description": "What `lx.fs.write` writes. Text takes an `encoding`; bytes take none.",
       "text": "{ data: string; encoding?: 'utf8' | 'base64'; overwrite?: boolean; } | { data: BinaryFileData; encoding?: never; overwrite?: boolean; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1400"
+      "source": "src/generated/logic.ts:1450"
     },
     {
       "name": "GetDeclaredOptions",
@@ -9531,7 +9821,7 @@
           "description": "The instance key it was opened with; the unkeyed instance when absent."
         }
       ],
-      "source": "src/generated/logic.ts:1426"
+      "source": "src/generated/logic.ts:1476"
     },
     {
       "name": "GetLocationOptions",
@@ -9562,7 +9852,7 @@
           "description": "Aborting it stops waiting for a fix, and the call rejects."
         }
       ],
-      "source": "src/generated/logic.ts:1432"
+      "source": "src/generated/logic.ts:1482"
     },
     {
       "name": "HostAppApi",
@@ -9618,7 +9908,7 @@
           "type": "BannerApi",
           "required": true,
           "summary": "A banner the product draws at the top right of the desktop.",
-          "description": "A banner the product draws at the top right of the desktop.",
+          "description": "A banner the product draws at the top right of the desktop. Phones have\nnone by design: use `lx.ui.toast` for a notice and a modal for a choice.",
           "tags": {
             "supports": [
               "host.banner"
@@ -9632,18 +9922,30 @@
           }
         },
         {
-          "name": "displayLanguage",
-          "type": "DisplayLanguageApi",
+          "name": "badge",
+          "type": "BadgeApi",
           "required": true,
-          "summary": "The language this lxapp renders in.",
-          "description": "The language this lxapp renders in. Every lxapp follows it; only the\nControl app changes it."
+          "summary": "A mark on the product's own system chrome, such as an unread count.",
+          "description": "A mark on the product's own system chrome, such as an unread count.\nControl app only.",
+          "tags": {
+            "supports": [
+              "host.badge"
+            ]
+          }
+        },
+        {
+          "name": "displayLanguage",
+          "type": "HostDisplayLanguageApi",
+          "required": true,
+          "summary": "The product's language preference.",
+          "description": "The product's language preference. Only the Control app may read or set\nit; an lxapp reads the language it renders in from `lx.app.language`."
         },
         {
           "name": "appearance",
-          "type": "AppearanceApi",
+          "type": "HostAppearanceApi",
           "required": true,
-          "summary": "The light/dark scheme this lxapp renders in.",
-          "description": "The light/dark scheme this lxapp renders in. Every lxapp follows it;\nonly the Control app changes it."
+          "summary": "The product's light/dark preference.",
+          "description": "The product's light/dark preference. Only the Control app may read or set\nit; an lxapp reads the scheme it renders in from `lx.app.appearance`."
         },
         {
           "name": "cache",
@@ -9753,71 +10055,9 @@
           "required": true,
           "summary": "Exit the host app immediately without a confirmation dialog.",
           "description": "Exit the host app immediately without a confirmation dialog.\nControl app only: quitting the product is not an lxapp's decision. Other\nlxapps get a permission error.\nIf the user should confirm first, call `lx.ui.confirm(...)` and invoke this\nonly after confirmation."
-        },
-        {
-          "name": "setBadge",
-          "type": "(value: string | number | null, options?: SetBadgeOptions) => Promise<SetBadgeResult>",
-          "required": true,
-          "summary": "Mark the product in system chrome, such as with an unread count; `null` or `''` clears it.",
-          "description": "Mark the product in system chrome, such as with an unread count; `null` or\n`''` clears it. Control app only. Resolves whether anything was painted.\nA badge never prompts, and a notification never sets one.",
-          "tags": {
-            "supports": [
-              "host.badge"
-            ],
-            "platform": [
-              "macOS: the dock and the menu-bar item; not painted while the tray item is hidden or notifications are denied.",
-              "Windows: the taskbar and the notification-area item.",
-              "iOS: the home-screen icon, numbers only; needs notification permission.",
-              "HarmonyOS: the home-screen icon."
-            ],
-            "throws": [
-              {
-                "code": "E_NOT_SUPPORTED",
-                "when": "The platform has no badge surface of the requested kind, such as on Android."
-              },
-              {
-                "code": "E_INVALID_ARG",
-                "when": "Text where the platform paints numbers only."
-              },
-              {
-                "code": "E_PERMISSION_DENIED",
-                "when": "From an lxapp other than the Control app."
-              }
-            ]
-          }
         }
       ],
-      "source": "src/generated/logic.ts:335"
-    },
-    {
-      "name": "HostAppApi.appearance",
-      "summary": "",
-      "description": "",
-      "fields": [
-        {
-          "name": "preference",
-          "type": "Live<AppearancePreference> & { set(preference: AppearancePreference): Promise<void>; }",
-          "required": true,
-          "summary": "What the user chose for the whole product.",
-          "description": "What the user chose for the whole product. Control app only. A system\nflip under `'auto'` moves the resolved scheme and leaves this quiet."
-        }
-      ],
-      "source": "src/generated/logic.ts:877"
-    },
-    {
-      "name": "HostAppApi.displayLanguage",
-      "summary": "",
-      "description": "",
-      "fields": [
-        {
-          "name": "preference",
-          "type": "Live<DisplayLanguagePreference> & { set(preference: DisplayLanguagePreference): Promise<void>; }",
-          "required": true,
-          "summary": "What the user chose: `'auto'`, or a canonical BCP-47 tag.",
-          "description": "What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app\nonly. A system locale change under `'auto'` moves the language and\nleaves this quiet."
-        }
-      ],
-      "source": "src/generated/logic.ts:1282"
+      "source": "src/generated/logic.ts:365"
     },
     {
       "name": "HostAppEnv",
@@ -9825,7 +10065,7 @@
       "description": "Build-time deployment environment of the host app (`dev` | `prod`).\nSurfaced via {@link HostAppApi.env}. Taken from the `env` field in\nthe generated `app.json`. Missing `env` is treated as `'prod'`.\nThis is the immutable host build axis: package-id suffix, publish\ntoken, signed App Link entitlements, and self-update channel.\nIn-app App Link hosts follow {@link HostAppApi.serviceEnv} on\nthe next launch. The mutable service environment is\n{@link HostAppApi.setServiceEnv}. It is **not** the\nlxapp publish channel (`LxAppReleaseType`:\n`'release' | 'draft'`). Default channel is `release` and can be\noverridden when opening an lxapp.",
       "text": "\"dev\" | \"prod\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1462"
+      "source": "src/generated/logic.ts:1512"
     },
     {
       "name": "HostAppUpdateApplyStage",
@@ -9833,7 +10073,7 @@
       "description": "A step of applying a host app update: downloading or installing.",
       "text": "\"download\" | \"install\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1465"
+      "source": "src/generated/logic.ts:1515"
     },
     {
       "name": "HostAppUpdateInfo",
@@ -9881,7 +10121,7 @@
           "description": "Apply this checked update.\n\n`apply()` is single-use for this update object. It also claims custom\nhost updates for the rest of this process, same as\n{@link HostUpdateApi.claim}.\n\nAwait `task.result` when progress is not needed, or iterate the task\nto render it.\n\nOn `direct`, downloads and hands off install. On `store`, opens the\nplatform store listing (no package is downloaded) and resolves\n`store_opened`; whether the user then updates is not reported."
         }
       ],
-      "source": "src/generated/logic.ts:1468"
+      "source": "src/generated/logic.ts:1518"
     },
     {
       "name": "HostAppUpdateResult",
@@ -9896,7 +10136,7 @@
           "description": "`store_opened` via `store`: the listing opened, nothing was installed."
         }
       ],
-      "source": "src/generated/logic.ts:1500"
+      "source": "src/generated/logic.ts:1550"
     },
     {
       "name": "HostAppUpdateTask",
@@ -9919,12 +10159,94 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:1509"
+      "source": "src/generated/logic.ts:1559"
+    },
+    {
+      "name": "HostAppearanceApi",
+      "summary": "`lx.host.appearance` — the product's scheme preference; only the Control app gets past it.",
+      "description": "`lx.host.appearance` — the product's scheme preference; only the Control\napp gets past it. A system flip under `'auto'` moves `lx.app.appearance`\nand leaves this quiet.",
+      "fields": [
+        {
+          "name": "get",
+          "type": "() => AppearancePreference",
+          "required": true,
+          "summary": "The value now.",
+          "description": "The value now."
+        },
+        {
+          "name": "watch",
+          "type": "(callback: (value: AppearancePreference) => void, options?: SignalOptions) => () => void",
+          "required": true,
+          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
+        },
+        {
+          "name": "set",
+          "type": "(preference: AppearancePreference) => Promise<void>",
+          "required": true,
+          "summary": "Pin the product to `'light'` or `'dark'`, or follow the system with `'auto'`.",
+          "description": "Pin the product to `'light'` or `'dark'`, or follow the system with\n`'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves\nonce this lxapp's own `lx.app.appearance` follows.",
+          "tags": {
+            "throws": [
+              {
+                "code": "E_INVALID_ARG",
+                "when": "Any other value."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "From an lxapp other than the Control app."
+              }
+            ]
+          }
+        }
+      ],
+      "source": "src/generated/logic.ts:1566"
+    },
+    {
+      "name": "HostDisplayLanguageApi",
+      "summary": "`lx.host.displayLanguage` — the product's language preference: `'auto'` or a canonical BCP-47 tag; only the Control app gets past it.",
+      "description": "`lx.host.displayLanguage` — the product's language preference: `'auto'`\nor a canonical BCP-47 tag; only the Control app gets past it. A system\nlocale change under `'auto'` moves `lx.app.language` and leaves this quiet.",
+      "fields": [
+        {
+          "name": "get",
+          "type": "() => DisplayLanguagePreference",
+          "required": true,
+          "summary": "The value now.",
+          "description": "The value now."
+        },
+        {
+          "name": "watch",
+          "type": "(callback: (value: DisplayLanguagePreference) => void, options?: SignalOptions) => () => void",
+          "required": true,
+          "summary": "Follow it, starting with the current value; returns an unsubscribe.",
+          "description": "Follow it, starting with the current value; returns an unsubscribe. The\nfirst callback runs before `watch` returns, so the unsubscribe is not yet\nbound inside it."
+        },
+        {
+          "name": "set",
+          "type": "(preference: DisplayLanguagePreference) => Promise<void>",
+          "required": true,
+          "summary": "Persist the product's language.",
+          "description": "Persist the product's language.",
+          "tags": {
+            "throws": [
+              {
+                "code": "E_INVALID_ARG",
+                "when": "A tag that is not valid BCP-47."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "From an lxapp other than the Control app."
+              }
+            ]
+          }
+        }
+      ],
+      "source": "src/generated/logic.ts:1582"
     },
     {
       "name": "HostInfo",
       "summary": "Host app identity.",
-      "description": "Host app identity. Everything here is fixed for the life of the process;\nthe language the app renders in is not, and lives on\n`lx.host.displayLanguage`.",
+      "description": "Host app identity. Everything here is fixed for the life of the process;\nthe language the app renders in is not, and lives on `lx.app.language`.",
       "fields": [
         {
           "name": "os",
@@ -9955,7 +10277,7 @@
           "description": "The LingXia runtime version."
         }
       ],
-      "source": "src/generated/logic.ts:3498"
+      "source": "src/generated/logic.ts:3594"
     },
     {
       "name": "HostOs",
@@ -9963,7 +10285,7 @@
       "description": "Canonical platform-family label shared by `lx.host.info.os`\nand `lx.device.info.osName`. `\"unknown\"` is a non-product build.",
       "text": "\"ios\" | \"macos\" | \"android\" | \"windows\" | \"harmony\" | \"unknown\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1515"
+      "source": "src/generated/logic.ts:1595"
     },
     {
       "name": "HostServiceEnvState",
@@ -10006,7 +10328,7 @@
           "description": "Switching is allowed in this build."
         }
       ],
-      "source": "src/generated/logic.ts:3510"
+      "source": "src/generated/logic.ts:3606"
     },
     {
       "name": "HostServiceEnvSwitchResult",
@@ -10035,7 +10357,7 @@
           "description": "If present, the environment was saved; close and reopen the app manually."
         }
       ],
-      "source": "src/generated/logic.ts:3524"
+      "source": "src/generated/logic.ts:3620"
     },
     {
       "name": "HostTarget",
@@ -10043,7 +10365,7 @@
       "description": "Where a notification tap or a banner action goes: a page, tab or\nlxapp as `lx.nav.go` takes it, or `{ activate }`, `{ route }`,\n`{ appLink }`. One destination per target; a mix is a parameter error.\nAn lxapp already open, such as docked as an aside, comes back where it\nis, and `page` and `params` reach its App `onShow` (`reason: 'switch_back'`).",
       "text": "PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget",
       "fields": [],
-      "source": "src/generated/logic.ts:1524"
+      "source": "src/generated/logic.ts:1604"
     },
     {
       "name": "HostUpdateApi",
@@ -10081,7 +10403,7 @@
           "description": "Claim the process-lifetime custom host-update flow.\nIrreversible: the built-in auto-flow will not prompt or download again,\nincluding after the calling page unloads. Does not cancel an already-started\nupdate task. Later failed checks do not undo a claim already made."
         }
       ],
-      "source": "src/generated/logic.ts:1527"
+      "source": "src/generated/logic.ts:1607"
     },
     {
       "name": "ImageInfo",
@@ -10117,7 +10439,7 @@
           "description": "A path the image can be read from."
         }
       ],
-      "source": "src/generated/logic.ts:3537"
+      "source": "src/generated/logic.ts:3633"
     },
     {
       "name": "InstalledTerminalFont",
@@ -10153,7 +10475,7 @@
           "description": "The font carries Nerd Font icons."
         }
       ],
-      "source": "src/generated/logic.ts:1530"
+      "source": "src/generated/logic.ts:1610"
     },
     {
       "name": "JsonData",
@@ -10161,7 +10483,7 @@
       "description": "`T` where every value survives a JSON round trip; a function, Date, Map,\nSet, promise or class instance becomes `never`, so it does not compile.\n`undefined` members are allowed: serialization drops them, as an optional\nmember reads.",
       "text": "0 extends 1 & T ? any : unknown extends T ? unknown : T extends string | number | boolean | null | undefined ? T : T extends (...args: never[]) => unknown ? never : T extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | PromiseLike<unknown> | symbol | bigint ? never : T extends readonly unknown[] ? { [K in keyof T]: JsonData<T[K]>; } : T extends object ? { [K in keyof T]: JsonData<T[K]>; } : never",
       "fields": [],
-      "source": "src/generated/logic.ts:566"
+      "source": "src/generated/logic.ts:604"
     },
     {
       "name": "JsonValue",
@@ -10169,7 +10491,7 @@
       "description": "A JSON value: what a navigation route parameter may hold. Not a way\nto smuggle a payload — every route declares its own parameter\nschema, and the framework caps size, count, and nesting.",
       "text": "null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1546"
+      "source": "src/generated/logic.ts:1626"
     },
     {
       "name": "KeyEvent",
@@ -10226,7 +10548,7 @@
           "description": "The key is held down and this event is a repeat."
         }
       ],
-      "source": "src/generated/logic.ts:1555"
+      "source": "src/generated/logic.ts:1635"
     },
     {
       "name": "KeyEventCallback",
@@ -10234,7 +10556,7 @@
       "description": "Receives each hardware key event.",
       "text": "(event: KeyEvent) => void",
       "fields": [],
-      "source": "src/generated/logic.ts:1573"
+      "source": "src/generated/logic.ts:1653"
     },
     {
       "name": "Live",
@@ -10313,13 +10635,27 @@
           "description": "Horizontal accuracy in meters"
         }
       ],
-      "source": "src/generated/logic.ts:3549"
+      "source": "src/generated/logic.ts:3645"
     },
     {
       "name": "LxAppApi",
       "summary": "`lx.app`: this lxapp: its identity, tab bar, updates and More actions.",
       "description": "`lx.app`: this lxapp: its identity, tab bar, updates and More actions.",
       "fields": [
+        {
+          "name": "language",
+          "type": "AppLanguageApi",
+          "required": true,
+          "summary": "The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`.",
+          "description": "The language this lxapp renders in: the product's, narrowed to its lxapp.json `languages`."
+        },
+        {
+          "name": "appearance",
+          "type": "AppAppearanceApi",
+          "required": true,
+          "summary": "The light/dark scheme this lxapp renders in.",
+          "description": "The light/dark scheme this lxapp renders in."
+        },
         {
           "name": "info",
           "type": "Readonly<AppInfo>",
@@ -10347,9 +10683,31 @@
           "required": true,
           "summary": "The actions this lxapp adds to the host's More menu.",
           "description": "The actions this lxapp adds to the host's More menu."
+        },
+        {
+          "name": "t",
+          "type": "(key: string, args?: Readonly<Record<string, unknown>> | undefined) => string",
+          "required": true,
+          "summary": "The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`; tags keep their text.",
+          "description": "The lxapp's message `key` from its `i18n/` catalogues in its language, with ICU `args`;\ntags keep their text. Read it when the text is shown: a later language switch does not change it."
         }
       ],
-      "source": "src/generated/logic.ts:407"
+      "source": "src/generated/logic.ts:274"
+    },
+    {
+      "name": "LxAppMessageCall",
+      "summary": "`lx.app.t`'s key and arguments, checked against `LxAppMessages` once the build generates it.",
+      "description": "`lx.app.t`'s key and arguments, checked against `LxAppMessages` once the build generates it.",
+      "text": "keyof LxAppMessages extends never ? readonly [ key: string, args?: Readonly<Record<string, unknown>> ] : { [K in keyof LxAppMessages & string]: {} extends LogicMessageArgs<LxAppMessages[K]> ? readonly [ key: K, args?: LogicMessageArgs<LxAppMessages[K]> ] : readonly [ key: K, args: LogicMessageArgs<LxAppMessages[K]> ]; }[keyof LxAppMessages & string] | readonly [ key: LxAppMessageKey, args?: Readonly<Record<string, unknown>> ]",
+      "fields": [],
+      "source": "src/generated/logic.ts:258"
+    },
+    {
+      "name": "LxAppMessageKey",
+      "summary": "A key built at run time, named `as LxAppMessageKey`: still one of the lxapp's keys, its arguments unchecked.",
+      "description": "A key built at run time, named `as LxAppMessageKey`: still one of the lxapp's keys, its arguments unchecked.",
+      "fields": [],
+      "source": "src/generated/logic.ts:255"
     },
     {
       "name": "LxAppReleaseType",
@@ -10357,7 +10715,7 @@
       "description": "Which channel an lxapp build came from: a release or a draft.",
       "text": "\"release\" | \"draft\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1578"
+      "source": "src/generated/logic.ts:1658"
     },
     {
       "name": "LxAppUnavailableReason",
@@ -10394,7 +10752,7 @@
           "description": "Calls `callback` when downloading an update fails. Returns the unsubscribe fn."
         }
       ],
-      "source": "src/generated/logic.ts:1581"
+      "source": "src/generated/logic.ts:1661"
     },
     {
       "name": "LxError",
@@ -10460,15 +10818,15 @@
       "description": "Why an `lx` call failed, where `code` alone does not say: `e.reason === 'wifiPasswordWrong'`.\n- `initializationFailed` with `E_INTERNAL`\n- `userCancelled` with `E_ABORT`\n- `userDeclined` with `E_ABORT`\n- `cameraPermissionDenied` with `E_PERMISSION_DENIED`\n- `locationPermissionDenied` with `E_PERMISSION_DENIED`\n- `microphonePermissionDenied` with `E_PERMISSION_DENIED`\n- `photosPermissionDenied` with `E_PERMISSION_DENIED`\n- `storagePermissionDenied` with `E_PERMISSION_DENIED`\n- `notificationsPermissionDenied` with `E_PERMISSION_DENIED`\n- `bluetoothPermissionDenied` with `E_PERMISSION_DENIED`\n- `clipboardPermissionDenied` with `E_PERMISSION_DENIED`\n- `serviceUnavailable` with `E_INVALID_STATE`\n- `locationServicesDisabled` with `E_INVALID_STATE`\n- `bluetoothDisabled` with `E_INVALID_STATE`\n- `nfcDisabled` with `E_INVALID_STATE`\n- `featureDisabled` with `E_INVALID_STATE`\n- `networkUnavailable` with `E_NETWORK`\n- `serverFailed` with `E_NETWORK`\n- `connectionFailed` with `E_NETWORK`\n- `deviceUnsupported` with `E_NOT_SUPPORTED`\n- `hostUpgradeRequired` with `E_NOT_SUPPORTED`\n- `wifiUninitialized` with `E_INVALID_STATE`\n- `wifiFailed` with `E_NETWORK`\n- `wifiPasswordWrong` with `E_NETWORK`\n- `wifiTimedOut` with `E_TIMEOUT`\n- `wifiRequestDuplicated` with `E_NETWORK`\n- `wifiUnsupported` with `E_NOT_SUPPORTED`\n- `wifiPermissionDenied` with `E_NETWORK`\n- `wifiPromptUnanswered` with `E_NETWORK`\n- `wifiConnectionDeclined` with `E_NETWORK`\n- `wifiDisabled` with `E_INVALID_STATE`\n- `wifiNetworkNotFound` with `E_NOT_FOUND`",
       "text": "\"initializationFailed\" | \"userCancelled\" | \"userDeclined\" | \"cameraPermissionDenied\" | \"locationPermissionDenied\" | \"microphonePermissionDenied\" | \"photosPermissionDenied\" | \"storagePermissionDenied\" | \"notificationsPermissionDenied\" | \"bluetoothPermissionDenied\" | \"clipboardPermissionDenied\" | \"serviceUnavailable\" | \"locationServicesDisabled\" | \"bluetoothDisabled\" | \"nfcDisabled\" | \"featureDisabled\" | \"networkUnavailable\" | \"serverFailed\" | \"connectionFailed\" | \"deviceUnsupported\" | \"hostUpgradeRequired\" | \"wifiUninitialized\" | \"wifiFailed\" | \"wifiPasswordWrong\" | \"wifiTimedOut\" | \"wifiRequestDuplicated\" | \"wifiUnsupported\" | \"wifiPermissionDenied\" | \"wifiPromptUnanswered\" | \"wifiConnectionDeclined\" | \"wifiDisabled\" | \"wifiNetworkNotFound\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1618"
+      "source": "src/generated/logic.ts:1698"
     },
     {
       "name": "LxFeature",
       "summary": "Feature contracts generated from the runtime registry.",
       "description": "Feature contracts generated from the runtime registry.",
-      "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
+      "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.windows\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
-      "source": "src/generated/logic.ts:4381"
+      "source": "src/generated/logic.ts:4468"
     },
     {
       "name": "LxFile",
@@ -10552,7 +10910,7 @@
       "description": "The schema `lx.storage` uses: the app's `LxStorageSchema`, or any key with a JSON value.",
       "text": "keyof LxStorageSchema extends never ? Record<string, JsonValue> : LxStorageSchema",
       "fields": [],
-      "source": "src/generated/logic.ts:558"
+      "source": "src/generated/logic.ts:596"
     },
     {
       "name": "ManagedPath",
@@ -10704,7 +11062,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:442"
+      "source": "src/generated/logic.ts:480"
     },
     {
       "name": "MediaObjectFit",
@@ -10712,7 +11070,7 @@
       "description": "How media fills its box: crop, letterbox, stretch, or fit.",
       "text": "\"cover\" | \"contain\" | \"fill\" | \"fit\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1623"
+      "source": "src/generated/logic.ts:1703"
     },
     {
       "name": "MediaRotation",
@@ -10720,7 +11078,7 @@
       "description": "A clockwise rotation in degrees.",
       "text": "0 | 90 | 180 | 270",
       "fields": [],
-      "source": "src/generated/logic.ts:1626"
+      "source": "src/generated/logic.ts:1706"
     },
     {
       "name": "MessageIn",
@@ -10788,7 +11146,7 @@
           "description": "Runs when the person picks it, after the menu has closed."
         }
       ],
-      "source": "src/generated/logic.ts:1634"
+      "source": "src/generated/logic.ts:1714"
     },
     {
       "name": "MoreActionsApi",
@@ -10803,7 +11161,7 @@
           "description": "Replace the current lxapp's complete app-declared More action list (seven\nentries maximum). Pass an empty array to clear it. Native hosts append these\nentries after their own lifecycle actions."
         }
       ],
-      "source": "src/generated/logic.ts:1644"
+      "source": "src/generated/logic.ts:1724"
     },
     {
       "name": "NavApi",
@@ -10883,7 +11241,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:285"
+      "source": "src/generated/logic.ts:315"
     },
     {
       "name": "NavMessages",
@@ -10915,7 +11273,7 @@
       "description": "Anywhere `lx.nav.go` can go: a page, a tab, another lxapp, or a URL.",
       "text": "PageTarget | TabTarget | AppTarget | UrlTarget",
       "fields": [],
-      "source": "src/generated/logic.ts:1649"
+      "source": "src/generated/logic.ts:1729"
     },
     {
       "name": "NavigationBarPatch",
@@ -10944,7 +11302,7 @@
           "description": "Colors to change; `null` restores every declared color."
         }
       ],
-      "source": "src/generated/logic.ts:1652"
+      "source": "src/generated/logic.ts:1732"
     },
     {
       "name": "NavigationBarStylePatch",
@@ -10973,7 +11331,7 @@
           "description": "The line under the bar."
         }
       ],
-      "source": "src/generated/logic.ts:1662"
+      "source": "src/generated/logic.ts:1742"
     },
     {
       "name": "NetworkApi",
@@ -11054,7 +11412,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:468"
+      "source": "src/generated/logic.ts:506"
     },
     {
       "name": "NetworkInfo",
@@ -11090,7 +11448,7 @@
           "description": "The primary IPv6 address, at most one; empty when not connected."
         }
       ],
-      "source": "src/generated/logic.ts:1674"
+      "source": "src/generated/logic.ts:1754"
     },
     {
       "name": "NetworkType",
@@ -11098,7 +11456,7 @@
       "description": "The kind of network the device is on.",
       "text": "\"unknown\" | \"none\" | \"wifi\" | \"2g\" | \"3g\" | \"4g\" | \"5g\" | \"ethernet\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1689"
+      "source": "src/generated/logic.ts:1769"
     },
     {
       "name": "NoLifecycleTypos",
@@ -11114,7 +11472,7 @@
       "fields": [
         {
           "name": "show",
-          "type": "(options: { id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; }) => Promise<{ id: string; delivery: \"posted\" | \"scheduled\" | \"suppressed\"; }>",
+          "type": "(options: { id?: string; title: string; message?: string; target?: HostTarget; schedule?: { at: number; } | { delayMs: number; }; silent?: boolean; whenFrontmost?: \"banner\" | \"system\" | \"suppress\"; }) => Promise<{ id: string; delivery: \"posted\" | \"scheduled\" | \"presented\" | \"suppressed\"; }>",
           "required": true,
           "summary": "Post a local notification now or at `schedule`, replacing any under the same `id`.",
           "description": "Post a local notification now or at `schedule`, replacing any under the same `id`.\nAn invalid target, unknown page or route, or an unconfigured host rejects here,\nbefore anything is posted. A tap whose target is gone by then brings the\nproduct forward and says it is unavailable.",
@@ -11168,7 +11526,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:1705"
+      "source": "src/generated/logic.ts:1785"
     },
     {
       "name": "OpenAppOptions",
@@ -11218,7 +11576,7 @@
           "description": "Install this version first if it is newer than the installed one; older versions are refused."
         }
       ],
-      "source": "src/generated/logic.ts:1775"
+      "source": "src/generated/logic.ts:1864"
     },
     {
       "name": "OpenDeclaredOptions",
@@ -11247,7 +11605,7 @@
           "description": "Preferred docking side when the effective role is `aside`."
         }
       ],
-      "source": "src/generated/logic.ts:1809"
+      "source": "src/generated/logic.ts:1898"
     },
     {
       "name": "OpenFileOptions",
@@ -11263,7 +11621,7 @@
           "default": "'auto'"
         }
       ],
-      "source": "src/generated/logic.ts:1828"
+      "source": "src/generated/logic.ts:1917"
     },
     {
       "name": "OpenLink",
@@ -11292,7 +11650,7 @@
           "description": "The link's query parameters. Untrusted."
         }
       ],
-      "source": "src/generated/logic.ts:1838"
+      "source": "src/generated/logic.ts:1927"
     },
     {
       "name": "OpenPageArgs",
@@ -11308,7 +11666,7 @@
       "description": "`as` picks the shape. A float anchors and carries no decoration; a\nwindow is decorated and does not anchor. The runtime rejects the\nwrong pairing either way, so the type says it first — except with an\nordered preference, where the realized placement is not known up\nfront and both stay open.",
       "text": "(OpenPageShared & { as?: 'float'; position?: SurfaceFloatPosition; chrome?: never; }) | (OpenPageShared & { as: 'window'; chrome?: WindowChrome; position?: never; }) | (OpenPageShared & { as: readonly ('float' | 'window')[]; chrome?: WindowChrome; position?: SurfaceFloatPosition; })",
       "fields": [],
-      "source": "src/generated/logic.ts:1854"
+      "source": "src/generated/logic.ts:1943"
     },
     {
       "name": "OpenPageShared",
@@ -11337,7 +11695,7 @@
           "description": "Caller-owned identity, for `lx.surface.get(key)` later."
         }
       ],
-      "source": "src/generated/logic.ts:1877"
+      "source": "src/generated/logic.ts:1966"
     },
     {
       "name": "OpenUrlOptions",
@@ -11373,7 +11731,7 @@
           "description": "Stable identity for `lx.surface.get(key)`."
         }
       ],
-      "source": "src/generated/logic.ts:1891"
+      "source": "src/generated/logic.ts:1980"
     },
     {
       "name": "OrientationApi",
@@ -11395,7 +11753,7 @@
           "description": "Delivers the orientation in effect before returning, then each change: the\nlock (not how the device is held), or the screen's shape when unlocked."
         }
       ],
-      "source": "src/generated/logic.ts:444"
+      "source": "src/generated/logic.ts:482"
     },
     {
       "name": "OverlaySurfaceSize",
@@ -11417,7 +11775,7 @@
           "description": "Height hint."
         }
       ],
-      "source": "src/generated/logic.ts:1908"
+      "source": "src/generated/logic.ts:1997"
     },
     {
       "name": "OverlaySurfaceSizeValue",
@@ -11425,7 +11783,7 @@
       "description": "Size hint for an overlay surface (aside / float).\n- number: absolute px, must be > 0\n- `${number}%`: percentage of the container, 0 < N ≤ 100",
       "text": "number | `${number}%`",
       "fields": [],
-      "source": "src/generated/logic.ts:1920"
+      "source": "src/generated/logic.ts:2009"
     },
     {
       "name": "PageApi",
@@ -11683,7 +12041,7 @@
           "description": "compact (<600) / regular (≥600). Shell medium/expanded are not distinct here."
         }
       ],
-      "source": "src/generated/logic.ts:1926"
+      "source": "src/generated/logic.ts:2015"
     },
     {
       "name": "PageHandle",
@@ -11756,7 +12114,7 @@
           "description": "Who ended it: the person, the opener, memory pressure, or the app closing."
         }
       ],
-      "source": "src/generated/logic.ts:2006"
+      "source": "src/generated/logic.ts:2095"
     },
     {
       "name": "PageHookName",
@@ -11771,7 +12129,7 @@
       "summary": "What `onLoad` receives: each param with the type it was passed with.",
       "description": "What `onLoad` receives: each param with the type it was passed with.\nValidate a query from outside (an app link, a URL): it is usually\nstrings.",
       "fields": [],
-      "source": "src/generated/logic.ts:1942"
+      "source": "src/generated/logic.ts:2031"
     },
     {
       "name": "PageMessagePort",
@@ -11793,7 +12151,7 @@
           "description": "Receives what the other side sends. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:1947"
+      "source": "src/generated/logic.ts:2036"
     },
     {
       "name": "PagePlayer",
@@ -11878,7 +12236,7 @@
           "description": "A GPU page player's volume."
         }
       ],
-      "source": "src/generated/logic.ts:1959"
+      "source": "src/generated/logic.ts:2048"
     },
     {
       "name": "PageQuery",
@@ -11886,7 +12244,7 @@
       "description": "A page's params, keyed by name.",
       "text": "Record<string, PageQueryValue>",
       "fields": [],
-      "source": "src/generated/logic.ts:1985"
+      "source": "src/generated/logic.ts:2074"
     },
     {
       "name": "PageQueryValue",
@@ -11894,7 +12252,7 @@
       "description": "A page param: any JSON value. `null` and `undefined` mean absent. The\nwhole set of non-string params is limited to 8 KB as JSON.",
       "text": "JsonValue | undefined",
       "fields": [],
-      "source": "src/generated/logic.ts:1991"
+      "source": "src/generated/logic.ts:2080"
     },
     {
       "name": "PageResult",
@@ -11902,7 +12260,7 @@
       "description": "A pushed or surface page's outcome. `canceled` means it left without a\nresult: `user` (Back, a dismiss, a close), `opener` (the opener went\naway, or a newer result promise replaced this one), `reclaimed` (a\nhidden surface page unloaded under memory pressure), `app_closed`.",
       "text": "{ status: 'ok'; value: JsonValue; } | { status: 'canceled'; reason: 'user' | 'opener' | 'reclaimed' | 'app_closed'; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1999"
+      "source": "src/generated/logic.ts:2088"
     },
     {
       "name": "PageSetup",
@@ -12102,7 +12460,7 @@
           "description": "Who ended it: the person, the opener, memory pressure, or the app closing."
         }
       ],
-      "source": "src/generated/logic.ts:2006"
+      "source": "src/generated/logic.ts:2095"
     },
     {
       "name": "PageTarget",
@@ -12161,7 +12519,7 @@
       "description": "A permission `lx.device.permission` reads and `lx.device.requestPermission` asks for.",
       "text": "\"location\" | \"camera\" | \"photos\" | \"notifications\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2014"
+      "source": "src/generated/logic.ts:2103"
     },
     {
       "name": "PermissionState",
@@ -12169,7 +12527,7 @@
       "description": "A permission's state: `prompt` means the person has not been asked yet.",
       "text": "\"granted\" | \"denied\" | \"prompt\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2017"
+      "source": "src/generated/logic.ts:2106"
     },
     {
       "name": "PickApi",
@@ -12300,7 +12658,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:446"
+      "source": "src/generated/logic.ts:484"
     },
     {
       "name": "PickCodeOptions",
@@ -12323,7 +12681,7 @@
           "description": "Symbologies to read; every one when absent."
         }
       ],
-      "source": "src/generated/logic.ts:2022"
+      "source": "src/generated/logic.ts:2111"
     },
     {
       "name": "PickCodeResult",
@@ -12331,7 +12689,7 @@
       "description": "Result of `lx.pick.code`. `format` is the symbology that was read.",
       "text": "{ status: 'ok'; value: string; format: string; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2033"
+      "source": "src/generated/logic.ts:2122"
     },
     {
       "name": "PickDirectoryOptions",
@@ -12351,7 +12709,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:2043"
+      "source": "src/generated/logic.ts:2132"
     },
     {
       "name": "PickDirectoryResult",
@@ -12359,7 +12717,7 @@
       "description": "Result of `lx.pick.directory`.",
       "text": "{ status: 'ok'; directory: PickedDirectory; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2052"
+      "source": "src/generated/logic.ts:2141"
     },
     {
       "name": "PickFileOptions",
@@ -12381,7 +12739,7 @@
           "description": "Initial directory the dialog opens in.\n\nWhen this resolves to an app-local directory, LingXia may use its internal\nfile picker. When omitted, the platform system file picker is used."
         }
       ],
-      "source": "src/generated/logic.ts:2060"
+      "source": "src/generated/logic.ts:2149"
     },
     {
       "name": "PickFileResult",
@@ -12389,7 +12747,7 @@
       "description": "Result of `lx.pick.file` and `lx.pick.capture`: one file.",
       "text": "{ status: 'ok'; file: PickedFile; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2073"
+      "source": "src/generated/logic.ts:2162"
     },
     {
       "name": "PickFilesResult",
@@ -12397,7 +12755,7 @@
       "description": "Result of `lx.pick.files` and `lx.pick.media`: at least one file.\nFrom `lx.pick.media` on mobile, each file is a copy in the lxapp\ntemp directory, counted against its quota.",
       "text": "{ status: 'ok'; files: readonly [ PickedFile, ...PickedFile[] ]; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2085"
+      "source": "src/generated/logic.ts:2174"
     },
     {
       "name": "PickMediaOptions",
@@ -12421,7 +12779,7 @@
           "default": "['image', 'video']"
         }
       ],
-      "source": "src/generated/logic.ts:2093"
+      "source": "src/generated/logic.ts:2182"
     },
     {
       "name": "PickedDirectory",
@@ -12443,7 +12801,7 @@
           "description": "The directory's own name, for display."
         }
       ],
-      "source": "src/generated/logic.ts:2114"
+      "source": "src/generated/logic.ts:2203"
     },
     {
       "name": "PickedFile",
@@ -12479,7 +12837,7 @@
           "description": "MIME type, e.g. `application/pdf`, `image/jpeg`."
         }
       ],
-      "source": "src/generated/logic.ts:2134"
+      "source": "src/generated/logic.ts:2223"
     },
     {
       "name": "PreviewMediaAdvance",
@@ -12487,7 +12845,7 @@
       "description": "What a preview does when an item ends: wait, go to the next, or loop.",
       "text": "\"manual\" | \"next\" | \"loop\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2146"
+      "source": "src/generated/logic.ts:2235"
     },
     {
       "name": "PreviewMediaChange",
@@ -12509,7 +12867,7 @@
           "description": "The shown item."
         }
       ],
-      "source": "src/generated/logic.ts:2149"
+      "source": "src/generated/logic.ts:2238"
     },
     {
       "name": "PreviewMediaCloseReason",
@@ -12517,7 +12875,7 @@
       "description": "Why a media preview closed.",
       "text": "\"manual\" | \"completed\" | \"interrupted\" | \"error\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2157"
+      "source": "src/generated/logic.ts:2246"
     },
     {
       "name": "PreviewMediaHandle",
@@ -12553,7 +12911,7 @@
           "description": "Settles when the preview closes."
         }
       ],
-      "source": "src/generated/logic.ts:2164"
+      "source": "src/generated/logic.ts:2253"
     },
     {
       "name": "PreviewMediaOptions",
@@ -12561,7 +12919,7 @@
       "description": "What `lx.media.preview` shows: one path, one source, or a list.",
       "text": "string | PreviewMediaSingleOptions | PreviewMediaSequenceOptions",
       "fields": [],
-      "source": "src/generated/logic.ts:2176"
+      "source": "src/generated/logic.ts:2265"
     },
     {
       "name": "PreviewMediaResult",
@@ -12590,7 +12948,7 @@
           "description": "The item on screen when the session closed — \"what the user just\nviewed/played\", without mapping `index` back yourself."
         }
       ],
-      "source": "src/generated/logic.ts:2179"
+      "source": "src/generated/logic.ts:2268"
     },
     {
       "name": "PreviewMediaSequenceOptions",
@@ -12635,7 +12993,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2196"
+      "source": "src/generated/logic.ts:2285"
     },
     {
       "name": "PreviewMediaShownSource",
@@ -12657,7 +13015,7 @@
           "description": "Resolved media kind (after extension inference when `type` was omitted)."
         }
       ],
-      "source": "src/generated/logic.ts:2237"
+      "source": "src/generated/logic.ts:2326"
     },
     {
       "name": "PreviewMediaSingleOptions",
@@ -12724,7 +13082,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2245"
+      "source": "src/generated/logic.ts:2334"
     },
     {
       "name": "PreviewMediaSource",
@@ -12769,7 +13127,7 @@
           "description": "Display duration in milliseconds.\nEffective when preview `advance` is not `manual`."
         }
       ],
-      "source": "src/generated/logic.ts:2271"
+      "source": "src/generated/logic.ts:2360"
     },
     {
       "name": "ResolvedAppearance",
@@ -12777,7 +13135,7 @@
       "description": "The scheme in effect: light or dark.",
       "text": "\"light\" | \"dark\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2302"
+      "source": "src/generated/logic.ts:2391"
     },
     {
       "name": "ResultOf",
@@ -12835,7 +13193,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2305"
+      "source": "src/generated/logic.ts:2394"
     },
     {
       "name": "ScreenInfo",
@@ -12864,38 +13222,7 @@
           "description": "Physical pixels per logical pixel."
         }
       ],
-      "source": "src/generated/logic.ts:3567"
-    },
-    {
-      "name": "SetBadgeOptions",
-      "summary": "Options for `lx.host.setBadge`.",
-      "description": "Options for `lx.host.setBadge`.",
-      "fields": [
-        {
-          "name": "surface",
-          "type": "\"auto\" | \"app_icon\" | \"tray\" | undefined",
-          "required": false,
-          "summary": "Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.",
-          "description": "Where to paint: `auto` is every product-owned surface; `app_icon` or `tray` names one.",
-          "default": "'auto'"
-        }
-      ],
-      "source": "src/generated/logic.ts:2317"
-    },
-    {
-      "name": "SetBadgeResult",
-      "summary": "What `lx.host.setBadge` painted.",
-      "description": "What `lx.host.setBadge` painted.",
-      "fields": [
-        {
-          "name": "painted",
-          "type": "boolean",
-          "required": true,
-          "summary": "Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item.",
-          "description": "Whether any surface now shows the badge; `false` when one exists but declined, such as a hidden tray item."
-        }
-      ],
-      "source": "src/generated/logic.ts:2326"
+      "source": "src/generated/logic.ts:3663"
     },
     {
       "name": "ShareFilesOptions",
@@ -12931,7 +13258,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2332"
+      "source": "src/generated/logic.ts:2406"
     },
     {
       "name": "ShareOptions",
@@ -12939,7 +13266,7 @@
       "description": "What `lx.share` hands to the share sheet: text, the current page, or files.",
       "text": "ShareTextOptions | SharePageOptions | ShareFilesOptions",
       "fields": [],
-      "source": "src/generated/logic.ts:2352"
+      "source": "src/generated/logic.ts:2426"
     },
     {
       "name": "SharePage",
@@ -12947,7 +13274,7 @@
       "description": "The current page as a share target, with or without a query.",
       "text": "true | { query?: ShareQuery; }",
       "fields": [],
-      "source": "src/generated/logic.ts:2355"
+      "source": "src/generated/logic.ts:2429"
     },
     {
       "name": "SharePageOptions",
@@ -12983,7 +13310,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2371"
+      "source": "src/generated/logic.ts:2445"
     },
     {
       "name": "SharePageOptions.page",
@@ -12998,7 +13325,7 @@
           "description": "Query appended to the current page. Query belongs to the page target and is\nencoded into the AppLink URL."
         }
       ],
-      "source": "src/generated/logic.ts:2362"
+      "source": "src/generated/logic.ts:2436"
     },
     {
       "name": "ShareQuery",
@@ -13006,7 +13333,7 @@
       "description": "Query values appended to a shared page's link.",
       "text": "Record<string, string | number | boolean>",
       "fields": [],
-      "source": "src/generated/logic.ts:2390"
+      "source": "src/generated/logic.ts:2464"
     },
     {
       "name": "ShareResult",
@@ -13021,7 +13348,7 @@
           "description": "What the share sheet reported. Not part of the `canceled` family: some\nplatforms only observe that the system UI opened and closed, so the\nunknown case is stated rather than hidden in a missing boolean that\nevery call site would read as \"not shared\"."
         }
       ],
-      "source": "src/generated/logic.ts:2393"
+      "source": "src/generated/logic.ts:2467"
     },
     {
       "name": "ShareTextBaseOptions",
@@ -13043,7 +13370,7 @@
           "description": "Share text body."
         }
       ],
-      "source": "src/generated/logic.ts:2404"
+      "source": "src/generated/logic.ts:2478"
     },
     {
       "name": "ShareTextOptions",
@@ -13079,7 +13406,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2415"
+      "source": "src/generated/logic.ts:2489"
     },
     {
       "name": "ShareTitleOptions",
@@ -13094,7 +13421,7 @@
           "description": "Share title."
         }
       ],
-      "source": "src/generated/logic.ts:2421"
+      "source": "src/generated/logic.ts:2495"
     },
     {
       "name": "ShellApi",
@@ -13154,7 +13481,7 @@
           "description": "Bring the product window forward without navigating. Control app only."
         }
       ],
-      "source": "src/generated/logic.ts:2432"
+      "source": "src/generated/logic.ts:2506"
     },
     {
       "name": "ShellSidebarAction",
@@ -13162,7 +13489,7 @@
       "description": "One app-declared shell sidebar action. It is a stateless command, not a\nselectable navigation item: the shell invokes `onSelect` once and\ndoes not infer a target or active state.\n`value` is footer-only, so a header action with one does not type-check.",
       "text": "ShellSidebarActionBase & ({ placement: 'header'; value?: never; } | { placement: 'footer'; value?: string; })",
       "fields": [],
-      "source": "src/generated/logic.ts:2440"
+      "source": "src/generated/logic.ts:2514"
     },
     {
       "name": "ShellSidebarActionBase",
@@ -13205,7 +13532,7 @@
           "description": "Called once for each enabled mouse, keyboard, accessibility, shortcut, or\nautomation activation. Explicitly open or navigate to the desired content."
         }
       ],
-      "source": "src/generated/logic.ts:2460"
+      "source": "src/generated/logic.ts:2534"
     },
     {
       "name": "ShellSidebarActionPlacement",
@@ -13213,7 +13540,7 @@
       "description": "Where an action lives in the desktop sidebar.\n- `header`: the caption row beside the window controls. At most two\nicon-only actions; declaring a third rejects the whole `replace`.\n- `footer`: always reachable. Icon buttons, plus a `value` drawn\nbeside the icon when the action carries one. Scrolls after five\nrows.\nIn the collapsed rail every action is an icon button. Apps cannot\nconfigure cell size, row, weight, color, or selected state.",
       "text": "\"header\" | \"footer\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2504"
+      "source": "src/generated/logic.ts:2578"
     },
     {
       "name": "ShellSidebarActionUpdate",
@@ -13249,7 +13576,7 @@
           "description": "Whether the action remains visible but rejects activation."
         }
       ],
-      "source": "src/generated/logic.ts:2512"
+      "source": "src/generated/logic.ts:2586"
     },
     {
       "name": "ShellSidebarActionsApi",
@@ -13306,7 +13633,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:2530"
+      "source": "src/generated/logic.ts:2604"
     },
     {
       "name": "SignalOptions",
@@ -13321,7 +13648,7 @@
           "description": "Aborting it ends the call or subscription."
         }
       ],
-      "source": "src/generated/logic.ts:2536"
+      "source": "src/generated/logic.ts:2610"
     },
     {
       "name": "Storage",
@@ -13482,7 +13809,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:598"
+      "source": "src/generated/logic.ts:636"
     },
     {
       "name": "StorageGetOptions",
@@ -13497,7 +13824,7 @@
           "description": "Checks the stored value and returns it typed; whatever it throws rejects the read. Not called for a missing key."
         }
       ],
-      "source": "src/generated/logic.ts:586"
+      "source": "src/generated/logic.ts:624"
     },
     {
       "name": "StorageInfo",
@@ -13526,7 +13853,7 @@
           "description": "Number of stored keys; `list()` names them."
         }
       ],
-      "source": "src/generated/logic.ts:2542"
+      "source": "src/generated/logic.ts:2616"
     },
     {
       "name": "StreamHandle",
@@ -13598,7 +13925,7 @@
           "description": "Passed to the provider as it starts."
         }
       ],
-      "source": "src/generated/logic.ts:2552"
+      "source": "src/generated/logic.ts:2626"
     },
     {
       "name": "SurfaceApi",
@@ -13674,7 +14001,7 @@
           "description": "The handle of a live declared surface, or of its keyed instance, the same\nobject on every call; `undefined` when it is not live. Control app only."
         }
       ],
-      "source": "src/generated/logic.ts:2568"
+      "source": "src/generated/logic.ts:2642"
     },
     {
       "name": "SurfaceBase",
@@ -13731,7 +14058,7 @@
           "description": "Fires once when the surface closes, whoever closed it. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:2612"
+      "source": "src/generated/logic.ts:2686"
     },
     {
       "name": "SurfaceCloseReason",
@@ -13739,7 +14066,7 @@
       "description": "Why a surface closed.",
       "text": "\"failed\" | \"unknown\" | \"user\" | \"reclaimed\" | \"app_closed\" | \"programmatic\" | \"owner_closed\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2640"
+      "source": "src/generated/logic.ts:2714"
     },
     {
       "name": "SurfaceClosedEvent",
@@ -13754,7 +14081,7 @@
           "description": "Why it closed."
         }
       ],
-      "source": "src/generated/logic.ts:2649"
+      "source": "src/generated/logic.ts:2723"
     },
     {
       "name": "SurfaceEdge",
@@ -13762,7 +14089,7 @@
       "description": "Preferred docking side for an aside when the Host has room for a docked\nlayout. `aside` selects the companion region; `edge` selects a side within\nit. Compact Hosts may reproject the same aside as a full-screen overlay.",
       "text": "\"left\" | \"right\" | \"top\" | \"bottom\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2659"
+      "source": "src/generated/logic.ts:2733"
     },
     {
       "name": "SurfaceError",
@@ -13777,7 +14104,7 @@
           "description": "The surface failure in detail."
         }
       ],
-      "source": "src/generated/logic.ts:2677"
+      "source": "src/generated/logic.ts:2751"
     },
     {
       "name": "SurfaceError.data",
@@ -13792,7 +14119,7 @@
           "description": "Which surface rule refused the call."
         }
       ],
-      "source": "src/generated/logic.ts:2679"
+      "source": "src/generated/logic.ts:2753"
     },
     {
       "name": "SurfaceErrorCode",
@@ -13800,7 +14127,7 @@
       "description": "Why a surface operation was refused. Carried on `data.code` of every\n`SurfaceError`, so no caller has to match on message text.",
       "text": "\"failed\" | \"denied\" | \"unsupported_placement\" | \"not_declared\" | \"invalid_arg\" | \"already_open_other_role\" | \"role_locked\" | \"closed\" | \"capability_missing\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2689"
+      "source": "src/generated/logic.ts:2763"
     },
     {
       "name": "SurfaceFloatPosition",
@@ -13808,7 +14135,7 @@
       "description": "Where a float popup anchors (default `center`).",
       "text": "\"left\" | \"right\" | \"top\" | \"bottom\" | \"center\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2711"
+      "source": "src/generated/logic.ts:2785"
     },
     {
       "name": "SurfaceInteraction",
@@ -13840,7 +14167,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:2714"
+      "source": "src/generated/logic.ts:2788"
     },
     {
       "name": "SurfaceKind",
@@ -13848,7 +14175,7 @@
       "description": "Where the content came from. The discriminant on every surface\nhandle, so `AnySurface` narrows without a runtime `typeof` check.",
       "text": "\"app\" | \"page\" | \"tab\" | \"declared\" | \"builtin\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2736"
+      "source": "src/generated/logic.ts:2810"
     },
     {
       "name": "SurfaceMessaging",
@@ -13870,7 +14197,7 @@
           "description": "Receives what the other side sends. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:2739"
+      "source": "src/generated/logic.ts:2813"
     },
     {
       "name": "SurfacePlacement",
@@ -13878,7 +14205,7 @@
       "description": "What the host actually produced. Reported by `realized`, which is\nhow a caller reads the outcome of an ordered placement preference.",
       "text": "\"main\" | \"aside\" | \"float\" | \"window\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2755"
+      "source": "src/generated/logic.ts:2829"
     },
     {
       "name": "SurfaceShowable",
@@ -13914,7 +14241,7 @@
           "description": "Fires on a real transition to hidden, whichever side drove it."
         }
       ],
-      "source": "src/generated/logic.ts:2758"
+      "source": "src/generated/logic.ts:2832"
     },
     {
       "name": "SurfaceVisibilityEvent",
@@ -13929,14 +14256,14 @@
           "description": "Who changed it: the opener's handle, the page itself, or the shell."
         }
       ],
-      "source": "src/generated/logic.ts:2782"
+      "source": "src/generated/logic.ts:2856"
     },
     {
       "name": "SystemDownloadsPath",
       "summary": "Native system Downloads path.",
       "description": "Native system Downloads path. Do not pass this to `lx.fs`.",
       "fields": [],
-      "source": "src/generated/logic.ts:2788"
+      "source": "src/generated/logic.ts:2862"
     },
     {
       "name": "SystemSettingInfo",
@@ -13958,7 +14285,7 @@
           "description": "Wi-Fi is on."
         }
       ],
-      "source": "src/generated/logic.ts:3577"
+      "source": "src/generated/logic.ts:3673"
     },
     {
       "name": "TabBarApi",
@@ -13984,7 +14311,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:448"
+      "source": "src/generated/logic.ts:486"
     },
     {
       "name": "TabBarItemPatch",
@@ -14013,7 +14340,7 @@
           "description": "Text in a badge, `true` for a dot without text, `null` to remove either."
         }
       ],
-      "source": "src/generated/logic.ts:2795"
+      "source": "src/generated/logic.ts:2869"
     },
     {
       "name": "TabBarPatch",
@@ -14038,14 +14365,14 @@
       "examples": [
         "await lx.app.tabBar.update({ items: { home: { badge: '3' } } });"
       ],
-      "source": "src/generated/logic.ts:2823"
+      "source": "src/generated/logic.ts:2897"
     },
     {
       "name": "TabBarPatch.items",
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:2827"
+      "source": "src/generated/logic.ts:2901"
     },
     {
       "name": "TabBarVisibilityPreference",
@@ -14053,7 +14380,7 @@
       "description": "Whether the tab bar shows: `auto` leaves it to the runtime, or always `visible` or `hidden`.",
       "text": "\"auto\" | \"visible\" | \"hidden\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2831"
+      "source": "src/generated/logic.ts:2905"
     },
     {
       "name": "TabName",
@@ -14061,7 +14388,7 @@
       "description": "A tab root of this lxapp.",
       "text": "keyof LxAppPages extends never ? string : keyof LxAppTabs & string",
       "fields": [],
-      "source": "src/generated/logic.ts:2834"
+      "source": "src/generated/logic.ts:2908"
     },
     {
       "name": "TabSurface",
@@ -14069,7 +14396,7 @@
       "description": "External content in the in-app browser.",
       "text": "(SurfaceBase & { readonly kind: 'tab'; readonly realized: 'main' | 'aside'; readonly scope: 'tab'; activate(): Promise<void>; }) | (Omit<SurfaceBase, 'close' | 'onClose'> & { readonly kind: 'tab'; readonly realized: 'main' | 'aside'; readonly scope: 'group'; })",
       "fields": [],
-      "source": "src/generated/logic.ts:2837"
+      "source": "src/generated/logic.ts:2911"
     },
     {
       "name": "TabTarget",
@@ -14112,7 +14439,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2856"
+      "source": "src/generated/logic.ts:2930"
     },
     {
       "name": "Task",
@@ -14165,13 +14492,13 @@
         },
         {
           "name": "windows",
-          "type": "WindowsTerminalApi | undefined",
-          "required": false,
-          "summary": "Windows-only optional inline-image compatibility runtime.",
-          "description": "Windows-only optional inline-image compatibility runtime."
+          "type": "WindowsTerminalApi",
+          "required": true,
+          "summary": "The optional Windows runtime that passes inline images through.",
+          "description": "The optional Windows runtime that passes inline images through."
         }
       ],
-      "source": "src/generated/logic.ts:2866"
+      "source": "src/generated/logic.ts:2940"
     },
     {
       "name": "TerminalColorScheme",
@@ -14333,7 +14660,7 @@
           "description": "ANSI color 15."
         }
       ],
-      "source": "src/generated/logic.ts:2878"
+      "source": "src/generated/logic.ts:2952"
     },
     {
       "name": "TerminalColorSchemeDetails",
@@ -14362,7 +14689,7 @@
           "description": "Its colors."
         }
       ],
-      "source": "src/generated/logic.ts:2926"
+      "source": "src/generated/logic.ts:3000"
     },
     {
       "name": "TerminalColorSchemesApi",
@@ -14419,7 +14746,7 @@
           "description": "A controller that shows a scheme live without saving it."
         }
       ],
-      "source": "src/generated/logic.ts:2936"
+      "source": "src/generated/logic.ts:3010"
     },
     {
       "name": "TerminalFontSettings",
@@ -14457,7 +14784,7 @@
           "description": "Draw the font's ligatures."
         }
       ],
-      "source": "src/generated/logic.ts:2962"
+      "source": "src/generated/logic.ts:3036"
     },
     {
       "name": "TerminalFontsApi",
@@ -14480,7 +14807,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:2980"
+      "source": "src/generated/logic.ts:3054"
     },
     {
       "name": "TerminalPreviewController",
@@ -14509,7 +14836,7 @@
           "description": "Idempotently clear and retire this controller."
         }
       ],
-      "source": "src/generated/logic.ts:2989"
+      "source": "src/generated/logic.ts:3063"
     },
     {
       "name": "TerminalSettingsApi",
@@ -14573,7 +14900,7 @@
           "description": "Fires after saved settings, effective appearance, or fonts change."
         }
       ],
-      "source": "src/generated/logic.ts:2999"
+      "source": "src/generated/logic.ts:3073"
     },
     {
       "name": "TerminalSettingsPatch",
@@ -14595,7 +14922,7 @@
           "description": "Scheme names to change; others keep their value."
         }
       ],
-      "source": "src/generated/logic.ts:3029"
+      "source": "src/generated/logic.ts:3103"
     },
     {
       "name": "TerminalSettingsSnapshot",
@@ -14645,7 +14972,7 @@
           "description": "Problems found while reading the settings; they never block it."
         }
       ],
-      "source": "src/generated/logic.ts:3037"
+      "source": "src/generated/logic.ts:3111"
     },
     {
       "name": "TerminalSettingsSnapshot.effective",
@@ -14674,7 +15001,7 @@
           "description": "The font in use."
         }
       ],
-      "source": "src/generated/logic.ts:3047"
+      "source": "src/generated/logic.ts:3121"
     },
     {
       "name": "TerminalSettingsSnapshot.effective.font",
@@ -14703,7 +15030,7 @@
           "description": "None of the requested families is installed, so a system monospace font is drawn."
         }
       ],
-      "source": "src/generated/logic.ts:3053"
+      "source": "src/generated/logic.ts:3127"
     },
     {
       "name": "TerminalSettingsValue",
@@ -14725,7 +15052,7 @@
           "description": "Color scheme per appearance."
         }
       ],
-      "source": "src/generated/logic.ts:3067"
+      "source": "src/generated/logic.ts:3141"
     },
     {
       "name": "TerminalSettingsWarning",
@@ -14747,7 +15074,7 @@
           "description": "A sentence for a person."
         }
       ],
-      "source": "src/generated/logic.ts:3075"
+      "source": "src/generated/logic.ts:3149"
     },
     {
       "name": "TerminalThemeSettings",
@@ -14769,7 +15096,7 @@
           "description": "Color scheme name used in dark appearance."
         }
       ],
-      "source": "src/generated/logic.ts:3086"
+      "source": "src/generated/logic.ts:3160"
     },
     {
       "name": "ToastHandle",
@@ -14784,7 +15111,7 @@
           "description": "Dismiss this toast only; harmless after a newer toast replaces it.\nBefore it shows, this cancels it."
         }
       ],
-      "source": "src/generated/logic.ts:3094"
+      "source": "src/generated/logic.ts:3168"
     },
     {
       "name": "ToastOptions",
@@ -14830,7 +15157,7 @@
           "description": "Aborting it dismisses the toast."
         }
       ],
-      "source": "src/generated/logic.ts:3103"
+      "source": "src/generated/logic.ts:3177"
     },
     {
       "name": "TransferProgress",
@@ -14910,7 +15237,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:425"
+      "source": "src/generated/logic.ts:463"
     },
     {
       "name": "TrayMenuApi",
@@ -14936,7 +15263,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3128"
+      "source": "src/generated/logic.ts:3202"
     },
     {
       "name": "TrayMenuItem",
@@ -14972,7 +15299,7 @@
           "description": "Draw a check mark."
         }
       ],
-      "source": "src/generated/logic.ts:3131"
+      "source": "src/generated/logic.ts:3205"
     },
     {
       "name": "TrayMenuSeparator",
@@ -14987,7 +15314,7 @@
           "description": "A line between items."
         }
       ],
-      "source": "src/generated/logic.ts:3143"
+      "source": "src/generated/logic.ts:3217"
     },
     {
       "name": "TrayPatch",
@@ -15016,7 +15343,7 @@
           "description": "Show or hide the item."
         }
       ],
-      "source": "src/generated/logic.ts:3149"
+      "source": "src/generated/logic.ts:3223"
     },
     {
       "name": "UiApi",
@@ -15100,7 +15427,7 @@
           "description": "Show a short message over the page. Returns at once; a newer toast replaces it."
         }
       ],
-      "source": "src/generated/logic.ts:450"
+      "source": "src/generated/logic.ts:488"
     },
     {
       "name": "UpdateFailedInfo",
@@ -15129,7 +15456,7 @@
           "description": "What went wrong, for a log line."
         }
       ],
-      "source": "src/generated/logic.ts:3161"
+      "source": "src/generated/logic.ts:3235"
     },
     {
       "name": "UpdateReadyInfo",
@@ -15151,7 +15478,7 @@
           "description": "The channel it came from."
         }
       ],
-      "source": "src/generated/logic.ts:3167"
+      "source": "src/generated/logic.ts:3241"
     },
     {
       "name": "UpdateRecipe",
@@ -15167,7 +15494,7 @@
       "description": "Upload options. The file streams from disk, so the size ceiling is\nthe remote's, not memory.\n`bodyMode` picks the body shape, and with it which of the other\nfields apply:\n- `multipart` (default) wraps the file in a `multipart/form-data`\nenvelope beside the `fields` text fields — what an ordinary form\nendpoint parses. `field`, `fileName`, and `fields` describe that\nenvelope. `fields`, when present, must contain at least one entry.\n- `raw` sends the file bytes as the entire body. Presigned\nobject-storage URLs (S3, OSS, Azure Blob) need this: a multipart\nenvelope would be stored verbatim as the object's contents,\nboundary lines and all. `field`, `fields`, and `fileName` are\nthen rejected rather than silently dropped.",
       "text": "{ path: string; method?: 'POST' | 'PUT' | 'PATCH'; headers?: Record<string, string>; type?: string; signal?: AbortSignal; } & ({ bodyMode?: 'multipart'; field?: string; fields?: Record<string, string>; fileName?: string; } | { bodyMode: 'raw'; field?: never; fields?: never; fileName?: never; })",
       "fields": [],
-      "source": "src/generated/logic.ts:3202"
+      "source": "src/generated/logic.ts:3276"
     },
     {
       "name": "UploadResult",
@@ -15210,7 +15537,7 @@
           "description": "Parse `text` as JSON."
         }
       ],
-      "source": "src/generated/logic.ts:3254"
+      "source": "src/generated/logic.ts:3328"
     },
     {
       "name": "UploadTask",
@@ -15240,7 +15567,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3268"
+      "source": "src/generated/logic.ts:3342"
     },
     {
       "name": "UrlTarget",
@@ -15283,7 +15610,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:3271"
+      "source": "src/generated/logic.ts:3345"
     },
     {
       "name": "VideoCompressQuality",
@@ -15291,7 +15618,7 @@
       "description": "A preset size for `lx.media.compressVideo`.",
       "text": "\"high\" | \"low\" | \"medium\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3281"
+      "source": "src/generated/logic.ts:3355"
     },
     {
       "name": "VideoInfo",
@@ -15383,7 +15710,7 @@
           "description": "Resolved path used by runtime (typically `lx://...`)."
         }
       ],
-      "source": "src/generated/logic.ts:3289"
+      "source": "src/generated/logic.ts:3363"
     },
     {
       "name": "VideoThumbnailOptions",
@@ -15428,7 +15755,7 @@
           "default": "80"
         }
       ],
-      "source": "src/generated/logic.ts:3347"
+      "source": "src/generated/logic.ts:3421"
     },
     {
       "name": "VideoThumbnailResult",
@@ -15464,7 +15791,7 @@
           "description": "Output MIME type, usually `image/jpeg`."
         }
       ],
-      "source": "src/generated/logic.ts:3367"
+      "source": "src/generated/logic.ts:3441"
     },
     {
       "name": "ViewCallable",
@@ -15479,7 +15806,7 @@
       "description": "Whether a piece of page chrome shows: `auto` leaves it to the runtime, `hidden` hides it.",
       "text": "\"auto\" | \"hidden\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3385"
+      "source": "src/generated/logic.ts:3459"
     },
     {
       "name": "WifiApi",
@@ -15567,7 +15894,7 @@
           "description": "Subscribes to WiFi connection events and returns the unsubscribe fn."
         }
       ],
-      "source": "src/generated/logic.ts:452"
+      "source": "src/generated/logic.ts:490"
     },
     {
       "name": "WifiConnectedCallback",
@@ -15575,7 +15902,7 @@
       "description": "Receives each Wi-Fi connection change.",
       "text": "(info: WifiConnectedInfo) => void",
       "fields": [],
-      "source": "src/generated/logic.ts:3390"
+      "source": "src/generated/logic.ts:3464"
     },
     {
       "name": "WifiConnectedInfo",
@@ -15632,7 +15959,7 @@
           "description": "The platform's own word for the connection state, such as `connected`."
         }
       ],
-      "source": "src/generated/logic.ts:3393"
+      "source": "src/generated/logic.ts:3467"
     },
     {
       "name": "WifiInfo",
@@ -15675,7 +16002,7 @@
           "description": "Center frequency in MHz (if available)"
         }
       ],
-      "source": "src/generated/logic.ts:3585"
+      "source": "src/generated/logic.ts:3681"
     },
     {
       "name": "WindowChrome",
@@ -15683,36 +16010,89 @@
       "description": "Window decoration. `system` is the standard title bar. `full`\nextends the page to the window edge while keeping the system\nminimize, maximize, resize, and drag affordances — the runtime owns\na native drag strip across the top and publishes its height as\n`topInset` on the page-chrome snapshot, so a page that does nothing\nto opt in still cannot trap the user.",
       "text": "\"system\" | \"full\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3408"
+      "source": "src/generated/logic.ts:3482"
     },
     {
       "name": "WindowsTerminalApi",
-      "summary": "Windows only: install and select the ConPTY runtime that passes inline images through.",
-      "description": "Windows only: install and select the ConPTY runtime that passes inline images through.",
+      "summary": "Install and select the ConPTY runtime that passes inline images through, on Windows.",
+      "description": "Install and select the ConPTY runtime that passes inline images through, on Windows.",
       "fields": [
         {
           "name": "status",
           "type": "() => Promise<WindowsTerminalInlineImageStatus>",
           "required": true,
           "summary": "Whether the runtime is installed and selected.",
-          "description": "Whether the runtime is installed and selected."
+          "description": "Whether the runtime is installed and selected.",
+          "tags": {
+            "supports": [
+              "host.terminal.windows"
+            ],
+            "throws": [
+              {
+                "code": "E_NOT_SUPPORTED",
+                "when": "Off Windows."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "Outside the host's own control surface."
+              }
+            ]
+          }
         },
         {
           "name": "install",
           "type": "(options: { path: string; }) => Promise<WindowsTerminalInlineImageStatus>",
           "required": true,
           "summary": "Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.",
-          "description": "Verify and install the fixed Microsoft ConPTY package from lxapp temp storage."
+          "description": "Verify and install the fixed Microsoft ConPTY package from lxapp temp storage.",
+          "tags": {
+            "supports": [
+              "host.terminal.windows"
+            ],
+            "throws": [
+              {
+                "code": "E_NOT_SUPPORTED",
+                "when": "Off Windows."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "Outside the host's own control surface, or `path` is not this lxapp's temp file."
+              },
+              {
+                "code": "E_INVALID_DATA",
+                "when": "The package fails verification."
+              }
+            ]
+          }
         },
         {
           "name": "setEnabled",
           "type": "(options: { enabled: boolean; }) => Promise<WindowsTerminalInlineImageStatus>",
           "required": true,
           "summary": "Select the installed runtime for new terminal sessions.",
-          "description": "Select the installed runtime for new terminal sessions."
+          "description": "Select the installed runtime for new terminal sessions.",
+          "tags": {
+            "supports": [
+              "host.terminal.windows"
+            ],
+            "throws": [
+              {
+                "code": "E_NOT_SUPPORTED",
+                "when": "Off Windows."
+              },
+              {
+                "code": "E_PERMISSION_DENIED",
+                "when": "Outside the host's own control surface."
+              },
+              {
+                "code": "E_INVALID_STATE",
+                "when": "Enabling before the runtime is installed."
+              }
+            ]
+          }
         }
       ],
-      "source": "src/generated/logic.ts:3411"
+      "source": "src/generated/logic.ts:3485"
     },
     {
       "name": "WindowsTerminalInlineImageStatus",
@@ -15735,13 +16115,13 @@
         },
         {
           "name": "package",
-          "type": "{ version: string; url: string; sha256: string; bytes: number; }",
+          "type": "{ version: string; url: string | URL; sha256: string; bytes: number; }",
           "required": true,
           "summary": "The one package version this host installs.",
           "description": "The one package version this host installs."
         }
       ],
-      "source": "src/generated/logic.ts:3421"
+      "source": "src/generated/logic.ts:3518"
     },
     {
       "name": "WindowsTerminalInlineImageStatus.package",
@@ -15757,7 +16137,7 @@
         },
         {
           "name": "url",
-          "type": "string",
+          "type": "string | URL",
           "required": true,
           "summary": "Where to download it.",
           "description": "Where to download it."
@@ -15777,7 +16157,7 @@
           "description": "Its size in bytes."
         }
       ],
-      "source": "src/generated/logic.ts:3427"
+      "source": "src/generated/logic.ts:3524"
     },
     {
       "name": "definePage(definition)",
@@ -15821,7 +16201,7 @@
           "description": "One entry per representation; empty when nothing matched."
         }
       ],
-      "source": "src/generated/logic.ts:1100"
+      "source": "src/generated/logic.ts:1174"
     },
     {
       "name": "lx.clipboard.read().items",
@@ -15843,7 +16223,7 @@
           "description": "The text."
         }
       ],
-      "source": "src/generated/logic.ts:1074"
+      "source": "src/generated/logic.ts:1148"
     },
     {
       "name": "lx.clipboard.readText()",
@@ -15865,7 +16245,7 @@
           "description": "The text; absent when the clipboard holds none."
         }
       ],
-      "source": "src/generated/logic.ts:1112"
+      "source": "src/generated/logic.ts:1186"
     },
     {
       "name": "lx.clipboard.write(item)",
@@ -15887,7 +16267,7 @@
           "description": "Unicode text, at most 1 MiB."
         }
       ],
-      "source": "src/generated/logic.ts:1126"
+      "source": "src/generated/logic.ts:1200"
     },
     {
       "name": "lx.fs.copy(source)",
@@ -15974,7 +16354,7 @@
           "default": "true"
         }
       ],
-      "source": "src/generated/logic.ts:1400"
+      "source": "src/generated/logic.ts:1450"
     },
     {
       "name": "lx.fs.write(path)",
@@ -16010,7 +16390,7 @@
           "description": "The picked button's `id`."
         }
       ],
-      "source": "src/generated/logic.ts:1007"
+      "source": "src/generated/logic.ts:1081"
     },
     {
       "name": "lx.host.banner.show(options)",
@@ -16061,7 +16441,7 @@
           "description": "Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill."
         }
       ],
-      "source": "src/generated/logic.ts:975"
+      "source": "src/generated/logic.ts:1049"
     },
     {
       "name": "lx.host.banner.show(options).actions",
@@ -16097,7 +16477,7 @@
           "description": "Where picking this action goes, as a notification target, checked\nbefore the banner shows; absent, picking it only resolves `show`."
         }
       ],
-      "source": "src/generated/logic.ts:986"
+      "source": "src/generated/logic.ts:1060"
     },
     {
       "name": "lx.host.banner.show(options).actions.target",
@@ -16169,7 +16549,7 @@
           "description": "Categories that could not be cleared."
         }
       ],
-      "source": "src/generated/logic.ts:723"
+      "source": "src/generated/logic.ts:767"
     },
     {
       "name": "lx.host.notification.show()",
@@ -16185,13 +16565,13 @@
         },
         {
           "name": "delivery",
-          "type": "\"posted\" | \"scheduled\" | \"suppressed\"",
+          "type": "\"posted\" | \"scheduled\" | \"presented\" | \"suppressed\"",
           "required": true,
           "summary": "`posted`: the OS took it for display, not proof anyone saw it.",
-          "description": "`posted`: the OS took it for display, not proof anyone saw it. `scheduled`:\nqueued for `schedule`, and shown even if the product is frontmost then.\n`suppressed`: an immediate post while the product is frontmost; nothing\nposted, no permission needed."
+          "description": "`posted`: the OS took it for display, not proof anyone saw it. `scheduled`:\nqueued for `schedule`, and shown even if the product is frontmost then.\n`presented`: the product was frontmost, so it shows as a banner instead.\n`suppressed`: frontmost and nothing shown. Neither needs permission."
         }
       ],
-      "source": "src/generated/logic.ts:1746"
+      "source": "src/generated/logic.ts:1835"
     },
     {
       "name": "lx.host.notification.show(options)",
@@ -16250,9 +16630,22 @@
               "HarmonyOS: no effect."
             ]
           }
+        },
+        {
+          "name": "whenFrontmost",
+          "type": "\"banner\" | \"system\" | \"suppress\" | undefined",
+          "required": false,
+          "summary": "An immediate post while the product is frontmost: `banner` shows it as `lx.host.banner` would, with an Open button that follows `target`; `system` posts it anyway; `suppress` shows nothing.",
+          "description": "An immediate post while the product is frontmost: `banner` shows it as\n`lx.host.banner` would, with an Open button that follows `target`;\n`system` posts it anyway; `suppress` shows nothing. Where there is no\nbanner (phones), `banner` posts it as `system` does.",
+          "default": "'banner'",
+          "tags": {
+            "platform": [
+              "macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown."
+            ]
+          }
         }
       ],
-      "source": "src/generated/logic.ts:1717"
+      "source": "src/generated/logic.ts:1797"
     },
     {
       "name": "lx.host.notification.show(options).schedule",
@@ -16267,7 +16660,7 @@
           "description": "Epoch milliseconds."
         }
       ],
-      "source": "src/generated/logic.ts:1734"
+      "source": "src/generated/logic.ts:1814"
     },
     {
       "name": "lx.host.notification.show(options).target",
@@ -16332,7 +16725,7 @@
           "description": "Existing names are rejected unless overwrite is explicit."
         }
       ],
-      "source": "src/generated/logic.ts:2949"
+      "source": "src/generated/logic.ts:3023"
     },
     {
       "name": "lx.host.terminal.settings.reset(options)",
@@ -16354,7 +16747,7 @@
           "description": "Reset only the font or only the theme; both when absent."
         }
       ],
-      "source": "src/generated/logic.ts:3018"
+      "source": "src/generated/logic.ts:3092"
     },
     {
       "name": "lx.host.terminal.settings.update(patch)",
@@ -16369,7 +16762,37 @@
           "description": "The `revision` the patch was made against."
         }
       ],
-      "source": "src/generated/logic.ts:3010"
+      "source": "src/generated/logic.ts:3084"
+    },
+    {
+      "name": "lx.host.terminal.windows.install(options)",
+      "summary": "",
+      "description": "",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "summary": "The downloaded package, an `lx://temp/` path.",
+          "description": "The downloaded package, an `lx://temp/` path."
+        }
+      ],
+      "source": "src/generated/logic.ts:3500"
+    },
+    {
+      "name": "lx.host.terminal.windows.setEnabled(options)",
+      "summary": "",
+      "description": "",
+      "fields": [
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "summary": "Use the runtime for new sessions.",
+          "description": "Use the runtime for new sessions."
+        }
+      ],
+      "source": "src/generated/logic.ts:3511"
     },
     {
       "name": "lx.media.compressVideo(options)",
@@ -16391,7 +16814,7 @@
           "description": "Where to write it: an `lx://userdata`, `lx://usercache` or `lx://temp` path, or a path relative to `lx://userdata`. A temporary file when omitted."
         }
       ],
-      "source": "src/generated/logic.ts:1162"
+      "source": "src/generated/logic.ts:1236"
     },
     {
       "name": "lx.media.preview(options)",
@@ -16421,7 +16844,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2245"
+      "source": "src/generated/logic.ts:2334"
     },
     {
       "name": "lx.nav.go(options)",
@@ -16436,7 +16859,7 @@
           "description": "Replace instead of push."
         }
       ],
-      "source": "src/generated/logic.ts:300"
+      "source": "src/generated/logic.ts:330"
     },
     {
       "name": "lx.nav.go(target)",
@@ -16530,7 +16953,7 @@
           "description": "Filename hint; the host picks a free name next to it."
         }
       ],
-      "source": "src/generated/logic.ts:1320"
+      "source": "src/generated/logic.ts:1370"
     },
     {
       "name": "lx.network.upload(options)",
@@ -16575,7 +16998,7 @@
           "description": "Aborting it cancels the upload, and the task's `result` rejects."
         }
       ],
-      "source": "src/generated/logic.ts:3202"
+      "source": "src/generated/logic.ts:3276"
     },
     {
       "name": "lx.pick.capture()",
@@ -16597,7 +17020,7 @@
           "description": "The picked file."
         }
       ],
-      "source": "src/generated/logic.ts:2073"
+      "source": "src/generated/logic.ts:2162"
     },
     {
       "name": "lx.pick.code()",
@@ -16626,7 +17049,7 @@
           "description": "The symbology, in snake_case, e.g. `qr_code`."
         }
       ],
-      "source": "src/generated/logic.ts:2033"
+      "source": "src/generated/logic.ts:2122"
     },
     {
       "name": "lx.pick.directory()",
@@ -16648,7 +17071,7 @@
           "description": "The picked directory."
         }
       ],
-      "source": "src/generated/logic.ts:2052"
+      "source": "src/generated/logic.ts:2141"
     },
     {
       "name": "lx.pick.file()",
@@ -16670,7 +17093,7 @@
           "description": "The picked file."
         }
       ],
-      "source": "src/generated/logic.ts:2073"
+      "source": "src/generated/logic.ts:2162"
     },
     {
       "name": "lx.pick.files()",
@@ -16692,7 +17115,7 @@
           "description": "The picked files, in the order chosen."
         }
       ],
-      "source": "src/generated/logic.ts:2085"
+      "source": "src/generated/logic.ts:2174"
     },
     {
       "name": "lx.pick.media()",
@@ -16714,7 +17137,7 @@
           "description": "The picked files, in the order chosen."
         }
       ],
-      "source": "src/generated/logic.ts:2085"
+      "source": "src/generated/logic.ts:2174"
     },
     {
       "name": "lx.share(options)",
@@ -16729,7 +17152,7 @@
           "description": "Share text body."
         }
       ],
-      "source": "src/generated/logic.ts:2404"
+      "source": "src/generated/logic.ts:2478"
     },
     {
       "name": "lx.shell.openBuiltin()",
@@ -16744,7 +17167,7 @@
           "description": "A host builtin page."
         }
       ],
-      "source": "src/generated/logic.ts:1047"
+      "source": "src/generated/logic.ts:1121"
     },
     {
       "name": "lx.shell.sidebarActions.replace(items)",
@@ -16766,14 +17189,14 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2441"
+      "source": "src/generated/logic.ts:2515"
     },
     {
       "name": "lx.storage.get()",
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:1552"
+      "source": "src/generated/logic.ts:1632"
     },
     {
       "name": "lx.surface.app()",
@@ -16795,7 +17218,7 @@
           "description": "Where it is shown."
         }
       ],
-      "source": "src/generated/logic.ts:849"
+      "source": "src/generated/logic.ts:903"
     },
     {
       "name": "lx.surface.declared()",
@@ -16817,7 +17240,7 @@
           "description": "Where it is shown."
         }
       ],
-      "source": "src/generated/logic.ts:849"
+      "source": "src/generated/logic.ts:903"
     },
     {
       "name": "lx.surface.get()",
@@ -16853,7 +17276,7 @@
           "description": "Brings this tab to the front. Rejects with `closed` once the tab is gone."
         }
       ],
-      "source": "src/generated/logic.ts:2837"
+      "source": "src/generated/logic.ts:2911"
     },
     {
       "name": "lx.surface.openApp()",
@@ -16875,7 +17298,7 @@
           "description": "Where it is shown."
         }
       ],
-      "source": "src/generated/logic.ts:849"
+      "source": "src/generated/logic.ts:903"
     },
     {
       "name": "lx.surface.openDeclared()",
@@ -16897,7 +17320,7 @@
           "description": "Where it is shown."
         }
       ],
-      "source": "src/generated/logic.ts:849"
+      "source": "src/generated/logic.ts:903"
     },
     {
       "name": "lx.surface.openPage()",
@@ -16955,7 +17378,7 @@
           "description": "Brings this tab to the front. Rejects with `closed` once the tab is gone."
         }
       ],
-      "source": "src/generated/logic.ts:2837"
+      "source": "src/generated/logic.ts:2911"
     },
     {
       "name": "lx.ui.actionSheet()",
@@ -16977,7 +17400,7 @@
           "description": "Stable id of the selected action."
         }
       ],
-      "source": "src/generated/logic.ts:671"
+      "source": "src/generated/logic.ts:709"
     }
   ]
 }

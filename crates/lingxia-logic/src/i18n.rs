@@ -5,46 +5,6 @@ use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Normalize locale string to use hyphens instead of underscores
-///
-/// Converts platform-specific locale formats:
-/// - iOS: "zh_CN" -> "zh-CN"
-/// - Android: "zh-rCN" -> "zh-CN"
-/// - Standard: "zh-CN" -> "zh-CN"
-#[inline]
-fn normalize_locale(locale: &str) -> String {
-    let normalized = locale.replace('_', "-").replace("-r", "-");
-    let primary = normalized
-        .split('-')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match primary.as_str() {
-        "en" => "en-US".to_string(),
-        "zh" => "zh-CN".to_string(),
-        // The product accepts any BCP-47 tag; the framework's own strings ship
-        // in two languages and fall back. That is a catalog gap, reported once
-        // per language — `t()` runs on every framework string, and a line per
-        // call would bury the log it belongs in.
-        _ => {
-            report_missing_catalog(&primary);
-            "en-US".to_string()
-        }
-    }
-}
-
-fn report_missing_catalog(language: &str) {
-    static REPORTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-        std::sync::OnceLock::new();
-    let mut reported = REPORTED
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if reported.insert(language.to_string()) {
-        log::info!("No built-in `lx.*` strings for `{language}`; using en-US.");
-    }
-}
-
 /// Get localized string for a given key
 ///
 /// Automatically retrieves locale from lxapp runtime.
@@ -63,9 +23,15 @@ fn report_missing_catalog(language: &str) {
 /// ```
 #[inline]
 pub fn t(key: I18nKey) -> String {
-    let locale = lxapp::display_language();
-    let normalized = normalize_locale(&locale);
-    key.get(&normalized).to_string()
+    // The host has narrowed it to a product language; one the SDK lacks reads in English.
+    let language = lxapp::display_language();
+    if let Some(text) = lingxia_app_context::app_config()
+        .and_then(|config| config.sdk_text.get(&language))
+        .and_then(|words| words.get(key.name()))
+    {
+        return text.clone();
+    }
+    key.get(&language).to_string()
 }
 
 pub fn err_code_message(code: u32) -> String {
@@ -455,7 +421,7 @@ mod tests {
             data.get("operation").and_then(ErrorData::as_str),
             Some("navigateTo")
         );
-        assert!(data.get("bizCode").is_none() && data.get("detail").is_none());
+        assert!(!data.contains_key("bizCode") && !data.contains_key("detail"));
         assert_eq!(host.detail(), Some("duplicate route"));
         assert_eq!(host.reason(), None);
     }

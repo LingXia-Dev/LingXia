@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Drawing",
-      "zh-CN": "绘制"
+      "message": "title.viewDrawing"
     }
   },
   "pageOrientation": "auto"

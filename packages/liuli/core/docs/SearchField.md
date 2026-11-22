@@ -98,7 +98,7 @@ export function Sizes() {
 | `label` (required) | `string` |  | The accessible name: what is searched ("Search notes"), drawn above the field unless `isLabelHidden`. |
 | `isLabelHidden` | `boolean` | `false` | Reads the label without drawing it: a search field at the top of a list is usually named by its place and placeholder alone. |
 | `placeholder` | `string` |  | A hint shown while empty: "Search notes". |
-| `clearLabel` (required) | `string` |  | The clear button's accessible name: "Clear search". The button shows while there is text. |
+| `clearLabel` | `string` |  | The clear button's accessible name: "Clear search". The button shows while there is text. Defaults to "Clear search" in the page's language. |
 | `resultsLabel` | `string` |  | What the search found, as the app words it: "12 notes", "No notes match". Announced when it changes. |
 | `isResultsLabelHidden` | `boolean` | `false` | Keeps `resultsLabel` for assistive tech only, when the list under the field already shows it. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in place of the magnifier while a search runs. |

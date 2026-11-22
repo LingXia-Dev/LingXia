@@ -3,7 +3,6 @@ import { useLocal, useVideo, useView } from '@lingxia/view';
 import { ProgressRing } from './kit';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../public-video';
-import { VIDEO_LABELS } from '../video-labels';
 
 export function SpecVideo() {
   const { data } = useView();
@@ -22,13 +21,13 @@ export function SpecVideo() {
       <view className="relative rounded-xl overflow-hidden">
         <video data-testid="lab-video-player" player={clip} {...source} loop={!packaged}
           onError={error => { if (error.code === 'VIDEO_NETWORK') fellBack.set(true); }} />
-        <VideoControls player={clip} labels={VIDEO_LABELS} poster={packaged ? 'public/video/fractal-poster.jpg' : undefined} data-testid="lab-video-controls" />
+        <VideoControls player={clip} poster={packaged ? 'public/video/fractal-poster.jpg' : undefined} data-testid="lab-video-controls" />
       </view>
       {/* A spinner beside the player commits the page every frame; the bar must still follow it. */}
       {spec ? <ProgressRing small label="Loading next" testId="lab-video-spinner" /> : (
         <view className="relative rounded-xl overflow-hidden">
           <video data-testid="lab-stream-player" player={stream} src={PUBLIC_STREAM} aria-label="HLS test stream" />
-          <VideoControls player={stream} labels={VIDEO_LABELS} data-testid="lab-stream-controls" />
+          <VideoControls player={stream} data-testid="lab-stream-controls" />
         </view>
       )}
     </view>

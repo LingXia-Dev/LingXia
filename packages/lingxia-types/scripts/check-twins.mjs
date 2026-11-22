@@ -51,7 +51,8 @@ for (const file of files) {
 const logicPath = resolve(packageDir, "src/generated/logic.ts");
 const base = ts.createProgram([logicPath], { noEmit: true, skipLibCheck: true, target: ts.ScriptTarget.ES2022, types: [] });
 const exports = base.getTypeChecker().getExportsOfModule(base.getTypeChecker().getSymbolAtLocation(base.getSourceFile(logicPath)));
-const probePath = resolve(packageDir, "src/__twins__.ts");
+// TypeScript hands the host forward-slash paths, also on Windows.
+const probePath = resolve(packageDir, "src/__twins__.ts").replaceAll("\\", "/");
 const probes = [];
 const typeFor = text => { probes.push(text); return `__T${probes.length - 1}`; };
 

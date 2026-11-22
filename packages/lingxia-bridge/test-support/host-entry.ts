@@ -2,3 +2,4 @@
 // extensionless imports.
 export { getHost, subscribeHost } from '../src/host';
 export { textDirection } from '../src/runtime-env';
+export { registerCatalogues, t } from '../src/i18n';

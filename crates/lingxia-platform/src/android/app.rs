@@ -659,7 +659,7 @@ impl AppRuntime for Platform {
                 class,
                 jni_str!("show"),
                 jni_sig!(
-                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZ)Ljava/lang/String;"
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZZ)Ljava/lang/String;"
                 ),
                 &[
                     JValue::Object(&id),
@@ -668,6 +668,7 @@ impl AppRuntime for Platform {
                     JValue::Object(&token),
                     JValue::Long(request.deliver_at_ms.unwrap_or(0) as i64),
                     JValue::Bool(request.silent),
+                    JValue::Bool(request.post_when_frontmost),
                 ],
             )?;
             let status = jstring_from_result(env, result)?;

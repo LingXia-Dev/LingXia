@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "Cancelar"
+  },
+  "@view.done": {
+    "defaultMessage": "Listo"
+  },
+  "@view.ok": {
+    "defaultMessage": "Aceptar"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "Mes anterior"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "Mes siguiente"
+  },
+  "@view.hour": {
+    "defaultMessage": "Hora"
+  },
+  "@view.minute": {
+    "defaultMessage": "Minuto"
+  },
+  "@view.period": {
+    "defaultMessage": "a. m./p. m."
+  },
+  "@view.options": {
+    "defaultMessage": "Opciones"
+  },
+  "@view.dialog": {
+    "defaultMessage": "Cuadro de diálogo"
+  },
+  "@view.actions": {
+    "defaultMessage": "Acciones"
+  }
+}

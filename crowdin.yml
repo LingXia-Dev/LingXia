@@ -1,0 +1,18 @@
+# Crowdin carries LingXia's own strings; `en-US` / `en` is the source of each.
+# `lingxia gen i18n --check` (CI) refuses a shipped language with a missing key
+# or an argument that differs from the source.
+project_id_env: CROWDIN_PROJECT_ID
+api_token_env: CROWDIN_PERSONAL_TOKEN
+preserve_hierarchy: true
+
+files:
+  # SDK strings: YAML, ICU arguments ({filter}); every scope directory.
+  - source: /i18n/**/en-US.yaml
+    translation: /%original_path%/%locale%.yaml
+  # View and Liuli words: FormatJS JSON, ICU messages, keyed by language.
+  - source: /i18n/view/en.json
+    translation: /i18n/view/%two_letters_code%.json
+    type: json
+  - source: /i18n/liuli/en.json
+    translation: /i18n/liuli/%two_letters_code%.json
+    type: json

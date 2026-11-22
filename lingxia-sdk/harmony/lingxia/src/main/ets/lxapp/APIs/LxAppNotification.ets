@@ -245,7 +245,7 @@ export class LxAppNotification {
   }
 
   /**
-   * `lx.host.setBadge` on the home-screen icon. An empty value clears it.
+   * `lx.host.badge` on the home-screen icon. An empty value clears it.
    * Independent of any posted notification: nothing here publishes one.
    */
   public static setAppBadge(callbackId: string, text: string): void {

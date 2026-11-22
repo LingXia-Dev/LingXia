@@ -34,6 +34,8 @@ struct JSShowOptions {
     applink: Option<String>,
     schedule: Option<JSSchedule>,
     silent: Option<bool>,
+    #[js_name = "whenFrontmost"]
+    when_frontmost: Option<String>,
 }
 
 /// `lx.host.notification` — local banners as a resume affordance, when the host
@@ -186,21 +188,27 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     }
     let id = request.id.clone();
     let platform_id = scope.platform_id(&request.id);
+    let banner_text = (request.title.clone(), request.body.clone());
+    let has_banner = crate::capability::exposes(&ctx, "host.banner");
     // Persist the target before the OS is told anything, so a tap can never
     // arrive ahead of the record that explains it.
     let staged =
         intent::stage_owned(&platform_id, &target, scope.owner()).map_err(navigation_error)?;
     let platform_request = LocalNotificationShow {
-        id: platform_id,
+        id: platform_id.clone(),
         title: request.title,
         body: request.body,
         activation_token: staged.token.clone(),
         deliver_at_ms: request.deliver_at_ms,
         silent: request.silent,
+        // Where there is no banner to show it in, `banner` posts it instead.
+        post_when_frontmost: request.when_frontmost == WhenFrontmost::System
+            || (request.when_frontmost == WhenFrontmost::Banner && !has_banner),
     };
     let status = spawn_blocking(move || runtime.notification_show(&platform_request)).await;
     match status {
         Ok(status) => {
+            let mut delivery = status.as_str();
             if status == lingxia_platform::traits::app_runtime::LocalNotificationStatus::Suppressed
             {
                 // Nothing was posted, so nothing may resolve this token later.
@@ -208,12 +216,25 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 if claimed {
                     guest_prompt::release(&app);
                 }
+                if request.when_frontmost == WhenFrontmost::Banner && has_banner {
+                    let (title, body) = banner_text;
+                    super::banner::present_notification(
+                        app.clone(),
+                        scope.clone(),
+                        &platform_id,
+                        title,
+                        body,
+                        target,
+                    )
+                    .await?;
+                    delivery = "presented";
+                }
             } else {
                 intent::commit(&staged);
             }
             let result = JSObject::new(&ctx);
             result.set("id", id)?;
-            result.set("delivery", status.as_str())?;
+            result.set("delivery", delivery)?;
             Ok(result)
         }
         Err(error) => {
@@ -239,6 +260,7 @@ async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
     // Retire the target first: a banner the OS has not removed yet must not
     // still navigate.
     intent::invalidate(&id);
+    super::banner::dismiss_notifications(&runtime, |live, _| live == id);
     spawn_blocking(move || runtime.notification_cancel(&id)).await
 }
 
@@ -249,8 +271,10 @@ async fn cancel_all(ctx: JSContext) -> JSResult<()> {
     let runtime = invocation.lxapp().runtime.clone();
     let Some(owner) = AttentionScope::of(&invocation).owner().map(str::to_string) else {
         intent::invalidate_all();
+        super::banner::dismiss_notifications(&runtime, |_, _| true);
         return spawn_blocking(move || runtime.notification_cancel_all()).await;
     };
+    super::banner::dismiss_notifications(&runtime, |_, posted_by| posted_by == Some(&owner));
     let ids = intent::ids_owned_by(&owner);
     for id in &ids {
         intent::invalidate(id);
@@ -289,6 +313,15 @@ struct ShowRequest {
     target: Option<serde_json::Value>,
     deliver_at_ms: Option<u64>,
     silent: bool,
+    when_frontmost: WhenFrontmost,
+}
+
+/// What `show` does with an immediate notification while the product is frontmost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WhenFrontmost {
+    Banner,
+    System,
+    Suppress,
 }
 
 fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
@@ -307,6 +340,16 @@ fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
         None => uuid::Uuid::new_v4().to_string(),
     };
     let target = decode_target(parsed.target)?;
+    let when_frontmost = match parsed.when_frontmost.as_deref() {
+        None | Some("banner") => WhenFrontmost::Banner,
+        Some("system") => WhenFrontmost::System,
+        Some("suppress") => WhenFrontmost::Suppress,
+        Some(other) => {
+            return Err(js_invalid_parameter_error(format!(
+                "lx.host.notification.show whenFrontmost must be banner, system, or suppress (got {other})"
+            )));
+        }
+    };
     Ok(ShowRequest {
         id,
         title,
@@ -314,6 +357,7 @@ fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
         target,
         deliver_at_ms: schedule_at_ms(parsed.schedule)?,
         silent: parsed.silent.unwrap_or(false),
+        when_frontmost,
     })
 }
 

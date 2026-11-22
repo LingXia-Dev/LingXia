@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'When something happened, in the words people use',
   description:
     'Timestamp writes a moment as people say it: "12 minutes ago" for today, "Yesterday, 18:30", then the date, with the year only when it is another year. ' +
-    'It takes the moment and the present as local date-times from the app, and its words from a locale: Liuli ships English and Chinese, and an app can pass its own. ' +
+    'It takes the moment and the present as local date-times from the app, in the page\'s language: Liuli ships English and Chinese, and an lxapp changes a phrase by naming its `@liuli.timestamp.*` key. ' +
     'The time follows the user\'s 12- or 24-hour clock.',
   keywords: ['timestamp', 'time', 'date', 'relative time', 'ago', 'when'],
   propsType: 'TimestampProps',
@@ -40,14 +40,13 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Activity', title: 'An activity list' },
     { name: 'Formats', title: 'The four forms' },
-    { name: 'Chinese', title: 'In Chinese' },
   ],
   gaps: [],
   limits: [
     'There is no clock and no time zone in the View: the app passes `now` and local date-times.',
-    'Words come from a locale module, not from the system; two locales ship.',
+    'Words follow the page\'s language; Liuli ships English and Chinese.',
   ],
-  playground: { props: { value: '2026-11-14T09:42', now: '2026-11-14T10:05' }, fixture: true },
+  playground: { props: { value: '2026-11-14T09:42', now: '2026-11-14T10:05' } },
   related: ['Timer', 'Calendar', 'DateInput'],
   gallery: {
     specimen: 'Specimen',
@@ -58,7 +57,6 @@ export const doc: ComponentDoc = {
       hero: 'Activity',
       variants: [
         { name: 'Formats', title: 'Relative, date, time, and date with time' },
-        { name: 'Chinese', title: 'From the Chinese locale module' },
       ],
     },
   },

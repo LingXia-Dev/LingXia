@@ -1,6 +1,6 @@
 import { cx, useId, useLocal, useView } from '@lingxia/view';
 import { useControlSize } from '../density';
-import { Calendar, type CalendarDate, type CalendarLocale, type CalendarRange } from '../Calendar/Calendar';
+import { Calendar, type CalendarDate, type CalendarRange } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { Glyph } from '../internal/Glyph';
@@ -14,8 +14,6 @@ export type DateRangeInputProps = FieldOwnProps & {
   onChange: (range: CalendarRange) => void;
   /** Turns a day into the text the field shows: "18 Nov". The app formats dates. */
   format: (date: CalendarDate) => string;
-  /** The calendar's words; see Calendar. */
-  locale: CalendarLocale;
   /** Today, from the page's Logic. */
   today: CalendarDate;
   /** Shown while no day is chosen. */
@@ -34,7 +32,7 @@ export type DateRangeInputProps = FieldOwnProps & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    value: range, onChange: onRangeChange, format, locale, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
+    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, closeLabel, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const { env } = useView();
@@ -54,7 +52,6 @@ export function DateRangeInput(props: DateRangeInputProps) {
     <LayerContext.Provider value="overlay">
       <Calendar
         label={label}
-        locale={locale}
         today={today}
         isRange
         value={range}

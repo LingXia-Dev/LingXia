@@ -688,7 +688,8 @@ export interface PageTestEnvironment {
   contrast: "standard" | "high" | null;
   /** The platform's text-size curve, `[authored, rendered]` rows; `null` at the default size. */
   textScale: Array<[number, number]> | null;
-  displayLanguage: string | null;
+  /** The page's `env.language`. */
+  language: string | null;
 }
 
 /** Element-level automation of the selected lxapp's page WebViews. */

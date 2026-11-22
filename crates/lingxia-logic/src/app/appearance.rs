@@ -23,18 +23,24 @@ struct PreferenceEvent {
     preference: String,
 }
 
-/// `lx.host.appearance` — the light/dark scheme this lxapp renders in. An lxapp
-/// that pinned one in its manifest reports that; the rest follow the product.
-pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+/// `lx.app.appearance` — the light/dark scheme this lxapp renders in. An lxapp that pinned one in
+/// its manifest reports that; the rest follow the product. Every context gets it.
+pub(super) fn init_app(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get)?.name("get")?)?;
     namespace.set("watch", JSFunc::new(ctx, watch)?.name("watch")?)?;
-    let preference = JSObject::new(ctx);
-    preference.set("get", JSFunc::new(ctx, get_preference)?.name("get")?)?;
-    preference.set("set", JSFunc::new(ctx, set_preference)?.name("set")?)?;
-    preference.set("watch", JSFunc::new(ctx, watch_preference)?.name("watch")?)?;
-    namespace.set("preference", preference)?;
     app.set("appearance", namespace)?;
+    Ok(())
+}
+
+/// `lx.host.appearance` — the product's light/dark preference. Every context gets it; each call
+/// authorizes, so only the Control app gets past it.
+pub(super) fn init_host(ctx: &JSContext, host: &JSObject) -> JSResult<()> {
+    let namespace = JSObject::new(ctx);
+    namespace.set("get", JSFunc::new(ctx, get_preference)?.name("get")?)?;
+    namespace.set("set", JSFunc::new(ctx, set_preference)?.name("set")?)?;
+    namespace.set("watch", JSFunc::new(ctx, watch_preference)?.name("watch")?)?;
+    host.set("appearance", namespace)?;
     Ok(())
 }
 
@@ -109,7 +115,7 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
 }
 
 /// Follow the choice, not what it resolves to: a system flip under `'auto'`
-/// moves `lx.host.appearance.watch` and leaves this quiet.
+/// moves `lx.app.appearance.watch` and leaves this quiet.
 fn watch_preference(
     ctx: JSContext,
     callback: JSValue,

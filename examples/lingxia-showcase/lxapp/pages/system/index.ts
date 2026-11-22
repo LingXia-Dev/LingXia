@@ -63,7 +63,7 @@ export default definePage({
           console.log('App base info:', info);
           page.update(d => {
             d.appBaseInfo = info;
-            d.displayLanguage = lx.host.displayLanguage.get();
+            d.displayLanguage = lx.app.language.get();
           });
         } catch (error) {
           console.error('Failed to get app base info:', error);
@@ -111,7 +111,7 @@ export default definePage({
         if (lx.app.info.role !== 'control') {
           page.update(d => {
             d.cacheBytes = null;
-            d.cacheError = 'Cache APIs are Control-app only';
+            d.cacheError = lx.app.t('system.cacheControlOnly');
           });
           return;
         }
@@ -143,7 +143,7 @@ export default definePage({
         if (lx.app.info.role !== 'control') {
           page.update(d => {
             d.cacheBusy = false;
-            d.cacheError = 'Cache APIs are Control-app only';
+            d.cacheError = lx.app.t('system.cacheControlOnly');
           });
           return;
         }
@@ -174,7 +174,7 @@ export default definePage({
           });
         }
       },
-      // Presence of the member is the support check — same latch as
+      // Presence of the member is the support check 鈥?same latch as
       // `lx.supports('host.notification')`.
       async refreshNotification() {
         const notification = lx.host.notification;
@@ -209,14 +209,14 @@ export default definePage({
       async showNotification() {
         const notification = lx.host.notification;
         if (!lx.supports('host.notification')) {
-          page.update(d => { d.notificationError = 'Notifications are not supported on this host'; });
+          page.update(d => { d.notificationError = lx.app.t('system.noNotifications'); });
           return;
         }
         try {
-          // An immediate show is suppressed while this page is frontmost.
+          // Scheduled, so it reaches the OS even while this page is frontmost.
           const { id } = await notification.show({
             id: 'showcase-local',
-            title: 'LingXia showcase',
+            title: lx.app.t('system.showcaseTitle'),
             message: notificationBody(page.data.notificationTarget),
             target: notificationTargetFor(page.data.notificationTarget),
             schedule: { delayMs: 5000 },
@@ -255,7 +255,7 @@ export default definePage({
         const supported = lx.supports('host.banner');
         page.update(d => {
           d.bannerSupported = supported;
-          d.bannerError = banner ? '' : 'Desktop banner is Control-app / desktop only';
+          d.bannerError = banner ? '' : lx.app.t('system.bannerControlOnly');
         });
       },
       setBannerBackground(background: string) {
@@ -264,7 +264,7 @@ export default definePage({
       async showBannerToast() {
         const banner = lx.host.banner;
         if (!lx.supports('host.banner')) {
-          page.update(d => { d.bannerError = 'Desktop banner is not supported on this host'; });
+          page.update(d => { d.bannerError = lx.app.t('system.noBanner'); });
           return;
         }
         if (page.data.bannerBusy) {
@@ -279,8 +279,8 @@ export default definePage({
         try {
           const result = await banner.show({
             id: 'showcase-banner-toast',
-            title: 'LingXia showcase',
-            message: 'Desktop card — auto-dismisses',
+            title: lx.app.t('system.showcaseTitle'),
+            message: lx.app.t('system.bannerToastBody'),
             durationMs: 5000,
             background: page.data.bannerBackground,
           });
@@ -301,7 +301,7 @@ export default definePage({
       async showBannerPrompt() {
         const banner = lx.host.banner;
         if (!lx.supports('host.banner')) {
-          page.update(d => { d.bannerError = 'Desktop banner is not supported on this host'; });
+          page.update(d => { d.bannerError = lx.app.t('system.noBanner'); });
           return;
         }
         if (page.data.bannerBusy) {
@@ -316,11 +316,11 @@ export default definePage({
         try {
           const result = await banner.show({
             id: 'showcase-banner-prompt',
-            title: 'Allow this action?',
-            message: 'Agent wants to call sendEmail',
+            title: lx.app.t('system.bannerPromptTitle'),
+            message: lx.app.t('system.bannerPromptBody'),
             actions: [
-              { id: 'deny', label: 'Deny' },
-              { id: 'allow', label: 'Allow', tone: 'primary' },
+              { id: 'deny', label: lx.app.t('system.deny') },
+              { id: 'allow', label: lx.app.t('system.allow'), tone: 'primary' },
             ],
             durationMs: 60_000,
             background: page.data.bannerBackground,
@@ -399,7 +399,7 @@ export default definePage({
       onShow() {
         console.log('System page onShow');
         // The user can flip the login item in System Settings / Task Manager
-        // while this page is hidden — re-read the OS state on every show.
+        // while this page is hidden 鈥?re-read the OS state on every show.
         if (page.data.currentType === 'autostart') {
           actions.refreshAutostart();
         }
@@ -434,10 +434,10 @@ function notificationTargetFor(choice: string): HostTarget {
 
 function notificationBody(choice: string): string {
   if (choice === 'native') {
-    return 'Tap opens a native route — no lxapp, no URL';
+    return lx.app.t('system.notifyNative');
   }
   if (choice === 'page') {
-    return 'Tap opens this page the way navigateTo does';
+    return lx.app.t('system.notifyPage');
   }
-  return 'Tap brings the showcase forward';
+  return lx.app.t('system.notifyActivate');
 }
