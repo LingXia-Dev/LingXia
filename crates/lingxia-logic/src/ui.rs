@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 mod action_sheet;
+pub(crate) use action_sheet::present_action_sheet;
 mod modal;
 mod more_actions;
 mod navbar;

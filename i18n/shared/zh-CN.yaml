@@ -110,6 +110,11 @@ date:
 splash:
   skip: "跳过"
 
+# lx.pick.media source sheet, shown when the call offers both
+pick:
+  source_library: "从相册选择"
+  source_camera: "拍摄"
+
 # Host shell
 shell:
   pin_limit_title: "侧栏固定项"

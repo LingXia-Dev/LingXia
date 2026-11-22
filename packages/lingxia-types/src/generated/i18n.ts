@@ -161,6 +161,8 @@ export const I18N_KEYS = [
   "permission_microphone_reason",
   "permission_network_reason",
   "permission_wifi_reason",
+  "pick_source_camera",
+  "pick_source_library",
   "pull_refresh_refreshed",
   "pull_refresh_refreshing",
   "shell_pin_limit_message",

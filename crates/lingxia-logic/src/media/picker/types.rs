@@ -1,12 +1,14 @@
-use rong::FromJSObject;
+use rong::{FromJSObject, JSObject};
 use serde::{Deserialize, Serialize};
 
 #[derive(FromJSObject, Clone, Default)]
 #[ts_skip]
 pub(super) struct JSPickMediaOptions {
+    pub(super) sources: Option<Vec<String>>,
     #[js_name = "limit"]
     pub(super) count: Option<u32>,
     pub(super) types: Option<Vec<String>>,
+    pub(super) camera: Option<JSObject>,
 }
 
 #[derive(FromJSObject, Clone)]

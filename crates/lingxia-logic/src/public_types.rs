@@ -960,25 +960,33 @@ rong::js_api! {
     files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult"###;
 
-        /// Options for `lx.pick.media`: how many and which kinds, from the library.
+        /// Options for `lx.pick.media`: where from, how many and which kinds.
         type PickMediaOptions = r###"{
     /**
-     * Most files to return. Where the system picker cannot enforce it
-     * (desktop), files beyond it are dropped from the result.
+     * Where the person may get media. With both, they choose first, in a sheet the host draws.
+     * @default ['library']
+     */
+    sources?: readonly PickMediaSource[];
+    /**
+     * Most files to return from the library; the camera route returns one. Where the system
+     * picker cannot enforce it (desktop), files beyond it are dropped from the result.
      * @default 9
      */
     limit?: number;
     /**
-     * Kinds to offer.
+     * Kinds to offer. On the camera route, the camera takes a photo unless this is `['video']`.
      * @default ['image', 'video']
      */
     types?: readonly ('image' | 'video')[];
+    /** How the camera records when the person takes the camera route; unused for the library. */
+    camera?: CameraOptions;
 }"###;
 
-        /// Options for `lx.pick.capture`: what the camera records.
-        type CaptureOptions = r###"{
-    /** A photo or a video. */
-    type: 'image' | 'video';
+        /// Where `lx.pick.media` may get media: the photo library or the camera.
+        type PickMediaSource = r###"'library' | 'camera'"###;
+
+        /// How the camera records, for `lx.pick.capture` and the camera route of `lx.pick.media`.
+        type CameraOptions = r###"{
     /**
      * Which camera.
      * @default 'back'
@@ -986,6 +994,12 @@ rong::js_api! {
     facing?: 'back' | 'front';
     /** Longest video to record, in milliseconds; rounded up to whole seconds. */
     maxDurationMs?: number;
+}"###;
+
+        /// Options for `lx.pick.capture`: what the camera records.
+        type CaptureOptions = r###"CameraOptions & {
+    /** A photo or a video. */
+    type: 'image' | 'video';
 }"###;
 
         /// Representations the runtime can round-trip. Closed union.

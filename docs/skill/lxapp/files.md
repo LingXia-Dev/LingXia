@@ -130,7 +130,7 @@ const response = await task.result; // { status, ok, headers, text, json() }
 `{ path, name, size, type }` on every platform: `name` always has an
 extension and `type` is the MIME type derived from it, never the platform's.
 Branch on `type`, not on `path`, which may be a `content://` or native path.
-`media({ types, limit })` picks from the library; `capture({ type, facing, maxDurationMs })` uses the camera.
+`media({ sources, types, limit, camera })` lets the person get media from the library (default), the camera, or either (`sources: ['library', 'camera']`, they choose first); `capture({ type, facing, maxDurationMs })` uses the camera with these settings and returns one `file`. Compression is `lx.media.compressImage`.
 
 ```ts
 const r = await lx.pick.media({ types: ['image', 'video'] })

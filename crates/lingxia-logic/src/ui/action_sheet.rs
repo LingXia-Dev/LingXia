@@ -143,7 +143,7 @@ async fn show_action_sheet(
     Ok(result)
 }
 
-async fn present_action_sheet(
+pub(crate) async fn present_action_sheet(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
     cancel_text: Option<String>,

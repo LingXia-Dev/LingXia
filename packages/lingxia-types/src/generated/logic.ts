@@ -1127,16 +1127,8 @@ export type BuiltinSurface = Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'builtin';
 };
 
-/** The user dismissed the operation. Never an error. */
-export type CanceledResult = {
-    /** The person dismissed it. */
-    status: 'canceled';
-};
-
-/** Options for `lx.pick.capture`: what the camera records. */
-export type CaptureOptions = {
-    /** A photo or a video. */
-    type: 'image' | 'video';
+/** How the camera records, for `lx.pick.capture` and the camera route of `lx.pick.media`. */
+export type CameraOptions = {
     /**
      * Which camera.
      * @default 'back'
@@ -1144,6 +1136,18 @@ export type CaptureOptions = {
     facing?: 'back' | 'front';
     /** Longest video to record, in milliseconds; rounded up to whole seconds. */
     maxDurationMs?: number;
+};
+
+/** The user dismissed the operation. Never an error. */
+export type CanceledResult = {
+    /** The person dismissed it. */
+    status: 'canceled';
+};
+
+/** Options for `lx.pick.capture`: what the camera records. */
+export type CaptureOptions = CameraOptions & {
+    /** A photo or a video. */
+    type: 'image' | 'video';
 };
 
 export type ClipboardApi = globalThis.ClipboardApi;
@@ -2237,20 +2241,30 @@ export type PickFilesResult = {
     files: readonly [PickedFile, ...PickedFile[]];
 } | CanceledResult;
 
-/** Options for `lx.pick.media`: how many and which kinds, from the library. */
+/** Options for `lx.pick.media`: where from, how many and which kinds. */
 export type PickMediaOptions = {
     /**
-     * Most files to return. Where the system picker cannot enforce it
-     * (desktop), files beyond it are dropped from the result.
+     * Where the person may get media. With both, they choose first, in a sheet the host draws.
+     * @default ['library']
+     */
+    sources?: readonly PickMediaSource[];
+    /**
+     * Most files to return from the library; the camera route returns one. Where the system
+     * picker cannot enforce it (desktop), files beyond it are dropped from the result.
      * @default 9
      */
     limit?: number;
     /**
-     * Kinds to offer.
+     * Kinds to offer. On the camera route, the camera takes a photo unless this is `['video']`.
      * @default ['image', 'video']
      */
     types?: readonly ('image' | 'video')[];
+    /** How the camera records when the person takes the camera route; unused for the library. */
+    camera?: CameraOptions;
 };
+
+/** Where `lx.pick.media` may get media: the photo library or the camera. */
+export type PickMediaSource = 'library' | 'camera';
 
 /**
  * A picked directory. `path` is a read-only root: `lx.fs.exists`,
@@ -4230,18 +4244,27 @@ declare global {
      */
     directory(options?: PickDirectoryOptions): Promise<PickDirectoryResult>;
     /**
-     * Picks pictures and videos from the library. Library items are copied to
-     * temp on mobile; desktop returns the user's file.
-     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker,
-     * otherwise `{ status: 'ok', files }` with at least one file.
-     * @throws {E_INVALID_ARG} A `types` entry other than `'image'` or `'video'`.
+     * Lets the person get pictures and videos from where they choose: the library, the camera, or
+     * either, asked first in a host-drawn sheet. Library items are copied to temp on mobile; desktop
+     * returns the user's file. The camera route returns one item; to set how the camera records
+     * without offering the library, `lx.pick.capture` does the same with one result. Compression is
+     * `lx.media.compressImage`.
+     * Resolves `{ status: 'canceled' }` when the person dismisses the sheet, picker or camera,
+     * otherwise `{ status: 'ok', files }` with at least one file. Only the camera route needs
+     * `pick.camera`.
+     * @supports pick.camera
+     * @throws {E_INVALID_ARG} A `sources` entry other than `'library'` or `'camera'`, an empty
+     * `sources`, or a `types` entry other than `'image'` or `'video'`.
+     * @throws {E_NOT_SUPPORTED} `sources` is only `['camera']` on a host that cannot capture, such
+     * as Windows; with the library also offered, such a host opens the library without asking.
      * @throws {E_INTERNAL} The picker failed or returned an invalid payload.
      */
     media(options?: PickMediaOptions): Promise<PickFilesResult>;
     /**
-     * Takes one photo or records one video with the camera. Resolves
-     * `{ status: 'canceled' }` only when the user dismisses the camera, otherwise
-     * `{ status: 'ok', file }`.
+     * Takes one photo or records one video with the camera, with these settings. Resolves
+     * `{ status: 'canceled' }` only when the person dismisses the camera, otherwise
+     * `{ status: 'ok', file }`. To let the person choose the library instead, use `lx.pick.media`
+     * with `sources: ['library', 'camera']`.
      * @supports pick.camera
      * @throws {E_INVALID_ARG} A `type` other than `'image'` or `'video'`.
      * @throws {E_NOT_SUPPORTED} The host cannot capture, such as on Windows.

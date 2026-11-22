@@ -110,6 +110,11 @@ date:
 splash:
   skip: "Skip"
 
+# lx.pick.media source sheet, shown when the call offers both
+pick:
+  source_library: "Photo Library"
+  source_camera: "Camera"
+
 # Host shell
 shell:
   pin_limit_title: "Sidebar Pins"

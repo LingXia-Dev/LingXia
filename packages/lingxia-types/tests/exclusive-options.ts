@@ -2,6 +2,7 @@ import type {
   AppDownloadFilePath,
   AppPersistedDownloadResult,
   AppTempDownloadResult,
+  CameraOptions,
   CompressVideoOptions,
   Lx,
   PickedFile,
@@ -129,8 +130,16 @@ async function pickFileShapes(): Promise<void> {
 
   // @ts-expect-error `multiple` is gone: pick.file is one, pick.files is many
   await lx.pick.file({ multiple: true });
-  // @ts-expect-error the library picker has no camera source; capture is `pick.capture`
+  // Library or camera in one call; the camera route takes `capture`'s camera options.
+  await lx.pick.media({ sources: ["library", "camera"], camera: { facing: "front", maxDurationMs: 30_000 } });
+  const camera: CameraOptions = { facing: "back" };
+  await lx.pick.capture({ ...camera, type: "video" });
+  // @ts-expect-error a source is the library or the camera
+  await lx.pick.media({ sources: ["album"] });
+  // @ts-expect-error the old name is gone
   await lx.pick.media({ sourceType: ["camera"] });
+  // @ts-expect-error `facing` is the camera's, not the call's
+  await lx.pick.media({ facing: "front" });
   // @ts-expect-error capture records one kind
   await lx.pick.capture({ type: "both" });
 }

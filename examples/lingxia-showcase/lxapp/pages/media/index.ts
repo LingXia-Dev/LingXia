@@ -5,6 +5,7 @@ import {
   lx,
   type PickMediaOptions,
   type CaptureOptions,
+  type CameraOptions,
   type PickedFile,
   type CompressVideoTask,
   type CompressImageOptions,
@@ -43,6 +44,7 @@ const DEFAULT_MODE = "Pictures";
 const SOURCE_OPTIONS = [
   { key: "album", label: "media.album", request: ["album"] },
   { key: "camera", label: "media.camera", request: ["camera"] },
+  { key: "either", label: "media.albumOrCamera", request: ["album", "camera"] },
 ];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
@@ -671,16 +673,20 @@ export default definePage({
         const countLimit = parsePositiveInt(page.data.countLimit || page.data.countKey);
 
         const types = resolveMediaTypeTokens(page.data.mediaType);
-        const request: PickMediaOptions = { types };
+        const camera: CameraOptions = {};
+        if (page.data.mediaType === "video") {
+          const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
+          if (maxDurationSeconds) camera.maxDurationMs = maxDurationSeconds * 1000;
+          if (page.data.cameraKey) camera.facing = page.data.cameraKey as CameraOptions["facing"];
+        }
+        // "Library or camera" is one call: the host asks the person which first.
+        const sources = (sourceOption?.request || ["album"]).map((source) =>
+          source === "camera" ? ("camera" as const) : ("library" as const));
+        const request: PickMediaOptions = { sources, types, camera };
         if (typeof countLimit === "number" && countLimit > 0) {
           request.limit = countLimit;
         }
-        const capture: CaptureOptions = { type: types[0] ?? "image" };
-        if (page.data.mediaType === "video") {
-          const maxDurationSeconds = parsePositiveInt(page.data.durationValue);
-          if (maxDurationSeconds) capture.maxDurationMs = maxDurationSeconds * 1000;
-          if (page.data.cameraKey) capture.facing = page.data.cameraKey as CaptureOptions["facing"];
-        }
+        const capture: CaptureOptions = { ...camera, type: types[0] ?? "image" };
 
         page.update(d => {
           d.isRunning = true;
