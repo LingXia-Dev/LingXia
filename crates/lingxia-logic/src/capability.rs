@@ -338,6 +338,47 @@ mod tests {
         }
     }
 
+    /// A stub lists a namespace's members from the route table, so a route compiled only on some
+    /// platforms leaves that namespace empty on the others; every stubbed path must name a
+    /// namespace in `STUBBED`.
+    #[test]
+    fn stubbed_namespaces_have_routes_on_every_platform() {
+        for path in STUBBED {
+            assert!(stub_members(path).next().is_some(), "{path} has no routes");
+        }
+        let routes = include_str!("authorization.rs");
+        let start = routes.find("pub(crate) enum LogicRoute").unwrap();
+        let end = start + routes[start..].find("];").unwrap();
+        assert!(
+            !routes[start..end].contains("cfg"),
+            "LogicRoute and LogicRoute::ALL are the same on every platform"
+        );
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources = vec![dir.clone()];
+        while let Some(path) = sources.pop() {
+            if path.is_dir() {
+                sources.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "rs") || path.ends_with("capability.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            for (at, _) in text.match_indices("unsupported_namespace(") {
+                let call = &text[at..at + text[at..].find(")?").unwrap()];
+                let Some(open) = call.find("\"lx.") else {
+                    continue;
+                };
+                let named = &call[open + 1..open + 1 + call[open + 1..].find('"').unwrap()];
+                assert!(
+                    STUBBED.contains(&named),
+                    "{} stubs {named}, not in STUBBED",
+                    path.display()
+                );
+            }
+        }
+    }
+
     const STUBBED: &[&str] = &[
         "lx.host.autostart",
         "lx.host.notification",
