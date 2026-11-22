@@ -148,9 +148,9 @@ pub(crate) fn sidebar_resize_edge(
     Some((rect_width(&bar), left))
 }
 
-/// Width of the icon-only rail (the macOS first-collapse state).
+/// Width of the icon-only rail: `lingxia_surface::SIDEBAR_RAIL_WIDTH`, as on macOS.
 pub(super) fn shell_sidebar_rail_width() -> i32 {
-    crate::dpi::px(44)
+    crate::dpi::px(56)
 }
 
 /// Column width for a sidebar in its current state: 0 only for auto-hidden
