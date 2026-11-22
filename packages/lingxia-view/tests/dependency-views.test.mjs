@@ -59,6 +59,19 @@ test("a dependency's TSX compiles with the View's JSX whatever its own tsconfig 
   });
 });
 
+test("the View's paths come from tsconfig.view.json when the root tsconfig only lists projects", async () => {
+  await project({
+    'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.view.json' }] }),
+    'tsconfig.view.json': JSON.stringify({ compilerOptions: { jsx: 'preserve', paths: { '@app/*': ['./src/*'] } } }),
+    'src/label.ts': "export const label = 'From the View config';\n",
+    'page.tsx': "import { label } from '@app/label';\nexport function render() { return <view><text>{label}</text></view>; }\n",
+  }, async (root, build) => {
+    await build();
+    await load(root);
+    assert.ok(records().some(record => record.text === 'From the View config'));
+  });
+});
+
 test("a dependency's components are identified by package name and path inside it, linked or installed", async () => {
   const files = { ...kit, 'page.tsx': "import { Card } from 'view-kit/card';\nexport function render() { return <view><Card title=\"Hi\" /></view>; }\n" };
   for (const install of ['link', 'copy']) {

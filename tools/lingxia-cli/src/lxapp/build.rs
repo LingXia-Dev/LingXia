@@ -51,11 +51,13 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
         style("Output").dim(),
         project.output_dir.display()
     );
-    println!(
-        "  {} {}",
-        style("Framework").dim(),
+    // A GPU lxapp has no WebView framework; the one `discover` falls back to is not news.
+    let framework = if crate::lxapp::framework::is_gpu_lxapp(&project.root) {
+        "gpu"
+    } else {
         project.framework.as_str()
-    );
+    };
+    println!("  {} {}", style("Framework").dim(), framework);
     println!();
 
     // Before either half builds: the page names are what a Logic author's

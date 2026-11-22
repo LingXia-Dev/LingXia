@@ -38,7 +38,7 @@ so and stop. Scaffolding writes pages, config, and dependencies.
 2. Host app: which platforms (`android`, `ios`, `macos`, `windows`, `harmony`)?
 3. Host app: lxapp or native terminal/browser as the main experience; lxapp or
    Rust as host control? (B vs C)
-4. View framework: React or HTML — one per project.
+4. View framework: GPU View (the default), or React or HTML in a WebView — one per project.
 
 ### 0c. Scaffold and read the result
 

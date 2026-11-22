@@ -85,8 +85,9 @@ pub(super) fn create_lxapp_from_template(
                 ));
             }
             process_template_dir(&gpu_template_dir, target_dir, &vars)?;
-            // A GPU View reads its types from `./$types`, generated from the Logic.
+            // A GPU View reads its types from `./$types`, generated from the Logic, and has no CSS.
             remove_if_exists(&target_dir.join("pages/home/contract.ts"))?;
+            remove_if_exists(&target_dir.join("app.css"))?;
         }
         if !app_service.enabled() {
             configure_native_logic_shell(target_dir, framework, &vars)?;
@@ -171,7 +172,7 @@ pub(super) fn build_framework_vars(
             "react-jsx",
             r#""pages/**/*.tsx", "pages/**/contract.ts""#,
             "#root",
-            "\"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"",
+            ",\n    \"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"",
             "\"@types/react\": \"^19.0.0\",\n    \"@types/react-dom\": \"^19.0.0\",\n    ",
             "\"@vitejs/plugin-react\": \"^6.0.2\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
@@ -204,6 +205,12 @@ pub(super) fn build_framework_vars(
         }
     };
 
+    // The GPU tsconfig files extend bases the CLI writes into `.lingxia/`.
+    let fw_scripts = if fw == "gpu" {
+        "\"typecheck\": \"lingxia gen types && tsc -b\",\n    "
+    } else {
+        ""
+    };
     vars.insert("FRAMEWORK".to_string(), fw);
     vars.insert("FRAMEWORK_DISPLAY".to_string(), fw_display.to_string());
     vars.insert("FRAMEWORK_PKG".to_string(), fw_pkg.to_string());
@@ -226,6 +233,7 @@ pub(super) fn build_framework_vars(
         "FRAMEWORK_VITE_DEV_DEPS".to_string(),
         fw_vite_dev_deps.to_string(),
     );
+    vars.insert("FRAMEWORK_SCRIPTS".to_string(), fw_scripts.to_string());
 
     Ok(vars)
 }
@@ -276,11 +284,12 @@ fn configure_native_logic_shell(
     let templates_base = locate_templates_dir()?;
     let native_template_dir = templates_base.join("lxapp-create").join("native");
     process_template_dir(&native_template_dir, target_dir, vars)?;
-    if framework.eq_ignore_ascii_case("html") {
-        let html_overlay = native_template_dir.join("html");
-        process_template_dir(&html_overlay, target_dir, vars)?;
-    } else {
-        remove_dir_if_exists(&target_dir.join("html"))?;
+    remove_dir_if_exists(&target_dir.join("html"))?;
+    remove_dir_if_exists(&target_dir.join("gpu"))?;
+    for overlay in ["html", "gpu"] {
+        if framework.eq_ignore_ascii_case(overlay) {
+            process_template_dir(&native_template_dir.join(overlay), target_dir, vars)?;
+        }
     }
 
     Ok(())
@@ -337,7 +346,13 @@ mod tests {
     fn no_lxapp_template_declares_an_icon() {
         let templates =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/lxapp-create");
-        for manifest in ["lxapp.json", "native/lxapp.json", "html/lxapp.json"] {
+        for manifest in [
+            "lxapp.json",
+            "native/lxapp.json",
+            "html/lxapp.json",
+            "gpu/lxapp.json",
+            "native/gpu/lxapp.json",
+        ] {
             let body = fs::read_to_string(templates.join(manifest)).unwrap();
             assert!(
                 !body
@@ -350,7 +365,7 @@ mod tests {
 
     #[test]
     fn built_in_scaffolds_keep_tests_in_their_own_project() {
-        for framework in ["react", "html"] {
+        for framework in ["gpu", "react", "html"] {
             for mode in [AppServiceMode::Enabled, AppServiceMode::Disabled] {
                 let output = tempdir().unwrap();
                 let app = output.path().join("myapp");
@@ -368,11 +383,12 @@ mod tests {
                 .unwrap();
                 assert!(!app.join("tests/home.test.ts").exists());
                 let spec = fs::read_to_string(app.join("tests/pages/home.test.ts")).unwrap();
-                assert!(spec.contains(if mode.enabled() {
-                    "home greets by name"
-                } else {
-                    "home shows the native shell title"
-                }));
+                let expected = match (mode.enabled(), framework) {
+                    (false, _) => "home shows the native shell title",
+                    (true, "gpu") => "home streams a greeting by name",
+                    (true, _) => "home greets by name",
+                };
+                assert!(spec.contains(expected), "{framework}: {spec}");
                 let config: serde_json::Value =
                     serde_json::from_str(&fs::read_to_string(app.join("tsconfig.json")).unwrap())
                         .unwrap();
@@ -408,7 +424,12 @@ mod tests {
                     let bundle = crate::lxapp::build_mocks(&app).unwrap().unwrap();
                     assert_eq!(bundle.keys, ["GET https://api.example.com/greeting"]);
                     let logic = fs::read_to_string(app.join("tsconfig.logic.json")).unwrap();
-                    assert!(logic.contains("\"mocks/**/*.ts\""), "{logic}");
+                    // A GPU project inherits its include list, mocks/ among them, from the base.
+                    if framework == "gpu" {
+                        assert!(logic.contains("./.lingxia/tsconfig.logic.json"), "{logic}");
+                    } else {
+                        assert!(logic.contains("\"mocks/**/*.ts\""), "{logic}");
+                    }
                 }
             }
         }
@@ -439,11 +460,54 @@ mod tests {
         assert!(!app.join("gpu").exists());
         let config = fs::read_to_string(app.join("tsconfig.view.json")).unwrap();
         assert!(
-            config.contains(r#""rootDirs": [".", "./.lingxia/types"]"#),
+            config.contains(r#""path": "./tsconfig.logic.json""#),
             "{config}"
         );
+        assert!(
+            config.contains(r#""extends": "./.lingxia/tsconfig.view.json""#),
+            "{config}"
+        );
+        let logic = fs::read_to_string(app.join("tsconfig.logic.json")).unwrap();
+        assert!(
+            logic.contains(r#""extends": "./.lingxia/tsconfig.logic.json""#),
+            "{logic}"
+        );
+        let package: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(app.join("package.json")).unwrap()).unwrap();
+        assert_eq!(
+            package["scripts"]["typecheck"],
+            "lingxia gen types && tsc -b"
+        );
+        assert!(!app.join("app.css").exists());
         let ignore = fs::read_to_string(app.join(".gitignore")).unwrap();
         assert!(ignore.contains(".lingxia/*"), "{ignore}");
+    }
+
+    #[test]
+    fn a_gpu_scaffold_without_app_service_has_a_view_only_page() {
+        let output = tempdir().unwrap();
+        let app = output.path().join("myapp");
+        create_lxapp_from_template(
+            &app,
+            "myapp",
+            "myapp",
+            "My App",
+            "gpu",
+            AppServiceMode::Disabled,
+            &dummy_versions(),
+            "0.16.0",
+            None,
+        )
+        .unwrap();
+        let manifest: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(app.join("lxapp.json")).unwrap()).unwrap();
+        assert_eq!(manifest["logic"], false);
+        assert_eq!(manifest["pages"][0]["path"], "pages/home/index");
+        assert!(manifest.get("framework").is_none(), "{manifest}");
+        let view = fs::read_to_string(app.join("pages/home/index.tsx")).unwrap();
+        assert!(!view.contains("react"), "{view}");
+        assert!(!app.join("pages/home/index.ts").exists());
+        assert!(!app.join("gpu").exists() && !app.join("html").exists());
     }
 
     #[test]
@@ -478,7 +542,7 @@ mod tests {
 
         fs::write(
             lxapp.join("package.json"),
-            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@lingxia/types":"{{LINGXIA_FRAMEWORK_RANGE}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
+            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@lingxia/types":"{{LINGXIA_FRAMEWORK_RANGE}}"{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),

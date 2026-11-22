@@ -1,0 +1,3 @@
+{
+  "extends": "./.lingxia/tsconfig.logic.json"
+}

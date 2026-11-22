@@ -1,11 +1,20 @@
-import { useAction, useLocal } from '@lingxia/view';
+import { useAction, useLocal, useStream } from '@lingxia/view';
 import type { View } from './$types';
 
 export function render({ data, actions }: View) {
   const name = useLocal('name', '');
-  const greet = useAction(actions.greet);
+  const greeting = useLocal('greeting', '');
+  const greet = useStream('greet', actions.greet, {
+    onData: word => greeting.set(greeting.value ? `${greeting.value} ${word}` : word),
+  });
+  const reset = useAction(actions.reset);
   const trimmed = name.value.trim();
-  const submit = () => { if (trimmed) greet.run({ name: trimmed }); };
+  const streaming = greet.status === 'streaming';
+  const submit = () => {
+    if (!trimmed || streaming) return;
+    greeting.set('');
+    greet.start({ name: trimmed });
+  };
 
   return (
     <page className="p-6 gap-4">
@@ -18,10 +27,20 @@ export function render({ data, actions }: View) {
         onSubmit={submit}
         className="min-h-11 px-4 rounded-lg bg-surface-sunken"
       />
-      <button data-testid="home-greet" onClick={submit} disabled={!trimmed || greet.pending} className="min-h-11 rounded-lg bg-accent items-center justify-center">
+      <button
+        data-testid="home-greet"
+        onClick={submit}
+        disabled={!trimmed || streaming}
+        className="min-h-11 rounded-lg bg-accent items-center justify-center"
+      >
         <text className="text-on-accent font-medium">Say Hello</text>
       </button>
-      {data.greeting ? <text data-testid="home-greeting">{data.greeting}</text> : null}
+      {greeting.value ? <text data-testid="home-greeting">{greeting.value}</text> : null}
+      {data.greetCount > 0 ? (
+        <button data-testid="home-reset" onClick={() => reset.run()} disabled={reset.pending} className="min-h-11 items-center justify-center">
+          <text className="text-muted">Greeted {data.greetCount} times · Reset</text>
+        </button>
+      ) : null}
     </page>
   );
 }

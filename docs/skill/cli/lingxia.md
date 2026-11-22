@@ -31,6 +31,8 @@ lingxia new . -t lxapp -y                                          # in the curr
 
 - `lingxia new .` scaffolds into the current directory, which must be empty
   or a fresh repository.
+- An lxapp's pages are a GPU View unless you pick React or HTML at the prompt;
+  `-y` takes the GPU View.
 
 - `--main lxapp|terminal|browser` picks a host's main experience (default
   `lxapp`); `--control lxapp|native` picks where host control lives. Terminal

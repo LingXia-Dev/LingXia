@@ -6,14 +6,15 @@ import { join } from 'node:path';
 const carried = ['experimentalDecorators', 'useDefineForClassFields', 'verbatimModuleSyntax', 'preserveValueImports'];
 
 /**
- * The one tsconfig every bundled file compiles under: the lxapp's own (`extends` resolved), with
+ * The one tsconfig every bundled file compiles under: the lxapp's View tsconfig (`tsconfig.view.json`
+ * where the root `tsconfig.json` only lists projects; `extends` resolved), with
  * JSX pinned to `h`. Without it esbuild reads the nearest tsconfig per file, so a dependency's
  * `"jsx": "react-jsx"` would switch its components to a JSX runtime the View does not have.
  */
 export function viewTsconfig(root) {
   const compilerOptions = { jsx: 'react', jsxFactory: 'h', jsxFragmentFactory: 'Fragment' };
-  const path = join(root, 'tsconfig.json');
-  if (!existsSync(path)) return { compilerOptions };
+  const path = ['tsconfig.view.json', 'tsconfig.json'].map(name => join(root, name)).find(existsSync);
+  if (!path) return { compilerOptions };
   const { config, error } = ts.readConfigFile(path, ts.sys.readFile);
   if (error) throw Error(`${path}: ${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`);
   const { options } = ts.parseJsonConfigFileContent(config, ts.sys, root, undefined, path);

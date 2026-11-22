@@ -204,17 +204,22 @@ pub(super) fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
 }
 
 pub(super) fn gather_lxapp_framework(yes: bool) -> Result<String> {
+    const FRAMEWORKS: [(&str, &str); 3] = [
+        ("gpu", "GPU View (recommended)"),
+        ("react", "React in a WebView"),
+        ("html", "HTML in a WebView"),
+    ];
     if yes {
-        return Ok("react".to_string());
+        return Ok(FRAMEWORKS[0].0.to_string());
     }
 
-    let choices = vec!["React", "HTML"];
+    let choices: Vec<&str> = FRAMEWORKS.iter().map(|(_, label)| *label).collect();
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Choose framework")
+        .with_prompt("Choose the page framework")
         .items(&choices)
         .default(0)
         .interact()?;
-    Ok(choices[selection].to_lowercase())
+    Ok(FRAMEWORKS[selection].0.to_string())
 }
 
 pub(super) fn gather_native_app_service_mode(yes: bool) -> Result<AppServiceMode> {
@@ -337,4 +342,12 @@ fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {
         }
     }
     Ok(platforms)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_non_interactive_lxapp_gets_a_gpu_view() {
+        assert_eq!(super::gather_lxapp_framework(true).unwrap(), "gpu");
+    }
 }

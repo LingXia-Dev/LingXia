@@ -1,0 +1,4 @@
+{
+  "extends": "./.lingxia/tsconfig.view.json",
+  "references": [{ "path": "./tsconfig.logic.json" }]
+}

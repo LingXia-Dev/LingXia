@@ -7,13 +7,12 @@
   "author": "",
   "license": "MIT",
   "scripts": {
-    "test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/pages/'); process.exit(2)\""
+    {{FRAMEWORK_SCRIPTS}}"test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/pages/'); process.exit(2)\""
   },
   "dependencies": {
     "{{FRAMEWORK_PKG}}": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/logic": "{{LINGXIA_FRAMEWORK_RANGE}}",
-    "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
-    {{FRAMEWORK_RUNTIME_DEPS}}
+    "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}"{{FRAMEWORK_RUNTIME_DEPS}}
   },
   "devDependencies": {
     {{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
