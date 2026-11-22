@@ -83,7 +83,7 @@ pub(super) fn top_bar_controls(
                 WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
             )
     });
-    let compact_sidebar = tabbar.is_some_and(|tabbar| tabbar.collapsed || tabbar.icon_rail);
+    let compact_sidebar = tabbar.is_some_and(WindowsShellTabBarLayout::narrow_column);
 
     // App-menu button at the window's leading edge, beside the sidebar controls
     // when a sidebar exists. Otherwise it anchors the top bar. Only the product shell

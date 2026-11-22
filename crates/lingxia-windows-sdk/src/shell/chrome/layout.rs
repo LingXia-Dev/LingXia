@@ -104,6 +104,11 @@ impl WindowsShellTabBarLayout {
     }
 
     /// Folded badges still have to surface, so "more" aggregates them.
+    /// The column draws its narrow form: footer actions stack as icons.
+    pub fn narrow_column(&self) -> bool {
+        self.collapsed || self.icon_rail || self.tab_rail
+    }
+
     pub fn overflow_has_notification(&self) -> bool {
         self.bottom_overflow_start().is_some_and(|start| {
             self.items[start..]
@@ -207,6 +212,10 @@ pub struct WindowsShellTabBarLayout {
     /// Compact desktop keeps the rail expand glyph visible but rejects the
     /// click so a narrow window cannot persist an expanded sidebar choice.
     pub rail_expand_disabled: bool,
+    /// A touch host in Regular with a single main: the column lists the app's
+    /// own tab items (icon over label) instead of apps, so one tap switches tabs.
+    /// Overrides `collapsed`/`icon_rail`; there is no header, peek, or resize.
+    pub tab_rail: bool,
     /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
     /// surrounding sidebar visible, but removes the child rows and disables
     /// the chevron until `visibility: 'auto'` clears this state.
@@ -353,6 +362,7 @@ mod click_index_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

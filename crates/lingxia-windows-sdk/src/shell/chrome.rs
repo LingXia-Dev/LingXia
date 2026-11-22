@@ -131,7 +131,7 @@ pub(crate) fn sidebar_resize_edge(
     let layout = shell_layout(&state.layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
     // A compact window cannot keep an expanded sidebar, so it has no width to drag.
-    if tabbar.collapsed || tabbar.rail_expand_disabled {
+    if tabbar.collapsed || tabbar.rail_expand_disabled || tabbar.tab_rail {
         return None;
     }
     let left = match tabbar.position {
@@ -157,7 +157,9 @@ pub(super) fn shell_sidebar_rail_width() -> i32 {
 /// legacy/full-hidden state, the rail width when collapsed to icons, else the
 /// expanded width.
 pub(super) fn sidebar_column_width(tabbar: &WindowsShellTabBarLayout) -> i32 {
-    if tabbar.collapsed || tabbar.icon_rail {
+    if tabbar.tab_rail {
+        tab_rail_width()
+    } else if tabbar.collapsed || tabbar.icon_rail {
         shell_sidebar_rail_width()
     } else {
         tabbar.dimension.max(shell_sidebar_width())
@@ -843,6 +845,12 @@ pub(super) fn sidebar_hover_rect(
         return None;
     }
 
+    if tabbar.tab_rail {
+        return (0..tabbar.items.len())
+            .map(|slot| tab_rail_item_rect(tabbar_rect, slot))
+            .find(|rect| rect_contains(rect, point));
+    }
+
     if tabbar.collapsed || tabbar.icon_rail {
         let (scroll_offset, _, viewport_bottom) =
             sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
@@ -966,6 +974,7 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
         tabbar.visible
             && !tabbar.collapsed
             && !tabbar.icon_rail
+            && !tabbar.tab_rail
             && matches!(
                 tabbar.position,
                 WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -1131,6 +1140,7 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.items != new_tabbar.items
         || old_tabbar.collapsed != new_tabbar.collapsed
         || old_tabbar.icon_rail != new_tabbar.icon_rail
+        || old_tabbar.tab_rail != new_tabbar.tab_rail
         || old_tabbar.rail_expand_disabled != new_tabbar.rail_expand_disabled
         || old_tabbar.items_api_hidden != new_tabbar.items_api_hidden
         || old_tabbar.items_collapsed != new_tabbar.items_collapsed
@@ -1652,6 +1662,9 @@ pub(crate) fn sidebar_tooltip(
         tabbar.position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     ) {
+        return None;
+    }
+    if tabbar.tab_rail {
         return None;
     }
     if !(tabbar.collapsed || tabbar.icon_rail) {
@@ -2972,6 +2985,19 @@ pub(super) fn sidebar_hit_test(
     if let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar)
         && rect_contains(&tabbar_rect, point)
     {
+        if tabbar.tab_rail {
+            for slot in 0..tabbar.items.len() {
+                if rect_contains(&tab_rail_item_rect(tabbar_rect, slot), point)
+                    && let Some(index) = tabbar.click_index_at_slot(slot)
+                {
+                    return Some(chrome_command(
+                        command_id::TAB_BAR_CLICK,
+                        json!({ "group": tabbar.group_id, "index": index }),
+                    ));
+                }
+            }
+            return Some(WindowsChromeHit::Chrome);
+        }
         let sidebar = matches!(
             tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -3285,6 +3311,17 @@ pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
     let selected = |index: usize| tabbar.selected_index == index as i32;
     match tabbar.position {
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
+            if tabbar.tab_rail {
+                for (slot, item) in tabbar.items.iter().enumerate() {
+                    push(
+                        &item.text,
+                        "tabBar",
+                        selected(item.index),
+                        tab_rail_item_rect(tabbar_rect, slot),
+                    );
+                }
+                return items;
+            }
             if tabbar.collapsed || tabbar.icon_rail {
                 // A rail lists apps, not tabs: its expand control shows them.
                 if !tabbar.rail_expand_disabled {
@@ -3741,6 +3778,7 @@ mod scroll_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -3812,6 +3850,60 @@ mod scroll_tests {
         assert_eq!(rects.content.top, 0);
         assert_eq!(rects.content.left, sidebar.right);
         assert_eq!(super::rect_height(&rects.top_bar), 0);
+    }
+
+    #[test]
+    fn a_tab_rail_cell_opens_its_declared_tab_and_ignores_the_rail_state() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 784,
+            bottom: 868,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        // A persisted icon-rail choice must not turn the tab rail back into an app rail.
+        rail.icon_rail = false;
+        rail.tab_rail = true;
+        // `showOn` dropped declaration 1, so the second cell is declaration 2.
+        rail.items.push(WindowsShellTabBarItemLayout {
+            index: 2,
+            page_path: "perf".to_string(),
+            text: "Perf".to_string(),
+            icon_path: String::new(),
+            badge: None,
+            has_red_dot: false,
+        });
+        let layout = WindowsShellWindowLayout {
+            sidebar_top_inset: 39,
+            top_inset: 39,
+            suppress_window_controls: true,
+            tab_bar: Some(rail),
+            ..Default::default()
+        };
+        let window_layout = WindowsWindowLayout::new(layout.clone());
+        let state = tooltip_state(client, &window_layout);
+        let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
+        assert_eq!(super::rect_width(&rail_rect), super::tab_rail_width());
+
+        let second = super::tab_rail_item_rect(rail_rect, 1);
+        let center = (
+            (second.left + second.right) / 2,
+            (second.top + second.bottom) / 2,
+        );
+        assert!(matches!(
+            chrome_hit_test(&state, &layout, center),
+            Some(WindowsChromeHit::Command(command))
+                if command.id == super::command_id::TAB_BAR_CLICK
+                    && command.payload["index"] == 2
+        ));
+        // Cells stack from the top, so the column below the last one is inert.
+        let below = (center.0, rail_rect.bottom - 4);
+        assert!(matches!(
+            chrome_hit_test(&state, &layout, below),
+            Some(WindowsChromeHit::Chrome)
+        ));
+        assert!(super::sidebar_resize_edge(&state, (rail_rect.right, center.1)).is_none());
     }
 
     #[test]
@@ -4648,6 +4740,7 @@ mod scroll_tests {
             collapsed: true,
             icon_rail: true,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -4723,6 +4816,7 @@ mod scroll_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -5165,6 +5259,7 @@ mod scroll_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -5230,6 +5325,7 @@ mod scroll_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

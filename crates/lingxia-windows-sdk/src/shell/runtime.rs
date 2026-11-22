@@ -1841,8 +1841,13 @@ fn sync_app_shell_layout(appid: &str) {
         // color); a plain page keeps the chrome-colored strip with contrasting text.
         if is_active_content && let Some(window) = owner_window_handle(appid) {
             let navbar = app.get_navbar_state(&path);
-            let immersive = navbar.is_custom_navigation();
-            let (foreground, background) = if immersive {
+            let band =
+                layout.top_inset > 0 && layout.tab_bar.as_ref().is_some_and(status_band_beside);
+            let immersive = !band && navbar.is_custom_navigation();
+            let (foreground, background) = if band {
+                let sidebar = super::style::shell_palette().sidebar_background;
+                (contrasting_text_color(sidebar), sidebar)
+            } else if immersive {
                 let foreground = app
                     .resolved_navigation_bar_style(&path)
                     .foreground_color
@@ -2050,11 +2055,9 @@ fn build_window_layout_with_visible_main(
     // floats the clock/indicators over the page.
     // A presented browser tab is never immersive: its address row must sit
     // below the status-bar strip, not under the floating clock/cutout.
-    let immersive = address_bar.is_none() && app.get_navbar_state(path).is_custom_navigation();
     let status_bar_height = owner_window
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
-    let top_inset = if immersive { 0 } else { status_bar_height };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
     // Tab pages follow the visible main, not the shell owner. Owner-first
@@ -2066,7 +2069,7 @@ fn build_window_layout_with_visible_main(
     // The rail has no header row, so header actions (Settings, Downloads)
     // lead its action stack instead of vanishing (macOS parity).
     if let Some(tabbar) = tab_bar.as_ref().filter(|tabbar| {
-        (tabbar.collapsed || tabbar.icon_rail)
+        tabbar.narrow_column()
             && matches!(
                 tabbar.position,
                 WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -2091,6 +2094,10 @@ fn build_window_layout_with_visible_main(
     let compact_browser_chrome = address_bar.is_some()
         && suppress_window_controls
         && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
+    let immersive = address_bar.is_none()
+        && app.get_navbar_state(path).is_custom_navigation()
+        && !tab_bar.as_ref().is_some_and(status_band_beside);
+    let top_inset = if immersive { 0 } else { status_bar_height };
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -2101,6 +2108,18 @@ fn build_window_layout_with_visible_main(
         sidebar_top_inset: status_bar_height,
         suppress_window_controls,
     }
+}
+
+/// A visible side column under a simulated status bar: the status bar becomes
+/// one neutral band over the column and the content, instead of taking the
+/// content's navigation-bar color across the whole width.
+fn status_band_beside(tabbar: &WindowsShellTabBarLayout) -> bool {
+    tabbar.visible
+        && !tabbar.collapsed
+        && matches!(
+            tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        )
 }
 
 /// Shell chrome for a browser/native main owned by a control lxapp without a
@@ -2193,6 +2212,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
+        tab_rail: false,
         items_api_hidden: false,
         items_collapsed: false,
         footer_action_height: 0,
@@ -2652,6 +2672,17 @@ fn build_tab_bar_layout(
         position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     );
+    // A touch host with one main has nothing to switch between: the column
+    // carries that app's tabs instead, outside the sidebar width budget.
+    let touch_host = owner_window
+        .map(device_frame_owns_window_controls)
+        .unwrap_or(false);
+    let tab_rail = desktop_sidebar
+        && touch_host
+        && size_class == SizeClass::Regular
+        && !items.is_empty()
+        && auxiliary_items.is_empty()
+        && !show_auxiliary_add;
     // Desktop sidebar never takes tabBar.style.backgroundColor (mobile-only);
     // yaml `windowBackgroundColor` shows through. Color/selectedColor still
     // apply on light host when the app declared them.
@@ -2705,12 +2736,13 @@ fn build_tab_bar_layout(
             .map(|item| item.closable)
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
-        collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail || force_icon_rail,
+        collapsed: ui_state.collapsed && !tab_rail,
+        icon_rail: (ui_state.icon_rail || force_icon_rail) && !tab_rail,
         rail_expand_disabled: size_class == SizeClass::Compact,
+        tab_rail,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
-        footer_action_height: if desktop_sidebar {
+        footer_action_height: if desktop_sidebar && !tab_rail {
             super::chrome::panel_footer_action_height(dimension, footer_actions)
         } else {
             0
