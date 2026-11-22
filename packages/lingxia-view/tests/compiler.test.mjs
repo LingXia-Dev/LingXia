@@ -156,6 +156,14 @@ test('a prop its role or element cannot carry fails the build with what it needs
   }
 });
 
+test('a <span> outside <text> fails the build with the fix', () => {
+  clean('const a = <text>A <span className="font-bold">b</span> <link to="/t"><span>c</span></link></text>;');
+  clean('function Code() { return <span>x</span>; }');
+  clean('const a = <view><Code/></view>;');
+  assert.deepEqual(audit('const a = <view><span>loose</span></view>;', 'page.tsx'), ['page.tsx:1:17: UI_TEXT: <span> belongs inside <text>; wrap it in a <text>']);
+  assert.deepEqual(audit('const a = <button onClick={f}><span>Go</span></button>;', 'page.tsx'), ['page.tsx:1:31: UI_TEXT: <span> belongs inside <text>; wrap it in a <text>']);
+});
+
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
   clean('const a = <view><link to="/p" className="p-4 gap-2 active:bg-accent focus-visible:ring-2"><text>A</text><button onClick={f}>B</button></link></view>;');
   clean('const a = <text>See <link to="/t" className="underline">terms</link></text>;');

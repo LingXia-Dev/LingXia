@@ -81,7 +81,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_SURFACE` | native | The platform surface was lost or resized mid-frame; the host recovers. |
 | `UI_TAG` | build, runtime, native | Not an element of the View language. |
 | `UI_TEST_ID` | native | An invalid `data-testid` reached the native decoder. |
-| `UI_TEXT` | runtime, native | A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`. |
+| `UI_TEXT` | build, runtime, native | A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`. |
 | `UI_TIMEOUT` | native | View code exceeded its time budget; the page needs a reload. |
 | `UI_TRANSFORM` | build, native | A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one. |
 | `UI_TRANSITION` | native | An invalid transition definition. |

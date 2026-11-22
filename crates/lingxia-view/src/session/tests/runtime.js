@@ -5043,7 +5043,7 @@
     const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
     const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
     const inline = (child) => typeof child === "string" || typeof child === "number";
-    if (tag === "span" && !parent.inText) throw Error("UI_TEXT: <span> belongs inside <text>");
+    if (admission.tags[element.wire].parent === "text" && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
     if (tag === "link" && parent.inLink) throw Error("UI_TEXT: links do not nest");
     const composed = element.children === "content" && flat.some((child) => !inline(child));
     const runs = element.children === "runs" && flat.some((child) => !inline(child));

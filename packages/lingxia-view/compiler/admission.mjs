@@ -1,6 +1,6 @@
 import ts from 'typescript';
-import { authoringRules as rules } from '../src/generated/contract.js';
-import { elementKind } from './class-usage.mjs';
+import { authoringRules as rules, admission, elements, kindOf } from '../src/generated/contract.js';
+import { elementKind, enclosingTags } from './class-usage.mjs';
 
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
@@ -44,6 +44,10 @@ export function admissionProblems(node, file) {
     return !list || list.some(value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim()));
   };
   const kind = elementKind(node);
+  // A run outside <text>, when the nearest enclosing element is written here and is not a run holder.
+  const [near] = enclosingTags(node);
+  if (admission.tags[kindOf(kind).wire].parent === 'text' && near && has(elements, near) && near !== 'text' && elements[near].children !== 'runs')
+    return [[node, `UI_TEXT: <${kind}> belongs inside <text>; wrap it in a <text>`]];
   const only = rules.elementRole[kind];
   const problems = [];
   const role = named.get('role');
