@@ -63,7 +63,7 @@ export function Diff() {
 export function InSentence() {
   return (
     <text className="text-body text-text">
-      Set <Code text="minRuntime" data-testid="key" /> in <Code text="lxapp.json" /> to the oldest runtime you test on.
+      Set <Code text="minRuntime" /> in <Code text="lxapp.json" /> to the oldest runtime you test on.
     </text>
   );
 }

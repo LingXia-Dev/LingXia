@@ -5,12 +5,11 @@ import { diffKinds, type LineKind } from './diff';
 export interface CodeProps {
   /** The code: a command, a file name, a value to type exactly. */
   text: string;
-  'data-testid'?: string;
 }
 
 /** A few words of code inside a sentence. It goes in a `<text>`, among its words. */
-export function Code({ text, 'data-testid': testId }: CodeProps) {
-  return <span data-testid={testId} className={r.inline.base}>{text}</span>;
+export function Code({ text }: CodeProps) {
+  return <span className={r.inline.base}>{text}</span>;
 }
 
 export interface CodeBlockProps {
