@@ -2072,7 +2072,7 @@ impl LxApp {
             };
             let _transition = page.reset_transition_guard();
             if page.take_reset_pending() {
-                app.teardown_page(&page);
+                app.teardown_page(&page, false);
             }
         }));
     }
@@ -2158,7 +2158,7 @@ impl LxApp {
         let _transition = page.reset_transition_guard();
         if page.take_reset_pending() {
             self.cancel_page_reset(&page.instance_id_string());
-            self.teardown_page(page);
+            self.teardown_page(page, true);
         }
         if page.take_reset_awaiting_entry() {
             Some(self.rebuild_page_on_entry(page))
@@ -2174,7 +2174,11 @@ impl LxApp {
     /// is about to be replaced), parking swaps the document for an inert blank
     /// one, and terminating closes the old service's channels and page event
     /// bus. Nothing is created here — the rebuild belongs to the next entry.
-    fn teardown_page(&self, page: &PageInstance) {
+    ///
+    /// `entry_follows` keeps the old document until the rebuild replaces it: a
+    /// blank load issued just before the rebuild's own would race it, and on
+    /// Android the blank one's late start takes the rebuild's load identity.
+    fn teardown_page(&self, page: &PageInstance, entry_follows: bool) {
         debug!(
             "Tearing down left page (instance {})",
             page.instance_id_string()
@@ -2182,7 +2186,7 @@ impl LxApp {
         .with_appid(self.appid.clone())
         .with_path(page.path());
         page.prepare_for_service_restart();
-        page.park_view();
+        page.park_view(!entry_follows);
         if let Err(err) = self.executor.terminate_page_svc(
             self.clone_arc(),
             page.path().to_string(),
@@ -5899,7 +5903,7 @@ mod manifest_reload_tests {
                 content: "zh-CN".into(),
                 revision: 8,
             });
-            page.park_view();
+            page.park_view(true);
             assert!(page.document_is_departing());
             page.reload_view().unwrap();
             assert!(!page.document_is_departing());

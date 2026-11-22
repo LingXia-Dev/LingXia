@@ -1135,7 +1135,9 @@ impl PageInstance {
         }
     }
 
-    pub(crate) fn park_view(&self) {
+    /// Marks the document departing; `blank_document` also swaps a WebView's
+    /// document for an inert one. A GPU View is always parked.
+    pub(crate) fn park_view(&self, blank_document: bool) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.parked = true;
         }
@@ -1146,6 +1148,9 @@ impl PageInstance {
                     .with_appid(self.appid())
                     .with_path(self.path());
             }
+            return;
+        }
+        if !blank_document {
             return;
         }
         // Transparent so the host-owned page background shows through.
