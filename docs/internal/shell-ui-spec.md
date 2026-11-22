@@ -284,10 +284,10 @@ platforms (phone, foldable, tri-fold, tablet, desktop):
 
 | Region | `regular` (`≥ 600 dp`) | `compact` (`< 600 dp`) |
 |---|---|---|
-| sidebar | `220 dp` expanded when `free_width ≥ 820 dp`, else `56 dp` icon rail (hidden when single main without tabBar) | `0 dp` (drawer `[◧ N]` when `> 1` live instances) |
+| sidebar | touch host with one main: `80 dp` tab rail (§3.4); otherwise `220 dp` expanded when `free_width ≥ 820 dp`, else `56 dp` icon rail (hidden when single main without tabBar) | `0 dp` (drawer `[◧ N]` when `> 1` live instances) |
 | main | main area (no top-right capsule) | full screen |
 | aside | docked multi-tab panel (snaps to vertical `HingeRect` when present); collapsible to right-edge ear `‹ N` | full-screen overlay above main; collapses to right-edge ear `‹ N` |
-| main `tabBar` | child rows in expanded sidebar, or `188 dp` floating `SidebarRailPagePanel` from `56 dp` rail | bottom `56 dp` tab bar |
+| main `tabBar` | the tab rail's cells (§3.4); otherwise child rows in expanded sidebar, or `188 dp` floating `SidebarRailPagePanel` from `56 dp` rail | bottom `56 dp` tab bar |
 | float | popover / overlay | bottom sheet / popover |
 | standalone window | desktop only | rejected |
 
@@ -302,8 +302,9 @@ Default desktop size tokens:
 
 | Token | Default |
 |---|---:|
-| Expanded sidebar width | 148 pt (macOS) / 184 dp (Windows) |
-| Icon rail width | platform-native (clears system chrome) |
+| Expanded sidebar width | 148 pt (macOS) / 184 dp (Windows); the budget of §3.1 reserves 220 |
+| Icon rail width | 56 dp/pt |
+| Tab rail width (§3.4) | 80 dp/pt |
 | Main minimum width | 360 dp/pt |
 | Left/right aside minimum / default width | 240 / 320 dp/pt |
 | Top/bottom aside minimum / default height | 180 / 280 dp/pt |
@@ -318,7 +319,7 @@ Arbitration order is fixed:
 2. reserve the main minimum width;
 3. grant aside requested sizes in most-recently-used order, clamped between the
    minimum and 45% of the container;
-4. admit at most 3 visible slots in expanded, at most 1 in medium;
+4. admit at most 3 visible slots in `regular`, at most 1 in `compact`;
 5. slots that do not fit stay alive hidden; when the user explicitly opens an
    aside that does not fit, it overlays the main and hides again on return.
 
@@ -327,7 +328,32 @@ the main content pane exactly, remain above the selected main, and MUST NOT
 claim the main-switcher slot or create another shell window.
 
 Size classes are an admission ceiling, not a guarantee that three panels are
-crammed in the moment the window crosses 840.
+crammed in the moment the window becomes `regular`.
+
+### 3.4 Touch hosts in `regular`
+
+A touch host is a phone, foldable, or tablet, real or simulated by a Runner
+device frame (the frame owns the window controls). A simulated desktop is a
+desktop. In `regular`, a touch host departs from the desktop sidebar in two
+ways; in `compact` it uses §5 unchanged.
+
+**Tab rail.** With exactly one main (no other main tab, web tab, or pin) whose
+lxapp declares a tabBar, the sidebar column is an `80 dp` tab rail: that app's
+tab items, icon over label, stacked from the top, one tap per tab. It shows no
+app icon, header, hover or tap panel, resize edge, or collapse toggle, and it
+is outside the `820 dp` budget. Asides are not mains and keep the tab rail.
+Opening a second main switches to the sidebar of §3.2; closing it switches
+back. Sidebar actions stack as icons at the rail's foot, as on the icon rail.
+
+**Status band.** While a side column (tab rail, icon rail, or expanded
+sidebar) is visible, the status bar is one band in the sidebar color with a
+single contrasting tint, and the column and the content both start below it.
+An immersive page does not bleed under the band. Without a side column,
+including all of `compact`, the active page's navigation-bar color extends
+under the status bar and an immersive page bleeds behind it.
+
+A real status bar has one tint, and in `regular` its clock sits over the
+column, so the navigation-bar color cannot reach it.
 
 ---
 
@@ -861,14 +887,12 @@ retains its top address toolbar. At narrow widths the address field flexes and
 secondary actions MAY collapse into overflow, but desktop browser chrome MUST
 NOT move to the bottom or paint inside the sidebar rail.
 
-The following rules apply to device-compact hosts (phone, tablet, and
-phone/tablet Runner):
+The following rules apply to touch hosts in `compact` (phones, folded
+foldables, narrow tablet windows, and their Runner simulations):
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
-- A tablet is still this column. `is_pad` only lays out the full tab-bar
-  declaration (no **More** fold); it MUST NOT restore the sidebar, docked
-  asides, or any other desktop shell chrome. Pad extra width is content
-  two-pane, not a shrunk desktop workspace.
+- A tablet or unfolded foldable in `regular` is not this column: it uses §3.4.
+  `is_pad` only lays out the full tab-bar declaration (no **More** fold).
 - A device-compact browser main uses the same provider chrome on Windows and macOS:
   an editable address row above an action row with page Back/Forward, Reload,
   user New Tab, browser-workspace tab switcher/count, and Dismiss when an
@@ -1085,8 +1109,8 @@ Surface, navigation fails with
   window has a dock region right now, never where the content is shown;
   content is not told its own role or edge); the subscription fires
   once immediately with the current value, then only on actual change.
-  Crossing the shell's 840 boundary MUST NOT by itself change content
-  `sizeClass`.
+  Crossing the shell's `820 dp` sidebar budget MUST NOT by itself change
+  content `sizeClass`.
 
 ### 7.3 Shell writer
 
@@ -1196,7 +1220,7 @@ Desktop shell persistence:
 
 ## Appendix A: Current state and gaps
 
-As of 2026-08 (PR #202 follow-up design):
+As of 2026-11 (adaptive layout):
 
 | Area | Status |
 |---|---|
@@ -1214,6 +1238,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
 | Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony runtime halves implemented; iOS device-verified, Android/Harmony pending; campaign download channel and Windows not implemented |
+| Touch-host tab rail and status band (§3.4) | Windows Runner landed and screenshot-verified on Mate X5 (open/tabletop), iPhone Duo, and iPad; Android/iOS/HarmonyOS hosts pending |
 | Naming migration (Appendix C ledger) | Pending — `DockedBrowser` and `open_panel_lxapp` word roots still present |
 
 ## Appendix B: Pending visual decisions
@@ -1246,8 +1271,8 @@ lowercase keys). Synonyms are not allowed.
 | dock region | `can_dock` | `canDock` | `can_dock` | aside (that is the role), docked |
 | sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
-| shell size class | `size_class` | automation `sizeClass` (`compact` \| `medium` \| `expanded`) | `SizeClass` | breakpoint (internal boundary values may use it) |
-| content size class | `size_class` | `sizeClass` (`compact` \| `regular`) | `ContentSizeClass` | medium, expanded (shell-only; content maps both to `regular`) |
+| size class (shell and content) | `size_class` | `sizeClass` (`compact` \| `regular`) | `SizeClass` | medium, expanded, breakpoint (internal boundary values may use it) |
+| tab rail | `tab_rail` | — | `tab_rail` | sidebar (it lists one app's tabs, not mains) |
 | host form | `host_class` | `isMobile` / `isDesktop` | `HostClass` | pad as a third class |
 | pad | `pad` | not on `sizeClass` | `is_pad` | tablet host class, desktop-on-pad |
 | admission | `admission` | — | `admission` module/functions | aliases other than arbitrate |
