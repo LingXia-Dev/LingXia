@@ -192,8 +192,8 @@ pub enum Frame {
         revision: u64,
         drawn: Arc<lingxia_view::renderer::render_thread::Drawn>,
     },
-    /// Rasterized off the View worker when presented.
-    Cpu(DisplayList, CommitTicket),
+    /// Rasterized off the View worker when presented; boxed, as a display list is large.
+    Cpu(Box<DisplayList>, CommitTicket),
 }
 
 impl WindowsAdapter {
@@ -272,7 +272,7 @@ impl Presenter for WindowsAdapter {
                     display,
                 ),
             }),
-            Route::Cpu => Some(Frame::Cpu(display, generation)),
+            Route::Cpu => Some(Frame::Cpu(Box::new(display), generation)),
         })
     }
 
@@ -334,7 +334,7 @@ impl Presenter for WindowsAdapter {
                             rasterize(&host, display, generation)
                         })
                     })
-                    .submit((display, generation));
+                    .submit((*display, generation));
             }
         }
         Ok(true)
