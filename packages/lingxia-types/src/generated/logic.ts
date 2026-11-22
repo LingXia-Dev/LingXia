@@ -2244,7 +2244,8 @@ export type PickFilesResult = {
 /** Options for `lx.pick.media`: where from, how many and which kinds. */
 export type PickMediaOptions = {
     /**
-     * Where the person may get media. With both, they choose first, in a sheet the host draws.
+     * Where the person may get media. With more than one choice, they choose first, in a sheet
+     * the host draws.
      * @default ['library']
      */
     sources?: readonly PickMediaSource[];
@@ -2255,7 +2256,8 @@ export type PickMediaOptions = {
      */
     limit?: number;
     /**
-     * Kinds to offer. On the camera route, the camera takes a photo unless this is `['video']`.
+     * Kinds to offer. A camera that may record both is offered as two choices, a photo and a
+     * video, since one camera session records one kind.
      * @default ['image', 'video']
      */
     types?: readonly ('image' | 'video')[];
@@ -4246,17 +4248,13 @@ declare global {
     /**
      * Lets the person get pictures and videos from where they choose: the library, the camera, or
      * either, asked first in a host-drawn sheet. Library items are copied to temp on mobile; desktop
-     * returns the user's file. The camera route returns one item; to set how the camera records
-     * without offering the library, `lx.pick.capture` does the same with one result. Compression is
-     * `lx.media.compressImage`.
-     * Resolves `{ status: 'canceled' }` when the person dismisses the sheet, picker or camera,
-     * otherwise `{ status: 'ok', files }` with at least one file. Only the camera route needs
-     * `pick.camera`.
+     * returns the user's file. For one camera item with set options, see `lx.pick.capture`;
+     * compression is `lx.media.compressImage`. Resolves `{ status: 'canceled' }` when the person
+     * dismisses the sheet, picker or camera, otherwise `{ status: 'ok', files }`.
      * @supports pick.camera
-     * @throws {E_INVALID_ARG} A `sources` entry other than `'library'` or `'camera'`, an empty
-     * `sources`, or a `types` entry other than `'image'` or `'video'`.
-     * @throws {E_NOT_SUPPORTED} `sources` is only `['camera']` on a host that cannot capture, such
-     * as Windows; with the library also offered, such a host opens the library without asking.
+     * @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
+     * @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
+     * such a host opens the library without asking.
      * @throws {E_INTERNAL} The picker failed or returned an invalid payload.
      */
     media(options?: PickMediaOptions): Promise<PickFilesResult>;

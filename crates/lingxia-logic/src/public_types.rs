@@ -963,7 +963,8 @@ rong::js_api! {
         /// Options for `lx.pick.media`: where from, how many and which kinds.
         type PickMediaOptions = r###"{
     /**
-     * Where the person may get media. With both, they choose first, in a sheet the host draws.
+     * Where the person may get media. With more than one choice, they choose first, in a sheet
+     * the host draws.
      * @default ['library']
      */
     sources?: readonly PickMediaSource[];
@@ -974,7 +975,8 @@ rong::js_api! {
      */
     limit?: number;
     /**
-     * Kinds to offer. On the camera route, the camera takes a photo unless this is `['video']`.
+     * Kinds to offer. A camera that may record both is offered as two choices, a photo and a
+     * video, since one camera session records one kind.
      * @default ['image', 'video']
      */
     types?: readonly ('image' | 'video')[];

@@ -110,10 +110,12 @@ date:
 splash:
   skip: "Skip"
 
-# lx.pick.media source sheet, shown when the call offers both
+# lx.pick.media source sheet: the library and the camera, split into photo and video when both kinds are allowed
 pick:
   source_library: "Photo Library"
   source_camera: "Camera"
+  source_photo: "Take Photo"
+  source_video: "Record Video"
 
 # Host shell
 shell:

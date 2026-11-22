@@ -694,7 +694,8 @@ export default definePage({
         });
 
         try {
-          const picked = cameraOnly ? await lx.pick.capture(capture) : await lx.pick.media(request);
+          // One kind from the camera is `capture`; with both kinds `media` offers photo or video.
+          const picked = cameraOnly && types.length === 1 ? await lx.pick.capture(capture) : await lx.pick.media(request);
           if (picked.status === 'canceled') {
             return;
           }

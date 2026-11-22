@@ -110,10 +110,12 @@ date:
 splash:
   skip: "跳过"
 
-# lx.pick.media source sheet, shown when the call offers both
+# lx.pick.media source sheet: the library and the camera, split into photo and video when both kinds are allowed
 pick:
   source_library: "从相册选择"
   source_camera: "拍摄"
+  source_photo: "拍照"
+  source_video: "录像"
 
 # Host shell
 shell:

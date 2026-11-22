@@ -38,36 +38,31 @@ rong::js_api! {
 
 /// Lets the person get pictures and videos from where they choose: the library, the camera, or
 /// either, asked first in a host-drawn sheet. Library items are copied to temp on mobile; desktop
-/// returns the user's file. The camera route returns one item; to set how the camera records
-/// without offering the library, `lx.pick.capture` does the same with one result. Compression is
-/// `lx.media.compressImage`.
-///
-/// Resolves `{ status: 'canceled' }` when the person dismisses the sheet, picker or camera,
-/// otherwise `{ status: 'ok', files }` with at least one file. Only the camera route needs
-/// `pick.camera`.
+/// returns the user's file. For one camera item with set options, see `lx.pick.capture`;
+/// compression is `lx.media.compressImage`. Resolves `{ status: 'canceled' }` when the person
+/// dismisses the sheet, picker or camera, otherwise `{ status: 'ok', files }`.
 ///
 /// @supports pick.camera
-/// @throws {E_INVALID_ARG} A `sources` entry other than `'library'` or `'camera'`, an empty
-/// `sources`, or a `types` entry other than `'image'` or `'video'`.
-/// @throws {E_NOT_SUPPORTED} `sources` is only `['camera']` on a host that cannot capture, such
-/// as Windows; with the library also offered, such a host opens the library without asking.
+/// @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
+/// @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
+/// such a host opens the library without asking.
 /// @throws {E_INTERNAL} The picker failed or returned an invalid payload.
 async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
     let opts = options.0.unwrap_or_default();
     let sources = parse_sources(opts.sources)?;
     let mode = parse_pick_mode(opts.types)?;
     let camera = CameraSettings::from_media_option(opts.camera)?;
-    let sources = without_unsupported_camera(sources)?;
-    let source = if sources.len() > 1 {
-        match choose_source(&ctx, &sources).await? {
-            Some(source) => source,
+    let routes = media_routes(&sources, mode, camera_available(&ctx))?;
+    let route = if routes.len() > 1 {
+        match choose_route(&ctx, &routes).await? {
+            Some(route) => route,
             None => return canceled(&ctx),
         }
     } else {
-        sources[0]
+        routes[0]
     };
-    let picked = match source {
-        MediaSource::Album => {
+    let picked = match route {
+        Route::Library => {
             run_pick(
                 &ctx,
                 MediaSource::Album,
@@ -77,14 +72,7 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
             )
             .await?
         }
-        MediaSource::Camera => {
-            // One camera records one kind: a photo unless only video was asked for.
-            let mode = match mode {
-                PickMediaMode::Videos => PickMediaMode::Videos,
-                _ => PickMediaMode::Images,
-            };
-            run_pick(&ctx, MediaSource::Camera, mode, 1, camera).await?
-        }
+        Route::Camera(mode) => run_pick(&ctx, MediaSource::Camera, mode, 1, camera).await?,
     };
     match picked {
         Some(files) => crate::pick::files_result(&ctx, &files),
@@ -92,37 +80,74 @@ async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JS
     }
 }
 
-/// A host without a camera drops it from a pair and refuses it alone.
-fn without_unsupported_camera(sources: Vec<MediaSource>) -> JSResult<Vec<MediaSource>> {
-    if cfg!(not(target_os = "windows")) {
-        return Ok(sources);
+/// Whether this host can capture: the value `lx.supports('pick.camera')` answers.
+fn camera_available(ctx: &JSContext) -> bool {
+    crate::capability::exposes(ctx, "pick.camera")
+}
+
+fn camera_unavailable(api: &str) -> rong::RongJSError {
+    rong::HostError::new(
+        rong::error::E_NOT_SUPPORTED,
+        format!("{api}: this host has no camera; check lx.supports('pick.camera') first"),
+    )
+    .into()
+}
+
+/// One row of the source sheet: the library, or one camera kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Route {
+    Library,
+    Camera(PickMediaMode),
+}
+
+/// The rows to offer, in `sources` order. A camera that may record either kind is two rows, a
+/// photo and a video, since one camera session records one kind. Without a camera, it is dropped
+/// from a pair and refused alone.
+fn media_routes(
+    sources: &[MediaSource],
+    mode: PickMediaMode,
+    camera: bool,
+) -> JSResult<Vec<Route>> {
+    let mut routes = Vec::new();
+    for source in sources {
+        match source {
+            MediaSource::Album => routes.push(Route::Library),
+            MediaSource::Camera if !camera => {}
+            MediaSource::Camera => match mode {
+                PickMediaMode::Mix => {
+                    routes.push(Route::Camera(PickMediaMode::Images));
+                    routes.push(Route::Camera(PickMediaMode::Videos));
+                }
+                kind => routes.push(Route::Camera(kind)),
+            },
+        }
     }
-    let library: Vec<MediaSource> = sources
-        .into_iter()
-        .filter(|source| *source != MediaSource::Camera)
-        .collect();
-    if library.is_empty() {
-        return Err(rong::HostError::new(
-            rong::error::E_NOT_SUPPORTED,
-            "pick.media: this host has no camera; offer 'library' or check lx.supports('pick.camera')",
-        )
-        .into());
+    if routes.is_empty() {
+        return Err(camera_unavailable("pick.media"));
     }
-    Ok(library)
+    Ok(routes)
 }
 
 /// The host-drawn sheet; its labels and Cancel come from the SDK catalogue. `None` on dismiss.
-async fn choose_source(ctx: &JSContext, sources: &[MediaSource]) -> JSResult<Option<MediaSource>> {
+async fn choose_route(ctx: &JSContext, routes: &[Route]) -> JSResult<Option<Route>> {
     let lxapp = LxApp::from_ctx(ctx)?;
-    let labels = sources
+    let split = routes.len() > 2 || !routes.contains(&Route::Library);
+    let labels = routes
         .iter()
-        .map(|source| match source {
-            MediaSource::Album => t(I18nKey::PickSourceLibrary),
-            MediaSource::Camera => t(I18nKey::PickSourceCamera),
-        })
+        .map(|route| t(route_label(*route, split)))
         .collect();
     let chosen = crate::ui::present_action_sheet(&lxapp, labels, None, None).await?;
-    Ok(chosen.and_then(|index| sources.get(index).copied()))
+    Ok(chosen.and_then(|index| routes.get(index).copied()))
+}
+
+/// "Camera" when it is the only camera row; "Take Photo" / "Record Video" when it is split.
+fn route_label(route: Route, split: bool) -> I18nKey {
+    match route {
+        Route::Library => I18nKey::PickSourceLibrary,
+        Route::Camera(_) if !split => I18nKey::PickSourceCamera,
+        Route::Camera(PickMediaMode::Videos) => I18nKey::PickSourceVideo,
+        Route::Camera(_) => I18nKey::PickSourcePhoto,
+    }
 }
 
 /// Takes one photo or records one video with the camera, with these settings. Resolves
@@ -136,6 +161,9 @@ async fn choose_source(ctx: &JSContext, sources: &[MediaSource]) -> JSResult<Opt
 /// @throws {E_INTERNAL} The camera failed or returned an invalid payload.
 async fn pick_capture(ctx: JSContext, options: JSCaptureOptions) -> JSResult<JSObject> {
     let mode = parse_capture_kind(&options.kind)?;
+    if !camera_available(&ctx) {
+        return Err(camera_unavailable("pick.capture"));
+    }
     let camera = CameraSettings::new(options.facing, options.max_duration_ms);
     let picked = run_pick(&ctx, MediaSource::Camera, mode, 1, camera).await?;
     match picked.and_then(|files| files.into_iter().next()) {
@@ -357,4 +385,49 @@ fn infer_extension_from_uri(uri: &str) -> Option<String> {
         .and_then(|value| value.to_str())
         .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())?;
     if ext.is_empty() { None } else { Some(ext) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Route, media_routes, route_label};
+    use crate::I18nKey;
+    use lingxia_platform::traits::media_interaction::PickMediaMode::{Images, Mix, Videos};
+    use lingxia_service::media::MediaSource::{Album, Camera};
+
+    #[test]
+    fn without_a_camera_a_pair_is_the_library_and_the_camera_alone_is_refused() {
+        assert_eq!(
+            media_routes(&[Album, Camera], Mix, false).unwrap(),
+            vec![Route::Library]
+        );
+        let error = media_routes(&[Camera], Images, false).unwrap_err();
+        assert_eq!(error.code(), Some(rong::error::E_NOT_SUPPORTED));
+    }
+
+    #[test]
+    fn a_camera_that_may_record_either_kind_is_two_rows() {
+        let routes = media_routes(&[Album, Camera], Mix, true).unwrap();
+        assert_eq!(
+            routes,
+            vec![Route::Library, Route::Camera(Images), Route::Camera(Videos)]
+        );
+        let labels: Vec<I18nKey> = routes.iter().map(|r| route_label(*r, true)).collect();
+        assert_eq!(
+            labels,
+            vec![
+                I18nKey::PickSourceLibrary,
+                I18nKey::PickSourcePhoto,
+                I18nKey::PickSourceVideo
+            ]
+        );
+        assert_eq!(media_routes(&[Camera], Mix, true).unwrap().len(), 2);
+        assert_eq!(
+            media_routes(&[Album, Camera], Videos, true).unwrap(),
+            vec![Route::Library, Route::Camera(Videos)]
+        );
+        assert_eq!(
+            route_label(Route::Camera(Videos), false),
+            I18nKey::PickSourceCamera
+        );
+    }
 }

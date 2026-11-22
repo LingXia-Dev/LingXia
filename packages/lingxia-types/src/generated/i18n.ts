@@ -163,6 +163,8 @@ export const I18N_KEYS = [
   "permission_wifi_reason",
   "pick_source_camera",
   "pick_source_library",
+  "pick_source_photo",
+  "pick_source_video",
   "pull_refresh_refreshed",
   "pull_refresh_refreshing",
   "shell_pin_limit_message",
