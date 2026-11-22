@@ -44,6 +44,10 @@ struct RunnerSetArgs {
     #[serde(default)]
     id: Option<String>,
     #[serde(default)]
+    preset: Option<String>,
+    #[serde(default)]
+    posture: Option<String>,
+    #[serde(default)]
     landscape: Option<bool>,
     #[serde(default)]
     appearance: Option<String>,
@@ -79,12 +83,20 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
             let parsed: RunnerSetArgs =
                 serde_json::from_value(args.unwrap_or_else(|| serde_json::json!({})))
                     .map_err(|e| format!("invalid args for {}: {}", handler, e))?;
+            let (id, posture, landscape) = lingxia::dev::adaptive_device_target(
+                parsed.id,
+                parsed.preset.as_deref(),
+                parsed.posture,
+                None,
+                parsed.landscape,
+            )?;
             let change = lingxia::dev::DeviceChange {
-                id: parsed.id,
-                landscape: parsed.landscape,
+                id,
+                landscape,
                 appearance: parsed.appearance.as_deref().map(str::parse).transpose()?,
                 text_scale: parsed.text_scale,
                 contrast: parsed.contrast.as_deref().map(str::parse).transpose()?,
+                posture,
             };
             let language = parsed
                 .language
@@ -93,7 +105,7 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
                 .transpose()?;
             if change.is_empty() && language.is_none() {
                 return Err(
-                    "runner.set requires at least one of id, landscape, appearance, textScale, contrast, language"
+                    "runner.set requires at least one of id, preset, posture, landscape, appearance, textScale, contrast, language"
                         .into(),
                 );
             }

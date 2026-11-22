@@ -102,7 +102,9 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     /// The oriented device, as the page is told it.
     private var simulatedDevice: MobileDeviceSize {
         let app = RunnerApp.shared
-        return app.selectedDeviceSize.oriented(app.deviceOrientation)
+        return app.selectedDeviceSize
+            .withPosture(app.activePosture)
+            .oriented(app.deviceOrientation)
     }
 
     /// Window points between the screen's bottom edge and the host's tab bar.
@@ -322,12 +324,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             RunnerSupport.TabBar.refresh(tabBar)
         }
 
-        // Only phone shapes reach this host — pad and desktop run the surface
-        // shell, which lists every item in its sidebar. Stating it anyway keeps
-        // the strip honest if a roomier shape is ever routed here.
+        // Follow the unified compact (< 600) / regular (>= 600) rule so foldable
+        // and tablet widths >= 600 never hard-lock compact tab-bar chrome.
         RunnerSupport.TabBar.setCompact(
             tabBarView,
-            compact: RunnerApp.shared.selectedDeviceSize.shape == .phone
+            compact: !simulatedDevice.isRegularWidth
         )
         RunnerSupport.TabBar.setDisplayScale(tabBarView, scale: displayScale)
 

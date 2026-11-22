@@ -69,6 +69,8 @@ import type {
   TestView,
   ViewEnvironment,
   ViewSettledOptions,
+  DeviceSetOptions,
+  TestDevice,
   TestVisual,
   VisualShot,
   VisualShotOptions,
@@ -689,6 +691,16 @@ export class LiveFixture implements Fixture {
 
   get visual(): TestVisual {
     return { shot: (name: string, options?: VisualShotOptions) => this.visualShot(name, options, callerLocation()) };
+  }
+
+  get device(): TestDevice {
+    return {
+      set: (options: DeviceSetOptions) =>
+        this.act("device.set", summarise(options), async () => {
+          // No fallback: a host that cannot simulate the device fails the step rather than pass on another one.
+          await this.hostAutomation.device.set(options);
+        }),
+    };
   }
 
   /** The app and device a shot names, read once per attempt; `null` fields when unreadable. */

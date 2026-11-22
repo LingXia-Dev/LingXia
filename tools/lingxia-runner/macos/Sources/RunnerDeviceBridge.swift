@@ -1,6 +1,40 @@
 import Darwin
 import Foundation
 
+private struct RunnerHingePayload: Encodable, Sendable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+    let orientation: String
+    let posture: String
+
+    init(_ hinge: RunnerHingeSpec) {
+        self.x = Double(hinge.x)
+        self.y = Double(hinge.y)
+        self.width = Double(hinge.width)
+        self.height = Double(hinge.height)
+        self.orientation = hinge.orientation.rawValue
+        self.posture = hinge.posture.rawValue
+    }
+}
+
+private struct RunnerDevicePostureEntryPayload: Encodable, Sendable {
+    let id: String
+    let label: String
+    let width: Double
+    let height: Double
+    let hinge: RunnerHingePayload?
+
+    init(_ posture: RunnerDevicePosture) {
+        self.id = posture.id
+        self.label = posture.label
+        self.width = Double(posture.width)
+        self.height = Double(posture.height)
+        self.hinge = posture.hinge.map(RunnerHingePayload.init)
+    }
+}
+
 private struct RunnerDeviceEntryPayload: Encodable, Sendable {
     let id: String
     let name: String
@@ -9,6 +43,7 @@ private struct RunnerDeviceEntryPayload: Encodable, Sendable {
     let height: Double
     let pixelRatio: Double
     let current: Bool
+    let postures: [RunnerDevicePostureEntryPayload]?
 }
 
 private struct RunnerDeviceStatePayload: Encodable, Sendable {
@@ -22,6 +57,8 @@ private struct RunnerDeviceStatePayload: Encodable, Sendable {
     let appearance: String
     let textScale: Double
     let contrast: String
+    let posture: String?
+    let hinge: RunnerHingePayload?
 }
 
 @MainActor
@@ -35,7 +72,8 @@ private func deviceEntries() -> [RunnerDeviceEntryPayload] {
             width: Double(device.width),
             height: Double(device.height),
             pixelRatio: Double(device.pixelRatio),
-            current: device.id == current
+            current: device.id == current,
+            postures: device.postures?.map(RunnerDevicePostureEntryPayload.init)
         )
     }
 }
@@ -54,26 +92,62 @@ private func deviceState() -> RunnerDeviceStatePayload {
         landscape: RunnerApp.shared.deviceOrientation == .landscape,
         appearance: RunnerApp.shared.simulatedAppearance.rawValue,
         textScale: Double(RunnerApp.shared.simulatedTextScale),
-        contrast: RunnerApp.shared.simulatedHighContrast ? "high" : "standard"
+        contrast: RunnerApp.shared.simulatedHighContrast ? "high" : "standard",
+        posture: RunnerApp.shared.activePosture?.id,
+        hinge: effective.activeHinge.map(RunnerHingePayload.init)
     )
+}
+
+/// Split an optional `"<device-id>:<posture-id>"` or `"<device-id>@<posture-id>"`
+/// selector so callers can resolve foldable presets with or without a posture suffix.
+private func parseDeviceSelector(_ raw: String) -> (deviceId: String, postureId: String?) {
+    if let sep = raw.firstIndex(where: { $0 == ":" || $0 == "@" }) {
+        let deviceId = String(raw[..<sep])
+        let postureId = String(raw[raw.index(after: sep)...])
+        return (deviceId, postureId.isEmpty ? nil : postureId)
+    }
+    return (raw, nil)
 }
 
 @MainActor
 private func setDevice(
     id: String?,
+    posture: String? = nil,
     landscape: Bool?,
     appearance: RunnerAppearance?,
     textScale: CGFloat?,
     highContrast: Bool?
 ) -> RunnerDeviceStatePayload? {
     if let id {
-        guard let device = MobileDeviceSize.allCases.first(where: { $0.id == id }) else {
+        let parsed = parseDeviceSelector(id)
+        guard let device = MobileDeviceSize.allCases.first(where: { $0.id == parsed.deviceId }) else {
             return nil
+        }
+        let requestedPostureId = posture ?? parsed.postureId
+        let resolvedPosture: RunnerDevicePosture?
+        if let requestedPostureId {
+            guard let matched = device.posture(id: requestedPostureId) else {
+                return nil
+            }
+            resolvedPosture = matched
+        } else {
+            resolvedPosture = nil
         }
         let orientation = landscape.map {
             $0 ? RunnerDeviceOrientation.landscape : .portrait
         }
-        RunnerApp.shared.applyDeviceSize(device, orientation: orientation)
+        RunnerApp.shared.applyDeviceSize(
+            device,
+            orientation: orientation,
+            posture: resolvedPosture
+        )
+    } else if let posture {
+        guard RunnerApp.shared.setDevicePosture(id: posture) else {
+            return nil
+        }
+        if let landscape {
+            RunnerApp.shared.setDeviceOrientation(landscape ? .landscape : .portrait)
+        }
     } else if let landscape {
         RunnerApp.shared.setDeviceOrientation(landscape ? .landscape : .portrait)
     }
@@ -149,6 +223,27 @@ func lingxiaRunnerDeviceSetJSON(
             appearance: requestedAppearance,
             textScale: requestedTextScale,
             highContrast: requestedContrast
+        )
+    }) else {
+        return nil
+    }
+    return encodedCString(state)
+}
+
+@_cdecl("lingxia_runner_device_set_posture_json")
+func lingxiaRunnerDeviceSetPostureJSON(
+    _ posture: UnsafePointer<CChar>?
+) -> UnsafeMutablePointer<CChar>? {
+    guard let posture else { return nil }
+    let postureId = String(cString: posture)
+    guard let state = onRunnerMain({
+        setDevice(
+            id: nil,
+            posture: postureId,
+            landscape: nil,
+            appearance: nil,
+            textScale: nil,
+            highContrast: nil
         )
     }) else {
         return nil

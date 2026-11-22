@@ -1371,6 +1371,8 @@ export interface Fixture {
   attach(name: string, data: unknown): Promise<void>;
   /** Screenshots compared against per-device baselines by `lxdev test --visual`. */
   readonly visual: TestVisual;
+  /** Switch the Runner's simulated device by form factor, fold posture and orientation. */
+  readonly device: TestDevice;
   /**
    * Stop this test and report it `skipped` with `reason`, for a precondition
    * only knowable at run time. Throws; deferred cleanup still runs. Call it
@@ -1383,6 +1385,22 @@ export interface Fixture {
    * cleanup still runs.
    */
   fail(reason: string): never;
+}
+
+export type DevicePreset = "phone" | "fold" | "trifold" | "pad" | "desktop";
+export type DevicePosture = "open" | "dual" | "outer" | "tabletop";
+export type DeviceOrientation = "portrait" | "landscape";
+
+export interface DeviceSetOptions {
+  /** Picks the host's device of this form factor. */
+  preset?: DevicePreset;
+  /** A folding device's posture; one the device lacks fails the step. */
+  posture?: DevicePosture;
+  orientation?: DeviceOrientation;
+}
+
+export interface TestDevice {
+  set(options: DeviceSetOptions): Promise<void>;
 }
 
 /** Matchers that check once, synchronously. */

@@ -153,39 +153,61 @@
       }
     },
     {
-      "id": "pixel-3",
-      "group": "phone",
+      "id": "iphone-duo",
+      "group": "fold",
       "browserProfile": "phone",
-      "name": "Google Pixel 3",
-      "width": 392.72727272727275,
-      "height": 785.4545454545455,
-      "pixelRatio": 2.75,
+      "name": "iPhone Duo",
+      "width": 890,
+      "height": 626,
+      "pixelRatio": 3,
       "bezelWidth": 4,
       "bezelColor": 1315860,
-      "outerRadius": 24,
-      "screenRadius": 20,
+      "outerRadius": 36,
+      "screenRadius": 32,
       "notch": {
         "width": 0,
         "height": 0,
         "cornerRadius": 0,
-        "statusBarHeight": 28
+        "statusBarHeight": 44
       },
       "chrome": {
-        "host": "android",
-        "safeArea": { "portrait": [28, 0, 48, 0], "landscape": [24, 48, 0, 0] },
+        "host": "ios",
+        "safeArea": { "portrait": [44, 0, 24, 0], "landscape": [24, 0, 20, 0] },
         "navigationBar": 44,
-        "tabBar": 64,
-        "provisional": ["safeArea.landscape", "screenRadius"]
-      }
+        "tabBar": 64
+      },
+      "postures": [
+        {
+          "id": "outer",
+          "label": "Outer",
+          "width": 466,
+          "height": 678,
+          "hinge": null
+        },
+        {
+          "id": "open",
+          "label": "Open",
+          "width": 890,
+          "height": 626,
+          "hinge": {
+            "x": 445,
+            "y": 0,
+            "width": 0,
+            "height": 626,
+            "orientation": "vertical",
+            "posture": "flat"
+          }
+        }
+      ]
     },
     {
-      "id": "redmi-9",
-      "group": "phone",
+      "id": "huawei-mate-x5",
+      "group": "fold",
       "browserProfile": "phone",
-      "name": "Redmi 9",
-      "width": 392.72727272727275,
-      "height": 850.9090909090909,
-      "pixelRatio": 2.75,
+      "name": "Huawei Mate X5",
+      "width": 784,
+      "height": 868,
+      "pixelRatio": 3,
       "bezelWidth": 4,
       "bezelColor": 1315860,
       "outerRadius": 28,
@@ -194,15 +216,113 @@
         "width": 0,
         "height": 0,
         "cornerRadius": 0,
-        "statusBarHeight": 30
+        "statusBarHeight": 39
       },
       "chrome": {
-        "host": "android",
-        "safeArea": { "portrait": [30, 0, 16, 0], "landscape": [0, 0, 16, 30] },
+        "host": "harmony",
+        "safeArea": { "portrait": [39, 0, 28, 0], "landscape": [28, 0, 20, 0] },
         "navigationBar": 44,
-        "tabBar": 64,
-        "provisional": ["safeArea.portrait.top", "safeArea.landscape", "screenRadius"]
-      }
+        "tabBar": 72
+      },
+      "postures": [
+        {
+          "id": "outer",
+          "label": "Outer",
+          "width": 360,
+          "height": 835,
+          "hinge": null
+        },
+        {
+          "id": "open",
+          "label": "Open",
+          "width": 784,
+          "height": 868,
+          "hinge": {
+            "x": 392,
+            "y": 0,
+            "width": 0,
+            "height": 868,
+            "orientation": "vertical",
+            "posture": "flat"
+          }
+        },
+        {
+          "id": "tabletop",
+          "label": "Tabletop",
+          "width": 868,
+          "height": 784,
+          "hinge": {
+            "x": 0,
+            "y": 392,
+            "width": 868,
+            "height": 0,
+            "orientation": "horizontal",
+            "posture": "half-opened"
+          }
+        }
+      ]
+    },
+    {
+      "id": "huawei-mate-xt",
+      "group": "fold",
+      "browserProfile": "phone",
+      "name": "Huawei Mate XT",
+      "width": 1080,
+      "height": 744,
+      "pixelRatio": 3,
+      "bezelWidth": 4,
+      "bezelColor": 1315860,
+      "outerRadius": 28,
+      "screenRadius": 24,
+      "notch": {
+        "width": 0,
+        "height": 0,
+        "cornerRadius": 0,
+        "statusBarHeight": 39
+      },
+      "chrome": {
+        "host": "harmony",
+        "safeArea": { "portrait": [39, 0, 28, 0], "landscape": [28, 0, 20, 0] },
+        "navigationBar": 44,
+        "tabBar": 72
+      },
+      "postures": [
+        {
+          "id": "outer",
+          "label": "Outer",
+          "width": 360,
+          "height": 744,
+          "hinge": null
+        },
+        {
+          "id": "dual",
+          "label": "Dual",
+          "width": 744,
+          "height": 744,
+          "hinge": {
+            "x": 372,
+            "y": 0,
+            "width": 0,
+            "height": 744,
+            "orientation": "vertical",
+            "posture": "flat"
+          }
+        },
+        {
+          "id": "open",
+          "label": "Open",
+          "width": 1080,
+          "height": 744,
+          "hinge": {
+            "x": 720,
+            "y": 0,
+            "width": 0,
+            "height": 744,
+            "orientation": "vertical",
+            "posture": "flat"
+          }
+        }
+      ]
     },
     {
       "id": "ipad",

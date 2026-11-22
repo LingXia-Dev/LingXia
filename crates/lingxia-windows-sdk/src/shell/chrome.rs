@@ -1320,6 +1320,10 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
     let desktop_card = is_desktop_card(layout);
     let mut content = client;
     content.top += top_inset;
+    let sidebar_top = content
+        .top
+        .max(client.top + layout.sidebar_top_inset)
+        .min(client.bottom);
     let tab_bar = layout
         .tab_bar
         .as_ref()
@@ -1339,7 +1343,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                 let right = (content.left + width).min(content.right);
                 let rect = RECT {
                     left: content.left,
-                    top: content.top,
+                    top: sidebar_top,
                     right,
                     bottom: content.bottom,
                 };
@@ -1351,7 +1355,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
                 let left = (content.right - width).max(content.left);
                 let rect = RECT {
                     left,
-                    top: content.top + right_sidebar_caption_clearance(layout),
+                    top: sidebar_top + right_sidebar_caption_clearance(layout),
                     right: content.right,
                     bottom: content.bottom,
                 };
@@ -1378,7 +1382,9 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
             layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
             Some(WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right)
         );
-    let reserve_top_bar = side_tabbar
+    // A device-framed screen has no caption, so a sidebar alone keeps its toggle in its own header
+    // row instead of reserving an empty band across the page.
+    let reserve_top_bar = (side_tabbar && !layout.suppress_window_controls)
         || desktop_card
         || (address_bar_visible(layout) && !phone_browser_bar_active(client, layout));
 
@@ -3780,6 +3786,32 @@ mod scroll_tests {
         let hidden = compute_chrome_rects(client, &layout_for(false, false));
         assert!(hidden.tab_bar.is_none());
         assert_eq!(hidden.content.bottom, 852);
+    }
+
+    #[test]
+    fn a_framed_rail_clears_the_status_bar_under_an_immersive_page() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 784,
+            bottom: 868,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.icon_rail = true;
+        let layout = WindowsShellWindowLayout {
+            top_inset: 0,
+            sidebar_top_inset: 40,
+            suppress_window_controls: true,
+            tab_bar: Some(rail),
+            ..Default::default()
+        };
+        let rects = compute_chrome_rects(client, &layout);
+        let sidebar = rects.tab_bar.unwrap();
+        assert_eq!(sidebar.top, 40);
+        assert_eq!(rects.content.top, 0);
+        assert_eq!(rects.content.left, sidebar.right);
+        assert_eq!(super::rect_height(&rects.top_bar), 0);
     }
 
     #[test]

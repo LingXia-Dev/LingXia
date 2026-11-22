@@ -2051,13 +2051,10 @@ fn build_window_layout_with_visible_main(
     // A presented browser tab is never immersive: its address row must sit
     // below the status-bar strip, not under the floating clock/cutout.
     let immersive = address_bar.is_none() && app.get_navbar_state(path).is_custom_navigation();
-    let top_inset = if immersive {
-        0
-    } else {
-        owner_window
-            .map(device_frame_status_bar_height)
-            .unwrap_or(0)
-    };
+    let status_bar_height = owner_window
+        .map(device_frame_status_bar_height)
+        .unwrap_or(0);
+    let top_inset = if immersive { 0 } else { status_bar_height };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
     // Tab pages follow the visible main, not the shell owner. Owner-first
@@ -2101,6 +2098,7 @@ fn build_window_layout_with_visible_main(
         footer_actions,
         compact_browser_chrome,
         top_inset,
+        sidebar_top_inset: status_bar_height,
         suppress_window_controls,
     }
 }
@@ -2140,6 +2138,7 @@ fn build_self_browser_window_layout(webtag: &WebTag) -> WindowsShellWindowLayout
             && resolved_shell_size_class(None) == SizeClass::Compact,
         suppress_window_controls,
         top_inset: window.map(device_frame_status_bar_height).unwrap_or(0),
+        sidebar_top_inset: window.map(device_frame_status_bar_height).unwrap_or(0),
         ..Default::default()
     }
 }
@@ -2792,9 +2791,9 @@ fn adaptive_tabbar_projection(
             (requested, true, true)
         }
         SizeClass::Compact => (WindowsShellTabBarPosition::Bottom, false, false),
+        // A simulated fold or tablet is held to the same width budget as a desktop window.
         SizeClass::Regular
-            if !device_framed
-                && budget_requires_rail
+            if budget_requires_rail
                 && !budget_expanded_by_user
                 && matches!(
                     requested,
@@ -9006,6 +9005,10 @@ mod tests {
         assert_eq!(
             adaptive_tabbar_projection(Bottom, SizeClass::Regular, true, true, false),
             (Bottom, false, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Regular, true, true, false),
+            (Left, true, true)
         );
 
         let mut state = SidebarUiState::default();

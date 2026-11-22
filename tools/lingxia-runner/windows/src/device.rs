@@ -1,7 +1,7 @@
 use lingxia_windows_sdk::{
     WindowsAppMenuItem, WindowsBrowserEmulationProfile, WindowsDeviceFrame,
-    WindowsDeviceFrameCutout, WindowsDeviceFrameSelectorEntry, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameHinge, WindowsDeviceFrameSelectorEntry,
+    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar,
 };
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -31,10 +31,37 @@ pub(crate) const APPEARANCE_COMMAND: u32 = 0x0900;
 /// App-declared More actions occupy seven generation-scoped command slots.
 pub(crate) const MORE_ACTION_COMMAND_BASE: u32 = 0x0A00;
 
-/// The selector dropdown only chooses the simulated frame/device.
-fn device_selector_items(index: usize) -> Vec<WindowsDeviceFrameSelectorEntry> {
+/// Flat `(device_index, posture_index)` table backing `DEVICE_COMMAND_BASE + slot`.
+pub(crate) fn selector_targets() -> &'static [(usize, usize)] {
+    static TARGETS: OnceLock<Vec<(usize, usize)>> = OnceLock::new();
+    TARGETS.get_or_init(|| {
+        let mut targets = Vec::new();
+        for (device_index, preset) in presets().iter().enumerate() {
+            if preset.postures.is_empty() {
+                targets.push((device_index, 0));
+            } else {
+                for posture_index in 0..preset.postures.len() {
+                    targets.push((device_index, posture_index));
+                }
+            }
+        }
+        targets
+    })
+}
+
+pub(crate) fn selector_target_for_command(command: u32) -> Option<(usize, usize)> {
+    let slot = command.checked_sub(DEVICE_COMMAND_BASE)? as usize;
+    selector_targets().get(slot).copied()
+}
+
+/// The selector dropdown chooses the simulated device (and posture for foldables).
+fn device_selector_items(
+    index: usize,
+    posture_index: usize,
+) -> Vec<WindowsDeviceFrameSelectorEntry> {
     let mut entries = Vec::new();
     let mut previous_group = None;
+    let mut slot = 0u32;
     for (item_index, preset) in presets().iter().enumerate() {
         if previous_group != Some(preset.group()) {
             if previous_group.is_some() {
@@ -45,13 +72,28 @@ fn device_selector_items(index: usize) -> Vec<WindowsDeviceFrameSelectorEntry> {
             )));
             previous_group = Some(preset.group());
         }
-        entries.push(WindowsDeviceFrameSelectorEntry::item(
-            WindowsAppMenuItem::new(
-                DEVICE_COMMAND_BASE + item_index as u32,
-                device_label(preset),
-            )
-            .checked(item_index == index),
-        ));
+        if preset.postures.is_empty() {
+            entries.push(WindowsDeviceFrameSelectorEntry::item(
+                WindowsAppMenuItem::new(DEVICE_COMMAND_BASE + slot, device_label(preset))
+                    .checked(item_index == index),
+            ));
+            slot += 1;
+        } else {
+            for (p_index, posture) in preset.postures.iter().enumerate() {
+                let label = format!(
+                    "{} — {}\t{} x {}",
+                    preset.name,
+                    posture.label,
+                    posture.width.round(),
+                    posture.height.round()
+                );
+                entries.push(WindowsDeviceFrameSelectorEntry::item(
+                    WindowsAppMenuItem::new(DEVICE_COMMAND_BASE + slot, label)
+                        .checked(item_index == index && p_index == posture_index),
+                ));
+                slot += 1;
+            }
+        }
     }
     entries
 }
@@ -59,6 +101,7 @@ fn device_selector_items(index: usize) -> Vec<WindowsDeviceFrameSelectorEntry> {
 fn group_title(group: &str) -> &str {
     match group {
         "phone" => "iPhone",
+        "fold" => "Foldable",
         "tablet" => "iPad",
         "desktop" => "Desktop",
         other => other,
@@ -74,6 +117,26 @@ fn capsule_menu_items() -> Vec<WindowsAppMenuItem> {
 struct RunnerDevices {
     default: String,
     devices: Vec<DevicePreset>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct DeviceHinge {
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) orientation: String,
+    pub(crate) posture: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct DevicePosture {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    #[serde(default)]
+    pub(crate) hinge: Option<DeviceHinge>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +163,9 @@ pub(crate) struct DevicePreset {
     notch: DeviceNotch,
     /// What a phone's host gives a page, in device points.
     chrome: Option<DeviceChrome>,
+    /// Foldable postures (`outer`, `open`, `tabletop`, `dual`, ...), empty for rigid devices.
+    #[serde(default)]
+    pub(crate) postures: Vec<DevicePosture>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,7 +210,7 @@ impl DevicePreset {
         &self.id
     }
 
-    /// Form-factor group ("phone" | "tablet" | "desktop").
+    /// Form-factor group ("phone" | "fold" | "tablet" | "desktop").
     pub(crate) fn group(&self) -> &str {
         &self.group
     }
@@ -154,6 +220,61 @@ impl DevicePreset {
             BrowserProfile::Desktop => WindowsBrowserEmulationProfile::Desktop,
             BrowserProfile::Phone => WindowsBrowserEmulationProfile::Phone,
             BrowserProfile::Tablet => WindowsBrowserEmulationProfile::Tablet,
+        }
+    }
+
+    /// Default posture index when switching to this device (prefers `"open"`, else `0`).
+    pub(crate) fn default_posture_index(&self) -> usize {
+        self.postures
+            .iter()
+            .position(|p| p.id == "open")
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn posture_index(&self, id: &str) -> Option<usize> {
+        self.postures.iter().position(|p| p.id == id)
+    }
+
+    pub(crate) fn active_posture(&self, posture_index: usize) -> Option<&DevicePosture> {
+        self.postures
+            .get(posture_index)
+            .or_else(|| self.postures.first())
+    }
+
+    pub(crate) fn effective_dimensions(&self, posture_index: usize, landscape: bool) -> (f32, f32) {
+        let (w, h) = self
+            .active_posture(posture_index)
+            .map_or((self.width, self.height), |p| (p.width, p.height));
+        if landscape { (h, w) } else { (w, h) }
+    }
+
+    pub(crate) fn effective_hinge(
+        &self,
+        posture_index: usize,
+        landscape: bool,
+    ) -> Option<DeviceHinge> {
+        let h = self.active_posture(posture_index)?.hinge.as_ref()?;
+        if !landscape {
+            return Some(h.clone());
+        }
+        Some(DeviceHinge {
+            x: h.y,
+            y: h.x,
+            width: h.height,
+            height: h.width,
+            orientation: if h.orientation == "vertical" {
+                "horizontal".to_string()
+            } else {
+                "vertical".to_string()
+            },
+            posture: h.posture.clone(),
+        })
+    }
+
+    pub(crate) fn toolbar_label(&self, posture_index: usize) -> String {
+        match self.active_posture(posture_index) {
+            Some(posture) => format!("{} ({})", self.name, posture.label),
+            None => self.name.clone(),
         }
     }
 }
@@ -202,6 +323,25 @@ pub(crate) fn is_phone(index: usize) -> bool {
         .is_some_and(|preset| preset.group == "phone")
 }
 
+pub(crate) fn is_fold(index: usize) -> bool {
+    presets()
+        .get(index)
+        .is_some_and(|preset| preset.group == "fold")
+}
+
+/// Phones and foldables render in handheld frames with simulated GPU viewports.
+pub(crate) fn is_handheld(index: usize) -> bool {
+    is_phone(index) || is_fold(index)
+}
+
+pub(crate) fn is_compact_screen(index: usize, posture_index: usize, landscape: bool) -> bool {
+    let Some(preset) = presets().get(index) else {
+        return true;
+    };
+    let (w, _) = preset.effective_dimensions(posture_index, landscape);
+    w < 600.0
+}
+
 /// How far the host's tab bar reaches above the screen's bottom edge. The Android host stacks
 /// it on the system bar; iOS grows it through the home indicator; HarmonyOS grows it by its
 /// extra bottom (TabBar.ets).
@@ -219,7 +359,7 @@ fn tab_bar_reach(chrome: &DeviceChrome, landscape: bool) -> f32 {
         }
 }
 
-/// The host tab bar a phone preset gives its pages: its items' band, and the reach past it
+/// The host tab bar a phone/fold preset gives its pages: its items' band, and the reach past it
 /// that [`gpu_simulation`] reports to GPU pages.
 fn tab_bar_spec(
     preset: &DevicePreset,
@@ -235,20 +375,19 @@ fn tab_bar_spec(
     }
 }
 
-/// What GPU pages measure on phone `index`: its viewport, ratio, safe area and host bars in
-/// its points, whatever size the frame shows it at. Tablets and desktops lay out in the window.
+/// What GPU pages measure on phone/fold `index`: its viewport, ratio, safe area, host bars,
+/// and hinge in its points, whatever size the frame shows it at. Tablets and desktops lay out
+/// in the window.
 pub(crate) fn gpu_simulation(
     index: usize,
+    posture_index: usize,
     landscape: bool,
     text_scale: f32,
     high_contrast: bool,
 ) -> Option<lingxia::windows::GpuSimulation> {
-    let preset = presets().get(index).filter(|_| is_phone(index))?;
-    let viewport = if landscape {
-        [preset.height, preset.width]
-    } else {
-        [preset.width, preset.height]
-    };
+    let preset = presets().get(index).filter(|_| is_handheld(index))?;
+    let (w, h) = preset.effective_dimensions(posture_index, landscape);
+    let viewport = [w, h];
     let (safe_area, navigation_bar, tab_bar_reach) = match &preset.chrome {
         Some(chrome) => {
             let safe = if landscape {
@@ -268,15 +407,26 @@ pub(crate) fn gpu_simulation(
             64.0,
         ),
     };
+    let hinge = preset.effective_hinge(posture_index, landscape).map(|h| {
+        serde_json::json!({
+            "x": h.x,
+            "y": h.y,
+            "width": h.width,
+            "height": h.height,
+            "orientation": h.orientation,
+            "posture": h.posture,
+        })
+    });
     Some(lingxia::windows::GpuSimulation {
         viewport,
         pixel_ratio: preset.pixel_ratio,
         safe_area,
         navigation_bar,
         tab_bar_reach,
-        smallest_width: preset.width.min(preset.height),
+        smallest_width: w.min(h),
         text_scale,
         high_contrast,
+        hinge,
     })
 }
 
@@ -307,16 +457,27 @@ fn visual_bezel_width(preset: &DevicePreset) -> i32 {
 }
 
 /// `capsule`: whether the lxapp in this frame gets the simulated host capsule.
-pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> WindowsDeviceFrame {
+pub(crate) fn frame_spec(
+    index: usize,
+    posture_index: usize,
+    landscape: bool,
+    capsule: bool,
+) -> WindowsDeviceFrame {
     let preset = &presets()[index];
-    // Landscape swaps the screen's long and short edges; the bezel, radii, and
-    // toolbar follow the new width automatically.
-    let (screen_width, screen_height) = if landscape {
-        (preset.height, preset.width)
-    } else {
-        (preset.width, preset.height)
-    };
-    let (screen_width, screen_height) = (screen_width.round() as i32, screen_height.round() as i32);
+    let (screen_w, screen_h) = preset.effective_dimensions(posture_index, landscape);
+    let (screen_width, screen_height) = (screen_w.round() as i32, screen_h.round() as i32);
+    let handheld = is_handheld(index);
+    let compact = is_compact_screen(index, posture_index, landscape);
+    let hinge = preset
+        .effective_hinge(posture_index, landscape)
+        .map(|h| WindowsDeviceFrameHinge {
+            x: h.x.round() as i32,
+            y: h.y.round() as i32,
+            width: h.width.round() as i32,
+            height: h.height.round() as i32,
+            vertical: h.orientation == "vertical",
+            half_opened: h.posture == "half-opened",
+        });
     WindowsDeviceFrame {
         screen_width,
         screen_height,
@@ -330,8 +491,9 @@ pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> Window
                 corner_radius: preset.notch.corner_radius.round() as i32,
             }
         }),
-        status_bar: (is_phone(index) && !landscape && preset.notch.status_bar_height > 0).then(
-            || WindowsDeviceFrameStatusBar {
+        hinge,
+        status_bar: (handheld && !landscape && preset.notch.status_bar_height > 0).then(|| {
+            WindowsDeviceFrameStatusBar {
                 height: preset.notch.status_bar_height,
                 // Initial colors + opacity; the shell overrides these per page
                 // from the active page's navigation-bar style (and switches the
@@ -340,38 +502,42 @@ pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> Window
                 foreground: status_bar_foreground(),
                 background: lingxia_windows_sdk::windows_shell_background_color(),
                 transparent: false,
-            },
-        ),
-        tab_bar: is_phone(index).then(|| tab_bar_spec(preset, landscape)),
+            }
+        }),
+        tab_bar: (handheld && compact).then(|| tab_bar_spec(preset, landscape)),
         bezel_color: preset.bezel_color,
         // Keep clipped screen corners backed by the device shell instead of
         // exposing the desktop through the rounded edge.
         screen_corner_color: preset.bezel_color,
         toolbar: Some(WindowsDeviceFrameToolbar {
-            selector_label: preset.name.clone(),
-            selector_items: device_selector_items(index),
+            selector_label: preset.toolbar_label(posture_index),
+            selector_items: device_selector_items(index, posture_index),
             action_command: Some(OPEN_DEVTOOLS_COMMAND),
             rotate_command: Some(ROTATE_COMMAND),
             appearance_command: Some(APPEARANCE_COMMAND),
             appearance_dark: crate::runner::effective_appearance_dark(),
-            capsule_items: if is_phone(index) && capsule {
+            capsule_items: if handheld && capsule {
                 capsule_menu_items()
             } else {
                 Vec::new()
             },
-            capsule_close_command: (is_phone(index) && capsule).then_some(CAPSULE_CLOSE_COMMAND),
-            // Phones/tablets are handheld mockups: the toolbar's macOS-style
-            // dots own close/minimize. A simulated desktop keeps the standard
-            // Windows caption buttons in the shell chrome instead.
-            window_dots: is_phone(index) || is_tablet(index),
+            capsule_close_command: (handheld && capsule).then_some(CAPSULE_CLOSE_COMMAND),
+            // Phones/foldables/tablets are handheld mockups: the toolbar's
+            // macOS-style dots own close/minimize. A simulated desktop keeps
+            // the standard Windows caption buttons in the shell chrome instead.
+            window_dots: handheld || is_tablet(index),
         }),
     }
 }
 
 /// Browser chrome already owns dismissal and tab actions. Keep the simulated
 /// device selector/rotation controls, but do not overlay lxapp capsule actions.
-pub(crate) fn browser_frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
-    frame_spec(index, landscape, false)
+pub(crate) fn browser_frame_spec(
+    index: usize,
+    posture_index: usize,
+    landscape: bool,
+) -> WindowsDeviceFrame {
+    frame_spec(index, posture_index, landscape, false)
 }
 
 #[cfg(test)]
@@ -381,7 +547,8 @@ mod tests {
     #[test]
     fn frame_spec_uses_manifest_device_shell() {
         for (index, preset) in presets().iter().enumerate() {
-            let frame = frame_spec(index, false, true);
+            let posture = preset.default_posture_index();
+            let frame = frame_spec(index, posture, false, true);
             assert_eq!(
                 frame.bezel_width,
                 preset.bezel_width.max(0),
@@ -405,7 +572,7 @@ mod tests {
     fn rotating_keeps_the_device_shell_and_swaps_the_screen() {
         let index = default_device_index();
         let preset = &presets()[index];
-        let frame = frame_spec(index, true, true);
+        let frame = frame_spec(index, 0, true, true);
 
         assert_eq!(frame.screen_width, preset.height.round() as i32);
         assert_eq!(frame.screen_height, preset.width.round() as i32);
@@ -415,7 +582,7 @@ mod tests {
 
     #[test]
     fn browser_frame_has_no_lxapp_capsule() {
-        let frame = browser_frame_spec(default_device_index(), false);
+        let frame = browser_frame_spec(default_device_index(), 0, false);
         let toolbar = frame.toolbar.expect("runner frame has a toolbar");
         assert!(toolbar.capsule_items.is_empty());
         assert_eq!(toolbar.capsule_close_command, None);
@@ -423,7 +590,7 @@ mod tests {
 
     #[test]
     fn selector_groups_devices_by_form_factor() {
-        let entries = device_selector_items(default_device_index());
+        let entries = device_selector_items(default_device_index(), 0);
         let headings = entries
             .iter()
             .filter_map(|entry| match entry {
@@ -436,7 +603,39 @@ mod tests {
             .filter(|entry| matches!(entry, WindowsDeviceFrameSelectorEntry::Separator))
             .count();
 
-        assert_eq!(headings, ["iPhone", "iPad", "Desktop"]);
+        assert_eq!(headings, ["iPhone", "Foldable", "iPad", "Desktop"]);
         assert_eq!(separators, headings.len() - 1);
+    }
+
+    #[test]
+    fn foldable_postures_supply_dimensions_and_hinge() {
+        let mate_x5 = presets()
+            .iter()
+            .position(|p| p.id() == "huawei-mate-x5")
+            .expect("huawei-mate-x5 preset must exist");
+        let preset = &presets()[mate_x5];
+        let outer = preset.posture_index("outer").expect("outer posture");
+        let open = preset.posture_index("open").expect("open posture");
+        let tabletop = preset.posture_index("tabletop").expect("tabletop posture");
+
+        let outer_frame = frame_spec(mate_x5, outer, false, true);
+        assert_eq!(outer_frame.screen_width, 360);
+        assert_eq!(outer_frame.hinge, None);
+
+        let open_frame = frame_spec(mate_x5, open, false, true);
+        assert_eq!(open_frame.screen_width, 784);
+        assert!(
+            open_frame
+                .hinge
+                .is_some_and(|h| h.vertical && !h.half_opened)
+        );
+
+        let tabletop_frame = frame_spec(mate_x5, tabletop, false, true);
+        assert_eq!(tabletop_frame.screen_width, 868);
+        assert!(
+            tabletop_frame
+                .hinge
+                .is_some_and(|h| !h.vertical && h.half_opened)
+        );
     }
 }

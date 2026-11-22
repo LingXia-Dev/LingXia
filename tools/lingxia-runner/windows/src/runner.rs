@@ -1,8 +1,8 @@
 use crate::device::{
     ABOUT_COMMAND, APPEARANCE_COMMAND, CAPSULE_CLOSE_COMMAND, CLEAN_CACHE_COMMAND,
-    DEVICE_COMMAND_BASE, MORE_ACTION_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND,
-    ROTATE_COMMAND, browser_frame_spec, frame_spec, gpu_simulation, initial_device_index, is_phone,
-    is_tablet, presets,
+    MORE_ACTION_COMMAND_BASE, OPEN_DEVTOOLS_COMMAND, RESTART_LXAPP_COMMAND, ROTATE_COMMAND,
+    browser_frame_spec, frame_spec, gpu_simulation, initial_device_index, is_compact_screen,
+    is_handheld, is_tablet, presets, selector_target_for_command,
 };
 use lingxia_windows_sdk::WindowsShellTabBarPosition;
 use lxapp::{LxAppDelegate, LxAppUiEventType};
@@ -14,6 +14,7 @@ use std::sync::{Mutex, OnceLock};
 /// rotate button toggles `LANDSCAPE` for the active `CURRENT_DEVICE`; picking a
 /// device from the selector resets to portrait.
 static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
+static CURRENT_POSTURE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// Simulated appearance as `lingxia::dev::Appearance` discriminant
 /// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
@@ -117,20 +118,23 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
     let default_device = initial_device_index();
+    let default_posture = presets()[default_device].default_posture_index();
     // Same orientation rule as the toolbar selector: tablets land in
-    // landscape, phones/desktops in portrait.
+    // landscape, phones/foldables/desktops in portrait.
     let initial_landscape = is_tablet(default_device);
     CURRENT_DEVICE.store(default_device, Ordering::Release);
+    CURRENT_POSTURE.store(default_posture, Ordering::Release);
     LANDSCAPE.store(initial_landscape, Ordering::Release);
-    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_phone(default_device));
+    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_handheld(default_device));
     simulate_gpu_pages();
     let web_url = std::env::var(ENV_WEB_URL).ok();
     let initial_frame = if web_url.is_some() {
-        browser_frame_spec(default_device, initial_landscape)
+        browser_frame_spec(default_device, default_posture, initial_landscape)
     } else {
         // The launched lxapp: the host's home one when that id was passed.
         frame_spec(
             default_device,
+            default_posture,
             initial_landscape,
             HOST_HOME_APP_ID.get().is_none(),
         )
@@ -144,6 +148,8 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     apply_simulated_host_class(default_device);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
+        default_posture,
+        initial_landscape,
     ));
     lingxia_windows_sdk::set_initial_app_window_device_frame(initial_frame.clone());
     let mut app = lingxia_windows_sdk::WindowsApp::from_env()
@@ -300,24 +306,39 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
                 height: f64::from(preset.height),
                 pixel_ratio: preset.pixel_ratio,
                 current: index == current,
+                postures: preset
+                    .postures
+                    .iter()
+                    .map(|p| lingxia::dev::DevicePostureEntry {
+                        id: p.id.clone(),
+                        label: p.label.clone(),
+                        width: f64::from(p.width),
+                        height: f64::from(p.height),
+                    })
+                    .collect(),
             })
             .collect())
     }
 
     fn get(&self) -> Result<lingxia::dev::DeviceState, String> {
         let index = CURRENT_DEVICE.load(Ordering::Acquire);
+        let posture_index = CURRENT_POSTURE.load(Ordering::Acquire);
         let landscape = LANDSCAPE.load(Ordering::Acquire);
-        Ok(device_state(index, landscape))
+        Ok(device_state(index, posture_index, landscape))
     }
 
     fn set(
         &self,
         change: &lingxia::dev::DeviceChange,
     ) -> Result<lingxia::dev::DeviceState, String> {
-        let (id, landscape, appearance) =
-            (change.id.as_deref(), change.landscape, change.appearance);
-        // Validate the preset before any side effect so a typo cannot leave a
-        // half-applied environment.
+        let (id, posture, landscape, appearance) = (
+            change.id.as_deref(),
+            change.posture.as_deref(),
+            change.landscape,
+            change.appearance,
+        );
+        // Validate the preset and posture before any side effect so a typo
+        // cannot leave a half-applied environment.
         let index = match id {
             Some(id) => presets()
                 .iter()
@@ -325,9 +346,19 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
                 .ok_or_else(|| format!("unknown device id: {id}"))?,
             None => CURRENT_DEVICE.load(Ordering::Acquire),
         };
+        let posture_index = match posture {
+            Some(posture_id) => presets()[index].posture_index(posture_id).ok_or_else(|| {
+                format!(
+                    "device '{}' has no posture '{posture_id}'",
+                    presets()[index].id()
+                )
+            })?,
+            None if id.is_some() => presets()[index].default_posture_index(),
+            None => CURRENT_POSTURE.load(Ordering::Acquire),
+        };
         // Default orientation matches the toolbar selector: tablets landscape,
-        // phones/desktops portrait — but only when switching devices; a bare
-        // appearance change keeps the current rotation.
+        // phones/foldables/desktops portrait — but only when switching devices;
+        // a bare appearance or posture change keeps the current rotation.
         let landscape_value = match landscape {
             Some(landscape) => landscape,
             None if id.is_some() => is_tablet(index),
@@ -337,9 +368,9 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
             set_appearance(appearance)?;
         }
         // A bare appearance change must not rebuild frames or re-run browser
-        // emulation; only a device or orientation request touches the frame.
-        if id.is_some() || landscape.is_some() {
-            apply_device(index, landscape_value)?;
+        // emulation; only a device, posture, or orientation request touches the frame.
+        if id.is_some() || posture.is_some() || landscape.is_some() {
+            apply_device(index, posture_index, landscape_value)?;
         }
         // GPU pages only: WebView pages take their text size and contrast from Windows.
         if let Some(scale) = change.text_scale {
@@ -349,19 +380,15 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
             HIGH_CONTRAST.store(contrast == lingxia::dev::Contrast::High, Ordering::Release);
         }
         simulate_gpu_pages();
-        Ok(device_state(index, landscape_value))
+        Ok(device_state(index, posture_index, landscape_value))
     }
 }
 
-/// Builds the reported device state for `index`/`landscape`, swapping the
-/// screen edges in landscape so the size matches what the frame shows.
-fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
+/// Builds the reported device state for `index`/`posture_index`/`landscape`,
+/// swapping the screen edges in landscape so the size matches what the frame shows.
+fn device_state(index: usize, posture_index: usize, landscape: bool) -> lingxia::dev::DeviceState {
     let preset = &presets()[index];
-    let (width, height) = if landscape {
-        (preset.height, preset.width)
-    } else {
-        (preset.width, preset.height)
-    };
+    let (width, height) = preset.effective_dimensions(posture_index, landscape);
     lingxia::dev::DeviceState {
         id: preset.id().to_string(),
         name: preset.name.clone(),
@@ -377,6 +404,7 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         } else {
             lingxia::dev::Contrast::Standard
         },
+        posture: preset.active_posture(posture_index).map(|p| p.id.clone()),
     }
 }
 
@@ -384,6 +412,7 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
 fn simulate_gpu_pages() {
     lingxia::windows::set_gpu_simulation(gpu_simulation(
         CURRENT_DEVICE.load(Ordering::Acquire),
+        CURRENT_POSTURE.load(Ordering::Acquire),
         LANDSCAPE.load(Ordering::Acquire),
         f64::from_bits(TEXT_SCALE.load(Ordering::Acquire)) as f32,
         HIGH_CONTRAST.load(Ordering::Acquire),
@@ -455,11 +484,12 @@ fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
 /// to a toolbar repaint, never a bezel rebuild.
 fn refresh_device_frame_toolbar() {
     let index = CURRENT_DEVICE.load(Ordering::Acquire);
+    let posture_index = CURRENT_POSTURE.load(Ordering::Acquire);
     let landscape = LANDSCAPE.load(Ordering::Acquire);
     if let Some(host) = BROWSER_HOST.get() {
         if let Err(err) = host.set_primary_device_frame(
-            browser_frame_spec(index, landscape),
-            tabbar_position_for_device(index),
+            browser_frame_spec(index, posture_index, landscape),
+            tabbar_position_for_device(index, posture_index, landscape),
         ) {
             eprintln!("lingxia-runner: failed to refresh frame toolbar: {err}");
         }
@@ -467,7 +497,7 @@ fn refresh_device_frame_toolbar() {
     }
     for app in lxapp::list_lxapps() {
         if app.status == "opened"
-            && let Err(err) = apply_device_to_app(&app.appid, index, landscape)
+            && let Err(err) = apply_device_to_app(&app.appid, index, posture_index, landscape)
         {
             eprintln!(
                 "lingxia-runner: failed to refresh frame toolbar for {}: {err}",
@@ -477,7 +507,7 @@ fn refresh_device_frame_toolbar() {
     }
 }
 
-fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
+fn apply_device(index: usize, posture_index: usize, landscape: bool) -> Result<(), String> {
     // Device switching, rotation, and DevTools live on the simulator frame's
     // toolbar (built in `frame_spec`), so the runner attaches no native menu
     // bar — the phone screen stays chrome-free like the macOS runner.
@@ -489,15 +519,19 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     let previous_index = CURRENT_DEVICE.load(Ordering::Acquire);
     let profile_changed =
         presets()[previous_index].browser_profile() != presets()[index].browser_profile();
-    let tabbar_position = tabbar_position_for_device(index);
+    let tabbar_position = tabbar_position_for_device(index, posture_index, landscape);
     apply_simulated_host_class(index);
-    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_phone(index));
+    lingxia_windows_sdk::window_host::set_native_pages_span_screen(is_handheld(index));
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
     if let Some(host) = BROWSER_HOST.get() {
-        host.set_primary_device_frame(browser_frame_spec(index, landscape), tabbar_position)
-            .map_err(|error| error.to_string())?;
+        host.set_primary_device_frame(
+            browser_frame_spec(index, posture_index, landscape),
+            tabbar_position,
+        )
+        .map_err(|error| error.to_string())?;
         CURRENT_DEVICE.store(index, Ordering::Release);
+        CURRENT_POSTURE.store(posture_index, Ordering::Release);
         LANDSCAPE.store(landscape, Ordering::Release);
         return Ok(());
     }
@@ -509,7 +543,7 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
             continue;
         }
         lingxia_windows_sdk::set_windows_shell_tabbar_position(&app.appid, tabbar_position);
-        match apply_device_to_app(&app.appid, index, landscape) {
+        match apply_device_to_app(&app.appid, index, posture_index, landscape) {
             Ok(()) => applied = true,
             Err(err) => {
                 eprintln!(
@@ -530,15 +564,21 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
         profile_changed,
     )?;
     CURRENT_DEVICE.store(index, Ordering::Release);
+    CURRENT_POSTURE.store(posture_index, Ordering::Release);
     LANDSCAPE.store(landscape, Ordering::Release);
     Ok(())
 }
 
-fn apply_device_to_app(appid: &str, index: usize, landscape: bool) -> Result<(), String> {
+fn apply_device_to_app(
+    appid: &str,
+    index: usize,
+    posture_index: usize,
+    landscape: bool,
+) -> Result<(), String> {
     lingxia_windows_sdk::set_app_window_device_frame_and_tabbar_position(
         appid,
-        frame_spec(index, landscape, capsule_shown(appid)),
-        tabbar_position_for_device(index),
+        frame_spec(index, posture_index, landscape, capsule_shown(appid)),
+        tabbar_position_for_device(index, posture_index, landscape),
     )
 }
 
@@ -547,13 +587,13 @@ fn apply_device_to_app(appid: &str, index: usize, landscape: bool) -> Result<(),
 /// `desktop` to everything that asks — the tab bar's `showOn` list included.
 /// The macOS runner does the same through its own SPI.
 ///
-/// Tablets count as mobile, as they do there: an iPad build targets iOS, so a
-/// real one reports mobile. A tablet's wide, desktop-like layout follows from
-/// its width, which the frame spec decides separately. `set_pad` is the other
-/// half: it widens the compact tab strip to the declaration cap without
+/// Tablets and foldables count as mobile, as they do there: an iPad build targets
+/// iOS, so a real one reports mobile. A tablet's or unfolded fold's wide layout
+/// follows from its width, which the frame spec decides separately. `set_pad` is
+/// the other half: it widens the compact tab strip to the declaration cap without
 /// changing `showOn`.
 fn apply_simulated_host_class(index: usize) {
-    let mobile = is_phone(index) || is_tablet(index);
+    let mobile = is_handheld(index) || is_tablet(index);
     lxapp::host_class::set_host_class(if mobile {
         lxapp::host_class::HostClass::Mobile
     } else {
@@ -562,8 +602,12 @@ fn apply_simulated_host_class(index: usize) {
     lxapp::host_class::set_pad(is_tablet(index));
 }
 
-fn tabbar_position_for_device(index: usize) -> WindowsShellTabBarPosition {
-    if is_phone(index) {
+fn tabbar_position_for_device(
+    index: usize,
+    posture_index: usize,
+    landscape: bool,
+) -> WindowsShellTabBarPosition {
+    if is_handheld(index) && is_compact_screen(index, posture_index, landscape) {
         WindowsShellTabBarPosition::Bottom
     } else {
         WindowsShellTabBarPosition::Left
@@ -612,7 +656,7 @@ fn install_runner_commands(home_app_id: String) {
 
             if command == ABOUT_COMMAND {
                 let target = current_or_home_app_id(&home_app_id);
-                if is_phone(CURRENT_DEVICE.load(Ordering::Acquire))
+                if is_handheld(CURRENT_DEVICE.load(Ordering::Acquire))
                     && let Err(err) = show_lxapp_info_sheet(&target)
                 {
                     eprintln!("lingxia-runner: failed to show lxapp info: {err}");
@@ -655,18 +699,17 @@ fn install_runner_commands(home_app_id: String) {
                 return;
             }
 
-            let Some(index) = command
-                .checked_sub(DEVICE_COMMAND_BASE)
-                .map(|index| index as usize)
-                .filter(|index| *index < presets().len())
-            else {
+            let Some((index, posture_index)) = selector_target_for_command(command) else {
                 return;
             };
-            // Tablets default to landscape, phones/desktops to portrait.
-            lingxia::dev::request_device_set(
-                presets()[index].id().to_string(),
-                Some(is_tablet(index)),
-            );
+            let preset = &presets()[index];
+            // Tablets default to landscape, phones/foldables/desktops to portrait.
+            lingxia::dev::request_device_change(lingxia::dev::DeviceChange {
+                id: Some(preset.id().to_string()),
+                posture: preset.active_posture(posture_index).map(|p| p.id.clone()),
+                landscape: Some(is_tablet(index)),
+                ..Default::default()
+            });
         },
     ));
 }
@@ -693,17 +736,16 @@ fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
                 flip_appearance();
                 return;
             }
-            let Some(index) = command
-                .checked_sub(DEVICE_COMMAND_BASE)
-                .map(|index| index as usize)
-                .filter(|index| *index < presets().len())
-            else {
+            let Some((index, posture_index)) = selector_target_for_command(command) else {
                 return;
             };
-            lingxia::dev::request_device_set(
-                presets()[index].id().to_string(),
-                Some(is_tablet(index)),
-            );
+            let preset = &presets()[index];
+            lingxia::dev::request_device_change(lingxia::dev::DeviceChange {
+                id: Some(preset.id().to_string()),
+                posture: preset.active_posture(posture_index).map(|p| p.id.clone()),
+                landscape: Some(is_tablet(index)),
+                ..Default::default()
+            });
         },
     ));
 }
@@ -818,8 +860,9 @@ fn maintain_device_frame(home_app_id: String) {
                 lingxia_windows_sdk::app_window_has_device_frame(&home_app_id).unwrap_or(false);
             let restored = has_frame || {
                 let index = CURRENT_DEVICE.load(Ordering::Acquire);
+                let posture_index = CURRENT_POSTURE.load(Ordering::Acquire);
                 let landscape = LANDSCAPE.load(Ordering::Acquire);
-                apply_device_to_app(&home_app_id, index, landscape).is_ok()
+                apply_device_to_app(&home_app_id, index, posture_index, landscape).is_ok()
             };
             if restored {
                 consecutive_failures = 0;

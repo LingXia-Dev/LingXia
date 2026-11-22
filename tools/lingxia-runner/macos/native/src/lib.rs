@@ -55,14 +55,34 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
         &self,
         change: &lingxia::dev::DeviceChange,
     ) -> Result<lingxia::dev::DeviceState, String> {
-        let id = change.id.as_deref();
-        if let Some(id) = id {
-            let entries = self.list()?;
-            if !entries.iter().any(|entry| entry.id == id) {
-                return Err(format!("unknown device id: {id}"));
+        let entries = self.list()?;
+        let target = match change.id.as_deref() {
+            Some(id) => Some(
+                entries
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .ok_or_else(|| format!("unknown device id: {id}"))?,
+            ),
+            None => None,
+        };
+        // The Runner selects a posture through a `<device-id>:<posture-id>` selector.
+        let selector = match change.posture.as_deref() {
+            Some(posture) => {
+                let entry = match target {
+                    Some(entry) => entry,
+                    None => entries
+                        .iter()
+                        .find(|entry| entry.current)
+                        .ok_or("no current device")?,
+                };
+                if !entry.postures.iter().any(|p| p.id == posture) {
+                    return Err(format!("device '{}' has no posture '{posture}'", entry.id));
+                }
+                Some(format!("{}:{posture}", entry.id))
             }
-        }
-        let id = id
+            None => target.map(|entry| entry.id.clone()),
+        };
+        let id = selector
             .map(|id| std::ffi::CString::new(id).map_err(|_| "device id contains NUL".to_string()))
             .transpose()?;
         let landscape = change.landscape.map_or(-1, i32::from);

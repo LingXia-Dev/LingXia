@@ -3133,10 +3133,17 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             return normalize_rect(rect);
         }
     }
+    let content = normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)));
     if spans_screen(webtag_key) {
-        return client;
+        // Only the top and bottom bars draw over a spanning page; a side rail or sidebar
+        // takes its own width, so the page's left edge (and its env.hinge origin) starts past it.
+        return RECT {
+            left: content.left,
+            right: content.right,
+            ..client
+        };
     }
-    normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
+    content
 }
 
 /// Per-corner composition rounding for a surface — clip radii plus the
@@ -9302,6 +9309,13 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
         return 0.0;
     }
     let physical = (client.right - client.left).max(0) as f64;
+    // A simulated device is shown at its fit scale, so its width comes out in device points.
+    #[cfg(feature = "device-frame")]
+    if let Some(scale) =
+        crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)).filter(|scale| *scale > 0.0)
+    {
+        return physical / scale;
+    }
     let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
     let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
     physical / scale

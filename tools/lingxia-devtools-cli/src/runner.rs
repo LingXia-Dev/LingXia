@@ -34,6 +34,12 @@ pub enum RunnerCommand {
         /// Device preset id (see `lxdev runner presets`)
         #[arg(long)]
         id: Option<String>,
+        /// Adaptive preset instead of an id (phone, fold, trifold, pad, desktop)
+        #[arg(long, value_enum, conflicts_with = "id")]
+        preset: Option<DevicePresetArg>,
+        /// Folding-device posture (outer, open, dual, tabletop); with --preset or the current device
+        #[arg(long, value_enum)]
+        posture: Option<PostureArg>,
         /// Force landscape orientation
         #[arg(long, conflicts_with = "portrait")]
         landscape: bool,
@@ -58,6 +64,46 @@ pub enum RunnerCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+pub enum DevicePresetArg {
+    Phone,
+    Fold,
+    Trifold,
+    Pad,
+    Desktop,
+}
+
+impl DevicePresetArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            DevicePresetArg::Phone => "phone",
+            DevicePresetArg::Fold => "fold",
+            DevicePresetArg::Trifold => "trifold",
+            DevicePresetArg::Pad => "pad",
+            DevicePresetArg::Desktop => "desktop",
+        }
+    }
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+pub enum PostureArg {
+    Open,
+    Dual,
+    Outer,
+    Tabletop,
+}
+
+impl PostureArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            PostureArg::Open => "open",
+            PostureArg::Dual => "dual",
+            PostureArg::Outer => "outer",
+            PostureArg::Tabletop => "tabletop",
+        }
+    }
 }
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -120,6 +166,8 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
         }
         RunnerCommand::Set {
             id,
+            preset,
+            posture,
             landscape,
             portrait,
             appearance,
@@ -129,6 +177,8 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             json,
         } => {
             if id.is_none()
+                && preset.is_none()
+                && posture.is_none()
                 && !landscape
                 && !portrait
                 && appearance.is_none()
@@ -137,7 +187,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                 && contrast.is_none()
             {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, --appearance, --language, --text-scale or --contrast"
+                    "nothing to change: pass --id, --preset, --posture, --landscape/--portrait, --appearance, --language, --text-scale or --contrast"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -154,6 +204,8 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                 methods::runner::SET,
                 Some(json!({
                     "id": id,
+                    "preset": preset.map(DevicePresetArg::as_str),
+                    "posture": posture.map(PostureArg::as_str),
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
                     "language": language,

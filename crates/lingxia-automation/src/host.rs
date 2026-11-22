@@ -241,6 +241,12 @@ impl JSDeviceDriver {
 struct DeviceSetOpt {
     /// Device preset id (see `list()`); omit to keep the current device.
     id: Option<String>,
+    /// Adaptive preset instead of an id: "phone" | "fold" | "trifold" | "pad" | "desktop".
+    preset: Option<String>,
+    /// Posture of a folding device: "outer" | "open" | "dual" | "tabletop".
+    posture: Option<String>,
+    /// "portrait" | "landscape"; the same as `landscape`.
+    orientation: Option<String>,
     /// Force landscape (`true`) or portrait (`false`); omit to use the
     /// runner's normal device-selection behavior.
     landscape: Option<bool>,
@@ -280,9 +286,17 @@ impl JSDeviceDriver {
     #[js_method]
     async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
+        let (id, posture, landscape) = lxapp::device::adaptive_device_target(
+            options.id,
+            options.preset.as_deref(),
+            options.posture,
+            options.orientation.as_deref(),
+            options.landscape,
+        )
+        .map_err(auto_err)?;
         let change = lxapp::device::DeviceChange {
-            id: options.id,
-            landscape: options.landscape,
+            id,
+            landscape,
             appearance: options
                 .appearance
                 .as_deref()
@@ -296,10 +310,11 @@ impl JSDeviceDriver {
                 .map(str::parse)
                 .transpose()
                 .map_err(auto_err)?,
+            posture,
         };
         if change.is_empty() {
             return Err(auto_err(
-                "set requires at least one of id, landscape, appearance, textScale, contrast",
+                "set requires at least one of id, preset, posture, orientation, landscape, appearance, textScale, contrast",
             ));
         }
         let state = lxapp::device::device_set(change).await.map_err(auto_err)?;

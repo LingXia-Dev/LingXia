@@ -20,7 +20,9 @@ public class SimulatorToolbar: NSView {
     
     // MARK: - UI Components
 
+    private var centerStack: NSStackView!
     private var deviceSelector: RunnerDeviceSelectorControl!
+    private var postureControl: NSSegmentedControl!
     private var closeButton: NSButton!
     private var minimizeButton: NSButton!
     private var rotateButton: NSButton!
@@ -32,11 +34,13 @@ public class SimulatorToolbar: NSView {
     // MARK: - State
 
     public var onDeviceSelected: ((MobileDeviceSize) -> Void)?
+    public var onPostureSelected: ((RunnerDevicePosture) -> Void)?
     public var onRotateClicked: (() -> Void)?
 
     private var inspectorHelp: NSPopover?
 
     private var currentDevice: MobileDeviceSize = .defaultDevice
+    private var currentPostures: [RunnerDevicePosture] = []
 
     // MARK: - Initialization
 
@@ -70,10 +74,10 @@ public class SimulatorToolbar: NSView {
         layer?.shadowRadius = 4
 
         setupWindowButtons()
-        setupDeviceSelector()
         setupRotateButton()
         setupInspectButton()
         setupAppearanceButton()
+        setupDeviceSelector()
     }
     
     private func setupWindowButtons() {
@@ -114,6 +118,8 @@ public class SimulatorToolbar: NSView {
     
     private func setupDeviceSelector() {
         deviceSelector = RunnerDeviceSelectorControl()
+        deviceSelector.lineBreakMode = .byTruncatingTail
+        deviceSelector.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         deviceSelector.onDeviceSelected = { [weak self] device in
             guard let self else { return }
             self.currentDevice = device
@@ -121,12 +127,59 @@ public class SimulatorToolbar: NSView {
         }
         deviceSelector.setCurrentDevice(currentDevice)
 
-        addSubview(deviceSelector)
+        postureControl = NSSegmentedControl(
+            labels: [],
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(postureSegmentChanged(_:))
+        )
+        postureControl.controlSize = .mini
+        postureControl.segmentStyle = .rounded
+        postureControl.appearance = NSAppearance(named: .darkAqua)
+        postureControl.translatesAutoresizingMaskIntoConstraints = false
+        postureControl.setContentCompressionResistancePriority(.required, for: .horizontal)
+        postureControl.isHidden = true
+        postureControl.toolTip = "Fold posture"
+        postureControl.setAccessibilityLabel("Fold posture")
+
+        centerStack = NSStackView(views: [deviceSelector, postureControl])
+        centerStack.orientation = .horizontal
+        centerStack.alignment = .centerY
+        centerStack.spacing = 8
+        centerStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(centerStack)
+
+        let centerX = centerStack.centerXAnchor.constraint(equalTo: centerXAnchor)
+        centerX.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
-            deviceSelector.centerXAnchor.constraint(equalTo: centerXAnchor),
-            deviceSelector.centerYAnchor.constraint(equalTo: centerYAnchor)
+            centerX,
+            centerStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            centerStack.leadingAnchor.constraint(greaterThanOrEqualTo: minimizeButton.trailingAnchor, constant: 8),
+            centerStack.trailingAnchor.constraint(lessThanOrEqualTo: appearanceButton.leadingAnchor, constant: -8),
         ])
+
+        refreshPostureControl(for: currentDevice)
+    }
+
+    private func refreshPostureControl(for device: MobileDeviceSize) {
+        guard let postureControl else { return }
+        let postures = device.postures ?? []
+        currentPostures = postures
+        guard !postures.isEmpty else {
+            postureControl.segmentCount = 0
+            postureControl.isHidden = true
+            return
+        }
+
+        postureControl.segmentCount = postures.count
+        for (index, posture) in postures.enumerated() {
+            postureControl.setLabel(posture.label, forSegment: index)
+        }
+        let activeId = device.activePosture?.id ?? device.defaultPosture?.id
+        let selectedIndex = postures.firstIndex(where: { $0.id == activeId }) ?? 0
+        postureControl.selectedSegment = selectedIndex
+        postureControl.isHidden = false
     }
     
     private func setupInspectButton() {
@@ -260,6 +313,12 @@ public class SimulatorToolbar: NSView {
         inspectorHelp = popover
     }
 
+    @objc private func postureSegmentChanged(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard index >= 0, index < currentPostures.count else { return }
+        onPostureSelected?(currentPostures[index])
+    }
+
     @objc private func rotateClicked() {
         onRotateClicked?()
     }
@@ -279,6 +338,7 @@ public class SimulatorToolbar: NSView {
     public func setCurrentDevice(_ device: MobileDeviceSize) {
         currentDevice = device
         deviceSelector.setCurrentDevice(device)
+        refreshPostureControl(for: device)
         rotateButton?.isEnabled = device.supportsOrientation
         rotateButton?.contentTintColor = device.supportsOrientation
             ? NSColor.white.withAlphaComponent(0.7)

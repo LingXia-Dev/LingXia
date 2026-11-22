@@ -110,13 +110,13 @@ pub use device_frame::set_app_window_device_frame_and_tabbar_position;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 pub use device_frame::{
     WindowsBrowserEmulationProfile, WindowsDeviceFrame, WindowsDeviceFrameBadge,
-    WindowsDeviceFrameCutout, WindowsDeviceFrameInfoSheet, WindowsDeviceFrameSelectorEntry,
-    WindowsDeviceFrameSheetAction, WindowsDeviceFrameSheetIcon, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameTabBar, WindowsDeviceFrameToolbar, WindowsPreferredColorScheme,
-    app_window_has_device_frame, open_current_page_devtools, set_app_window_device_frame,
-    set_initial_app_window_device_frame, set_windows_browser_emulation_profile,
-    set_windows_preferred_color_scheme, set_windows_simulated_host_appearance,
-    show_device_frame_info_sheet,
+    WindowsDeviceFrameCutout, WindowsDeviceFrameHinge, WindowsDeviceFrameInfoSheet,
+    WindowsDeviceFrameSelectorEntry, WindowsDeviceFrameSheetAction, WindowsDeviceFrameSheetIcon,
+    WindowsDeviceFrameStatusBar, WindowsDeviceFrameTabBar, WindowsDeviceFrameToolbar,
+    WindowsPreferredColorScheme, app_window_has_device_frame, open_current_page_devtools,
+    set_app_window_device_frame, set_initial_app_window_device_frame,
+    set_windows_browser_emulation_profile, set_windows_preferred_color_scheme,
+    set_windows_simulated_host_appearance, show_device_frame_info_sheet,
 };
 #[cfg(feature = "runtime")]
 pub use lingxia::RuntimeInfo;

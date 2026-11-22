@@ -93,8 +93,9 @@ pub(crate) fn lxapp_dev_config() -> Option<&'static LxAppDevConfig> {
 // here to keep the `lingxia::dev::device_*` / `register_device_controller`
 // surface (and the runner's call site) unchanged.
 pub use lxapp::device::{
-    Appearance, Contrast, DeviceChange, DeviceController, DeviceEntry, DeviceState, device_get,
-    device_list, device_set, register_device_controller,
+    Appearance, Contrast, DeviceChange, DeviceController, DeviceEntry, DevicePostureEntry,
+    DeviceState, adaptive_device_target, device_get, device_list, device_set,
+    register_device_controller,
 };
 
 fn resolve_runnable_lxapp_path(path: &std::path::Path) -> PathBuf {

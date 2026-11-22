@@ -20,9 +20,15 @@ final class RunnerSurfaceShellHost {
     private lazy var toolbar: SimulatorToolbar = {
         let bar = SimulatorToolbar()
         bar.onDeviceSelected = { device in RunnerApp.shared.setDeviceSize(device) }
+        bar.onPostureSelected = { posture in RunnerApp.shared.setDevicePosture(posture) }
         bar.onRotateClicked = { RunnerApp.shared.toggleDeviceOrientation() }
         return bar
     }()
+    private static let topAccessoryGap: CGFloat = 12
+    private static var topAccessoryHeight: CGFloat {
+        SimulatorToolbar.Layout.height + topAccessoryGap
+    }
+    private var hingeOverlay: RunnerHingeOverlayView?
 
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
@@ -95,6 +101,8 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
         activate()
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
+        updateHingeOverlay(for: device)
+        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)
     }
 
@@ -112,6 +120,7 @@ final class RunnerSurfaceShellHost {
     func presentBrowserTab(id tabId: String) {
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
+        updateHingeOverlay(for: device)
         if !headless {
             RunnerFront.show(shell.window)
         }
@@ -122,6 +131,8 @@ final class RunnerSurfaceShellHost {
         toolbar.setCurrentDevice(newDevice)
         configureWindow(for: newDevice, center: false)
         presentSurface()
+        updateHingeOverlay(for: newDevice)
+        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
 
@@ -145,6 +156,8 @@ final class RunnerSurfaceShellHost {
     func hideForHostSwitch() {
         refreshCurrentPathFromRuntime()
         isHiddenForHostSwitch = true
+        // Folding back to the phone frame opens it where this window stood, not where the last phone did.
+        if let window = shell.window { RunnerWindowPlacement.remember(window) }
         shell.window?.orderOut(nil)
     }
 
@@ -186,7 +199,6 @@ final class RunnerSurfaceShellHost {
     private func installDeviceSelector() {
         // Float the toolbar above the content with a gap (like the iPhone simulator),
         // so the rounded toolbar never sits flush against the content.
-        let gap: CGFloat = 12
         let host = NSView()
         host.translatesAutoresizingMaskIntoConstraints = false
         host.wantsLayer = true
@@ -200,8 +212,34 @@ final class RunnerSurfaceShellHost {
             toolbar.heightAnchor.constraint(equalToConstant: SimulatorToolbar.Layout.height),
         ])
         RunnerSupport.SurfaceShell.setTopAccessory(
-            shell, view: host, height: SimulatorToolbar.Layout.height + gap)
+            shell, view: host, height: Self.topAccessoryHeight)
+        LingxiaRunnerSPI.GpuPage.setScreenTopInset(Self.topAccessoryHeight)
         toolbar.setCurrentDevice(device)
+        updateHingeOverlay(for: device)
+    }
+
+    private func updateHingeOverlay(for device: MobileDeviceSize) {
+        guard let contentView = shell.window?.contentView else { return }
+        let overlay: RunnerHingeOverlayView
+        if let existing = hingeOverlay {
+            overlay = existing
+        } else {
+            let created = RunnerHingeOverlayView()
+            created.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(created, positioned: .above, relativeTo: nil)
+            NSLayoutConstraint.activate([
+                created.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Self.topAccessoryHeight),
+                created.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                created.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                created.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            ])
+            hingeOverlay = created
+            overlay = created
+        }
+        overlay.setHinge(device.activeHinge)
+        if contentView.subviews.last !== overlay {
+            contentView.addSubview(overlay, positioned: .above, relativeTo: nil)
+        }
     }
 
     private func configureWindow(for device: MobileDeviceSize, center: Bool) {
@@ -217,7 +255,7 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: false)
         RunnerSupport.SurfaceShell.setDeviceCompactProjectionEnabled(
             shell,
-            enabled: !device.isResizableDesktop
+            enabled: !device.isResizableDesktop && !device.isRegularWidth
         )
         window.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,

@@ -330,6 +330,10 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             RunnerApp.shared.setDeviceSize(device)
         }
 
+        toolbar.onPostureSelected = { posture in
+            RunnerApp.shared.setDevicePosture(posture)
+        }
+
         toolbar.onRotateClicked = {
             RunnerApp.shared.toggleDeviceOrientation()
         }

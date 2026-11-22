@@ -306,6 +306,9 @@ pub struct WindowsShellWindowLayout {
     /// Pixels reserved at the top for a device frame's simulated status bar, so
     /// the navigation bar + content sit below it. 0 for un-framed windows.
     pub top_inset: i32,
+    /// The status bar's height even under an immersive page: a sidebar never sits beneath the
+    /// clock and indicators, though a page may bleed up behind them.
+    pub sidebar_top_inset: i32,
 }
 
 #[cfg(test)]
