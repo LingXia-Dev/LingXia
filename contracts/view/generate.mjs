@@ -370,8 +370,10 @@ export function rules(schema, common) {
   for (const [name, list] of Object.entries(prop)) {
     if (common && !props.has(name)) throw Error(`schema.json: rules.prop names unknown prop ${name}`);
     out.prop[name] = list.map(rule => {
-      known(`prop.${name}`, [...(rule.tags ?? []), ...(rule.on ?? [])]);
-      rolesKnown(`prop.${name}`, rule.role);
+      for (const part of [rule, ...(rule.any ?? [])]) {
+        known(`prop.${name}`, [...(part.tags ?? []), ...(part.on ?? [])]);
+        rolesKnown(`prop.${name}`, part.role);
+      }
       if (!rule.error) throw Error(`schema.json: rules.prop.${name} needs an error that names the fix`);
       return rule;
     });

@@ -59,7 +59,8 @@ export function admissionProblems(node, file) {
   const breaks = (rule, value) => (rule.tags && !rule.tags.includes(kind))
     || (rule.role && value !== null && !rule.role.includes(value))
     || rule.with?.some(name => !present(name))
-    || (rule.not && Object.keys(rule.not).some(name => { const list = values(name); return list && list.every(item => rule.not[name].includes(item)); }));
+    || (rule.not && Object.keys(rule.not).some(name => { const list = values(name); return list && list.every(item => rule.not[name].includes(item)); }))
+    || rule.any?.every(alternative => breaks(alternative, value));
   for (const value of (role && attributeValues(role)) ?? []) {
     if (typeof value !== 'string') continue;
     if (only && !only.roles.includes(value)) { problems.push([role, `UI_PROP: ${only.error}`]); continue; }

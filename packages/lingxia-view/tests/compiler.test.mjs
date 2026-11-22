@@ -134,6 +134,10 @@ test('a prop its role or element cannot carry fails the build with what it needs
   clean('const a = <view role="grid" aria-label="Days" onPage={f}/>;');
   clean('const a = <view popover={kind} onCloseRequest={g}/>;');
   clean('const a = <view {...rest} open/>;');
+  clean('const a = <view role="progressbar" aria-valuenow={40} aria-valuetext="40%"/>;');
+  clean('const a = <view onPointer={f} aria-valuenow={4} aria-valuemin={0} aria-valuemax={9}/>;');
+  clean('const a = <slider aria-label="Volume" value={v} onChange={f} aria-valuetext="loud"/>;');
+  clean('const a = <input aria-label="City" role="combobox" aria-valuetext="Paris" aria-activedescendant="o1"/>;');
   for (const [source, prop, message] of [
     ['<text headingLevel={2}>x</text>', 'headingLevel', 'headingLevel belongs on role="heading"'],
     ['<button role="tab" aria-level={2} onClick={f}>x</button>', 'aria-level', 'aria-level belongs on role="treeitem"'],
@@ -149,6 +153,9 @@ test('a prop its role or element cannot carry fails the build with what it needs
     ['<view anchor="b"/>', 'anchor', 'anchor belongs to a popover; add popover'],
     ['<view onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs to a popover; add popover'],
     ['<view popover="manual" onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs on a popover that is not manual'],
+    ['<image src="a.png" alt="" aria-activedescendant="x"/>', 'aria-activedescendant', 'aria-activedescendant belongs on an <input> or <textarea>'],
+    ['<view aria-valuenow={3}/>', 'aria-valuenow', 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"'],
+    ['<button role="combobox" aria-valuenow={3} onClick={f}>x</button>', 'aria-valuenow', 'role="combobox" takes aria-valuetext only'],
   ]) {
     const problems = audit(`const a = ${source};`, 'page.tsx');
     assert.equal(problems.length, 1, `${source}: ${problems.join('; ')}`);

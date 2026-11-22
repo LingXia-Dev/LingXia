@@ -916,12 +916,10 @@ function progressValues(role, props, wire, tag) {
   // An `onPointer` element reports the value its handler steps.
   // A combobox says what is chosen; it has no number.
   if (role === 'combobox') {
-    if (now !== undefined || min !== undefined || max !== undefined || typeof text !== 'string') throw Error('UI_PROP: role="combobox" takes aria-valuetext only, a string');
+    if (typeof text !== 'string') throw Error('UI_PROP: aria-valuetext must be a string');
     wire('ariaValueText', text);
     return;
   }
-  if (role !== 'progressbar' && role !== 'spinbutton' && typeof props.onPointer !== 'function')
-    throw Error('UI_PROP: aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element');
   const number = (value, name) => {
     if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
   };
@@ -938,7 +936,8 @@ function progressValues(role, props, wire, tag) {
 // A prop that is present but empty counts as absent, as an empty aria-label names nothing.
 const present = value => value !== undefined && value !== false && !(typeof value === 'string' && !value.trim());
 const breaks = (rule, kind, role, props) => (rule.tags && !rule.tags.includes(kind)) || (rule.role && !rule.role.includes(role))
-  || rule.with?.some(name => !present(props[name])) || (rule.not && Object.keys(rule.not).some(name => rule.not[name].includes(props[name])));
+  || rule.with?.some(name => !present(props[name])) || (rule.not && Object.keys(rule.not).some(name => rule.not[name].includes(props[name])))
+  || rule.any?.every(alternative => breaks(alternative, kind, role, props));
 function authoredRules(tag, props, parent) {
   if (typeof tag !== 'string' || !has(elements, tag)) return;
   const kind = tag === 'link' && !parent.inText ? 'link-box' : tag;
@@ -979,7 +978,6 @@ function semantics(tag, props, wire) {
     return value;
   };
   if (props['aria-activedescendant'] !== undefined) {
-    if (tag !== 'input' && tag !== 'textarea') throw Error('UI_PROP: aria-activedescendant belongs on an <input> or <textarea>');
     wire('ariaActiveDescendant', idOf('aria-activedescendant'));
   }
   if (props['aria-controls'] !== undefined || props['aria-autocomplete'] !== undefined) {

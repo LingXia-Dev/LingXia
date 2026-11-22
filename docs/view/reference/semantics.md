@@ -48,6 +48,11 @@ A literal combination that breaks one of these fails the build; a computed one f
 
 | Prop | Needs |
 | --- | --- |
+| `aria-activedescendant` | `aria-activedescendant belongs on an <input> or <textarea>` |
+| `aria-valuenow` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
+| `aria-valuemin` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
+| `aria-valuemax` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
+| `aria-valuetext` | `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `headingLevel` | `headingLevel belongs on role="heading"` |
 | `aria-level` | `aria-level belongs on role="treeitem"` |
 | `aria-controls` | `aria-controls and aria-autocomplete belong on role="combobox"` |
