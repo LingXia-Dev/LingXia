@@ -88,7 +88,8 @@ One action called from handlers, with its state: `run(payload?)` calls it; `pend
 latest call is in flight; `error` is its `{ code, message }` failure, or `null`. `run` never rejects,
 so it can be the handler itself: `<button onClick={save.run} disabled={save.pending}>`. It resolves
 `{ ok: true, value }` (`value` is `null` for an action that returns nothing) or `{ ok: false, error }`:
-`if ((await save.run(draft)).ok) draft.set('')`. A second use of one action in a component takes a
+`if ((await save.run(draft)).ok) draft.set('')`. Several actions that share one busy state compose their hooks:
+`const writes = [add, remove]; const busy = writes.some(w => w.pending);`. A second use of one action in a component takes a
 name: `useAction('retry', actions.save)`. An action is also a handler by itself (`onClick={actions.pick}`);
 then a failure goes to the page log.
 
