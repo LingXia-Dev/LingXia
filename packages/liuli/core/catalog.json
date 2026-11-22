@@ -10504,6 +10504,199 @@
       }
     },
     {
+      "name": "ListDetail",
+      "import": "@liulidesign/core/ListDetail",
+      "exports": [
+        "ListDetailList",
+        "ListDetailDetail",
+        "ListDetail"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-18",
+      "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
+      "description": "ListDetail pairs a selectable master list with its detail pane from one component tree. On regular screens (`>= 600 dp`) both panes appear side by side, snap to a vertical fold hinge when one crosses the page, and enter `<SizeClassScope value=\"compact\">` so nested cards stay single-column inside narrow panes. On compact screens (`< 600 dp`) choosing an item drills into the detail pane with a back header, keeps the list mounted so scroll position is preserved, and intercepts system Back (`useBackHandler`) without blocking Home.",
+      "keywords": [
+        "list detail",
+        "master detail",
+        "two pane",
+        "drill down",
+        "adaptive",
+        "foldable",
+        "hinge"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "Controlled selected item id (`null`/`undefined` means no selection)."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string | null) => void)",
+          "required": false,
+          "description": "Called when selection changes (including Back in compact mode)."
+        },
+        {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "Uncontrolled local selection cell (alternative to `value` + `onChange`)."
+        },
+        {
+          "name": "listLabel",
+          "type": "string",
+          "required": true,
+          "description": "Accessible label for the list pane (also used as the compact back button label)."
+        },
+        {
+          "name": "listWidth",
+          "type": "number",
+          "required": false,
+          "description": "Default list pane width in `regular` when no vertical hinge is present.",
+          "default": "360"
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "`<ListDetail.List>` and `<ListDetail.Detail>` children."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "ListDetailList": [
+          {
+            "name": "children",
+            "type": "Child",
+            "required": false,
+            "description": "The master list content, typically a `<scroll>` or `<List>` of rows."
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ],
+        "ListDetailDetail": [
+          {
+            "name": "title",
+            "type": "string",
+            "required": false,
+            "description": "Detail header title shown in compact drill-down mode and used as the detail group name."
+          },
+          {
+            "name": "placeholder",
+            "type": "Child",
+            "required": false,
+            "description": "Shown on regular screens when no item is selected."
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": false,
+            "description": "The selected item's detail content."
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
+      "parts": {
+        "root": "view",
+        "listPane": "view",
+        "detailPane": "view",
+        "compactHeader": "view",
+        "compactTitle": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "listLabel",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "compact detail title",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Both panes expose named `group` landmarks so screen readers can jump between list and detail.",
+          "System Back in compact drill-down clears the selection via `useBackHandler` and returns to the list at its prior scroll position."
+        ]
+      },
+      "examples": [
+        {
+          "name": "OrdersMasterDetail",
+          "title": "Master-detail order list",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Master-detail orders list: two-pane on regular (snapping to vertical hinge), drill-down with Back interception on compact. */\nexport function OrdersMasterDetail() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(o => o.id === selected.value) ?? null;\n\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders-list-detail\">\n        <ListDetail.List>\n          <scroll className=\"grow\">\n            <ItemList>\n              {orders.map(order => (\n                <Item\n                  key={order.id}\n                  label={order.title}\n                  description={order.summary}\n                  isSelected={selected.value === order.id}\n                  onClick={() => selected.set(order.id)}\n                  data-testid={`order-${order.id}`}\n                />\n              ))}\n            </ItemList>\n          </scroll>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Select an order\" description=\"Choose an item from the list to inspect its details.\" />}\n        >\n          {current && (\n            <view className=\"p-4 gap-2\" data-testid=\"order-detail-body\">\n              <text className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-muted\">{current.summary}</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ListDetailList",
+            "description": ""
+          },
+          {
+            "name": "className",
+            "on": "ListDetailDetail",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-body"
+        ],
+        "roles": [
+          "canvas",
+          "text"
+        ]
+      },
+      "related": [
+        "Split",
+        "SplitView",
+        "Item"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Master and detail",
+        "order": 17,
+        "page": {
+          "lead": "Use ListDetail when choosing an item in a list opens its record: side-by-side on wide and unfolded screens, drill-down with Back support on phones.",
+          "stage": "bare",
+          "hero": "OrdersMasterDetail"
+        }
+      }
+    },
+    {
       "name": "ListInput",
       "import": "@liulidesign/core/ListInput",
       "exports": [
@@ -15484,6 +15677,161 @@
       }
     },
     {
+      "name": "Split",
+      "import": "@liulidesign/core/Split",
+      "exports": [
+        "Split"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-18",
+      "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
+      "description": "Split pairs primary content (video, document, checkout items) with a companion `aside` pane (live chat, comments, inspector, summary). On flat regular screens (`>= 600 dp`) the companion docks at the inline end and snaps to any vertical fold hinge; when a foldable stands half-opened horizontally (`hinge.posture === \"half-opened\"`), primary automatically takes the upper leaf and `aside` takes the lower leaf. On compact screens (`< 600 dp`), `compact=\"stack\"` places `aside` underneath while `compact=\"sheet\"` turns it into a draggable `<BottomSheet>`.",
+      "keywords": [
+        "split",
+        "companion pane",
+        "supporting pane",
+        "aside",
+        "tabletop",
+        "foldable",
+        "bottom sheet",
+        "adaptive"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "Primary content (video, document, canvas)."
+        },
+        {
+          "name": "aside",
+          "type": "Child",
+          "required": true,
+          "description": "Companion aside content (live chat, comments, inspector)."
+        },
+        {
+          "name": "asideWidth",
+          "type": "number",
+          "required": false,
+          "description": "Aside pane width in `regular` flat mode when no vertical hinge is present.",
+          "default": "320"
+        },
+        {
+          "name": "asideTitle",
+          "type": "string",
+          "required": false,
+          "description": "Accessible title for the aside sheet when `compact=\"sheet\"`.",
+          "default": "'Details'"
+        },
+        {
+          "name": "compact",
+          "type": "SplitCompactMode",
+          "required": false,
+          "description": "How `aside` presents on `compact` screens: vertical stack or draggable BottomSheet.",
+          "default": "'stack'"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled open state for `compact=\"sheet\"`.",
+          "default": "false"
+        },
+        {
+          "name": "onOpenChange",
+          "type": "((isOpen: boolean) => void)",
+          "required": false,
+          "description": "Called when the compact sheet opens or closes."
+        },
+        {
+          "name": "bindOpen",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "Uncontrolled local open state cell for `compact=\"sheet\"`."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "primary": "view",
+        "aside": "view",
+        "hingeGap": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [],
+        "notes": [
+          "In `compact=\"sheet\"` mode, `asideTitle` names the modal `<BottomSheet>` dialog and Escape or Back closes it.",
+          "Physical hinge spacers are marked `aria-hidden` so assistive navigation skips them."
+        ]
+      },
+      "examples": [
+        {
+          "name": "LiveStreamSplit",
+          "title": "Live stream with companion chat",
+          "source": "import { Split } from '@liulidesign/core/Split';\n\n/** Primary + companion split: side-by-side on regular, upper/lower leaves on half-opened tabletop folds, stacked on compact. */\nexport function LiveStreamSplit() {\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-footnote font-semibold text-text\">Live Chat</text>\n            <text className=\"text-caption text-muted\">Messages stay beside video on wide screens and below in compact or tabletop.</text>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow items-center justify-center bg-surface-sunken p-4\">\n          <text className=\"text-footnote font-semibold text-text\">Video Canvas</text>\n        </view>\n      </Split>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "DocumentSheetSplit",
+          "title": "Document with comments sheet",
+          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Split } from '@liulidesign/core/Split';\n\n/** Document + comments sheet: docked aside on regular, draggable BottomSheet on compact. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bindOpen={commentsOpen}\n        asideTitle=\"Comments\"\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-caption text-muted\">Review notes and inline discussion.</text>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <view className=\"grow p-4 gap-3\">\n          <text className=\"text-body font-semibold text-text\">Architecture Spec</text>\n          {isCompact && (\n            <Button\n              label=\"Open Comments\"\n              variant=\"secondary\"\n              width=\"content\"\n              onClick={() => commentsOpen.set(true)}\n              data-testid=\"doc-open-comments\"\n            />\n          )}\n        </view>\n      </Split>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": [
+          "canvas",
+          "text"
+        ]
+      },
+      "related": [
+        "ListDetail",
+        "BottomSheet",
+        "SplitView"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Primary and aside",
+        "order": 18,
+        "page": {
+          "lead": "Use Split for a primary canvas and its companion pane: beside each other on wide screens, upper and lower on tabletop folds, stacked or in a BottomSheet on phones.",
+          "stage": "bare",
+          "hero": "LiveStreamSplit",
+          "variants": [
+            {
+              "name": "DocumentSheetSplit",
+              "title": "Secondary aside presented as a BottomSheet on compact"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "SplitView",
       "import": "@liulidesign/core/SplitView",
       "exports": [
@@ -19867,6 +20215,129 @@
               "title": "On a link in a sentence"
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "TopBar",
+      "import": "@liulidesign/core/TopBar",
+      "exports": [
+        "TopBar"
+      ],
+      "category": "navigation",
+      "status": "preview",
+      "since": "2026-11-18",
+      "summary": "Custom page header row with leading, centered and trailing slots",
+      "description": "TopBar renders a custom in-page header row (for example, a search bar or segmented filter) with centered title/content and optional leading and trailing slots. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding and spans whatever pane it sits in; page code never measures chrome rects.",
+      "keywords": [
+        "top bar",
+        "header",
+        "navigation bar",
+        "toolbar",
+        "app bar",
+        "adaptive"
+      ],
+      "props": [
+        {
+          "name": "leading",
+          "type": "Child",
+          "required": false,
+          "description": "Optional leading control (e.g. back button or filter)."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Centered title when no custom center children are provided."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": false,
+          "description": "Custom center content (e.g. a SearchField)."
+        },
+        {
+          "name": "trailing",
+          "type": "Child",
+          "required": false,
+          "description": "Optional trailing page actions."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "leading": "view",
+        "center": "view",
+        "title": "text",
+        "trailing": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "title text",
+            "pair": [
+              "text",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Leading and trailing slots are logical, so they swap sides in RTL."
+        ]
+      },
+      "examples": [
+        {
+          "name": "StandardTopBar",
+          "title": "Page header with trailing action",
+          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A page header with a title and a trailing action. */\nexport function StandardTopBar() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12\">\n          <TopBar\n            title=\"Orders\"\n            trailing={<IconButton icon=\"add\" label=\"New order\" onClick={() => say('Created new order')} />}\n            data-testid=\"orders-topbar\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-body"
+        ],
+        "roles": [
+          "surface",
+          "text"
+        ]
+      },
+      "related": [
+        "SearchField",
+        "IconButton"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Custom page header",
+        "order": 9,
+        "page": {
+          "lead": "Use TopBar when a page needs custom center header content, such as a search field.",
+          "hero": "StandardTopBar"
         }
       }
     },

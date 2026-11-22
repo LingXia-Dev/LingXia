@@ -557,12 +557,12 @@
       "height": 2556,
       "sha256": "2c5dfa46b1b661ce12a21c2d6351f7b757a522dba9107db7e5aeeb909e1ea226"
     },
-    "iphone-15-pro/list-detail-dark.png": {
+    "iphone-15-pro/list-and-detail-dark.png": {
       "width": 1179,
       "height": 2556,
       "sha256": "e8160f791634d1c6311f7494e11a1ac11dc72d85ee5dcd823395a5afec4c7c3f"
     },
-    "iphone-15-pro/list-detail-light.png": {
+    "iphone-15-pro/list-and-detail-light.png": {
       "width": 1179,
       "height": 2556,
       "sha256": "531b61eeb9615340ae3f66a1401513cdcfe068aff2aaa84e642ffe24ddaabc01"
@@ -1567,12 +1567,12 @@
       "height": 1412,
       "sha256": "eb5d976a52b588f5f12e16caaa6234f233ea737bd9163df321871a50cfbf9245"
     },
-    "desktop-1280/list-detail-dark.png": {
+    "desktop-1280/list-and-detail-dark.png": {
       "width": 2536,
       "height": 1412,
       "sha256": "590958b9e1a7931585fb483d456e72796c4db4a61b3787f7fbd47f8f5f22d261"
     },
-    "desktop-1280/list-detail-light.png": {
+    "desktop-1280/list-and-detail-light.png": {
       "width": 2536,
       "height": 1412,
       "sha256": "673844aff0377b2cb028966521ff479801408500cd592963e2da267661f1851e"

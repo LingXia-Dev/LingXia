@@ -4,7 +4,7 @@ import { GalleryPage } from '../../shared/Layout';
 
 export function render() {
   return (
-    <GalleryPage isFilled>
+    <GalleryPage>
       <Content />
     </GalleryPage>
   );

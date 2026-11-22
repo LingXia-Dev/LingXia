@@ -61,6 +61,7 @@
     { "name": "link", "path": "pages/link/index" },
     { "name": "page-control", "path": "pages/page-control/index" },
     { "name": "tree-list", "path": "pages/tree-list/index" },
+    { "name": "top-bar", "path": "pages/top-bar/index" },
     { "name": "badge", "path": "pages/badge/index" },
     { "name": "progress-bar", "path": "pages/progress-bar/index" },
     { "name": "banner", "path": "pages/banner/index" },
@@ -96,6 +97,8 @@
     { "name": "code", "path": "pages/code/index" },
     { "name": "timestamp", "path": "pages/timestamp/index" },
     { "name": "message-bubble", "path": "pages/message-bubble/index" },
+    { "name": "list-detail", "path": "pages/list-detail/index" },
+    { "name": "split", "path": "pages/split/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },
     { "name": "bar-chart", "path": "pages/bar-chart/index" },
@@ -111,7 +114,7 @@
     { "name": "sign-in", "path": "pages/sign-in/index" },
     { "name": "settings", "path": "pages/settings/index" },
     { "name": "uploads", "path": "pages/uploads/index" },
-    { "name": "list-detail", "path": "pages/list-detail/index" },
+    { "name": "list-and-detail", "path": "pages/list-and-detail/index" },
     { "name": "dashboard", "path": "pages/dashboard/index" },
     { "name": "conversation", "path": "pages/conversation/index" }
   ]

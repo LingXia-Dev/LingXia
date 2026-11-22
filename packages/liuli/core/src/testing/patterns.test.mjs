@@ -79,7 +79,7 @@ test('dashboard: every period draws its figures and both charts', async () => {
 
 test('list and detail: every request opens its record', async () => {
   for (const id of ['r-218', 'r-217', 'r-214', 'r-209', 'r-204']) {
-    const screen = await open('list-detail');
+    const screen = await open('list-and-detail');
     screen.press(screen.getByTestId(`request-${id}`));
     await settle();
     assert.ok(has(screen, 'details'), `${id} shows its details`);
@@ -88,7 +88,7 @@ test('list and detail: every request opens its record', async () => {
 
 // A long record never hides the decision: it sits under the record's scroll, not at its end.
 test('list and detail: the record\'s actions stay outside its scroll and act on it', async () => {
-  const screen = await open('list-detail');
+  const screen = await open('list-and-detail');
   screen.press(screen.getByTestId('request-r-218'));
   await settle();
   const actions = screen.getByTestId('requests-actions');

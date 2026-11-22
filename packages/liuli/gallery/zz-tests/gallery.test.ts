@@ -13,13 +13,13 @@ const categories: Record<string, string[]> = {
   'category-actions': ['button', 'toggle-button', 'icon-button', 'button-group'],
   'category-inputs': ['text-input', 'text-area', 'date-input', 'time-input', 'slider', 'field', 'search-field', 'number-input', 'calendar', 'date-range-input', 'form-layout', 'date-time-input', 'file-input', 'composer', 'list-input'],
   'category-selection': ['checkbox-input', 'radio-group', 'switch', 'select', 'segmented-control', 'combobox', 'checkbox-list', 'token', 'multi-select'],
-  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list'],
+  'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list', 'top-bar'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress', 'status-dot'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'info-tip', 'bottom-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour'],
-  'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble'],
+  'category-content': ['card', 'item', 'details', 'avatar', 'split-view', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble', 'list-detail', 'split'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
   'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail', 'lightbox', 'web-view'],
-  'category-patterns': ['sign-in', 'settings', 'uploads', 'list-detail', 'dashboard', 'conversation'],
+  'category-patterns': ['sign-in', 'settings', 'uploads', 'list-and-detail', 'dashboard', 'conversation'],
 };
 
 test('gallery: home opens every category, and each category every page', { start: { page: 'home' }, timeout: 360_000 }, async (t) => {

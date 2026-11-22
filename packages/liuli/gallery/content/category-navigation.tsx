@@ -7,13 +7,14 @@ import { Specimen as StepperSpecimen } from '../../core/src/Stepper/Stepper.exam
 import { Specimen as LinkSpecimen } from '../../core/src/Link/Link.examples';
 import { Specimen as PageControlSpecimen } from '../../core/src/PageControl/PageControl.examples';
 import { Specimen as TreeListSpecimen } from '../../core/src/TreeList/TreeList.examples';
+import { Specimen as TopBarSpecimen } from '../../core/src/TopBar/TopBar.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Ways to move between views, through a set, and through the steps of a task."}</text>
-      <Category title={"8 components"}>
+      <Category title={"9 components"}>
         <Tile
           name={"Tabs"}
           tagline={"A few peer views"}
@@ -77,6 +78,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-tree-list"}
         >
           <TreeListSpecimen />
+        </Tile>
+        <Tile
+          name={"TopBar"}
+          tagline={"Custom page header"}
+          isWide
+          onOpen={() => onOpen("top-bar")}
+          testId={"open-top-bar"}
+        >
+          <TopBarSpecimen />
         </Tile>
       </Category>
     </>

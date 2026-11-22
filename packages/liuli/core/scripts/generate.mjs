@@ -618,8 +618,11 @@ if (isCore) {
   const guides = existsSync(guidesPath) ? JSON.parse(readFileSync(guidesPath, 'utf8')) : { foundations: [], patterns: [] };
   const specimensPath = join(gallery, 'shared', 'Specimens.tsx');
   const specimens = existsSync(specimensPath) ? readFileSync(specimensPath, 'utf8') : '';
+  const componentPages = new Set(shown.map(entry => kebab(entry.name)));
   for (const guide of [...guides.foundations, ...guides.patterns]) {
     const where = `gallery/guides.json: ${guide.page}`;
+    // A component page would overwrite the guide's hand-written content file.
+    if (componentPages.has(guide.page)) problems.push(`${where}: page collides with a component page of the same name`);
     if (!guide.tagline || guide.tagline.length > taglineLimit || guide.tagline.endsWith('.')) problems.push(`${where}: tagline must be 1 to ${taglineLimit} characters without a trailing period`);
     if (!existsSync(join(gallery, 'pages', guide.page, 'index.json'))) problems.push(`${where}: pages/${guide.page}/index.json is missing`);
     const content = join(gallery, 'content', `${guide.page}.tsx`);

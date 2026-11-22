@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-77 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+80 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -86,6 +86,7 @@ that directory.
 | `@liulidesign/core/Link` | Link | A link among the words of a sentence |
 | `@liulidesign/core/PageControl` | PageControl | Dots for which page of a few is in view |
 | `@liulidesign/core/TreeList` | TreeList | Things inside things, opened in place |
+| `@liulidesign/core/TopBar` | TopBar | Custom page header row with leading, centered and trailing slots |
 | `@liulidesign/core/Badge` | Badge | A short status or category label in a tinted pill |
 | `@liulidesign/core/ProgressBar` | ProgressBar, Spinner | How much of a task is done, or a spinner while the amount is unknown |
 | `@liulidesign/core/Banner` | Banner | A message in the page about the page or the account, that stays until resolved |
@@ -121,6 +122,8 @@ that directory.
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
 | `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
+| `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact |
+| `@liulidesign/core/Split` | Split | Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |
