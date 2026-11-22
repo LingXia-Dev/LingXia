@@ -2,6 +2,7 @@ import { cx, type Child } from '@lingxia/view';
 import { Table, type TableColumn } from '../Table/Table';
 import { markdownRecipe as r } from './Markdown.recipe';
 import { parseMarkdown, plainText, type MarkdownBlock, type MarkdownRun } from './parse';
+import { dataOf } from '../internal/data';
 
 export type MarkdownSize = 'sm' | 'md';
 
@@ -26,7 +27,7 @@ const tick = [{ d: 'M3.5 8.5l3 3 6-7', fill: 'none', stroke: 'currentColor', str
 
 /** Markdown drawn as Liuli text: for a message, a note, a help page. It shows text; it does not edit it. */
 export function Markdown({
-  source, onLinkClick, topHeadingLevel = 2, taskLabels, isSelectable = true, size = 'md', className, 'data-testid': testId,
+  source, onLinkClick, topHeadingLevel = 2, taskLabels, isSelectable = true, size = 'md', className, 'data-testid': testId, ...attributes
 }: MarkdownProps) {
   const marks = (run: MarkdownRun) => cx(run.isStrong && r.run.strong, run.isEmphasis && r.run.emphasis, run.isStruck && r.run.struck, run.isCode && r.run.code);
   // Runs of one link are gathered into it: a link is one target with one name, and links do not nest.
@@ -95,7 +96,7 @@ export function Markdown({
   };
 
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.size[size], isSelectable && r.root.selectable, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.size[size], isSelectable && r.root.selectable, className)}>
       {parseMarkdown(source).map((each, index) => block(each, String(index)))}
     </view>
   );

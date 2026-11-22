@@ -2,6 +2,7 @@ import { childrenToArray, createContext, cx, useBox, useContext, type Box, type 
 import type { ProgressAmount, ProgressBarTone } from '../ProgressBar/ProgressBar';
 import { amount } from '../internal/amount';
 import { circularProgressRecipe as r } from './CircularProgress.recipe';
+import { dataOf } from '../internal/data';
 
 export type CircularProgressSize = 'sm' | 'md' | 'lg';
 
@@ -46,7 +47,7 @@ const holes = new WeakMap<Box, number>();
 const fits = (words: Box) => words.value === null || !holes.has(words) || Math.hypot(words.value.width, words.value.height) <= holes.get(words)!;
 
 /** How much of a task is done, as a ring: for a tile, a row or a button where a bar has no room. */
-export function CircularProgress({ label, value, max: ownMax = 100, progress, valueLabel, size = 'md', tone = 'accent', className, 'data-testid': testId }: CircularProgressProps) {
+export function CircularProgress({ label, value, max: ownMax = 100, progress, valueLabel, size = 'md', tone = 'accent', className, 'data-testid': testId, ...attributes }: CircularProgressProps) {
   const { now, max } = amount(value, ownMax, progress);
   const slot = useContext(SlotContext);
   const own = useBox('words');
@@ -65,7 +66,7 @@ export function CircularProgress({ label, value, max: ownMax = 100, progress, va
       aria-valuemin={now === undefined ? undefined : 0}
       aria-valuemax={now === undefined ? undefined : max}
       aria-valuetext={now === undefined ? undefined : valueLabel}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.root.base, className)}
     >
       <view className={cx(r.ring.base, r.ring.size[size])}>
@@ -92,12 +93,12 @@ export interface CircularProgressGroupProps {
 }
 
 /** Rings shown together: when one ring's words outgrow its middle, every ring in the group sets its words beside, so a row never mixes the two. */
-export function CircularProgressGroup({ children, className, 'data-testid': testId }: CircularProgressGroupProps) {
+export function CircularProgressGroup({ children, className, 'data-testid': testId, ...attributes }: CircularProgressGroupProps) {
   const rings = childrenToArray(children).filter(ring => typeof ring === 'object');
   const boxes = rings.map((_, i) => useBox(`words-${i}`));
   const beside = boxes.some(words => !fits(words));
   return (
-    <view data-testid={testId} className={className}>
+    <view data-testid={testId} {...dataOf(attributes)} className={className}>
       {rings.map((ring, i) => <SlotContext.Provider key={String(i)} value={{ words: boxes[i], beside }}>{ring}</SlotContext.Provider>)}
     </view>
   );

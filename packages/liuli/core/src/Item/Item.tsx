@@ -5,6 +5,7 @@ import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { itemRecipe as r } from './Item.recipe';
+import { dataOf } from '../internal/data';
 
 /** A row is pressable (`onClick`) or holds its own controls in `endContent`, never both. */
 export type ItemAction =
@@ -101,14 +102,14 @@ export function Item(props: ItemProps) {
   );
   const root = cx(r.root.base, r.root.density[density]);
   const actions = swipeActions?.slice(0, maxSwipeActions) ?? [];
-  const row = !pressable ? <view data-testid={testId} className={cx(root, actions.length === 0 && className)}>{content}</view> : (
+  const row = !pressable ? <view data-testid={testId} {...dataOf(props)} className={cx(root, actions.length === 0 && className)}>{content}</view> : (
     <button
       aria-label={label}
       aria-describedby={describedBy(help !== undefined && descriptionId)}
       aria-selected={props.isSelected}
       disabled={isDisabled}
       onClick={props.onClick}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(props)}
       className={cx(root, r.root.pressable, isSelected ? r.root.selected : r.root.idle, actions.length === 0 && className)}
     >
       {content}
@@ -166,12 +167,12 @@ export interface ItemListProps {
 }
 
 /** Rows in one bordered list, read as a list: each row reports its position. */
-export function ItemList({ children, label, title, description, density, isFlush = false, className, 'data-testid': testId }: ItemListProps) {
+export function ItemList({ children, label, title, description, density, isFlush = false, className, 'data-testid': testId, ...attributes }: ItemListProps) {
   const layer = useContext(LayerContext);
   const hasFrame = title !== undefined || description !== undefined;
   // A button keeps its own role, so each row sits in a listitem that carries the position.
   const list = (
-    <view role="list" aria-label={label ?? title} data-testid={testId} className={cx(r.list.base, !isFlush && cx(r.list.framed, r.list.layer[layer]), !hasFrame && className)}>
+    <view role="list" aria-label={label ?? title} data-testid={testId} {...dataOf(attributes)} className={cx(r.list.base, !isFlush && cx(r.list.framed, r.list.layer[layer]), !hasFrame && className)}>
       {childrenToArray(children).map((row, index) => <view key={String(index)} role="listitem" className={r.listitem.base}>{row}</view>)}
     </view>
   );

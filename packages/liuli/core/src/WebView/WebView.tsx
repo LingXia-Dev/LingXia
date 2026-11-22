@@ -13,6 +13,7 @@ import {
 import type { DialogDismissOn } from '../Dialog/Dialog';
 import { Glyph } from '../internal/Glyph';
 import { webViewRecipe as r } from './WebView.recipe';
+import { dataOf } from '../internal/data';
 
 export type WebViewExpansion =
   | {
@@ -84,7 +85,7 @@ export function WebView({
   onBlocked,
   onError,
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: WebViewProps) {
   const fallback = useWebView(useId());
   const session = web ?? fallback;
@@ -108,7 +109,7 @@ export function WebView({
         onMessage={onMessage}
         onBlocked={onBlocked}
         onError={onError}
-        data-testid={testId}
+        data-testid={testId} {...dataOf(attributes)}
         className={r.webview.base}
       />
       {expandable && !shown && (

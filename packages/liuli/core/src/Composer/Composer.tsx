@@ -2,6 +2,7 @@ import { cx, useBox, type Child, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { composerRecipe as r } from './Composer.recipe';
+import { dataOf } from '../internal/data';
 
 export type ComposerBinding =
   | {
@@ -83,7 +84,7 @@ export function Composer(props: ComposerProps) {
     enterKeyHint: 'send' as const,
     onSubmit: send,
     disabled: isDisabled,
-    'data-testid': testId,
+    'data-testid': testId, ...dataOf(props),
     className: r.editor.base,
   };
   return (

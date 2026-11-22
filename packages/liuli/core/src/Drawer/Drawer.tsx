@@ -5,6 +5,7 @@ import { Glyph } from '../internal/Glyph';
 import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { drawerRecipe as r } from './Drawer.recipe';
+import { dataOf } from '../internal/data';
 
 export type DrawerSide = 'end' | 'start';
 export type DrawerSize = 'sm' | 'md' | 'lg';
@@ -53,7 +54,7 @@ export function Drawer({
   size = 'md',
   dismissOn = 'any',
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: DrawerProps) {
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
     warnOnce(`Drawer "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
@@ -67,7 +68,7 @@ export function Drawer({
       closedby={closedBy[dismissOn]}
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.panel.base, r.panel.side[side], r.panel.size[size], className)}
     >
       <view className={r.header.base}>

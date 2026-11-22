@@ -1,6 +1,7 @@
 import { cx, useView } from '@lingxia/view';
 import { liuliText, monthName } from '../i18n/text';
 import { timestampRecipe as r } from './Timestamp.recipe';
+import { dataOf } from '../internal/data';
 
 /** A moment in the user's own time: `2026-11-14T09:42`. The app converts from its clock and zone. */
 export type LocalDateTime = string;
@@ -61,12 +62,12 @@ export function formatTimestamp(value: LocalDateTime, now: LocalDateTime, format
 }
 
 /** When something happened, in the words people use for it. Read in full: the date and the time. */
-export function Timestamp({ value, now, format = 'relative', className, 'data-testid': testId }: TimestampProps) {
+export function Timestamp({ value, now, format = 'relative', className, 'data-testid': testId, ...attributes }: TimestampProps) {
   const isTwelveHour = useView().env.hourCycle === 'h12';
   const shown = formatTimestamp(value, now, format, isTwelveHour);
   const full = formatTimestamp(value, now, 'date-time', isTwelveHour);
   return (
-    <text data-testid={testId} aria-label={shown === full ? undefined : full} className={cx(r.root.base, className)}>
+    <text data-testid={testId} {...dataOf(attributes)} aria-label={shown === full ? undefined : full} className={cx(r.root.base, className)}>
       {shown}
     </text>
   );

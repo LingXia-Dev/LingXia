@@ -4,6 +4,7 @@ import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
 import { toastRecipe as r } from './Toast.recipe';
+import { dataOf } from '../internal/data';
 
 export type ToastTone = BannerTone;
 
@@ -59,10 +60,10 @@ export type ToastProps = {
 };
 
 /** The toast as drawn. Pages show toasts through `ToastRegion` and `useToast()`; this is its face. */
-export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), className, 'data-testid': testId }: ToastProps) {
+export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), className, 'data-testid': testId, ...attributes }: ToastProps) {
   const glyph = toneGlyph[tone];
   return (
-    <view data-testid={testId} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
       {glyph && <Glyph name={glyph} className={cx(r.icon.base, r.icon.tone[tone])} />}
       <text className={r.message.base}>{message}</text>
       {action !== undefined && (

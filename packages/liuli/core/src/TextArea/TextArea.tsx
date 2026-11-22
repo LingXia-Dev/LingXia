@@ -3,6 +3,7 @@ import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import type { TextInputBinding } from '../TextInput/TextInput';
 import { textAreaRecipe as r } from './TextArea.recipe';
+import { dataOf } from '../internal/data';
 
 export type TextAreaProps = FieldOwnProps & TextInputBinding & {
   /** A hint shown while empty; never a substitute for `label`. */
@@ -72,7 +73,7 @@ export function TextArea(props: TextAreaProps) {
               aria-describedby={control['aria-describedby']}
               aria-invalid={control['aria-invalid']}
               aria-required={control['aria-required']}
-              data-testid={testId}
+              data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
               inputMode={inputMode}
               autoComplete={autoComplete}
@@ -95,7 +96,7 @@ export function TextArea(props: TextAreaProps) {
               aria-describedby={control['aria-describedby']}
               aria-invalid={control['aria-invalid']}
               aria-required={control['aria-required']}
-              data-testid={testId}
+              data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
               inputMode={inputMode}
               autoComplete={autoComplete}

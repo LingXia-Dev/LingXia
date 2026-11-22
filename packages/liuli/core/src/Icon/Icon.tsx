@@ -3,6 +3,7 @@ import type { IconDefinition, IconSet } from './definition';
 import { iconRecipe as r } from './Icon.recipe';
 import type { IconName } from './names';
 import { lucide } from './set';
+import { dataOf } from '../internal/data';
 
 export type { IconDefinition, IconSet } from './definition';
 export { iconNames, type IconName } from './names';
@@ -62,9 +63,9 @@ export function Icon(props: IconProps) {
   const icon = props.icon ?? named;
   const mirrored = icon.isMirrored && r.glyph.mirrored;
   if (label === undefined)
-    return <vector aria-hidden data-testid={testId} paths={iconPaths(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored, className)} />;
+    return <vector aria-hidden data-testid={testId} {...dataOf(props)} paths={iconPaths(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored, className)} />;
   return (
-    <view role="img" aria-label={label} data-testid={testId} className={cx(r.box.base, r.box.size[size], className)}>
+    <view role="img" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.box.base, r.box.size[size], className)}>
       <vector aria-hidden paths={iconPaths(icon)} viewBox={grid} className={cx(r.glyph.base, r.glyph.size[size], mirrored)} />
     </view>
   );

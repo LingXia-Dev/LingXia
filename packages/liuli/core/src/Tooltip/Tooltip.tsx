@@ -1,6 +1,7 @@
 import { cx, useId, useLocal, type Child } from '@lingxia/view';
 import { Trigger } from '../internal/trigger';
 import { tooltipRecipe as r } from './Tooltip.recipe';
+import { dataOf } from '../internal/data';
 
 export type TooltipPlacement = 'top' | 'bottom' | 'end' | 'start';
 
@@ -21,13 +22,13 @@ const areas = { top: 'top', bottom: 'bottom', end: 'inline-end', start: 'inline-
  * A short hint shown while a pointer rests on its trigger or keyboard focus is on it, and on a
  * long press on a phone; never on a tap. It goes away by itself and describes the trigger while shown.
  */
-export function Tooltip({ children, content, placement = 'top', 'data-testid': testId }: TooltipProps) {
+export function Tooltip({ children, content, placement = 'top', 'data-testid': testId, ...attributes }: TooltipProps) {
   const id = useId();
   const textId = `${id}-text`;
   const open = useLocal(false);
   return (
     <>
-      <Trigger wiring={{ interestFor: id, describedBy: open.value ? textId : undefined }} data-testid={testId}>{children}</Trigger>
+      <Trigger wiring={{ interestFor: id, describedBy: open.value ? textId : undefined }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
       <view
         id={id}
         popover="hint"

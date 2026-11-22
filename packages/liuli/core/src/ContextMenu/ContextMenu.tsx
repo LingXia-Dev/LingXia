@@ -1,6 +1,7 @@
 import { cx, useId, useLocal, useView, type Child } from '@lingxia/view';
 import { MenuSize } from '../DropdownMenu/DropdownMenu';
 import { contextMenuRecipe as r } from './ContextMenu.recipe';
+import { dataOf } from '../internal/data';
 
 export interface ContextMenuProps {
   /** Names the menu for assistive tech, and heads it when it docks: "Trip to the coast". */
@@ -20,7 +21,7 @@ export interface ContextMenuProps {
 type Ask = { x: number; y: number; pointer: 'touch' | 'mouse' | 'keyboard' };
 
 /** A menu for one thing, asked for on the thing itself: a long press, a secondary click, the Menu key. */
-export function ContextMenu({ label, children, menu, isDisabled = false, className, 'data-testid': testId }: ContextMenuProps) {
+export function ContextMenu({ label, children, menu, isDisabled = false, className, 'data-testid': testId, ...attributes }: ContextMenuProps) {
   const id = useId();
   const ask = useLocal<Ask | null>('ask', null);
   // The last ask outlives the menu: while it closes it keeps its form and its place.
@@ -38,7 +39,7 @@ export function ContextMenu({ label, children, menu, isDisabled = false, classNa
       };
   return (
     <>
-      <view onContextMenu={isDisabled ? undefined : event => { const next = { x: event.x, y: event.y, pointer: event.pointer }; shown.set(next); ask.set(next); }} data-testid={testId} className={cx(r.target.base, className)}>
+      <view onContextMenu={isDisabled ? undefined : event => { const next = { x: event.x, y: event.y, pointer: event.pointer }; shown.set(next); ask.set(next); }} data-testid={testId} {...dataOf(attributes)} className={cx(r.target.base, className)}>
         {children}
       </view>
       <MenuSize.Provider value={isDocked ? 'lg' : 'md'}>

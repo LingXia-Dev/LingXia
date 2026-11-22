@@ -2,6 +2,7 @@ import { cx, useBox, useView } from '@lingxia/view';
 import { amount } from '../internal/amount';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { progressBarRecipe as r } from './ProgressBar.recipe';
+import { dataOf } from '../internal/data';
 
 export type ProgressBarSize = 'sm' | 'md';
 /** What the progress stands for: `success` for a goal met, `warning` for a limit near, `danger` for a limit passed. */
@@ -77,7 +78,7 @@ export function ProgressBar({
   size = 'md',
   tone = 'accent',
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: ProgressBarProps) {
   const { now, max } = amount(value, ownMax, progress);
   const track = useBox('track');
@@ -101,7 +102,7 @@ export function ProgressBar({
         aria-valuemin={now === undefined ? undefined : 0}
         aria-valuemax={now === undefined ? undefined : max}
         aria-valuetext={now === undefined ? undefined : valueLabel}
-        data-testid={testId}
+        data-testid={testId} {...dataOf(attributes)}
         box={track}
         className={cx(r.track.base, r.track.size[size])}
       >
@@ -137,9 +138,9 @@ export interface SpinnerProps {
 }
 
 /** A spinning arc for a wait whose length is unknown. */
-export function Spinner({ label, isLabelHidden = false, size = 'md', tone = 'accent', className, 'data-testid': testId }: SpinnerProps) {
+export function Spinner({ label, isLabelHidden = false, size = 'md', tone = 'accent', className, 'data-testid': testId, ...attributes }: SpinnerProps) {
   return (
-    <view role="progressbar" aria-label={label} data-testid={testId} className={cx(!isLabelHidden && r.loading.base, className)}>
+    <view role="progressbar" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(!isLabelHidden && r.loading.base, className)}>
       <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.tone[tone], r.spinner.size[size])} />
       {/* Read once, as the name; the drawn words are for the eye. */}
       {!isLabelHidden && <text aria-hidden className={cx(r.loading.label, r.loading.tone[tone])}>{label}</text>}

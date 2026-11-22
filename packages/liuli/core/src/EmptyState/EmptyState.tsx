@@ -1,5 +1,6 @@
 import { cx, type Child } from '@lingxia/view';
 import { emptyStateRecipe as r } from './EmptyState.recipe';
+import { dataOf } from '../internal/data';
 
 export type EmptyStateSize = 'sm' | 'md';
 
@@ -21,9 +22,9 @@ export interface EmptyStateProps {
 }
 
 /** What a page, list or panel shows when it has nothing in it yet, and the way forward. */
-export function EmptyState({ title, description, media, actions, headingLevel = 2, size = 'md', className, 'data-testid': testId }: EmptyStateProps) {
+export function EmptyState({ title, description, media, actions, headingLevel = 2, size = 'md', className, 'data-testid': testId, ...attributes }: EmptyStateProps) {
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.size[size], className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.size[size], className)}>
       {media !== undefined && <view aria-hidden className={cx(r.media.base, r.media.size[size])}>{media}</view>}
       <view className={r.text.base}>
         <text role="heading" headingLevel={headingLevel} className={cx(r.title.base, r.title.size[size])}>{title}</text>

@@ -2,6 +2,7 @@ import { cx, useLocal, type Child } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { messageBubbleRecipe as r } from './MessageBubble.recipe';
+import { dataOf } from '../internal/data';
 
 /** `end` is the user\'s own message; `start` is someone else\'s. */
 export type MessageSide = 'start' | 'end';
@@ -37,12 +38,12 @@ export interface MessageBubbleProps {
 /** One message of a conversation. */
 export function MessageBubble({
   text, children, side = 'start', author, avatar, hasAvatarSpace = false, meta, status, action,
-  isJoinedBefore = false, isJoinedAfter = false, className, 'data-testid': testId,
+  isJoinedBefore = false, isJoinedAfter = false, className, 'data-testid': testId, ...attributes
 }: MessageBubbleProps) {
   const isFailed = status === 'failed';
   const hasAvatar = avatar !== undefined || hasAvatarSpace;
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.side[side], className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.side[side], className)}>
       <view className={cx(r.line.base, r.line.side[side])}>
         {hasAvatar && <view className={r.avatar.base}>{avatar}</view>}
         <view className={cx(r.column.base, r.column.side[side])}>
@@ -83,7 +84,7 @@ export interface MessageReasoningProps {
 }
 
 /** How an assistant got to its answer, folded to one quiet line over the message it belongs to. */
-export function MessageReasoning({ label, text, isStreaming = false, hasAvatarSpace = false, isDefaultOpen = false, isOpen, onOpenChange, className, 'data-testid': testId }: MessageReasoningProps) {
+export function MessageReasoning({ label, text, isStreaming = false, hasAvatarSpace = false, isDefaultOpen = false, isOpen, onOpenChange, className, 'data-testid': testId, ...attributes }: MessageReasoningProps) {
   const local = useLocal(isDefaultOpen);
   const open = isOpen ?? local.value;
   const toggle = () => {
@@ -92,7 +93,7 @@ export function MessageReasoning({ label, text, isStreaming = false, hasAvatarSp
   };
   return (
     <view className={cx(r.reasoning.base, hasAvatarSpace && r.reasoning.afterAvatar, className)}>
-      <button aria-label={label} aria-expanded={open} aria-busy={isStreaming || undefined} onClick={toggle} data-testid={testId} className={r.reasoningToggle.base}>
+      <button aria-label={label} aria-expanded={open} aria-busy={isStreaming || undefined} onClick={toggle} data-testid={testId} {...dataOf(attributes)} className={r.reasoningToggle.base}>
         {isStreaming && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.reasoningSpinner.base} />}
         <text className={r.reasoningLabel.base}>{label}</text>
         <Glyph name="chevron-down" className={cx(r.reasoningChevron.base, open && r.reasoningChevron.open)} />

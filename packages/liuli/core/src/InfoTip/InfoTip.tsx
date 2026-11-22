@@ -1,6 +1,7 @@
 import { cx, useId, useLocal } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { infoTipRecipe as r } from './InfoTip.recipe';
+import { dataOf } from '../internal/data';
 
 export type InfoTipPlacement = 'top' | 'bottom' | 'end' | 'start';
 export type InfoTipSize = 'sm' | 'md';
@@ -28,7 +29,7 @@ const areas = { top: 'top', bottom: 'bottom', end: 'inline-end', start: 'inline-
  * An info button that opens a short note about what is next to it. It opens on a tap, Enter or
  * Space, not on focus or hover; Escape or a tap elsewhere closes it.
  */
-export function InfoTip({ label, content, placement = 'top', size = 'md', isOpen, onOpenChange, className, 'data-testid': testId }: InfoTipProps) {
+export function InfoTip({ label, content, placement = 'top', size = 'md', isOpen, onOpenChange, className, 'data-testid': testId, ...attributes }: InfoTipProps) {
   const id = useId();
   const textId = `${id}-text`;
   const local = useLocal(false);
@@ -45,7 +46,7 @@ export function InfoTip({ label, content, placement = 'top', size = 'md', isOpen
         aria-describedby={open ? textId : undefined}
         aria-expanded={open}
         data-state={open ? 'open' : 'closed'}
-        data-testid={testId}
+        data-testid={testId} {...dataOf(attributes)}
         className={cx(r.trigger.base, r.trigger.size[size], className)}
       >
         <Glyph name="info" className={r.icon.size[size]} />

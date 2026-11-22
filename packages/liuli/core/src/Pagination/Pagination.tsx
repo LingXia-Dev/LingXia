@@ -4,6 +4,7 @@ import { IconButton } from '../IconButton/IconButton';
 import { Select } from '../Select/Select';
 import { Glyph } from '../internal/Glyph';
 import { paginationRecipe as r } from './Pagination.recipe';
+import { dataOf } from '../internal/data';
 
 export interface PaginationProps {
   /** Names the control for assistive tech: "Pages", "Results pages". */
@@ -57,7 +58,7 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 /** Moves through a long set a page at a time. */
 export function Pagination({
   label, value: page, pageCount: counted, totalItems, hasMore = false, onChange, pageLabel = (page: number) => liuliText('@liuli.page', { page }), previousLabel = liuliText('@liuli.previousPage'), nextLabel = liuliText('@liuli.nextPage'), siblings = 1, variant = 'auto', positionLabel,
-  pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId,
+  pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId, ...attributes
 }: PaginationProps) {
   const pageCount = counted ?? (totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))));
   const { env } = useView();
@@ -110,7 +111,7 @@ export function Pagination({
     </>
   );
   if (!pageSizes?.length) {
-    return <view box={box} role="group" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>{controls}</view>;
+    return <view box={box} role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>{controls}</view>;
   }
   // A new size keeps the first item of this page in view.
   const resize = (next: string | null) => {
@@ -120,7 +121,7 @@ export function Pagination({
     onChange(Math.floor(((current - 1) * pageSize) / size) + 1);
   };
   return (
-    <view role="group" aria-label={label} data-testid={testId} className={cx(r.sized.base, className)}>
+    <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.sized.base, className)}>
       <Select
         label={pageSizeLabel ?? ''}
         isLabelHidden

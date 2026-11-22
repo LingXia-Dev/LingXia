@@ -3,6 +3,7 @@ import { DropdownMenu, DropdownMenuItem } from '../DropdownMenu/DropdownMenu';
 import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
 import { breadcrumbRecipe as r } from './Breadcrumb.recipe';
+import { dataOf } from '../internal/data';
 
 export interface BreadcrumbItem {
   /** Identifies the level: its test id is `<id>-<key>`. */
@@ -28,7 +29,7 @@ export interface BreadcrumbProps {
 
 
 /** Where a page sits: the levels above it, each a way back up. */
-export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, 'data-testid': testId }: BreadcrumbProps) {
+export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, 'data-testid': testId, ...attributes }: BreadcrumbProps) {
   // Folded, the first level and the last two stay; the rest go into the menu, in order.
   const isFolded = moreLabel !== undefined && items.length > Math.max(3, maxItems);
   const folded = isFolded ? items.slice(1, -2) : [];
@@ -42,7 +43,7 @@ export function Breadcrumb({ label, items, maxItems = 4, moreLabel, className, '
     ));
   const separator = <Glyph name="chevron-end" className={r.separator.base} />;
   return (
-    <view role="list" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+    <view role="list" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       {shown.map((item, index) => (
         <view key={item.key} role="listitem" className={r.item.base}>
           {index > 0 && separator}

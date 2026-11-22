@@ -3,6 +3,7 @@ import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { PageControl } from '../PageControl/PageControl';
 import { lightboxRecipe as r } from './Lightbox.recipe';
+import { dataOf } from '../internal/data';
 
 export interface LightboxImage {
   src: string;
@@ -30,7 +31,7 @@ export interface LightboxProps {
 }
 
 /** Pictures one at a time over the whole screen, shown whole. */
-export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel = liuliText('@liuli.close'), pageLabel = (page: number, count: number) => liuliText('@liuli.pictureOf', { page: page + 1, count }), 'data-testid': testId }: LightboxProps) {
+export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel = liuliText('@liuli.close'), pageLabel = (page: number, count: number) => liuliText('@liuli.pictureOf', { page: page + 1, count }), 'data-testid': testId, ...attributes }: LightboxProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;
   const at = Math.min(Math.max(0, Math.round(page.value)), Math.max(0, images.length - 1));
@@ -41,7 +42,7 @@ export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel
       onClose={close}
       closedby="closerequest"
       aria-label={label}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={r.panel.base}
     >
       <view className={r.bar.base}>

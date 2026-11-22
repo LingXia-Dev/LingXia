@@ -4,6 +4,7 @@ import { Button } from '../Button/Button';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { IconButton } from '../IconButton/IconButton';
 import { listInputRecipe as r } from './ListInput.recipe';
+import { dataOf } from '../internal/data';
 
 export type ListInputProps = FieldOwnProps & {
   /** One stable key per row, in order: an id, never the row's place. The app owns the rows. */
@@ -37,7 +38,7 @@ export function ListInput(props: ListInputProps) {
       {control => (
         <view className={r.root.base}>
           {rowKeys.length > 0 && (
-            <view role="list" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} className={r.list.base}>
+            <view role="list" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} {...dataOf(field)} className={r.list.base}>
               {rowKeys.map((key, index) => (
                 <view key={key} role="listitem" className={r.row.base}>
                   <view className={r.controls.base}>{renderRow(index)}</view>

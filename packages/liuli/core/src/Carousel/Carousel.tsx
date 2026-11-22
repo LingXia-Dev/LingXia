@@ -3,6 +3,7 @@ import { IconButton } from '../IconButton/IconButton';
 import { liuliText } from '../i18n/text';
 import { PageControl } from '../PageControl/PageControl';
 import { carouselRecipe as r } from './Carousel.recipe';
+import { dataOf } from '../internal/data';
 
 export type CarouselDots = 'below' | 'over' | 'none';
 
@@ -37,7 +38,7 @@ const railGap = 12;
 
 /** A few pages to swipe through, one at a time, with dots that follow; or a rail of cards. */
 export function Carousel({
-  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId,
+  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId, ...attributes
 }: CarouselProps) {
   const local = useLocal('page', 0);
   const page = bind ?? local;
@@ -72,7 +73,7 @@ export function Carousel({
     );
   };
   return (
-    <view data-testid={testId} className={cx(r.root.base, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       <view className={r.frame.base}>
         <scroll box={box} bind={page} className={r.scroll.base}>
           <view role="list" aria-label={label} className={cx(r.track.base, isRail && r.track.rail)}>

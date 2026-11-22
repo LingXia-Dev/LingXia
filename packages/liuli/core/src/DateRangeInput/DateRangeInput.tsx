@@ -7,6 +7,7 @@ import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dateRangeInputRecipe as r } from './DateRangeInput.recipe';
+import { dataOf } from '../internal/data';
 
 export type DateRangeInputProps = FieldOwnProps & {
   /** The chosen span; both ends `null` shows the placeholder. */
@@ -91,7 +92,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
             aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
             aria-expanded={isSheet ? open.value : undefined}
             disabled={control.disabled}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(props)}
             className={cx(c.trigger.base, c.trigger.size[size], c.trigger.pressable, status && c.trigger.status[status.type])}
           >
             <text id={valueId} className={cx(isEmpty ? c.value.placeholder : c.value.base, c.value.size[size], r.value.base, isDisabled && c.value.disabled)}>{shown}</text>

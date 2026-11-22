@@ -1,6 +1,7 @@
 import { cx, reveal, useId, useLocal } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { navListRecipe as r } from './NavList.recipe';
+import { dataOf } from '../internal/data';
 
 export interface NavListItem {
   /** What `value` and `onChange` carry: a page, a mailbox, a project. */
@@ -42,14 +43,14 @@ export interface NavListProps {
  * End go to the ends; a section heading opens and closes its rows, and the current row sits on an
  * accent wash.
  */
-export function NavList({ label, sections, value, onChange, defaultOpenSections, className, 'data-testid': testId }: NavListProps) {
+export function NavList({ label, sections, value, onChange, defaultOpenSections, className, 'data-testid': testId, ...attributes }: NavListProps) {
   const closed = useLocal<readonly string[]>('closed', defaultOpenSections === undefined ? [] : sections.filter(section => !defaultOpenSections.includes(section.id)).map(section => section.id));
   const baseId = useId();
   const rowId = (row: string) => `${baseId}-${row}`;
   const isShown = value !== null && sections.some(section => (section.title === undefined || !closed.value.includes(section.id)) && section.items.some(item => item.value === value));
   const toggle = (id: string) => closed.set(closed.value.includes(id) ? closed.value.filter(each => each !== id) : [...closed.value, id]);
   return (
-    <view role="tree" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+    <view role="tree" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       {sections.flatMap(section => {
         const isOpen = section.title === undefined || !closed.value.includes(section.id);
         const level = section.title === undefined ? 1 : 2;

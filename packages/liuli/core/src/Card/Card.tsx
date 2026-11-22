@@ -1,5 +1,6 @@
 import { createContext, cx, useContext, type Child, type Local } from '@lingxia/view';
 import { cardRecipe as r } from './Card.recipe';
+import { dataOf } from '../internal/data';
 
 export type CardVariant = 'outlined' | 'raised' | 'floating' | 'sunken';
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
@@ -15,9 +16,9 @@ export interface CardProps {
 }
 
 /** A surface that groups related content. */
-export function Card({ children, variant = 'outlined', padding = 'md', className, 'data-testid': testId }: CardProps) {
+export function Card({ children, variant = 'outlined', padding = 'md', className, 'data-testid': testId, ...attributes }: CardProps) {
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.variant[variant], r.root.padding[padding], className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.variant[variant], r.root.padding[padding], className)}>
       {children}
     </view>
   );
@@ -63,7 +64,7 @@ export function ClickableCard({
   variant = 'outlined',
   padding = 'md',
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: ClickableCardProps) {
   const group = useContext(Group);
   const asRadio = group !== null && value !== undefined;
@@ -79,7 +80,7 @@ export function ClickableCard({
         if (asRadio) group.choose(value);
         onClick?.();
       }}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, className)}
     >
       {children}
@@ -128,7 +129,7 @@ export function ClickableCardGroup(props: ClickableCardGroupProps) {
   };
   return (
     <Group.Provider value={{ chosen, isDisabled, choose }}>
-      <view role="radiogroup" aria-label={label} data-testid={testId} className={cx(r.group.base, className)}>
+      <view role="radiogroup" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.group.base, className)}>
         {children}
       </view>
     </Group.Provider>

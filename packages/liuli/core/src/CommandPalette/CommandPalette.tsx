@@ -4,6 +4,7 @@ import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { commandPaletteRecipe as r } from './CommandPalette.recipe';
+import { dataOf } from '../internal/data';
 
 export interface CommandItem {
   /** What `onSelect` carries, and `<testid>-<id>` on its row. Unique in the palette. */
@@ -69,7 +70,7 @@ function filtered(groups: readonly CommandGroup[], typed: string): readonly Comm
 }
 
 /** Type to find a command or a place, and run it from the keyboard. */
-export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel = liuliText('@liuli.noMatches'), 'data-testid': testId }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel = liuliText('@liuli.noMatches'), 'data-testid': testId, ...attributes }: CommandPaletteProps) {
   const listId = useId();
   const query = useLocal('query', '');
   const active = useLocal('active', 0);
@@ -102,7 +103,7 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
       onClose={close}
       closedby="any"
       aria-label={label}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       // On a wide screen it sits an eighth of the way down; on a phone it is docked to the top edge.
       style={isCompact ? undefined : { marginTop: Math.round(env.viewport.height * 0.12) }}
       className={cx(r.panel.base, isCompact ? r.panel.compact : r.panel.regular)}

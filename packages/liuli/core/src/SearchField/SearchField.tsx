@@ -5,6 +5,7 @@ import type { FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { searchFieldRecipe as r } from './SearchField.recipe';
+import { dataOf } from '../internal/data';
 
 export type SearchFieldBinding =
   | {
@@ -68,7 +69,7 @@ export function SearchField(props: SearchFieldProps) {
     hasAutoFocus,
     size,
     isDisabled,
-    'data-testid': testId,
+    'data-testid': testId, ...dataOf(props),
   } as const;
   return (
     <view aria-busy={isLoading || undefined} className={cx(r.root.base, className)}>

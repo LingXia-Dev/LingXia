@@ -1,5 +1,6 @@
 import { cx, useId, type Local } from '@lingxia/view';
 import { sliderRecipe as r } from './Slider.recipe';
+import { dataOf } from '../internal/data';
 
 export type SliderVariant = 'standalone' | 'row';
 
@@ -84,7 +85,7 @@ export function Slider(props: SliderProps) {
     // The primitive reports the finger leaving; the value it ended on is the one in hand.
     onPressChange: onChangeEnd && ((pressed: boolean) => { if (!pressed) onChangeEnd(props.bind ? props.bind.value : props.value); }),
     disabled: isDisabled,
-    'data-testid': testId,
+    'data-testid': testId, ...dataOf(props),
     className: cx(r.control.base, r.control.size[size]),
   };
   return (

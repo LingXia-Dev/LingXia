@@ -1,5 +1,6 @@
 import { cx, type Child } from '@lingxia/view';
 import { metadataListRecipe as r } from './MetadataList.recipe';
+import { dataOf } from '../internal/data';
 
 export type MetadataListLayout = 'rows' | 'stacked';
 
@@ -27,9 +28,9 @@ export interface MetadataListProps {
 }
 
 /** What is known about one thing, as labels and their values. */
-export function MetadataList({ label, items, layout = 'rows', columns = 2, className, 'data-testid': testId }: MetadataListProps) {
+export function MetadataList({ label, items, layout = 'rows', columns = 2, className, 'data-testid': testId, ...attributes }: MetadataListProps) {
   return (
-    <view role="list" aria-label={label} data-testid={testId} className={cx(r.root.layout[layout], layout === 'stacked' && r.root.columns[columns], className)}>
+    <view role="list" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.layout[layout], layout === 'stacked' && r.root.columns[columns], className)}>
       {items.map(item => (
         // Read as one pair, "Owner: Ana Lima", whatever is drawn for the value.
         <view key={item.key} role="listitem" aria-label={`${item.label}: ${item.value}`} data-testid={testId && `${testId}-${item.key}`} className={r.item.layout[layout]}>

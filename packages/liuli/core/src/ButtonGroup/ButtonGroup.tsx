@@ -1,6 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { ButtonGroupContext, type ButtonSize, type ButtonVariant } from '../Button/Button';
 import { buttonGroupRecipe as r } from './ButtonGroup.recipe';
+import { dataOf } from '../internal/data';
 
 export interface ButtonGroupProps {
   /** What the buttons have in common, read once as the group's name: "Text style". */
@@ -20,10 +21,10 @@ export interface ButtonGroupProps {
 }
 
 /** Buttons that belong together, as one stop for the keyboard and one named group for a screen reader. */
-export function ButtonGroup({ label, children, isAttached = false, size, variant, isDisabled = false, className, 'data-testid': testId }: ButtonGroupProps) {
+export function ButtonGroup({ label, children, isAttached = false, size, variant, isDisabled = false, className, 'data-testid': testId, ...attributes }: ButtonGroupProps) {
   return (
     <ButtonGroupContext.Provider value={{ isAttached, size, variant, isDisabled }}>
-      <view role="toolbar" aria-label={label} data-testid={testId} className={cx(r.root.base, isAttached ? r.root.attached : r.root.apart, className)}>
+      <view role="toolbar" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, isAttached ? r.root.attached : r.root.apart, className)}>
         {children}
       </view>
     </ButtonGroupContext.Provider>

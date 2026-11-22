@@ -1,6 +1,7 @@
 import { cx, useLocal, useView, type Child } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { splitViewRecipe as r } from './SplitView.recipe';
+import { dataOf } from '../internal/data';
 
 /** On a compact screen, the pane that shows. */
 export type SplitViewPane = 'sidebar' | 'content';
@@ -42,13 +43,13 @@ export interface SplitViewProps {
  * put it straight in a `<page>`, without a scroll around it.
  */
 export function SplitView({
-  sidebar, children, contentActions, sidebarLabel, contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId,
+  sidebar, children, contentActions, sidebarLabel, contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId, ...attributes
 }: SplitViewProps) {
   const { env } = useView();
   const wentBack = useLocal('went-back', false);
   if (env.sizeClass === 'compact') {
     return (
-      <view data-testid={testId} className={cx(r.root.base, r.root.compact, className)}>
+      <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.compact, className)}>
         {pane === 'sidebar' ? (
           <view key="sidebar" role="group" aria-label={sidebarLabel} data-testid={testId && `${testId}-sidebar`} className={cx(r.pane.base, r.pane.sidebar, wentBack.value && r.pane.returning)}>
             <scroll className={r.scroll.base}>
@@ -70,7 +71,7 @@ export function SplitView({
     );
   }
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.regular, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.regular, className)}>
       <view role="group" aria-label={sidebarLabel} data-testid={testId && `${testId}-sidebar`} className={r.sidebar.base} style={{ width: sidebarWidth }}>
         <scroll className={r.scroll.base}>
           <view className={cx(r.sidebarInner.base, r.sidebarInner.regular)}>{sidebar}</view>

@@ -4,6 +4,7 @@ import type { Hue } from '../hue';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { tokenRecipe as r } from './Token.recipe';
+import { dataOf } from '../internal/data';
 
 export type TokenSize = 'sm' | 'md';
 
@@ -37,7 +38,7 @@ export type TokenProps = TokenRemove & {
 };
 
 /** One chosen thing as a pill: a recipient, a tag, a filter that can be taken away. */
-export function Token({ label, startIcon, hue, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId }: TokenProps) {
+export function Token({ label, startIcon, hue, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId, ...attributes }: TokenProps) {
   const content = (
     <>
       {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
@@ -54,13 +55,13 @@ export function Token({ label, startIcon, hue, onClick, isSelected = false, size
   // A token that both opens and can be removed is two buttons side by side, never one inside the other.
   if (onClick !== undefined && onRemove === undefined) {
     return (
-      <button aria-label={label} aria-pressed={isSelected} disabled={isDisabled} onClick={onClick} data-testid={testId} className={cx(classes, r.root.pressable)}>
+      <button aria-label={label} aria-pressed={isSelected} disabled={isDisabled} onClick={onClick} data-testid={testId} {...dataOf(attributes)} className={cx(classes, r.root.pressable)}>
         {content}
       </button>
     );
   }
   return (
-    <view data-testid={testId} className={classes}>
+    <view data-testid={testId} {...dataOf(attributes)} className={classes}>
       {onClick !== undefined
         ? <button aria-label={label} disabled={isDisabled} onClick={onClick} className={cx(r.open.base, r.open.size[size])}>{content}</button>
         : content}
@@ -79,6 +80,6 @@ export interface TokenListProps {
 }
 
 /** Tokens in a row that wraps, read as a named list. */
-export function TokenList({ label, children, className, 'data-testid': testId }: TokenListProps) {
-  return <view role="group" aria-label={label} data-testid={testId} className={cx(r.list.base, className)}>{children}</view>;
+export function TokenList({ label, children, className, 'data-testid': testId, ...attributes }: TokenListProps) {
+  return <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.list.base, className)}>{children}</view>;
 }

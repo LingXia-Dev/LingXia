@@ -1,5 +1,6 @@
 import { cx, type Child } from '@lingxia/view';
 import { sectionRecipe as r } from './Section.recipe';
+import { dataOf } from '../internal/data';
 
 export interface SectionProps {
   /** The section's heading. */
@@ -16,9 +17,9 @@ export interface SectionProps {
 }
 
 /** A titled part of a page: a heading, an optional line and action, then its content. */
-export function Section({ title, description, action, headingLevel = 2, children, className, 'data-testid': testId }: SectionProps) {
+export function Section({ title, description, action, headingLevel = 2, children, className, 'data-testid': testId, ...attributes }: SectionProps) {
   return (
-    <view data-testid={testId} className={cx(r.root.base, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
         <view className={r.heading.base}>
           <text role="heading" headingLevel={headingLevel} className={cx(r.title.base, r.title.level[headingLevel])}>{title}</text>

@@ -7,6 +7,7 @@ import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
+import { dataOf } from '../internal/data';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
 export type TextInputBinding =
@@ -116,7 +117,7 @@ export function TextInput(props: TextInputProps) {
               aria-describedby={describedBy(prefix !== undefined && prefixId, suffix !== undefined && suffixId, control['aria-describedby'])}
               aria-invalid={control['aria-invalid']}
               aria-required={control['aria-required']}
-              data-testid={testId}
+              data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
               type={editorType}
               inputMode={inputMode}
@@ -140,7 +141,7 @@ export function TextInput(props: TextInputProps) {
               aria-describedby={describedBy(prefix !== undefined && prefixId, suffix !== undefined && suffixId, control['aria-describedby'])}
               aria-invalid={control['aria-invalid']}
               aria-required={control['aria-required']}
-              data-testid={testId}
+              data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
               type={editorType}
               inputMode={inputMode}

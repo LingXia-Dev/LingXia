@@ -2,6 +2,7 @@ import { cx, useId, type Child } from '@lingxia/view';
 import { LayerContext } from '../internal/layer';
 import { Trigger } from '../internal/trigger';
 import { popoverRecipe as r } from './Popover.recipe';
+import { dataOf } from '../internal/data';
 
 /** `end` and `start` open beside the trigger, where there is room at its side: a toolbar down an edge, a row in a sidebar. */
 export type PopoverPlacement = 'bottom' | 'top' | 'end' | 'start';
@@ -51,12 +52,12 @@ export function Popover({
   isOpen,
   onOpenChange,
   panelClassName,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: PopoverProps) {
   const id = useId();
   return (
     <>
-      <Trigger wiring={{ popoverTarget: id }} data-testid={testId}>{children}</Trigger>
+      <Trigger wiring={{ popoverTarget: id }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
       <LayerContext.Provider value="overlay">
         <view
           id={id}

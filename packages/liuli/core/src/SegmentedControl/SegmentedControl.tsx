@@ -1,5 +1,6 @@
 import { cx, useBox, type Local } from '@lingxia/view';
 import { segmentedControlRecipe as r } from './SegmentedControl.recipe';
+import { dataOf } from '../internal/data';
 
 export type SegmentedControlSize = 'sm' | 'md';
 
@@ -73,7 +74,7 @@ export function SegmentedControl(props: SegmentedControlProps) {
       : { width: `${share}%` as const, translate: [`${index * 100}%`, 0] as const };
   const layout = isStacked ? 'stacked' : 'row';
   return (
-    <view box={root} role="radiogroup" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root[layout], className)}>
+    <view box={root} role="radiogroup" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, r.root[layout], className)}>
       {/* One box a segment wide, moved by its own width per segment, in a left-to-right box that
           right-to-left mirrors; stacked, one segment tall. */}
       <view aria-hidden className={r.track.base}>

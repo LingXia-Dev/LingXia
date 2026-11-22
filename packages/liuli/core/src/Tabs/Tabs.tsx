@@ -1,6 +1,7 @@
 import { cx, reveal, useBox, useId, useLocal, type Child } from '@lingxia/view';
 import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedControl.recipe';
 import { tabsRecipe as r } from './Tabs.recipe';
+import { dataOf } from '../internal/data';
 
 export type TabsVariant = 'underline' | 'segmented';
 /** `equal` shares the row; `content` makes each tab as wide as its label. Either row scrolls when the labels do not fit. */
@@ -36,7 +37,7 @@ export interface TabsProps {
 }
 
 /** Tabs over one panel: one Tab stop for the row, arrows move between tabs and choose on arrival. */
-export function Tabs({ label, items, value, onChange, variant = 'underline', tabWidth = 'equal', children, className, 'data-testid': testId }: TabsProps) {
+export function Tabs({ label, items, value, onChange, variant = 'underline', tabWidth = 'equal', children, className, 'data-testid': testId, ...attributes }: TabsProps) {
   const id = useId();
   const index = Math.max(0, items.findIndex(item => item.value === value));
   const chosen = items[index];
@@ -64,7 +65,7 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', tab
     <view className={cx(r.root.base, className)}>
       <view box={frame} className={cx(r.frame.base, segmented && cx(s.root.base, s.root.row))}>
         <scroll className={cx(r.scroller.base, overflows && under && r.scroller.more[under])} onScrollEdge={({ edge, at }) => edges.set({ ...edges.value, [edge]: at })}>
-          <view role="tablist" aria-label={label} data-testid={testId} className={cx(r.list.base, !segmented && r.list.underline)}>
+          <view role="tablist" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.list.base, !segmented && r.list.underline)}>
             {/* One box a tab wide, moved along the row. It moves in a left-to-right box that
                 right-to-left mirrors, so the same translate slides it toward the end either way. */}
             {place && (

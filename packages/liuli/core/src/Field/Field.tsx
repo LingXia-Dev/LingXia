@@ -4,6 +4,7 @@ import { describedBy } from '../internal/describedBy';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { InfoTip } from '../InfoTip/InfoTip';
 import { fieldRecipe as r } from './Field.recipe';
+import { dataOf } from '../internal/data';
 
 export type FieldSize = 'sm' | 'md' | 'lg';
 export type FieldStatusType = 'error' | 'warning' | 'success';
@@ -81,7 +82,7 @@ export function Field({
   size: ownSize,
   children,
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: FieldProps) {
   const size = useControlSize(ownSize);
   const id = useId();
@@ -106,7 +107,7 @@ export function Field({
     </text>
   );
   return (
-    <view data-testid={testId} className={cx(r.root.base, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       {!isLabelHidden && !hasOptional && !hasInfo && visibleLabel}
       {(hasOptional || hasInfo) && (
         <view className={r.labelRow.base}>

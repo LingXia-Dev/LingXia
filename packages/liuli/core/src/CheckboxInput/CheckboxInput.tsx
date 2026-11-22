@@ -6,6 +6,7 @@ import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { checkboxInputRecipe as r } from './CheckboxInput.recipe';
+import { dataOf } from '../internal/data';
 
 export type CheckboxInputBinding =
   | {
@@ -83,7 +84,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-required={semantics['aria-required']}
           indeterminate={isMixed || undefined}
           disabled={isDisabled}
-          data-testid={testId}
+          data-testid={testId} {...dataOf(props)}
           data-state={state}
           className={r.control.base}
         >
@@ -99,7 +100,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           aria-required={semantics['aria-required']}
           indeterminate={isMixed || undefined}
           disabled={isDisabled}
-          data-testid={testId}
+          data-testid={testId} {...dataOf(props)}
           data-state={state}
           className={r.control.base}
         >

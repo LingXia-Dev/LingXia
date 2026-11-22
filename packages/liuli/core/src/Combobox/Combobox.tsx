@@ -7,6 +7,7 @@ import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { comboboxRecipe as r } from './Combobox.recipe';
+import { dataOf } from '../internal/data';
 
 export interface ComboboxOption {
   /** What `value` and `onChange` carry. */
@@ -352,7 +353,7 @@ export function Combobox(props: ComboboxProps) {
             aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
             aria-expanded={open.value}
             disabled={control.disabled}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(props)}
             className={cx(r.trigger.base, r.trigger.size[size], r.trigger.pressable, status && r.trigger.status[status.type])}
           >
             <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled)}>

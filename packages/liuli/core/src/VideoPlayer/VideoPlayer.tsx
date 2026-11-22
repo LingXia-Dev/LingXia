@@ -1,6 +1,7 @@
 import { cx, type Video, type VideoError, type VideoSourceProps } from '@lingxia/view';
 import { VideoControls, type VideoControlsLabels } from '../VideoControls/VideoControls';
 import { videoPlayerRecipe as r } from './VideoPlayer.recipe';
+import { dataOf } from '../internal/data';
 
 export type VideoPlayerVariant = 'overlay' | 'bar';
 
@@ -47,7 +48,7 @@ export function VideoPlayer({
       loop={isLooping}
       aria-label={label}
       onError={onError}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(source)}
       className={r.video.base}
     />
   );

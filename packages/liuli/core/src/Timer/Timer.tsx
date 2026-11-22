@@ -1,5 +1,6 @@
 import { cx } from '@lingxia/view';
 import { timerRecipe as r } from './Timer.recipe';
+import { dataOf } from '../internal/data';
 
 export type TimerSize = 'sm' | 'md' | 'lg';
 
@@ -26,9 +27,9 @@ export function formatTimer(seconds: number, hasHours = false): string {
 }
 
 /** A length of time in steady digits: a countdown, a recording, a workout. */
-export function Timer({ seconds, label, hasHours = false, size = 'md', className, 'data-testid': testId }: TimerProps) {
+export function Timer({ seconds, label, hasHours = false, size = 'md', className, 'data-testid': testId, ...attributes }: TimerProps) {
   return (
-    <text data-testid={testId} aria-label={label} className={cx(r.root.base, r.root.size[size], seconds <= 0 && r.root.done, className)}>
+    <text data-testid={testId} {...dataOf(attributes)} aria-label={label} className={cx(r.root.base, r.root.size[size], seconds <= 0 && r.root.done, className)}>
       {formatTimer(seconds, hasHours)}
     </text>
   );

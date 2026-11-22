@@ -2,6 +2,7 @@ import { cx, reveal, useId } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { tourRecipe as r } from './Tour.recipe';
+import { dataOf } from '../internal/data';
 
 export type TourPlacement = 'bottom' | 'top' | 'end' | 'start';
 
@@ -43,7 +44,7 @@ const areas = { bottom: 'bottom', top: 'top', end: 'inline-end', start: 'inline-
 const sides = ['bottom', 'top', 'end', 'start'] as const satisfies readonly TourPlacement[];
 
 /** A few callouts, one at a time, each pointing at something on the page. */
-export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel = liuliText('@liuli.next'), backLabel = liuliText('@liuli.back'), skipLabel = liuliText('@liuli.skip'), doneLabel = liuliText('@liuli.done'), stepLabel = (step: number, count: number) => liuliText('@liuli.stepOf', { step: step + 1, count }), 'data-testid': testId }: TourProps) {
+export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nextLabel = liuliText('@liuli.next'), backLabel = liuliText('@liuli.back'), skipLabel = liuliText('@liuli.skip'), doneLabel = liuliText('@liuli.done'), stepLabel = (step: number, count: number) => liuliText('@liuli.stepOf', { step: step + 1, count }), 'data-testid': testId, ...attributes }: TourProps) {
   const id = useId();
   const at = step === null ? null : Math.min(Math.max(0, step), steps.length - 1);
   const current = at === null ? undefined : steps[at];
@@ -60,7 +61,7 @@ export function Tour({ steps, value: step, onChange: onStepChange, onFinish, nex
       onToggle={isOpen => { if (!isOpen) onStepChange(null); }}
       role="group"
       aria-label={current === undefined ? undefined : `${current.targetLabel}: ${current.title}`}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       style={{ positionArea: areas[placement] }}
       className={r.callout.base}
     >

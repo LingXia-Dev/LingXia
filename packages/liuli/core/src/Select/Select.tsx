@@ -2,6 +2,7 @@ import { cx, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { selectRecipe as r } from './Select.recipe';
+import { dataOf } from '../internal/data';
 
 export interface SelectOption {
   /** What `value` and `onChange` carry. */
@@ -72,7 +73,7 @@ export function Select(props: SelectProps) {
             aria-invalid={control['aria-invalid']}
             aria-required={control['aria-required']}
             disabled={control.disabled}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(props)}
             className={controlClass}
           />
         ) : (
@@ -86,7 +87,7 @@ export function Select(props: SelectProps) {
             aria-invalid={control['aria-invalid']}
             aria-required={control['aria-required']}
             disabled={control.disabled}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(props)}
             className={controlClass}
           />
         )

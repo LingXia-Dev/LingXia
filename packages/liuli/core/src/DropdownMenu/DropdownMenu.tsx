@@ -4,6 +4,7 @@ import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
+import { dataOf } from '../internal/data';
 
 export type DropdownMenuItemVariant = 'default' | 'destructive';
 export type DropdownMenuPlacement = 'bottom' | 'top';
@@ -125,14 +126,14 @@ export function DropdownMenu({
   placement = 'bottom',
   alignment = 'start',
   menuClassName,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: DropdownMenuProps) {
   const id = useId();
   const drilled = useLocal<string | null>('drilled', null);
   const isCompact = useView().env.sizeClass === 'compact';
   return (
     <>
-      <Trigger wiring={{ popoverTarget: id }} data-testid={testId}>{children}</Trigger>
+      <Trigger wiring={{ popoverTarget: id }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
       <MenuSize.Provider value={size}>
         <view
           id={id}
@@ -165,7 +166,7 @@ export function DropdownMenuItem({
   onClick,
   isDisabled = false,
   variant = 'default',
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: DropdownMenuItemProps) {
   const size = useContext(MenuSize);
   const close = useContext(MenuClose);
@@ -180,7 +181,7 @@ export function DropdownMenuItem({
       aria-describedby={description !== undefined ? descriptionId : undefined}
       disabled={isDisabled}
       onClick={() => { onClick?.(); close?.(); }}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.item.base, r.item.size[size])}
     >
       {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} />}
@@ -290,7 +291,7 @@ export interface DropdownMenuSubmenuProps {
 }
 
 /** An item that opens a second menu at its side, for a few choices that belong under one name: "Move to". */
-export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false, 'data-testid': testId }: DropdownMenuSubmenuProps) {
+export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuSubmenuProps) {
   const size = useContext(MenuSize);
   const drill = useContext(Drill);
   const id = useId();
@@ -323,14 +324,14 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
     if (drill.open !== null) return null;
     // A menu item that keeps its menu open, so the arrow keys reach it like any other row.
     return (
-      <button role="menuitem" keepOpen aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
+      <button role="menuitem" keepOpen aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
     );
   }
   return (
     <>
-      <button role="menuitem" popoverTarget={id} aria-label={label} disabled={isDisabled} data-testid={testId} className={cx(r.item.base, r.item.size[size])}>
+      <button role="menuitem" popoverTarget={id} aria-label={label} disabled={isDisabled} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
       <view

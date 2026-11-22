@@ -5,6 +5,7 @@ import { DateInput } from '../DateInput/DateInput';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { TimeInput } from '../TimeInput/TimeInput';
 import { dateTimeInputRecipe as r } from './DateTimeInput.recipe';
+import { dataOf } from '../internal/data';
 
 export type DateTimeInputBinding =
   | {
@@ -85,7 +86,7 @@ export function DateTimeInput(props: DateTimeInputProps) {
       className={className}
     >
       {control => (
-        <view box={groupBox} role="group" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} className={r.group.base}>
+        <view box={groupBox} role="group" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} {...dataOf(props)} className={r.group.base}>
           <DateInput
             label={dateLabel}
             isLabelHidden

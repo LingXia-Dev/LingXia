@@ -3,6 +3,7 @@ import type { Hue } from '../hue';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { badgeRecipe as r } from './Badge.recipe';
+import { dataOf } from '../internal/data';
 
 export type BadgeStatusTone = 'accent' | 'info' | 'success' | 'warning' | 'danger';
 export type BadgeTone = 'neutral' | BadgeStatusTone;
@@ -50,7 +51,7 @@ export function Badge(props: BadgeProps) {
       ? r.root.soft.neutral
       : props.emphasis === 'solid' ? r.root.solid[props.tone] : r.root.soft[props.tone];
   return (
-    <view data-testid={testId} className={cx(r.root.base, r.root.size[size], look, className)}>
+    <view data-testid={testId} {...dataOf(props)} className={cx(r.root.base, r.root.size[size], look, className)}>
       {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
       {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.size[size], r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>

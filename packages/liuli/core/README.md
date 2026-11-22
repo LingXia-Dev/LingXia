@@ -184,6 +184,7 @@ there is no switch at run time.
   switch row) fills with a rounded wash; a box (select, text field, card, segment, thumb) takes a ring.
 - Liuli contains no copy: every visible or spoken string arrives as a prop.
 - Controls look the same on every OS.
+- `data-testid` and any other `data-*` props (`data-state`, `data-current`) land on the same element; a test asserts it for every component. The View takes at most 16 `data-*` props per element, within a byte budget per page.
 
 ## Layout of the package
 

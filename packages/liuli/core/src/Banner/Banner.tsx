@@ -3,6 +3,7 @@ import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
 import { bannerRecipe as r } from './Banner.recipe';
+import { dataOf } from '../internal/data';
 
 export type BannerTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
@@ -45,14 +46,14 @@ export type BannerProps = BannerDismiss & BannerCollapse & {
  * A message in the page's flow about the page or the account: a sync problem, a trial ending, a
  * change that saved. It stays until resolved or dismissed; it is not a toast.
  */
-export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), isCollapsible = false, toggleLabel = liuliText('@liuli.details'), isDefaultOpen = true, className, 'data-testid': testId }: BannerProps) {
+export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), isCollapsible = false, toggleLabel = liuliText('@liuli.details'), isDefaultOpen = true, className, 'data-testid': testId, ...attributes }: BannerProps) {
   const open = useLocal('open', isDefaultOpen);
   const isOpen = !isCollapsible || open.value;
   const hasEnd = onDismiss !== undefined || isCollapsible;
   return (
     <view
       role={tone === 'danger' ? 'alert' : 'status'}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.root.base, r.root.tone[tone], !hasEnd && r.root.plain, className)}
     >
       <Glyph name={toneGlyph[tone]} className={cx(r.icon.base, r.icon.tone[tone])} />

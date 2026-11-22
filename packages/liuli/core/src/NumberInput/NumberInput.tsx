@@ -6,6 +6,7 @@ import { textInputRecipe as t } from '../TextInput/TextInput.recipe';
 import { describedBy } from '../internal/describedBy';
 import { Glyph } from '../internal/Glyph';
 import { numberInputRecipe as r } from './NumberInput.recipe';
+import { dataOf } from '../internal/data';
 
 export type NumberInputBinding =
   | {
@@ -140,7 +141,7 @@ export function NumberInput(props: NumberInputProps) {
             aria-required={control['aria-required']}
             placeholder={placeholder}
             disabled={control.disabled}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(props)}
             className={cx(t.input.base, t.input.size[size], r.input.base)}
           />
           {suffix !== undefined && <text id={suffixId} className={cx(t.adornment.base, t.input.size[size])}>{suffix}</text>}

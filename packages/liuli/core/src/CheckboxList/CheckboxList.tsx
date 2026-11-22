@@ -6,6 +6,7 @@ import { fieldRecipe } from '../Field/Field.recipe';
 import { describedBy } from '../internal/describedBy';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { checkboxListRecipe as r } from './CheckboxList.recipe';
+import { dataOf } from '../internal/data';
 
 export interface CheckboxListOption {
   /** What `value` and `onChange` carry for this option. */
@@ -84,7 +85,7 @@ export function CheckboxList(props: CheckboxListProps) {
       role="group"
       aria-label={label}
       aria-describedby={describedBy(description !== undefined && helpId, hasMessage(status) && statusId)}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(props)}
       className={cx(r.root.base, className)}
     >
       {!isLabelHidden && (

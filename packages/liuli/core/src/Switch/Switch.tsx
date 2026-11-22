@@ -1,6 +1,7 @@
 import { cx, useId, type Local } from '@lingxia/view';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { switchRecipe as r } from './Switch.recipe';
+import { dataOf } from '../internal/data';
 
 export type SwitchVariant = 'standalone' | 'row';
 
@@ -48,7 +49,7 @@ export function Switch(props: SwitchProps) {
     'aria-describedby': description !== undefined ? helpId : undefined,
     disabled: isDisabled || isLoading,
     'aria-busy': isLoading || undefined,
-    'data-testid': testId,
+    'data-testid': testId, ...dataOf(props),
     'data-state': (props.bind ? props.bind.value : props.value) ? 'on' : 'off',
     className: cx(r.control.base, r.control.size[size], r.control.variant[variant], isLoading && r.control.loading),
   };

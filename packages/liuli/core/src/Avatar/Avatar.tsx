@@ -1,6 +1,7 @@
 import { childrenToArray, createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
 import type { Hue } from '../hue';
 import { avatarRecipe as r } from './Avatar.recipe';
+import { dataOf } from '../internal/data';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
 /** `circle` for a person; `rounded` for a team, a workspace or an app. */
@@ -39,7 +40,7 @@ export interface AvatarProps {
 }
 
 /** A person or team as a circle: their photo, or their initials. */
-export function Avatar({ name, src, initials, hue, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId }: AvatarProps) {
+export function Avatar({ name, src, initials, hue, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId, ...attributes }: AvatarProps) {
   const group = useContext(InGroup);
   const actual = size ?? group?.size ?? 'md';
   const shape = ownShape ?? group?.shape ?? 'circle';
@@ -50,7 +51,7 @@ export function Avatar({ name, src, initials, hue, size, shape: ownShape, status
   return (
     <view
       aria-hidden={isDecorative || undefined}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.root.base, r.root.shape[shape][actual], showImage ? r.root.photo[actual] : r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
@@ -86,13 +87,13 @@ export interface AvatarGroupProps {
 }
 
 /** Avatars overlapping in a row, with the rest as a count. */
-export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', shape = 'circle', surface = 'surface', className, 'data-testid': testId }: AvatarGroupProps) {
+export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', shape = 'circle', surface = 'surface', className, 'data-testid': testId, ...attributes }: AvatarGroupProps) {
   const all = childrenToArray(children);
   const shown = max === undefined ? all : all.slice(0, max);
   const rest = all.length - shown.length;
   return (
     <InGroup.Provider value={{ size, surface, shape }}>
-      <view role="group" aria-label={label} data-testid={testId} className={cx(r.group.base, className)}>
+      <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, className)}>
         {shown.map((child, index) => (
           <view key={String(index)} className={cx(index > 0 && r.overlap.size[size])}>{child}</view>
         ))}

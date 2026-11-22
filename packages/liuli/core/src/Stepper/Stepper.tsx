@@ -2,6 +2,7 @@ import { cx } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { stepperRecipe as r } from './Stepper.recipe';
+import { dataOf } from '../internal/data';
 
 export type StepperOrientation = 'horizontal' | 'vertical';
 type StepState = 'done' | 'current' | 'upcoming';
@@ -32,10 +33,10 @@ export interface StepperProps {
 }
 
 /** Where someone is in a task with a known number of steps. */
-export function Stepper({ label, steps, value: current, stateLabels, onChange: onStepClick, orientation = 'vertical', className, 'data-testid': testId }: StepperProps) {
+export function Stepper({ label, steps, value: current, stateLabels, onChange: onStepClick, orientation = 'vertical', className, 'data-testid': testId, ...attributes }: StepperProps) {
   const isRow = orientation === 'horizontal';
   return (
-    <view role="list" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.orientation[orientation], className)}>
+    <view role="list" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.orientation[orientation], className)}>
       {steps.map((step, index) => {
         const state: StepState = index < current ? 'done' : index === current ? 'current' : 'upcoming';
         const isLast = index === steps.length - 1;

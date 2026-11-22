@@ -2,6 +2,7 @@ import { cx, useBox, useContext, useView, type Child } from '@lingxia/view';
 import { useDensity } from '../density';
 import { LayerContext } from '../internal/layer';
 import { tableRecipe as r } from './Table.recipe';
+import { dataOf } from '../internal/data';
 
 export type TableValue = string | number | null | undefined;
 /** One record: its fields by name. */
@@ -87,7 +88,7 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onChange: onRowClick, value: selectedKey, emptyLabel, className, 'data-testid': testId,
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onChange: onRowClick, value: selectedKey, emptyLabel, className, 'data-testid': testId, ...attributes
 }: TableProps) {
   const screenDensity = useDensity();
   const density = ownDensity ?? screenDensity;
@@ -170,7 +171,7 @@ export function Table({
   });
 
   return (
-    <view box={box} role="grid" aria-label={label} data-testid={testId} className={cx(r.root.base, r.root.layer[layer], className)}>
+    <view box={box} role="grid" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.layer[layer], className)}>
       {/* Stacked, every field is beside its own heading or needs none. */}
       {!isStacked && header}
       {rows.length === 0 && emptyLabel !== undefined && <text className={r.empty.base}>{emptyLabel}</text>}

@@ -4,6 +4,7 @@ import { Glyph } from '../internal/Glyph';
 import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
+import { dataOf } from '../internal/data';
 
 export type DialogSize = 'sm' | 'md' | 'lg' | 'full';
 export type DialogDismissOn = 'any' | 'closeRequest' | 'none';
@@ -72,7 +73,7 @@ export function Dialog({
   dismissOn = 'any',
   size = 'md',
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: DialogProps) {
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
@@ -88,7 +89,7 @@ export function Dialog({
       role={isAlert ? 'alertdialog' : undefined}
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.panel.base, size !== 'full' && r.panel.floating, r.panel.size[size], className)}
     >
       {media !== undefined && (

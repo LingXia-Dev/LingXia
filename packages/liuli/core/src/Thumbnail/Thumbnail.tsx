@@ -1,5 +1,6 @@
 import { cx } from '@lingxia/view';
 import { thumbnailRecipe as r } from './Thumbnail.recipe';
+import { dataOf } from '../internal/data';
 
 export type ThumbnailSize = 'sm' | 'md' | 'lg' | 'fill';
 export type ThumbnailRatio = 'square' | 'landscape' | 'wide';
@@ -21,17 +22,17 @@ export interface ThumbnailProps {
 }
 
 /** A small picture that stands for a bigger one. */
-export function Thumbnail({ src, alt, size = 'md', ratio = 'square', onClick, isSelected = false, className, 'data-testid': testId }: ThumbnailProps) {
+export function Thumbnail({ src, alt, size = 'md', ratio = 'square', onClick, isSelected = false, className, 'data-testid': testId, ...attributes }: ThumbnailProps) {
   const classes = cx(r.root.base, r.root.size[size], r.root.ratio[ratio], isSelected && r.root.selected, className);
   if (onClick === undefined) {
     return (
-      <view data-testid={testId} className={classes}>
+      <view data-testid={testId} {...dataOf(attributes)} className={classes}>
         <image src={src} alt={alt} className={r.image.base} />
       </view>
     );
   }
   return (
-    <button aria-label={alt} aria-selected={isSelected || undefined} onClick={onClick} data-testid={testId} className={cx(classes, r.root.pressable)}>
+    <button aria-label={alt} aria-selected={isSelected || undefined} onClick={onClick} data-testid={testId} {...dataOf(attributes)} className={cx(classes, r.root.pressable)}>
       <image src={src} alt="" className={r.image.base} />
     </button>
   );

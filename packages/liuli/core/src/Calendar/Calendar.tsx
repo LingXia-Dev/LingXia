@@ -3,6 +3,7 @@ import { liuliText, monthName, weekdayInitial, weekdayName } from '../i18n/text'
 import { IconButton } from '../IconButton/IconButton';
 import { calendarRecipe as r } from './Calendar.recipe';
 import { isDate, parts, shiftMonth, toDate, weekdayOf, weeksOf, type CalendarDate } from './dates';
+import { dataOf } from '../internal/data';
 
 export type { CalendarDate } from './dates';
 
@@ -80,7 +81,7 @@ export function Calendar(props: CalendarProps) {
   const isOff = (date: CalendarDate) => (min !== undefined && date < min) || (max !== undefined && date > max) || isDateDisabled?.(date) === true;
   const [previous, following] = [shiftMonth(year, month, -1), shiftMonth(year, month, 1)];
   return (
-    <view role="group" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+    <view role="group" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
         <text role="status" className={r.title.base}>{title}</text>
         <IconButton

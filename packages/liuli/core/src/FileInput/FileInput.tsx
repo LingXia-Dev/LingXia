@@ -6,6 +6,7 @@ import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
 import { fileInputRecipe as r } from './FileInput.recipe';
 import type { TransferProgress } from '../ProgressBar/ProgressBar';
+import { dataOf } from '../internal/data';
 
 export interface FileInputFile {
   /** Identifies the file: what `onRemove` carries, and `<testid>-<id>` on its row. */
@@ -54,7 +55,7 @@ export function FileInput(props: FileInputProps) {
             aria-describedby={control['aria-describedby']}
             disabled={control.disabled}
             onClick={onPick}
-            data-testid={testId}
+            data-testid={testId} {...dataOf(field)}
             className={cx(r.pick.base, status && r.pick.status[status.type])}
           >
             <Glyph name="upload" className={r.pickIcon.base} />

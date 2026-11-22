@@ -1,6 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { codeRecipe as r } from './Code.recipe';
 import { diffKinds, type LineKind } from './diff';
+import { dataOf } from '../internal/data';
 
 export interface CodeProps {
   /** The code: a command, a file name, a value to type exactly. */
@@ -9,8 +10,8 @@ export interface CodeProps {
 }
 
 /** A few words of code inside a sentence. It goes in a `<text>`, among its words. */
-export function Code({ text, 'data-testid': testId }: CodeProps) {
-  return <span data-testid={testId} className={r.inline.base}>{text}</span>;
+export function Code({ text, 'data-testid': testId, ...attributes }: CodeProps) {
+  return <span data-testid={testId} {...dataOf(attributes)} className={r.inline.base}>{text}</span>;
 }
 
 export interface CodeBlockProps {
@@ -57,7 +58,7 @@ export function CodeBlock({
   isDiff = false,
   isSelectable = true,
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: CodeBlockProps) {
   const lines = code.split('\n');
   const first = Math.max(1, Math.floor(startLineNumber));
@@ -68,7 +69,7 @@ export function CodeBlock({
   const isLined = hasLineNumbers || isDiff || lines.some((_, index) => marked.has(first + index));
   const text = cx(r.text.base, isSelectable && r.text.selectable);
   return (
-    <view role="group" aria-label={label} data-testid={testId} className={cx(r.block.base, className)}>
+    <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.block.base, className)}>
       {(title !== undefined || action !== undefined) && (
         <view className={r.header.base}>
           <text className={r.title.base}>{title ?? ''}</text>

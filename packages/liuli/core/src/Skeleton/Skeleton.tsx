@@ -1,5 +1,6 @@
 import { cx, type Child } from '@lingxia/view';
 import { skeletonRecipe as r } from './Skeleton.recipe';
+import { dataOf } from '../internal/data';
 
 export type SkeletonShape = 'text' | 'block' | 'circle';
 
@@ -17,17 +18,17 @@ export interface SkeletonProps {
  * A quiet stand-in for content that is on its way. It is hidden from assistive tech; the
  * SkeletonGroup around it says what is loading. A soft glint crosses it, and stops under reduced motion.
  */
-export function Skeleton({ shape = 'text', lines = 1, className, 'data-testid': testId }: SkeletonProps) {
+export function Skeleton({ shape = 'text', lines = 1, className, 'data-testid': testId, ...attributes }: SkeletonProps) {
   if (shape !== 'text') {
     return (
-      <view aria-hidden data-testid={testId} className={cx(r.bone.base, r.bone.shape[shape], className)}>
+      <view aria-hidden data-testid={testId} {...dataOf(attributes)} className={cx(r.bone.base, r.bone.shape[shape], className)}>
         <view className={r.glint.base} />
       </view>
     );
   }
   const count = Math.max(1, Math.floor(lines));
   return (
-    <view aria-hidden data-testid={testId} className={cx(r.lines.base, className)}>
+    <view aria-hidden data-testid={testId} {...dataOf(attributes)} className={cx(r.lines.base, className)}>
       {Array.from({ length: count }, (_, index) => (
         <view key={String(index)} className={cx(r.bone.base, r.bone.shape.text, count > 1 && index === count - 1 && r.bone.last)}>
           <view className={r.glint.base} />
@@ -47,9 +48,9 @@ export interface SkeletonGroupProps {
 }
 
 /** Skeletons that stand for one piece of content, reported as busy and named by what is loading. */
-export function SkeletonGroup({ label, children, className, 'data-testid': testId }: SkeletonGroupProps) {
+export function SkeletonGroup({ label, children, className, 'data-testid': testId, ...attributes }: SkeletonGroupProps) {
   return (
-    <view role="status" aria-label={label} aria-busy data-testid={testId} className={cx(r.group.base, className)}>
+    <view role="status" aria-label={label} aria-busy data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, className)}>
       {children}
     </view>
   );

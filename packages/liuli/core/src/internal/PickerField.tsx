@@ -3,6 +3,7 @@ import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize, type FieldStatusType } from '../Field/Field';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from './Glyph';
+import { dataOf } from './data';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`); ISO text, `''` while empty. */
 export type PickerBinding =
@@ -70,7 +71,7 @@ export function PickerField(props: PickerFieldProps) {
           'aria-describedby': control['aria-describedby'],
           'aria-invalid': control['aria-invalid'],
           'aria-required': control['aria-required'],
-          'data-testid': testId,
+          'data-testid': testId, ...dataOf(props),
           placeholder,
           min,
           max,

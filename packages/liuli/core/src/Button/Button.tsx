@@ -6,6 +6,7 @@ import { settleFlag } from '../internal/settle';
 import { registerPressable, useTrigger } from '../internal/trigger';
 import { buttonRecipe as r } from './Button.recipe';
 import { LayerContext } from '../internal/layer';
+import { dataOf } from '../internal/data';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'destructive';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -81,7 +82,7 @@ export function Button({
   onClick,
   clickAction,
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: ButtonProps) {
   const group = useContext(ButtonGroupContext);
   const layer = useContext(LayerContext);
@@ -107,7 +108,7 @@ export function Button({
   };
   return (
     <button
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       aria-label={label}
       aria-describedby={hasReason ? reasonId : trigger?.describedBy}
       aria-busy={busy || undefined}

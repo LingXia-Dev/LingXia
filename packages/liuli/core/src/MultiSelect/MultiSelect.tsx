@@ -6,6 +6,7 @@ import { IconButton } from '../IconButton/IconButton';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { Token } from '../Token/Token';
 import { multiSelectRecipe as r } from './MultiSelect.recipe';
+import { dataOf } from '../internal/data';
 
 export interface MultiSelectOption {
   /** What `value` and `onChange` carry. */
@@ -81,7 +82,7 @@ export function MultiSelect(props: MultiSelectProps) {
           role="group"
           aria-label={control['aria-label']}
           aria-describedby={control['aria-describedby']}
-          data-testid={testId}
+          data-testid={testId} {...dataOf(props)}
           className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled)}
         >
           {shown.map(option => (

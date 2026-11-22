@@ -1,6 +1,7 @@
 import { cx, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { pageControlRecipe as r } from './PageControl.recipe';
+import { dataOf } from '../internal/data';
 
 /** `on-media` for dots laid over a picture. */
 export type PageControlTone = 'accent' | 'on-media';
@@ -42,7 +43,7 @@ export function PageControl(props: PageControlProps) {
   const at = Math.min(Math.max(0, Math.round(raw)), Math.max(0, count - 1));
   const go = (page: number) => (props.bind ? props.bind.set(page) : props.onChange(page));
   return (
-    <view role="tablist" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+    <view role="tablist" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
       {Array.from({ length: count }, (_, page) => (
         <button
           key={`page-${page}`}

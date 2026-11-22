@@ -1,5 +1,6 @@
 import { cx, Fragment, useLocal, useView, type Video, type VectorPath } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
+import { dataOf } from '../internal/data';
 import { videoControlsRecipe as r } from './VideoControls.recipe';
 
 export type VideoControlsVariant = 'overlay' | 'bar';
@@ -85,12 +86,12 @@ function clock(seconds: number) {
  * and quality, full screen, and a recoverable error's Retry. Full screen is a dialog over the page
  * that shows the same player again with these controls.
  */
-export function VideoControls({ player, labels: given, variant = 'overlay', poster, className, 'data-testid': testId }: VideoControlsProps) {
+export function VideoControls({ player, labels: given, variant = 'overlay', poster, className, 'data-testid': testId, ...attributes }: VideoControlsProps) {
   const labels = videoLabels(given);
   // The dialog follows the inline controls, so entering full screen keeps their state.
   return (
     <Fragment>
-      <Controls player={player} labels={labels} variant={variant} className={className} testId={testId} />
+      <Controls player={player} labels={labels} variant={variant} className={className} testId={testId} data={dataOf(attributes)} />
       {player.fullscreen && (
         <dialog
           open
@@ -117,9 +118,10 @@ interface ControlsProps {
   isFull?: boolean;
   className?: string;
   testId?: string;
+  data?: Record<string, unknown>;
 }
 
-function Controls({ player, labels: say, variant, isFull = false, className, testId }: ControlsProps) {
+function Controls({ player, labels: say, variant, isFull = false, className, testId, data }: ControlsProps) {
   const id = (part: string) => testId && `${testId}-${part}`;
   const held = useLocal<{ value: number } | null>('held', null);
   // A finger on the scrubber, from the slider itself; a host without the signal leaves it false.
@@ -207,7 +209,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
 
   if (!overlay) {
     return (
-      <view className={cx(r.root.bar, className)} data-testid={testId}>
+      <view className={cx(r.root.bar, className)} data-testid={testId} {...data}>
         {error && (
           <view data-testid={id('error')} role="alert" className={r.barRow.error}>
             <text className={r.barRow.errorText}>{error.message}</text>

@@ -2,6 +2,7 @@ import { cx, useId, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { radioGroupRecipe as r } from './RadioGroup.recipe';
+import { dataOf } from '../internal/data';
 
 export type RadioGroupVariant = 'list' | 'card';
 
@@ -68,7 +69,7 @@ export function RadioGroup(props: RadioGroupProps) {
           aria-describedby={control['aria-describedby']}
           aria-invalid={control['aria-invalid']}
           aria-required={control['aria-required']}
-          data-testid={testId}
+          data-testid={testId} {...dataOf(props)}
           className={cx(r.group.base, orientation === 'horizontal' ? r.group.horizontal[variant] : r.group.variant[variant])}
         >
           {items.map(option => {

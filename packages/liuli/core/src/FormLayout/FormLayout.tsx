@@ -1,5 +1,6 @@
 import { createContext, cx, useBox, useContext, type Child } from '@lingxia/view';
 import { formLayoutRecipe as r } from './FormLayout.recipe';
+import { dataOf } from '../internal/data';
 
 const Columns = createContext(1);
 
@@ -18,13 +19,13 @@ export interface FormLayoutProps {
 const wideFrom = 560;
 
 /** A form's fields at one rhythm: a column on a phone, two where the form is wide enough. */
-export function FormLayout({ children, columns = 1, actions, className, 'data-testid': testId }: FormLayoutProps) {
+export function FormLayout({ children, columns = 1, actions, className, 'data-testid': testId, ...attributes }: FormLayoutProps) {
   const box = useBox('form');
   // Until it is measured the form is one column: right on a phone, and it never jumps narrower.
   const shown = columns === 2 && (box.value?.width ?? 0) >= wideFrom ? 2 : 1;
   return (
     <Columns.Provider value={shown}>
-      <view box={box} data-testid={testId} className={cx(r.root.base, className)}>
+      <view box={box} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
         <view className={cx(r.fields.base, r.fields.columns[shown])}>{children}</view>
         {actions !== undefined && <view className={r.actions.base}>{actions}</view>}
       </view>

@@ -5,6 +5,7 @@ import { Glyph } from '../internal/Glyph';
 import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { bottomSheetRecipe as r } from './BottomSheet.recipe';
+import { dataOf } from '../internal/data';
 
 /** `fit` is as tall as its content; `expandable` opens halfway and drags up to nearly full height. */
 export type BottomSheetDetents = 'fit' | 'expandable';
@@ -62,7 +63,7 @@ export function BottomSheet({
   dismissOn = 'any',
   detents = 'fit',
   className,
-  'data-testid': testId,
+  'data-testid': testId, ...attributes
 }: BottomSheetProps) {
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
     warnOnce(`BottomSheet "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
@@ -85,7 +86,7 @@ export function BottomSheet({
       drag="y"
       dragSnapPoints={dismissOn === 'none' ? shape.stay : shape.leave}
       bind={detent}
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       className={cx(r.panel.base, r.panel.detents[detents], className)}
     >
       <view aria-hidden className={r.grabber.base} />

@@ -3,6 +3,7 @@ import type { IconName } from '../Icon/names';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { detailsRecipe as r } from './Details.recipe';
+import { dataOf } from '../internal/data';
 
 interface GroupState {
   /** Set in an exclusive group: the open row's value, or null. */
@@ -37,7 +38,7 @@ export interface DetailsProps {
 }
 
 /** A summary row that shows and hides the content under it. */
-export function Details({ label, description, startIcon, children, value, isDefaultOpen = false, isOpen, onOpenChange, isDisabled = false, className, 'data-testid': testId }: DetailsProps) {
+export function Details({ label, description, startIcon, children, value, isDefaultOpen = false, isOpen, onOpenChange, isDisabled = false, className, 'data-testid': testId, ...attributes }: DetailsProps) {
   const group = useContext(Group);
   const local = useLocal(isDefaultOpen);
   const exclusive = group?.isExclusive && value !== undefined;
@@ -50,7 +51,7 @@ export function Details({ label, description, startIcon, children, value, isDefa
   const inGroup = group !== null;
   return (
     // A button with aria-expanded, as the Details primitive builds, so the chevron can sit at the end.
-    <view data-testid={testId} className={cx(r.root.base, className)}>
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       <button
         aria-expanded={open}
         data-state={open ? 'open' : 'closed'}
@@ -91,14 +92,14 @@ export interface DetailsGroupProps {
 }
 
 /** Details rows in one bordered list: an accordion. */
-export function DetailsGroup({ children, isExclusive = false, defaultValue, value, onChange, label, className, 'data-testid': testId }: DetailsGroupProps) {
+export function DetailsGroup({ children, isExclusive = false, defaultValue, value, onChange, label, className, 'data-testid': testId, ...attributes }: DetailsGroupProps) {
   const own = useLocal<string | null>(defaultValue ?? null);
   const current = value === undefined ? own.value : value;
   const set = (next: string | null) => { if (value === undefined) own.set(next); onChange?.(next); };
   const layer = useContext(LayerContext);
   return (
     <Group.Provider value={{ open: current, isExclusive, set }}>
-      <view role={label === undefined ? undefined : 'group'} aria-label={label} data-testid={testId} className={cx(r.group.base, r.group.layer[layer], className)}>{children}</view>
+      <view role={label === undefined ? undefined : 'group'} aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, r.group.layer[layer], className)}>{children}</view>
     </Group.Provider>
   );
 }

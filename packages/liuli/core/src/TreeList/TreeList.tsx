@@ -2,6 +2,7 @@ import { cx, useId, useLocal, type Child } from '@lingxia/view';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { treeListRecipe as r } from './TreeList.recipe';
+import { dataOf } from '../internal/data';
 
 export interface TreeNode {
   /** Identifies the node: what `value` and `onChange` carry, and `<testid>-<id>` on its row. Unique in the tree. */
@@ -46,7 +47,7 @@ type Guide = 1 | 2 | 3 | 4 | 5;
 
 /** Things inside things: folders, an outline, a file tree. Branches open in place. */
 export function TreeList({
-  label, items, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], hasLineGuides = false, className, 'data-testid': testId,
+  label, items, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], hasLineGuides = false, className, 'data-testid': testId, ...attributes
 }: TreeListProps) {
   const id = useId();
   const local = useLocal<readonly string[]>('open', defaultOpenBranches);
@@ -116,7 +117,7 @@ export function TreeList({
     return isOpen ? [row, ...rows(node.children ?? [], depth + 1, isLast)] : [row];
   });
   return (
-    <view role="tree" aria-label={label} data-testid={testId} className={cx(r.root.base, className)}>
+    <view role="tree" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       {rows(items, 1, [])}
     </view>
   );
