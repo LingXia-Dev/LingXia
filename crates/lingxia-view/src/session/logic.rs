@@ -240,6 +240,8 @@ pub enum UiRequest {
         position: Option<String>,
     },
     HideToast,
+    /// Close the modal and action sheet on screen, each settling as cancelled.
+    DismissDialog,
     ShowModal {
         title: String,
         content: String,
@@ -360,6 +362,7 @@ impl ViewRequest {
                     .some("position", position.as_deref())?,
             ),
             UiRequest::HideToast => ("ui.hideToast", Build::new(ctx)),
+            UiRequest::DismissDialog => ("ui.dismissDialog", Build::new(ctx)),
             UiRequest::ShowModal {
                 title,
                 content,
@@ -455,6 +458,7 @@ impl ToView {
                         position: text("position"),
                     },
                     "ui.hideToast" => UiRequest::HideToast,
+                    "ui.dismissDialog" => UiRequest::DismissDialog,
                     "ui.showModal" => UiRequest::ShowModal {
                         title: text("title").unwrap_or_default(),
                         content: text("content").unwrap_or_default(),

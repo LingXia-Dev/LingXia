@@ -1345,6 +1345,16 @@ extension LxApp {
     nonisolated static func hideToast() {
         executeOnMain { LxAppToast.hideToast() }
     }
+
+    /// Closes the alert and action sheet on screen, each settling as dismissed.
+    nonisolated static func dismissDialog() {
+        #if os(iOS)
+        executeOnMain {
+            LxAppModal.dismissForClosedApp()
+            LxAppActionSheet.dismissForClosedApp()
+        }
+        #endif
+    }
 }
 
 #if os(iOS)

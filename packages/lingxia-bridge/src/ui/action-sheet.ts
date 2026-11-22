@@ -14,6 +14,8 @@ const ANIMATION_MS = 300;
 const STYLE_ID = 'lx-action-sheet-style';
 
 let activeSheet: Promise<ActionSheetResult> | null = null;
+/** Cancels the sheet on screen; null when none is. */
+let cancelShown: (() => void) | null = null;
 
 function isDesktopMode(): boolean {
   return isDesktop();
@@ -82,6 +84,11 @@ function ensureActionSheetStyle(): void {
 .lx-as-cancel-btn { font-weight: 500; color: #000; }
 `;
   document.head.appendChild(style);
+}
+
+/** Close the sheet on screen as a tap outside would; a queued one shows next. */
+export function dismissActionSheet(): void {
+  cancelShown?.();
 }
 
 export function showActionSheet(params: unknown): Promise<ActionSheetResult> {
@@ -160,10 +167,12 @@ function renderSheet(
     });
 
     backdrop.addEventListener('click', () => dismiss(-1));
+    cancelShown = () => dismiss(-1);
 
     function dismiss(tapIndex: number): void {
       if (dismissed) return;
       dismissed = true;
+      cancelShown = null;
       backdrop.classList.remove('lx-as-visible');
       sheet.classList.remove('lx-as-visible');
       setTimeout(() => {

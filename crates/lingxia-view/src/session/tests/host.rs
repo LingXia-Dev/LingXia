@@ -3033,6 +3033,29 @@ fn logic_feedback_calls_draw_in_the_view_and_answer_like_the_webview() {
         replies().into_iter().find(|r| r["id"] == "lv_7").unwrap()["result"],
         serde_json::json!({"confirm": false, "cancel": true})
     );
+    // Logic's dismiss closes the dialogs on screen, each settling as cancelled.
+    call(
+        "lv_9",
+        "ui.showModal",
+        serde_json::json!({"title":"Wait"}),
+    );
+    call(
+        "lv_10",
+        "ui.showActionSheet",
+        serde_json::json!({"itemList":["Copy"]}),
+    );
+    call("lv_11", "ui.dismissDialog", serde_json::json!({}));
+    platform.settle(&[&host]);
+    let replies_now = replies();
+    let answer = |id: &str| replies_now.iter().find(|r| r["id"] == id).cloned().unwrap();
+    assert_eq!(
+        answer("lv_9")["result"],
+        serde_json::json!({"confirm": false, "cancel": true})
+    );
+    assert_eq!(answer("lv_10")["result"], serde_json::json!({"tapIndex": -1}));
+    assert_eq!(answer("lv_11")["ok"], true);
+    assert_eq!(query("[data-testid=\"lx-modal\"]")["exists"], false);
+    assert_eq!(query("[data-testid=\"lx-action-sheet\"]")["exists"], false);
     call(
         "lv_8",
         "ui.showToast",

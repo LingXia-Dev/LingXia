@@ -304,6 +304,13 @@ class NativeBridge {
       return true;
     });
 
+    // Each dismiss settles its own pending call and is a no-op when nothing is shown.
+    this.register('dismissDialog', () => {
+      LxAppModal.dismiss();
+      LxAppActionSheet.dismiss();
+      return true;
+    });
+
     // Modal APIs
     this.register('showModal', (
       title: string,

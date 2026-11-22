@@ -136,4 +136,24 @@ impl UserFeedback for Platform {
         })
         .await
     }
+
+    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+        let modal_class: &JClass = super::get_cached_class(super::CachedClass::LxAppModal)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        let sheet_class: &JClass = super::get_cached_class(super::CachedClass::LxAppActionSheet)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+
+        // Each hide settles its own pending call and is a no-op when nothing is shown.
+        with_env(|env| -> Result<(), PlatformError> {
+            env.call_static_method(modal_class, jni_str!("hideModal"), jni_sig!("()V"), &[])?;
+            env.call_static_method(
+                sheet_class,
+                jni_str!("hideActionSheet"),
+                jni_sig!("()V"),
+                &[],
+            )?;
+            Ok(())
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to dismiss dialog: {}", e)))
+    }
 }

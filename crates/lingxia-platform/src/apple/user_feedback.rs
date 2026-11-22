@@ -20,6 +20,17 @@ impl UserFeedback for Platform {
         Ok(())
     }
 
+    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+        // macOS dialogs are View-drawn; Logic closes them with `ui.dismissDialog`.
+        #[cfg(target_os = "macos")]
+        return Err(PlatformError::NotSupported("dismiss_dialog".to_string()));
+        #[cfg(not(target_os = "macos"))]
+        {
+            ffi::dismiss_dialog();
+            Ok(())
+        }
+    }
+
     fn hide_toast(&self) -> Result<(), PlatformError> {
         // Call the Swift FFI function
         ffi::hide_toast();

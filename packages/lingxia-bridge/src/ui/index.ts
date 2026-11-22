@@ -1,6 +1,6 @@
 import { registerViewMethodHandler } from '../bridge';
-import { showActionSheet } from './action-sheet';
-import { showModal } from './modal';
+import { dismissActionSheet, showActionSheet } from './action-sheet';
+import { dismissModal, showModal } from './modal';
 import { showToast, hideToast } from './toast';
 
 export function registerUIHandlers(): void {
@@ -8,4 +8,9 @@ export function registerUIHandlers(): void {
   registerViewMethodHandler('ui.showModal', showModal);
   registerViewMethodHandler('ui.showToast', showToast);
   registerViewMethodHandler('ui.hideToast', hideToast);
+  registerViewMethodHandler('ui.dismissDialog', () => {
+    dismissModal();
+    dismissActionSheet();
+    return Promise.resolve();
+  });
 }

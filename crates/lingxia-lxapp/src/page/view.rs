@@ -192,6 +192,8 @@ pub enum GpuUiRequest {
     ShowToast(GpuToast),
     HideToast,
     ShowModal(GpuModal),
+    /// Close the modal and action sheet on screen, each settling as cancelled.
+    DismissDialog,
     ShowActionSheet(GpuActionSheet),
 }
 
@@ -242,6 +244,7 @@ impl GpuViewRequest {
         Ok(match method {
             "ui.showToast" => Self::Ui(GpuUiRequest::ShowToast(fit(method, params)?)),
             "ui.hideToast" => Self::Ui(GpuUiRequest::HideToast),
+            "ui.dismissDialog" => Self::Ui(GpuUiRequest::DismissDialog),
             "ui.showModal" => Self::Ui(GpuUiRequest::ShowModal(fit(method, params)?)),
             "ui.showActionSheet" => Self::Ui(GpuUiRequest::ShowActionSheet(fit(method, params)?)),
             "video.command" => Self::Video(fit(method, params)?),
@@ -430,6 +433,10 @@ mod gpu_request_tests {
         assert_eq!(
             GpuViewRequest::from_call("ui.hideToast", None).unwrap(),
             GpuViewRequest::Ui(GpuUiRequest::HideToast)
+        );
+        assert_eq!(
+            GpuViewRequest::from_call("ui.dismissDialog", None).unwrap(),
+            GpuViewRequest::Ui(GpuUiRequest::DismissDialog)
         );
         assert_eq!(
             GpuViewRequest::from_call("ui.unknown", None).unwrap_err().0,

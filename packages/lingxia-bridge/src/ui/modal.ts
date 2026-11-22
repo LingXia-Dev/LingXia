@@ -17,6 +17,8 @@ const ANIMATION_MS = 200;
 const STYLE_ID = 'lx-modal-style';
 
 let activeModal: Promise<ModalResult> | null = null;
+/** Cancels the modal on screen; null when none is. */
+let cancelShown: (() => void) | null = null;
 
 function ensureModalStyle(): void {
   if (document.getElementById(STYLE_ID)) return;
@@ -113,6 +115,11 @@ function ensureModalStyle(): void {
   document.head.appendChild(style);
 }
 
+/** Close the modal on screen as its cancel would; a queued one shows next. */
+export function dismissModal(): void {
+  cancelShown?.();
+}
+
 export function showModal(params: unknown): Promise<ModalResult> {
   const p = params as ModalParams | undefined;
   const title = p?.title ?? '';
@@ -200,10 +207,12 @@ function renderModal(
     requestAnimationFrame(() => {
       backdrop.classList.add('lx-modal-visible');
     });
+    cancelShown = () => dismiss(false);
 
     function dismiss(confirmed: boolean): void {
       if (dismissed) return;
       dismissed = true;
+      cancelShown = null;
       backdrop.classList.remove('lx-modal-visible');
       setTimeout(() => {
         backdrop.remove();

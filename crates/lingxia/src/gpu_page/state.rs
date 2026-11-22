@@ -122,6 +122,7 @@ pub(crate) fn message_to_view(message: GpuViewMessage) -> ToView {
                         position: toast.position,
                     },
                     GpuUiRequest::HideToast => UiRequest::HideToast,
+                    GpuUiRequest::DismissDialog => UiRequest::DismissDialog,
                     GpuUiRequest::ShowModal(modal) => UiRequest::ShowModal {
                         title: modal.title,
                         content: modal.content,

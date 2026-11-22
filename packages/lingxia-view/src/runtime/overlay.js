@@ -37,6 +37,12 @@ export function viewCall(call) {
       toast = null;
       replies.push(reply(id, true, null));
       break;
+    case 'ui.dismissDialog':
+      // Only the front modal and sheet are on screen; queued ones show next.
+      if (modals.length) { replies.push(reply(modals.shift().id, true, { confirm: false, cancel: true })); changed = true; }
+      if (sheets.length) { replies.push(reply(sheets.shift().id, true, { tapIndex: -1 })); changed = true; }
+      replies.push(reply(id, true, null));
+      break;
     case 'ui.showModal':
       modals.push({ id, key: nextToken++, title: text(params.title), content: text(params.content), showCancel: params.showCancel !== false,
         cancelText: text(params.cancelText, 'Cancel'), confirmText: text(params.confirmText, 'OK') });

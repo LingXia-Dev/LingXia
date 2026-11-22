@@ -25,6 +25,11 @@ impl UserFeedback for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to show toast: {}", e)))
     }
 
+    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("dismissDialog", &[])
+            .map_err(|e| PlatformError::Platform(format!("Failed to dismiss dialog: {}", e)))
+    }
+
     fn hide_toast(&self) -> Result<(), PlatformError> {
         // Call ArkTS hideToast function via TSFN
         lingxia_webview::platform::harmony::tsfn::call_arkts("hideToast", &[])

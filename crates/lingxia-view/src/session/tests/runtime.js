@@ -1626,6 +1626,17 @@
         toast = null;
         replies.push(reply(id, true, null));
         break;
+      case "ui.dismissDialog":
+        if (modals.length) {
+          replies.push(reply(modals.shift().id, true, { confirm: false, cancel: true }));
+          changed2 = true;
+        }
+        if (sheets.length) {
+          replies.push(reply(sheets.shift().id, true, { tapIndex: -1 }));
+          changed2 = true;
+        }
+        replies.push(reply(id, true, null));
+        break;
       case "ui.showModal":
         modals.push({
           id,

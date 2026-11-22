@@ -308,6 +308,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.showActionSheet")]
         fn show_action_sheet(options: ActionSheetOptions, callback_id: u64);
 
+        #[swift_bridge(swift_name = "LxApp.dismissDialog")]
+        fn dismiss_dialog();
+
         #[swift_bridge(swift_name = "LxApp.presentSurface")]
         fn present_surface(
             id: &str,
@@ -542,6 +545,8 @@ mod bridge {
 // `reveal_in_file_manager` / control-session indicator stay macOS-only.
 #[cfg(target_os = "macos")]
 pub use bridge::autostart_is_supported;
+#[cfg(target_os = "ios")]
+pub use bridge::dismiss_dialog;
 pub use bridge::get_capsule_rect;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use bridge::notify_app_update_ready;
