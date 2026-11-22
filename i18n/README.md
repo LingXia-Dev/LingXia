@@ -4,6 +4,12 @@ Single source of truth for every localizable string LingXia ships, across:
 Rust (`lingxia-logic`), TypeScript (`lingxia-types`), Android, iOS / macOS,
 Harmony, and the Apple CLI permission descriptors.
 
+LingXia translates these; an app overrides keys or adds a language in its own
+`i18n/<tag>.yaml` (see `docs/internal/i18n.md` for why). Permission prompts and
+`Info.plist` texts are never shipped from unreviewed machine translation. Not yet:
+a `description` per key and plurals (ICU plural to Android `plurals` and Apple
+`.stringsdict`); values take plain arguments only.
+
 ## Directory layout (scopes)
 
 The directory a YAML file lives in **determines which targets receive it**.

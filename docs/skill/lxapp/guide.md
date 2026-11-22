@@ -525,6 +525,9 @@ argument a translation adds or drops, and a catalogue for an undeclared language
   `"navigationBar": { "title": { "message": "title.cart" } }`. A plain string is one text for every
   language. The build fails on a key the source catalogue lacks.
 
+An lxapp that must show a language the host does not (a language course, a kiosk) keeps its own
+choice and renders its own text; `t`, View words, Liuli labels and host chrome stay in the host's.
+
 The language is the host's display language narrowed to the declared ones: the exact tag, else the
 same language, else the source. A runtime value from `lx.app.tabBar.update` /
 `page.navigationBar.update` wins until reset with `null`, so do not also translate the declared text

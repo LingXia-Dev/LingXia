@@ -139,7 +139,8 @@ pull_refresh:
   refreshing: "Refreshing"
   refreshed: "Refreshed"
 
-# GPU page recovery UI.
+# GPU page recovery UI. The host draws it when the page cannot run, so these stay host strings in the
+# host language, not page text.
 gpu:
   update_required: "Update the app to open this page."
   update_failed: "This page couldn't update. Your previous view is still available."

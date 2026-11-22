@@ -1,4 +1,5 @@
 # Crowdin carries LingXia's own strings; `en-US` / `en` is the source of each.
+# Never ship permission prompts or Info.plist texts (i18n/permission/) from unreviewed machine translation.
 # `lingxia gen i18n --check` (CI) refuses a shipped language with a missing key
 # or an argument that differs from the source.
 project_id_env: CROWDIN_PROJECT_ID
