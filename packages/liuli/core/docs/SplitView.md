@@ -64,7 +64,7 @@ export function Workspace() {
 | `sidebar` (required) | `Child` |  | The sidebar's content, usually a NavList; it scrolls on its own. |
 | `children` (required) | `Child` |  | The content beside it; it scrolls on its own. |
 | `contentActions` | `Child` |  | Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view. |
-| `sidebarLabel` (required) | `string` |  | Names the sidebar for assistive tech: "Components". |
+| `sidebarLabel` | `string` |  | Names the sidebar for assistive tech: "Components". Defaults to "Sidebar" in the page's language. |
 | `contentLabel` (required) | `string` |  | Names the content: the open page's title. |
 | `pane` | `SplitViewPane` | `'sidebar'` | On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it. |
 | `onBack` | `(() => void)` |  | On a compact screen: the back button over the content was pressed; show the sidebar. |

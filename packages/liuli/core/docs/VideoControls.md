@@ -16,16 +16,10 @@ VideoControls drives a `useVideo` player: over the picture as a quiet bar that h
 
 ```tsx
 import { useVideo } from '@lingxia/view';
-import { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';
+import { VideoControls } from '@liulidesign/core/VideoControls';
 
 const clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';
 const poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
-const labels: VideoControlsLabels = {
-  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',
-  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',
-  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',
-  failed: 'This video cannot play right now', retry: 'Retry',
-};
 
 /** Over the picture: a large play first, then a quiet bar that hides on touch while it plays. */
 export function Overlay() {
@@ -33,7 +27,7 @@ export function Overlay() {
   return (
     <view className="relative aspect-video overflow-hidden rounded-xl">
       <video player={player} src={clip} poster={poster} aria-label="Big Buck Bunny" className="size-full" />
-      <VideoControls player={player} labels={labels} poster={poster} data-testid="overlay-controls" />
+      <VideoControls player={player} poster={poster} data-testid="overlay-controls" />
     </view>
   );
 }
@@ -43,16 +37,10 @@ export function Overlay() {
 
 ```tsx
 import { useVideo } from '@lingxia/view';
-import { VideoControls, type VideoControlsLabels } from '@liulidesign/core/VideoControls';
+import { VideoControls } from '@liulidesign/core/VideoControls';
 
 const clip = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4';
 const poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
-const labels: VideoControlsLabels = {
-  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',
-  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',
-  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',
-  failed: 'This video cannot play right now', retry: 'Retry',
-};
 
 /** A row under the picture, for a small player or a page that keeps the picture clear. */
 export function Bar() {
@@ -62,7 +50,7 @@ export function Bar() {
       <view className="aspect-video overflow-hidden rounded-xl">
         <video player={player} src={clip} poster={poster} aria-label="Big Buck Bunny" className="size-full" />
       </view>
-      <VideoControls player={player} labels={labels} variant="bar" poster={poster} data-testid="bar-controls" />
+      <VideoControls player={player} variant="bar" poster={poster} data-testid="bar-controls" />
     </view>
   );
 }
@@ -73,7 +61,7 @@ export function Bar() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `player` (required) | `Video` |  | The `useVideo` player they drive. |
-| `labels` (required) | `VideoControlsLabels` |  | Every word they show or speak. |
+| `labels` | `Partial<VideoControlsLabels>` |  | Words to use instead of Liuli's, which follow the page's language. |
 | `variant` | `VideoControlsVariant` | `'overlay'` | `overlay` lays them over the picture: put them after the `<video>` in a `relative` parent that holds only that video. `bar` is a row under it. |
 | `poster` | `string` |  | The picture full screen shows until the player has a frame; pass the `<video>`'s poster. |
 | `className` | `string` |  |  |

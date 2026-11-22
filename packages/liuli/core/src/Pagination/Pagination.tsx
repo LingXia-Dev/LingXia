@@ -1,4 +1,5 @@
 import { cx, useBox, useView } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { Select } from '../Select/Select';
 import { Glyph } from '../internal/Glyph';
@@ -17,10 +18,10 @@ export interface PaginationProps {
   hasMore?: boolean;
   /** Runs with the page chosen. */
   onChange: (page: number) => void;
-  /** A page button's accessible name: `page => \`Page ${page}\``. */
-  pageLabel: (page: number) => string;
-  previousLabel: string;
-  nextLabel: string;
+  /** A page button's accessible name: `page => \`Page ${page}\``. Defaults to "Page 2" in the page's language. */
+  pageLabel?: (page: number) => string;
+  previousLabel?: string;
+  nextLabel?: string;
   /** How many pages to show on each side of the current one. @default 1 */
   siblings?: number;
   /** `compact` shows the two arrows around "3 / 12"; `auto` uses it where the pointer is a finger. Page numbers that do not fit their row give way to it. @default 'auto' */
@@ -55,7 +56,7 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 
 /** Moves through a long set a page at a time. */
 export function Pagination({
-  label, value: page, pageCount: counted, totalItems, hasMore = false, onChange, pageLabel, previousLabel, nextLabel, siblings = 1, variant = 'auto', positionLabel,
+  label, value: page, pageCount: counted, totalItems, hasMore = false, onChange, pageLabel = (page: number) => liuliText('@liuli.page', { page }), previousLabel = liuliText('@liuli.previousPage'), nextLabel = liuliText('@liuli.nextPage'), siblings = 1, variant = 'auto', positionLabel,
   pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId,
 }: PaginationProps) {
   const pageCount = counted ?? (totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))));

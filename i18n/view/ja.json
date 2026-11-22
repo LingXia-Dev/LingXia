@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "キャンセル"
+  },
+  "@view.done": {
+    "defaultMessage": "完了"
+  },
+  "@view.ok": {
+    "defaultMessage": "OK"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "前の月"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "次の月"
+  },
+  "@view.hour": {
+    "defaultMessage": "時"
+  },
+  "@view.minute": {
+    "defaultMessage": "分"
+  },
+  "@view.period": {
+    "defaultMessage": "午前/午後"
+  },
+  "@view.options": {
+    "defaultMessage": "オプション"
+  },
+  "@view.dialog": {
+    "defaultMessage": "ダイアログ"
+  },
+  "@view.actions": {
+    "defaultMessage": "アクション"
+  }
+}

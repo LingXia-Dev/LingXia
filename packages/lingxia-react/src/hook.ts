@@ -6,8 +6,11 @@ import type {
 } from "@lingxia/bridge";
 import {
   getHost,
+  getLanguage,
   holdLeaveGuard,
   subscribeHost,
+  subscribeLanguage,
+  t,
   type LxHost,
   type LxLeaveHandler,
 } from "@lingxia/bridge";
@@ -62,13 +65,22 @@ export function useLxPage<
 export type LxPage<TData, TActions extends ActionMap> = PageOf<TData, TActions>;
 
 /**
- * What the host decided for this page: `sizeClass`, `canDock`,
- * `displayLanguage`, `contentLanguage`, `formFactor`, `os`, `runner`. Re-renders only when one
+ * What the host decided for this page: `sizeClass`, `canDock`, `language`,
+ * `formFactor`, `os`, `runner`. Re-renders only when one
  * of them changes — never while a window is dragged. Geometry is CSS:
  * `--lx-page-chrome-*` and container queries.
  */
 export function useLxHost(): LxHost {
   return React.useSyncExternalStore(subscribeHost, getHost, getHost);
+}
+
+/**
+ * The lxapp's `t(key, args)` from its `i18n/` catalogues, in the page's
+ * language; the component re-renders when that language changes.
+ */
+export function useText(): typeof t {
+  React.useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage);
+  return t;
 }
 
 /**

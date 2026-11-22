@@ -229,6 +229,9 @@ pub struct DisplayLanguageEffectiveUpdate {
 struct ServiceInner {
     preference: DisplayLanguagePreference,
     system: LanguageTag,
+    /// The product's languages; the system's and a saved preference narrow to one of them.
+    /// Empty: no narrowing.
+    languages: Vec<String>,
     session_override: Option<SessionOverride>,
     state: DisplayLanguageState,
     revision: u64,
@@ -242,6 +245,12 @@ struct ServiceInner {
 }
 
 impl ServiceInner {
+    fn narrow(&self, tag: &LanguageTag) -> LanguageTag {
+        super::localized_text::narrow(tag.as_str(), &self.languages)
+            .and_then(|narrowed| LanguageTag::parse(narrowed).ok())
+            .unwrap_or_else(|| tag.clone())
+    }
+
     fn resolve(&self) -> DisplayLanguageState {
         let (effective, effective_source) = match &self.session_override {
             Some(SessionOverride {
@@ -255,13 +264,15 @@ impl ServiceInner {
                 self.system.clone(),
                 DisplayLanguageEffectiveSource::SessionOverride,
             ),
+            // A session override is a test's or a runner's pin and shows as asked.
             None => match &self.preference {
                 DisplayLanguagePreference::LanguageTag(tag) => {
-                    (tag.clone(), DisplayLanguageEffectiveSource::Preference)
+                    (self.narrow(tag), DisplayLanguageEffectiveSource::Preference)
                 }
-                DisplayLanguagePreference::Auto => {
-                    (self.system.clone(), DisplayLanguageEffectiveSource::System)
-                }
+                DisplayLanguagePreference::Auto => (
+                    self.narrow(&self.system),
+                    DisplayLanguageEffectiveSource::System,
+                ),
             },
         };
         DisplayLanguageState {
@@ -294,6 +305,7 @@ impl DisplayLanguageService {
         let mut inner = ServiceInner {
             preference,
             system,
+            languages: Vec::new(),
             session_override: None,
             state: initial,
             revision: 0,
@@ -586,9 +598,11 @@ fn publish_state(update: &DisplayLanguageStateUpdate) {
 /// The returned owner belongs to the native Runner session. The host retains
 /// it through graceful teardown; a crash or process exit drops the entire
 /// in-memory service, and a later takeover receives a distinct owner token.
+/// `languages` are the product's, in preference order; empty leaves the language unnarrowed.
 pub fn initialize_display_language(
     persisted: Option<String>,
     system: &str,
+    languages: &[String],
     runner_override: Option<DisplayLanguagePreference>,
 ) -> Result<Option<DisplayLanguageSessionOwner>, LxAppError> {
     let preference = persisted
@@ -605,6 +619,7 @@ pub fn initialize_display_language(
     dispatch(service().update(|inner| {
         inner.preference = preference;
         inner.system = system;
+        inner.languages = languages.to_vec();
         inner.session_override = None;
     }));
     Ok(runner_override.map(install_display_language_session_override))
@@ -881,6 +896,35 @@ mod tests {
         assert_eq!(start.state.effective, tag("de-DE"));
         deliver(&service, service.refresh_system(tag("fr-FR")));
         assert_eq!(*seen.lock().unwrap(), vec![start.revision + 1]);
+    }
+
+    #[test]
+    fn the_host_speaks_one_of_the_product_languages() {
+        let service = service_with("auto", "zh-Hans-SG");
+        let languages = ["en-US", "zh-CN", "ja-JP"].map(String::from).to_vec();
+        deliver(
+            &service,
+            service.update(|inner| inner.languages = languages),
+        );
+        assert_eq!(service.state().effective, tag("zh-CN"), "same script");
+        deliver(&service, service.refresh_system(tag("fr-FR")));
+        assert_eq!(
+            service.state().effective,
+            tag("en-US"),
+            "none matches: the first"
+        );
+        deliver(
+            &service,
+            service.update(|inner| inner.preference = "ja".parse().unwrap()),
+        );
+        assert_eq!(service.state().effective, tag("ja-JP"));
+        let (_, transition) = service.install_session_override("ko-KR".parse().unwrap());
+        deliver(&service, transition);
+        assert_eq!(
+            service.state().effective,
+            tag("ko-KR"),
+            "a pin shows as asked"
+        );
     }
 
     #[test]

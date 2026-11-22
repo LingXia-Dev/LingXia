@@ -10,7 +10,7 @@ test.configure({ requires: { args: ['harmonyDevice'] } });
 test('a text field after a numeric one still takes typed letters', {
   id: 'IME-HARMONY-001', covers: ['view:input'],
   reason: 'taps the Huawei system keyboard through the Harmony device fixture',
-  start: { page: 'view-input', params: { lang: 'en' } },
+  start: { page: 'view-input' },
 }, async (t) => {
   const view = t.app.view;
   const device = harmonyDevice(t);

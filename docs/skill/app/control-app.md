@@ -23,7 +23,7 @@ separate from class: see [Permissions](../native/permissions.md).
 
 ```ts
 if (lx.app.info.role !== 'control') return; // offer nothing that needs it
-await lx.host.appearance.preference.set('dark');
+await lx.host.appearance.set('dark');
 ```
 
 `role` is `'control'`, `'control_surface'` or `'guest'`. Control-only members
@@ -39,15 +39,15 @@ These act on the product, not on the calling lxapp:
 - `lx.host.update.*`, `lx.host.screenshot()`
   — the host app, not your bundle (that is `lx.app.update.onReady`)
 - `lx.host.autostart.*`
-- `lx.host.displayLanguage.preference` / `lx.host.appearance.preference`
-  ([Product settings](../lxapp/core.md#product-settings))
+- `lx.host.displayLanguage` / `lx.host.appearance`: the product's preference, with
+  `set`; guests get `E_PERMISSION_DENIED` ([Product settings](../lxapp/core.md#product-settings))
 - `lx.shell.*`: sidebar actions, `setAppDisplay`, `activate()`
 - `lx.surface.app(appId)` / `lx.surface.declared(id)` to find a live app or declared surface
 - `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
   `edge`: other lxapps are refused at run time
 
-Reading the resolved settings (`lx.host.displayLanguage.get()`,
-`lx.host.appearance.get()`) is open to every lxapp.
+Reading the resolved settings (`lx.app.language.get()`,
+`lx.app.appearance.get()`) is open to every lxapp.
 
 `lx.host.notification` and `lx.host.banner` are open to every lxapp, scoped to the caller for guests;
 their declarations list a guest's limits.

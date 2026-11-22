@@ -17,7 +17,7 @@ function runI18n(source, hostLanguage) {
     // `subscribe` is change-only.
     LingXiaBridge: {
       host: {
-        get: () => ({ displayLanguage: hostLanguage.value }),
+        get: () => ({ language: hostLanguage.value }),
         subscribe(listener) {
           listeners.add(listener);
           return () => listeners.delete(listener);

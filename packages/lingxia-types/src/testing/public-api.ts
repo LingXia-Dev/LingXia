@@ -31,12 +31,14 @@ import type {
   TerminalDriver,
 } from '../automation/index.js';
 import type {
-  AppearanceApi,
+  AppAppearanceApi,
   AppCacheApi,
+  AppLanguageApi,
   AutostartApi,
   BannerApi,
   CompressVideoTask,
-  DisplayLanguageApi,
+  HostAppearanceApi,
+  HostDisplayLanguageApi,
   DownloadTask,
   ClipboardApi,
   FileSystemApi,
@@ -138,9 +140,9 @@ const NOTIFICATION_API = [
 const APP_CACHE_API = ['clear', 'size'] as const;
 /** `Live<T>`: every value that changes. */
 const LIVE_API = ['get', 'watch'] as const;
-const DISPLAY_LANGUAGE_API = ['get', 'preference', 'watch'] as const;
-const APPEARANCE_API = DISPLAY_LANGUAGE_API;
-const PREFERENCE_API = ['get', 'set', 'watch'] as const;
+// The lxapp follows what it renders in; only the Control app's `lx.host` sets the preference.
+const APP_FOLLOW_API = LIVE_API;
+const HOST_PREFERENCE_API = ['get', 'set', 'watch'] as const;
 const HOST_UPDATE_API = ['check', 'claim'] as const;
 const TAB_BAR_API = ['update'] as const;
 const UI_API = ['actionSheet', 'alert', 'confirm', 'toast'] as const;
@@ -187,7 +189,7 @@ const LX_FILE_API = [
   'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
-const APP_API = ['info', 'moreActions', 'tabBar', 'update'] as const;
+const APP_API = ['appearance', 'info', 'language', 'moreActions', 't', 'tabBar', 'update'] as const;
 const APP_UPDATE_API = ['apply', 'onFailed', 'onReady'] as const;
 const MORE_ACTIONS_API = ['replace'] as const;
 const PAGE_PLAYER_API = [
@@ -426,28 +428,26 @@ export const LX_RUNTIME_SURFACES = [
     name: 'lx.host.displayLanguage',
     layer: 'logic',
     expression: 'lx.host.displayLanguage',
-    members: DISPLAY_LANGUAGE_API,
-    properties: ['preference'],
-  },
-  {
-    name: 'lx.host.displayLanguage.preference',
-    layer: 'logic',
-    expression: 'lx.host.displayLanguage.preference',
-    members: PREFERENCE_API,
+    members: HOST_PREFERENCE_API,
   },
 
   {
     name: 'lx.host.appearance',
     layer: 'logic',
     expression: 'lx.host.appearance',
-    members: APPEARANCE_API,
-    properties: ['preference'],
+    members: HOST_PREFERENCE_API,
   },
   {
-    name: 'lx.host.appearance.preference',
+    name: 'lx.app.language',
     layer: 'logic',
-    expression: 'lx.host.appearance.preference',
-    members: PREFERENCE_API,
+    expression: 'lx.app.language',
+    members: APP_FOLLOW_API,
+  },
+  {
+    name: 'lx.app.appearance',
+    layer: 'logic',
+    expression: 'lx.app.appearance',
+    members: APP_FOLLOW_API,
   },
 
 
@@ -577,7 +577,7 @@ export const LX_RUNTIME_SURFACES = [
   },
   { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.storage()', members: STORAGE_API },
-  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['info', 'moreActions', 'tabBar', 'update'] },
+  { name: 'lx.app', layer: 'logic', expression: 'lx.app', members: APP_API, properties: ['appearance', 'info', 'language', 'moreActions', 'tabBar', 'update'] },
   { name: 'lx.app.update', layer: 'logic', expression: 'lx.app.update', members: APP_UPDATE_API },
   { name: 'lx.app.moreActions', layer: 'logic', expression: 'lx.app.moreActions', members: MORE_ACTIONS_API },
   {
@@ -865,8 +865,10 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<BannerApi, typeof BANNER_API>>,
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
-  AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
-  AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
+  AssertTrue<Exact<HostDisplayLanguageApi, typeof HOST_PREFERENCE_API>>,
+  AssertTrue<Exact<HostAppearanceApi, typeof HOST_PREFERENCE_API>>,
+  AssertTrue<Exact<AppLanguageApi, typeof APP_FOLLOW_API>>,
+  AssertTrue<Exact<AppAppearanceApi, typeof APP_FOLLOW_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
   AssertTrue<Exact<UiApi, typeof UI_API>>,
   AssertTrue<Exact<PickApi, typeof PICK_API>>,
@@ -888,8 +890,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<HostUpdateApi, typeof HOST_UPDATE_API>>,
   AssertTrue<Exact<LxAppUpdateApi, typeof APP_UPDATE_API>>,
   AssertTrue<Exact<MoreActionsApi, typeof MORE_ACTIONS_API>>,
-  AssertTrue<Exact<AppearanceApi['preference'], typeof PREFERENCE_API>>,
-  AssertTrue<Exact<DisplayLanguageApi['preference'], typeof PREFERENCE_API>>,
   AssertTrue<Exact<NetworkApi['status'], typeof LIVE_API>>,
   AssertTrue<Exact<FileSystemApi, typeof FILE_SYSTEM_API>>,
   AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
@@ -952,10 +952,10 @@ type RuntimeSurfaceTypes = {
   'lx.host.banner': BannerApi;
   'lx.host.notification': NotificationApi;
   'lx.host.cache': AppCacheApi;
-  'lx.host.displayLanguage': DisplayLanguageApi;
-  'lx.host.displayLanguage.preference': DisplayLanguageApi['preference'];
-  'lx.host.appearance': AppearanceApi;
-  'lx.host.appearance.preference': AppearanceApi['preference'];
+  'lx.host.displayLanguage': HostDisplayLanguageApi;
+  'lx.host.appearance': HostAppearanceApi;
+  'lx.app.language': AppLanguageApi;
+  'lx.app.appearance': AppAppearanceApi;
   'lx.app.tabBar': TabBarApi;
   'lx.ui': UiApi;
   'lx.pick': PickApi;

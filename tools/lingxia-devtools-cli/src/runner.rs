@@ -45,7 +45,7 @@ pub enum RunnerCommand {
         appearance: Option<AppearanceArg>,
         /// Display language for this dev session: a BCP-47 tag (`zh-CN`,
         /// `sr-Latn-RS`) or `auto` for the system. Shadows
-        /// `lx.host.displayLanguage` and is not saved.
+        /// the product's display language and is not saved.
         #[arg(long, value_name = "TAG")]
         language: Option<String>,
         /// Simulated system text size as a factor of the default (1.3, 2), 0.5 to 3

@@ -1,4 +1,5 @@
 import { cx, reveal, useId, useLocal, useView } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import type { IconName } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
@@ -39,8 +40,8 @@ export interface CommandPaletteProps {
   onQueryChange?: (query: string) => void;
   /** Shows a spinner in the search line while the app fetches. @default false */
   isLoading?: boolean;
-  /** Shown when nothing matches: "No commands match". */
-  emptyLabel: string;
+  /** Shown when nothing matches: "No commands match". Defaults to "No matches" in the page's language. */
+  emptyLabel?: string;
   'data-testid'?: string;
 }
 
@@ -68,7 +69,7 @@ function filtered(groups: readonly CommandGroup[], typed: string): readonly Comm
 }
 
 /** Type to find a command or a place, and run it from the keyboard. */
-export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel, 'data-testid': testId }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel = liuliText('@liuli.noMatches'), 'data-testid': testId }: CommandPaletteProps) {
   const listId = useId();
   const query = useLocal('query', '');
   const active = useLocal('active', 0);

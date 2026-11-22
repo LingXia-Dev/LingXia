@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Update fault fixture",
-      "zh-CN": "更新故障测试页"
+      "message": "title.specBreak"
     }
   },
   "pageOrientation": "auto"

@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "Embedded Document",
-      "zh-CN": "嵌入文档"
-    }
+    "title": { "message": "title.specEmbedded" }
   }
 }

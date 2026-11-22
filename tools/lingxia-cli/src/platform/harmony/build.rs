@@ -332,6 +332,14 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     rewrite_app_version(&staging, config)?;
     if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
         crate::product_i18n::write_harmony_product_name_strings(&staging, app.display_name())?;
+        crate::product_i18n::write_harmony_language_qualifiers(
+            &staging,
+            app.display_name(),
+            &app.product_languages(),
+        )?;
+        if let Some(text) = crate::sdk_text::load(&config.project_root, &app.product_languages())? {
+            text.write_harmony_overlay(&staging)?;
+        }
     }
     if let Err(err) = super::env_icon::badge_staged_icons(&staging, config.resolved_env.version) {
         eprintln!(

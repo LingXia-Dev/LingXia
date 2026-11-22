@@ -102,7 +102,7 @@ export function getSurfaceContext(): SurfaceContext {
 }
 
 /**
- * Follow the adaptive context. Change-only, like `subscribeDisplayLanguage`,
+ * Follow the adaptive context. Change-only, like `subscribeLanguage`,
  * so it composes with `useSyncExternalStore`. Returns an unsubscribe.
  */
 export function subscribeSurfaceContext(listener: () => void): () => void {

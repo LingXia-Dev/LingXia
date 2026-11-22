@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Perf target",
-      "zh-CN": "性能目标"
+      "message": "title.perfTarget"
     }
   }
 }

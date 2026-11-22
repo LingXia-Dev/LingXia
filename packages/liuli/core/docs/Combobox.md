@@ -179,9 +179,9 @@ export function Shipping() {
 | `onChange` | `((value: string) => void)` |  | Runs with the chosen option's value. |
 | `items` (required) | `readonly ComboboxOption[]` |  | The choices. By default the list shows those whose label contains what was typed, whatever its case. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
-| `searchLabel` (required) | `string` |  | The search field's accessible name: "Search countries". |
+| `searchLabel` | `string` |  | The search field's accessible name: "Search countries". Defaults to "Search" in the page's language. |
 | `searchPlaceholder` | `string` |  | Shown in the search field while it is empty. |
-| `emptyLabel` (required) | `string` |  | Shown in place of the list when no option matches: "No country matches". |
+| `emptyLabel` | `string` |  | Shown in place of the list when no option matches: "No country matches". Defaults to "No matches" in the page's language. |
 | `moreLabel` | `string` |  | Shown under the list when more than fifty options match: "Keep typing to see more". |
 | `closeLabel` | `string` |  | Names a close button in the sheet a finger gets; without it the sheet closes by a tap outside, a drag or Back. |
 | `onQueryChange` | `((query: string) => void)` |  | Runs with each change of the search text. With it the list shows `items` as given, so the app does the matching: by its own rule, or by asking a server. |

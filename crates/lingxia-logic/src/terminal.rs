@@ -7,14 +7,14 @@ use lingxia_terminal_config::{ConfigError, SETTINGS_APP_ID, ThemeStore};
 use lxapp::LxApp;
 use rong::{
     FromJSObject, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
-    JsonToJSValue, Optional, Promise, RongJSError,
+    JsonToJSValue, Promise, RongJSError, function::Optional,
 };
 use serde::Serialize;
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::time::Duration;
 
 type ChangeListeners = Rc<RefCell<Vec<Option<JSFunc>>>>;
@@ -57,7 +57,6 @@ struct SetConptyEnabledOptions {
 }
 
 struct TerminalContextService {
-    app: Weak<LxApp>,
     app_data_dir: PathBuf,
     active: Rc<Cell<bool>>,
     listeners: ChangeListeners,
@@ -295,7 +294,7 @@ async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
 }
 
 async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
-    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImport)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImport)?;
     let options = options.to_rust::<ImportOptions>()?;
     let scheme = lingxia_terminal_config::parse_scheme(&options.text).map_err(|error| {
         HostError::new(
@@ -481,7 +480,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
         "clear",
         JSFunc::new(&ctx, move |ctx: JSContext| -> JSResult<Promise> {
             let result = (|| {
-                let app = require_access(&ctx, LogicRoute::TerminalPreviewClear)?;
+                require_access(&ctx, LogicRoute::TerminalPreviewClear)?;
                 if clear_closed.get() {
                     return Ok(());
                 }
@@ -502,7 +501,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
         "close",
         JSFunc::new(&ctx, move |ctx: JSContext| -> JSResult<Promise> {
             let result = (|| {
-                let app = require_access(&ctx, LogicRoute::TerminalPreviewClose)?;
+                require_access(&ctx, LogicRoute::TerminalPreviewClose)?;
                 if closed.replace(true) {
                     return Ok(());
                 }
@@ -602,7 +601,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let listeners = Rc::new(RefCell::new(Vec::new()));
     let previews = Rc::new(RefCell::new(HashSet::new()));
     ctx.set_service(TerminalContextService {
-        app: Arc::downgrade(&app),
         app_data_dir: app.app_data_dir(),
         active,
         listeners: listeners.clone(),

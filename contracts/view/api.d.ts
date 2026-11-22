@@ -127,6 +127,45 @@ export declare function createContext<T>(defaultValue: T): Context<T>;
 export declare function useContext<T>(context: Context<T>): T;
 /** An element `id` unique to this component instance (and list row), stable across renders and hot swaps. */
 export declare function useId(): string;
+/**
+ * The lxapp's message `key` from `i18n/<tag>.json` in the page's language, with ICU `args`
+ * (`{ count: 3 }`); a switch of language re-renders the page. During render only.
+ */
+export declare function t(...message: MessageCall): string;
+/** A component library's words, as `lingxia gen i18n` compiles them: `(args, formatter) => text` per key. */
+export interface PackageWords {
+  readonly source: string;
+  readonly languages: Readonly<Record<string, Readonly<Record<string, (args: any, formatter: any) => unknown>>>>;
+  formatter(tag: string): unknown;
+}
+/**
+ * A component library's word `key` (`@liuli.dialog.close`) in the page's language: the lxapp's own
+ * catalogue entry for the key when it has one, else the package's, else the package's source
+ * language. During render only.
+ */
+export declare function packageText(words: PackageWords, key: string, args?: Readonly<Record<string, unknown>>): string;
+
+declare global {
+  /**
+   * The lxapp's messages, each with the arguments it takes. Empty here: the build generates the
+   * source catalogue's keys into it, and until then any key compiles.
+   */
+  interface LxAppMessages {}
+}
+
+declare const messageKey: unique symbol;
+/** A key built at run time, named `as MessageKey`: still one of the lxapp's keys, its arguments unchecked. */
+export type MessageKey = (keyof LxAppMessages extends never ? string : keyof LxAppMessages & string) & { readonly [messageKey]: true };
+
+/** `t`'s key and arguments, checked against `LxAppMessages` once the build generates it. */
+export type MessageCall = keyof LxAppMessages extends never
+  ? [key: string, args?: Readonly<Record<string, unknown>>]
+  : {
+      [K in keyof LxAppMessages & string]: {} extends LxAppMessages[K]
+        ? [key: K, args?: LxAppMessages[K]]
+        : [key: K, args: LxAppMessages[K]];
+    }[keyof LxAppMessages & string]
+    | [key: MessageKey, args?: Readonly<Record<string, unknown>>];
 
 export interface RequestResource<T> {
   /** A load is in flight; `value` keeps the previous result until it settles. */

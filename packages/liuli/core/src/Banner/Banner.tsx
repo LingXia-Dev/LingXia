@@ -1,4 +1,5 @@
 import { cx, useLocal } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
 import { bannerRecipe as r } from './Banner.recipe';
@@ -11,8 +12,8 @@ export type BannerDismiss =
   | {
       /** Removes the banner; the app stops rendering it. */
       onDismiss: () => void;
-      /** The dismiss button's name: "Dismiss". */
-      dismissLabel: string;
+      /** The dismiss button's name: "Dismiss". Defaults to "Dismiss" in the page's language. */
+      dismissLabel?: string;
     }
   | { onDismiss?: never; dismissLabel?: never };
 
@@ -20,8 +21,8 @@ export type BannerCollapse =
   | {
       /** Folds the message and the action under the title, behind a chevron button. @default false */
       isCollapsible: true;
-      /** The chevron button's name: "Details". Read with whether it is open. */
-      toggleLabel: string;
+      /** The chevron button's name: "Details". Read with whether it is open. Defaults to "Details" in the page's language. */
+      toggleLabel?: string;
       /** Whether it starts unfolded. @default true */
       isDefaultOpen?: boolean;
     }
@@ -44,7 +45,7 @@ export type BannerProps = BannerDismiss & BannerCollapse & {
  * A message in the page's flow about the page or the account: a sync problem, a trial ending, a
  * change that saved. It stays until resolved or dismissed; it is not a toast.
  */
-export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel, isCollapsible = false, toggleLabel, isDefaultOpen = true, className, 'data-testid': testId }: BannerProps) {
+export function Banner({ title, message, tone = 'info', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), isCollapsible = false, toggleLabel = liuliText('@liuli.details'), isDefaultOpen = true, className, 'data-testid': testId }: BannerProps) {
   const open = useLocal('open', isDefaultOpen);
   const isOpen = !isCollapsible || open.value;
   const hasEnd = onDismiss !== undefined || isCollapsible;

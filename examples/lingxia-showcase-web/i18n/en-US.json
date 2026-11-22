@@ -1,0 +1,38 @@
+{
+  "title.bridgeRepro": {
+    "defaultMessage": "Bridge Repro",
+    "description": "Navigation bar title of the bridge-repro page."
+  },
+  "title.channel": {
+    "defaultMessage": "Channel",
+    "description": "Navigation bar title of the channel page."
+  },
+  "title.home": {
+    "defaultMessage": "WebView Demos",
+    "description": "Navigation bar title of the home page."
+  },
+  "title.navigator": {
+    "defaultMessage": "Navigator",
+    "description": "Navigation bar title of the navigator page."
+  },
+  "title.picker": {
+    "defaultMessage": "LxPicker",
+    "description": "Navigation bar title of the picker page."
+  },
+  "title.pulltorefresh": {
+    "defaultMessage": "Pull Down Refresh",
+    "description": "Navigation bar title of the pulltorefresh page."
+  },
+  "title.specEmbedded": {
+    "defaultMessage": "Embedded Document",
+    "description": "Navigation bar title of the spec-embedded page."
+  },
+  "title.swiper": {
+    "defaultMessage": "LxMediaSwiper",
+    "description": "Navigation bar title of the swiper page."
+  },
+  "title.video": {
+    "defaultMessage": "Video",
+    "description": "Navigation bar title of the video page."
+  }
+}

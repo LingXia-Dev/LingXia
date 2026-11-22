@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "Отмена"
+  },
+  "@view.done": {
+    "defaultMessage": "Готово"
+  },
+  "@view.ok": {
+    "defaultMessage": "ОК"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "Предыдущий месяц"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "Следующий месяц"
+  },
+  "@view.hour": {
+    "defaultMessage": "Час"
+  },
+  "@view.minute": {
+    "defaultMessage": "Минута"
+  },
+  "@view.period": {
+    "defaultMessage": "AM/PM"
+  },
+  "@view.options": {
+    "defaultMessage": "Параметры"
+  },
+  "@view.dialog": {
+    "defaultMessage": "Диалоговое окно"
+  },
+  "@view.actions": {
+    "defaultMessage": "Действия"
+  }
+}

@@ -92,7 +92,7 @@ pub struct TabBarItem {
     /// treats an empty path as no page.
     #[serde(skip, default)]
     pub page_path: String,
-    /// The label as declared: a string, or one per language. Readers use
+    /// The label as declared: a string, or a catalogue key. Readers use
     /// [`Self::text`], which is this resolved for the current language.
     #[serde(rename = "text", default, skip_serializing_if = "Option::is_none")]
     pub declared_text: Option<LocalizedText>,
@@ -625,6 +625,16 @@ impl TabBar {
         Ok(changed)
     }
 
+    /// Binds each label that names a catalogue key, then resolves it.
+    pub(crate) fn bind_text(&mut self, mut bind: impl FnMut(&mut LocalizedText)) {
+        for item in &mut self.items {
+            if let Some(text) = item.declared_text.as_mut() {
+                bind(text);
+            }
+        }
+        self.localize();
+    }
+
     /// Re-resolve every label for the effective display language, after it
     /// changed. Runtime overrides are kept.
     pub(crate) fn localize(&mut self) {
@@ -1010,12 +1020,19 @@ mod tests {
     }
 
     #[test]
-    fn a_localized_label_resolves_and_yields_to_an_override() {
+    fn a_label_naming_a_key_resolves_and_yields_to_an_override() {
         let mut item: TabBarItem = serde_json::from_value(serde_json::json!({
             "page": "profiles",
-            "text": { "default": "Profiles", "zh-CN": "节点" }
+            "text": { "message": "tab.profiles" }
         }))
         .unwrap();
+        let languages = ["en-US".to_string(), "zh-CN".to_string()];
+        item.declared_text
+            .as_mut()
+            .unwrap()
+            .bind(&languages, |tag| {
+                Some(if tag == "zh-CN" { "节点" } else { "Profiles" }.to_string())
+            });
         item.initialize_runtime(Path::new("/app"));
         item.localize_for("zh-Hans-CN");
         assert_eq!(item.text.as_deref(), Some("节点"));
@@ -1023,18 +1040,12 @@ mod tests {
         assert_eq!(item.text.as_deref(), Some("Profiles"));
 
         item.set_text_override(Some("Inbox".into()));
-        assert_eq!(item.text.as_deref(), Some("Inbox"));
         // An override survives a language change until it is cleared.
         item.localize_for("zh-CN");
         assert_eq!(item.text.as_deref(), Some("Inbox"));
         item.set_text_override(None);
         item.localize_for("zh-CN");
         assert_eq!(item.text.as_deref(), Some("节点"));
-        // The declaration round-trips.
-        assert_eq!(
-            serde_json::to_string(&item.declared_text).unwrap(),
-            r#"{"default":"Profiles","zh-CN":"节点"}"#
-        );
     }
 
     #[test]

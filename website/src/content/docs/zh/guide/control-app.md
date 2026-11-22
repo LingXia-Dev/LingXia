@@ -20,22 +20,22 @@ sidebar:
 ## 提供产品级界面前先检查
 
 ```ts
-const control = lx.host.control
-if (!control) return
-await control.appearance.setPreference('dark')
+const appearance = lx.host.appearance
+if (!appearance) return
+await appearance.set('dark')
 ```
 
-`lx.host.control` 只存在于 Control app，因此 `lx.host.control !== undefined` 即可识别它。在 Settings 页顶部绑定一次，不要到处写 `lx.host.control!`。
+`lx.host.displayLanguage` 与 `lx.host.appearance` 只存在于 Control app，其他 lxapp 中为 `undefined`，类型上也如此。绑定一次即可，不要到处写 `lx.host.appearance!`。
 
 ## 只有 Control app 能调用的接口
 
 这些作用于产品本身，而不是调用方 lxapp：
 
 - `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
-- `lx.host.displayLanguage` / `lx.host.appearance`（写入）
+- `lx.host.displayLanguage` / `lx.host.appearance` —— 产品偏好的 `get` / `set`
 - `lx.shell.*` —— `sidebarActions`、`setAppDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
 
-每个 lxapp 仍可**读取** `lx.host.displayLanguage.get()` 与 `lx.host.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。
+每个 lxapp 从 `lx.app.language` 与 `lx.app.appearance`（`get` / `watch`）读取自己实际的语言与配色，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。
 
 拒绝结果是 `E_PERMISSION_DENIED`，并会点名本该被允许的 class。把它当成设计信号：让 Control app 去做产品级工作，不要冒充它。这不是用户关掉对话框，也不是缺少 capability（那个由 `lx.supports()` 回答）。
 

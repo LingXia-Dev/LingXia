@@ -175,6 +175,7 @@ fn replace_dir(staging: &Path, output_dir: &Path) -> Result<()> {
 }
 
 fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) -> Result<()> {
+    super::i18n::compile(&project.root, &project.output_dir, options.dev_session)?;
     reporter.start_parallel_tasks();
     let install_duration_hint = view::prepare_tooling(project, options, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();
@@ -264,6 +265,9 @@ fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) 
     );
 
     crate::lxapp::stamp_output_html(&project.output_dir)?;
+    if options.dev_session {
+        super::i18n::declare_pseudo(&project.output_dir)?;
+    }
 
     if options.release {
         crate::lxapp::hardening::harden_release_output(project)?;

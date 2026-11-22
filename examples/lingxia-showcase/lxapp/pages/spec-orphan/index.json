@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Picker fixture",
-      "zh-CN": "选择器测试页"
+      "message": "title.specOrphan"
     }
   },
   "pageOrientation": "auto"

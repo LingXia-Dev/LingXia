@@ -2,7 +2,6 @@ import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { Stepper, type StepperProps } from './Stepper';
 
-const states = { done: 'Done', current: 'Current step', upcoming: 'Not started' };
 const checkout = [
   { key: 'cart', label: 'Cart', description: 'Three items' },
   { key: 'address', label: 'Address', description: 'Where to deliver' },
@@ -15,7 +14,7 @@ export function Checkout() {
   const at = useLocal('at', 1);
   return (
     <view className="gap-4">
-      <Stepper label="Checkout steps" steps={checkout} value={at.value} stateLabels={states} onChange={at.set} data-testid="checkout" />
+      <Stepper label="Checkout steps" steps={checkout} value={at.value} onChange={at.set} data-testid="checkout" />
       <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant="primary" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid="continue" />
     </view>
   );
@@ -23,15 +22,15 @@ export function Checkout() {
 
 /** Across the top of a wide form: up to four short labels. */
 export function Across() {
-  return <Stepper label="Sign-up steps" orientation="horizontal" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} stateLabels={states} data-testid="across" />;
+  return <Stepper label="Sign-up steps" orientation="horizontal" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} data-testid="across" />;
 }
 
 /** The home tile. */
 export function Specimen() {
-  return <Stepper label="Steps" orientation="horizontal" steps={[{ key: 'a', label: 'One' }, { key: 'b', label: 'Two' }, { key: 'c', label: 'Three' }]} value={1} stateLabels={states} className="w-32" />;
+  return <Stepper label="Steps" orientation="horizontal" steps={[{ key: 'a', label: 'One' }, { key: 'b', label: 'Two' }, { key: 'c', label: 'Three' }]} value={1} className="w-32" />;
 }
 
 /** The playground's props that are not plain values. */
 export function playground() {
-  return { steps: checkout, stateLabels: states } satisfies Partial<StepperProps>;
+  return { steps: checkout } satisfies Partial<StepperProps>;
 }

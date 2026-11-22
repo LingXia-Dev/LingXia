@@ -555,6 +555,8 @@ mod tests {
         AppConfig {
             product_name: "Settings Test".to_string(),
             product_names: Default::default(),
+            languages: Vec::new(),
+            sdk_text: Default::default(),
             product_version: "1.0.0".to_string(),
             lingxia_id: None,
             lingxia_server: None,

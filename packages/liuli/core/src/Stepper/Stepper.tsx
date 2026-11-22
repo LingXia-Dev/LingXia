@@ -1,4 +1,5 @@
 import { cx } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { stepperRecipe as r } from './Stepper.recipe';
 
@@ -20,8 +21,8 @@ export interface StepperProps {
   steps: readonly StepperStep[];
   /** The index of the step in progress, from 0; `steps.length` when every step is done. */
   value: number;
-  /** What a screen reader hears for a step's state: `{ done: 'Done', current: 'Current step', upcoming: 'Not started' }`. */
-  stateLabels: Record<StepState, string>;
+  /** What a screen reader hears for a step's state, instead of Liuli's "Done", "Current step" and "Not started" in the page's language. */
+  stateLabels?: Partial<Record<StepState, string>>;
   /** Makes a finished step a button that goes back to it; runs with its index. */
   onChange?: (index: number) => void;
   /** `horizontal` suits up to four short labels; `vertical` any number, with descriptions. @default 'vertical' */
@@ -56,7 +57,7 @@ export function Stepper({ label, steps, value: current, stateLabels, onChange: o
         const body = isRow
           ? [<view key="rail" className={r.rail.row}>{marker}{line}</view>, <view key="text">{text}</view>]
           : [<view key="rail" className={r.rail.column}>{marker}{line}</view>, <view key="text" className={cx(r.body.column, !isLast && r.body.gap)}>{text}</view>];
-        const name = `${step.label}, ${stateLabels[state]}`;
+        const name = `${step.label}, ${stateLabels?.[state] ?? liuliText(`@liuli.step.${state}`)}`;
         const shape = cx(r.step.base, r.step.orientation[orientation]);
         return (
           <view key={step.key} role="listitem" aria-label={state === 'done' && onStepClick ? undefined : name} className={cx(isRow && !isLast && r.item.grow, isRow && r.item.row)}>

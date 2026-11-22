@@ -324,6 +324,7 @@ mod tests {
                 },
                 package_id: "com.example.demo".into(),
                 app_link_hosts: Vec::new(),
+                languages: Vec::new(),
                 target_dir: root.clone(),
             };
             create_cargo_workspace(&config).unwrap();
@@ -409,12 +410,14 @@ cloud = []
                 if windows { 2 } else { 1 }
             );
             assert_eq!(
-                Path::new(metadata["workspace_root"].as_str().unwrap()),
+                Path::new(metadata["workspace_root"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
                 root.canonicalize().unwrap()
             );
             assert_eq!(
                 Path::new(metadata["target_directory"].as_str().unwrap()),
-                root.canonicalize().unwrap().join("target")
+                Path::new(metadata["workspace_root"].as_str().unwrap()).join("target")
             );
             if windows {
                 let package = metadata["packages"]
@@ -453,6 +456,7 @@ cloud = []
             platforms: vec![Platform::Ios, Platform::Macos],
             package_id: "com.example.demo".to_string(),
             app_link_hosts: Vec::new(),
+            languages: Vec::new(),
             target_dir: dir.path().to_path_buf(),
         };
         create_root_gitignore(&config).unwrap();

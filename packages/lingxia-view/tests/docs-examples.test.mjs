@@ -1,6 +1,7 @@
 // Every TSX block in the View guide is a page: it must type-check, compile and render.
 // A block fenced as ```tsx error CODE must fail at build or render with that code;
-// ```tsx data={…} renders the block with that `view.data` (fence info is not displayed).
+// ```tsx data={…} renders the block with that `view.data` (fence info is not displayed);
+// a ```json i18n/<tag>.json block is the catalogue the chapter's later blocks speak from.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -18,7 +19,7 @@ globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-trans
 const env = {
   theme: 'light', viewport: { width: 390, height: 844 }, insets: { top: 47, right: 0, bottom: 34, left: 0 },
   keyboard: { height: 0 }, pointer: 'coarse', os: 'android', formFactor: 'phone', sizeClass: 'compact',
-  displayLanguage: 'en-US', contentLanguage: 'en-US', reducedMotion: false, direction: 'ltr', canDock: false, runner: false, renderer: { fallback: null },
+  language: 'en-US', reducedMotion: false, direction: 'ltr', canDock: false, runner: false, renderer: { fallback: null },
 };
 
 async function chapters() {
@@ -26,7 +27,7 @@ async function chapters() {
   const blocks = [];
   for (const file of files) {
     const text = await readFile(file, 'utf8');
-    let theme;
+    let theme, messages;
     const fenced = [...text.matchAll(/^```(\w+)([^\n]*)\n([\s\S]*?)^```$/gm)];
     // A View importing `./$types` is typed from the Logic block right after it, else right before it.
     const logicAt = index => fenced[index]?.[1] === 'ts' && fenced[index][3].includes('definePage(') ? fenced[index][3] : undefined;
@@ -34,13 +35,14 @@ async function chapters() {
       const [, lang, info, source] = match;
       const line = text.slice(0, match.index).split('\n').length;
       if (lang === 'css') theme = source;
+      if (lang === 'json' && /i18n\//.test(info)) messages = JSON.parse(source);
       if (lang !== 'tsx') continue;
       const expected = info.match(/\berror\s+(UI_[A-Z0-9_]+)/)?.[1];
       const data = JSON.parse(info.match(/\bdata=(\{.*\})/)?.[1] ?? '{}');
       const name = `${relative(docs, file)}:${line}`;
       const logic = source.includes("from './$types'") ? logicAt(index + 1) ?? logicAt(index - 1) : undefined;
       if (source.includes("from './$types'") && !logic) throw Error(`${name}: imports ./$types without a definePage block beside it`);
-      blocks.push({ name, source, theme, expected, data, logic });
+      blocks.push({ name, source, theme, messages, expected, data, logic });
     }
   }
   return blocks;
@@ -66,6 +68,17 @@ async function project(block, run) {
   try {
     await writePage(root, block);
     if (block.theme) await writeFile(join(root, 'theme.css'), block.theme);
+    if (block.messages) {
+      // The build compiles ICU; these examples use plain text and `{name}` only.
+      const said = Object.entries(block.messages).map(([key, { defaultMessage }]) =>
+        `${JSON.stringify(key)}: (a, f) => f.j(${JSON.stringify(defaultMessage.split(/(\{\w+\})/))}.map(part => /^\{\w+\}$/.test(part) ? String(a[part.slice(1, -1)]) : part))`);
+      await mkdir(join(root, '.lingxia', 'i18n'), { recursive: true });
+      await writeFile(join(root, '.lingxia', 'i18n', 'index.js'),
+        `export const source = 'en-US';
+export const languages = { 'en-US': { ${said.join(', ')} } };
+export const formatter = () => ({ j: parts => parts.join('') });
+`);
+    }
     return await run(root);
   } finally { await rm(root, { recursive: true, force: true }); }
 }

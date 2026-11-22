@@ -572,7 +572,7 @@ private final class IOSLocalFileChooserViewController: UITableViewController {
         label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         label.font = .systemFont(ofSize: 12, weight: .semibold)
         label.textColor = .systemBlue
-        label.text = L10n.string("lx_file_chooser_filter_label").replacingOccurrences(of: "%1$s", with: summaryText)
+        label.text = L10n.string("lx_file_chooser_filter_label", summaryText)
 
         chipBackground.addSubview(label)
         container.addSubview(chipBackground)

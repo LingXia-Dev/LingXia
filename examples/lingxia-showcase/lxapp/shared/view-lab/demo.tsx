@@ -1,12 +1,14 @@
 // The View catalogue's one demo shape, the group page built from it and the index of groups.
-import { useView, type Child, type Component } from '@lingxia/view';
+import { t, useView, type Child, type Component } from '@lingxia/view';
 import { Icon, Page } from '../ui';
-import { chrome, count, demos, groups, missing, say, type GroupId, type Words } from './text';
+import { chrome, count, demos, groups, missing, type GroupId, type Words } from './text';
 
-/** The words of the page's language: its `lang` page option when given, else the display language. */
+const anyKey = t as (key: string, args?: Readonly<Record<string, unknown>>) => string;
+const speak = (words: Words): string => (typeof words === 'string' ? anyKey(words) : anyKey(words.key, words.args));
+
+/** Speaks lab words in the page's language. */
 export function useSay() {
-  const { data, env } = useView();
-  return say((data as { lang?: string }).lang || env.displayLanguage);
+  return speak;
 }
 
 /** What the page is given for bars and keyboard, as attributes specs measure against. */
@@ -54,7 +56,7 @@ export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Re
       {missing[id].length > 0 ? (
         <view data-testid="view-group-missing" className="gap-1 px-1 pt-2">
           <text className="text-xs font-semibold text-muted">{t(chrome.missing)}</text>
-          {missing[id].map(item => <text key={item.en} className="text-xs text-faint">{t(item)}</text>)}
+          {missing[id].map(item => <text key={item as string} className="text-xs text-faint">{t(item)}</text>)}
         </view>
       ) : null}
     </Page>

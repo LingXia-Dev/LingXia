@@ -1,4 +1,5 @@
 import { cx, useId, type AutoComplete, type Child, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import type { IconName } from '../Icon/Icon';
@@ -23,14 +24,14 @@ export type TextInputBinding =
       onChange: (value: string) => void;
     };
 
-/** The clear button needs its accessible name from the app, so turning it on asks for one. */
+/** A clear button, named "Clear" in the page's language unless the app names it. */
 export type TextInputClear =
   | { hasClear?: false; clearLabel?: never }
   | {
       /** A button that empties the text, shown while there is text. @default false */
       hasClear: true;
-      /** The clear button's accessible name; required with `hasClear`. */
-      clearLabel: string;
+      /** The clear button's accessible name. Defaults to "Clear" in the page's language. */
+      clearLabel?: string;
     };
 
 export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear & {
@@ -159,7 +160,7 @@ export function TextInput(props: TextInputProps) {
           {suffix !== undefined && <text id={suffixId} className={cx(r.adornment.base, r.input.size[size])}>{suffix}</text>}
           {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
           {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
-            <button aria-label={props.clearLabel} onClick={clear} className={r.clear.base}>
+            <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} className={r.clear.base}>
               <Glyph name="close" className={r.clearIcon.base} />
             </button>
           )}

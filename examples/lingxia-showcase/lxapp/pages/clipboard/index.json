@@ -2,8 +2,7 @@
   "pageOrientation": "auto",
   "navigationBar": {
     "title": {
-      "default": "Clipboard",
-      "zh-CN": "剪贴板"
+      "message": "title.clipboard"
     }
   }
 }

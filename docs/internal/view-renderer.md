@@ -117,7 +117,7 @@ engine boundary.
 - System fonts split at the adapter. Core loads and names faces from the files or
   directories it is given and holds the generic-family defaults; each adapter
   discovers them (Android `fonts.xml`, CoreText, HarmonyOS font paths) and
-  registers the result through `set_system_fonts`. `displayLanguage` is the
+  registers the result through `set_system_fonts`. `language` is the
   shaping locale, so Han picks SC/TC/JP/KR faces.
 
 ## Text

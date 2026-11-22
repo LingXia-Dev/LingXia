@@ -1,5 +1,6 @@
 {
-  "greeting": "This is from the app's shared state",
+  "greetName": "",
+  "greetedAt": 0,
   "imageUrl": "https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg",
   "ipAddr": "loading",
   "greetCount": 0,
@@ -8,8 +9,5 @@
     "preference": "auto",
     "resolved": "light"
   },
-  "displayLanguage": {
-    "preference": "auto",
-    "resolved": "en-US"
-  }
+  "languagePreference": "auto"
 }

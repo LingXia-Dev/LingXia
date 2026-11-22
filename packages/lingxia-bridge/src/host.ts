@@ -1,10 +1,9 @@
 import {
   BRIDGE_CONFIG,
-  getContentLanguage,
-  getDisplayLanguage,
+  getLanguage,
   getPlatformOS,
   isDesktop,
-  subscribeDisplayLanguage,
+  subscribeLanguage,
   type PlatformOS,
 } from './runtime-env';
 import { getSurfaceContext, subscribeSurfaceContext } from './surface-context';
@@ -21,10 +20,8 @@ export interface LxHost {
   readonly sizeClass: 'compact' | 'regular';
   /** Whether the window currently has a dock region for `as: 'aside'`; not where this page is shown. */
   readonly canDock: boolean;
-  /** The BCP-47 tag in effect, as Logic's `lx.host.displayLanguage.get()`. */
-  readonly displayLanguage: string;
-  /** `displayLanguage` narrowed to the `languages` in lxapp.json: the language to pick this lxapp's copy in. */
-  readonly contentLanguage: string;
+  /** The language the page's text is in: the host's display language narrowed to the `languages` in lxapp.json. */
+  readonly language: string;
   /** Which kind of machine this is; fixed for the document. A narrowed desktop window is still `desktop`. */
   readonly formFactor: 'mobile' | 'desktop';
   /** The operating system, for the rare OS-specific feature; not a layout fact. */
@@ -40,8 +37,7 @@ function read(): LxHost {
   return {
     sizeClass: surface.sizeClass,
     canDock: surface.canDock,
-    displayLanguage: getDisplayLanguage(),
-    contentLanguage: getContentLanguage(),
+    language: getLanguage(),
     formFactor: isDesktop() ? 'desktop' : 'mobile',
     os: getPlatformOS(),
     runner: BRIDGE_CONFIG.runner === true,
@@ -51,8 +47,7 @@ function read(): LxHost {
 function same(a: LxHost, b: LxHost): boolean {
   return a.sizeClass === b.sizeClass
     && a.canDock === b.canDock
-    && a.displayLanguage === b.displayLanguage
-    && a.contentLanguage === b.contentLanguage
+    && a.language === b.language
     && a.formFactor === b.formFactor
     && a.os === b.os
     && a.runner === b.runner;
@@ -81,7 +76,7 @@ export function subscribeHost(listener: () => void): () => void {
     last = next;
     listener();
   };
-  const stopLanguage = subscribeDisplayLanguage(check);
+  const stopLanguage = subscribeLanguage(check);
   const stopSurface = subscribeSurfaceContext(check);
   return () => {
     stopLanguage();

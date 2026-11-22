@@ -52,17 +52,24 @@ impl ProjectFramework {
 
 /// `wait_for_state`: the page has Logic, so its View mounts only once the
 /// page's first state has arrived (`mountPage` in `@lingxia/react/entry`).
+/// `messages_import`: the compiled `i18n/` index, which the entry registers
+/// before the first render.
 pub fn scaffold(
     framework: ProjectFramework,
     page_title: &str,
     app_import: &str,
     page_bridge_import: &str,
+    messages_import: Option<&str>,
     wait_for_state: bool,
 ) -> FrameworkScaffold {
     match framework {
-        ProjectFramework::React => {
-            react::scaffold(page_title, app_import, page_bridge_import, wait_for_state)
-        }
+        ProjectFramework::React => react::scaffold(
+            page_title,
+            app_import,
+            page_bridge_import,
+            messages_import,
+            wait_for_state,
+        ),
         ProjectFramework::Html => html::scaffold(page_title, app_import, page_bridge_import),
     }
 }

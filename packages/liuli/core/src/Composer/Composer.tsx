@@ -1,4 +1,5 @@
 import { cx, useBox, type Child, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { composerRecipe as r } from './Composer.recipe';
 
@@ -21,8 +22,8 @@ export type ComposerStop =
   | {
       /** While sending, the send button becomes a stop button that runs this, as when a reply is being written. */
       onStop: () => void;
-      /** The stop button's name: "Stop". */
-      stopLabel: string;
+      /** The stop button's name: "Stop". Defaults to "Stop" in the page's language. */
+      stopLabel?: string;
     };
 
 export type ComposerProps = ComposerBinding & ComposerStop & {
@@ -32,8 +33,8 @@ export type ComposerProps = ComposerBinding & ComposerStop & {
   placeholder?: string;
   /** Runs with the draft, trimmed, from the send button or the keyboard\'s send key. The app sends it and empties the draft. */
   onSubmit: (text: string) => void;
-  /** The send button\'s name: "Send". */
-  sendLabel: string;
+  /** The send button\'s name: "Send". Defaults to "Send" in the page's language. */
+  sendLabel?: string;
   /** The send button shows a spinner and takes no press, or becomes the stop button with `onStop`; the draft stays editable. @default false */
   isSending?: boolean;
   /** Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. */
@@ -59,7 +60,7 @@ const longest = 200;
 
 /** Where a message is written and sent: one surface holding the text, which grows to five lines, and its buttons. */
 export function Composer(props: ComposerProps) {
-  const { label, placeholder, onSubmit, sendLabel, isSending = false, onStop, stopLabel, startContent, attachments, isDisabled = false, disabledMessage, className, 'data-testid': testId } = props;
+  const { label, placeholder, onSubmit, sendLabel = liuliText('@liuli.send'), isSending = false, onStop, stopLabel = liuliText('@liuli.stop'), startContent, attachments, isDisabled = false, disabledMessage, className, 'data-testid': testId } = props;
   const draft = props.bind ? props.bind.value : props.value;
   const text = draft.trim();
   const send = () => { if (text !== '' && !isSending && !isDisabled) onSubmit(text); };

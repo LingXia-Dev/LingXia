@@ -8,7 +8,7 @@ When something happened, in the words people use. Status: preview.
 import { formatTimestamp, Timestamp } from '@liulidesign/core/Timestamp';
 ```
 
-Timestamp writes a moment as people say it: "12 minutes ago" for today, "Yesterday, 18:30", then the date, with the year only when it is another year. It takes the moment and the present as local date-times from the app, and its words from a locale: Liuli ships English and Chinese, and an app can pass its own. The time follows the user's 12- or 24-hour clock.
+Timestamp writes a moment as people say it: "12 minutes ago" for today, "Yesterday, 18:30", then the date, with the year only when it is another year. It takes the moment and the present as local date-times from the app, in the page's language: Liuli ships English and Chinese, and an lxapp changes a phrase by naming its `@liuli.timestamp.*` key. The time follows the user's 12- or 24-hour clock.
 
 ## Examples
 
@@ -17,7 +17,6 @@ Timestamp writes a moment as people say it: "12 minutes ago" for today, "Yesterd
 ```tsx
 import { Avatar } from '@liulidesign/core/Avatar';
 import { Timestamp } from '@liulidesign/core/Timestamp';
-import { timestampEn } from './locale/en';
 
 const now = '2026-11-14T10:05';
 const activity = [
@@ -38,7 +37,7 @@ export function Activity() {
           <Avatar name={entry.who} size="sm" isDecorative />
           <view className="grow basis-0 min-w-0 gap-0.5">
             <text className="text-body text-text">{`${entry.who} ${entry.what}`}</text>
-            <Timestamp value={entry.when} now={now} locale={timestampEn} className="text-footnote text-muted" data-testid={`when-${index}`} />
+            <Timestamp value={entry.when} now={now} className="text-footnote text-muted" data-testid={`when-${index}`} />
           </view>
         </view>
       ))}
@@ -51,7 +50,6 @@ export function Activity() {
 
 ```tsx
 import { Timestamp } from '@liulidesign/core/Timestamp';
-import { timestampEn } from './locale/en';
 
 const now = '2026-11-14T10:05';
 
@@ -63,29 +61,9 @@ export function Formats() {
       {(['relative', 'date', 'time', 'date-time'] as const).map(format => (
         <view key={format} className="flex-row items-baseline justify-between gap-4">
           <text className="text-footnote text-muted">{format}</text>
-          <Timestamp value={value} now={now} locale={timestampEn} format={format} className="text-body text-text" data-testid={`format-${format}`} />
+          <Timestamp value={value} now={now} format={format} className="text-body text-text" data-testid={`format-${format}`} />
         </view>
       ))}
-    </view>
-  );
-}
-```
-
-### In Chinese
-
-```tsx
-import { Timestamp } from '@liulidesign/core/Timestamp';
-import { timestampZh } from './locale/zh';
-
-const now = '2026-11-14T10:05';
-
-/** In Chinese, from the locale module Liuli ships. */
-export function Chinese() {
-  return (
-    <view className="gap-2">
-      <Timestamp value="2026-11-14T09:42" now={now} locale={timestampZh} className="text-body text-text" data-testid="zh-today" />
-      <Timestamp value="2026-11-13T18:30" now={now} locale={timestampZh} className="text-body text-text" />
-      <Timestamp value="2025-12-19T16:00" now={now} locale={timestampZh} className="text-body text-text" data-testid="zh-year" />
     </view>
   );
 }
@@ -97,7 +75,6 @@ export function Chinese() {
 | --- | --- | --- | --- |
 | `value` (required) | `string` |  | The moment, in the user's own time. |
 | `now` (required) | `string` |  | The present, in the same form. The app passes it and refreshes it; Liuli has no clock. |
-| `locale` (required) | `TimestampLocale` |  |  |
 | `format` | `TimestampFormat` | `'relative'` | `relative` says how long ago for today, "yesterday" with the time for yesterday, and the date before that. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -140,6 +117,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 ## Limits
 
 - There is no clock and no time zone in the View: the app passes `now` and local date-times.
-- Words come from a locale module, not from the system; two locales ship.
+- Words follow the page's language; Liuli ships English and Chinese.
 
 Related: Timer, Calendar, DateInput.

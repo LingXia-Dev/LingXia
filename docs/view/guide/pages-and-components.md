@@ -70,7 +70,7 @@ A page renders natively when its View exports a named `render`; every page of th
 A page is a directory under `pages/`. Its optional `index.json` sets its chrome:
 
 ```json
-{ "navigationBar": { "title": { "default": "Groceries" } } }
+{ "navigationBar": { "title": "Groceries" } }
 ```
 
 `index.tsx` is the View and exports `render`. `index.ts` is the page's Logic (`export default definePage({ data, setup })`)

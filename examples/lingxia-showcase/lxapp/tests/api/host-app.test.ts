@@ -230,18 +230,18 @@ test('answer update.check with an update or null instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.displayLanguage.preference.set'],
+  covers: ['lx.host.displayLanguage.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage?.preference?.set);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage.set);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.displayLanguage.preference.set(language);
+        await lx.host.displayLanguage?.set(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
@@ -255,14 +255,14 @@ test('reject an invalid host display language', {
 
 test('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
-  covers: ['lx.host.displayLanguage.watch'],
+  covers: ['lx.app.language.watch'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-001');
 
   const result = await app.logic.eval(async ({ lx }) => {
-    const first = lx.host.displayLanguage.watch(() => {});
-    const second = lx.host.displayLanguage.watch(() => {});
+    const first = lx.app.language.watch(() => {});
+    const second = lx.app.language.watch(() => {});
     first();
     second();
     first();

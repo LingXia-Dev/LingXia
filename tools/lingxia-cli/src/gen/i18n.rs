@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use inflector::Inflector;
 use jsonschema::{Draft, Validator};
@@ -61,6 +61,21 @@ pub struct I18nConfig {
     #[arg(long, conflicts_with = "ts_out")]
     pub no_ts: bool,
 
+    /// Override the View words module generated from `<input>/view/`. Pass
+    /// `--no-view` to skip.
+    #[arg(long)]
+    pub view_out: Option<PathBuf>,
+
+    #[arg(long, conflicts_with = "view_out")]
+    pub no_view: bool,
+
+    /// Override the Liuli words module generated from `<input>/liuli/`.
+    #[arg(long)]
+    pub liuli_out: Option<PathBuf>,
+
+    #[arg(long, conflicts_with = "liuli_out")]
+    pub no_liuli: bool,
+
     /// Path to JSON Schema directory (defaults to <input>/schema).
     #[arg(long)]
     pub schema_dir: Option<PathBuf>,
@@ -74,6 +89,12 @@ const TS_DEFAULT_OUT: &str = "packages/lingxia-types/src/generated";
 const ANDROID_DEFAULT_OUT: &str = "lingxia-sdk/android/lingxia/src/main/res";
 const APPLE_DEFAULT_OUT: &str = "lingxia-sdk/apple/Sources/Resources";
 const HARMONY_DEFAULT_OUT: &str = "lingxia-sdk/harmony/lingxia/src/main/resources";
+const VIEW_DEFAULT_OUT: &str = "packages/lingxia-view/src/generated/words.js";
+const LIULI_DEFAULT_OUT: &str = "packages/liuli/core/src/i18n/words.ts";
+/// The View's and Liuli's own words, in the lxapp catalogue format; `en` is the source.
+const VIEW_DIR: &str = "view";
+const LIULI_DIR: &str = "liuli";
+const PACKAGE_SOURCE: &str = "en";
 
 /// Resolved generation plan for a single target.
 struct OutputPlan {
@@ -167,8 +188,8 @@ fn diff_against_expected(plan: &OutputPlan, drift: &mut Vec<String>) -> Result<(
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct TranslationValue {
-    default: String,
+pub(crate) struct TranslationValue {
+    pub(crate) default: String,
     android: Option<String>,
     apple: Option<String>,
     ios: Option<String>,
@@ -210,7 +231,123 @@ impl TranslationValue {
 }
 
 // Use BTreeMap to ensure keys are sorted for deterministic output
-type Translations = BTreeMap<String, TranslationValue>;
+impl TranslationValue {
+    fn map(&self, f: impl Fn(&str) -> Result<String>) -> Result<Self> {
+        let opt = |v: &Option<String>| v.as_deref().map(&f).transpose();
+        Ok(Self {
+            default: f(&self.default)?,
+            android: opt(&self.android)?,
+            apple: opt(&self.apple)?,
+            ios: opt(&self.ios)?,
+            harmony: opt(&self.harmony)?,
+            rust: opt(&self.rust)?,
+        })
+    }
+}
+
+/// How a platform writes an ICU argument: Rust keeps `{name}`, the native resources take positional
+/// printf (`%1$s`, Apple `%1$@`), numbered in the source message's order so a translation may move them.
+#[derive(Clone, Copy)]
+pub(crate) enum ArgForm {
+    Icu,
+    Printf(&'static str),
+}
+
+/// Every value in the platform's form, each translation checked to keep its source's arguments.
+fn platform_form(map: &I18nMap, form: ArgForm) -> Result<I18nMap> {
+    let source = map.get(SOURCE_LOCALE);
+    let mut out = I18nMap::new();
+    let mut problems = Vec::new();
+    for (locale, translations) in map {
+        let mut converted = Translations::new();
+        for (key, value) in translations {
+            let order = source
+                .and_then(|source| source.get(key))
+                .map(|source| argument_order(&source.default))
+                .transpose()
+                .with_context(|| format!("{SOURCE_LOCALE} {key}"))?
+                .unwrap_or_default();
+            if let Some(source) = source.and_then(|source| source.get(key))
+                && locale != SOURCE_LOCALE
+            {
+                let signature = |text: &str| {
+                    lingxia_i18n::parse(text)
+                        .map_err(|e| e.to_string())
+                        .and_then(|m| m.signature())
+                };
+                match (signature(&source.default), signature(&value.default)) {
+                    (Ok(want), Ok(got)) => {
+                        for drift in lingxia_i18n::signature_drift(&want, &got) {
+                            problems.push(format!("{locale} {key}: {drift}"));
+                        }
+                    }
+                    (_, Err(error)) | (Err(error), _) => {
+                        problems.push(format!("{locale} {key}: {error}"))
+                    }
+                }
+            }
+            let value = value
+                .map(|text| render(text, &order, form))
+                .with_context(|| format!("{locale} {key}"))?;
+            converted.insert(key.clone(), value);
+        }
+        out.insert(locale.clone(), converted);
+    }
+    if !problems.is_empty() {
+        bail!(
+            "SDK strings do not keep their source's arguments:
+  {}",
+            problems.join(
+                "
+  "
+            )
+        );
+    }
+    Ok(out)
+}
+
+pub(crate) const SOURCE_LOCALE: &str = "en-US";
+
+pub(crate) fn argument_order(text: &str) -> Result<Vec<String>> {
+    let message = lingxia_i18n::parse(text).map_err(|e| anyhow!("{e}"))?;
+    let mut order = Vec::new();
+    for part in &message.parts {
+        if let lingxia_i18n::Part::Arg(lingxia_i18n::Arg::Text(name)) = part
+            && !order.contains(name)
+        {
+            order.push(name.clone());
+        }
+    }
+    Ok(order)
+}
+
+pub(crate) fn render(text: &str, order: &[String], form: ArgForm) -> Result<String> {
+    use lingxia_i18n::{Arg, Part};
+    let message = lingxia_i18n::parse(text).map_err(|e| anyhow!("{e}"))?;
+    let mut out = String::new();
+    for part in &message.parts {
+        match part {
+            Part::Text(text) => match form {
+                // A literal `%` beside printf arguments would read as one.
+                ArgForm::Printf(_) if !order.is_empty() => out.push_str(&text.replace('%', "%%")),
+                _ => out.push_str(text),
+            },
+            Part::Arg(Arg::Text(name)) => match form {
+                ArgForm::Icu => out.push_str(&format!("{{{name}}}")),
+                ArgForm::Printf(conversion) => {
+                    let n = order.iter().position(|o| o == name).ok_or_else(|| {
+                        anyhow!("`{{{name}}}` is not an argument of the source message")
+                    })? + 1;
+                    out.push_str(&format!("%{n}${conversion}"));
+                }
+            },
+            _ => bail!("SDK strings take plain `{{name}}` arguments only"),
+        }
+    }
+    Ok(out)
+}
+
+pub(crate) type Translations = BTreeMap<String, TranslationValue>;
 type I18nMap = BTreeMap<String, Translations>;
 // Scope -> locale -> flat translations.
 type ScopedI18nMap = BTreeMap<Scope, I18nMap>;
@@ -582,10 +719,34 @@ pub fn run(config: I18nConfig) -> Result<()> {
         false,
     );
 
+    let view_plan = resolve_output_plan(
+        config.view_out.as_deref(),
+        config.no_view || !config.input.join(VIEW_DIR).is_dir(),
+        VIEW_DEFAULT_OUT,
+        "view/words.js",
+        temp_path,
+        true,
+    );
+    let liuli_plan = resolve_output_plan(
+        config.liuli_out.as_deref(),
+        config.no_liuli || !config.input.join(LIULI_DIR).is_dir(),
+        LIULI_DEFAULT_OUT,
+        "liuli/words.ts",
+        temp_path,
+        true,
+    );
+
     // 5. Share the (combined, keys) computation between Rust and TS — they
     // pull from the same scope set, so the data is identical.
     let rust_ts_active = rust_plan.is_some() || ts_plan.is_some();
-    let rust_ts_combined = rust_ts_active.then(|| translations_for_target(&scoped, Target::Rust));
+    let rust_ts_combined = rust_ts_active
+        .then(|| {
+            platform_form(
+                &translations_for_target(&scoped, Target::Rust),
+                ArgForm::Icu,
+            )
+        })
+        .transpose()?;
     let rust_ts_keys = rust_ts_combined.as_ref().map(|c| {
         c.values()
             .flat_map(|t| t.keys().cloned().map(|k| (k, ())))
@@ -602,15 +763,24 @@ pub fn run(config: I18nConfig) -> Result<()> {
         )?;
     }
     if let Some(plan) = &android_plan {
-        let combined = translations_for_target(&scoped, Target::Android);
+        let combined = platform_form(
+            &translations_for_target(&scoped, Target::Android),
+            ArgForm::Printf("s"),
+        )?;
         generate_android(&plan.write_to, &combined)?;
     }
     if let Some(plan) = &ios_plan {
-        let combined = translations_for_target(&scoped, Target::Apple);
+        let combined = platform_form(
+            &translations_for_target(&scoped, Target::Apple),
+            ArgForm::Printf("@"),
+        )?;
         generate_ios(&plan.write_to, &combined)?;
     }
     if let Some(plan) = &harmony_plan {
-        let combined = translations_for_target(&scoped, Target::Harmony);
+        let combined = platform_form(
+            &translations_for_target(&scoped, Target::Harmony),
+            ArgForm::Printf("s"),
+        )?;
         generate_harmony(&plan.write_to, &combined)?;
     }
     if let Some(plan) = &ts_plan {
@@ -619,6 +789,13 @@ pub fn run(config: I18nConfig) -> Result<()> {
             rust_ts_keys.as_ref().expect("rust_ts_keys"),
             &err_code_keys,
         )?;
+    }
+
+    if let Some(plan) = &view_plan {
+        generate_view_words(&config.input.join(VIEW_DIR), &plan.write_to)?;
+    }
+    if let Some(plan) = &liuli_plan {
+        generate_liuli_words(&config.input.join(LIULI_DIR), &plan.write_to)?;
     }
 
     // 7. Verify mode: diff generated tempdir against checked-in expected.
@@ -630,6 +807,8 @@ pub fn run(config: I18nConfig) -> Result<()> {
             &android_plan,
             &ios_plan,
             &harmony_plan,
+            &view_plan,
+            &liuli_plan,
         ]
         .into_iter()
         .flatten()
@@ -653,6 +832,117 @@ pub fn run(config: I18nConfig) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// `<dir>/<language>.json`, every key under `prefix`, each translation true to the `en` source.
+/// A missing word falls back to English at run time.
+fn package_catalogues(
+    dir: &Path,
+    prefix: &str,
+) -> Result<BTreeMap<String, lingxia_i18n::Catalogue>> {
+    let problems = |problems: Vec<lingxia_i18n::Problem>| {
+        problems
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    let mut languages = BTreeMap::new();
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        let Some(tag) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        let catalogue =
+            lingxia_i18n::Catalogue::parse(&fs::read_to_string(&path)?, tag == PACKAGE_SOURCE)
+                .map_err(|found| anyhow!("{}: {}", path.display(), problems(found)))?;
+        languages.insert(tag.to_string(), catalogue);
+    }
+    let source = languages
+        .get(PACKAGE_SOURCE)
+        .ok_or_else(|| anyhow!("{}: no {PACKAGE_SOURCE}.json source", dir.display()))?;
+    for (tag, catalogue) in &languages {
+        if let Some(key) = catalogue
+            .entries
+            .keys()
+            .find(|key| !key.starts_with(prefix))
+        {
+            bail!(
+                "{}/{tag}.json: '{key}' is not a {prefix} key",
+                dir.display()
+            );
+        }
+        let (found, missing) = lingxia_i18n::check(source, catalogue);
+        if !found.is_empty() {
+            bail!("{}/{tag}.json: {}", dir.display(), problems(found));
+        }
+        // A language LingXia ships is complete; an app fills a gap of its own in its catalogue.
+        if !missing.is_empty() {
+            bail!(
+                "{}/{tag}.json: untranslated: {}",
+                dir.display(),
+                missing.join(", ")
+            );
+        }
+    }
+    Ok(languages)
+}
+
+fn language_objects(languages: &BTreeMap<String, lingxia_i18n::Catalogue>) -> String {
+    let mut out = String::new();
+    for (tag, catalogue) in languages {
+        let object = lingxia_i18n::js::module(catalogue);
+        let object = object
+            .strip_prefix("export default ")
+            .and_then(|rest| rest.strip_suffix(";\n"))
+            .expect("js::module is one default export");
+        out.push_str(&format!("{tag:?}: {object},\n"));
+    }
+    out
+}
+
+fn write_module(out: &Path, module: String) -> Result<()> {
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(out, module)?;
+    Ok(())
+}
+
+/// The View runtime's words (`@view.*`); they take no arguments, so no formatter.
+fn generate_view_words(dir: &Path, out: &Path) -> Result<()> {
+    let languages = package_catalogues(dir, "@view.")?;
+    write_module(
+        out,
+        format!(
+            "// Generated by `lingxia gen i18n` from i18n/view/. Do not edit.\n\n\
+             export const source = {PACKAGE_SOURCE:?};\nexport const words = {{\n{}}};\n",
+            language_objects(&languages)
+        ),
+    )
+}
+
+/// Liuli's words (`@liuli.*`), the `PackageWords` that `packageText` reads.
+fn generate_liuli_words(dir: &Path, out: &Path) -> Result<()> {
+    let languages = package_catalogues(dir, "@liuli.")?;
+    write_module(
+        out,
+        format!(
+            "// Generated by `lingxia gen i18n` from i18n/liuli/. Do not edit.\n// @ts-nocheck\n\n\
+             const languages = {{\n{}}};\n{}\n\
+             export default {{ source: {PACKAGE_SOURCE:?}, languages, formatter }};\n",
+            language_objects(&languages),
+            lingxia_i18n::js::FORMATTER.trim_start().replacen(
+                "export function formatter",
+                "function formatter",
+                1
+            )
+        ),
+    )
 }
 
 fn collect_yaml_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -909,7 +1199,7 @@ fn validate_permission_key_sets(permission_cli_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn flatten_yaml(value: &serde_yaml_ng::Value, prefix: Option<String>) -> Translations {
+pub(crate) fn flatten_yaml(value: &serde_yaml_ng::Value, prefix: Option<String>) -> Translations {
     let mut map = Translations::new();
 
     match value {
@@ -1055,6 +1345,18 @@ fn generate_rust(
         ));
     }
     content.push_str("}\n\n");
+
+    content.push_str("#[rustfmt::skip]\n");
+    content.push_str("impl I18nKey {\n");
+    content.push_str("    /// The key as `i18n/` names it, flat: `file_chooser_filter_label`.\n");
+    content.push_str("    pub fn name(&self) -> &'static str {\n        match self {\n");
+    for key in all_keys.keys() {
+        content.push_str(&format!(
+            "            I18nKey::{} => \"{key}\",\n",
+            key.to_pascal_case()
+        ));
+    }
+    content.push_str("        }\n    }\n}\n\n");
 
     content.push_str("#[rustfmt::skip]\n");
     content.push_str("impl I18nKey {\n");
@@ -1317,6 +1619,24 @@ mod tests {
     use super::*;
     use std::path::Path;
     use tempfile::TempDir;
+
+    #[test]
+    fn printf_arguments_are_numbered_in_the_source_order_and_must_survive_translation() {
+        let map = |zh: &str| -> I18nMap {
+            let one = |text: &str| {
+                Translations::from([("k".to_string(), TranslationValue::from_string(text.into()))])
+            };
+            I18nMap::from([
+                ("en-US".to_string(), one("{app} {version} 100%")),
+                ("zh-CN".to_string(), one(zh)),
+            ])
+        };
+        let apple = platform_form(&map("{version} 的 {app}"), ArgForm::Printf("@")).unwrap();
+        assert_eq!(apple["en-US"]["k"].default, "%1$@ %2$@ 100%%");
+        assert_eq!(apple["zh-CN"]["k"].default, "%2$@ 的 %1$@");
+        let error = platform_form(&map("{app}"), ArgForm::Printf("s")).unwrap_err();
+        assert!(format!("{error:#}").contains("zh-CN k"), "{error:#}");
+    }
 
     fn write_file(dir: &Path, rel: &str, content: &str) {
         let path = dir.join(rel);
@@ -1589,6 +1909,8 @@ mod tests {
             android_out: Some(root.join(ANDROID_DEFAULT_OUT)),
             ios_out: Some(root.join(APPLE_DEFAULT_OUT)),
             harmony_out: Some(root.join(HARMONY_DEFAULT_OUT)),
+            view_out: Some(root.join(VIEW_DEFAULT_OUT)),
+            liuli_out: Some(root.join(LIULI_DEFAULT_OUT)),
             ..I18nConfig::default()
         })
         .expect("i18n/ must generate cleanly; run `lingxia gen i18n` and read its error");

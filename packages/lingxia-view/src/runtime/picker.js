@@ -206,14 +206,14 @@ function timeBody(words, env) {
   return h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'center' } }, ...columns);
 }
 
-function selectBody(touch) {
+function selectBody(touch, words) {
   const { options, focus } = picker;
   // On touch a tap picks and Done commits; with a mouse a click chooses at once. The check marks the
   // choice, never the keyboard focus: with no value nothing is ticked.
   const selected = touch ? picker.pick : picker.selected;
   const check = 'M4 10.5l4 4 8-9';
   // The band follows the keyboard; the trailing check marks the choice.
-  return h('view', { role: 'listbox', 'aria-label': picker.label || 'Options', style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
+  return h('view', { role: 'listbox', 'aria-label': picker.label || words.options, style: { gap: 2, minWidth: Math.max(160, picker.width - 24) } },
     ...options.map((option, index) => h('button', { key: `o${index}`, 'data-testid': `lx-picker-option-${index}`, role: 'option',
       'aria-selected': index === selected, disabled: !option.enabled, onClick: () => { if (touch) picker.pick = picker.focus = index; else settleSelect(index); },
       style: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingLeft: 12, paddingRight: 10, borderRadius: 8,
@@ -234,9 +234,9 @@ const clock = ({ hour, minute }, words, env) => clockText({ hour, minute }, word
 /** The open picker above the page, or null. */
 export function pickerNode(env) {
   if (!picker) return null;
-  const words = wordsFor(env?.contentLanguage ?? env?.displayLanguage);
+  const words = wordsFor(env?.language);
   const touch = (env?.pointer ?? 'coarse') === 'coarse';
-  const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch);
+  const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch, words);
   const unpicked = picker.kind === 'date' && picker.pick === null;
   const commit = () => picker.kind === 'date' ? (picker.pick !== null && settle(iso(picker.pick)))
     : picker.kind === 'time' ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
@@ -257,7 +257,7 @@ export function pickerNode(env) {
   const button = { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, fontSize: 15 };
   const footer = !touch && picker.kind === 'time' && h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'end' } },
     cancel({ ...button, color: 'text' }), done({ ...button, backgroundColor: 'accent-solid', color: 'on-accent-solid', fontWeight: 600 }));
-  const name = picker.kind === 'date' ? monthTitle : picker.kind === 'time' ? words.hour : picker.label || 'Options';
+  const name = picker.kind === 'date' ? monthTitle : picker.kind === 'time' ? words.hour : picker.label || words.options;
   const panel = { 'data-testid': 'lx-picker', key: `picker-${picker.key}`, 'aria-label': name,
     style: { padding: 12, gap: 12, borderRadius: 14, backgroundColor: 'surface-overlay', borderWidth: touch ? 0 : 1, borderColor: 'line',
       boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: 0, color: 'shadow/20' }] } };

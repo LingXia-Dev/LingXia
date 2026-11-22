@@ -1,5 +1,6 @@
 import { expect, test } from '@lingxia/test';
 import { demos, groups, missing } from '../shared/view-lab/text';
+import { inLanguage } from './language';
 
 // The catalogue of View: an index of groups, each a pushed page of demos in one shape.
 test('the index lists each group with its count and opens it', { covers: ['view:catalogue'], start: { page: 'view' } }, async (t) => {
@@ -20,7 +21,7 @@ for (const group of groups) {
   });
 }
 
-// The Chinese text of each group, whatever language the device is in.
+// The Chinese text of each group, with the app switched to Chinese.
 const zhNames: Record<string, string[]> = {
   'view-drawing': ['渐变填充', '边框与圆角'],
   'view-media': ['视频', '内嵌网页', '图表', '进度'],
@@ -37,16 +38,18 @@ const zhNames: Record<string, string[]> = {
   'view-accessibility': ['名称与角色', '文件夹树', '有名称的列表', '日期网格'],
 };
 for (const group of groups) {
-  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page, params: { lang: 'zh' } } }, async (t) => {
+  test(`${group.page} reads in Chinese when asked`, { covers: ['view:catalogue'], start: { page: group.page } }, async (t) => {
     const view = t.app.view;
-    // Retrying: the page can draw a first frame before its `lang` reaches it.
+    await inLanguage(t, 'zh-CN');
+    // Retrying: the page redraws once the language reaches it.
     for (const title of zhNames[group.page]) await expect(view.getByRole('heading', { name: title })).toHaveCount(1);
     if (missing[group.id].length) await expect(view.testId('view-group-missing')).toContainText('尚未展示');
   });
 }
 
-test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input', params: { lang: 'en' } } }, async (t) => {
+test('a group page reads in English when asked', { covers: ['view:catalogue'], start: { page: 'view-input' } }, async (t) => {
   const view = t.app.view;
+  await inLanguage(t, 'en-US');
   await expect(view.getByRole('heading', { name: 'Suggestions while typing' })).toHaveCount(1);
   await expect(view.testId('view-group-missing')).toContainText('Not shown yet');
 });

@@ -326,8 +326,7 @@ final class CollapsedAsideHandleView: NSView {
     }
 
     private func applyLabel() {
-        let label = L10n.string("lx_aside_show_content")
-            .replacingOccurrences(of: "%1$s", with: handle.title)
+        let label = L10n.string("lx_aside_show_content", handle.title)
         toolTip = label
         setAccessibilityLabel(label)
     }

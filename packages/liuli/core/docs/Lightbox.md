@@ -82,8 +82,8 @@ export function Single() {
 | `label` (required) | `string` |  | The lightbox's accessible name: "Photos of the house". |
 | `images` (required) | `readonly LightboxImage[]` |  |  |
 | `bind` | `Local<number>` |  | A View-local cell holding which picture is in view, from 0. Set it before opening to start there. |
-| `closeLabel` (required) | `string` |  | The close button's name: "Close". |
-| `pageLabel` (required) | `(page: number, count: number) => string` |  | Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. |
+| `closeLabel` | `string` |  | The close button's name: "Close". Defaults to "Close" in the page's language. |
+| `pageLabel` | `((page: number, count: number) => string)` |  | Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. Defaults to "2 of 5" in the page's language. |
 | `data-testid` | `string` |  |  |
 
 ## Anatomy

@@ -1837,7 +1837,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
         "function render({env}){if(!Object.isFrozen(env.insets))throw Error('mutable');return h('text',{},JSON.stringify(env))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
-    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","canDock":false,"displayLanguage":"zh-CN","viewport":{"width":999}});
+    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","canDock":false,"language":"zh-CN","viewport":{"width":999}});
     page.set_environment(environment.clone()).unwrap();
     let mut invalid = environment.clone();
     invalid["insets"]["top"] = serde_json::json!(-1);
@@ -1847,7 +1847,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
     let actual: serde_json::Value = serde_json::from_str(&frame.nodes[0].text).unwrap();
     assert_eq!(actual["theme"], "dark");
     assert_eq!(actual["insets"], environment["insets"]);
-    assert_eq!(actual["displayLanguage"], "zh-CN");
+    assert_eq!(actual["language"], "zh-CN");
     assert_eq!(actual["viewport"]["width"], 300.0);
     assert_eq!(actual["sizeClass"], "compact");
     let frame = page.layout(1200, 900, 1.0).unwrap();
@@ -2550,8 +2550,7 @@ fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
         "nothing changed"
     );
     // Language is a whole-page change too.
-    environment["displayLanguage"] = "fr".into();
-    environment["contentLanguage"] = "fr".into();
+    environment["language"] = "fr".into();
     page.set_environment(environment).unwrap();
     assert_eq!(over(&mut page, &mut per_ms, 7).as_deref(), Ok("slow"));
 }

@@ -606,6 +606,15 @@ impl Platform for MacosPlatform {
                 &app_path.join("Contents/Resources"),
                 app.display_name(),
             )?;
+            crate::product_i18n::declare_apple_localizations(
+                &app_path.join("Contents/Info.plist"),
+                &app.product_languages(),
+            )?;
+            if let Some(text) =
+                crate::sdk_text::load(&config.project_root, &app.product_languages())?
+            {
+                text.write_apple_overlay(&app_path)?;
+            }
         }
 
         // Mirror the iOS env-icon overlay so a `dev` macOS build also

@@ -115,9 +115,9 @@ export function Collapsible() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `onDismiss` | `(() => void)` |  | Removes the banner; the app stops rendering it. |
-| `dismissLabel` | `string` |  | The dismiss button's name: "Dismiss". |
+| `dismissLabel` | `string` |  | The dismiss button's name: "Dismiss". Defaults to "Dismiss" in the page's language. |
 | `isCollapsible` | `boolean` | `false` | Folds the message and the action under the title, behind a chevron button. |
-| `toggleLabel` | `string` |  | The chevron button's name: "Details". Read with whether it is open. |
+| `toggleLabel` | `string` |  | The chevron button's name: "Details". Read with whether it is open. Defaults to "Details" in the page's language. |
 | `isDefaultOpen` | `boolean` | `true` | Whether it starts unfolded. |
 | `title` (required) | `string` |  | The point, in a few words. |
 | `message` | `string` |  | What it means or what to do, in a sentence. |

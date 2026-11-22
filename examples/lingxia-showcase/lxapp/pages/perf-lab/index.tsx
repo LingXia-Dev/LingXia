@@ -1,4 +1,4 @@
-import { List, measureFrames, useLocal, type FrameStats } from '@lingxia/view';
+import { t, List, measureFrames, useLocal, type FrameStats, type MessageKey } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
 import { judgeFrames, judgeInput, judgeReveal, type Verdict } from '../../shared/perf-judge';
@@ -80,12 +80,12 @@ export function render({ data, actions }: View) {
         {order.map(key => (
           <Button key={key} testId={`perf-tab-${key}`} size="sm" variant={scene.value === key ? 'primary' : 'secondary'}
             disabled={running.value} onClick={() => { scene.set(key); result.set(''); verdict.set(''); }}>
-            {scenes[key].label}
+            {t(`perfLab.scene.${key}`)}
           </Button>
         ))}
       </view>
-      <Section title={spec.label} description={`${spec.knob}: ${count}`} testId={`perf-scene-${scene.value}`}
-        action={<Button testId="perf-run" size="sm" disabled={running.value} onClick={run}>{running.value ? 'Running…' : 'Run budget'}</Button>}>
+      <Section title={t(`perfLab.scene.${scene.value}` as MessageKey)} description={`${t(`perfLab.knob.${spec.knob.replace(' px', 'Px')}` as MessageKey)}: ${count}`} testId={`perf-scene-${scene.value}`}
+        action={<Button testId="perf-run" size="sm" disabled={running.value} onClick={run}>{running.value ? t('perfLab.running') : t('perfLab.runBudget')}</Button>}>
         <view className="flex-row gap-2">
           {spec.counts.map(value => (
             <Button key={String(value)} testId={`perf-count-${value}`} size="sm" variant={value === count ? 'primary' : 'secondary'}
@@ -95,13 +95,13 @@ export function render({ data, actions }: View) {
           ))}
         </view>
         <text data-testid="perf-result" data-verdict={verdict.value} className="text-xs font-mono tabular-nums">
-          {result.value ? `${verdict.value.toUpperCase()} · ${result.value}` : running.value ? 'Measuring 5 s…' : 'Not run'}
+          {result.value ? `${verdict.value.toUpperCase()} · ${result.value}` : running.value ? t('perfLab.measuring') : t('perfLab.notRun')}
         </text>
-        <text data-testid="perf-tick" className="text-xs text-muted tabular-nums">{`Logic ticks seen: ${data.tick}`}</text>
+        <text data-testid="perf-tick" className="text-xs text-muted tabular-nums">{t('perfLab.ticks', { n: data.tick })}</text>
         <Workload scene={scene.value} count={count} data={data} />
       </Section>
-      <Section title="Stall" description="Runs View code past its time budget: the host replaces the page with recovery chrome." testId="perf-stall-section">
-        <Button testId="perf-stall" variant="secondary" size="sm" onClick={stall}>Stall the View</Button>
+      <Section title={t('perfLab.stall')} description={t('perfLab.runsViewCodePast')} testId="perf-stall-section">
+        <Button testId="perf-stall" variant="secondary" size="sm" onClick={stall}>{t('perfLab.stallTheView')}</Button>
       </Section>
     </Page>
   );
@@ -152,8 +152,8 @@ function LongList({ count, step, glide }: { count: number; step: number; glide: 
         <view data-testid={`perf-row-${i}`} className="flex-row items-center gap-3 px-3 py-2 border-b border-line">
           <image src={image(i)} alt="" className="w-10 h-10 rounded-full" />
           <view className="grow basis-0 min-w-0">
-            <text className="text-sm font-medium truncate">Row {i + 1}</text>
-            <text className="text-xs text-muted truncate">A second line of text to lay out in every row</text>
+            <text className="text-sm font-medium truncate">{t('video.row', { id: i + 1 })}</text>
+            <text className="text-xs text-muted truncate">{t('perfLab.aSecondLineOf')}</text>
           </view>
           <text className="px-2 rounded-full bg-accent text-on-accent text-xs tabular-nums">{String(i % 100)}</text>
         </view>
@@ -164,7 +164,7 @@ function LongList({ count, step, glide }: { count: number; step: number; glide: 
 /** Logic owns the records; each tick changes one of them, so a frame's cost should follow the
  *  change, not the size of the page's data. */
 function Records({ rows, count }: { rows: readonly PerfRow[]; count: number }) {
-  if (rows.length === 0) return <text className="text-xs text-muted">Run budget loads {count} records into Logic data and changes one per tick.</text>;
+  if (rows.length === 0) return <text className="text-xs text-muted">{t('perfLab.stateHint', { count })}</text>;
   return (
     <List data-testid="perf-records" data-rows={String(rows.length)} className="h-96 rounded-lg border border-line" items={rows} getKey={row => String(row.id)}
       renderItem={row => (
@@ -222,9 +222,9 @@ function Relayout({ count, tick }: { count: number; tick: number }) {
 function Drag({ size }: { size: number }) {
   return (
     <view className="gap-2">
-      <text className="text-xs text-muted">Drag the box across. With the HUD on (lxdev lxapp page hud on), red dots trail the finger and green dots the frames that showed it.</text>
+      <text className="text-xs text-muted">{t('perfLab.dragTheBoxAcross')}</text>
       <view data-testid="perf-track" className="flex-row h-32 items-center rounded-xl bg-surface-sunken px-2">
-        <view data-testid="perf-box" drag="x" dragSnapPoints={[0, 60, 120, 180, 240]} aria-label="Box"
+        <view data-testid="perf-box" drag="x" dragSnapPoints={[0, 60, 120, 180, 240]} aria-label={t('perfLab.box')}
           className="rounded-xl bg-accent" style={{ width: size, height: size }} />
       </view>
     </view>

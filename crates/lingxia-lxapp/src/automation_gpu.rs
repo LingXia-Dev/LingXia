@@ -91,7 +91,7 @@ pub trait GpuPageAutomation: Send + Sync {
             Err("E_UNSUPPORTED: this GPU page binding has no test environment".to_owned())
         })
     }
-    /// The pin in force with the presented frame's `textScale` and `displayLanguage`.
+    /// The pin in force with the presented frame's `textScale` and `language`.
     fn environment_facts(&self) -> GpuFuture<Value> {
         Box::pin(async {
             Err("E_UNSUPPORTED: this GPU page binding has no test environment".to_owned())

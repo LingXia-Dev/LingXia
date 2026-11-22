@@ -3797,6 +3797,7 @@ dependencies = [
  "libc",
  "lingxia-app-context",
  "lingxia-control-protocol",
+ "lingxia-i18n",
  "lingxia-log",
  "lingxia-theme",
  "lingxia-update",
@@ -3967,6 +3968,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-i18n"
+version = "0.30.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
 name = "lingxia-log"
 version = "0.30.0"
 dependencies = [
@@ -4024,6 +4033,7 @@ dependencies = [
  "image",
  "language-tags",
  "lingxia-app-context",
+ "lingxia-i18n",
  "lingxia-log",
  "lingxia-media",
  "lingxia-messaging",

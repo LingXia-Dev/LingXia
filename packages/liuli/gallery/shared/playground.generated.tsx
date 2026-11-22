@@ -73,7 +73,6 @@ import { TreeList } from '@liulidesign/core/TreeList';
 import { playground as BottomSheetFixture } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { playground as BreadcrumbFixture } from '../../core/src/Breadcrumb/Breadcrumb.examples';
 import { playground as ButtonGroupFixture } from '../../core/src/ButtonGroup/ButtonGroup.examples';
-import { playground as CalendarFixture } from '../../core/src/Calendar/Calendar.examples';
 import { playground as CardFixture } from '../../core/src/Card/Card.examples';
 import { playground as CarouselFixture } from '../../core/src/Carousel/Carousel.examples';
 import { playground as CheckboxListFixture } from '../../core/src/CheckboxList/CheckboxList.examples';
@@ -106,7 +105,6 @@ import { playground as SelectFixture } from '../../core/src/Select/Select.exampl
 import { playground as StepperFixture } from '../../core/src/Stepper/Stepper.examples';
 import { playground as TableFixture } from '../../core/src/Table/Table.examples';
 import { playground as TabsFixture } from '../../core/src/Tabs/Tabs.examples';
-import { playground as TimestampFixture } from '../../core/src/Timestamp/Timestamp.examples';
 import { playground as TooltipFixture } from '../../core/src/Tooltip/Tooltip.examples';
 import { playground as TreeListFixture } from '../../core/src/TreeList/TreeList.examples';
 
@@ -882,9 +880,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       }
     ],
-    "fixed": [
-      "locale"
-    ],
+    "fixed": [],
     "binds": {
       "value": "onChange"
     }
@@ -1275,7 +1271,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "searchLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -1285,7 +1281,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "emptyLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -1343,7 +1339,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "emptyLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       }
     ],
@@ -1383,7 +1379,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "sendLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -1599,8 +1595,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
     ],
     "fixed": [
       "value",
-      "format",
-      "locale"
+      "format"
     ],
     "binds": {
       "value": "onChange"
@@ -1668,12 +1663,12 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "dateLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
         "name": "timeLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -2233,7 +2228,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "pickLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -2856,7 +2851,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "closeLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       }
     ],
@@ -2931,7 +2926,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "addLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -3138,7 +3133,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "addLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       }
     ],
@@ -3251,12 +3246,12 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "decrementLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
         "name": "incrementLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -3354,12 +3349,12 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "previousLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
         "name": "nextLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -3621,7 +3616,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "clearLabel",
-        "required": true,
+        "required": false,
         "kind": "text"
       },
       {
@@ -3968,8 +3963,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
       }
     ],
     "fixed": [
-      "steps",
-      "stateLabels"
+      "steps"
     ],
     "binds": {
       "value": "onChange"
@@ -4787,9 +4781,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       }
     ],
-    "fixed": [
-      "locale"
-    ],
+    "fixed": [],
     "binds": {}
   },
   {
@@ -5074,7 +5066,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "Breadcrumb") return <Breadcrumb {...(BreadcrumbFixture() as any)} {...(props as any)} />;
   if (name === "Button") return <Button {...(props as any)} />;
   if (name === "ButtonGroup") return <ButtonGroup {...(ButtonGroupFixture() as any)} {...(props as any)} />;
-  if (name === "Calendar") return <Calendar {...(CalendarFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
+  if (name === "Calendar") return <Calendar {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Card") return <Card {...(CardFixture() as any)} {...(props as any)} />;
   if (name === "Carousel") return <Carousel {...(CarouselFixture() as any)} {...(props as any)} />;
   if (name === "CheckboxInput") return <CheckboxInput {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
@@ -5132,7 +5124,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "Thumbnail") return <Thumbnail {...(props as any)} />;
   if (name === "TimeInput") return <TimeInput {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Timer") return <Timer {...(props as any)} />;
-  if (name === "Timestamp") return <Timestamp {...(TimestampFixture() as any)} {...(props as any)} />;
+  if (name === "Timestamp") return <Timestamp {...(props as any)} />;
   if (name === "Toast") return <Toast {...(props as any)} />;
   if (name === "ToggleButton") return <ToggleButton {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Token") return <Token {...(props as any)} />;

@@ -67,7 +67,8 @@ function props(name, typeName) {
     const written = defaults.get(property.name);
     if (fallback !== undefined && written !== undefined && fallback !== written)
       problems.push(`src/${name}/${name}.tsx: ${property.name}: @default ${fallback} but the code defaults to ${written}`);
-    if (fallback === undefined && written !== undefined && !/^!/.test(written))
+    // A word from Liuli's catalogue is named in the description, in English; it reads in the page's language.
+    if (fallback === undefined && written !== undefined && !/^!/.test(written) && !written.includes('liuliText('))
       problems.push(`src/${name}/${name}.tsx: ${property.name}: defaults to ${written} without an @default tag`);
     return {
       name: property.name,

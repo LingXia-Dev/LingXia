@@ -79,7 +79,7 @@ impl DeviceFacts {
             "os": self.os,
             "pointer": if self.fine_pointer { "fine" } else { "coarse" },
             "formFactor": if self.smallest_width >= TABLET_SMALLEST_WIDTH { "tablet" } else { "phone" },
-            "displayLanguage": self.locale,
+            "language": self.locale,
             "animatorDurationScale": animation_scale,
             "reducedMotion": self.reduce_motion || animation_scale == 0.0,
             "highContrast": self.high_contrast,

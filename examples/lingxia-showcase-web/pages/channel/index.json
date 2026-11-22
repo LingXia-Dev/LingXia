@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "Channel",
-      "zh-CN": "通道"
-    }
+    "title": { "message": "title.channel" }
   }
 }

@@ -1,3 +1,4 @@
+import { t } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Icon, Page } from '../../shared/ui';
 import type { View } from './$types';
@@ -28,12 +29,12 @@ export function render({ data, actions }: View) {
   return (
     <Page>
       <Card testId="location-card" className="p-6 gap-4 items-center">
-        <text className="text-base text-muted">Current Location</text>
+        <text className="text-base text-muted">{t('location.currentLocation')}</text>
         {data.isLoading ? (
           <view className="flex-row items-center gap-3 py-8">
             <Icon name="location" className="w-8 h-8 text-accent" />
             <text data-testid="location-status" className="text-base text-muted">
-              Getting location...
+              {t('location.gettingLocation')}
             </text>
           </view>
         ) : location ? (
@@ -55,15 +56,15 @@ export function render({ data, actions }: View) {
           </view>
         ) : (
           <text data-testid="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
-            {String(data.locationError || 'No location data available')}
+            {String(data.locationError || t('location.none'))}
           </text>
         )}
       </Card>
       <Button testId="location-get" disabled={!!data.isLoading} onClick={() => actions.getLocation()}>
-        {data.isLoading ? 'Getting Location...' : 'Get Location'}
+        {data.isLoading ? t('location.getting') : t('location.get')}
       </Button>
       <Button variant="secondary" testId="location-clear" disabled={!!data.isLoading} onClick={() => actions.clearLocation()}>
-        Clear
+        {t('location.clear')}
       </Button>
     </Page>
   );

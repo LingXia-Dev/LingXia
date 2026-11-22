@@ -216,6 +216,13 @@ impl IosPlatform {
             &app_config.product_version,
             config.resolved_env.version,
         )?;
+        crate::product_i18n::declare_apple_localizations(
+            &app_bundle.join("Info.plist"),
+            &app_config.product_languages(),
+        )?;
+        if let Some(text) = crate::sdk_text::load(project_root, &app_config.product_languages())? {
+            text.write_apple_overlay(&app_bundle)?;
+        }
         Ok(app_bundle)
     }
 

@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "取消"
+  },
+  "@view.done": {
+    "defaultMessage": "完成"
+  },
+  "@view.ok": {
+    "defaultMessage": "确定"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "上个月"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "下个月"
+  },
+  "@view.hour": {
+    "defaultMessage": "时"
+  },
+  "@view.minute": {
+    "defaultMessage": "分"
+  },
+  "@view.period": {
+    "defaultMessage": "上午/下午"
+  },
+  "@view.options": {
+    "defaultMessage": "选项"
+  },
+  "@view.dialog": {
+    "defaultMessage": "对话框"
+  },
+  "@view.actions": {
+    "defaultMessage": "操作"
+  }
+}

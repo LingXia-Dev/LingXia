@@ -1790,7 +1790,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 .and_then(|test| test.high_contrast)
                 .map(|high| if high { "high" } else { "standard" }),
             "textScale": fact("textScale"),
-            "displayLanguage": fact("displayLanguage"),
+            "language": fact("language"),
         })
     }
 

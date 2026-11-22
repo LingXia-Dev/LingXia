@@ -42,6 +42,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_GPU_LOST` | native | The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen. |
 | `UI_GRADIENT` | runtime, native | A gradient with geometry its kind does not take, or invalid stops. |
 | `UI_GRID` | native | An invalid grid track list or line. |
+| `UI_I18N` | runtime | `t` names a key no catalogue has, or the lxapp has no `i18n/` catalogues. |
 | `UI_ID` | runtime, native | Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page. |
 | `UI_IMAGE` | runtime, native | Invalid image source, alt, retry key or callback, or a failed load. |
 | `UI_INERT` | build | A build warning; the page still builds: a `<button>`, `<checkbox>`, `<switch>`, `<radio>`, `<select>` or `<slider>` with no handler, `bind` or `disabled`. It is enabled and focusable but does nothing; add the handler, or mark it disabled. |

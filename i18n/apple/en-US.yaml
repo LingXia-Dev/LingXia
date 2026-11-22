@@ -2,19 +2,19 @@
 #
 # These keys feed `lingxia-sdk/apple/Sources/Resources/*.lproj/Localizable.strings`
 # only — not the Rust I18nKey enum, TS keys, Android strings.xml, or Harmony
-# string.json. Placeholder syntax is Apple-native (`%@`).
+# string.json. Arguments are ICU (`{app}`); the generator writes them as `%1$@`.
 
 # macOS desktop shell: the "ready to update" callout shown above the
-# sidebar icon after a host-app update has been staged. `%@` is the app's
-# product name.
+# sidebar icon after a host-app update has been staged. `{app}` is the
+# app's product name.
 update:
-  ready_to_install: "%@ is ready to update!"
+  ready_to_install: "{app} is ready to update!"
   click_to_restart: "Click to restart"
-  available_title: "%@ update available"
+  available_title: "{app} update available"
   click_to_install: "Click to install"
   # Centered "update available" card (Stage 1).
   card_title: "A new version is available"
-  card_version: "Version %@"
+  card_version: "Version {version}"
   card_notes_title: "What's new"
   card_later: "Later"
   card_restart: "Restart Now"
@@ -32,10 +32,10 @@ menu:
   select_all: "Select All"
 
 # macOS top menu bar, for host apps that build NSMenu by hand instead of
-# relying on Cocoa's automatic menu bar. `%@` is the app's product name.
+# relying on Cocoa's automatic menu bar. `{app}` is the app's product name.
 app:
-  about: "About %@"
-  quit: "Quit %@"
+  about: "About {app}"
+  quit: "Quit {app}"
   edit: "Edit"
   window: "Window"
   minimize: "Minimize"

@@ -5,6 +5,7 @@ export { useLocal, useAction, useRequest, useStream, useChannel, useLeaveGuard, 
 export { createContext, useContext } from './runtime/context.js';
 export { measureFrames } from './runtime/frames.js';
 export { cx } from './runtime/cx.js';
+export { t, packageText } from './runtime/i18n.js';
 export { useVideo } from './runtime/video.js';
 export { useWebView } from './runtime/webview.js';
 export { useBox } from './runtime/box.js';

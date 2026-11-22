@@ -9,8 +9,8 @@ export interface VideoPlayerProps {
   player: Video;
   /** What the video shows, its accessible name. */
   label: string;
-  /** Every word the controls show or speak. */
-  labels: VideoControlsLabels;
+  /** Words for the controls to use instead of Liuli's, which follow the page's language. */
+  labels?: Partial<VideoControlsLabels>;
   /** One file or stream. Give it or `sources`. */
   src?: string;
   /** The same video at several qualities; their labels become the quality menu. */

@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Overlays",
-      "zh-CN": "浮层"
+      "message": "title.viewOverlays"
     }
   },
   "pageOrientation": "auto"

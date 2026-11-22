@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "Video",
-      "zh-CN": "视频"
-    }
+    "title": { "message": "title.video" }
   }
 }

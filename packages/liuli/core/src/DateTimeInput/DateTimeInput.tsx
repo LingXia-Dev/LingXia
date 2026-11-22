@@ -1,4 +1,5 @@
 import { cx, useBox, useLocal, useView, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { DateInput } from '../DateInput/DateInput';
 import { Field, type FieldOwnProps } from '../Field/Field';
@@ -21,10 +22,10 @@ export type DateTimeInputBinding =
     };
 
 export type DateTimeInputProps = FieldOwnProps & DateTimeInputBinding & {
-  /** The date part's accessible name: "Start date". */
-  dateLabel: string;
-  /** The time part's accessible name: "Start time". */
-  timeLabel: string;
+  /** The date part's accessible name: "Start date". Defaults to "Date" in the page's language. */
+  dateLabel?: string;
+  /** The time part's accessible name: "Start time". Defaults to "Time" in the page's language. */
+  timeLabel?: string;
   /** The earliest day, as `YYYY-MM-DD`. */
   minDate?: string;
   /** The latest day, as `YYYY-MM-DD`. */
@@ -45,7 +46,7 @@ const [partChrome, partGap] = [50, 8];
 export function DateTimeInput(props: DateTimeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    dateLabel, timeLabel, minDate, maxDate, timeStep, className, 'data-testid': testId,
+    dateLabel = liuliText('@liuli.date'), timeLabel = liuliText('@liuli.time'), minDate, maxDate, timeStep, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const { env } = useView();

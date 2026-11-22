@@ -708,8 +708,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("os", "device"),
     ("formFactor", "device"),
     ("sizeClass", "push"),
-    ("displayLanguage", "device"),
-    ("contentLanguage", "session"),
+    ("language", "device"),
     ("reducedMotion", "device"),
     ("highContrast", "device"),
     ("animatorDurationScale", "device"),
@@ -735,7 +734,7 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && value["formFactor"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && (value.get("sizeClass").is_none() || matches!(value["sizeClass"].as_str(), Some("compact") | Some("regular")))
-        && value["displayLanguage"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && value["language"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())
         && (value.get("highContrast").is_none() || value["highContrast"].is_boolean())
         && (value.get("animatorDurationScale").is_none() || value["animatorDurationScale"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=10.0).contains(&n)))

@@ -181,7 +181,7 @@ test('applies a selected color scheme to native chrome before Apply', {
   const terminal = t.automation.terminal;
   const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance.preference.get() ?? null);
+  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance?.get() ?? null);
 
   try {
     // The action bar is intentionally hidden until the draft becomes dirty;
@@ -213,7 +213,7 @@ test('applies a selected color scheme to native chrome before Apply', {
     let cards = await themeCards();
     if (cards.length < 2) {
       await app.logic.eval(async ({ lx }) => {
-        await lx.host.appearance.preference.set('dark');
+        await lx.host.appearance?.set('dark');
         return true;
       });
       cards = await waitFor(async () => {
@@ -290,7 +290,7 @@ test('applies a selected color scheme to native chrome before Apply', {
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
     await app.logic.eval(async ({ lx }, previous) => {
-      if (previous !== null) await lx.host.appearance.preference.set(previous);
+      if (previous !== null) await lx.host.appearance?.set(previous);
       return true;
     }, previousAppearance).catch(() => undefined);
     if (initial) {

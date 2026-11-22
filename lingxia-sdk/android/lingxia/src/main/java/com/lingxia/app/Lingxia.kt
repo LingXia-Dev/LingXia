@@ -312,10 +312,9 @@ object Lingxia {
         return context.createConfigurationContext(config).getString(id)
     }
 
-    private fun localeForDisplayLanguage(tag: String): Locale {
-        val primary = tag.replace('_', '-').substringBefore('-').lowercase(Locale.ROOT)
-        return if (primary == "zh") Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
-    }
+    // The host has narrowed it to a product language; resource lookup picks the nearest values-*.
+    private fun localeForDisplayLanguage(tag: String): Locale =
+        Locale.forLanguageTag(tag.replace('_', '-'))
 
     private fun getSystemLocale(): String {
         return try {

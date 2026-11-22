@@ -13,8 +13,9 @@ function mediaPath(entry: unknown): string {
 
 export default definePage({
   data: {
-    statusText: "Ready",
-    typesText: "Not peeked",
+    statusText: "clipboard.state.ready",
+    statusArgs: {} as Record<string, string>,
+    typesText: "clipboard.state.notPeeked",
     readTextValue: "",
     imagePath: "",
   },
@@ -27,7 +28,7 @@ export default definePage({
       },
       async peekTypes() {
         const types = await lx.clipboard.types();
-        page.update(d => { d.typesText = types.length > 0 ? types.join(", ") : "empty"; });
+        page.update(d => { d.typesText = types.length > 0 ? types.join(", ") : "clipboard.state.empty"; });
         return types;
       },
       // After a read that got nothing — dismissed, empty, or denied — show what
@@ -47,7 +48,7 @@ export default definePage({
         try {
           await lx.clipboard.writeText(text);
           await helpers.peekTypes();
-          page.update(d => { d.statusText = text === "" ? "Wrote empty string" : "Wrote text"; });
+          page.update(d => { d.statusText = text === "" ? "clipboard.state.wroteEmptyString" : "clipboard.state.wroteText"; });
         } catch (error) {
           await helpers.fail(error, "writeText failed");
         }
@@ -57,7 +58,7 @@ export default definePage({
           const result = await lx.clipboard.readText();
           if (result.status === 'canceled') {
             page.update(d => {
-              d.statusText = "Read canceled";
+              d.statusText = "clipboard.state.readCanceled";
               d.readTextValue = "";
             });
             await helpers.showTypesAfterRead();
@@ -66,14 +67,14 @@ export default definePage({
           const { text } = result;
           if (text === undefined) {
             page.update(d => {
-              d.statusText = "No text on clipboard";
+              d.statusText = "clipboard.state.noTextOnClipboard";
               d.readTextValue = "";
             });
             await helpers.showTypesAfterRead();
             return;
           }
           page.update(d => {
-            d.statusText = text === "" ? "Found empty string" : "Read text";
+            d.statusText = text === "" ? "clipboard.state.foundEmptyString" : "clipboard.state.readText";
             d.readTextValue = text;
           });
           await helpers.peekTypes();
@@ -87,7 +88,7 @@ export default definePage({
         try {
           await lx.clipboard.write({ type: "text", text });
           await helpers.peekTypes();
-          page.update(d => { d.statusText = "Wrote typed text item"; });
+          page.update(d => { d.statusText = "clipboard.state.wroteTypedTextItem"; });
         } catch (error) {
           await helpers.fail(error, "write failed");
         }
@@ -100,7 +101,7 @@ export default definePage({
           await lx.fs.write(fixture, { data: SAMPLE_PNG, encoding: "base64", overwrite: true });
           await lx.clipboard.write({ type: "image", path: fixture });
           await helpers.peekTypes();
-          page.update(d => { d.statusText = "Wrote sample PNG"; });
+          page.update(d => { d.statusText = "clipboard.state.wroteSamplePng"; });
         } catch (error) {
           await helpers.fail(error, "write image failed");
         }
@@ -109,12 +110,12 @@ export default definePage({
         try {
           const picked = await lx.pick.media({ limit: 1, types: ["image"] });
           if (picked.status === 'canceled') {
-            page.update(d => { d.statusText = "Image picker canceled"; });
+            page.update(d => { d.statusText = "clipboard.state.imagePickerCanceled"; });
             return;
           }
           await lx.clipboard.write({ type: "image", path: mediaPath(picked.files[0]) });
           await helpers.peekTypes();
-          page.update(d => { d.statusText = "Wrote chosen image"; });
+          page.update(d => { d.statusText = "clipboard.state.wroteChosenImage"; });
         } catch (error) {
           await helpers.fail(error, "write image failed");
         }
@@ -123,13 +124,13 @@ export default definePage({
         try {
           const result = await lx.clipboard.read();
           if (result.status === 'canceled') {
-            page.update(d => { d.statusText = "Read canceled"; });
+            page.update(d => { d.statusText = "clipboard.state.readCanceled"; });
             await helpers.showTypesAfterRead();
             return;
           }
           if (result.items.length === 0) {
             page.update(d => {
-              d.statusText = "Clipboard empty";
+              d.statusText = "clipboard.state.clipboardEmpty";
               d.readTextValue = "";
               d.imagePath = "";
             });
@@ -139,7 +140,8 @@ export default definePage({
           const textItem = result.items.find((item) => item.type === "text");
           const imageItem = result.items.find((item) => item.type === "image");
           page.update(d => {
-            d.statusText = `Read ${result.items.map((item) => item.type).join(", ")}`;
+            d.statusText = "clipboard.state.readTypes";
+            d.statusArgs = { types: result.items.map((item) => item.type).join(", ") };
             d.readTextValue = textItem?.type === "text" ? textItem.text : "";
             d.imagePath = imageItem?.type === "image" ? imageItem.path : "";
           });
@@ -152,7 +154,7 @@ export default definePage({
       async peekTypes() {
         try {
           await helpers.peekTypes();
-          page.update(d => { d.statusText = "Peeked types"; });
+          page.update(d => { d.statusText = "clipboard.state.peekedTypes"; });
         } catch (error) {
           await helpers.fail(error, "types failed");
         }
@@ -162,7 +164,7 @@ export default definePage({
           await lx.clipboard.clear();
           await helpers.peekTypes();
           page.update(d => {
-            d.statusText = "Cleared";
+            d.statusText = "clipboard.state.cleared";
             d.readTextValue = "";
             d.imagePath = "";
           });

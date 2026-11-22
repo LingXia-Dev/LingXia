@@ -12,11 +12,11 @@ export default definePage({
         const message = typeof params?.message === 'string' ? params.message.trim() : '';
         const email = typeof params?.email === 'string' ? params.email.trim() : '';
         if (!message) {
-          lx.ui.toast('Tell us what happened');
+          lx.ui.toast(lx.app.t('feedback.empty'));
           return;
         }
         console.log('[Feedback] Submitted', { category, message, email });
-        lx.ui.toast('Thanks for the feedback', { tone: 'success' });
+        lx.ui.toast(lx.app.t('feedback.thanks'), { tone: 'success' });
         await page.surface?.close();
       },
     };

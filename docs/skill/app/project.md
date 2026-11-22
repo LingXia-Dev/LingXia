@@ -95,7 +95,14 @@ surfaces:
   `productNames`.
 - `productNames` — optional locale → name map (`zh-CN: 我的应用`). The launcher
   follows the system language; window title, tray, and
-  `lx.host.info.productName` follow `lx.host.displayLanguage`.
+  `lx.host.info.productName` follow the product's display language.
+- `languages` — what the product speaks, first = fallback (default `[en-US, zh-CN]`;
+  `lingxia new --languages`). The host's language is one of them, and the build declares
+  them to the OS's per-app language picker.
+- `i18n/<tag>.yaml` at the project root (optional) — the product's own words for
+  LingXia's strings, keyed as LingXia names them (`file_chooser: { filter_label:
+  "Showing {filter}" }`), or a language LingXia lacks. An unknown key or a changed
+  argument stops the build; a missing key reads in English.
 - `productVersion` — semver, stamped into every OS package. Do not edit
   version fields in platform projects.
 - `platforms` — `macos`, `windows`, `ios`, `android`, `harmony`.

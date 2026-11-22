@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Input",
-      "zh-CN": "输入"
+      "message": "title.viewInput"
     }
   },
   "pageOrientation": "auto"

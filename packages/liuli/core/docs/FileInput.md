@@ -90,11 +90,11 @@ export function Empty() {
 | `size` | `FieldSize` | `'md'` |  |
 | `files` (required) | `readonly FileInputFile[]` |  | The chosen files, in order. The app owns the list. |
 | `onPick` (required) | `() => void` |  | Opens the app\'s own picker, in Logic. Liuli cannot read files. |
-| `pickLabel` (required) | `string` |  | The words on the button: "Choose files", "Add a photo". |
+| `pickLabel` | `string` |  | The words on the button: "Choose files", "Add a photo". Defaults to "Choose files" in the page's language. |
 | `hint` | `string` |  | A line under them: what may be chosen. "PDF or image, up to 25 MB each". |
 | `onRemove` (required) | `(id: string) => void` |  | Takes a file out of the list. |
-| `removeLabel` (required) | `(name: string) => string` |  | Each remove button, named with what it removes: `name => \`Remove ${name}\``. |
-| `progressLabel` (required) | `(name: string) => string` |  | Each ring, named with what is sending: `name => \`Uploading ${name}\``. |
+| `removeLabel` | `((name: string) => string)` |  | Each remove button, named with what it removes: `name => \`Remove ${name}\``. Defaults to "Remove <name>" in the page's language. |
+| `progressLabel` | `((name: string) => string)` |  | Each ring, named with what is sending: `name => \`Uploading ${name}\``. Defaults to "Uploading <name>" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the button; the list gets `<testid>-files`. |
 

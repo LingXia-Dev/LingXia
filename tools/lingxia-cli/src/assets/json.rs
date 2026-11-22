@@ -41,6 +41,15 @@ pub(super) fn build_app_json_from_config(
             serde_json::to_value(&app.product_names)?,
         );
     }
+    let dev_session = dev_ws_url.is_some_and(|url| !url.trim().is_empty());
+    if dev_session {
+        // A dev session's lxapps carry en-XA; the host must let a preference for it through.
+        let mut languages = app.product_languages();
+        languages.push(lingxia_i18n::pseudo::TAG.to_string());
+        obj.insert("languages".to_string(), serde_json::json!(languages));
+    } else if !app.languages.is_empty() {
+        obj.insert("languages".to_string(), serde_json::json!(app.languages));
+    }
     obj.insert(
         "productVersion".to_string(),
         serde_json::json!(app.product_version),

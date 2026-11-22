@@ -43,6 +43,7 @@ mod content;
 mod display_language;
 pub mod host_appearance;
 pub mod localized_text;
+mod messages;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
@@ -2747,6 +2748,10 @@ impl LxApp {
             .config
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = config;
+        self.forget_catalogues();
+        if let Some(tabbar) = tabbar.as_mut() {
+            tabbar.bind_text(|text| self.bind_text(text));
+        }
 
         {
             let mut state = self.state.lock().unwrap();

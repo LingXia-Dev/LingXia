@@ -1,4 +1,4 @@
-import { useLocal, type Child, type LinkTarget, type Local } from '@lingxia/view';
+import { t, useLocal, type Child, type LinkTarget, type Local, type MessageKey } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Field, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
 import type { View } from './$types';
@@ -41,7 +41,7 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
       >
         <view className="flex-row items-center justify-between gap-3">
           <text className="text-base">{value}</text>
-          <text className="text-xs text-accent">Change</text>
+          <text className="text-xs text-accent">{t('ui.change')}</text>
         </view>
       </button>
     </view>
@@ -50,13 +50,13 @@ function Choice({ testId, label, value, onClick }: { testId: string; label: stri
 
 function Dialogs({ data, actions }: Pane) {
   const type = String(data.currentType);
-  const toastTitle = useLocal('toastTitle', 'Hello Toast!');
+  const toastTitle = useLocal('toastTitle', t('ui.helloToast'));
   const toastDuration = useLocal('toastDuration', '2000');
   const modalTitle = useLocal('modalTitle', 'Alert');
-  const modalContent = useLocal('modalContent', 'This is a modal dialog');
+  const modalContent = useLocal('modalContent', t('ui.modalContent'));
   const modalCancel = useLocal('modalCancel', true);
-  const cancelText = useLocal('cancelText', 'Cancel');
-  const confirmText = useLocal('confirmText', 'OK');
+  const cancelText = useLocal('cancelText', t('common.cancel'));
+  const confirmText = useLocal('confirmText', t('common.ok'));
   const showToast = () =>
     actions.showToastWithParams({
       message: toastTitle.value,
@@ -74,30 +74,30 @@ function Dialogs({ data, actions }: Pane) {
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       {type === 'toast' && (
-        <Section title="Toast Parameters">
-          <Field testId="toast-title" label="Message" bind={toastTitle} placeholder="Enter toast message" />
-          <Choice testId="toast-style" label="Style" value={String(data.toastStyleLabel || 'Success')} onClick={() => actions.chooseToastStyle()} />
-          <Field testId="toast-duration" label="Duration (ms)" bind={toastDuration} type="number" />
+        <Section title={t('ui.toastParameters')}>
+          <Field testId="toast-title" label={t('ui.message')} bind={toastTitle} placeholder={t('ui.enterToastMessage')} />
+          <Choice testId="toast-style" label={t('ui.style')} value={t(String(data.toastStyleLabel || 'ui.toast.success') as MessageKey)} onClick={() => actions.chooseToastStyle()} />
+          <Field testId="toast-duration" label={t('ui.durationMs')} bind={toastDuration} type="number" />
           <Choice
             testId="toast-position"
-            label="Position"
-            value={String(data.toastPositionLabel || 'Center')}
+            label={t('ui.position')}
+            value={t(String(data.toastPositionLabel || 'ui.toast.center') as MessageKey)}
             onClick={() => actions.chooseToastPosition()}
           />
           <view className="grid gap-3 grid-cols-2">
             <Button testId="toast-show" onClick={showToast}>
-              Show Toast
+              {t('ui.showToast')}
             </Button>
             <Button variant="secondary" testId="toast-hide" onClick={() => actions.hideToast()}>
-              Hide Toast
+              {t('ui.hideToast')}
             </Button>
           </view>
         </Section>
       )}
       {type === 'actionsheet' && (
-        <Section title="Action Sheet">
+        <Section title={t('ui.actionSheet')}>
           <Button testId="actionsheet-show" onClick={() => actions.showDemoActionSheet()}>
-            Show Action Sheet
+            {t('ui.showActionSheet')}
           </Button>
           {!!data.actionSheetResult && (
             <text data-testid="actionsheet-result" className="text-xs font-mono break-all whitespace-pre-wrap">
@@ -107,35 +107,35 @@ function Dialogs({ data, actions }: Pane) {
         </Section>
       )}
       {type === 'modal' && (
-        <Section title="Modal Parameters">
-          <Field testId="modal-title" label="Title (optional)" bind={modalTitle} placeholder="Leave empty for no title" />
+        <Section title={t('ui.modalParameters')}>
+          <Field testId="modal-title" label={t('ui.titleOptional')} bind={modalTitle} placeholder={t('ui.leaveEmptyForNo')} />
           <view className="gap-1.5">
-            <text className="text-sm font-medium">Content</text>
+            <text className="text-sm font-medium">{t('ui.content')}</text>
             <textarea
               data-testid="modal-content"
-              aria-label="Content"
+              aria-label={t('ui.content')}
               bind={modalContent}
-              placeholder="Enter modal content"
+              placeholder={t('ui.enterModalContent')}
               className="h-24 px-3 py-2 rounded-lg border border-line-strong bg-surface text-base"
             />
           </view>
           <checkbox data-testid="modal-show-cancel" bind={modalCancel} className="text-sm">
-            Show cancel button
+            {t('ui.showCancelButton')}
           </checkbox>
-          <Field testId="modal-cancel-text" label="Cancel Button Text" bind={cancelText} placeholder="Cancel button text" />
-          <Field testId="modal-confirm-text" label="Confirm Button Text" bind={confirmText} placeholder="Confirm button text" />
+          <Field testId="modal-cancel-text" label={t('ui.cancelButtonText')} bind={cancelText} placeholder={t('ui.cancelButtonText2')} />
+          <Field testId="modal-confirm-text" label={t('ui.confirmButtonText')} bind={confirmText} placeholder={t('ui.confirmButtonText2')} />
           <Button testId="modal-show" onClick={showModal}>
-            Show Modal
+            {t('ui.showModal')}
           </Button>
         </Section>
       )}
       {type === 'modal' && !!data.modalResult && (
-        <Section title="Modal Result">
+        <Section title={t('ui.modalResult')}>
           <text data-testid="modal-result" className="text-xs font-mono text-muted break-all whitespace-pre-wrap">
             {JSON.stringify(data.modalResult, null, 2)}
           </text>
           <Button variant="ghost" testId="modal-clear" onClick={() => actions.clearModalResult()}>
-            Clear Result
+            {t('ui.clearResult')}
           </Button>
         </Section>
       )}
@@ -150,25 +150,25 @@ function Appearance({ data, actions }: Pane) {
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section
-        title="Light / Dark"
-        description="Auto follows the host appearance; Light and Dark keep your chosen theme. Your preference is saved for this app."
+        title={t('ui.lightDark')}
+        description={t('ui.autoFollowsTheHost')}
       >
         <Segmented
           testId="ui-appearance"
           value={preference}
           onChange={value => actions.setAppearance({ preference: value })}
           options={[
-            { value: 'auto', label: 'Auto' },
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
+            { value: 'auto', label: t('ui.theme.auto') },
+            { value: 'light', label: t('ui.theme.light') },
+            { value: 'dark', label: t('ui.theme.dark') },
           ]}
         />
         <InfoList>
-          <InfoRow label="Preference" value={preference} testId="ui-appearance-preference" />
-          <InfoRow label="Resolved" value={appearance?.resolved} testId="ui-appearance-resolved" />
+          <InfoRow label={t('ui.preference')} value={preference} testId="ui-appearance-preference" />
+          <InfoRow label={t('ui.resolved')} value={appearance?.resolved} testId="ui-appearance-resolved" />
         </InfoList>
         <text className="text-xs text-muted">
-          The resolved theme is in use now. Pages share one palette, so their colors update together.
+          {t('ui.theResolvedThemeIs')}
         </text>
       </Section>
     </Page>
@@ -196,14 +196,14 @@ function Navbar({ data, actions }: Pane) {
   return (
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
-      <Section title="NavigationBar APIs">
-        <Field testId="navbar-title-input" label="Title" bind={title} placeholder="Enter title" />
+      <Section title={t('ui.navigationbarApis')}>
+        <Field testId="navbar-title-input" label={t('ui.title')} bind={title} placeholder={t('ui.enterTitle')} />
         <Button testId="navbar-set-title" onClick={() => title.value && actions.updateNavigationBarTitle({ title: title.value })}>
-          Set Title
+          {t('ui.setTitle')}
         </Button>
         <view className="grid gap-2 grid-cols-2">
-          <Field testId="navbar-bg-input" label="Background" bind={background} placeholder="#ffffff" />
-          <Field testId="navbar-fg-input" label="Text" bind={foreground} placeholder="#000000" />
+          <Field testId="navbar-bg-input" label={t('ui.background')} bind={background} placeholder={t('ui.ffffff')} />
+          <Field testId="navbar-fg-input" label={t('ui.text')} bind={foreground} placeholder="#000000" />
         </view>
         <Button
           testId="navbar-set-colors"
@@ -214,7 +214,7 @@ function Navbar({ data, actions }: Pane) {
             })
           }
         >
-          Set Colors
+          {t('ui.setColors')}
         </Button>
         <view className="grid gap-2 grid-cols-2">
           {preset('Dark', '#1f2937', '#ffffff')}
@@ -229,7 +229,7 @@ function Navbar({ data, actions }: Pane) {
             testId="navbar-home-hide"
             onClick={() => actions.updateNavigationBarHomeButton({ homeButton: 'hidden' })}
           >
-            Hide home
+            {t('ui.hideHome')}
           </Button>
           <Button
             variant="secondary"
@@ -237,10 +237,10 @@ function Navbar({ data, actions }: Pane) {
             testId="navbar-home-auto"
             onClick={() => actions.updateNavigationBarHomeButton({ homeButton: 'auto' })}
           >
-            Auto home
+            {t('ui.autoHome')}
           </Button>
           <Button variant="ghost" size="sm" testId="navbar-reset" onClick={() => actions.resetNavigationBar()}>
-            Reset
+            {t('ui.reset')}
           </Button>
         </view>
       </Section>
@@ -249,7 +249,7 @@ function Navbar({ data, actions }: Pane) {
 }
 
 function Tabbar({ data, actions }: Pane) {
-  const itemText = useLocal('itemText', 'New Tab');
+  const itemText = useLocal('itemText', t('ui.newTab'));
   const badge = useLocal('badge', '99');
   const pair = (left: Child, right: Child) => (
     <view className="grid gap-3 grid-cols-2">
@@ -260,38 +260,38 @@ function Tabbar({ data, actions }: Pane) {
   return (
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
-      <Section title="Visibility Controls" description="Show or hide the TabBar and update item text">
+      <Section title={t('ui.visibilityControls')} description={t('ui.showOrHideThe')}>
         {pair(
           <Button testId="tabbar-show" onClick={() => actions.revealTabBar()}>
-            Show TabBar
+            {t('ui.showTabbar')}
           </Button>,
           <Button variant="secondary" testId="tabbar-hide" onClick={() => actions.concealTabBar()}>
-            Hide TabBar
+            {t('ui.hideTabbar')}
           </Button>,
         )}
-        <Field testId="tabbar-item-text" label="Update Tab 1 Text" bind={itemText} placeholder="Enter new text" />
+        <Field testId="tabbar-item-text" label={t('ui.updateTab1Text')} bind={itemText} placeholder={t('ui.enterNewText')} />
         <Button testId="tabbar-item-update" onClick={() => actions.updateTabBarItem({ tab: 'api', label: itemText.value })}>
-          Update
+          {t('ui.update')}
         </Button>
       </Section>
-      <Section title="Red Dot Controls" description="Show or hide the red dot on tab 1">
+      <Section title={t('ui.redDotControls')} description={t('ui.showOrHideThe2')}>
         {pair(
           <Button variant="destructive" testId="tabbar-reddot-show" onClick={() => actions.enableTabBarRedDot({ tab: 'api' })}>
-            Show Red Dot
+            {t('ui.showRedDot')}
           </Button>,
           <Button variant="secondary" testId="tabbar-reddot-hide" onClick={() => actions.disableTabBarRedDot({ tab: 'api' })}>
-            Hide Red Dot
+            {t('ui.hideRedDot')}
           </Button>,
         )}
       </Section>
-      <Section title="Badge Controls" description="Set or remove the badge on tab 1">
-        <Field testId="tabbar-badge-input" label="Badge Text" bind={badge} placeholder="Enter badge text" />
+      <Section title={t('ui.badgeControls')} description={t('ui.setOrRemoveThe')}>
+        <Field testId="tabbar-badge-input" label={t('ui.badgeText')} bind={badge} placeholder={t('ui.enterBadgeText')} />
         {pair(
           <Button testId="tabbar-badge-set" onClick={() => actions.updateTabBarBadge({ tab: 'api', text: badge.value })}>
-            Set Badge
+            {t('ui.setBadge')}
           </Button>,
           <Button variant="secondary" testId="tabbar-badge-clear" onClick={() => actions.clearTabBarBadge({ tab: 'api' })}>
-            Remove Badge
+            {t('ui.removeBadge')}
           </Button>,
         )}
       </Section>
@@ -352,57 +352,57 @@ function Navigation({ data, actions }: Pane) {
           <Card className="divide-y divide-line">
             <NavLink
               testId="ui-navigate-to"
-              label="Push this page again"
-              description="Each entry creates a fresh instance. Watch the stack grow."
+              label={t('ui.pushThisPageAgain')}
+              description={t('ui.eachEntryCreatesA')}
               onClick={() => void actions.demoNavigateTo()}
             />
-            <NavLink testId="ui-navigate-back" label="Back to previous page" to={{ back: 1 }} />
-            <NavLink testId="ui-redirect-to" label="Replace this page (redirectTo)" to={{ page: 'ui', params: { type: 'navigation' }, replace: true }} />
-            <NavLink testId="ui-switch-tab" label="Jump to Tab page" to={{ tab: 'home' }} />
+            <NavLink testId="ui-navigate-back" label={t('ui.backToPreviousPage')} to={{ back: 1 }} />
+            <NavLink testId="ui-redirect-to" label={t('ui.replaceThisPageRedirectto')} to={{ page: 'ui', params: { type: 'navigation' }, replace: true }} />
+            <NavLink testId="ui-switch-tab" label={t('ui.jumpToTabPage')} to={{ tab: 'home' }} />
           </Card>
-          <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
+          <Section title={t('ui.logicInstance')} description={t('ui.pushThisPageAgain2')}>
             <InfoList>
-              <InfoRow label="This instance" value={`#${data.instanceTag || '-'}`} testId="lifecycle-instance-tag" />
-              <InfoRow label="Previous instance" value={`#${data.previousInstanceTag || '-'}`} testId="lifecycle-previous-tag" />
+              <InfoRow label={t('ui.thisInstance')} value={`#${data.instanceTag || '-'}`} testId="lifecycle-instance-tag" />
+              <InfoRow label={t('ui.previousInstance')} value={`#${data.previousInstanceTag || '-'}`} testId="lifecycle-previous-tag" />
             </InfoList>
-            <text className="text-[11px] text-muted">The previous tag is saved in app storage and survives a page reset.</text>
+            <text className="text-[11px] text-muted">{t('ui.thePreviousTagIs')}</text>
           </Section>
           <Section
-            title="State that resets and state that stays"
-            description="Logic and View reset per entry; the module counter is shared by every instance."
+            title={t('ui.stateThatResetsAnd')}
+            description={t('ui.logicAndViewReset')}
           >
             <view className="grid gap-3 grid-cols-3">
               <Counter
                 id="logic"
-                label="Logic +1"
+                label={t('ui.logic1')}
                 value={Number(data.logicCounter || 0)}
-                hint="this.setData"
+                hint={t('ui.thisSetdata')}
                 onClick={() => actions.bumpLogicCounter()}
               />
-              <Counter id="view" label="View +1" value={count.value} hint="useLocal" onClick={() => count.set(count.value + 1)} />
+              <Counter id="view" label={t('ui.view1')} value={count.value} hint={t('ui.uselocal')} onClick={() => count.set(count.value + 1)} />
               <Counter
                 id="module"
-                label="Module +1"
+                label={t('ui.module1')}
                 value={Number(data.moduleCounter || 0)}
-                hint="module scope"
+                hint={t('ui.moduleScope')}
                 onClick={() => actions.bumpModuleCounter()}
               />
             </view>
             <Button testId="lifecycle-open-popup" onClick={() => popup.set(true)}>
-              Open View popup
+              {t('ui.openViewPopup')}
             </Button>
           </Section>
-          <Section title="Lifecycle of this instance" description="Stored in page data, so it starts over with every entry.">
+          <Section title={t('ui.lifecycleOfThisInstance')} description={t('ui.storedInPageData')}>
             <view data-testid="lifecycle-events" className="gap-2">
               {events.map((event, index) => (
                 <text key={String(index)} className="px-3 py-2 rounded-lg border border-line bg-surface-sunken text-xs font-mono break-all">
                   {event}
                 </text>
               ))}
-              {!events.length && <text className="text-xs text-muted">No events yet</text>}
+              {!events.length && <text className="text-xs text-muted">{t('ui.noEventsYet')}</text>}
             </view>
             <text className="text-[11px] text-muted">
-              Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.
+              {t('ui.backgroundingFiresOnhideOnshow')}
             </text>
           </Section>
         </view>
@@ -411,17 +411,17 @@ function Navigation({ data, actions }: Pane) {
         <view data-testid="lifecycle-popup" className="absolute inset-0 z-10 items-center-safe justify-center-safe px-8">
           <button
             data-testid="lifecycle-popup-backdrop"
-            aria-label="Close popup"
+            aria-label={t('ui.closePopup')}
             onClick={() => popup.set(false)}
             className="absolute inset-0 rounded-none bg-scrim"
           />
           <Card className="w-full max-w-xs px-5 py-6 gap-4 shadow-xl">
-            <text className="text-base font-semibold text-center">View popup</text>
+            <text className="text-base font-semibold text-center">{t('ui.viewPopup')}</text>
             <text className="text-xs text-muted text-center">
-              Leave this page with the popup open. A fresh visit starts with it closed, because View state belongs to each page instance.
+              {t('ui.leaveThisPageWith')}
             </text>
             <Button variant="secondary" testId="lifecycle-popup-close" onClick={() => popup.set(false)}>
-              Close
+              {t('ui.close')}
             </Button>
           </Card>
         </view>
@@ -430,13 +430,9 @@ function Navigation({ data, actions }: Pane) {
   );
 }
 
-const kinds = [
-  { value: 'aside', label: 'Aside', hint: 'Docks beside the main page. On compact screens, switch between tabs to view it.' },
-  { value: 'float', label: 'Float', hint: 'A popup above the main page, like a dialog. It does not take layout space.' },
-  { value: 'window', label: 'Window', hint: 'A standalone window with no sidebar or shell. Desktop only.' },
-  { value: 'lxapp', label: 'Lxapp', hint: 'Opens the chat app as an aside. Requires home-app privilege.' },
-];
-const titled = (values: string[]) => values.map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
+const kinds = () =>
+  ['aside', 'float', 'window', 'lxapp'].map(value => ({ value, label: t(`ui.kind.${value}` as MessageKey), hint: t(`ui.kindHint.${value}` as MessageKey) }));
+const titled = (values: string[]) => values.map(value => ({ value, label: t(`ui.option.${value}` as MessageKey) }));
 
 function parseSize(raw: string, label: string): number | string | undefined {
   const value = raw.trim();
@@ -445,7 +441,7 @@ function parseSize(raw: string, label: string): number | string | undefined {
   const amount = Number(percent ? value.slice(0, -1).trim() : value);
   if (!Number.isFinite(amount) || amount <= 0 || (percent && amount > 100))
     throw new Error(
-      `${label} must be ${percent ? 'a percentage greater than 0% and at most 100%' : 'a positive px value or a percentage like 80%'}.`,
+      percent ? t('ui.sizePercent', { label }) : t('ui.sizePx', { label }),
     );
   return percent ? `${amount}%` : amount;
 }
@@ -497,8 +493,8 @@ function Surface({ data, actions }: Pane) {
   let sizeError = '';
   let size: { width?: number | string; height?: number | string } = {};
   try {
-    const w = parseSize(width.value, 'Width'),
-      h = parseSize(height.value, 'Height');
+    const w = parseSize(width.value, t('ui.width')),
+      h = parseSize(height.value, t('ui.height'));
     size = { ...(w === undefined ? {} : { width: w }), ...(h === undefined ? {} : { height: h }) };
   } catch (error) {
     sizeError = error instanceof Error ? error.message : String(error);
@@ -516,16 +512,16 @@ function Surface({ data, actions }: Pane) {
   };
   return (
     <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
-      <Section title="Open a surface" description={kinds.find(item => item.value === kind.value)?.hint}>
-        <Options label="Kind" testId="surface-kind" bind={kind} options={kinds} disabled={active} />
-        {kind.value === 'aside' && <Options label="Edge" testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}
+      <Section title={t('ui.openASurface')} description={kinds().find(item => item.value === kind.value)?.hint}>
+        <Options label={t('ui.kind')} testId="surface-kind" bind={kind} options={kinds()} disabled={active} />
+        {kind.value === 'aside' && <Options label={t('ui.edge')} testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}
         {kind.value === 'float' && (
-          <Options label="Position" testId="surface-position" bind={position} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
+          <Options label={t('ui.position')} testId="surface-position" bind={position} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
         )}
-        {kind.value === 'window' && <Options label="Chrome" testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
+        {kind.value === 'window' && <Options label={t('ui.chrome')} testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
         <view className="grid gap-2 grid-cols-2">
-          <Field testId="surface-width" label="Width (px or %)" bind={width} placeholder="width (px or %)" />
-          <Field testId="surface-height" label="Height (px or %)" bind={height} placeholder="height (px or %)" />
+          <Field testId="surface-width" label={t('ui.widthPxOr')} bind={width} placeholder={t('ui.widthPxOr2')} />
+          <Field testId="surface-height" label={t('ui.heightPxOr')} bind={height} placeholder={t('ui.heightPxOr2')} />
         </view>
         {attempted.value && !!sizeError && (
           <text data-testid="size-error" className="text-xs text-danger">
@@ -539,18 +535,18 @@ function Surface({ data, actions }: Pane) {
         {active && (
           <view className="grid gap-2 grid-cols-3">
             <Button size="sm" testId="surface-parent-show" disabled={!!state?.visible} onClick={() => actions.showActiveSurface()}>
-              Show
+              {t('ui.show')}
             </Button>
             <Button size="sm" variant="secondary" testId="surface-parent-hide" disabled={!state?.visible} onClick={() => actions.hideActiveSurface()}>
-              Hide
+              {t('ui.hide')}
             </Button>
             <Button size="sm" variant="destructive" testId="surface-parent-close" onClick={() => actions.closeActiveSurface()}>
-              Close
+              {t('ui.close')}
             </Button>
           </view>
         )}
         <text data-testid="surface-status" className="px-3 py-2 rounded-lg bg-surface-sunken text-sm font-mono break-all">
-          {state?.message || 'No message received yet.'}
+          {state?.message || t('ui.noMessage')}
         </text>
       </Section>
     </Page>

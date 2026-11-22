@@ -98,9 +98,9 @@ test('a page whose first state never comes shows the slow-load notice; Keep wait
 test('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
-  const preference = await t.app.logic.eval(({ lx }) => lx.host.appearance.preference.get() ?? null);
+  const preference = await t.app.logic.eval(({ lx }) => lx.host.appearance?.get() ?? null);
   if (preference === null) t.skip('this host does not let an lxapp set its appearance; check the banner by hand in light and dark');
-  t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.appearance.preference.set(look), preference!));
+  t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.appearance?.set(look), preference!));
   const banner = async () => {
     const elements = await t.waitFor(() => t.app.chrome.elements(), {
       // Right after Retry the panel can show its message a moment before it offers anything.
@@ -111,7 +111,7 @@ test('an update that fails after the page has shown keeps the page under a banne
     return { elements, notice: elements.find((e) => words.updateFailed.includes(e.label))! };
   };
   for (const look of ['light', 'dark'] as const) {
-    await t.app.logic.eval(({ lx }, look) => lx.host.appearance.preference.set(look), look);
+    await t.app.logic.eval(({ lx }, look) => lx.host.appearance?.set(look), look);
     const before = await openFailing(t, 'lab-recovery-break', 'spec-break');
     await expect(t.app.view.testId('spec-break-shown')).toBeVisible();
     // In the frame chrome bounds are in: a desktop device frame scales the page's own points.

@@ -10,11 +10,11 @@ export function cloudProviderAvailable(): boolean {
 }
 
 export function cloudApi(): CloudApi {
-  if (!lx.cloud) throw new Error("This build does not include the cloud provider");
+  if (!lx.cloud) throw new Error(lx.app.t('cloud.noProvider'));
   return lx.cloud;
 }
 
 export function authApi(): CloudAuthApi {
-  if (!lx.auth) throw new Error("This build does not include the cloud provider");
+  if (!lx.auth) throw new Error(lx.app.t('cloud.noProvider'));
   return lx.auth;
 }

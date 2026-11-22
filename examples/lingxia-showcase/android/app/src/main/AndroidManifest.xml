@@ -8,6 +8,7 @@
         android:allowBackup="true"
         android:icon="${lxAppIcon}"
         android:label="${lxAppName}"
+        android:localeConfig="@xml/lingxia_locales"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">

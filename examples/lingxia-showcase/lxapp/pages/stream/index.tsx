@@ -1,11 +1,11 @@
-import { List, useLocal, useStream, type ReadonlyData } from '@lingxia/view';
+import { t, List, useLocal, useStream, type ReadonlyData, type Stream, type MessageKey } from '@lingxia/view';
 import '../../theme/index.css';
 import { Chart } from '../../shared/chart';
 import type { ChartData } from '../../shared/stream-types';
 import { EmptyState, ErrorState, Icon } from '../../shared/ui';
 import type { View } from './$types';
 
-const hints = ['Tell me about LingXia streaming', 'Show me some data', 'How does the bridge protocol work?'];
+const hints = ['stream.hint.streaming', 'stream.hint.data', 'stream.hint.bridge'];
 
 function Bubble({ id, content, user, chart }: { id: string; content: string; user: boolean; chart?: ReadonlyData<ChartData> | null }) {
   return (
@@ -66,7 +66,7 @@ export function render({ data, actions }: View) {
       {messages.length > 0 && !pending && (
         <view className="flex-row justify-end px-4 pt-3">
           <button data-testid="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-surface text-xs text-accent shadow-sm">
-            Clear
+            {t('stream.clear')}
           </button>
         </view>
       )}
@@ -76,13 +76,13 @@ export function render({ data, actions }: View) {
             <EmptyState
               testId="stream-empty"
               icon="chat"
-              title="Stream Demo"
-              message="Async generator streaming — text & chart artifacts via LingXia bridge."
+              title={t('stream.streamDemo')}
+              message={t('stream.asyncGeneratorStreamingText')}
             />
             <view className="w-full gap-2">
               {hints.map(hint => (
                 <text key={hint} data-testid={`stream-hint-${hint}`} className="px-4 py-2.5 rounded-xl bg-accent-soft text-sm text-accent">
-                  {hint}
+                  {t(hint as MessageKey)}
                 </text>
               ))}
             </view>
@@ -111,18 +111,18 @@ export function render({ data, actions }: View) {
         <textarea
           data-testid="stream-input"
           data-controlled-value={draft.value}
-          aria-label="Message"
+          aria-label={t('stream.message')}
           bind={draft}
           enterKeyHint="send"
           onSubmit={send}
           disabled={busy}
-          placeholder="Message..."
+          placeholder={t('stream.message2')}
           className="grow basis-0 min-w-0 h-auto min-h-10 max-h-30 px-3.5 py-2.5 rounded-2xl bg-surface-sunken text-sm leading-relaxed placeholder:text-muted"
         />
         {busy ? (
           <button
             data-testid="stream-stop"
-            aria-label="Stop response"
+            aria-label={t('stream.stopResponse')}
             onClick={() => stream.cancel()}
             className="w-9 h-9 rounded-full bg-text/90 items-center justify-center"
           >
@@ -131,7 +131,7 @@ export function render({ data, actions }: View) {
         ) : (
           <button
             data-testid="stream-send"
-            aria-label="Send message"
+            aria-label={t('stream.sendMessage')}
             disabled={!draft.value.trim()}
             onClick={send}
             className="w-9 h-9 rounded-full bg-accent-solid items-center justify-center disabled:opacity-30"

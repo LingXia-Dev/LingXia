@@ -877,6 +877,10 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<ResO
     }
 
     crate::product_i18n::write_android_overlay(&staging_res, app.display_name())?;
+    crate::product_i18n::write_android_locale_config(&staging_res, &app.product_languages())?;
+    if let Some(text) = crate::sdk_text::load(&config.project_root, &app.product_languages())? {
+        text.write_android_overlay(&staging_res)?;
+    }
     Ok(ResOverlay {
         res_overlay_dir: staging_res,
         icons,

@@ -89,8 +89,8 @@ export function Narrow() {
 | `bind` | `Local<string>` |  | A View-local cell holding `YYYY-MM-DDTHH:mm`, or `''` until both parts are set. |
 | `value` | `string` |  | `YYYY-MM-DDTHH:mm` in the user's own time, or `''`. |
 | `onChange` | `((value: string) => void)` |  | Runs with the whole value once both parts are set, and with `''` when either is cleared. |
-| `dateLabel` (required) | `string` |  | The date part's accessible name: "Start date". |
-| `timeLabel` (required) | `string` |  | The time part's accessible name: "Start time". |
+| `dateLabel` | `string` |  | The date part's accessible name: "Start date". Defaults to "Date" in the page's language. |
+| `timeLabel` | `string` |  | The time part's accessible name: "Start time". Defaults to "Time" in the page's language. |
 | `minDate` | `string` |  | The earliest day, as `YYYY-MM-DD`. |
 | `maxDate` | `string` |  | The latest day, as `YYYY-MM-DD`. |
 | `timeStep` | `number` | `60` | The time's step in seconds. |

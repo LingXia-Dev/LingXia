@@ -138,7 +138,7 @@ The View has no `window`, `document`, `localStorage`, `fetch`, `XMLHttpRequest`,
 | `fetch`, storage, timers | Logic, reached through actions, streams and channels |
 | `matchMedia('(prefers-color-scheme: dark)')` | `env.theme`, `dark:` |
 | `window.innerWidth`, media queries | `env.viewport`, `sm:`/`md:`/… |
-| `navigator.language`, `Intl` | `env.displayLanguage`; format in Logic |
+| `navigator.language`, `Intl` | `env.language`; format in Logic |
 | an element's size (`getBoundingClientRect`, `ResizeObserver`) | `useBox(name)` and `box={box}`, or `onLayout` |
 | `element.scrollIntoView()` | `reveal(id)` for a child of a `<scroll>`; a `<List>` `anchor` for a row |
 | `user-select: text` by default | text is not selectable until `select-text` |

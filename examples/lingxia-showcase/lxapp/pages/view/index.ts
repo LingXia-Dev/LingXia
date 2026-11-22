@@ -2,7 +2,7 @@ import { labData } from '../../shared/lib/lab-data';
 import { definePage } from '@lingxia/logic';
 
 export default definePage({
-  data: { ...labData(), lang: '', group: '', spec: '', packagedMedia: false, dipped: false },
+  data: { ...labData(), group: '', spec: '', packagedMedia: false, dipped: false },
   setup(thisPage) {
     const actions = {
       interrupt() {
@@ -11,10 +11,8 @@ export default definePage({
       },
     };
     return {
-      // Specs pin the page's language with `lang`, and show one group in place with `group`.
-      onLoad(options: { lang?: string; group?: string; spec?: string; media?: string } = {}) {
-        const lang = options.lang;
-        if (lang) thisPage.update(d => { d.lang = lang; });
+      // Specs show one group in place with `group`.
+      onLoad(options: { group?: string; spec?: string; media?: string } = {}) {
         const group = options.group;
         if (group) thisPage.update(d => { d.group = group; });
         const spec = options.spec;

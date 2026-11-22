@@ -1,4 +1,5 @@
 import { cx, useLocal, useView, type Child } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { splitViewRecipe as r } from './SplitView.recipe';
 
@@ -15,8 +16,8 @@ export interface SplitViewProps {
   children: Child;
   /** Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view. */
   contentActions?: Child;
-  /** Names the sidebar for assistive tech: "Components". */
-  sidebarLabel: string;
+  /** Names the sidebar for assistive tech: "Components". Defaults to "Sidebar" in the page's language. */
+  sidebarLabel?: string;
   /** Names the content: the open page's title. */
   contentLabel: string;
   /** On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it. @default 'sidebar' */
@@ -42,7 +43,7 @@ export interface SplitViewProps {
  * put it straight in a `<page>`, without a scroll around it.
  */
 export function SplitView({
-  sidebar, children, contentActions, sidebarLabel, contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId,
+  sidebar, children, contentActions, sidebarLabel = liuliText('@liuli.sidebar'), contentLabel, pane = 'sidebar', onBack, backLabel, sidebarWidth = 264, contentKey, contentWidth = 'wide', className, 'data-testid': testId,
 }: SplitViewProps) {
   const { env } = useView();
   const wentBack = useLocal('went-back', false);

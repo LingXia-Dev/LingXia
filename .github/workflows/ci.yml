@@ -559,6 +559,8 @@ jobs:
       # regeneration and fails on drift — catches "edited yaml but forgot to
       # run `gen i18n`". The native resource bundles are gitignored, so
       # `--check` only validates that they generate, not that they're tracked.
+      # It is also the translation gate: a language LingXia ships (SDK, View,
+      # Liuli) must have every key, each keeping the source's arguments.
       - name: Verify committed i18n outputs are in sync
         run: ./target/debug/lingxia gen i18n --check
 

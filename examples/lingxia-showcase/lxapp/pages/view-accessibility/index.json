@@ -1,8 +1,7 @@
 {
   "navigationBar": {
     "title": {
-      "default": "Accessibility",
-      "zh-CN": "无障碍"
+      "message": "title.viewAccessibility"
     }
   },
   "pageOrientation": "auto"

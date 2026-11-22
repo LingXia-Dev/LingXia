@@ -152,7 +152,68 @@ pub fn write_harmony_product_name_strings(
     Ok(())
 }
 
-fn upsert_harmony_string(path: &Path, name: &str, value: &str) -> Result<()> {
+/// `CFBundleLocalizations`: the system's per-app language list offers exactly the product's.
+pub fn declare_apple_localizations(info_plist: &Path, languages: &[String]) -> Result<()> {
+    let mut info: plist::Dictionary = plist::from_file(info_plist)
+        .with_context(|| format!("Failed to read {}", info_plist.display()))?;
+    let localizations: Vec<plist::Value> = languages
+        .iter()
+        .filter_map(|tag| apple_lproj_dir(tag))
+        .map(|dir| dir.trim_end_matches(".lproj").to_string().into())
+        .collect();
+    info.insert("CFBundleLocalizations".into(), localizations.into());
+    plist::to_file_xml(info_plist, &info)
+        .with_context(|| format!("Failed to write {}", info_plist.display()))
+}
+
+/// `res/xml/lingxia_locales.xml`, the manifest's `android:localeConfig`.
+pub fn write_android_locale_config(res_dir: &Path, languages: &[String]) -> Result<()> {
+    let dir = res_dir.join("xml");
+    fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    let locales: String = languages
+        .iter()
+        .map(|tag| {
+            format!(
+                "    <locale android:name=\"{}\"/>
+",
+                escape_android_string(tag)
+            )
+        })
+        .collect();
+    fs::write(
+        dir.join("lingxia_locales.xml"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<locale-config xmlns:android=\"http://schemas.android.com/apk/res/android\">
+{locales}</locale-config>
+"
+        ),
+    )
+    .context("Failed to write the Android locale config")
+}
+
+/// HarmonyOS offers a language when the app has resources for it: each product language without
+/// its own product name gets the default one.
+pub fn write_harmony_language_qualifiers(
+    staging: &Path,
+    product_name: ProductName<'_>,
+    languages: &[String],
+) -> Result<()> {
+    for tag in languages {
+        if product_name.translations.contains_key(tag) {
+            continue;
+        }
+        let locale = harmony_locale_dir(tag);
+        upsert_harmony_string(
+            &staging.join(format!("AppScope/resources/{locale}/element/string.json")),
+            "app_name",
+            product_name.default,
+        )?;
+    }
+    Ok(())
+}
+
+pub(crate) fn upsert_harmony_string(path: &Path, name: &str, value: &str) -> Result<()> {
     let mut root = if path.exists() {
         serde_json::from_str(
             &fs::read_to_string(path)
@@ -221,6 +282,27 @@ mod tests {
         assert_eq!(apple_lproj_dir("en-US").as_deref(), Some("en.lproj"));
         assert_eq!(apple_lproj_dir("zh-CN").as_deref(), Some("zh-Hans.lproj"));
         assert_eq!(apple_lproj_dir("fr").as_deref(), Some("fr.lproj"));
+    }
+
+    #[test]
+    fn the_os_language_lists_name_the_product_languages_as_each_platform_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let languages = vec!["en-US".to_string(), "zh-CN".to_string()];
+        let info = dir.path().join("Info.plist");
+        plist::to_file_xml(&info, &plist::Dictionary::new()).unwrap();
+        declare_apple_localizations(&info, &languages).unwrap();
+        let info: plist::Dictionary = plist::from_file(&info).unwrap();
+        let declared: Vec<_> = info["CFBundleLocalizations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_string().unwrap())
+            .collect();
+        assert_eq!(declared, ["en", "zh-Hans"]);
+
+        write_android_locale_config(dir.path(), &languages).unwrap();
+        let xml = fs::read_to_string(dir.path().join("xml/lingxia_locales.xml")).unwrap();
+        assert!(xml.contains(r#"<locale android:name="zh-CN"/>"#), "{xml}");
     }
 
     #[test]

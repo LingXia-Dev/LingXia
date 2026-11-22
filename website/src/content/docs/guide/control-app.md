@@ -20,22 +20,22 @@ The classes are disjoint. Re-opening the home lxapp as a guest somewhere else yi
 ## Check before offering product chrome
 
 ```ts
-const control = lx.host.control
-if (!control) return
-await control.appearance.setPreference('dark')
+const appearance = lx.host.appearance
+if (!appearance) return
+await appearance.set('dark')
 ```
 
-`lx.host.control` exists only in the Control app, so `lx.host.control !== undefined` identifies it. Bind the handle once; do not write `lx.host.control!` at every call.
+`lx.host.displayLanguage` and `lx.host.appearance` exist only in the Control app; elsewhere they are `undefined`, and the types say so. Bind the handle once; do not write `lx.host.appearance!` at every call.
 
 ## What only the Control app may call
 
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`, `lx.host.setBadge()`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`
-- `lx.host.displayLanguage` / `lx.host.appearance` (writers)
+- `lx.host.displayLanguage` / `lx.host.appearance` — `get` / `set` of the product's preference
 - `lx.shell.*` — `sidebarActions`, `setAppDisplay` (the app's displayed name and icon), opening, moving or finding apps and declared surfaces
 
-Every lxapp may still **read** `lx.host.displayLanguage.get()` and `lx.host.appearance.get()`, and should follow those values. Bundle updates for this lxapp stay on `lx.app.onUpdateReady` / `applyUpdate`.
+Every lxapp reads what it renders in from `lx.app.language` and `lx.app.appearance` (`get` / `watch`), and should follow those values. Bundle updates for this lxapp stay on `lx.app.onUpdateReady` / `applyUpdate`.
 
 A refusal is `E_PERMISSION_DENIED` and names the class that would have been admitted. Treat it as a design signal: ask the Control app to do the product work; do not impersonate it. It is not the user dismissing a dialog, and it is not a missing capability (`lx.supports()` answers that).
 

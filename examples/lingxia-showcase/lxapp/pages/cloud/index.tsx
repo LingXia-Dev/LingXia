@@ -1,3 +1,4 @@
+import { t } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, EmptyState, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
@@ -15,7 +16,7 @@ export function render({ data, actions }: View) {
   return <Auth {...pane} />;
 }
 
-const tenantName = (tenant: Tenant) => tenant.displayName || tenant.tenantName || tenant.tenantId || 'Unknown tenant';
+const tenantName = (tenant: Tenant) => tenant.displayName || tenant.tenantName || tenant.tenantId || t('cloud.unknownTenant');
 const tone = (status: string) => {
   const lower = status.toLowerCase();
   if (lower.includes('failed') || lower.includes('error')) return 'text-danger';
@@ -44,35 +45,35 @@ function Auth({ data, actions }: Pane) {
     <Page
       testId="cloud-page"
       data={{ 'data-mode': 'auth' }}
-      intro="Login returns the active identity; the home lxapp manages identity list, activation and logout."
+      intro={t('cloud.loginReturnsTheActive')}
     >
       <view className="grid gap-3 grid-cols-2">
         {!tenant && (
           <Button testId="cloud-login" onClick={() => actions.loginInteractive()}>
-            Interactive Login
+            {t('cloud.interactiveLogin')}
           </Button>
         )}
         <Button variant="secondary" testId="cloud-add-identity" onClick={() => actions.addTenant()}>
-          Add Identity
+          {t('cloud.addIdentity')}
         </Button>
         <Button variant="destructive" testId="cloud-logout" onClick={() => actions.logoutCurrentTenant()}>
-          Logout Current Tenant
+          {t('cloud.logoutCurrentTenant')}
         </Button>
       </view>
-      <Section title="Current State" description="Latest cloud auth snapshot from the runtime">
+      <Section title={t('cloud.currentState')} description={t('cloud.latestCloudAuthSnapshot')}>
         <InfoList>
           <view className="flex-row items-center justify-between gap-4 py-2.5">
-            <text className="text-sm text-muted">Status</text>
+            <text className="text-sm text-muted">{t('cloud.status')}</text>
             <text data-testid="cloud-auth-status" className={`text-sm font-semibold text-right ${tone(status)}`}>
               {status}
             </text>
           </view>
           <view className="flex-row items-center gap-3 py-2.5">
-            <text className="grow basis-0 text-sm text-muted">Active Tenant</text>
+            <text className="grow basis-0 text-sm text-muted">{t('cloud.activeTenant')}</text>
             <Avatar src={tenant?.logoUrl} />
             <view className="items-end gap-1">
               <text data-testid="cloud-current-tenant" className="text-sm font-semibold text-right">
-                {tenant ? tenantName(tenant) : 'No active tenant'}
+                {tenant ? tenantName(tenant) : t('cloud.noActiveTenant')}
               </text>
               {!!tenant?.shortName && (
                 <text data-testid="cloud-tenant-short-name" className="px-2 py-0.5 rounded-full bg-accent-soft text-xs font-semibold text-accent">
@@ -82,11 +83,11 @@ function Auth({ data, actions }: Pane) {
             </view>
           </view>
           <view className="flex-row items-center gap-3 py-2.5">
-            <text className="grow basis-0 text-sm text-muted">Active User</text>
+            <text className="grow basis-0 text-sm text-muted">{t('cloud.activeUser')}</text>
             <Avatar src={user?.avatar} />
             <view className="items-end gap-1">
               <text data-testid="cloud-current-user" className="text-sm font-semibold text-right">
-                {user?.name || 'Not signed in'}
+                {user?.name || t('cloud.notSignedIn')}
               </text>
               {!!user?.id && (
                 <text data-testid="cloud-user-id" className="text-xs text-muted break-all">
@@ -98,18 +99,18 @@ function Auth({ data, actions }: Pane) {
         </InfoList>
       </Section>
       <Section
-        title="Tenants"
-        description="Activate or remove identities returned by lx.auth.list()"
+        title={t('cloud.tenants')}
+        description={t('cloud.activateOrRemoveIdentities')}
         action={
           <text data-testid="cloud-tenants-count" className="text-xs text-muted">
             {String(tenants.length)}
           </text>
         }
       >
-        {!tenants.length && <EmptyState testId="cloud-identities-empty" icon="cloud" title="No tenants yet" message="Run interactive login first." />}
+        {!tenants.length && <EmptyState testId="cloud-identities-empty" icon="cloud" title={t('cloud.noTenantsYet')} message={t('cloud.runInteractiveLoginFirst')} />}
         {tenants.map((item, index) => {
           const active = !!item.tenantId && item.tenantId === tenant?.tenantId;
-          const state = active ? 'Active' : item.tenantId ? 'Switch' : 'Unavailable';
+          const state = active ? t('cloud.tenantActive') : item.tenantId ? t('cloud.tenantSwitch') : t('cloud.tenantUnavailable');
           return (
             <button
               key={`${item.tenantId || 'tenant'}-${index}`}
@@ -149,9 +150,9 @@ function Mqtt({ data, actions }: Pane) {
   const active = !!data.mqttSubscribed;
   return (
     <Page testId="cloud-page" data={{ 'data-mode': 'mqtt' }}>
-      <Section title="Runtime Connection" description="MQTT runtime status for the shared cloud session.">
+      <Section title={t('cloud.runtimeConnection')} description={t('cloud.mqttRuntimeStatusFor')}>
         <view className="flex-row items-center justify-between gap-3">
-          <text className="text-xs text-muted">Connection state</text>
+          <text className="text-xs text-muted">{t('cloud.connectionState')}</text>
           <view className="flex-row items-center gap-1.5">
             <view className={`w-2 h-2 rounded-full ${dot}`} />
             <text data-testid="cloud-mqtt-state" className={`font-mono text-xs font-semibold ${color}`}>
@@ -160,7 +161,7 @@ function Mqtt({ data, actions }: Pane) {
           </view>
         </view>
         <view className="flex-row items-start justify-between gap-3">
-          <text className="shrink-0 text-xs text-muted">Last error</text>
+          <text className="shrink-0 text-xs text-muted">{t('cloud.lastError')}</text>
           <text
             data-testid="cloud-mqtt-error"
             className={
@@ -174,8 +175,8 @@ function Mqtt({ data, actions }: Pane) {
         </view>
       </Section>
       <Section
-        title="Topic Subscription"
-        description="Manage the demo topic subscription and inspect how many messages this page has received."
+        title={t('cloud.topicSubscription')}
+        description={t('cloud.manageTheDemoTopic')}
         action={
           <text
             className={
@@ -188,7 +189,7 @@ function Mqtt({ data, actions }: Pane) {
           </text>
         }
       >
-        <text className="text-xs text-muted uppercase">Topic</text>
+        <text className="text-xs text-muted uppercase">{t('cloud.topic')}</text>
         <text data-testid="cloud-mqtt-topic" className="font-mono text-sm break-all">
           {String(data.mqttTopicFilter || 'demo/mqtt')}
         </text>
@@ -197,25 +198,25 @@ function Mqtt({ data, actions }: Pane) {
         </text>
         <view className="grid gap-3 grid-cols-2">
           <Button testId="cloud-subscribe" disabled={active} onClick={() => actions.startMqttDemo()}>
-            Subscribe
+            {t('cloud.subscribe')}
           </Button>
           <Button variant="destructive" testId="cloud-unsubscribe" disabled={!active} onClick={() => actions.stopMqttDemo()}>
-            Unsubscribe
+            {t('cloud.unsubscribe')}
           </Button>
         </view>
         <InfoList>
-          <InfoRow label="Subscription state" value={active ? 'active' : 'inactive'} testId="cloud-mqtt-active" />
-          <InfoRow label="Messages received" value={String(data.mqttMessageCount || 0)} testId="cloud-mqtt-count" />
+          <InfoRow label={t('cloud.subscriptionState')} value={active ? 'active' : 'inactive'} testId="cloud-mqtt-active" />
+          <InfoRow label={t('cloud.messagesReceived')} value={String(data.mqttMessageCount || 0)} testId="cloud-mqtt-count" />
         </InfoList>
       </Section>
-      <Section title="Latest Message" description="Incoming message data is written back through setData.">
+      <Section title={t('cloud.latestMessage')} description={t('cloud.incomingMessageDataIs')}>
         {!data.mqttMessageCount ? (
-          <EmptyState testId="cloud-mqtt-empty" icon="cloud" title="No message yet" message="Publish one to the topic above." />
+          <EmptyState testId="cloud-mqtt-empty" icon="cloud" title={t('cloud.noMessageYet')} message={t('cloud.publishOneToThe')} />
         ) : (
           <view className="gap-3">
             <InfoList>
-              <InfoRow label="Topic" value={data.mqttLastTopic} testId="cloud-mqtt-last-topic" />
-              <InfoRow label="Received at" value={data.mqttLastReceivedAt} testId="cloud-mqtt-received-at" />
+              <InfoRow label={t('cloud.topic')} value={data.mqttLastTopic} testId="cloud-mqtt-last-topic" />
+              <InfoRow label={t('cloud.receivedAt')} value={data.mqttLastReceivedAt} testId="cloud-mqtt-received-at" />
             </InfoList>
             <Code testId="cloud-mqtt-payload">{String(data.mqttLastPayload || '(empty payload)')}</Code>
           </view>
@@ -230,12 +231,12 @@ function Functions({ data, actions }: Pane) {
   return (
     <Page testId="cloud-page" data={{ 'data-mode': 'functions' }}>
       <Section
-        title="Current LxApp Functions"
-        description="These sample calls use lx.cloud.invoke(...) for the current lxapp. They are demo actions, not a runtime-discovered manifest list."
+        title={t('cloud.currentLxappFunctions')}
+        description={t('cloud.theseSampleCallsUse')}
       >
-        <InfoRow label="Status" value={data.functionsStatus || 'Idle'} testId="cloud-functions-status" />
+        <InfoRow label={t('cloud.status')} value={data.functionsStatus || 'Idle'} testId="cloud-functions-status" />
         {!names.length ? (
-          <EmptyState testId="cloud-functions-empty" icon="cloud" title="No demo functions" message="None are configured for this page." />
+          <EmptyState testId="cloud-functions-empty" icon="cloud" title={t('cloud.noDemoFunctions')} message={t('cloud.noneAreConfiguredFor')} />
         ) : (
           <view className="flex-row flex-wrap gap-2">
             {names.map(name => (
@@ -245,7 +246,7 @@ function Functions({ data, actions }: Pane) {
         )}
       </Section>
       <Card>
-        <InfoRow label="Function" value={data.functionsLastCall || '-'} testId="cloud-functions-last-call" />
+        <InfoRow label={t('cloud.function')} value={data.functionsLastCall || '-'} testId="cloud-functions-last-call" />
         <Code testId="cloud-functions-result">{String(data.functionsLastResult || '(no result yet)')}</Code>
       </Card>
     </Page>

@@ -740,49 +740,47 @@ rong::js_api! {
         /// the system.
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
 
-        /// `lx.host.appearance` — the scheme this lxapp renders in. An lxapp that
-        /// pinned one in its `lxapp.json` reports that; every other lxapp reports
-        /// the product's.
-        type AppearanceApi = r###"Live<ResolvedAppearance> & {
+        /// `lx.app.appearance` — the scheme this lxapp renders in: the one its
+        /// `lxapp.json` pins, else the product's.
+        type AppAppearanceApi = r###"Live<ResolvedAppearance>"###;
+
+        /// `lx.host.appearance` — the product's scheme preference; only the Control
+        /// app gets past it. A system flip under `'auto'` moves `lx.app.appearance`
+        /// and leaves this quiet.
+        type HostAppearanceApi = r###"Live<AppearancePreference> & {
     /**
-     * What the user chose for the whole product. Control app only. A system
-     * flip under `'auto'` moves the resolved scheme and leaves this quiet.
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves
+     * once this lxapp's own `lx.app.appearance` follows.
+     * @throws {E_INVALID_ARG} Any other value.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
-    readonly preference: Live<AppearancePreference> & {
-        /**
-         * Pin the product to `'light'` or `'dark'`, or follow the system with
-         * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
-         * @throws {E_INVALID_ARG} Any other value.
-         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-         */
-        set(preference: AppearancePreference): Promise<void>;
-    };
+    set(preference: AppearancePreference): Promise<void>;
 }"###;
+
         /// What the product's language is set to: `'auto'` follows the system,
         /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
         /// autocomplete while still accepting a tag.
         type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
 
-        /// `lx.host.displayLanguage` — the language this lxapp renders in, as a
-        /// canonical BCP-47 tag. Map it to the catalogs this lxapp ships (its
-        /// `lxapp.json` `languages`) and fall back where it has none; the View's
-        /// `contentLanguage` is this value narrowed to them. Logic follows it
-        /// because the strings it hands to native chrome (titles, tab labels,
-        /// dialog text) are its own and nothing re-renders them.
-        type DisplayLanguageApi = r###"Live<string> & {
+        /// `lx.app.language` — the language this lxapp renders in, as a BCP-47 tag:
+        /// the product's language narrowed to the `languages` its lxapp.json lists
+        /// (the exact tag, else the same language, else the first). Pages read it
+        /// as `env.language`; `watch` fires only when the narrowed value changes.
+        /// Logic follows it for text it hands to native chrome, which nothing
+        /// re-renders on its behalf.
+        type AppLanguageApi = r###"Live<string>"###;
+
+        /// `lx.host.displayLanguage` — the product's language preference: `'auto'`
+        /// or a canonical BCP-47 tag; only the Control app gets past it. A system
+        /// locale change under `'auto'` moves `lx.app.language` and leaves this quiet.
+        type HostDisplayLanguageApi = r###"Live<DisplayLanguagePreference> & {
     /**
-     * What the user chose: `'auto'`, or a canonical BCP-47 tag. Control app
-     * only. A system locale change under `'auto'` moves the language and
-     * leaves this quiet.
+     * Persist the product's language.
+     * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
-    readonly preference: Live<DisplayLanguagePreference> & {
-        /**
-         * Persist the product's language.
-         * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
-         * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-         */
-        set(preference: DisplayLanguagePreference): Promise<void>;
-    };
+    set(preference: DisplayLanguagePreference): Promise<void>;
 }"###;
 
         /// The scheme in effect: light or dark.

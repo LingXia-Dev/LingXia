@@ -1,4 +1,4 @@
-import { useChannel, useLocal } from '@lingxia/view';
+import { t, useChannel, useLocal, type ChannelEndpoint } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, ErrorState, Page, Section } from '../../shared/ui';
 import type { TickerUpdate } from '../../shared/channel-types';
@@ -33,7 +33,7 @@ export function render({ actions }: View) {
     history.set([]);
     latest.set(null);
   };
-  const status = channel.connected ? 'Connected' : channel.connecting ? 'Connecting...' : 'Disconnected';
+  const status = channel.connected ? t('channel.connected') : channel.connecting ? t('channel.connecting') : t('channel.disconnected');
   return (
     <Page testId="channel-page">
       <view className="flex-row items-center gap-2">
@@ -87,10 +87,10 @@ export function render({ actions }: View) {
           </text>
         )}
       </Card>
-      <Section title="Recent ticks">
+      <Section title={t('channel.recentTicks')}>
         <scroll data-testid="channel-history" className="max-h-64">
           {!history.value.length ? (
-            <text className="py-6 text-sm text-center text-muted">Waiting for data...</text>
+            <text className="py-6 text-sm text-center text-muted">{t('channel.waitingForData')}</text>
           ) : (
             <view className="divide-y divide-line">
               {history.value
@@ -111,10 +111,10 @@ export function render({ actions }: View) {
       </Section>
       <view className="grid gap-3 grid-cols-2">
         <Button variant="secondary" testId="channel-disconnect" disabled={!channel.connected} onClick={() => channel.close()}>
-          Disconnect
+          {t('channel.disconnect')}
         </Button>
         <Button testId="channel-reconnect" disabled={channel.connecting || channel.connected} onClick={() => channel.connect()}>
-          Reconnect
+          {t('channel.reconnect')}
         </Button>
       </view>
       <ErrorState error={channel.error} />

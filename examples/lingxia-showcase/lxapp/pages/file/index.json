@@ -3,8 +3,7 @@
   "pageOrientation": "auto",
   "navigationBar": {
     "title": {
-      "default": "File",
-      "zh-CN": "文件"
+      "message": "title.file"
     },
     "style": {
       "backgroundColor": "#3b82f6",

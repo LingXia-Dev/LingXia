@@ -1,7 +1,5 @@
 import { Avatar } from '../Avatar/Avatar';
-import { Timestamp, type TimestampProps } from './Timestamp';
-import { timestampEn } from './locale/en';
-import { timestampZh } from './locale/zh';
+import { Timestamp } from './Timestamp';
 
 const now = '2026-11-14T10:05';
 
@@ -23,7 +21,7 @@ export function Activity() {
           <Avatar name={entry.who} size="sm" isDecorative />
           <view className="grow basis-0 min-w-0 gap-0.5">
             <text className="text-body text-text">{`${entry.who} ${entry.what}`}</text>
-            <Timestamp value={entry.when} now={now} locale={timestampEn} className="text-footnote text-muted" data-testid={`when-${index}`} />
+            <Timestamp value={entry.when} now={now} className="text-footnote text-muted" data-testid={`when-${index}`} />
           </view>
         </view>
       ))}
@@ -39,30 +37,14 @@ export function Formats() {
       {(['relative', 'date', 'time', 'date-time'] as const).map(format => (
         <view key={format} className="flex-row items-baseline justify-between gap-4">
           <text className="text-footnote text-muted">{format}</text>
-          <Timestamp value={value} now={now} locale={timestampEn} format={format} className="text-body text-text" data-testid={`format-${format}`} />
+          <Timestamp value={value} now={now} format={format} className="text-body text-text" data-testid={`format-${format}`} />
         </view>
       ))}
     </view>
   );
 }
 
-/** In Chinese, from the locale module Liuli ships. */
-export function Chinese() {
-  return (
-    <view className="gap-2">
-      <Timestamp value="2026-11-14T09:42" now={now} locale={timestampZh} className="text-body text-text" data-testid="zh-today" />
-      <Timestamp value="2026-11-13T18:30" now={now} locale={timestampZh} className="text-body text-text" />
-      <Timestamp value="2025-12-19T16:00" now={now} locale={timestampZh} className="text-body text-text" data-testid="zh-year" />
-    </view>
-  );
-}
-
 /** The home tile. */
 export function Specimen() {
-  return <Timestamp value="2026-11-14T09:42" now={now} locale={timestampEn} className="text-footnote text-muted" />;
-}
-
-/** The playground's props that are not plain values. */
-export function playground() {
-  return { locale: timestampEn } satisfies Partial<TimestampProps>;
+  return <Timestamp value="2026-11-14T09:42" now={now} className="text-footnote text-muted" />;
 }

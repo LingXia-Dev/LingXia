@@ -1,31 +1,29 @@
 import { appState, watchIpAddr } from "../../shared/lib/app";
-import {
-  resolveDisplayLanguage,
-  resolveDisplayLanguagePreference,
-  type DisplayLanguagePreference,
-} from "../../shared/display-language";
-import { formatHomeGreeting, getMessages } from "./messages";
 import { definePage, lx } from '@lingxia/logic';
 
 type AppearancePreference = 'auto' | 'light' | 'dark';
 interface HomePageData {
-  greeting: string;
+  /** Who was greeted last, and when (ms); the View words it. */
+  greetName: string;
+  greetedAt: number;
   imageUrl: string;
   ipAddr: string;
   greetCount: number;
   appVersion: string;
   appearance: { preference: AppearancePreference; resolved: 'light' | 'dark' };
-  displayLanguage: { preference: DisplayLanguagePreference; resolved: string };
+  /** The product's language preference: `'auto'` or a tag. The language shown is `env.language`. */
+  languagePreference: string;
 }
 
 const initialData: HomePageData = {
-  greeting: appState.greeting,
+  greetName: '',
+  greetedAt: 0,
   imageUrl: 'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg',
   ipAddr: appState.ipAddr,
   greetCount: 0,
   appVersion: '',
   appearance: { preference: 'auto', resolved: 'light' },
-  displayLanguage: { preference: 'auto', resolved: 'en-US' },
+  languagePreference: 'auto',
 };
 
 export default definePage({
@@ -43,8 +41,8 @@ export default definePage({
         try {
           page.update(d => {
             d.appearance = {
-              preference: lx.host.appearance.preference.get() ?? "auto",
-              resolved: lx.host.appearance.get(),
+              preference: lx.host.appearance.get() ?? "auto",
+              resolved: lx.app.appearance.get(),
             };
           });
         } catch (error) {
@@ -53,52 +51,39 @@ export default definePage({
       },
       syncLanguage() {
         try {
-          const resolved = lx.host.displayLanguage.get();
-          const patch: {
-            displayLanguage: {
-              preference: DisplayLanguagePreference;
-              resolved: string;
-            };
-            greeting?: string;
-          } = {
-            displayLanguage: {
-              preference: resolveDisplayLanguagePreference(
-                lx.host.displayLanguage.preference.get(),
-              ),
-              resolved,
-            },
-          };
-          if (page.data.greetCount === 0) {
-            patch.greeting = getMessages(resolveDisplayLanguage(resolved)).t("defaultGreeting");
-          }
-          page.update(d => { Object.assign(d, patch); });
+          const preference = lx.host.displayLanguage.get() ?? "auto";
+          page.update(d => { d.languagePreference = preference; });
         } catch (error) {
           console.warn("[Home] Display language unavailable:", error);
         }
       },
     };
     const actions = {
+      async openApi() { await lx.nav.go({ page: 'api' }).opened; },
+      async openTodo() { await lx.nav.go({ page: 'todo' }).opened; },
+      async openClipboard() { await lx.nav.go({ page: 'clipboard' }).opened; },
+      async openShare() { await lx.nav.go({ page: 'share' }).opened; },
       async setAppearance(options: { preference?: AppearancePreference } = {}) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.appearance.preference.set(preference);
+          await lx.host.appearance.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set appearance:", error);
-          const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-          lx.ui.toast(t("appearanceUnavailable"));
+          lx.ui.toast(lx.app.t("home.appearanceUnavailable"));
         }
         helpers.syncAppearance();
       },
       // Showcase is the Control app, so it owns the product-wide language
       // preference. Ordinary lxapps must not add their own selector.
-      async setDisplayLanguage(options: { preference?: DisplayLanguagePreference } = {}) {
+      async setDisplayLanguage(
+        options: { preference?: string } = {},
+      ) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.displayLanguage.preference.set(preference);
+          await lx.host.displayLanguage.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set display language:", error);
-          const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
-          lx.ui.toast(t("languageUnavailable"));
+          lx.ui.toast(lx.app.t("home.languageUnavailable"));
         }
         helpers.syncLanguage();
       },
@@ -106,11 +91,8 @@ export default definePage({
         const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
         const count = page.data.greetCount + 1;
         page.update(d => {
-          d.greeting = formatHomeGreeting(
-            resolveDisplayLanguage(lx.host.displayLanguage.get()),
-            name,
-            count,
-          );
+          d.greetName = name;
+          d.greetedAt = Date.now();
           d.greetCount = count;
         });
         await page.flush();
@@ -141,10 +123,10 @@ export default definePage({
         console.log("[Home] Page loaded");
         helpers.syncAppearance();
         helpers.syncLanguage();
-        stopWatchingAppearance = lx.host.appearance.watch(() => helpers.syncAppearance());
-        stopWatchingLanguage = lx.host.displayLanguage.watch(() => helpers.syncLanguage());
+        stopWatchingAppearance = lx.app.appearance.watch(() => helpers.syncAppearance());
+        stopWatchingLanguage = lx.app.language.watch(() => helpers.syncLanguage());
         stopWatchingLanguagePreference =
-          lx.host.displayLanguage.preference.watch(() => helpers.syncLanguage()) ?? null;
+          lx.host.displayLanguage.watch(() => helpers.syncLanguage());
         try {
           const info = lx.app.info;
           const suffix =

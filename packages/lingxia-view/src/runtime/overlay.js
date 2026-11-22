@@ -4,6 +4,7 @@
 import { h } from './nodes.js';
 import { lowerStyle } from '../style/lower.js';
 import { closeTopmost } from './toplayer.js';
+import { word } from './words.js';
 
 let toast = null, modals = [], sheets = [], timers = [], nextToken = 1;
 const ENTER_MS = 200;
@@ -45,13 +46,13 @@ export function viewCall(call) {
       break;
     case 'ui.showModal':
       modals.push({ id, key: nextToken++, title: text(params.title), content: text(params.content), showCancel: params.showCancel !== false,
-        cancelText: text(params.cancelText, 'Cancel'), confirmText: text(params.confirmText, 'OK') });
+        cancelText: text(params.cancelText, null), confirmText: text(params.confirmText, null) });
       changed = modals.length === 1;
       break;
     case 'ui.showActionSheet': {
       const items = Array.isArray(params.itemList) ? params.itemList.slice(0, 32).map(item => text(item)) : [];
       if (!items.length) { replies.push(reply(id, false, { code: 'E_INVALID_ARGUMENT', message: 'showActionSheet needs itemList' })); break; }
-      sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, 'Cancel') });
+      sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, null) });
       changed = sheets.length === 1;
       break;
     }
@@ -135,19 +136,20 @@ function toastNode() {
       paddingTop: position === 'top' ? 80 : 0, paddingBottom: position === 'bottom' ? 80 : 0 } }, box));
 }
 
-function modalNode() {
+function modalNode(env) {
   const modal = modals[0];
+  const language = env?.language;
   const button = (testId, label, confirm, color) => h('button', { 'data-testid': testId, onClick: () => settleModal(confirm), style: {
     flexGrow: 1, flexBasis: 0, minWidth: 0, paddingTop: 12, paddingBottom: 12, backgroundColor: 'transparent', color, fontSize: 16, fontWeight: confirm ? 600 : 400 } }, label);
   return h('dialog', { 'data-testid': 'lx-modal', role: 'alertdialog', key: `modal-${modal.key}`, open: true, onClose: () => settleModal(false),
-    'aria-label': modal.title || modal.content || 'Dialog',
+    'aria-label': modal.title || modal.content || word('@view.dialog', language),
     style: { width: 320, maxWidth: '86%', borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden', transition: fade } },
     h('view', { style: { padding: 20, gap: 8, alignItems: 'center' } },
       modal.title && h('text', { role: 'heading', style: { fontSize: 17, fontWeight: 600, textAlign: 'center', color: 'text' } }, modal.title),
       modal.content && h('text', { style: { fontSize: 15, textAlign: 'center', color: 'text-muted' } }, modal.content)),
     h('view', { style: { flexDirection: 'row', borderTopWidth: 1, borderColor: 'line' } },
-      modal.showCancel && button('lx-modal-cancel', modal.cancelText, false, 'text-muted'),
-      button('lx-modal-confirm', modal.confirmText, true, 'accent')));
+      modal.showCancel && button('lx-modal-cancel', modal.cancelText ?? word('@view.cancel', language), false, 'text-muted'),
+      button('lx-modal-confirm', modal.confirmText ?? word('@view.ok', language), true, 'accent')));
 }
 
 function sheetNode(env) {
@@ -158,12 +160,12 @@ function sheetNode(env) {
   // A sheet at the bottom on phones, a centred card elsewhere; a backdrop tap cancels.
   const place = phone ? { marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
   return h('dialog', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, open: true, closedby: 'any', onClose: () => settleSheet(-1),
-    'aria-label': 'Actions', style: { ...place, gap: 8, transition: fade } },
+    'aria-label': word('@view.actions', env?.language), style: { ...place, gap: 8, transition: fade } },
     h('view', { style: { borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden' } },
       ...sheet.items.map((label, index) => h('view', { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: 'line' } : {} },
         item(`lx-action-sheet-item-${index}`, label, index, 'accent')))),
     h('view', { style: { borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden' } },
-      item('lx-action-sheet-cancel', sheet.cancelText, -1, 'text')));
+      item('lx-action-sheet-cancel', sheet.cancelText ?? word('@view.cancel', env?.language), -1, 'text')));
 }
 
 /** The overlay above the page this render, or null. */
@@ -171,7 +173,7 @@ export function overlayNode(env) {
   if (!hasOverlay()) return null;
   // Each one draws in the top layer; this box only holds their place in the tree.
   return h('view', { key: 'lx-overlay', style: { position: 'absolute', top: 0, left: 0, width: 0, height: 0 } },
-    sheets.length > 0 && sheetNode(env), modals.length > 0 && modalNode(), toast && toastNode());
+    sheets.length > 0 && sheetNode(env), modals.length > 0 && modalNode(env), toast && toastNode());
 }
 
 /** Presence and spin, set on resolved nodes: enter from and leave toward a faded, smaller box. */

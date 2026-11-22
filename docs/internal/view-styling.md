@@ -78,7 +78,7 @@ time (see [view-authoring.md](view-authoring.md)) and again at runtime.
 
 ## Direction
 
-`env.direction` derives from `displayLanguage`; `dir` sets it for a subtree. Taffy
+`env.direction` derives from `language`; `dir` sets it for a subtree. Taffy
 mirrors rows, column cross-alignment, grid placement and absolute positions.
 Flow-relative utilities (`ps`/`pe`, `ms`/`me`, `start-`/`end-`, `border-s`/`-e`,
 `rounded-s`/`-e`, `text-start`/`-end`) stay logical on the wire and resolve natively

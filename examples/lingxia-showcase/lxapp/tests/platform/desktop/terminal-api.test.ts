@@ -102,11 +102,11 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
     // blank document a WebView shows before its first navigation commits.
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
     await settings.view.css('#type-heading').first().waitFor({ state: 'visible', timeout: 30_000 });
-    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.preference.get());
+    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage?.get());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
-          await lx.host.displayLanguage.preference.set(language);
+          await lx.host.displayLanguage?.set(language);
         }, language);
         await eventually(
           // The bridge also writes the HTML language tag. Check translated
@@ -121,7 +121,7 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {
-        await lx.host.displayLanguage.preference.set(preference);
+        await lx.host.displayLanguage?.set(preference);
       }, preference);
     }
   });

@@ -1,4 +1,5 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
@@ -35,8 +36,8 @@ export interface Toaster {
 }
 
 export interface ToastRegionProps {
-  /** The dismiss button's name on every toast: "Dismiss". */
-  dismissLabel: string;
+  /** The dismiss button's name on every toast: "Dismiss". Defaults to "Dismiss" in the page's language. */
+  dismissLabel?: string;
   /** How long a toast without an action shows, in ms. @default 5000 */
   duration?: number;
   /** The page's content; `useToast()` anywhere inside it reaches this region. */
@@ -58,7 +59,7 @@ export type ToastProps = {
 };
 
 /** The toast as drawn. Pages show toasts through `ToastRegion` and `useToast()`; this is its face. */
-export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLabel, className, 'data-testid': testId }: ToastProps) {
+export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), className, 'data-testid': testId }: ToastProps) {
   const glyph = toneGlyph[tone];
   return (
     <view data-testid={testId} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
@@ -144,7 +145,7 @@ export function useToast(): Toaster {
 
 const swipePoints = ['-120%', 0, '120%'] as const;
 
-function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { entry: Entry; regionId: string; dismissLabel: string; duration: number; toaster: Toaster; actions: Map<string, () => void> }) {
+function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { entry: Entry; regionId: string; dismissLabel?: string; duration: number; toaster: Toaster; actions: Map<string, () => void> }) {
   const { env } = useView();
   // Rests on the middle point; a swipe to either side closes it.
   const swipe = useLocal('swipe', 1);

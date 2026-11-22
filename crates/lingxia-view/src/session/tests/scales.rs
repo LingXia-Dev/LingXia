@@ -16,7 +16,7 @@ fn env(scales: Option<Value>, text_scale: f64) -> Value {
         "pointer": "coarse",
         "os": "test",
         "formFactor": "phone",
-        "displayLanguage": "en",
+        "language": "en",
         "canDock": false,
         "textScale": [[0.0, 0.0], [16384.0, 16384.0 * text_scale]],
     });

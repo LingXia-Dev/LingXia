@@ -647,7 +647,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         const env = envOf(render.view);
         const shown = fieldText(keyboard, props.value ?? '', {
           seconds: typeof props.step === 'number' && props.step < 60,
-          language: env?.contentLanguage ?? env?.displayLanguage,
+          language: env?.language,
           hourCycle: env?.hourCycle,
         });
         // Unbound, the field shows the user's pick; its width never depends on the value.

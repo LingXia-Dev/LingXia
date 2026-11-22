@@ -1,8 +1,5 @@
 {
   "navigationBar": {
-    "title": {
-      "default": "Bridge Repro",
-      "zh-CN": "桥接复现"
-    }
+    "title": { "message": "title.bridgeRepro" }
   }
 }

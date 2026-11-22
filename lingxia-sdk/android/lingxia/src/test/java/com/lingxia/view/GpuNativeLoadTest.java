@@ -115,7 +115,7 @@ public class GpuNativeLoadTest {
         long host = GpuView.nativeHostCreate(fake, "test:jvm", false, 0);
         try {
             GpuView.nativeLoad(host, GpuNative.module(
-                "function render(){const e=useView().env;return h('text',{'data-testid':'env'},e.canDock+' '+e.sizeClass+' '+e.displayLanguage)}"));
+                "function render(){const e=useView().env;return h('text',{'data-testid':'env'},e.canDock+' '+e.sizeClass+' '+e.language)}"));
             GpuView.nativeSetVisible(host, true);
             fake.pump(host, () -> fake.presented >= 1);
             assertEquals("false compact en", text(last(fake), "env"));

@@ -150,9 +150,9 @@ export function PageSize() {
 | `totalItems` | `number` |  | How many items there are, when the pages are counted from it and `pageSize`. |
 | `hasMore` | `boolean` | `false` | With no count, as with a cursor: whether a page follows this one. |
 | `onChange` (required) | `(page: number) => void` |  | Runs with the page chosen. |
-| `pageLabel` (required) | `(page: number) => string` |  | A page button's accessible name: `page => \`Page ${page}\``. |
-| `previousLabel` (required) | `string` |  |  |
-| `nextLabel` (required) | `string` |  |  |
+| `pageLabel` | `((page: number) => string)` |  | A page button's accessible name: `page => \`Page ${page}\``. Defaults to "Page 2" in the page's language. |
+| `previousLabel` | `string` |  |  |
+| `nextLabel` | `string` |  |  |
 | `siblings` | `number` | `1` | How many pages to show on each side of the current one. |
 | `variant` | `"auto" \| "compact" \| "pages"` | `'auto'` | `compact` shows the two arrows around "3 / 12"; `auto` uses it where the pointer is a finger. Page numbers that do not fit their row give way to it. |
 | `positionLabel` | `((page: number, pageCount: number \| undefined) => string)` |  | The text between the arrows, read as the position: with `compact`, and wherever the count is unknown. By default "3 / 12", or "3". |

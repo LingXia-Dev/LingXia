@@ -11,7 +11,6 @@
     "lxapp.ts",
     "logic/**/*.ts",
     "pages/**/*.ts",
-    "shared/display-language.ts",
     "shared/*-types.ts",
     "shared/lib/**/*.ts",
     ".lingxia/types/**/*.d.ts",

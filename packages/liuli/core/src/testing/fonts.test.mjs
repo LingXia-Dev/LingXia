@@ -16,7 +16,7 @@ const family = /\bfont-(sans|serif|mono)\b|\bfont-\[|font-family|fontFamily|--fo
 
 test('no Liuli component or token names a font family', () => {
   const named = [...files(join(core, 'src')), join(core, 'tokens.css')].flatMap(path =>
-    readFileSync(path, 'utf8').split('\n').flatMap((line, index) => family.test(line) ? [`${relative(core, path)}:${index + 1}: ${line.trim()}`] : []));
+    readFileSync(path, 'utf8').split('\n').flatMap((line, index) => family.test(line) ? [`${relative(core, path).replaceAll('\\', '/')}:${index + 1}: ${line.trim()}`] : []));
   // Code is the one text whose meaning needs a face: Code and Markdown ask for the platform's fixed-width one, by its generic name.
   const code = /^src\/(Markdown\/Markdown|Code\/Code)\.recipe\.ts:\d+: (code|text|base): '[^']*\bfont-mono\b/;
   assert.deepEqual(named.filter(line => !code.test(line)), []);

@@ -16,8 +16,7 @@ mod service_env;
 mod update;
 
 /// Host app identity. Everything here is fixed for the life of the process;
-/// the language the app renders in is not, and lives on
-/// `lx.host.displayLanguage`.
+/// the language the app renders in is not, and lives on `lx.app.language`.
 #[derive(Debug, Clone, IntoJSObject)]
 struct HostInfo {
     /// Platform family, lower case.
@@ -224,14 +223,19 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 /// Register read-only host identity for every lxapp context, including focused
 /// system apps that intentionally do not receive the broader `lx.*` surface.
 ///
-/// `lx.host.displayLanguage` belongs here: rendering in the product's language
-/// is what every context does, control surfaces included.
+/// `lx.app.language` and `lx.app.appearance` belong here: rendering in the
+/// product's language and scheme is what every context does, control surfaces
+/// included. The preferences beside them on `lx.host` authorize on each call,
+/// so only the Control app gets past them.
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
     register_app_base_api(ctx)?;
-    let app = app_namespace(ctx)?;
-    display_language::init_follower(ctx, &app)?;
-    appearance::init_follower(ctx, &app)
+    let lxapp_namespace = crate::namespace::app(ctx)?;
+    display_language::init_app(ctx, &lxapp_namespace)?;
+    appearance::init_app(ctx, &lxapp_namespace)?;
+    let host = app_namespace(ctx)?;
+    display_language::init_host(ctx, &host)?;
+    appearance::init_host(ctx, &host)
 }
 
 rong::js_api! {

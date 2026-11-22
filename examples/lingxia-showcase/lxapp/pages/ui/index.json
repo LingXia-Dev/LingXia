@@ -2,8 +2,7 @@
   "pageOrientation": "auto",
   "navigationBar": {
     "title": {
-      "default": "User Interface",
-      "zh-CN": "界面"
+      "message": "title.ui"
     }
   }
 }

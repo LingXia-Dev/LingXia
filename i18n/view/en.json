@@ -1,0 +1,46 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Button that closes a picker or dialog without choosing."
+  },
+  "@view.done": {
+    "defaultMessage": "Done",
+    "description": "Button that confirms a picker's choice."
+  },
+  "@view.ok": {
+    "defaultMessage": "OK",
+    "description": "Button that confirms an alert or dialog."
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "Previous month",
+    "description": "Date picker button that shows the month before."
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "Next month",
+    "description": "Date picker button that shows the month after."
+  },
+  "@view.hour": {
+    "defaultMessage": "Hour",
+    "description": "Time picker column of hours, read by screen readers."
+  },
+  "@view.minute": {
+    "defaultMessage": "Minute",
+    "description": "Time picker column of minutes, read by screen readers."
+  },
+  "@view.period": {
+    "defaultMessage": "AM/PM",
+    "description": "Time picker column choosing morning or afternoon on a 12-hour clock."
+  },
+  "@view.options": {
+    "defaultMessage": "Options",
+    "description": "Accessible name of a list of choices that has no label."
+  },
+  "@view.dialog": {
+    "defaultMessage": "Dialog",
+    "description": "Accessible name of a dialog that has no title."
+  },
+  "@view.actions": {
+    "defaultMessage": "Actions",
+    "description": "Accessible name of an action sheet."
+  }
+}

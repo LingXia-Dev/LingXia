@@ -205,6 +205,8 @@ fn build_default_host_app_config(
     lingxia_app_context::AppConfig {
         product_name,
         product_names: Default::default(),
+        languages: Vec::new(),
+        sdk_text: Default::default(),
         product_version: env!("CARGO_PKG_VERSION").to_string(),
         lingxia_id: None,
         lingxia_server: None,

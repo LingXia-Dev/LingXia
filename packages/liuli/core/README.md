@@ -140,7 +140,12 @@ Beside the components:
 | `@liulidesign/core/density` | `DensityProvider`: compact form controls and rows for a part of the screen |
 | `@liulidesign/core/hue` | `Hue` and `hueFor(text)`: one of the theme's eight category colours, the same for the same text |
 | `@liulidesign/core/Icon/set` | The icon set provider, to swap the built-in icons for your own |
-| `@liulidesign/core/Calendar/en`, `/zh`, `@liulidesign/core/Timestamp/en`, `/zh` | Month, weekday and relative-time words, in English or Chinese |
+
+## Words
+
+Liuli's own words — "Close", "Next page", month names, "2 hours ago" — follow the page's language,
+in English and Chinese. A label a component asks for is optional where a generic word fits. An lxapp
+changes a word, or adds a language, by naming its `@liuli.*` key in its own `i18n/<tag>.json`.
 
 ## Theming
 

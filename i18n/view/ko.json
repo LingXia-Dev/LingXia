@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "취소"
+  },
+  "@view.done": {
+    "defaultMessage": "완료"
+  },
+  "@view.ok": {
+    "defaultMessage": "확인"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "이전 달"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "다음 달"
+  },
+  "@view.hour": {
+    "defaultMessage": "시"
+  },
+  "@view.minute": {
+    "defaultMessage": "분"
+  },
+  "@view.period": {
+    "defaultMessage": "오전/오후"
+  },
+  "@view.options": {
+    "defaultMessage": "옵션"
+  },
+  "@view.dialog": {
+    "defaultMessage": "대화상자"
+  },
+  "@view.actions": {
+    "defaultMessage": "작업"
+  }
+}

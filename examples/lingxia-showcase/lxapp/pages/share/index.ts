@@ -9,7 +9,7 @@ function mediaPath(entry: unknown): string {
 
 export default definePage({
   data: {
-    statusText: "Ready",
+    statusText: "share.state.ready",
     selectedImagePath: "",
     selectedFilePath: "",
   },
@@ -17,14 +17,14 @@ export default definePage({
     const helpers = {
       async runShare(options: ShareOptions) {
         try {
-          page.update(d => { d.statusText = "Opening system share sheet..."; });
+          page.update(d => { d.statusText = "share.state.opening"; });
           const result = await lx.share(options);
           page.update(d => {
             d.statusText = result.outcome === "dismissed"
-                ? "Share canceled"
+                ? "share.state.canceled"
                 : result.outcome === "completed"
-                  ? "Shared"
-                  : "Share opened";
+                  ? "share.state.shared"
+                  : "share.state.opened";
           });
         } catch (error) {
           const message = errorMessage(error, "share failed");
@@ -36,13 +36,13 @@ export default definePage({
     const actions = {
       async shareText() {
         await helpers.runShare({
-          title: "LingXia Showcase",
-          text: "Plain text share; some receivers reject text-only content.",
+          title: lx.app.t('share.title'),
+          text: lx.app.t('share.plainText'),
         });
       },
       async shareCurrentPage() {
         await helpers.runShare({
-          title: "LingXia Showcase",
+          title: lx.app.t('share.title'),
           page: {
             query: {
               from: "share-demo",
@@ -54,12 +54,12 @@ export default definePage({
         try {
           const result = await lx.pick.media({ limit: 1, types: ["image"] });
           if (result.status === 'canceled') {
-            page.update(d => { d.statusText = "No image selected"; });
+            page.update(d => { d.statusText = "share.state.noImage"; });
             return;
           }
           page.update(d => {
             d.selectedImagePath = mediaPath(result.files[0]);
-            d.statusText = "Image selected";
+            d.statusText = "share.state.image";
           });
         } catch (error) {
           const message = errorMessage(error, "pick.media failed");
@@ -70,11 +70,11 @@ export default definePage({
       async shareSelectedImage() {
         const path = page.data.selectedImagePath;
         if (!path) {
-          lx.ui.toast("Choose an image first");
+          lx.ui.toast(lx.app.t('share.chooseImageFirst'));
           return;
         }
         await helpers.runShare({
-          title: "LingXia image",
+          title: lx.app.t('share.imageTitle'),
           files: [path],
         });
       },
@@ -83,7 +83,7 @@ export default definePage({
           const result = await lx.pick.file();
           page.update(d => {
             d.selectedFilePath = (result.status === 'canceled') ? "" : result.file.path;
-            d.statusText = (result.status === 'canceled') ? "File selection canceled" : "File selected";
+            d.statusText = (result.status === 'canceled') ? "share.state.fileCanceled" : "share.state.file";
           });
         } catch (error) {
           const message = errorMessage(error, "chooseFile failed");
@@ -94,11 +94,11 @@ export default definePage({
       async shareSelectedFile() {
         const path = page.data.selectedFilePath;
         if (!path) {
-          lx.ui.toast("Choose a file first");
+          lx.ui.toast(lx.app.t('share.chooseFileFirst'));
           return;
         }
         await helpers.runShare({
-          title: "LingXia file",
+          title: lx.app.t('share.fileTitle'),
           files: [path],
         });
       },

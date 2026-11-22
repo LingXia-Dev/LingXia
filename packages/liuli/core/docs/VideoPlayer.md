@@ -16,7 +16,6 @@ VideoPlayer shows a `useVideo` player with VideoControls: play, seek, mute, spee
 
 ```tsx
 import { useVideo } from '@lingxia/view';
-import type { VideoControlsLabels } from '@liulidesign/core/VideoControls';
 import { VideoPlayer } from '@liulidesign/core/VideoPlayer';
 
 const sources = [360, 720, 1080].map(height => ({
@@ -24,17 +23,11 @@ const sources = [360, 720, 1080].map(height => ({
   label: `${height}p`,
 }));
 const poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
-const labels: VideoControlsLabels = {
-  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',
-  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',
-  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',
-  failed: 'This video cannot play right now', retry: 'Retry',
-};
 
 /** The picture with its controls over it; the qualities fill the settings menu. */
 export function Standard() {
   const player = useVideo('liuli-player-standard');
-  return <VideoPlayer player={player} label="Big Buck Bunny" labels={labels} sources={sources} poster={poster} data-testid="standard" />;
+  return <VideoPlayer player={player} label="Big Buck Bunny" sources={sources} poster={poster} data-testid="standard" />;
 }
 ```
 
@@ -42,7 +35,6 @@ export function Standard() {
 
 ```tsx
 import { useVideo } from '@lingxia/view';
-import type { VideoControlsLabels } from '@liulidesign/core/VideoControls';
 import { VideoPlayer } from '@liulidesign/core/VideoPlayer';
 
 const sources = [360, 720, 1080].map(height => ({
@@ -50,17 +42,11 @@ const sources = [360, 720, 1080].map(height => ({
   label: `${height}p`,
 }));
 const poster = 'https://peach.blender.org/wp-content/uploads/title_anouncement.jpg';
-const labels: VideoControlsLabels = {
-  play: 'Play', pause: 'Pause', replay: 'Replay', mute: 'Mute', unmute: 'Unmute', seek: 'Seek',
-  fullscreen: 'Full screen', exitFullscreen: 'Exit full screen', settings: 'Playback settings',
-  rate: 'Playback speed', quality: 'Quality', auto: 'Auto', live: 'LIVE', loading: 'Loading',
-  failed: 'This video cannot play right now', retry: 'Retry',
-};
 
 /** The controls in a row under the picture. */
 export function UnderThePicture() {
   const player = useVideo('liuli-player-bar');
-  return <VideoPlayer player={player} label="Big Buck Bunny" labels={labels} src={sources[0].src} poster={poster} variant="bar" data-testid="under" />;
+  return <VideoPlayer player={player} label="Big Buck Bunny" src={sources[0].src} poster={poster} variant="bar" data-testid="under" />;
 }
 ```
 
@@ -70,7 +56,7 @@ export function UnderThePicture() {
 | --- | --- | --- | --- |
 | `player` (required) | `Video` |  | The `useVideo` player it shows; the page and Logic drive the same one. |
 | `label` (required) | `string` |  | What the video shows, its accessible name. |
-| `labels` (required) | `VideoControlsLabels` |  | Every word the controls show or speak. |
+| `labels` | `Partial<VideoControlsLabels>` |  | Words for the controls to use instead of Liuli's, which follow the page's language. |
 | `src` | `string` |  | One file or stream. Give it or `sources`. |
 | `sources` | `readonly VideoSource[]` |  | The same video at several qualities; their labels become the quality menu. |
 | `poster` | `string` |  | Shown until the first frame, here and full screen. |

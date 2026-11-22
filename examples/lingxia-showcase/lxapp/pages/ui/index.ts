@@ -1,3 +1,4 @@
+import type { LxAppMessageKey } from '@lingxia/types';
 import { errorMessage } from "../../shared/lib/errors";
 import {
   definePage,
@@ -108,19 +109,19 @@ export default definePage({
     modalResult: null as ModalResult | null,
     actionSheetResult: null as ActionSheetResult | null,
     toastStyle: "success" as ToastStyle,
-    toastStyleLabel: "Success",
+    toastStyleLabel: "ui.toast.success",
     toastStyleOptions: [
-      { label: "Default", value: "default" },
-      { label: "Success", value: "success" },
-      { label: "Danger", value: "danger" },
-      { label: "Loading", value: "loading" },
+      { label: "ui.toast.default", value: "default" },
+      { label: "ui.toast.success", value: "success" },
+      { label: "ui.toast.danger", value: "danger" },
+      { label: "ui.toast.loading", value: "loading" },
     ] as { label: string; value: ToastStyle }[],
     toastPosition: "center" as NonNullable<ToastOptions["position"]>,
-    toastPositionLabel: "Center",
+    toastPositionLabel: "ui.toast.center",
     toastPositionOptions: [
-      { label: "Top", value: "top" },
-      { label: "Center", value: "center" },
-      { label: "Bottom", value: "bottom" },
+      { label: "ui.toast.top", value: "top" },
+      { label: "ui.toast.center", value: "center" },
+      { label: "ui.toast.bottom", value: "bottom" },
     ] as { label: string; value: NonNullable<ToastOptions["position"]> }[],
     surfaceDemo: { message: "", active: false, visible: false },
     chromeError: "",
@@ -148,8 +149,8 @@ export default definePage({
         try {
           thisPage.update(d => {
             d.appearance = {
-              preference: lx.host.appearance.preference.get() ?? "auto",
-              resolved: lx.host.appearance.get(),
+              preference: lx.host.appearance?.get() ?? "auto",
+              resolved: lx.app.appearance.get(),
             };
           });
         } catch (error) {
@@ -294,8 +295,8 @@ export default definePage({
       },
       async setAppearance(options: { preference?: "auto" | "light" | "dark" } = {}) {
         const preference = options.preference || "auto";
-        const applied = await helpers.runChromeUpdate("Appearance update", () =>
-          lx.host.appearance.preference.set(preference),
+        const applied = await helpers.runChromeUpdate("Appearance update",
+          async () => { await lx.host.appearance?.set(preference); },
         );
         helpers.syncAppearance();
         return applied;
@@ -306,7 +307,7 @@ export default definePage({
         try {
           await lx.nav.go({ page: "ui", params: { type: "navigation" } }).opened;
         } catch (err) {
-          lx.ui.toast("Page stack is full (10)", { tone: "danger", durationMs: 1800 });
+          lx.ui.toast(lx.app.t('ui.stackFull'), { tone: "danger", durationMs: 1800 });
           console.warn("[UI] navigateTo rejected", err);
         }
       },
@@ -322,7 +323,7 @@ export default definePage({
       // Choose toast style via action sheet
       async chooseToastStyle() {
         const result = await lx.ui.actionSheet({
-          items: thisPage.data.toastStyleOptions.map((option, index) => ({ id: String(index), label: option.label })),
+          items: thisPage.data.toastStyleOptions.map((option, index) => ({ id: String(index), label: lx.app.t(option.label as LxAppMessageKey) })),
         });
         if (result.status === 'canceled') {
           return;
@@ -336,7 +337,7 @@ export default definePage({
       // Choose toast position via action sheet
       async chooseToastPosition() {
         const result = await lx.ui.actionSheet({
-          items: thisPage.data.toastPositionOptions.map((option, index) => ({ id: String(index), label: option.label })),
+          items: thisPage.data.toastPositionOptions.map((option, index) => ({ id: String(index), label: lx.app.t(option.label as LxAppMessageKey) })),
         });
         if (result.status === 'canceled') {
           return;
@@ -359,7 +360,7 @@ export default definePage({
         });
         thisPage.update(d => { d.actionSheetResult = result; });
         if (result.status === 'canceled') {
-          lx.ui.toast("Dismissed");
+          lx.ui.toast(lx.app.t('ui.dismissed'));
           return;
         }
         lx.ui.toast(`Selected: ${items[Number(result.id)]}`, { tone: "success" });
@@ -381,12 +382,12 @@ export default definePage({
           thisPage.update(d => {
             d.surfaceDemo = {
               ...thisPage.data.surfaceDemo,
-              message: "not supported",
+              message: lx.app.t('ui.notSupported'),
               active: false,
               visible: false,
             };
           });
-          lx.ui.toast("not supported");
+          lx.ui.toast(lx.app.t('ui.notSupported'));
           return;
         }
 
@@ -444,7 +445,7 @@ export default definePage({
           });
         } catch (error) {
           console.warn("surface.show failed:", error);
-          thisPage.update(d => { d.surfaceDemo.message = `Show failed: ${errorMessage(error, "unknown error")}`; });
+          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.showFailed", { reason: errorMessage(error, "unknown error") }); });
         }
       },
       async hideActiveSurface() {
@@ -463,7 +464,7 @@ export default definePage({
           });
         } catch (error) {
           console.warn("surface.hide failed:", error);
-          thisPage.update(d => { d.surfaceDemo.message = `Hide failed: ${errorMessage(error, "unknown error")}`; });
+          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.hideFailed", { reason: errorMessage(error, "unknown error") }); });
         }
       },
       async closeActiveSurface() {
@@ -483,12 +484,12 @@ export default definePage({
       },
       // Show modal with custom parameters
       async showModalWithParams(params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {
-        const title = params.title ?? "Alert";
-        const message = params.content || "This is a modal dialog";
-        const confirmText = params.confirmText || "OK";
+        const title = params.title ?? lx.app.t("ui.alert");
+        const message = params.content || lx.app.t("ui.modalContent");
+        const confirmText = params.confirmText || lx.app.t("common.ok");
         let confirmed = true;
         if (params.showCancel ?? true) {
-          confirmed = await lx.ui.confirm({ title, message, confirmText, cancelText: params.cancelText || "Cancel" });
+          confirmed = await lx.ui.confirm({ title, message, confirmText, cancelText: params.cancelText || lx.app.t("common.cancel") });
         } else {
           await lx.ui.alert({ title, message, confirmText });
         }
@@ -554,14 +555,14 @@ export default definePage({
       revealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
           const result = await lx.app.tabBar.update({ visibility: "visible" });
-          actions.showToastWithParams({ message: "shown", style: "success", durationMs: 800 });
+          actions.showToastWithParams({ message: lx.app.t('ui.shown'), style: "success", durationMs: 800 });
           return result;
         });
       },
       concealTabBar() {
         return helpers.runChromeUpdate("Tab bar update", async () => {
           const result = await lx.app.tabBar.update({ visibility: "hidden" });
-          actions.showToastWithParams({ message: "hidden", style: "success", durationMs: 800 });
+          actions.showToastWithParams({ message: lx.app.t('ui.hidden'), style: "success", durationMs: 800 });
           return result;
         });
       },
@@ -586,7 +587,7 @@ export default definePage({
         actions.updateNavigationBarTitle({ title });
 
         stopWatchingAppearance?.();
-        stopWatchingAppearance = lx.host.appearance.watch(() => helpers.syncAppearance());
+        stopWatchingAppearance = lx.app.appearance.watch(() => helpers.syncAppearance());
         helpers.syncAppearance();
 
         // Instance identity: a fresh tag per entry proves that leaving ends the

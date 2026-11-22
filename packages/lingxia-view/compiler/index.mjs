@@ -447,6 +447,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
   let warm = true;
   analysisHits = analysisMisses = 0;
+  // The lxapp build compiles i18n/ here; registering it before the page module loads lets
+  // `t` run in the first render.
+  const compiledMessages = join(root, '.lingxia', 'i18n', 'index.js');
+  const messages = existsSync(compiledMessages)
+    ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
+    : '';
   for (const page of pages) {
     const source = resolve(root, page);
     const rel = relative(root, source);
@@ -462,7 +468,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     let bundled;
     try {
       bundled = await build({
-        stdin: { contents: `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
+        stdin: { contents: `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)});`, resolveDir: root },
         bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
         tsconfigRaw: tsconfig,
         // Dev builds keep a source map so runtime errors name the author's line.
@@ -486,7 +492,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             return { contents: '', loader: 'js' };
           });
           builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
-            if (path.toLowerCase().startsWith(runtimeRoot)) return;
+            if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
               if (owner?.tokens !== undefined) tokenPackages.set(owner.name, owner);

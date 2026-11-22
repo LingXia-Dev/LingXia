@@ -11,7 +11,7 @@ const render = (view, env) => { const out = decode(prepare(view, { env })); comm
 test('a date picker opens on its editor, moves by keys and commits an ISO date', () => {
   reset();
   const view = () => h('view', {});
-  const env = { pointer: 'fine', firstWeekday: 2, displayLanguage: 'en-GB' };
+  const env = { pointer: 'fine', firstWeekday: 2, language: 'en-GB' };
   assert.equal(open({ kind: 'text' }), false);
   assert.equal(open({ kind: 'date', value: '2026-10-29', min: '2026-10-05', max: '2026-11-20' }), true);
   let nodes = render(view, env);
@@ -32,7 +32,7 @@ test('a date picker opens on its editor, moves by keys and commits an ISO date',
 test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the old value', () => {
   reset();
   const view = () => h('view', {});
-  const env = { pointer: 'coarse', displayLanguage: 'zh-Hans-CN' };
+  const env = { pointer: 'coarse', language: 'zh-Hans-CN' };
   open({ kind: 'date', value: '2026-10-29' });
   let nodes = render(view, env);
   dispatch(nodes.find(n => n.testId === 'lx-picker-day-2026-10-21').props.onClick);
@@ -51,10 +51,10 @@ test('on touch a tap picks a day and Done commits it; Cancel and Escape keep the
   assert.deepEqual(JSON.parse(takePickerResults())[0].value, null);
 });
 
-test('the sheet speaks the language the lxapp is written in, not the display language', () => {
+test("the sheet speaks the page's language", () => {
   reset();
   open({ kind: 'date', value: '2026-10-29' });
-  const nodes = render(() => h('view', {}), { pointer: 'coarse', displayLanguage: 'zh-Hans-CN', contentLanguage: 'en' });
+  const nodes = render(() => h('view', {}), { pointer: 'coarse', language: 'en' });
   assert.equal(nodes.find(n => n.testId === 'lx-picker-title').text, 'October 2026');
   pickerKey('Escape'); takePickerResults();
 });
@@ -62,7 +62,7 @@ test('the sheet speaks the language the lxapp is written in, not the display lan
 test('a time picker honours the step and the hour cycle, and takes typed digits', () => {
   reset();
   const view = () => h('view', {});
-  const env = { pointer: 'fine', hourCycle: 'h12', displayLanguage: 'en-US' };
+  const env = { pointer: 'fine', hourCycle: 'h12', language: 'en-US' };
   open({ kind: 'time', value: '13:15', step: 900 });
   const nodes = render(view, env);
   const column = testId => nodes.find(n => n.testId === testId).children[0].props;
@@ -119,7 +119,7 @@ test('on touch every picker sheet opens with Cancel, a title and Done on top', (
   ]) {
     reset();
     open(request);
-    const nodes = render(() => h('view', {}), { pointer: 'coarse', hourCycle: 'h12', displayLanguage: 'en-US' });
+    const nodes = render(() => h('view', {}), { pointer: 'coarse', hourCycle: 'h12', language: 'en-US' });
     const sheet = nodes.find(n => n.testId === 'lx-picker');
     const toolbar = sheet.children[0];
     assert.deepEqual(toolbar.children.map(n => n.testId), ['lx-picker-cancel', 'lx-picker-title', 'lx-picker-done'], request.kind);
@@ -132,7 +132,7 @@ test('on touch every picker sheet opens with Cancel, a title and Done on top', (
 test('on touch an empty date field opens with nothing chosen; today is a ring, and Done waits for a tap', () => {
   reset();
   const view = () => h('view', {});
-  const env = { pointer: 'coarse', contentLanguage: 'en' };
+  const env = { pointer: 'coarse', language: 'en' };
   const day = id => nodes.find(n => n.testId === `lx-picker-day-${id}`);
   open({ kind: 'date', value: '', today: '2026-11-13' });
   let nodes = render(view, env);
@@ -153,7 +153,7 @@ test('on touch an empty date field opens with nothing chosen; today is a ring, a
 test('on touch a date field with a value opens with that day chosen', () => {
   reset();
   open({ kind: 'date', value: '2026-10-29', today: '2026-11-13' });
-  const nodes = render(() => h('view', {}), { pointer: 'coarse', contentLanguage: 'en' });
+  const nodes = render(() => h('view', {}), { pointer: 'coarse', language: 'en' });
   const chosen = nodes.filter(n => n.testId.startsWith('lx-picker-day-') && n.props.stateSelected === 1).map(n => n.testId);
   assert.deepEqual(chosen, ['lx-picker-day-2026-10-29']);
   dispatch(nodes.find(n => n.testId === 'lx-picker-done').props.onClick);
@@ -163,7 +163,7 @@ test('on touch a date field with a value opens with that day chosen', () => {
 test('an unbound date or time field sends no display text, only its width', () => {
   reset();
   const view = () => h('view', {}, h('input', { 'data-testid': 'at', type: 'time' }), h('input', { 'data-testid': 'on', type: 'date' }));
-  const nodes = render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  const nodes = render(view, { hourCycle: 'h12', language: 'en-US' });
   for (const id of ['at', 'on']) {
     const props = nodes.find(n => n.testId === id).props;
     assert.equal(Object.hasOwn(props, 'displayValue'), false, id);
@@ -176,11 +176,11 @@ test('the core reads an unbound field\'s own value in the committed page\'s cloc
   reset(); publishHost(() => h('view', {}));
   const text = globalThis.__lingxiaFieldText;
   const view = () => h('input', { type: 'time' });
-  render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  render(view, { hourCycle: 'h12', language: 'en-US' });
   assert.equal(text('time', '13:05', {}), '1:05 PM');
   assert.equal(text('time', '09:30:15', {}), '9:30:15 AM');
   assert.equal(text('date', '2026-11-14', {}), 'Nov 14, 2026');
-  render(view, { hourCycle: 'h23', displayLanguage: 'zh-Hans-CN' });
+  render(view, { hourCycle: 'h23', language: 'zh-Hans-CN' });
   assert.equal(text('time', '13:05', {}), '13:05');
   assert.equal(text('date', '2026-11-14', {}), '2026年11月14日');
   // The core's own environment wins: it asks before the frame that carries a new one commits.
@@ -199,22 +199,22 @@ test('a time field shows its ISO value in the user\'s clock and re-lowers when t
   const view = () => h('view', {}, h('input', { 'data-testid': 'at', type: 'time', value: '13:05' }),
     h('input', { 'data-testid': 'on', type: 'date', value: '2026-11-14' }));
   const field = (nodes, id) => nodes.find(n => n.testId === id).props;
-  let nodes = render(view, { hourCycle: 'h12', displayLanguage: 'en-US' });
+  let nodes = render(view, { hourCycle: 'h12', language: 'en-US' });
   assert.equal(field(nodes, 'at').inputValue, '13:05', 'the bound value stays ISO');
   assert.equal(field(nodes, 'at').displayValue, '1:05 PM');
   assert.equal(field(nodes, 'at').sizeText, '00:00 AM\n00:00 PM');
   assert.equal(field(nodes, 'on').inputValue, '2026-11-14', 'the bound date stays ISO');
   assert.equal(field(nodes, 'on').displayValue, 'Nov 14, 2026');
   assert.equal(field(nodes, 'on').sizeText.split('\n').length, 12, 'every month name sizes the field');
-  nodes = render(view, { hourCycle: 'h23', displayLanguage: 'en-US' });
+  nodes = render(view, { hourCycle: 'h23', language: 'en-US' });
   assert.equal(field(nodes, 'at').displayValue, '13:05');
   assert.equal(field(nodes, 'at').sizeText, '00:00');
-  nodes = render(view, { hourCycle: 'h12', displayLanguage: 'zh-Hans-CN' });
+  nodes = render(view, { hourCycle: 'h12', language: 'zh-Hans-CN' });
   assert.equal(field(nodes, 'at').displayValue, '1:05 下午');
   assert.equal(field(nodes, 'on').displayValue, '2026年11月14日');
   assert.equal(field(nodes, 'on').sizeText, '0000年0月00日\n0000年00月00日');
   assert.equal(field(nodes, 'at').sizeText, '00:00 上午\n00:00 下午');
-  nodes = render(() => h('input', { 'data-testid': 'at', type: 'time', value: '09:30:15', step: 1 }), { hourCycle: 'h12', displayLanguage: 'en-US' });
+  nodes = render(() => h('input', { 'data-testid': 'at', type: 'time', value: '09:30:15', step: 1 }), { hourCycle: 'h12', language: 'en-US' });
   assert.equal(field(nodes, 'at').displayValue, '9:30:15 AM');
   assert.equal(field(nodes, 'at').sizeText, '00:00:00 AM\n00:00:00 PM');
 });

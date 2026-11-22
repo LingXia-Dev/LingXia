@@ -22,7 +22,7 @@ function unboundFieldText(kind, iso, opts) {
   try {
     if (kind !== 'date' && kind !== 'time') return iso;
     const env = envOf(page.committed?.view);
-    return fieldText(kind, iso, { seconds: opts?.seconds === true, language: opts?.language || (env?.contentLanguage ?? env?.displayLanguage),
+    return fieldText(kind, iso, { seconds: opts?.seconds === true, language: opts?.language || (env?.language),
       hourCycle: opts?.hourCycle || env?.hourCycle }).displayValue;
   } catch { return iso; }
 }

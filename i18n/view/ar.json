@@ -1,0 +1,35 @@
+{
+  "@view.cancel": {
+    "defaultMessage": "إلغاء"
+  },
+  "@view.done": {
+    "defaultMessage": "تم"
+  },
+  "@view.ok": {
+    "defaultMessage": "حسنًا"
+  },
+  "@view.previousMonth": {
+    "defaultMessage": "الشهر السابق"
+  },
+  "@view.nextMonth": {
+    "defaultMessage": "الشهر التالي"
+  },
+  "@view.hour": {
+    "defaultMessage": "الساعة"
+  },
+  "@view.minute": {
+    "defaultMessage": "الدقيقة"
+  },
+  "@view.period": {
+    "defaultMessage": "ص/م"
+  },
+  "@view.options": {
+    "defaultMessage": "خيارات"
+  },
+  "@view.dialog": {
+    "defaultMessage": "مربع حوار"
+  },
+  "@view.actions": {
+    "defaultMessage": "إجراءات"
+  }
+}

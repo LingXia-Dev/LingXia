@@ -75,11 +75,11 @@ export function Welcome() {
 | `value` (required) | `number \| null` |  | The step in view, from 0, or null while the tour is not running. The app holds it. |
 | `onChange` (required) | `(step: number \| null) => void` |  | Runs with the next step to show, and with null when the tour ends: finished, or skipped. |
 | `onFinish` | `(() => void)` |  | Runs when the last step\'s button is pressed, before the tour ends. |
-| `nextLabel` (required) | `string` |  | "Next". |
-| `backLabel` (required) | `string` |  | "Back". |
-| `skipLabel` (required) | `string` |  | "Skip": ends the tour from any step but the last. |
-| `doneLabel` (required) | `string` |  | "Done": on the last step. |
-| `stepLabel` (required) | `(step: number, count: number) => string` |  | Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. |
+| `nextLabel` | `string` |  | "Next". Defaults to "Next" in the page's language. |
+| `backLabel` | `string` |  | "Back". Defaults to "Back" in the page's language. |
+| `skipLabel` | `string` |  | "Skip": ends the tour from any step but the last. Defaults to "Skip" in the page's language. |
+| `doneLabel` | `string` |  | "Done": on the last step. Defaults to "Done" in the page's language. |
+| `stepLabel` | `((step: number, count: number) => string)` |  | Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. |
 | `data-testid` | `string` |  | On the callout. |
 
 ## Anatomy

@@ -1,0 +1,191 @@
+{
+  "@liuli.dismiss": {
+    "defaultMessage": "关闭"
+  },
+  "@liuli.details": {
+    "defaultMessage": "详情"
+  },
+  "@liuli.close": {
+    "defaultMessage": "关闭"
+  },
+  "@liuli.search": {
+    "defaultMessage": "搜索"
+  },
+  "@liuli.noMatches": {
+    "defaultMessage": "无匹配结果"
+  },
+  "@liuli.stop": {
+    "defaultMessage": "停止"
+  },
+  "@liuli.send": {
+    "defaultMessage": "发送"
+  },
+  "@liuli.date": {
+    "defaultMessage": "日期"
+  },
+  "@liuli.time": {
+    "defaultMessage": "时间"
+  },
+  "@liuli.chooseFiles": {
+    "defaultMessage": "选择文件"
+  },
+  "@liuli.removeNamed": {
+    "defaultMessage": "移除{name}"
+  },
+  "@liuli.uploadingNamed": {
+    "defaultMessage": "正在上传{name}"
+  },
+  "@liuli.add": {
+    "defaultMessage": "添加"
+  },
+  "@liuli.removeItem": {
+    "defaultMessage": "移除第 {number} 项"
+  },
+  "@liuli.remove": {
+    "defaultMessage": "移除"
+  },
+  "@liuli.decrease": {
+    "defaultMessage": "减少"
+  },
+  "@liuli.increase": {
+    "defaultMessage": "增加"
+  },
+  "@liuli.page": {
+    "defaultMessage": "第 {page} 页"
+  },
+  "@liuli.pageOf": {
+    "defaultMessage": "第 {page} 页，共 {count} 页"
+  },
+  "@liuli.previousPage": {
+    "defaultMessage": "上一页"
+  },
+  "@liuli.nextPage": {
+    "defaultMessage": "下一页"
+  },
+  "@liuli.clearSearch": {
+    "defaultMessage": "清除搜索"
+  },
+  "@liuli.clear": {
+    "defaultMessage": "清除"
+  },
+  "@liuli.sidebar": {
+    "defaultMessage": "侧边栏"
+  },
+  "@liuli.next": {
+    "defaultMessage": "下一步"
+  },
+  "@liuli.back": {
+    "defaultMessage": "上一步"
+  },
+  "@liuli.skip": {
+    "defaultMessage": "跳过"
+  },
+  "@liuli.done": {
+    "defaultMessage": "完成"
+  },
+  "@liuli.stepOf": {
+    "defaultMessage": "第 {step} 步，共 {count} 步"
+  },
+  "@liuli.monthName": {
+    "defaultMessage": "{month, select, jan {1月} feb {2月} mar {3月} apr {4月} may {5月} jun {6月} jul {7月} aug {8月} sep {9月} oct {10月} nov {11月} dec {12月} other {}}"
+  },
+  "@liuli.weekdayName": {
+    "defaultMessage": "{weekday, select, sun {星期日} mon {星期一} tue {星期二} wed {星期三} thu {星期四} fri {星期五} sat {星期六} other {}}"
+  },
+  "@liuli.weekdayInitial": {
+    "defaultMessage": "{weekday, select, sun {日} mon {一} tue {二} wed {三} thu {四} fri {五} sat {六} other {}}"
+  },
+  "@liuli.calendar.title": {
+    "defaultMessage": "{year}年{monthName}"
+  },
+  "@liuli.calendar.day": {
+    "defaultMessage": "{today, select, yes {今天，} other {}}{year}年{monthName}{day}日{weekdayName}"
+  },
+  "@liuli.calendar.previousMonth": {
+    "defaultMessage": "上个月"
+  },
+  "@liuli.calendar.nextMonth": {
+    "defaultMessage": "下个月"
+  },
+  "@liuli.timestamp.justNow": {
+    "defaultMessage": "刚刚"
+  },
+  "@liuli.timestamp.minutesAgo": {
+    "defaultMessage": "{minutes, plural, other {# 分钟前}}"
+  },
+  "@liuli.timestamp.hoursAgo": {
+    "defaultMessage": "{hours, plural, other {# 小时前}}"
+  },
+  "@liuli.timestamp.yesterday": {
+    "defaultMessage": "昨天"
+  },
+  "@liuli.timestamp.date": {
+    "defaultMessage": "{monthName}{day}日"
+  },
+  "@liuli.timestamp.dateWithYear": {
+    "defaultMessage": "{year}年{monthName}{day}日"
+  },
+  "@liuli.timestamp.time12": {
+    "defaultMessage": "{period, select, am {上午} other {下午}}{hour}:{minute}"
+  },
+  "@liuli.timestamp.dateTime": {
+    "defaultMessage": "{date} {time}"
+  },
+  "@liuli.video.auto": {
+    "defaultMessage": "自动"
+  },
+  "@liuli.video.exitFullscreen": {
+    "defaultMessage": "退出全屏"
+  },
+  "@liuli.video.failed": {
+    "defaultMessage": "此视频暂时无法播放"
+  },
+  "@liuli.video.fullscreen": {
+    "defaultMessage": "全屏"
+  },
+  "@liuli.video.live": {
+    "defaultMessage": "直播"
+  },
+  "@liuli.video.loading": {
+    "defaultMessage": "加载中"
+  },
+  "@liuli.video.mute": {
+    "defaultMessage": "静音"
+  },
+  "@liuli.video.pause": {
+    "defaultMessage": "暂停"
+  },
+  "@liuli.video.play": {
+    "defaultMessage": "播放"
+  },
+  "@liuli.video.quality": {
+    "defaultMessage": "清晰度"
+  },
+  "@liuli.video.rate": {
+    "defaultMessage": "播放速度"
+  },
+  "@liuli.video.replay": {
+    "defaultMessage": "重播"
+  },
+  "@liuli.video.retry": {
+    "defaultMessage": "重试"
+  },
+  "@liuli.video.seek": {
+    "defaultMessage": "进度"
+  },
+  "@liuli.video.settings": {
+    "defaultMessage": "播放设置"
+  },
+  "@liuli.video.unmute": {
+    "defaultMessage": "取消静音"
+  },
+  "@liuli.step.done": {
+    "defaultMessage": "已完成"
+  },
+  "@liuli.step.current": {
+    "defaultMessage": "当前步骤"
+  },
+  "@liuli.step.upcoming": {
+    "defaultMessage": "未开始"
+  }
+}
