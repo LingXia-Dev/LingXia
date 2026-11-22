@@ -1,13 +1,5 @@
 import type { ServerMessage, ClientCommand } from "../../shared/channel-types";
-import { definePage, lx } from '@lingxia/logic';
-// ChannelHandle is injected by the runtime — no import needed.
-// The type is declared here locally for readability.
-interface ChannelHandle<TSend = unknown, TReceive = unknown> {
-  send(payload: TSend): void;
-  close(code?: string, reason?: string): void;
-  on(event: 'data', handler: (payload: TReceive) => void): void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
-}
+import { definePage, type PageChannel } from '@lingxia/logic';
 
 // ---------------------------------------------------------------------------
 // Channel demo — a mock real-time stock ticker.
@@ -35,10 +27,9 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async goBack() { await lx.nav.back(); },
       tickerSession(
         _params: Record<string, unknown>,
-        ch: ChannelHandle<ServerMessage, ClientCommand>,
+        ch: PageChannel<ServerMessage, ClientCommand>,
       ) {
         let activeSymbol = 'AAPL';
         let timer: ReturnType<typeof setInterval> | null = null;

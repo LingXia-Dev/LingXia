@@ -96,11 +96,10 @@ export function ReduceDemo() {
 }
 
 export function PushDemo() {
-  const { actions } = useView();
   const t = useSay();
   return (
     <view className="flex-row">
-      <Button testId="motion-push-open" size="sm" onClick={() => actions.open({ page: 'motion-target' })}>{t(labels.openPage)}</Button>
+      <Button testId="motion-push-open" size="sm" to={{ page: 'motion-target' }}>{t(labels.openPage)}</Button>
     </view>
   );
 }

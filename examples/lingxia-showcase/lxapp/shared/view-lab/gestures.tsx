@@ -222,11 +222,10 @@ export function HoverDemo() {
 
 // Pull to refresh belongs to a whole page, so the demo is a page of its own.
 export function PullDemo() {
-  const { actions } = useView();
   const t = useSay();
   return (
     <view className="flex-row">
-      <Button testId="lab-pull-open" size="sm" variant="secondary" onClick={() => actions.open({ page: 'pullToRefresh' })}>{t(labels.openPull)}</Button>
+      <Button testId="lab-pull-open" size="sm" variant="secondary" to={{ page: 'pullToRefresh' }}>{t(labels.openPull)}</Button>
     </view>
   );
 }

@@ -1,5 +1,6 @@
 import { LxPicker, useLxPage } from '@lingxia/react';
-import type { PickerPage as Picker, PickerTab } from './contract';
+import type page from './index.ts';
+import type { PickerTab } from './index.ts';
 import '../../tailwind.css';
 
 const coffees = ['Espresso', 'Americano', 'Latte', 'Cappuccino', 'Mocha', 'Macchiato'];
@@ -16,7 +17,7 @@ const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0
 const tabs: PickerTab[] = ['selector', 'multiSelector', 'time', 'date'];
 
 export default function PickerPage() {
-  const { data, actions } = useLxPage<Picker['data'], Picker['actions']>();
+  const { data, actions } = useLxPage<typeof page>();
   const { activeTab, coffee, location, multiTime, time, year, month, date, dateRange } = data;
 
   return (

@@ -1,6 +1,7 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, EmptyState, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
+import type { View } from './$types';
 
 type Wifi = { ssid?: string; bssid?: string; secure?: boolean; signalStrength?: number; frequency?: number; connected?: boolean; state?: string };
 type WifiEvent = Wifi & { id: string; time: string };

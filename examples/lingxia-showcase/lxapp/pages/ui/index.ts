@@ -310,20 +310,6 @@ export default definePage({
           console.warn("[UI] navigateTo rejected", err);
         }
       },
-      async demoNavigateBack() {
-        await lx.nav.back(1);
-      },
-      async demoSwitchTab() {
-        await lx.nav.go({
-          tab: "home",
-        });
-      },
-      async demoRedirectTo() {
-        await lx.nav.go({
-          page: "ui",
-          params: { type: "navigation" },
-        }, { replace: true });
-      },
       // Show toast with custom parameters
       showToastWithParams(params: { message?: string; style?: ToastStyle; durationMs?: number }) {
         const style = params.style || thisPage.data.toastStyle;

@@ -13,12 +13,13 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./.lingxia/logic-decl",
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/lib/errors.ts", "shared/lib/page-shape.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"],
+  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/lib/errors.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

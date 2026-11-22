@@ -1,6 +1,6 @@
-import { type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Icon, Page } from '../../shared/ui';
+import type { View } from './$types';
 
 type Location = { longitude?: number; latitude?: number; accuracy?: number; altitude?: number; speed?: number };
 function coordinate(value: number | undefined, latitude: boolean) {

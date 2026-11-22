@@ -5,10 +5,18 @@ import {
   type DisplayLanguagePreference,
 } from "../../shared/display-language";
 import { formatHomeGreeting, getMessages } from "./messages";
-import type { HomeActions, HomePageData, GreetingRequest, AppearanceRequest, DisplayLanguageRequest } from '../../shared/home-types';
 import { definePage, lx } from '@lingxia/logic';
 
-
+type AppearancePreference = 'auto' | 'light' | 'dark';
+interface HomePageData {
+  greeting: string;
+  imageUrl: string;
+  ipAddr: string;
+  greetCount: number;
+  appVersion: string;
+  appearance: { preference: AppearancePreference; resolved: 'light' | 'dark' };
+  displayLanguage: { preference: DisplayLanguagePreference; resolved: string };
+}
 
 const initialData: HomePageData = {
   greeting: appState.greeting,
@@ -70,11 +78,7 @@ export default definePage({
       },
     };
     const actions = {
-      async openApi() { await lx.nav.go({ page: 'api' }).opened; },
-      async openTodo() { await lx.nav.go({ page: 'todo' }).opened; },
-      async openClipboard() { await lx.nav.go({ page: 'clipboard' }).opened; },
-      async openShare() { await lx.nav.go({ page: 'share' }).opened; },
-      async setAppearance(options: Partial<AppearanceRequest> = {}) {
+      async setAppearance(options: { preference?: AppearancePreference } = {}) {
         const preference = options.preference || "auto";
         try {
           await lx.host.appearance.preference.set(preference);
@@ -87,9 +91,7 @@ export default definePage({
       },
       // Showcase is the Control app, so it owns the product-wide language
       // preference. Ordinary lxapps must not add their own selector.
-      async setDisplayLanguage(
-        options: Partial<DisplayLanguageRequest> = {},
-      ) {
+      async setDisplayLanguage(options: { preference?: DisplayLanguagePreference } = {}) {
         const preference = options.preference || "auto";
         try {
           await lx.host.displayLanguage.preference.set(preference);
@@ -100,7 +102,7 @@ export default definePage({
         }
         helpers.syncLanguage();
       },
-      async greet(option: Partial<GreetingRequest> = {}) {
+      async greet(option: { name?: string } = {}) {
         const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
         const count = page.data.greetCount + 1;
         page.update(d => {
@@ -136,8 +138,6 @@ export default definePage({
         stopWatchingIp = null;
       },
       async onLoad() {
-        // Keep the exported View surface checked against registered Logic actions.
-        void (actions satisfies HomeActions);
         console.log("[Home] Page loaded");
         helpers.syncAppearance();
         helpers.syncLanguage();

@@ -1,9 +1,9 @@
-import type { View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Page } from '../../shared/ui';
+import type { View } from './$types';
 
 // The page perf-lab's transition scene pushes and pops; its rows set the first frame's work.
-export function render({ data }: View<{}, { rows: number }>) {
+export function render({ data }: View) {
   return (
     <Page testId="perf-target">
       {Array.from({ length: data.rows }, (_, i) => (

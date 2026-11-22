@@ -1,12 +1,12 @@
 import { useLxPage } from '@lingxia/react';
-import type { PullToRefreshPage as PullToRefresh } from './contract';
+import type page from './index.ts';
 import '../../tailwind.css';
 
 // Enough rows to scroll on a phone, so a pull below the top scrolls instead.
 const ROWS = Array.from({ length: 24 }, (_, i) => i + 1);
 
 export default function PullDownRefreshPage() {
-  const { data, actions } = useLxPage<PullToRefresh['data'], PullToRefresh['actions']>();
+  const { data, actions } = useLxPage<typeof page>();
   const { startRefresh, stopRefresh } = actions;
   const { refreshCount, lastRefreshTime, isRefreshing } = data;
 

@@ -1,6 +1,6 @@
-import { type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
+import type { View } from './$types';
 
 // Enough rows to scroll on a phone, so a pull below the top scrolls instead.
 const ROWS = Array.from({ length: 24 }, (_, i) => i + 1);

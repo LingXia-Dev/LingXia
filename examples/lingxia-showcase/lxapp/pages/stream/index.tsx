@@ -1,10 +1,10 @@
-import { List, useLocal, useStream, type ReadonlyData, type Stream, type View } from '@lingxia/view';
+import { List, useLocal, useStream, type ReadonlyData } from '@lingxia/view';
 import '../../theme/index.css';
 import { Chart } from '../../shared/chart';
+import type { ChartData } from '../../shared/stream-types';
 import { EmptyState, ErrorState, Icon } from '../../shared/ui';
-import type { ChatChunk, ChartData, SendMessage, StreamPageData } from '../../shared/stream-types';
+import type { View } from './$types';
 
-type Actions = { onClear(): Promise<void>; onSend(params: SendMessage): Stream<ChatChunk, void> };
 const hints = ['Tell me about LingXia streaming', 'Show me some data', 'How does the bridge protocol work?'];
 
 function Bubble({ id, content, user, chart }: { id: string; content: string; user: boolean; chart?: ReadonlyData<ChartData> | null }) {
@@ -34,7 +34,7 @@ function Bubble({ id, content, user, chart }: { id: string; content: string; use
   );
 }
 
-export function render({ data, actions }: View<Actions, StreamPageData>) {
+export function render({ data, actions }: View) {
   const draft = useLocal('message', '');
   const tokens = useLocal('tokens', '');
   const artifact = useLocal<ChartData | null>('artifact', null);
@@ -55,7 +55,7 @@ export function render({ data, actions }: View<Actions, StreamPageData>) {
     stream.start({ text: draft.value.trim(), chartKind: 'auto' });
     draft.set('');
   };
-  const messages = data.messages || [];
+  const messages = data.messages;
   const keys = messages.map(message => `stream-message-${message.id}`);
   if (pending) keys.push('stream-live');
   // Repeat the tail anchor only when conversation content changes, not on user scrolling.

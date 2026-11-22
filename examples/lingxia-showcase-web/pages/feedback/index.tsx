@@ -2,37 +2,24 @@ import React from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 import './feedback.css';
+import type page from './index.ts';
 
 type FeedbackCategory = 'Product' | 'Bug' | 'Idea';
-
-type PageData = Record<string, never>;
-
-type PageActions = {
-  submitFeedback: (params: {
-    category: FeedbackCategory;
-    message: string;
-    email: string;
-  }) => Promise<void>;
-};
 
 const categories: FeedbackCategory[] = ['Product', 'Bug', 'Idea'];
 
 export default function FeedbackPage() {
-  const { actions } = useLxPage<PageData, PageActions>();
+  const { actions } = useLxPage<typeof page>();
   const [category, setCategory] = React.useState<FeedbackCategory>('Product');
   const [message, setMessage] = React.useState('');
   const [email, setEmail] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
+  const [submitting, startSubmit] = React.useTransition();
 
-  const submit = React.useCallback(async () => {
+  const submit = () => {
     if (!message.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      await actions.submitFeedback({ category, message, email });
-    } finally {
-      setSubmitting(false);
-    }
-  }, [actions, category, email, message, submitting]);
+    // Logic toasts its own outcome; a failed call leaves the form for another try.
+    startSubmit(() => actions.submitFeedback({ category, message, email }).catch(() => {}));
+  };
 
   return (
     <main className="feedback-page min-h-screen bg-surface-50 px-5 pt-6 text-gray-900">

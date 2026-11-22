@@ -1,6 +1,6 @@
-import { type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
+import type { View } from './$types';
 
 const titles: Record<string, string> = {
   appBaseInfo: 'app.getBaseInfo',

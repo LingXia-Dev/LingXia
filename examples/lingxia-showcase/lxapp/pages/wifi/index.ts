@@ -50,7 +50,6 @@ export default definePage({
     }
 
     const actions = {
-      async goBack() { await lx.nav.back(); },
       // Wi-Fi starts on the first call.
       async getWifiList() {
         if (page.data.scanning) return;

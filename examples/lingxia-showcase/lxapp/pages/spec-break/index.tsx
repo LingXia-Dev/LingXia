@@ -1,9 +1,8 @@
 import '../../theme/index.css';
-import { useView } from '@lingxia/view';
 import { Button } from '../../shared/ui';
+import type { View } from './$types';
 
-export function render() {
-  const { data, actions } = useView();
+export function render({ data, actions }: View) {
   if (data.broken) throw new Error('spec-break: this update fails on purpose');
   return (
     <page data-testid="spec-break" className="bg-canvas items-center justify-center gap-4 p-6">

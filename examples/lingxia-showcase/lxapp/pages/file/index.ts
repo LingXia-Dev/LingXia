@@ -1,8 +1,6 @@
 import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
-import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
 import { errorMessage } from "../../shared/lib/errors";
 
-type InputEventDetail = { value: string };
 function detectFileType(url: string | undefined) {
   if (!url) return "";
   const lowerUrl = url.toLowerCase();
@@ -78,25 +76,23 @@ export default definePage({
     // The running download, for pause and resume; the stream below owns its outcome.
     let pdfTask: DownloadTask | null = null;
     const actions = {
-      async goBack() { await lx.nav.back(); },
       selectSection({ section }: { section: string }) {
         if (section === "openFile" || section === "chooseFile") {
           page.update(d => { d.activeDemo = section; });
         }
       },
-      onPdfUrlInput(event: NativeEvent<InputEventDetail>) {
-        page.update(d => { d.pdfUrl = eventDetail(event).value || ""; });
+      setPdfUrl({ url }: { url: string }) {
+        page.update(d => { d.pdfUrl = url; });
       },
-      onOfficeUrlInput(event: NativeEvent<InputEventDetail>) {
-        const value = eventDetail(event).value || "";
-        const detectedType = detectFileType(value);
+      setOfficeUrl({ url }: { url: string }) {
+        const detectedType = detectFileType(url);
         page.update(d => {
-          d.officeUrl = value;
+          d.officeUrl = url;
           d.officeFileType = detectedType || page.data.officeFileType;
         });
       },
-      onOfficeFileTypeInput(event: NativeEvent<InputEventDetail>) {
-        page.update(d => { d.officeFileType = eventDetail(event).value || ""; });
+      setOfficeFileType({ type }: { type: string }) {
+        page.update(d => { d.officeFileType = type; });
       },
       /** Download the PDF as one stream of progress, then open it; the stream returns the path. */
       async *downloadPdf(url: string): AsyncGenerator<TransferProgress, { path: string }> {

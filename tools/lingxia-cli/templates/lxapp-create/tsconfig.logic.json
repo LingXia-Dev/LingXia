@@ -13,7 +13,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./.lingxia/logic-decl",
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@lingxia/page-types/*": ["./.lingxia/types/*"]

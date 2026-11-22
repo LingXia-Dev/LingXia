@@ -1,7 +1,7 @@
 // Bridge delivery repro: the logic layer emits a gap-free tick sequence; the
 // view audits what actually arrives. Any missing seq means the transport
 // dropped a frame (Apple downstream queue loss around connect/replace).
-import { definePage, lx } from '@lingxia/logic';
+import { definePage } from '@lingxia/logic';
 
 export interface Tick {
   seq: number;
@@ -31,7 +31,6 @@ export default definePage({
   } satisfies BootstrapData,
   setup(page) {
     const actions = {
-      async goBack() { await lx.nav.back(); },
       // Called immediately when the View mounts. On Apple this request is queued
       // until helloAck + ready have arrived, so it exposes a stalled bootstrap.
       onBootstrapProbe(params: { nonce: number; viewSentAt: number }): BootstrapProbe {

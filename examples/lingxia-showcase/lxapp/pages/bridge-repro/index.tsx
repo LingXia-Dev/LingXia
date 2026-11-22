@@ -1,25 +1,18 @@
-import { useLocal, useRequest, useStream, type View } from '@lingxia/view';
+import { useAction, useLocal, useRequest, useStream } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Page } from '../../shared/ui';
+import type { View } from './$types';
 
-type BootstrapProbe = { nonce: number; viewSentAt: number; logicReceivedAt: number; bootstrapMarker: string };
-type Tick = { seq: number; ts: number };
-type Actions = {
-  onBootstrapProbe(params: { nonce: number; viewSentAt: number }): Promise<BootstrapProbe>;
-  onTicks(): import('@lingxia/view').Stream<Tick, void>;
-  onEcho(params: { n: number }): Promise<{ n: number; ts: number }>;
-};
-type Data = { bootstrapMarker?: string; logicLoadedAt?: number };
 type Audit = { last: number; received: number; gaps: string[]; firstAtMs: number | null };
 
 const verdictClass = (value: string) =>
   `px-4 py-3 rounded-lg text-lg font-bold ${value === 'PASS' ? 'bg-success text-on-success' : value === 'FAIL' ? 'bg-danger text-on-danger' : 'bg-surface-sunken text-text'}`;
 
-export function render({ data, actions }: View<Actions, Data>) {
+export function render({ data, actions }: View) {
   const started = useLocal('started', Date.now());
   const echoNumber = useLocal('echo-number', 0);
   const echoLog = useLocal('echo-log', 'echo: -');
-  const echoPending = useLocal('echo-pending', false);
+  const echoCall = useAction(actions.onEcho);
   const probe = useRequest('bootstrap', actions.onBootstrapProbe, { nonce: 1, viewSentAt: started.value });
   const audit = useLocal<Audit>('audit', { last: 0, received: 0, gaps: [], firstAtMs: null });
   const ticks = useStream('ticks', actions.onTicks, {
@@ -33,19 +26,13 @@ export function render({ data, actions }: View<Actions, Data>) {
   const snapshotReady = data.bootstrapMarker === 'initial logic snapshot received';
   const passed = snapshotReady && probe.value?.nonce === 1 && probe.value.bootstrapMarker === data.bootstrapMarker;
   const echo = async () => {
-    if (echoPending.value) return;
+    if (echoCall.pending) return;
     const n = echoNumber.value + 1,
       sent = Date.now();
     echoNumber.set(n);
-    echoPending.set(true);
-    try {
-      const result = await actions.onEcho({ n });
-      echoLog.set(result.n === n ? `echo #${n} ok in ${Date.now() - sent}ms` : `echo #${n} FAILED: nonce mismatch`);
-    } catch (error) {
-      echoLog.set(`echo #${n} FAILED: ${String(error)}`);
-    } finally {
-      echoPending.set(false);
-    }
+    const outcome = await echoCall.run({ n });
+    if (!outcome.ok) echoLog.set(`echo #${n} FAILED: ${outcome.error.message}`);
+    else echoLog.set(outcome.value.n === n ? `echo #${n} ok in ${Date.now() - sent}ms` : `echo #${n} FAILED: nonce mismatch`);
   };
   const bootstrapVerdict = passed ? 'PASS' : probe.error ? 'FAIL' : 'WAITING';
   const streamVerdict = audit.value.gaps.length || ticks.error ? 'FAIL' : audit.value.received ? 'PASS' : 'WAITING';
@@ -92,7 +79,7 @@ export function render({ data, actions }: View<Actions, Data>) {
         <Button variant="destructive" testId="btn-reconnect" onClick={() => echoLog.set('reconnect hook unavailable (GPU transport)')}>
           Reconnect
         </Button>
-        <Button testId="btn-echo" disabled={echoPending.value} onClick={echo}>
+        <Button testId="btn-echo" disabled={echoCall.pending} onClick={echo}>
           Echo
         </Button>
         <Button

@@ -1,5 +1,16 @@
-import type { ChartData, Message, ChatChunk, SendMessage } from "../../shared/stream-types";
-import { definePage, lx } from '@lingxia/logic';
+import type { ChartData } from "../../shared/stream-types";
+import { definePage } from '@lingxia/logic';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  chart?: ChartData;
+}
+
+type ChatChunk =
+  | { type: 'token'; token: string }
+  | { type: 'artifact'; chart: ChartData };
 
 interface MockScenario {
   text: string;
@@ -131,8 +142,7 @@ export default definePage({
   },
   setup(page) {
     const actions = {
-      async goBack() { await lx.nav.back(); },
-      async *onSend(params: SendMessage): AsyncGenerator<ChatChunk, void> {
+      async *onSend(params: { text: string; chartKind?: string }): AsyncGenerator<ChatChunk, void> {
         const text = (params?.text ?? '').trim();
         if (!text || page.data.isStreaming) return;
 

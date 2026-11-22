@@ -1,5 +1,5 @@
 // The View catalogue's one demo shape, the group page built from it and the index of groups.
-import { useView, type Child, type Component } from '@lingxia/view';
+import { useView, type Child, type Component, type LinkTarget } from '@lingxia/view';
 import { Icon, Page } from '../ui';
 import { chrome, count, demos, groups, missing, say, type GroupId, type Words } from './text';
 
@@ -62,22 +62,25 @@ export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Re
 }
 
 /** The catalogue's first screen: one row per group, with what it holds and how many demos. */
-export function Index({ onOpen }: { onOpen: (page: string) => void }) {
+export function Index() {
   const t = useSay();
   return (
     <Page testId="view-index" data={useInsets()}>
       <text className="px-4 text-sm text-muted">{t(chrome.index)}</text>
       <view role="list" className="rounded-2xl border border-line bg-surface divide-y divide-line">
         {groups.map(group => (
-          <button key={group.id} role="listitem" data-testid={`view-index-${group.id}`} onClick={() => onOpen(group.page)}
-            className="flex-row items-center gap-3 px-4 py-3 active:bg-surface-sunken">
-            <view className="grow basis-0 min-w-0 gap-0.5 items-start">
-              <text className="text-base font-medium text-start">{t(group.title)}</text>
-              <text className="text-sm text-muted text-start">{t(group.line)}</text>
-            </view>
-            <text data-testid={`view-index-${group.id}-count`} data-count={String(Object.keys(demos[group.id]).length)} className="text-sm text-muted tabular-nums">{t(count(Object.keys(demos[group.id]).length))}</text>
-            <Icon name="chevron" className="w-4 h-4 text-faint rtl:-scale-x-100" />
-          </button>
+          <view key={group.id} role="listitem">
+            {/* `as`: a target whose page is a union of names does not type-check as one target yet. */}
+            <link data-testid={`view-index-${group.id}`} to={{ page: group.page } as LinkTarget}
+              className="flex-row items-center gap-3 px-4 py-3 active:bg-surface-sunken">
+              <view className="grow basis-0 min-w-0 gap-0.5 items-start">
+                <text className="text-base font-medium text-start">{t(group.title)}</text>
+                <text className="text-sm text-muted text-start">{t(group.line)}</text>
+              </view>
+              <text data-testid={`view-index-${group.id}-count`} data-count={String(Object.keys(demos[group.id]).length)} className="text-sm text-muted tabular-nums">{t(count(Object.keys(demos[group.id]).length))}</text>
+              <Icon name="chevron" className="w-4 h-4 text-faint rtl:-scale-x-100" />
+            </link>
+          </view>
         ))}
       </view>
     </Page>

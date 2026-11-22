@@ -1,10 +1,27 @@
 import { definePage } from '@lingxia/logic';
-import type { PickerField, PickerPage, PickerTab } from './contract';
+
+export type PickerTab = 'selector' | 'multiSelector' | 'time' | 'date';
+
+/** One stored value per demo picker. */
+interface PickerValues {
+  coffee?: string;
+  location?: string[];
+  multiTime: string[];
+  time?: string;
+  year?: string;
+  month?: string;
+  date?: string;
+  dateRange?: string[];
+}
+
+type PickerField = keyof PickerValues;
+
+type PickerData = PickerValues & { activeTab: PickerTab };
 
 const TABS: readonly PickerTab[] = ['selector', 'multiSelector', 'time', 'date'];
 const LIST_FIELDS: readonly PickerField[] = ['location', 'multiTime', 'dateRange'];
 
-const initialData: PickerPage['data'] = { activeTab: 'selector', multiTime: ['09', '30'] };
+const initialData: PickerData = { activeTab: 'selector', multiTime: ['09', '30'] };
 
 export default definePage({
   data: initialData,

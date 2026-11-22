@@ -1,6 +1,7 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
+import type { View } from './$types';
 
 const titles: Record<string, string> = {
   device: 'Device information',

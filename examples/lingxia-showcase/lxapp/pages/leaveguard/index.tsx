@@ -1,8 +1,8 @@
-import { useLeaveGuard, useLocal, type View } from '@lingxia/view';
+import { useLeaveGuard, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, Field, Page, Section } from '../../shared/ui';
 
-export function render(_view: View) {
+export function render() {
   const saved = useLocal('saved', '');
   const draft = useLocal('draft', '');
   const dirty = draft.value !== saved.value;

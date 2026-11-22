@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLxPage, useLxStream } from '@lingxia/react';
-import type { BootstrapProbe, BridgeReproPage as BridgeRepro } from './contract';
+import type page from './index.ts';
+import type { BootstrapProbe } from './index.ts';
 import '../../tailwind.css';
 
 interface AuditState {
@@ -39,7 +40,7 @@ function forceReconnect(): boolean {
 
 export default function BridgeReproPage() {
   const viewStartedAt = useRef(Date.now()).current;
-  const { data, actions } = useLxPage<BridgeRepro['data'], BridgeRepro['actions']>();
+  const { data, actions } = useLxPage<typeof page>();
 
   const [bridgeReady, setBridgeReady] = useState(isBridgeReady);
   const [probe, setProbe] = useState<BootstrapProbe | null>(null);

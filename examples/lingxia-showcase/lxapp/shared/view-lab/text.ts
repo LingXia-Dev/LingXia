@@ -5,7 +5,7 @@ import { resolveDisplayLanguage } from '../display-language';
 export type Words = { en: string; zh: string };
 export type GroupId = 'drawing' | 'media' | 'controls' | 'layout' | 'text' | 'input' | 'gestures' | 'pointer' | 'overlays' | 'scrolling' | 'motion' | 'appearance' | 'accessibility';
 
-export const groups: readonly { id: GroupId; page: string; title: Words; line: Words }[] = [
+export const groups: readonly { id: GroupId; page: `view-${GroupId}`; title: Words; line: Words }[] = [
   { id: 'drawing', page: 'view-drawing', title: { en: 'Drawing', zh: '绘制' }, line: { en: 'Gradients, borders, rings, vectors and transforms', zh: '渐变、边框、描边环、矢量与变换' } },
   { id: 'media', page: 'view-media', title: { en: 'Media & data', zh: '媒体与数据' }, line: { en: 'Video, embedded web pages, plots and progress', zh: '视频、内嵌网页、图表与进度' } },
   { id: 'controls', page: 'view-controls', title: { en: 'Controls & composition', zh: '控件与组合' }, line: { en: 'Radios, sliders, switches and selects; values a tree shares', zh: '单选、滑块、开关与下拉选择；整棵树共享的值' } },

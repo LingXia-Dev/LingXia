@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as echarts from 'echarts';
-import { useLxHost, useLxPage, useLxStream, type DeepReadonly } from '@lingxia/react';
-import type { ChartData, ChatPage as Chat, Message } from './contract';
+import { LxNavigator, useLxHost, useLxPage, useLxStream, type DeepReadonly } from '@lingxia/react';
+import type page from './index.ts';
+import type { ChartData, Message } from './index.ts';
 import {
   chartAxisColors,
   getResolvedTheme,
@@ -380,7 +381,7 @@ export default function ChatPage() {
   // host-declared surface the LingXia Runner does not provide.
   const { os, runner } = useLxHost();
   const desktopHost = os === 'macos' || os === 'windows';
-  const { data, actions } = useLxPage<Chat['data'], Chat['actions']>();
+  const { data, actions } = useLxPage<typeof page>();
 
   const { messages } = data;
   const [inputText, setInputText] = useState('');
@@ -417,12 +418,12 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col bg-surface-100" style={{ height: '100vh' }} data-testid="stream-page">
       <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
-        <button
-          onClick={() => actions.onOpenAbout()}
+        <LxNavigator
+          to={{ page: 'about' }}
           className="text-xs text-blue-600 dark:text-blue-400 px-3 py-1 bg-surface rounded-full shadow-sm active:opacity-70"
         >
           About
-        </button>
+        </LxNavigator>
         {messages.length > 0 && !chat.streaming && (
           <button
             onClick={() => actions.onClear()}

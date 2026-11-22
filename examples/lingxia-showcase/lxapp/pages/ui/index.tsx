@@ -1,6 +1,7 @@
-import { useLocal, type Child, type Local, type View } from '@lingxia/view';
+import { useLocal, type Child, type LinkTarget, type Local } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Field, InfoList, InfoRow, Page, Section, Segmented } from '../../shared/ui';
+import type { View } from './$types';
 
 type Data = Record<string, any>;
 type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;
@@ -298,13 +299,13 @@ function Tabbar({ data, actions }: Pane) {
   );
 }
 
-function NavLink({ testId, label, description, onClick }: { testId: string; label: string; description?: string; onClick: () => unknown }) {
+// A row that navigates: `to` for a plain jump, `onClick` when Logic has to decide.
+function NavLink({ testId, label, description, to, onClick }: { testId: string; label: string; description?: string; to?: LinkTarget; onClick?: () => void }) {
   return (
-    <button
+    <link
       data-testid={testId}
-      onClick={() => {
-        void onClick();
-      }}
+      to={to}
+      onClick={onClick}
       className="px-4 py-3.5 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
     >
       <view className="flex-row items-center justify-between gap-3">
@@ -314,7 +315,7 @@ function NavLink({ testId, label, description, onClick }: { testId: string; labe
         </view>
         <text className="text-lg text-muted">›</text>
       </view>
-    </button>
+    </link>
   );
 }
 
@@ -353,11 +354,11 @@ function Navigation({ data, actions }: Pane) {
               testId="ui-navigate-to"
               label="Push this page again"
               description="Each entry creates a fresh instance. Watch the stack grow."
-              onClick={() => actions.demoNavigateTo()}
+              onClick={() => void actions.demoNavigateTo()}
             />
-            <NavLink testId="ui-navigate-back" label="Back to previous page" onClick={() => actions.demoNavigateBack()} />
-            <NavLink testId="ui-redirect-to" label="Replace this page (redirectTo)" onClick={() => actions.demoRedirectTo()} />
-            <NavLink testId="ui-switch-tab" label="Jump to Tab page" onClick={() => actions.demoSwitchTab()} />
+            <NavLink testId="ui-navigate-back" label="Back to previous page" to={{ back: 1 }} />
+            <NavLink testId="ui-redirect-to" label="Replace this page (redirectTo)" to={{ page: 'ui', params: { type: 'navigation' }, replace: true }} />
+            <NavLink testId="ui-switch-tab" label="Jump to Tab page" to={{ tab: 'home' }} />
           </Card>
           <Section title="Logic instance" description="Push this page again to create a new Page instance with a new tag.">
             <InfoList>

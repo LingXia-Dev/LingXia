@@ -1,6 +1,7 @@
 import React from 'react';
 import { LxMediaSwiper, useLxPage, type LxMediaSwiperRef } from '@lingxia/react';
-import type { Animation, Direction, ObjectFit, SwiperPage as Swiper } from './contract';
+import type page from './index.ts';
+import type { Animation, Direction, ObjectFit } from './index.ts';
 import '../../tailwind.css';
 
 const fits: ObjectFit[] = ['cover', 'contain', 'fill'];
@@ -9,7 +10,7 @@ const directions: Direction[] = ['horizontal', 'vertical'];
 const peekPresets: number[] = [0, 16, 32, 48];
 
 export default function SwiperPage() {
-  const { data, actions } = useLxPage<Swiper['data'], Swiper['actions']>();
+  const { data, actions } = useLxPage<typeof page>();
   const swiperRef = React.useRef<LxMediaSwiperRef | null>(null);
   const { items, index, autoplay, loop, dots, objectFit, animation, direction, peek, eventLog, busy } = data;
   const {

@@ -1,8 +1,11 @@
-import { List, measureFrames, useLocal, type FrameStats, type View } from '@lingxia/view';
+import { List, measureFrames, useLocal, type FrameStats } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Page, Section } from '../../shared/ui';
-import type { PerfActions, PerfData, PerfRow, PerfScene } from '../../shared/perf-types';
 import { judgeFrames, judgeInput, judgeReveal, type Verdict } from '../../shared/perf-judge';
+import type { View } from './$types';
+
+type PerfScene = Exclude<View['data']['running'], ''>;
+type PerfRow = View['data']['rows'][number];
 
 // A standard workload per pipeline stage. "Run budget" drives one scene for 5 s and
 // judges the frames the renderer measured; specs drive the same scenes with real gestures.
@@ -50,7 +53,7 @@ function judge(spec: SceneSpec, stats: FrameStats): Verdict {
   return judgeFrames(stats);
 }
 
-export function render({ data, actions }: View<PerfActions, PerfData>) {
+export function render({ data, actions }: View) {
   const scene = useLocal<PerfScene>('scene', 'list');
   const counts = useLocal<Record<string, number>>('counts', {});
   const result = useLocal('result', '');
@@ -111,7 +114,7 @@ function stall() {
   while (Date.now() < until) { /* spin */ }
 }
 
-function Workload({ scene, count, data }: { scene: PerfScene; count: number; data: View<PerfActions, PerfData>['data'] }) {
+function Workload({ scene, count, data }: { scene: PerfScene; count: number; data: View['data'] }) {
   const active = data.running === scene;
   switch (scene) {
     case 'list': return <LongList count={count} step={-1} glide={active} />;

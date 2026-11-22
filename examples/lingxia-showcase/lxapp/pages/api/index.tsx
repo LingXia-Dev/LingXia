@@ -1,41 +1,38 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal, type Child, type LinkTarget } from '@lingxia/view';
 import { Card, Icon, Page, type IconName } from '../../shared/ui';
 import '../../theme/index.css';
+import type { View } from './$types';
 
-type Entry = { id: string; label: string; action: string; payload?: Record<string, string>; description?: string; desktopOnly?: boolean };
+// An entry either opens a page (`LinkTarget`) or runs an action that decides for itself.
+type Go = LinkTarget | ((actions: View['actions']) => Promise<unknown>);
+type Entry = { id: string; label: string; go: Go; description?: string; desktopOnly?: boolean };
 type Group = { id: IconName; label: string; entries: Entry[] };
-const entry = (id: string, label: string, action: string, payload?: Record<string, string>, description?: string): Entry => ({
-  id,
-  label,
-  action,
-  payload,
-  description,
-});
-const ui = (type: string, label: string) => entry(`api-ui-${type}`, label, 'openUi', { type });
-const device = (id: string, type: string, label: string) => entry(`api-device-${id}`, label, 'openDevice', { type });
-const media = (id: string, type: string, label: string) => entry(`api-media-${id}`, label, 'openMedia', { type });
+const entry = (id: string, label: string, go: Go, description?: string): Entry => ({ id, label, go, description });
+const ui = (type: string, label: string) => entry(`api-ui-${type}`, label, { page: 'ui', params: { type } });
+const device = (id: string, type: string, label: string) => entry(`api-device-${id}`, label, { page: 'device', params: { type } });
+const media = (id: string, type: string, label: string) => entry(`api-media-${id}`, label, { page: 'media', params: { type } });
 
 export const groups: Group[] = [
   {
     id: 'cloud',
     label: 'Cloud',
     entries: [
-      entry('api-other-app', 'Open another app', 'openOtherApp'),
-      entry('api-cloud-auth', 'Cloud authentication', 'openCloud', { type: 'auth' }),
-      entry('api-cloud-mqtt', 'Cloud MQTT', 'openCloud', { type: 'mqtt' }),
-      entry('api-cloud-functions', 'Cloud functions', 'openCloud', { type: 'functions' }),
+      entry('api-other-app', 'Open another app', a => a.openOtherApp()),
+      entry('api-cloud-auth', 'Cloud authentication', { page: 'cloud', params: { type: 'auth' } }),
+      entry('api-cloud-mqtt', 'Cloud MQTT', { page: 'cloud', params: { type: 'mqtt' } }),
+      entry('api-cloud-functions', 'Cloud functions', { page: 'cloud', params: { type: 'functions' } }),
     ],
   },
   {
     id: 'bridge',
     label: 'Bridge',
     entries: [
-      entry('api-stream', 'Stream', 'openStream', undefined, 'Async generator streaming with a chat demo'),
-      entry('api-channel', 'Channel', 'openChannel', undefined, 'Bidirectional sessions with a live ticker'),
-      entry('api-bridge', 'Bridge resilience', 'openBridge', undefined, 'Startup, streaming, reconnect and teardown'),
+      entry('api-stream', 'Stream', { page: 'stream' }, 'Async generator streaming with a chat demo'),
+      entry('api-channel', 'Channel', { page: 'channel' }, 'Bidirectional sessions with a live ticker'),
+      entry('api-bridge', 'Bridge resilience', { page: 'bridge-repro' }, 'Startup, streaming, reconnect and teardown'),
     ],
   },
-  { id: 'navigation', label: 'Navigation', entries: [entry('api-deepseek', 'Open DeepSeek', 'openDeepSeek')] },
+  { id: 'navigation', label: 'Navigation', entries: [entry('api-deepseek', 'Open DeepSeek', a => a.openDeepSeek())] },
   {
     id: 'interface',
     label: 'User Interface',
@@ -47,30 +44,29 @@ export const groups: Group[] = [
       ui('tabbar', 'Tab bar'),
       ui('appearance', 'Appearance'),
       ui('actionsheet', 'Action sheet'),
-      entry('api-surface', 'Surface', 'openUi', { type: 'surface' }),
-      entry('api-refresh', 'Pull to refresh', 'openRefresh'),
+      entry('api-surface', 'Surface', { page: 'ui', params: { type: 'surface' } }),
+      entry('api-refresh', 'Pull to refresh', { page: 'pullToRefresh' }),
     ],
   },
   {
     id: 'system',
     label: 'System',
     entries: [
-      entry('api-system-appBaseInfo', 'App information', 'openSystem', { type: 'appBaseInfo' }),
-      entry('api-system-systemSetting', 'System settings', 'openSystem', { type: 'systemSetting' }),
-      entry('api-system-autostart', 'Launch at login', 'openSystem', { type: 'autostart' }, 'Start automatically on macOS or Windows'),
+      entry('api-system-appBaseInfo', 'App information', { page: 'system', params: { type: 'appBaseInfo' } }),
+      entry('api-system-systemSetting', 'System settings', { page: 'system', params: { type: 'systemSetting' } }),
+      entry('api-system-autostart', 'Launch at login', { page: 'system', params: { type: 'autostart' } }, 'Start automatically on macOS or Windows'),
       entry(
         'api-system-notification',
         'Local notifications',
-        'openSystem',
-        { type: 'notification' },
+        { page: 'system', params: { type: 'notification' } },
         'Post and cancel notifications from the Control app',
       ),
-      entry('api-system-cache', 'Product cache', 'openSystem', { type: 'cache' }, 'View and clear app caches from the home app'),
+      entry('api-system-cache', 'Product cache', { page: 'system', params: { type: 'cache' } }, 'View and clear app caches from the home app'),
       {
-        ...entry('api-system-banner', 'Desktop banner', 'openSystem', { type: 'banner' }, 'A corner notification with optional actions'),
+        ...entry('api-system-banner', 'Desktop banner', { page: 'system', params: { type: 'banner' } }, 'A corner notification with optional actions'),
         desktopOnly: true,
       },
-      entry('api-exit', 'Exit app', 'exitApp', undefined, 'Confirm before closing the app'),
+      entry('api-exit', 'Exit app', a => a.exitApp(), 'Confirm before closing the app'),
     ],
   },
   {
@@ -85,10 +81,10 @@ export const groups: Group[] = [
       device('network', 'networkType', 'Network Type'),
       device('localIP', 'localIP', 'Local IP Address'),
       device('networkStatus', 'networkStatus', 'Network Status Listener'),
-      entry('api-wifi', 'WiFi', 'openWifi'),
-      entry('api-share', 'Share', 'openShare', undefined, 'Share text, pages, images and files'),
-      entry('api-clipboard', 'Clipboard', 'openClipboard', undefined, 'Copy and paste text and images'),
-      entry('api-leaveguard', 'Leave confirmation', 'openLeaveGuard', undefined, 'Ask before discarding unsaved changes'),
+      entry('api-wifi', 'WiFi', { page: 'wifi' }),
+      entry('api-share', 'Share', { page: 'share' }, 'Share text, pages, images and files'),
+      entry('api-clipboard', 'Clipboard', { page: 'clipboard' }, 'Copy and paste text and images'),
+      entry('api-leaveguard', 'Leave confirmation', { page: 'leaveGuard' }, 'Ask before discarding unsaved changes'),
     ],
   },
   {
@@ -107,11 +103,22 @@ export const groups: Group[] = [
     id: 'file',
     label: 'File',
     entries: [
-      entry('api-file', 'Open file', 'openFile', { section: 'openFile' }),
-      entry('api-choose-file', 'Choose file', 'openFile', { section: 'chooseFile' }),
+      entry('api-file', 'Open file', { page: 'file', params: { section: 'openFile' } }),
+      entry('api-choose-file', 'Choose file', { page: 'file', params: { section: 'chooseFile' } }),
     ],
   },
 ];
+
+const rowClass = 'px-4 py-3 min-h-11 rounded-none bg-transparent text-text text-left active:bg-surface-sunken';
+
+function EntryRow({ item, actions, children }: { item: Entry; actions: View['actions']; children: Child }) {
+  const go = item.go;
+  return typeof go === 'function' ? (
+    <button data-testid={item.id} onClick={() => void go(actions)} className={rowClass}>{children}</button>
+  ) : (
+    <link data-testid={item.id} to={go} className={rowClass}>{children}</link>
+  );
+}
 
 export function render({ data, actions, env }: View) {
   const expanded = useLocal<Record<string, boolean>>('api-sections', {});
@@ -143,12 +150,7 @@ export function render({ data, actions, env }: View) {
                 {group.entries
                   .filter(item => !item.desktopOnly || desktop)
                   .map(item => (
-                    <button
-                      key={item.id}
-                      data-testid={item.id}
-                      onClick={() => actions[item.action](item.payload)}
-                      className="px-4 py-3 min-h-11 rounded-none bg-transparent text-text text-left active:bg-surface-sunken"
-                    >
+                    <EntryRow key={item.id} item={item} actions={actions}>
                       <view className="flex-row items-center gap-3">
                         <view className="grow basis-0 min-w-0 gap-1">
                           <text className="text-sm">{item.label}</text>
@@ -156,23 +158,23 @@ export function render({ data, actions, env }: View) {
                         </view>
                         <Icon name={item.id === 'api-exit' ? 'exit' : 'chevron'} className="w-4 h-4 text-muted" />
                       </view>
-                    </button>
+                    </EntryRow>
                   ))}
               </view>
             )}
           </Card>
         ))}
       <Card className="">
-        <button
+        <link
           data-testid="api-location"
-          onClick={() => actions.openLocation()}
+          to={{ page: 'location' }}
           className="px-4 py-4 rounded-2xl bg-transparent text-text text-left active:bg-surface-sunken"
         >
           <view className="flex-row items-center justify-between">
             <text className="text-base">Location</text>
             <Icon name="location" />
           </view>
-        </button>
+        </link>
       </Card>
     </Page>
   );

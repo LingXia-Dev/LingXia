@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLxChannel, useLxPage } from '@lingxia/react';
-import type { TickerPage as Ticker } from './contract';
+import type page from './index.ts';
 import '../../tailwind.css';
 
 interface TickerSnapshot {
@@ -11,7 +11,7 @@ interface TickerSnapshot {
 }
 
 export default function ChannelPage() {
-  const { actions } = useLxPage<Ticker['data'], Ticker['actions']>();
+  const { actions } = useLxPage<typeof page>();
   const session = useLxChannel(actions.tickerSession);
 
   const [symbols, setSymbols] = useState<string[]>([]);

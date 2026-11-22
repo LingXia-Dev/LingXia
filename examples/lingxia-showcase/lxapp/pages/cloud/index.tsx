@@ -1,6 +1,6 @@
-import { type View } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, EmptyState, InfoList, InfoRow, Page, Section } from '../../shared/ui';
+import type { View } from './$types';
 
 type Data = Record<string, any>;
 type Actions = Record<string, (payload?: unknown) => Promise<unknown>>;

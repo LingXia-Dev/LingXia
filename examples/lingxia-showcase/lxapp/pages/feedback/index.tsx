@@ -1,6 +1,7 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, ErrorState, Field, Header, Page, Segmented } from '../../shared/ui';
+import type { View } from './$types';
 
 const categories = ['Product', 'Bug', 'Idea'].map(label => ({ value: label.toLowerCase(), label }));
 

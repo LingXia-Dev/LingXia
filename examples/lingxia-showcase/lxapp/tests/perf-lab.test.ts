@@ -1,10 +1,10 @@
 import { expect, test, type Fixture, type TestMetrics } from '@lingxia/test';
-import type { PageDefinition } from '@lingxia/types/page';
-import type { DriveRequest, PerfActions, PerfData } from '../shared/perf-types';
+import type perfLab from '../pages/perf-lab/index';
+import type { DriveRequest, PerfScene } from '../pages/perf-lab/index';
 import { judgeFrames, judgeInput, judgeReveal, REVEAL_P95_MS, TICK_SHARE } from '../shared/perf-judge';
 import { skipWhenCovered } from './covered.js';
 
-type PerfLab = PageDefinition<PerfData, PerfActions>;
+type PerfLab = typeof perfLab;
 
 // Perf lab: one workload per pipeline stage, judged with the bar the page's "Run budget" uses
 // (shared/perf-judge.ts). A scene that misses it fails here too; each spec attaches what it
@@ -23,7 +23,7 @@ async function scene(t: Fixture, name: string, count: number) {
  *  scene never does. */
 async function runBudget(t: Fixture, scene: string, count: number): Promise<TestMetrics> {
   const page = await t.app.page<PerfLab>({ name: 'perf-lab' });
-  const request: DriveRequest = { scene: scene as DriveRequest['scene'], ms: 5000, count };
+  const request: DriveRequest = { scene: scene as PerfScene, ms: 5000, count };
   // The window opens before the call: a driver that sets state every tick keeps Logic busy,
   // and the action's reply can arrive only once the run is over.
   const started = Date.now();

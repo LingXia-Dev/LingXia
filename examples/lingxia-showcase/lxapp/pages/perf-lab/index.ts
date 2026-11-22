@@ -1,5 +1,27 @@
-import type { BenchRequest, BenchResult, DriveRequest, PerfData, PerfRow } from '../../shared/perf-types';
 import { definePage, lx } from '@lingxia/logic';
+
+export type PerfScene = 'list' | 'data' | 'state' | 'animation' | 'fill' | 'text' | 'touch' | 'transition' | 'images';
+/** One Logic-owned record of the state scene. */
+interface PerfRow { id: number; title: string; note: string; count: number; done: boolean }
+interface PerfData {
+  /** The scene a run drives, or '' between runs. */
+  running: PerfScene | '';
+  /** Ticks since the run started, about one per display frame. */
+  tick: number;
+  /** Flips every 600 ms during an animation run. */
+  phase: boolean;
+  /** The state scene's records, empty otherwise. */
+  rows: PerfRow[];
+  /** The bridge benchmark's write payload; null otherwise. */
+  record?: Record<string, string | number> | null;
+}
+export interface DriveRequest { scene: PerfScene; ms: number; count: number }
+interface BenchRequest { writes: number; requests: number; calls: number }
+/**
+ * `setDataUs`: Logic time of one unawaited `setData` of a 20-field record, µs.
+ * `requestsSkipped`: why no `ui.*` requests ran (mobile shows toasts natively, not in the View).
+ */
+interface BenchResult { setDataUs: number; requestsSkipped?: string }
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -9,9 +31,11 @@ export default definePage({
   data: { running: '', tick: 0, phase: false, rows: [] } as PerfData,
   setup(page) {
     const actions = {
+      /** Start driving `scene` for `ms`; returns at once. */
       drive(request: DriveRequest) {
         void actions.run(request);
       },
+      /** Answers at once with the current tick: an action reply racing a running scene's writes. */
       ping() {
         return page.data.tick;
       },

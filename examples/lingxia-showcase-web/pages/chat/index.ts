@@ -1,5 +1,23 @@
 import { definePage, lx } from '@lingxia/logic';
-import type { ChartData, ChatChunk, ChatPage } from './contract';
+
+export interface ChartData {
+  kind: 'bar' | 'line' | 'pie';
+  title: string;
+  series: { label: string; value: number }[];
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  chart?: ChartData;
+}
+
+type ChatChunk =
+  | { type: 'token'; token: string }
+  | { type: 'artifact'; chart: ChartData };
+
+interface ChatData { messages: Message[]; isStreaming: boolean }
 
 interface MockScenario {
   text: string;
@@ -123,7 +141,7 @@ async function* mockChatStream(): AsyncGenerator<ChatChunk, void> {
   }
 }
 
-const initialData: ChatPage['data'] = { messages: [], isStreaming: false };
+const initialData: ChatData = { messages: [], isStreaming: false };
 
 export default definePage({
   data: initialData,
@@ -162,9 +180,6 @@ export default definePage({
       onClear() {
         if (page.data.isStreaming) return;
         page.update(d => { d.messages = []; });
-      },
-      async onOpenAbout() {
-        await lx.nav.go({ page: 'about' }).opened;
       },
       // Desktop only (the View gates it): the host declares the terminal and its placement.
       async onOpenTerminal() {

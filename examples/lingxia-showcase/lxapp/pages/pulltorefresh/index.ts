@@ -1,4 +1,4 @@
-import { definePage, lx } from '@lingxia/logic';
+import { definePage } from '@lingxia/logic';
 export default definePage({
   data: {
     refreshCount: 0,
@@ -10,7 +10,6 @@ export default definePage({
     // settles it here, standing in for a fetch.
     let finishRefresh: (() => void) | null = null;
     const actions = {
-      async goBack() { await lx.nav.back(); },
       startRefresh() {
         page.refresh();
       },

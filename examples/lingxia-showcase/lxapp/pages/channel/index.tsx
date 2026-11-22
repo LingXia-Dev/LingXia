@@ -1,13 +1,13 @@
-import { useChannel, useLocal, type ChannelEndpoint, type View } from '@lingxia/view';
+import { useChannel, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, ErrorState, Page, Section } from '../../shared/ui';
-import type { ClientCommand, ServerMessage, TickerUpdate } from '../../shared/channel-types';
+import type { TickerUpdate } from '../../shared/channel-types';
+import type { View } from './$types';
 
-type Actions = { tickerSession(params: Record<string, never>, channel: ChannelEndpoint<ServerMessage, ClientCommand>): void };
 const changeClass = (value: number) => (value < 0 ? 'text-danger' : value > 0 ? 'text-success' : 'text-muted');
 const formatChange = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
 
-export function render({ actions }: View<Actions>) {
+export function render({ actions }: View) {
   const symbols = useLocal<string[]>('symbols', []);
   const symbol = useLocal('symbol', '');
   const history = useLocal<TickerUpdate[]>('history', []);

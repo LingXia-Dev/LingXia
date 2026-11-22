@@ -1,8 +1,9 @@
-import { List, useVideo, type View } from '@lingxia/view';
+import { List, useVideo } from '@lingxia/view';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
 import { VIDEO_LABELS } from '../../shared/video-labels';
+import type { View } from './$types';
 
 const clips = ['public/video/pattern.mp4', 'public/video/fractal.mp4'];
 // Every third row plays a clip under a text overlay, so a scroll moves video between plain rows.

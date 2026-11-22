@@ -1,6 +1,29 @@
 import { definePage, lx } from '@lingxia/logic';
 import { errorMessage } from "../../shared/lib/errors";
-import type { Animation, Direction, ObjectFit, SwiperItem, SwiperPage } from './contract';
+
+interface SwiperItem {
+  id: string;
+  type: 'image' | 'video';
+  src: string;
+}
+
+export type ObjectFit = 'cover' | 'contain' | 'fill';
+export type Animation = 'slide' | 'none';
+export type Direction = 'horizontal' | 'vertical';
+
+interface SwiperData {
+  items: SwiperItem[];
+  index: number;
+  autoplay: boolean;
+  loop: boolean;
+  dots: boolean;
+  objectFit: ObjectFit;
+  animation: Animation;
+  direction: Direction;
+  peek: number;
+  eventLog: string;
+  busy: boolean;
+}
 
 let nextItemId = 1;
 function makeId() {
@@ -18,7 +41,7 @@ const FITS: readonly ObjectFit[] = ["cover", "contain", "fill"];
 const ANIMATIONS: readonly Animation[] = ["slide", "none"];
 const DIRECTIONS: readonly Direction[] = ["horizontal", "vertical"];
 
-const initialData: SwiperPage['data'] = {
+const initialData: SwiperData = {
   items: [],
   index: 0,
   autoplay: false,

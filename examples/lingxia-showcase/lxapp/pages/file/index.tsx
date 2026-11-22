@@ -1,20 +1,9 @@
-import { useLocal, useStream, type Stream, type View } from '@lingxia/view';
+import { useLocal, useStream } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, InfoList, InfoRow, Page, Section } from '../../shared/ui';
+import type { View } from './$types';
 
 type Progress = { readonly loaded: number; readonly total?: number; readonly fraction?: number };
-type InputEvent = { detail: { value: string } };
-type Actions = {
-  downloadPdf(url: string): Stream<Progress, { path: string }>;
-  pausePdf(): Promise<void>;
-  resumePdf(): Promise<void>;
-  onPdfUrlInput(event: InputEvent): Promise<void>;
-  onOfficeUrlInput(event: InputEvent): Promise<void>;
-  onOfficeFileTypeInput(event: InputEvent): Promise<void>;
-  openOffice(): Promise<void>;
-  chooseFileFromUserCache(): Promise<void>;
-  openChosenFile(): Promise<void>;
-};
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -45,7 +34,7 @@ function UrlField({
 }: {
   testId: string;
   label: string;
-  value: unknown;
+  value: string;
   placeholder: string;
   disabled: boolean;
   onInput: (value: string) => unknown;
@@ -56,7 +45,7 @@ function UrlField({
       <input
         data-testid={testId}
         aria-label={label}
-        value={String(value || '')}
+        value={value}
         disabled={disabled}
         placeholder={placeholder}
         onInput={value => {
@@ -68,7 +57,7 @@ function UrlField({
   );
 }
 
-export function render({ data, actions }: View<Actions>) {
+export function render({ data, actions }: View) {
   const progress = useLocal<Progress | null>('pdf-progress', null);
   const paused = useLocal('pdf-paused', false);
   const download = useStream('pdf', actions.downloadPdf, { onData: value => progress.set(value) });
@@ -115,15 +104,15 @@ export function render({ data, actions }: View<Actions>) {
               value={data.pdfUrl}
               placeholder="Enter PDF URL"
               disabled={streaming}
-              onInput={value => actions.onPdfUrlInput({ detail: { value } })}
+              onInput={url => actions.setPdfUrl({ url })}
             />
             <Button
               testId="file-pdf-open"
-              disabled={streaming || !String(data.pdfUrl || '').trim()}
+              disabled={streaming || !data.pdfUrl.trim()}
               onClick={() => {
                 progress.set(null);
                 paused.set(false);
-                download.start(String(data.pdfUrl || ''));
+                download.start(data.pdfUrl);
               }}
             >
               {pdfLabel}
@@ -164,28 +153,28 @@ export function render({ data, actions }: View<Actions>) {
               label="File URL"
               value={data.officeUrl}
               placeholder="Enter file URL"
-              disabled={!!data.isOfficeFetching}
-              onInput={value => actions.onOfficeUrlInput({ detail: { value } })}
+              disabled={data.isOfficeFetching}
+              onInput={url => actions.setOfficeUrl({ url })}
             />
             <UrlField
               testId="file-office-type"
               label="File Type"
               value={data.officeFileType}
               placeholder="e.g., docx, xlsx, pptx"
-              disabled={!!data.isOfficeFetching}
-              onInput={value => actions.onOfficeFileTypeInput({ detail: { value } })}
+              disabled={data.isOfficeFetching}
+              onInput={type => actions.setOfficeFileType({ type })}
             />
             <text className="text-xs text-muted">Auto-detected from URL or enter manually</text>
             <Button
               testId="file-office-open"
-              disabled={!!data.isOfficeFetching || !String(data.officeUrl || '').trim() || !String(data.officeFileType || '').trim()}
+              disabled={data.isOfficeFetching || !data.officeUrl.trim() || !data.officeFileType.trim()}
               onClick={() => actions.openOffice()}
             >
               {data.isOfficeFetching ? 'Fetching and Opening File...' : 'Fetch and Open File'}
             </Button>
             {!!data.officeStatusText && (
               <text data-testid="file-office-status" className="p-3 rounded-xl border border-accent/20 bg-accent-soft text-xs">
-                {String(data.officeStatusText)}
+                {data.officeStatusText}
               </text>
             )}
           </Section>

@@ -1,13 +1,26 @@
 // Bridge delivery check: Logic emits a gap-free tick sequence and the View
 // audits what arrives. A missing seq means the transport dropped a frame.
 import { definePage } from '@lingxia/logic';
-import type { BootstrapProbe, BridgeReproPage, Tick } from './contract';
+
+interface Tick {
+  seq: number;
+  ts: number;
+}
+
+export interface BootstrapProbe {
+  nonce: number;
+  viewSentAt: number;
+  logicReceivedAt: number;
+  bootstrapMarker: string;
+}
+
+interface BridgeReproData { bootstrapMarker: string; logicLoadedAt: number }
 
 const TICK_INTERVAL_MS = 50;
 const TICK_LIMIT = 200000;
 const LOGIC_LOADED_AT = Date.now();
 
-const initialData: BridgeReproPage['data'] = {
+const initialData: BridgeReproData = {
   bootstrapMarker: 'initial logic snapshot received',
   logicLoadedAt: LOGIC_LOADED_AT,
 };

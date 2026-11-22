@@ -85,8 +85,7 @@ pub(super) fn create_lxapp_from_template(
                 ));
             }
             process_template_dir(&gpu_template_dir, target_dir, &vars)?;
-            // A GPU View reads its types from `./$types`, generated from the Logic, and has no CSS.
-            remove_if_exists(&target_dir.join("pages/home/contract.ts"))?;
+            // A GPU View has no CSS.
             remove_if_exists(&target_dir.join("app.css"))?;
         }
         if !app_service.enabled() {
@@ -170,7 +169,7 @@ pub(super) fn build_framework_vars(
             "@lingxia/react",
             "tsx",
             "react-jsx",
-            r#""pages/**/*.tsx", "pages/**/contract.ts""#,
+            r#""pages/**/*.tsx""#,
             "#root",
             ",\n    \"react\": \"^19.0.0\",\n    \"react-dom\": \"^19.0.0\"",
             "\"@types/react\": \"^19.0.0\",\n    \"@types/react-dom\": \"^19.0.0\",\n    ",
@@ -826,6 +825,32 @@ mod tests {
         assert!(
             s.contains("@vitejs/plugin-react"),
             "must include react vite plugin"
+        );
+    }
+
+    #[test]
+    fn the_react_scaffold_types_its_view_from_its_logic() {
+        let output = tempdir().unwrap();
+        let app = output.path().join("myapp");
+        create_lxapp_from_template(
+            &app,
+            "myapp",
+            "myapp",
+            "My App",
+            "react",
+            AppServiceMode::Enabled,
+            &dummy_versions(),
+            "0.16.0",
+            None,
+        )
+        .unwrap();
+        let view = fs::read_to_string(app.join("pages/home/index.tsx")).unwrap();
+        assert!(view.contains("useLxPage<typeof page>()"), "{view}");
+        assert!(!app.join("pages/home/contract.ts").exists());
+        let config = fs::read_to_string(app.join("tsconfig.view.json")).unwrap();
+        assert!(
+            config.contains(r#""path": "./tsconfig.logic.json""#),
+            "{config}"
         );
     }
 

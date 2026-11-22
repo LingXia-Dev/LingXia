@@ -1,4 +1,4 @@
-export type { Todo } from '../todo-types';
+export interface Todo { id: string; text: string; completed: boolean }
 
 // Common todo utilities
 

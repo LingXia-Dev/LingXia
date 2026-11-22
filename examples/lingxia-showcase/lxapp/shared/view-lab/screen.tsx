@@ -83,13 +83,12 @@ export function ScreenFacts() {
 }
 
 export function ScreenDemo() {
-  const { actions } = useView();
   const t = useSay();
   return (
     <>
       <ScreenFacts />
       <view className="flex-row">
-        <Button testId="lab-env-open" size="sm" variant="secondary" onClick={() => actions.open({ page: 'view-screen' })}>{t(labels.envOpen)}</Button>
+        <Button testId="lab-env-open" size="sm" variant="secondary" to={{ page: 'view-screen' }}>{t(labels.envOpen)}</Button>
       </view>
     </>
   );

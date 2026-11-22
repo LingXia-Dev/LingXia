@@ -1,14 +1,8 @@
 import { definePage, lx, type TypedStorage } from '@lingxia/logic';
 import { generateTodoId, validateTodoText, getCurrentTimestamp, type Todo } from '../../shared/lib/todo-utils';
-import type {
-  TodoActions,
-  TodoFilter as Filter,
-  TodoSnapshot as Snapshot,
-  TodoPageData,
-  TodoTextRequest,
-  TodoIdRequest,
-  TodoFilterRequest,
-} from '../../shared/todo-types';
+
+type Filter = 'all' | 'active' | 'completed';
+interface Snapshot { todos: Todo[]; currentFilter: Filter; lastUpdated: string }
 interface TodoStorage {
   'todo:state': Snapshot;
   'todo:todos': Todo[];
@@ -17,7 +11,7 @@ interface TodoStorage {
 }
 const filterValue = (value: unknown): Filter => (value === 'active' || value === 'completed' ? value : 'all');
 const initial = (): Snapshot => ({ todos: [], currentFilter: 'all', lastUpdated: getCurrentTimestamp() });
-const initialData: TodoPageData = { ...initial(), loading: true, loadError: '' };
+const initialData = { ...initial(), loading: true, loadError: '' };
 
 export default definePage({
   data: initialData,
@@ -90,11 +84,11 @@ export default definePage({
           _loading = false;
         }
       },
-      async addTodo({ text }: Partial<TodoTextRequest> = {}) {
+      async addTodo({ text }: { text?: string } = {}) {
         if (!validateTodoText(text)) return;
         await helpers.commit({ todos: [...page.data.todos, { id: generateTodoId(), text: text.trim(), completed: false }] });
       },
-      async toggleTodo({ id }: Partial<TodoIdRequest> = {}) {
+      async toggleTodo({ id }: { id?: string } = {}) {
         if (!id) return;
         await helpers.commit({ todos: page.data.todos.map(todo => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)) });
       },
@@ -102,22 +96,18 @@ export default definePage({
         const completed = !page.data.todos.every(todo => todo.completed);
         await helpers.commit({ todos: page.data.todos.map(todo => ({ ...todo, completed })) });
       },
-      async deleteTodo({ id }: Partial<TodoIdRequest> = {}) {
+      async deleteTodo({ id }: { id?: string } = {}) {
         if (id) await helpers.commit({ todos: page.data.todos.filter(todo => todo.id !== id) });
       },
       async clearCompleted() {
         await helpers.commit({ todos: page.data.todos.filter(todo => !todo.completed) });
       },
-      async setFilter({ filter }: Partial<TodoFilterRequest> = {}) {
+      async setFilter({ filter }: { filter?: Filter } = {}) {
         if (filter && ['all', 'active', 'completed'].includes(filter)) await helpers.commit({ currentFilter: filterValue(filter) });
-      },
-      async goBack() {
-        await lx.nav.back();
       },
     };
     return {
       async onLoad() {
-        void (actions satisfies TodoActions);
         await actions.reload();
       },
       onUnload() {

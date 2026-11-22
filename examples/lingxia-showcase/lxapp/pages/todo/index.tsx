@@ -1,7 +1,9 @@
-import { List, useLocal, type View } from '@lingxia/view';
+import { List, useAction, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, EmptyState, ErrorState, Icon, Segmented } from '../../shared/ui';
-import type { Todo, TodoActions, TodoFilter, TodoPageData } from '../../shared/todo-types';
+import type { View } from './$types';
+
+type Todo = View['data']['todos'][number];
 
 const filters = [
   { value: 'all', label: 'All' },
@@ -43,35 +45,26 @@ function TodoRow({ todo, blocked, onToggle, onDelete }: { todo: Todo; blocked: b
   );
 }
 
-export function render({ data, actions, env }: View<TodoActions, TodoPageData>) {
+export function render({ data, actions, env }: View) {
   const draft = useLocal('draft', '');
-  const busy = useLocal('busy', false);
-  const failure = useLocal('error', '');
-  const blocked = busy.value || data.loading || !!data.loadError;
+  const add = useAction(actions.addTodo);
+  const toggle = useAction(actions.toggleTodo);
+  const remove = useAction(actions.deleteTodo);
+  const toggleAll = useAction(actions.toggleAll);
+  const clearCompleted = useAction(actions.clearCompleted);
+  const setFilter = useAction(actions.setFilter);
+  const writes = [add, toggle, remove, toggleAll, clearCompleted, setFilter];
+  const blocked = writes.some(write => write.pending) || data.loading || !!data.loadError;
+  const failure = writes.some(write => write.error) ? 'Could not save this change. Please try again.' : '';
   const { todos, currentFilter: filter } = data;
   const completed = todos.filter(todo => todo.completed).length;
   const active = todos.length - completed;
   const visible = todos.filter(todo => filter === 'all' || (filter === 'completed' ? todo.completed : !todo.completed));
   const wide = env.viewport.width > 768;
-  const run = async (action: () => Promise<unknown>) => {
-    if (blocked) return;
-    busy.set(true);
-    failure.set('');
-    try {
-      await action();
-    } catch {
-      failure.set('Could not save this change. Please try again.');
-    } finally {
-      busy.set(false);
-    }
-  };
-  const add = () => {
+  const submit = async () => {
     const text = draft.value.trim();
-    if (text)
-      void run(async () => {
-        await actions.addTodo({ text });
-        draft.set('');
-      });
+    if (!text || blocked) return;
+    if ((await add.run({ text })).ok) draft.set('');
   };
   return (
     <page data-testid="todo-page" className="bg-canvas text-text items-center px-3 py-6 gap-4">
@@ -86,7 +79,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
               data-testid="todo-toggle-all"
               aria-label={active ? 'Mark all as complete' : 'Mark all as active'}
               disabled={blocked}
-              onClick={() => run(() => actions.toggleAll())}
+              onClick={() => toggleAll.run()}
               className="w-12 h-12 p-3 bg-transparent"
             >
               <Icon name="expand" className={active ? 'w-6 h-6 text-faint' : 'w-6 h-6 text-accent'} />
@@ -101,7 +94,7 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             bind={draft}
             disabled={blocked}
             placeholder="What needs to be done?"
-            onSubmit={add}
+            onSubmit={submit}
             className="grow basis-0 min-w-0 min-h-14 py-4 pr-4 bg-transparent text-base placeholder:text-muted focus:bg-surface-sunken/40"
           />
         </view>
@@ -110,10 +103,10 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
             Loading saved tasks...
           </text>
         )}
-        {(data.loadError || failure.value) && (
+        {(data.loadError || failure) && (
           <view className="px-4 pb-3 gap-2">
             <ErrorState testId="todo-load-error" error={data.loadError || null} onRetry={() => actions.reload()} />
-            <ErrorState testId="todo-error" error={failure.value || null} />
+            <ErrorState testId="todo-error" error={failure || null} />
           </view>
         )}
         {!todos.length && !data.loading && !data.loadError ? (
@@ -128,8 +121,8 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
               <TodoRow
                 todo={todo}
                 blocked={blocked}
-                onToggle={() => run(() => actions.toggleTodo({ id: todo.id }))}
-                onDelete={() => run(() => actions.deleteTodo({ id: todo.id }))}
+                onToggle={() => toggle.run({ id: todo.id })}
+                onDelete={() => remove.run({ id: todo.id })}
               />
             )}
           />
@@ -148,10 +141,10 @@ export function render({ data, actions, env }: View<TodoActions, TodoPageData>) 
               value={filter}
               options={filters}
               disabled={blocked}
-              onChange={(value: TodoFilter) => run(() => actions.setFilter({ filter: value }))}
+              onChange={value => setFilter.run({ filter: value })}
             />
             {completed > 0 && (
-              <Button variant="ghost" testId="todo-clear-completed" disabled={blocked} onClick={() => run(() => actions.clearCompleted())}>
+              <Button variant="ghost" testId="todo-clear-completed" disabled={blocked} onClick={() => clearCompleted.run()}>
                 Clear completed
               </Button>
             )}

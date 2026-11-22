@@ -1,31 +1,21 @@
-import { useLocal, type View } from '@lingxia/view';
+import { useAction, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Notice, Segmented } from '../../shared/ui';
 import { resolveDisplayLanguage } from '../../shared/display-language';
-import type { HomeActions, HomePageData } from '../../shared/home-types';
 import { getMessages } from './messages';
+import type { View } from './$types';
 
-export function render({ data, actions, env }: View<HomeActions, HomePageData>) {
+export function render({ data, actions, env }: View) {
   const name = useLocal('home-name', '');
-  const sending = useLocal('home-sending', false);
-  const failed = useLocal('home-error', false);
+  const send = useAction(actions.greet);
   const photo = useLocal('home-photo', false);
   const language = resolveDisplayLanguage(data.displayLanguage.resolved ?? env.displayLanguage);
   const { t } = getMessages(language);
   const trimmed = name.value.trim();
-  const greet = async () => {
-    if (!trimmed || sending.value) return;
-    sending.set(true);
-    failed.set(false);
-    try {
-      await actions.greet({ name: trimmed });
-    } catch {
-      failed.set(true);
-    } finally {
-      sending.set(false);
-    }
+  const greet = () => {
+    if (trimmed && !send.pending) send.run({ name: trimmed });
   };
-  const greeting = failed.value ? t('sendFailed') : data.greeting;
+  const greeting = send.error ? t('sendFailed') : data.greeting;
   return (
     <page data-testid="home-page" className="bg-canvas">
       {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
@@ -47,16 +37,16 @@ export function render({ data, actions, env }: View<HomeActions, HomePageData>) 
               data-controlled-value={name.value}
               aria-label={t('nameLabel')}
               bind={name}
-              disabled={sending.value}
+              disabled={send.pending}
               placeholder={t('namePlaceholder')}
               onSubmit={greet}
               className="min-h-11 px-4 py-2 rounded-lg bg-surface-sunken text-[17px] placeholder:text-muted focus:ring-2 focus:ring-focus/30"
             />
-            <Button testId="home-greet" onClick={greet} disabled={!trimmed || sending.value} className="min-h-12 text-[17px] font-semibold">
-              {sending.value ? t('sending') : t('sayHello')}
+            <Button testId="home-greet" onClick={greet} disabled={!trimmed || send.pending} className="min-h-12 text-[17px] font-semibold">
+              {send.pending ? t('sending') : t('sayHello')}
             </Button>
             {Boolean(greeting) && (
-              <Notice tone={failed.value ? 'error' : 'success'} testId="home-greeting">
+              <Notice tone={send.error ? 'error' : 'success'} testId="home-greeting">
                 {greeting}
               </Notice>
             )}

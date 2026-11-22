@@ -1,11 +1,10 @@
 import { labData } from '../../shared/lib/lab-data';
-import { definePage, lx } from '@lingxia/logic';
+import { definePage } from '@lingxia/logic';
 
 export default definePage({
   data: { ...labData(), lang: '', group: '', spec: '', packagedMedia: false, dipped: false },
   setup(thisPage) {
     const actions = {
-      async open({ page }: { page: keyof LxAppPages }) { await lx.nav.go({ page }).opened; },
       interrupt() {
         thisPage.update(d => { d.dipped = true; });
         setTimeout(() => thisPage.update(d => { d.dipped = false; }), 100);

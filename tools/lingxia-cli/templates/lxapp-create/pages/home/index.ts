@@ -1,8 +1,7 @@
 import { definePage } from '@lingxia/logic';
-import type { HomePage } from './contract';
 
 export default definePage({
-  data: { greeting: '', greetCount: 0 } satisfies HomePage['data'],
+  data: { greeting: '', greetCount: 0 },
   setup: page => ({
     actions: {
       async greet({ name }: { name: string }) {

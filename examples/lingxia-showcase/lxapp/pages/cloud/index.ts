@@ -1,5 +1,5 @@
 import { authApi, cloudApi } from "../../shared/lib/provider";
-import { definePage, lx } from '@lingxia/logic';
+import { definePage } from '@lingxia/logic';
 const CLOUD_PAGE_TYPES = {
   AUTH: "auth",
   MQTT: "mqtt",
@@ -352,7 +352,6 @@ export default definePage({
       },
     };
     const actions = {
-      async goBack() { await lx.nav.back(); },
       async loginInteractive() {
         page.update(d => { d.status = "Starting login..."; });
         try {

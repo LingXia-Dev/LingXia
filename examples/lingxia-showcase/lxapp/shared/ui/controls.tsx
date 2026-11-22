@@ -1,4 +1,4 @@
-import type { Child, Local } from '@lingxia/view';
+import type { Child, LinkTarget, Local } from '@lingxia/view';
 import type { DataAttributes } from './layout';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
@@ -18,6 +18,7 @@ export function Button({
   label,
   disabled,
   onClick,
+  to,
   className = '',
   children,
 }: {
@@ -28,9 +29,19 @@ export function Button({
   label?: string;
   disabled?: boolean;
   onClick?: () => unknown;
+  /** Navigates without an action: the button's look, a link's semantics. */
+  to?: LinkTarget;
   className?: string;
   children?: Child;
 }) {
+  const look = `${sizes[size]} ${variants[variant]} font-medium text-center items-center-safe justify-center-safe disabled:opacity-40 ${className}`;
+  if (to) {
+    return (
+      <link data-testid={testId} {...data} aria-label={label} disabled={disabled} to={to} className={look}>
+        {children}
+      </link>
+    );
+  }
   return (
     <button
       data-testid={testId}
@@ -44,7 +55,7 @@ export function Button({
             }
           : undefined
       }
-      className={`${sizes[size]} ${variants[variant]} font-medium text-center items-center-safe justify-center-safe disabled:opacity-40 ${className}`}
+      className={look}
     >
       {children}
     </button>
