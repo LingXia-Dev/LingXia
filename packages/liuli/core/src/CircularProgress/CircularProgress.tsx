@@ -1,16 +1,15 @@
 import { childrenToArray, createContext, cx, useBox, useContext, type Box, type Child, type VectorPath } from '@lingxia/view';
-import type { ProgressBarTone } from '../ProgressBar/ProgressBar';
+import type { ProgressAmount, ProgressBarTone } from '../ProgressBar/ProgressBar';
+import { amount } from '../internal/amount';
 import { circularProgressRecipe as r } from './CircularProgress.recipe';
 
 export type CircularProgressSize = 'sm' | 'md' | 'lg';
 
-export interface CircularProgressProps {
+export type CircularProgressProps = ProgressAmount & CircularProgressOwnProps;
+
+interface CircularProgressOwnProps {
   /** The accessible name: what is in progress ("Uploading", "Daily goal"). Not drawn. */
   label: string;
-  /** The amount done, from 0 to `max`. Leave it out while the amount is unknown. */
-  value?: number;
-  /** @default 100 */
-  max?: number;
   /** The amount as the app words it ("72%", "3 of 8"): read in place of a percentage, and drawn in the middle at `md` and `lg`. */
   valueLabel?: string;
   /** 24, 48 or 80 px. `sm` has no room for words. @default 'md' */
@@ -47,8 +46,8 @@ const holes = new WeakMap<Box, number>();
 const fits = (words: Box) => words.value === null || !holes.has(words) || Math.hypot(words.value.width, words.value.height) <= holes.get(words)!;
 
 /** How much of a task is done, as a ring: for a tile, a row or a button where a bar has no room. */
-export function CircularProgress({ label, value, max = 100, valueLabel, size = 'md', tone = 'accent', className, 'data-testid': testId }: CircularProgressProps) {
-  const now = value === undefined ? undefined : Math.min(max, Math.max(0, value));
+export function CircularProgress({ label, value, max: ownMax = 100, progress, valueLabel, size = 'md', tone = 'accent', className, 'data-testid': testId }: CircularProgressProps) {
+  const { now, max } = amount(value, ownMax, progress);
   const slot = useContext(SlotContext);
   const own = useBox('words');
   const words = slot?.words ?? own;

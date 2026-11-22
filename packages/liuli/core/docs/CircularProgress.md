@@ -8,7 +8,7 @@ How much is done, as a ring. Status: preview.
 import { CircularProgress, CircularProgressGroup } from '@liulidesign/core/CircularProgress';
 ```
 
-CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.
+CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. A transfer gives its streamed progress as `progress`, as on ProgressBar. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.
 
 ## Examples
 
@@ -86,9 +86,10 @@ export function Tones() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The accessible name: what is in progress ("Uploading", "Daily goal"). Not drawn. |
 | `value` | `number` |  | The amount done, from 0 to `max`. Leave it out while the amount is unknown. |
 | `max` | `number` | `100` |  |
+| `progress` | `TransferProgress \| null` |  | A transfer's latest progress, such as `useStream(...).data`: determinate while it has a `fraction`, unknown while it has none or is `null` before the first value. The accessible value is in bytes when the total is known. |
+| `label` (required) | `string` |  | The accessible name: what is in progress ("Uploading", "Daily goal"). Not drawn. |
 | `valueLabel` | `string` |  | The amount as the app words it ("72%", "3 of 8"): read in place of a percentage, and drawn in the middle at `md` and `lg`. |
 | `size` | `CircularProgressSize` | `'md'` | 24, 48 or 80 px. `sm` has no room for words. |
 | `tone` | `ProgressBarTone` | `'accent'` | The arc's colour, for a ring that is a meter. |

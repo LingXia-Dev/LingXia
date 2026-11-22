@@ -7,8 +7,8 @@ export const doc: ComponentDoc = {
   since: '2026-11-12',
   summary: 'How much of a task is done, or a spinner while the amount is unknown',
   description:
-    'ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say ' +
-    'the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. ' +
+    'ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it draws marching dashes to say ' +
+    'the task is running. A transfer gives its streamed progress, `useStream(...).data`, as `progress` in place of `value`. Spinner, from the same import, is the small form for a wait inside a control or a list. ' +
     'Both are drawn from plain views and vectors, so they look the same on every OS.',
   keywords: ['progress', 'progressbar', 'loading', 'spinner', 'busy', 'upload', 'download', 'meter', 'indeterminate'],
   propsType: 'ProgressBarProps',
@@ -17,7 +17,8 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'header', required: false, description: 'The label row: `label`, then `valueLabel`; hidden from assistive tech, since the bar carries both.' },
     { part: 'track', required: true, description: 'The bar itself, and the element assistive tech reports as a progress bar.' },
-    { part: 'fill', required: true, description: 'The amount done, as a share of the track width; a sweeping segment while the amount is unknown.' },
+    { part: 'fill', required: true, description: 'The amount done, as a share of the track width.' },
+    { part: 'dashes', required: false, description: 'While the amount is unknown: whole dashes half a dash apart, a pattern no amount draws; three track heights long, at most 12, longer on a wide track.' },
     { part: 'spinner', required: false, description: "Spinner's spinning arc." },
     { part: 'loading', required: false, description: 'A Spinner with its label shown: the ring over its label, centred; the words are drawn only, the name is read once.' },
   ],
@@ -42,7 +43,7 @@ export const doc: ComponentDoc = {
     notes: [
       'Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.',
       'Without `value` it reports no value, which assistive tech reads as busy.',
-      'With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.',
+      'Dashes mean the task is running and its amount is unknown; they march one period per 1.3 s in the reading direction.', 'With reduced motion the same dashes stand still; the spin stops and the arc stays drawn.',
       'Spinner is a progressbar named by its `label`, with nothing drawn but the arc.',
     ],
   },
@@ -61,6 +62,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Determinate', title: 'An amount the app words' },
     { name: 'Indeterminate', title: 'Running, amount unknown' },
+    { name: 'Transfer', title: 'A transfer, as it streams' },
     { name: 'Compact', title: 'Thin, under its own heading' },
     { name: 'Spinners', title: 'Spinner sizes' },
     { name: 'LoadingMessage', title: 'A spinner that says what is loading' },
@@ -79,6 +81,7 @@ export const doc: ComponentDoc = {
       hero: 'Determinate',
       variants: [
         { name: 'Indeterminate', title: 'Amount unknown' },
+        { name: 'Transfer', title: 'A transfer\'s progress' },
         { name: 'Spinners', title: 'Spinner, for a short wait' },
         { name: 'LoadingMessage', title: 'With its label shown, for a panel or a page that is loading' },
         { name: 'Tones', title: 'A tone for a meter: reached, nearly full, over' },

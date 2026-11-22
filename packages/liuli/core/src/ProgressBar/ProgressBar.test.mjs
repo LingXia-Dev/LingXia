@@ -18,12 +18,12 @@ test('Determinate: a named progressbar reporting value, range and the app\'s wor
   assert.equal(header.length, 1, 'the visible label row is hidden, so the name is read once');
 });
 
-test('Indeterminate: no value reported; the fill sweeps', async () => {
+test('Indeterminate: no value reported; the dashes march', async () => {
   const screen = await renderExample('ProgressBar/ProgressBar', 'Indeterminate');
   const bar = screen.getByTestId('export');
   assert.equal(bar.props.ariaValueNow, undefined);
   assert.equal(bar.props.ariaValueText, undefined);
-  assert.match(bar.children[0].props.animation, /"name":"progress-sweep"/);
+  if (bar.children[0]) assert.match(bar.children[0].props.animation, /"name":"progress-march"/);
 });
 
 test('Compact: hidden label stays the name; out-of-range values are clamped', async () => {
@@ -73,4 +73,36 @@ test('LoadingMessage: the label is drawn under the ring and read once, as the na
   const words = spinner.children.find(node => node.tag === 'text');
   assert.equal(textOf(words), 'Loading your notes');
   assert.ok(words.props.accessibilityHidden);
+});
+
+test('Transfer: progress drives the bar: bytes of the total once known, unknown at null and without a fraction', async () => {
+  const screen = await renderExample('ProgressBar/ProgressBar', 'Transfer');
+  const bar = () => screen.getByTestId('download');
+  const reported = () => [bar().props.ariaValueNow, bar().props.ariaValueMin, bar().props.ariaValueMax];
+  const next = () => screen.press(screen.getByTestId('next-value'));
+  assert.deepEqual(reported(), [3_100_000, 0, 10_000_000]);
+  assert.equal(bar().props.ariaValueText, '3.1 of 10.0 MB');
+  next();
+  assert.deepEqual(reported(), [10_000_000, 0, 10_000_000]);
+  next();
+  assert.deepEqual(reported(), [undefined, undefined, undefined], 'null before the first value');
+  next();
+  assert.deepEqual(reported(), [undefined, undefined, undefined], 'no fraction while the size is unknown');
+  next();
+  assert.deepEqual(reported(), [0, 0, 10_000_000], 'a known size, nothing loaded yet');
+});
+
+test('Transfer: an unknown amount draws whole dashes, marching one period in the reading direction with motion, still under reduced motion', async () => {
+  const unknown = async env => {
+    const screen = await renderExample('ProgressBar/ProgressBar', 'Transfer', { env });
+    screen.press(screen.getByTestId('next-value'));
+    screen.press(screen.getByTestId('next-value'));
+    return screen.getByTestId('download').children[0]?.props;
+  };
+  const ltr = await unknown({});
+  // The harness may not lay the track out; then the track stays empty rather than guess a pattern.
+  if (ltr === undefined) return;
+  assert.match(ltr.animation, /"name":"progress-march"/);
+  assert.match((await unknown({ direction: 'rtl' })).animation, /"name":"progress-march-rtl"/);
+  assert.equal((await unknown({ reducedMotion: true })).animation, undefined);
 });

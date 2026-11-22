@@ -3673,7 +3673,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "How much is done, as a ring",
-      "description": "CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.",
+      "description": "CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app's own words in the middle at the larger sizes. Without `value` the arc spins: the task is running and its length is unknown. A transfer gives its streamed progress as `progress`, as on ProgressBar. Use it where a ProgressBar has no room: a tile, the end of a row. CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.",
       "keywords": [
         "progress",
         "ring",
@@ -3684,12 +3684,6 @@
         "donut"
       ],
       "props": [
-        {
-          "name": "label",
-          "type": "string",
-          "required": true,
-          "description": "The accessible name: what is in progress (\"Uploading\", \"Daily goal\"). Not drawn."
-        },
         {
           "name": "value",
           "type": "number",
@@ -3702,6 +3696,18 @@
           "required": false,
           "description": "",
           "default": "100"
+        },
+        {
+          "name": "progress",
+          "type": "TransferProgress | null",
+          "required": false,
+          "description": "A transfer's latest progress, such as `useStream(...).data`: determinate while it has a `fraction`, unknown while it has none or is `null` before the first value. The accessible value is in bytes when the total is known."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The accessible name: what is in progress (\"Uploading\", \"Daily goal\"). Not drawn."
         },
         {
           "name": "valueLabel",
@@ -13272,7 +13278,7 @@
       "status": "preview",
       "since": "2026-11-12",
       "summary": "How much of a task is done, or a spinner while the amount is unknown",
-      "description": "ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.",
+      "description": "ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it draws marching dashes to say the task is running. A transfer gives its streamed progress, `useStream(...).data`, as `progress` in place of `value`. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.",
       "keywords": [
         "progress",
         "progressbar",
@@ -13286,19 +13292,6 @@
       ],
       "props": [
         {
-          "name": "label",
-          "type": "string",
-          "required": true,
-          "description": "The visible label and the accessible name: what is in progress (\"Uploading photos\")."
-        },
-        {
-          "name": "isLabelHidden",
-          "type": "boolean",
-          "required": false,
-          "description": "Hides the label row; `label` stays the name.",
-          "default": "false"
-        },
-        {
           "name": "value",
           "type": "number",
           "required": false,
@@ -13310,6 +13303,25 @@
           "required": false,
           "description": "",
           "default": "100"
+        },
+        {
+          "name": "progress",
+          "type": "TransferProgress | null",
+          "required": false,
+          "description": "A transfer's latest progress, such as `useStream(...).data`: determinate while it has a `fraction`, unknown while it has none or is `null` before the first value. The accessible value is in bytes when the total is known."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the accessible name: what is in progress (\"Uploading photos\")."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the label row; `label` stays the name.",
+          "default": "false"
         },
         {
           "name": "valueLabel",
@@ -13394,6 +13406,7 @@
         "value": "text",
         "track": "view",
         "fill": "view",
+        "dashes": "view",
         "spinner": "vector",
         "loading": "view"
       },
@@ -13489,7 +13502,8 @@
         "notes": [
           "Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.",
           "Without `value` it reports no value, which assistive tech reads as busy.",
-          "With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.",
+          "Dashes mean the task is running and its amount is unknown; they march one period per 1.3 s in the reading direction.",
+          "With reduced motion the same dashes stand still; the spin stops and the arc stays drawn.",
           "Spinner is a progressbar named by its `label`, with nothing drawn but the arc."
         ]
       },
@@ -13503,6 +13517,11 @@
           "name": "Indeterminate",
           "title": "Running, amount unknown",
           "source": "import { ProgressBar } from '@liulidesign/core/ProgressBar';\n\nexport function Indeterminate() {\n  return <ProgressBar label=\"Preparing the export\" data-testid=\"export\" />;\n}"
+        },
+        {
+          "name": "Transfer",
+          "title": "A transfer, as it streams",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ProgressBar, type TransferProgress } from '@liulidesign/core/ProgressBar';\n\nconst yields: readonly (TransferProgress | null)[] = [\n  null,\n  { loaded: 1_200_000 },\n  { loaded: 0, total: 10_000_000, fraction: 0 },\n  { loaded: 3_100_000, total: 10_000_000, fraction: 0.31 },\n  { loaded: 10_000_000, total: 10_000_000, fraction: 1 },\n];\nconst megabytes = (bytes: number) => (bytes / 1_000_000).toFixed(1);\n\n/** A transfer's progress as it streams: `progress={download.data}`, unknown until a size is known. */\nexport function Transfer() {\n  const step = useLocal('step', 3);\n  const value = yields[step.value];\n  const words = value?.total === undefined ? undefined : `${megabytes(value.loaded)} of ${megabytes(value.total)} MB`;\n  return (\n    <view className=\"gap-3\">\n      <ProgressBar label=\"Downloading the map\" progress={value} valueLabel={words} data-testid=\"download\" />\n      <Button\n        label=\"Next value\"\n        size=\"sm\"\n        width=\"content\"\n        onClick={() => step.set((step.value + 1) % yields.length)}\n        data-testid=\"next-value\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Compact",
@@ -13555,7 +13574,8 @@
         ],
         "tokens": [
           "--text-footnote",
-          "--animate-progress-sweep"
+          "--animate-progress-march",
+          "--animate-progress-march-rtl"
         ],
         "roles": [
           "accent",
@@ -13581,6 +13601,10 @@
             {
               "name": "Indeterminate",
               "title": "Amount unknown"
+            },
+            {
+              "name": "Transfer",
+              "title": "A transfer's progress"
             },
             {
               "name": "Spinners",

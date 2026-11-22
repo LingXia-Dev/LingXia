@@ -5,6 +5,7 @@ import { Field, type FieldOwnProps } from '../Field/Field';
 import { IconButton } from '../IconButton/IconButton';
 import { Glyph } from '../internal/Glyph';
 import { fileInputRecipe as r } from './FileInput.recipe';
+import type { TransferProgress } from '../ProgressBar/ProgressBar';
 
 export interface FileInputFile {
   /** Identifies the file: what `onRemove` carries, and `<testid>-<id>` on its row. */
@@ -12,8 +13,8 @@ export interface FileInputFile {
   name: string;
   /** A line under the name, as the app writes it: "4.2 MB", "Uploading, 64%", "Too large: 25 MB at most". */
   detail?: string;
-  /** Sending: a ring at the end of the row. A number from 0 to 100, or `true` while the amount is unknown. */
-  progress?: number | true;
+  /** Sending: a ring at the end of the row. A number from 0 to 100, `true` while the amount is unknown, or the upload's streamed progress. */
+  progress?: number | true | TransferProgress | null;
   /** Marks the row as failed; say why in `detail`. @default false */
   isFailed?: boolean;
 }
@@ -70,7 +71,7 @@ export function FileInput(props: FileInputProps) {
                     {file.detail !== undefined && <text className={cx(r.detail.base, file.isFailed && r.detail.failed)}>{file.detail}</text>}
                   </view>
                   {file.progress !== undefined && (
-                    <CircularProgress label={progressLabel(file.name)} value={file.progress === true ? undefined : file.progress} size="sm" />
+                    <CircularProgress label={progressLabel(file.name)} {...(typeof file.progress === 'number' ? { value: file.progress } : { progress: file.progress === true ? null : file.progress })} size="sm" />
                   )}
                   <IconButton label={removeLabel(file.name)} icon="close" size="sm" isDisabled={isDisabled} onClick={() => onRemove(file.id)} data-testid={testId && `${testId}-${file.id}-remove`} />
                 </view>

@@ -1116,11 +1116,6 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
-        "name": "label",
-        "required": true,
-        "kind": "text"
-      },
-      {
         "name": "value",
         "required": false,
         "kind": "number"
@@ -1129,6 +1124,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "max",
         "required": false,
         "kind": "number"
+      },
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
       },
       {
         "name": "valueLabel",
@@ -3483,16 +3483,6 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
-        "name": "label",
-        "required": true,
-        "kind": "text"
-      },
-      {
-        "name": "isLabelHidden",
-        "required": false,
-        "kind": "boolean"
-      },
-      {
         "name": "value",
         "required": false,
         "kind": "number"
@@ -3501,6 +3491,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "max",
         "required": false,
         "kind": "number"
+      },
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "valueLabel",

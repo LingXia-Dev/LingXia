@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'How much is done, as a ring',
   description:
     'CircularProgress shows an amount from 0 to `max` as an arc around a ring, with the app\'s own words in the middle at the larger sizes. ' +
-    'Without `value` the arc spins: the task is running and its length is unknown. Use it where a ProgressBar has no room: a tile, the end of a row. ' +
+    'Without `value` the arc spins: the task is running and its length is unknown. A transfer gives its streamed progress as `progress`, as on ProgressBar. Use it where a ProgressBar has no room: a tile, the end of a row. ' +
     'CircularProgressGroup holds rings shown together, its rings as direct children, and keeps their words all inside or all beside.',
   keywords: ['progress', 'ring', 'circular', 'radial', 'meter', 'gauge', 'donut'],
   propsType: 'CircularProgressProps',

@@ -8,7 +8,7 @@ How much of a task is done, or a spinner while the amount is unknown. Status: pr
 import { ProgressBar, Spinner } from '@liulidesign/core/ProgressBar';
 ```
 
-ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it sweeps to say the task is running. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.
+ProgressBar shows a task that runs for a while: an upload, an export, storage used. Without `value` it draws marching dashes to say the task is running. A transfer gives its streamed progress, `useStream(...).data`, as `progress` in place of `value`. Spinner, from the same import, is the small form for a wait inside a control or a list. Both are drawn from plain views and vectors, so they look the same on every OS.
 
 ## Examples
 
@@ -45,6 +45,42 @@ import { ProgressBar } from '@liulidesign/core/ProgressBar';
 
 export function Indeterminate() {
   return <ProgressBar label="Preparing the export" data-testid="export" />;
+}
+```
+
+### A transfer, as it streams
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { ProgressBar, type TransferProgress } from '@liulidesign/core/ProgressBar';
+
+const yields: readonly (TransferProgress | null)[] = [
+  null,
+  { loaded: 1_200_000 },
+  { loaded: 0, total: 10_000_000, fraction: 0 },
+  { loaded: 3_100_000, total: 10_000_000, fraction: 0.31 },
+  { loaded: 10_000_000, total: 10_000_000, fraction: 1 },
+];
+const megabytes = (bytes: number) => (bytes / 1_000_000).toFixed(1);
+
+/** A transfer's progress as it streams: `progress={download.data}`, unknown until a size is known. */
+export function Transfer() {
+  const step = useLocal('step', 3);
+  const value = yields[step.value];
+  const words = value?.total === undefined ? undefined : `${megabytes(value.loaded)} of ${megabytes(value.total)} MB`;
+  return (
+    <view className="gap-3">
+      <ProgressBar label="Downloading the map" progress={value} valueLabel={words} data-testid="download" />
+      <Button
+        label="Next value"
+        size="sm"
+        width="content"
+        onClick={() => step.set((step.value + 1) % yields.length)}
+        data-testid="next-value"
+      />
+    </view>
+  );
 }
 ```
 
@@ -137,10 +173,11 @@ export function SpinnerTones() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `label` (required) | `string` |  | The visible label and the accessible name: what is in progress ("Uploading photos"). |
-| `isLabelHidden` | `boolean` | `false` | Hides the label row; `label` stays the name. |
 | `value` | `number` |  | The amount done, from 0 to `max`. Leave it out while the amount is unknown. |
 | `max` | `number` | `100` |  |
+| `progress` | `TransferProgress \| null` |  | A transfer's latest progress, such as `useStream(...).data`: determinate while it has a `fraction`, unknown while it has none or is `null` before the first value. The accessible value is in bytes when the total is known. |
+| `label` (required) | `string` |  | The visible label and the accessible name: what is in progress ("Uploading photos"). |
+| `isLabelHidden` | `boolean` | `false` | Hides the label row; `label` stays the name. |
 | `valueLabel` | `string` |  | The amount as the app words it ("3 of 8 files"), shown after the label and read in place of a percentage. |
 | `size` | `ProgressBarSize` | `'md'` | The track's thickness. |
 | `tone` | `ProgressBarTone` | `'accent'` | The fill's colour, for a bar that is a meter: storage, a quota, a goal. Say the state in `valueLabel` too. |
@@ -164,7 +201,8 @@ export function SpinnerTones() {
 | --- | --- | --- | --- |
 | header | `<view>` | no | The label row: `label`, then `valueLabel`; hidden from assistive tech, since the bar carries both. |
 | track | `<view>` | yes | The bar itself, and the element assistive tech reports as a progress bar. |
-| fill | `<view>` | yes | The amount done, as a share of the track width; a sweeping segment while the amount is unknown. |
+| fill | `<view>` | yes | The amount done, as a share of the track width. |
+| dashes | `<view>` | no | While the amount is unknown: whole dashes half a dash apart, a pattern no amount draws; three track heights long, at most 12, longer on a wide track. |
 | spinner | `<vector>` | no | Spinner's spinning arc. |
 | loading | `<view>` | no | A Spinner with its label shown: the ring over its label, centred; the words are drawn only, the name is read once. |
 
@@ -173,7 +211,7 @@ export function SpinnerTones() {
 - `className`: classes merged after the recipe's, so they win.
 - `className` on Spinner: classes merged after the recipe's, so they win.
 - The recipe, `progressBarRecipe` from `@liulidesign/core/ProgressBar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--animate-progress-sweep`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--animate-progress-march`, `--animate-progress-march-rtl`.
 - Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `on-media`, `success-mark`, `text`, `text-muted`, `warning-mark`.
 
 ## Accessibility
@@ -183,7 +221,8 @@ export function SpinnerTones() {
 - Description: none.
 - Role progressbar, named by `label`. With `value` it reports the value, 0 and `max`; `valueLabel` is read in place of a percentage.
 - Without `value` it reports no value, which assistive tech reads as busy.
-- With reduced motion the sweep and the spin stop; the bar and the arc stay drawn.
+- Dashes mean the task is running and its amount is unknown; they march one period per 1.3 s in the reading direction.
+- With reduced motion the same dashes stand still; the spin stops and the arc stays drawn.
 - Spinner is a progressbar named by its `label`, with nothing drawn but the arc.
 
 | Contrast | Pair | Minimum | Light | Dark |

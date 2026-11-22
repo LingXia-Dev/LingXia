@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
-import { ProgressBar, Spinner } from './ProgressBar';
+import { ProgressBar, Spinner, type TransferProgress } from './ProgressBar';
 
 /** The app words the amount; Liuli formats no numbers. */
 export function Determinate() {
@@ -110,6 +110,36 @@ export function SpinnerTones() {
         <Spinner label="Checking for updates" isLabelHidden size="sm" tone="muted" data-testid="quiet" />
         <text className="text-footnote text-muted">Checking for updates</text>
       </view>
+    </view>
+  );
+}
+
+// What a download's stream yields, in order: nothing yet, a size not known, then a known size from empty to full.
+const yields: readonly (TransferProgress | null)[] = [
+  null,
+  { loaded: 1_200_000 },
+  { loaded: 0, total: 10_000_000, fraction: 0 },
+  { loaded: 3_100_000, total: 10_000_000, fraction: 0.31 },
+  { loaded: 10_000_000, total: 10_000_000, fraction: 1 },
+];
+// The app words the amount; megabytes to one place, so the figures keep their width.
+const megabytes = (bytes: number) => (bytes / 1_000_000).toFixed(1);
+
+/** A transfer's progress as it streams: `progress={download.data}`, unknown until a size is known. */
+export function Transfer() {
+  const step = useLocal('step', 3);
+  const value = yields[step.value];
+  const words = value?.total === undefined ? undefined : `${megabytes(value.loaded)} of ${megabytes(value.total)} MB`;
+  return (
+    <view className="gap-3">
+      <ProgressBar label="Downloading the map" progress={value} valueLabel={words} data-testid="download" />
+      <Button
+        label="Next value"
+        size="sm"
+        width="content"
+        onClick={() => step.set((step.value + 1) % yields.length)}
+        data-testid="next-value"
+      />
     </view>
   );
 }

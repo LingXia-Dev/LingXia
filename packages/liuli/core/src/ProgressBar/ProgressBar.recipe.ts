@@ -7,6 +7,7 @@ export const progressBarParts = {
   value: 'text',
   track: 'view',
   fill: 'view',
+  dashes: 'view',
   spinner: 'vector',
   loading: 'view',
 } as const;
@@ -33,7 +34,15 @@ export const progressBarRecipe = {
     base: 'h-full rounded-full',
     tone: { accent: 'bg-accent', success: 'bg-success-mark', warning: 'bg-warning-mark', danger: 'bg-danger-mark' } satisfies Record<ProgressBarTone, string>,
     determinate: 'transition-layout duration-base ease-standard',
-    indeterminate: 'w-2/5 motion-safe:animate-progress-sweep',
+  },
+  /**
+   * An unknown amount: dashes with half a dash between, a pattern no value draws, starting and ending
+   * on a whole dash. With motion, a box one period wide marches the row in the reading direction.
+   */
+  dashes: {
+    row: 'h-full flex-row',
+    march: { ltr: 'h-full motion-safe:animate-progress-march', rtl: 'h-full motion-safe:animate-progress-march-rtl' },
+    dash: 'h-full shrink-0 rounded-full',
   },
   spinner: {
     base: 'motion-safe:animate-spin',

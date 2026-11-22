@@ -76,11 +76,17 @@
   --radius-checkbox: var(--radius-sm);
   --radius-segment: var(--radius-md);
 
-  /* An indeterminate ProgressBar: a fill two-fifths of the track wide sweeps it end to end. */
-  --animate-progress-sweep: progress-sweep 1.2s ease-in-out infinite;
-  @keyframes progress-sweep {
+  /* An indeterminate ProgressBar: one period (a dash and half a dash), whatever its length, per 1.3 s, so a
+     longer dash on a wide track moves more calmly. Applied to a box one period wide. */
+  --animate-progress-march: progress-march 1.3s linear infinite;
+  @keyframes progress-march {
     from { transform: translateX(-100%); }
-    to { transform: translateX(250%); }
+    to { transform: translateX(0%); }
+  }
+  --animate-progress-march-rtl: progress-march-rtl 1.3s linear infinite;
+  @keyframes progress-march-rtl {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0%); }
   }
 
   /* Skeleton: a soft band crosses the box, then rests a moment before the next pass. */
