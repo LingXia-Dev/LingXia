@@ -7,5 +7,6 @@ lingxia dev            # run it
 npm run typecheck      # lingxia gen types && tsc -b
 ```
 
-The `tsconfig.*.json` files extend bases the CLI writes into `.lingxia/` (not checked in), so a fresh
-checkout runs `lingxia gen types` once before `tsc`; `lingxia dev` and `lingxia build` write them too.
+Type-check with `npm run typecheck`, or `tsc -b` at the project root: the View reads the Logic's types
+from what `tsc -b` builds. The `tsconfig.*.json` files extend bases the CLI writes into `.lingxia/` (not
+checked in); `lingxia gen types`, `lingxia dev` and `lingxia build` write them.

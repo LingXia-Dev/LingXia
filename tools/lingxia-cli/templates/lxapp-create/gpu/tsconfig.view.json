@@ -1,4 +1,10 @@
 {
   "extends": "./.lingxia/tsconfig.view.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.view.tsbuildinfo"
+  },
+  "files": ["./.lingxia/run-lingxia-gen-types.d.ts"],
   "references": [{ "path": "./tsconfig.logic.json" }]
 }

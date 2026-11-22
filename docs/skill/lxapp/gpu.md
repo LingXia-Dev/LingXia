@@ -21,7 +21,7 @@ export function render({ data, actions }: View) {
 ```
 
 - `./$types` types `data` and `actions` from the page's Logic (`index.ts`); a page without Logic gets empty ones. `lingxia dev`/`build` write it under `.lingxia/types` (`lingxia gen types` on a fresh checkout or in CI).
-- `tsconfig.logic.json` / `tsconfig.view.json` extend the CLI's `./.lingxia/tsconfig.logic.json` / `.view.json`, the View referencing the Logic project; type-check with `tsc -b`. `lingxia build` fails a `./$types` page whose View tsconfig skips the base.
+- `tsconfig.logic.json` / `tsconfig.view.json` extend the CLI's `./.lingxia/tsconfig.logic.json` / `.view.json`, the View referencing the Logic project. Type-check with `npm run typecheck` or `tsc -b` at the project root; `tsc -p` alone cannot build the Logic types the View reads. `lingxia build` fails a `./$types` page whose View tsconfig skips the base.
 - `<page>` is the root: it absorbs safe-area insets and the keyboard. `<view>` is the only layout container: a flex column; `flex-row`/`flex-col` set direction, `flex` alone means row, `grid` makes a grid; `gap`/`items`/`justify` work without `flex`. Overlap children with `grid *:col-start-1 *:row-start-1`.
   A last-child `<scroll>`/`<List>` runs on under the tab bar, its end padded clear; `<dialog>`s cover the bars.
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);

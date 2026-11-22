@@ -77,6 +77,7 @@ pub fn generate(project: &Project) -> Result<()> {
     if gpu {
         write_if_changed(&project.root.join(LOGIC_BASE), &render_logic_base())?;
         write_if_changed(&project.root.join(VIEW_BASE), &render_view_base())?;
+        write_if_changed(&project.root.join(GEN_MARKER), HEADER)?;
         check_view_tsconfig(&project.root, &project.pages)?;
     }
     Ok(())
@@ -84,6 +85,9 @@ pub fn generate(project: &Project) -> Result<()> {
 
 const LOGIC_BASE: &str = ".lingxia/tsconfig.logic.json";
 const VIEW_BASE: &str = ".lingxia/tsconfig.view.json";
+/// Listed in the project's tsconfig `files`, so a `tsc -b` before generation names the fix.
+/// The emit options stay in the project's own files: a missing base must not emit JS beside the sources.
+const GEN_MARKER: &str = ".lingxia/run-lingxia-gen-types.d.ts";
 
 fn json_header() -> String {
     HEADER.replace(
@@ -92,15 +96,13 @@ fn json_header() -> String {
     )
 }
 
-/// Logic emits declarations so a View that references this project reads its
+/// The project's file makes Logic emit only declarations, so a View that references it reads its
 /// pages' types without their bodies: Logic globals (timers, `fetch`, `App`)
 /// never enter the View program.
 fn render_logic_base() -> String {
     json_header()
         + r#"{
   "compilerOptions": {
-    "composite": true,
-    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.logic.tsbuildinfo",
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -113,9 +115,6 @@ fn render_logic_base() -> String {
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "declarationDir": "./logic-decl",
     "paths": { "@lingxia/page-types/*": ["./types/*"] }
   },
   "include": [
@@ -137,8 +136,6 @@ fn render_view_base() -> String {
     json_header()
         + r#"{
   "compilerOptions": {
-    "composite": true,
-    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.view.tsbuildinfo",
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -150,7 +147,6 @@ fn render_view_base() -> String {
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
     "rootDirs": ["..", "./types"]
   },
   "include": ["../pages/**/*.tsx", "../shared/**/*.tsx", "./types/**/*.d.ts", "./types/**/$types.ts"],
@@ -191,8 +187,8 @@ fn check_view_tsconfig(root: &Path, pages: &[String]) -> Result<()> {
     }
     bail!(
         "{importer} imports `./$types`, but no tsconfig here extends `{VIEW_BASE}`.\n\
-         Make the View's tsconfig `{{ \"extends\": \"./{VIEW_BASE}\", \"references\": [{{ \"path\": \"./tsconfig.logic.json\" }}] }}`\n\
-         and the Logic's `{{ \"extends\": \"./{LOGIC_BASE}\" }}`; otherwise the View type-checks the Logic's source."
+         Copy `tsconfig.view.json` and `tsconfig.logic.json` from a new `lingxia new` GPU project: they extend\n\
+         `{VIEW_BASE}` and `{LOGIC_BASE}`, and the View references the Logic. Otherwise the View type-checks the Logic's source."
     )
 }
 
@@ -491,7 +487,8 @@ mod tests {
             let config: Value = json5::from_str(&base).unwrap();
             assert!(config["compilerOptions"]["lib"] == serde_json::json!(["ES2020"]));
         }
-        assert!(render_logic_base().contains(r#""emitDeclarationOnly": true"#));
+        assert!(!render_logic_base().contains("emit"));
+        assert!(!render_view_base().contains("noEmit"));
         assert!(render_logic_base().contains(r#""../mocks/**/*.ts""#));
         assert!(render_view_base().contains(r#""types": []"#));
     }

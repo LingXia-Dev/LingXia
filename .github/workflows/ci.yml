@@ -162,6 +162,9 @@ jobs:
               - 'packages/lingxia-test/**'
               - 'examples/lingxia-showcase/lxapp/**'
               - 'examples/lingxia-showcase-web/**'
+              - 'tools/lingxia-cli/templates/lxapp-create/**'
+              - 'tools/lingxia-cli/src/lxapp/page_types.rs'
+              - 'tools/lingxia-cli/tests/gpu_typecheck.mjs'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are
             # filtered separately so they do not fan out to the other OS.
@@ -1079,11 +1082,24 @@ jobs:
     name: automation-types
     if: ${{ needs.changes.outputs.automation_types == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A fingerprint cache miss builds the CLI.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
 
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
       - uses: ./.github/actions/build-web-packages
+
+      # A GPU lxapp's tsconfig extends bases `lingxia gen types` writes.
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
+
+      - name: Put the CLI on PATH
+        run: echo "$GITHUB_WORKSPACE/target/debug" >> "$GITHUB_PATH"
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
@@ -1122,6 +1138,9 @@ jobs:
       # The lxapps' own Logic is what the `lx.*` declarations are actually for.
       # Nothing type-checked it until now, so a change to the public types could
       # break every page and still ship green.
+      - name: Check GPU lxapp type-check wiring
+        run: node tools/lingxia-cli/tests/gpu_typecheck.mjs target/debug/lingxia examples/lingxia-showcase/lxapp
+
       - name: Type-check example lxapp Logic
         run: |
           npm --prefix examples/lingxia-showcase/lxapp run typecheck

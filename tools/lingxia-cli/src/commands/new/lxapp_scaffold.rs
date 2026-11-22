@@ -472,6 +472,15 @@ mod tests {
             logic.contains(r#""extends": "./.lingxia/tsconfig.logic.json""#),
             "{logic}"
         );
+        // Without the base, these alone keep `tsc -b` from writing JS beside the sources.
+        assert!(logic.contains(r#""emitDeclarationOnly": true"#), "{logic}");
+        assert!(config.contains(r#""noEmit": true"#), "{config}");
+        for project in [&logic, &config] {
+            assert!(
+                project.contains(r#""files": ["./.lingxia/run-lingxia-gen-types.d.ts"]"#),
+                "{project}"
+            );
+        }
         let package: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(app.join("package.json")).unwrap()).unwrap();
         assert_eq!(
