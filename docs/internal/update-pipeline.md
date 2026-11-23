@@ -42,7 +42,7 @@ keep their short deadlines.
   requirements.
 - **Production direct updates require embedded trusted keys.** Store hosts
   use only the version and optional release notes; they do not verify or use
-  package fields. Lxapp and plugin update verification is unchanged.
+  package fields. This does not change lxapp and plugin update verification.
 - **The signed manifest establishes package version and checksum.** Package
   verification binds `kind`, `targetId`, `channel`, `platform`, `version`, and
   `sha256`. An unsigned version-only store signal has no signed manifest: its
@@ -67,7 +67,7 @@ keep their short deadlines.
 
 ### Windows distributions
 
-Preserve the `*-windows.zip` feed archive: a runnable root payload for legacy
+Preserve the `*-windows.zip` feed archive: a runnable root payload for
 directory installs plus `.lingxia-update/{manifest.json,setup.exe,portable.exe}`
 for the selected direct formats. The manifest binds schema version, app id,
 version, PE architecture, and executable name to the running installation and
@@ -78,7 +78,7 @@ NSIS updates run Setup against the owned install root and retain user data and
 the previous payload on a failed swap. Portable updates wait for both host and
 launcher, then replace the outer EXE with a backup. Helpers must start outside
 the application directory so they cannot block replacement or extraction
-cleanup. Legacy directory updates exclude `.lingxia-update`; Store and sideloaded
+cleanup. Directory-install updates exclude `.lingxia-update`; Store and sideloaded
 MSIX updates stay OS-managed. Never mirror into an extracted portable directory.
 
 NSIS installs per user under `%LOCALAPPDATA%/Programs/<appId>/app`, registers
@@ -210,8 +210,8 @@ failure directly; package visibility makes availability preflight unreliable.
   without a replacement. With no usable package, the open still fails.
 - With `update.checkInterval`, the home lxapp is re-checked after each
   interval through the same background check, looked up each time because a
-  channel switch replaces the instance. Guest lxapps are still checked on
-  open only. A downloaded update still applies only under the rule above.
+  channel switch replaces the instance. Guest lxapps are checked on open
+  only. A downloaded update applies only under the rule above.
 - Permit one background check per app id and channel at a time. Drop duplicate
   requests instead of queuing them, and ignore checks whose channel differs
   from the running instance.
