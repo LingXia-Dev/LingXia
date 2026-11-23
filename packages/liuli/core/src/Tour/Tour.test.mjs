@@ -40,10 +40,10 @@ test('Welcome: the callout is anchored to its target with a margin; four carets 
   const node = callout(screen);
   assert.deepEqual([node.props.marginTop, node.props.marginBottom], [12, 12], 'clear of the target on either side');
   const carets = ['bottom', 'top', 'end', 'start'].map(side => screen.getByTestId(`tour-caret-${side}`));
-  assert.ok(carets.every(caret => caret.parent === node && caret.props.accessibilityHidden === 1 && caret.props.position === 'absolute' && caret.props.opacity === 0));
+  assert.ok(carets.every(caret => caret.parent === node && caret.props.accessibilityHidden === 1 && caret.props.position === 'absolute' && caret.props.background === '#00000000' && caret.props.opacity === undefined));
   assert.deepEqual(carets.map((caret, index) => (index < 2 ? caret.props.insetInlineStart : caret.props.insetTop)), ['anchor(center)', 'anchor(center)', 'anchor(center)', 'anchor(center)'], 'each on the target\'s centre line');
   assert.deepEqual(carets.map(caret => Object.keys(caret.props).find(key => /^side.*Style$/.test(key))), ['sideBottomStyle', 'sideTopStyle', 'sideEndStyle', 'sideStartStyle']);
-  assert.deepEqual(carets.map(caret => caret.props.sideBottomStyle?.opacity ?? caret.props.sideTopStyle?.opacity ?? caret.props.sideEndStyle?.opacity ?? caret.props.sideStartStyle?.opacity), [1, 1, 1, 1]);
+  assert.deepEqual(carets.map(caret => (caret.props.sideBottomStyle ?? caret.props.sideTopStyle ?? caret.props.sideEndStyle ?? caret.props.sideStartStyle)?.background), ['text', 'text', 'text', 'text']);
 });
 
 test('Welcome: the row around the search target wraps, so at large text the field takes its own line instead of shrinking', async () => {

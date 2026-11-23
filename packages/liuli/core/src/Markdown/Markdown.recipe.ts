@@ -66,7 +66,7 @@ export const markdownRecipe = {
     size: { sm: 'text-footnote w-[1.54em]', md: 'text-body w-[1.33em]' } satisfies Record<MarkdownSize, string>,
   },
   taskGhost: {
-    base: 'opacity-0',
+    base: '',
   },
   task: {
     base: 'shrink-0 items-center justify-center rounded-checkbox border-2',

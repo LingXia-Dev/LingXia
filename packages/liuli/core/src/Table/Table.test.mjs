@@ -60,7 +60,7 @@ test('StateEmpty: the headings stay and the empty line stands in for the rows', 
   const screen = await renderExample('Table/Table', 'StateEmpty');
   assert.equal(rows(screen).length, 0);
   const [header, empty, measure] = screen.getByTestId('empty').children;
-  assert.deepEqual([textOf(header), textOf(empty), measure.props.opacity], ['CustomerDueAmount', 'No invoices yet', 0]);
+  assert.deepEqual([textOf(header), textOf(empty), measure.props.width, measure.props.height, measure.props.opacity], ['CustomerDueAmount', 'No invoices yet', 0, 0, undefined]);
 });
 
 test('Members: where a text column is too narrow the records stack; measured wide, they are columns again', async () => {

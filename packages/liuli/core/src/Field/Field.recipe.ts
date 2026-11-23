@@ -59,7 +59,7 @@ export const fieldRecipe = {
   },
   /** An empty run in the message's type: it gives the line its height. */
   statusGhost: {
-    base: 'opacity-0',
+    base: '',
   },
   statusIcon: {
     // In the message's type (its line box sets it), so the icon grows with the text, capped by the View at 1.5×.

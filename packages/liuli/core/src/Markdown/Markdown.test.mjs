@@ -83,7 +83,7 @@ test('a task mark is centred on its item\'s first line, in a line box of the ite
   for (const slot of slots) {
     const [ghost, mark] = slot.children;
     assert.deepEqual([slot.props.flexDirection, slot.props.align, slot.props.height], ['row', 'center', undefined]);
-    assert.deepEqual([ghost.tag, ghost.props.opacity], ['text', 0]);
+    assert.deepEqual([ghost.tag, ghost.text, ghost.props.opacity], ['text', '\u200B', undefined]);
     assert.equal(mark.props.borderTopWidth, 2);
   }
 });

@@ -31,6 +31,6 @@ export const circularProgressRecipe = {
     base: 'font-semibold text-text tabular-nums',
     size: { sm: '', md: 'text-caption', lg: 'text-callout' } satisfies Record<CircularProgressSize, string>,
     /** An unseen copy on one line, measured against the ring's middle. */
-    ghost: 'absolute opacity-0 whitespace-nowrap',
+    ghost: 'absolute text-transparent whitespace-nowrap',
   },
 } as const;

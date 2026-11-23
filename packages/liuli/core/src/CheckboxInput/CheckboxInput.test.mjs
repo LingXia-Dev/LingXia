@@ -80,7 +80,8 @@ test('At large text: the box is centred on the label\'s first line, in a line bo
     const [ghost, box] = line.children;
     assert.deepEqual([line.props.flexDirection, line.props.align, line.props.shrink], ['row', 'center', 0]);
     assert.equal(ghost.tag, 'text');
-    assert.equal(ghost.props.opacity, 0);
+    assert.equal(ghost.text, '\u200B', 'a zero-width run: nothing drawn, no layer');
+    assert.equal(ghost.props.opacity, undefined);
     const label = screen.queryAll(node => node.tag === 'text' && node !== ghost && node.props.fontSize === ghost.props.fontSize && node.props.lineHeight === ghost.props.lineHeight);
     assert.ok(label.length > 0, 'the ghost has the label\'s font size and line height');
     assert.equal(box.props.marginTop, undefined, 'no fixed nudge: the line centres it');

@@ -12,7 +12,7 @@ test('Goal: a progressbar with the app\'s words, drawn once in the middle and no
 test('At large text: the ring keeps its size and the words move beside it once they outgrow its middle', async () => {
   const screen = await renderExample('CircularProgress/CircularProgress', 'Goal');
   const ring = () => screen.getByTestId('steps');
-  const ghost = () => ring().children[0].children.find(node => node.tag === 'text' && node.props.opacity === 0);
+  const ghost = () => ring().children[0].children.find(node => node.tag === 'text' && node.props.position === 'absolute');
   assert.equal(ghost().text, '72%', 'an unseen copy on one line is measured');
   screen.layout(ghost(), { width: 36, height: 22 });
   assert.equal(ring().children.length, 1, 'fits a 60 pt middle: the words stay inside');
@@ -39,7 +39,7 @@ test('Tones: a full ring closes, in the tone', async () => {
 test('Tones at large text: one ring whose words outgrow its middle sets every ring\'s words beside', async () => {
   const screen = await renderExample('CircularProgress/CircularProgress', 'Tones');
   const rings = () => screen.queryAll(node => node.props.role === 'progressbar');
-  const ghosts = () => rings().map(ring => ring.children[0].children.find(node => node.tag === 'text' && node.props.opacity === 0));
+  const ghosts = () => rings().map(ring => ring.children[0].children.find(node => node.tag === 'text' && node.props.position === 'absolute'));
   const beside = () => rings().map(ring => ring.children.length === 2);
   assert.deepEqual(ghosts().map(node => node.text), ['Done', '86%', 'Over']);
   for (const ghost of ghosts()) screen.layout(ghost, { width: 40, height: 22 });
@@ -51,7 +51,7 @@ test('Tones at large text: one ring whose words outgrow its middle sets every ri
 test('A lone ring decides by its own words, whatever a group nearby does', async () => {
   const screen = await renderExample('CircularProgress/CircularProgress', 'Goal');
   const ring = () => screen.getByTestId('steps');
-  const ghost = ring().children[0].children.find(node => node.tag === 'text' && node.props.opacity === 0);
+  const ghost = ring().children[0].children.find(node => node.tag === 'text' && node.props.position === 'absolute');
   screen.layout(ghost, { width: 36, height: 22 });
   assert.equal(ring().children.length, 1);
 });

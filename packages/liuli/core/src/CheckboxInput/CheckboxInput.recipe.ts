@@ -37,7 +37,7 @@ export const checkboxInputRecipe = {
   },
   /** An empty run in the label's type: it gives the line its height. */
   ghost: {
-    base: 'opacity-0',
+    base: '',
   },
   box: {
     // A mark keeps its size and shape beside a label of any length or text size.

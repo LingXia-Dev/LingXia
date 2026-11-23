@@ -54,7 +54,8 @@ test('At large text: each radio mark is centred on its label\'s first line, in a
     const [line, text] = radio.children;
     const [ghost, circle] = line.children;
     assert.deepEqual([line.props.flexDirection, line.props.align, line.props.shrink], ['row', 'center', 0]);
-    assert.equal(ghost.props.opacity, 0);
+    assert.equal(ghost.text, '\u200B', 'a zero-width run: nothing drawn, no layer');
+    assert.equal(ghost.props.opacity, undefined);
     const label = text.children[0];
     assert.deepEqual([ghost.props.fontSize, ghost.props.lineHeight], [label.props.fontSize, label.props.lineHeight]);
     assert.equal(circle.props.marginTop, undefined, 'no fixed nudge: the line centres it');

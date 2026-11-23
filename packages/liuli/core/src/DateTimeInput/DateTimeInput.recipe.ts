@@ -27,7 +27,7 @@ export const dateTimeInputRecipe = {
   stacked: 'basis-full',
   /** A long date and time in the editor's type, measured and never seen. */
   measure: {
-    base: 'absolute size-0 overflow-hidden opacity-0 flex-row',
+    base: 'absolute size-0 overflow-hidden flex-row',
     sample: 'shrink-0 whitespace-nowrap tabular-nums',
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },

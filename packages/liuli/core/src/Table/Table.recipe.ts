@@ -102,7 +102,7 @@ export const tableRecipe = {
   },
   /** A line of body type measured and never seen: how wide a character is at the reader's text size. */
   measure: {
-    base: 'absolute size-0 overflow-hidden opacity-0 flex-row',
+    base: 'absolute size-0 overflow-hidden flex-row',
     sample: 'shrink-0 whitespace-nowrap text-body tabular-nums',
   },
 } as const;

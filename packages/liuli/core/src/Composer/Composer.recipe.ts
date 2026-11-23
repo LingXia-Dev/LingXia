@@ -50,7 +50,7 @@ export const composerRecipe = {
     stacked: 'order-3',
   },
   measure: {
-    base: 'absolute size-0 overflow-hidden opacity-0 flex-row',
+    base: 'absolute size-0 overflow-hidden flex-row',
     line: 'shrink-0 whitespace-nowrap text-body',
   },
   /** Why it is disabled, under the composer. */

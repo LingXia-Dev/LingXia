@@ -23,12 +23,12 @@ export const tourRecipe = {
    * Its tip is rounded in step with the callout's corners. Hidden until the callout lands on its side.
    */
   caret: {
-    base: 'absolute size-4 rotate-45 rounded-[calc(var(--radius-container)/7)] bg-text opacity-0',
+    base: 'absolute size-4 rotate-45 rounded-[calc(var(--radius-container)/7)] bg-transparent',
     side: {
-      bottom: '-top-2 start-[anchor(center)] -ms-2 side-bottom:opacity-100',
-      top: '-bottom-2 start-[anchor(center)] -ms-2 side-top:opacity-100',
-      end: '-start-2 top-[anchor(center)] -mt-2 side-end:opacity-100',
-      start: '-end-2 top-[anchor(center)] -mt-2 side-start:opacity-100',
+      bottom: '-top-2 start-[anchor(center)] -ms-2 side-bottom:bg-text',
+      top: '-bottom-2 start-[anchor(center)] -ms-2 side-top:bg-text',
+      end: '-start-2 top-[anchor(center)] -mt-2 side-end:bg-text',
+      start: '-end-2 top-[anchor(center)] -mt-2 side-start:bg-text',
     } satisfies Record<TourPlacement, string>,
   },
   title: {
