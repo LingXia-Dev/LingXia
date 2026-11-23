@@ -144,8 +144,9 @@ test('startIcon: an icon by name in a 32 px tinted square before the text, not r
     import { Item } from '@liulidesign/core/Item';
     export function render() { return <page><Item label="Inputs" description="Fields to type in" startIcon="text-input" hasChevron onClick={() => {}} data-testid="row" /></page>; }
   `);
-  const tile = screen.getByTestId('row').children[0];
-  assert.deepEqual([tile.props.width, tile.props.height, tile.props.background, tile.props.accessibilityHidden], [32, 32, 'accent-soft', 1]);
+  const slot = screen.getByTestId('row').children[0];
+  const tile = slot.children[1];
+  assert.deepEqual([tile.props.width, tile.props.height, tile.props.background, slot.props.accessibilityHidden], [32, 32, 'accent-soft', 1]);
   assert.equal(tile.children[0].tag, 'vector');
 });
 
@@ -319,4 +320,22 @@ test('descriptionLines cuts a string description; a node is drawn as given', asy
   `);
   const [text] = screen.queryAll(node => node.tag === 'text' && textOf(node) === 'A long line');
   assert.equal(text.props.textLines, 2);
+});
+
+test('WithFacts: the avatar centres on a row of two lines and moves to the first line of a taller one; the chevron stays centred', async () => {
+  const screen = await renderExample('Item/Item', 'WithFacts');
+  const parts = id => {
+    const row = screen.getByTestId(id);
+    const [slot, text] = row.children;
+    return { row, slot, strut: slot.children[0], text };
+  };
+  for (const [id, height, along] of [['person-james', 40, 'center'], ['person-marcus', 98, 'start']]) {
+    const { strut } = parts(id);
+    assert.deepEqual([strut.text, strut.props.accessibilityHidden], ['\u200B', 1], 'an unseen one-line strut in the label style');
+    screen.layout(strut, { width: 0, height: 22 });
+    screen.layout(parts(id).text, { width: 280, height });
+    const { row, slot } = parts(id);
+    assert.equal(slot.props.alignSelf, along, `${id}: ${height} pt of text`);
+    assert.equal(row.children.at(-1).props.alignSelf, undefined, 'the chevron follows the row, centred');
+  }
 });

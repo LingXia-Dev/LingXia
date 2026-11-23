@@ -29,3 +29,11 @@ test('Collapsible: folded to its title, the toggle says whether it is open and b
   assert.equal(texts(), 3, 'the message and the action');
   assert.equal(toggle().props.stateExpanded, 1);
 });
+
+test('the tone icon centres on the title\'s first line at any text size, with no offset of its own', async () => {
+  const screen = await renderExample('Banner/Banner', 'Tones');
+  const banner = screen.queryAll(node => node.props.role === 'status')[0];
+  const [slot] = banner.children;
+  assert.deepEqual([slot.props.alignSelf, slot.children[0].text, slot.children[0].props.lineHeight], ['start', '\u200B', 22]);
+  assert.equal(slot.children[1].props.marginTop, undefined);
+});

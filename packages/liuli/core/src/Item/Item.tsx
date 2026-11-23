@@ -3,6 +3,7 @@ import { useDensity } from '../density';
 import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
 import { Glyph, useTextGrowth } from '../internal/Glyph';
+import { FirstLine } from '../internal/firstLine';
 import { LayerContext } from '../internal/layer';
 import { itemRecipe as r } from './Item.recipe';
 import { dataOf } from '../internal/data';
@@ -137,11 +138,24 @@ export function Item(props: ItemProps) {
   const stacked = room !== null && nameBox.value !== null && nameBox.value.maxContentWidth > room && room < labelLine.value!.width / 2;
   const name = <text box={labelEnd !== undefined ? nameBox : undefined} className={cx(r.label.base, r.label.variant[variant], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
   const tile = useTextGrowth(32, tileGrowth);
+  // Leading content centres on a row of one or two lines, and on the first line of a taller one; the chevron stays centred.
+  const line = useBox('line');
+  const textBox = useBox('text');
+  const tall = line.value !== null && textBox.value !== null && textBox.value.height > line.value.height * 2 + 1;
+  const strut = cx(r.label.base, r.label.variant[variant]);
   const content = (
     <>
-      {startIcon !== undefined && <view aria-hidden style={tile} className={r.iconTile.base}><Glyph name={startIcon} side={18} cap={tileGrowth} className={r.iconTile.icon} /></view>}
-      {startContent !== undefined && <view aria-hidden={pressable || undefined} className={r.start.base}>{startContent}</view>}
-      <view className={r.text.base}>
+      {startIcon !== undefined && (
+        <FirstLine strut={strut} box={line} isCentred={!tall} aria-hidden>
+          <view style={tile} className={r.iconTile.base}><Glyph name={startIcon} side={18} cap={tileGrowth} className={r.iconTile.icon} /></view>
+        </FirstLine>
+      )}
+      {startContent !== undefined && (
+        <FirstLine strut={strut} box={startIcon === undefined ? line : undefined} isCentred={!tall} aria-hidden={pressable || undefined}>
+          <view className={r.start.base}>{startContent}</view>
+        </FirstLine>
+      )}
+      <view box={textBox} className={r.text.base}>
         {labelEnd === undefined ? name : (
           <view box={labelLine} className={cx(r.labelLine.base, stacked && r.labelLine.stacked)}>
             {name}

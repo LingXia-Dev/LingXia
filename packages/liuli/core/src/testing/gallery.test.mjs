@@ -77,7 +77,8 @@ test('gallery home: a table of contents in three groups, each row with its icon,
   assert.deepEqual(lists.map(list => list.children.length), [1, categoryPages.length - 2, 1]);
   const row = screen.getByTestId('open-category-inputs');
   assert.equal(row.tag, 'button');
-  const [icon, text, count, chevron] = row.children;
+  const [slot, text, count, chevron] = row.children;
+  const icon = slot.children[1];
   assert.deepEqual([icon.props.width, icon.props.background], [32, 'accent-soft'], 'one tint for every row');
   assert.equal(text.children[1].text, 'Text, dates and amounts', 'a line short enough to stay on one line of a phone');
   assert.match(count.children[0].text, /^\d+$/);

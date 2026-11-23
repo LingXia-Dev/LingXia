@@ -2,6 +2,7 @@ import { cx, useLocal } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
+import { FirstLine } from '../internal/firstLine';
 import { bannerRecipe as r } from './Banner.recipe';
 import { dataOf } from '../internal/data';
 
@@ -56,7 +57,7 @@ export function Banner({ title, message, tone = 'info', action, onDismiss, dismi
       data-testid={testId} {...dataOf(attributes)}
       className={cx(r.root.base, r.root.tone[tone], !hasEnd && r.root.plain, className)}
     >
-      <Glyph name={toneGlyph[tone]} side={20} className={cx(r.icon.base, r.icon.tone[tone])} />
+      <FirstLine strut={r.title.base}><Glyph name={toneGlyph[tone]} side={20} className={cx(r.icon.base, r.icon.tone[tone])} /></FirstLine>
       <view className={r.text.base}>
         <text className={r.title.base}>{title}</text>
         {isOpen && message !== undefined && <text className={r.message.base}>{message}</text>}

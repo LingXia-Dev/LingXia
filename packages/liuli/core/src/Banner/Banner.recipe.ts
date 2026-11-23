@@ -28,7 +28,7 @@ export const bannerRecipe = {
     plain: 'pe-4',
   },
   icon: {
-    base: 'size-5 shrink-0 mt-px',
+    base: 'size-5 shrink-0',
     tone: { neutral: 'text-muted', info: 'text-info', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<BannerTone, string>,
   },
   text: {
