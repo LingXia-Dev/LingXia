@@ -97,6 +97,8 @@ interface RegisteredSpec {
    * only known once the bundle's source map is installed.
    */
   indexInFile?: number;
+  /** A generated id that another test already holds, made unique by its file. */
+  collisionId?: string;
 }
 
 interface Hook {
@@ -459,6 +461,7 @@ function assignFileIndexes(): void {
 
 function resolvedId(item: RegisteredSpec): string {
   if (item.id && item.id.length > 0) return item.id;
+  if (item.collisionId) return item.collisionId;
   const slug = slugTitle(item.title);
   if (slug) return slug;
   if (item.indexInFile === undefined) assignFileIndexes();
@@ -731,14 +734,19 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
   assertAttributed();
   assignFileIndexes();
-  const ids = new Map<string, string>();
+  const ids = new Map<string, RegisteredSpec>();
+  const named = (item: RegisteredSpec) => `${JSON.stringify(item.title)} (${suiteOf(sourceOf(item).file)})`;
   for (const item of specs) {
     const id = resolvedId(item);
     const previous = ids.get(id);
-    if (previous) {
-      throw new Error(`Duplicate test id ${JSON.stringify(id)} (${previous} and ${item.title})`);
+    if (previous && needsGeneratedId(item)) {
+      item.collisionId = `${id}-${stableHash(sourceOf(item).file).toString(16).padStart(8, "0").slice(0, 6)}`;
+      await host.emit({ type: "diagnostic", phase: "collect", level: "warn",
+        message: `Generated test id ${JSON.stringify(id)} is taken by ${named(previous)}; ${named(item)} runs as ${item.collisionId}. Give one of them { id: '…' } for an id that stays put.` });
+    } else if (previous) {
+      throw new Error(`Duplicate test id ${JSON.stringify(id)}: ${named(previous)} and ${named(item)}. Give one of them its own { id: '…' } or title.`);
     }
-    ids.set(id, item.title);
+    ids.set(resolvedId(item), item);
   }
 
   const grep = control.grep;

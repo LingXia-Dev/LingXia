@@ -77,7 +77,7 @@ export type ExpectedErrorCode = TestErrorCode | Extract<keyof AppErrorCodes, str
 export interface TestOptions {
   /**
    * This test's own unique, stable id. ASCII titles slug by default; non-ASCII
-   * titles need this or become `file-n`. Requirement / acceptance ids go in
+   * titles need this or become `<path below tests/>-n`. Requirement / acceptance ids go in
    * `covers`, never here.
    */
   id?: string;

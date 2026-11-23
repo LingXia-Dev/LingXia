@@ -144,11 +144,12 @@ received artifacts. Keep the following invariants when changing these layers:
   a `diagnostic` event (`phase: "collect"`) says it never runs.
   `captureFrames` raises V8's `Error.stackTraceLimit` to 50 while capturing.
   Tests themselves are still attributed to their first authored frame.
-- Generated ids (`<file stem>-<n>`) apply to tests with no `id` and no ASCII
-  slug; `n` counts only those tests, per file, in registration order, assigned
-  at run start once files are known. `n` used to be a run-wide counter over
-  every test, so ids from older reports can differ for suites with several
-  files or with ASCII tests before a non-ASCII one.
+- Generated ids (`<path below tests/>-<n>`, folders joined with `-`) apply to
+  tests with no `id` and no ASCII slug; `n` counts only those tests, per file,
+  in registration order, assigned at run start once files are known. A
+  generated id another test already holds gets a suffix from its file's hash
+  and a `collect` warning naming both files; duplicate authored ids or slugs
+  still stop the run, naming both files.
 - Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
   press/waitFor`, locator matchers and `expect.poll` clamp their timeout to
   `LiveFixture.budgetRoom()` — the test deadline less a reporting margin

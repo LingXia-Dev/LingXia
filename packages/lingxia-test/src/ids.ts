@@ -22,10 +22,18 @@ export function slugTitle(title: string): string | undefined {
   return slug.length > 0 ? slug : undefined;
 }
 
+/**
+ * A spec file's part of a generated id: its path below `tests/`, so
+ * `tests/api/lan.test.ts` and `tests/flows/lan.test.ts` never share one.
+ */
 export function fileStem(file: string): string {
-  const normalized = file.replace(/\\/g, "/");
-  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return base.replace(/\.(test\.)?(ts|mts|js|mjs)$/i, "") || "spec";
+  const normalized = file.replace(/\\/g, "/").replace(/^lxdev-test:\/\//, "").replace(/^\.\//, "");
+  const cut = normalized.lastIndexOf("/tests/");
+  const below = cut >= 0 ? normalized.slice(cut + "/tests/".length) : normalized.slice(normalized.lastIndexOf("/") + 1);
+  return below
+    .replace(/\.(test\.)?(ts|mts|js|mjs)$/i, "")
+    .replace(/[^A-Za-z0-9._]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "spec";
 }
 
 /**

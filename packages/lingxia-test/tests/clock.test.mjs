@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
+import { registerLanSpec as registerApiLan } from "./helpers/api/lan.mjs";
+import { registerLanSpec as registerFlowsLan } from "./helpers/flows/lan.mjs";
+import { registerLanSpec as registerDashedLan } from "./helpers/api-lan.mjs";
 import { test as lxTest, expect } from "../dist/index.js";
 import { reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_TEST_TIMEOUT_MS } from "../dist/runner.js";
 
@@ -104,14 +107,38 @@ test("generated ids count per file, so another file's specs never shift them", a
   register(0);
   await globalThis.__LINGXIA_TEST__.run();
   const before = reportJson(attachments).cases.map((item) => item.id);
-  assert.deepEqual(before, ["clock-1", "ascii-title-in-between", "other-file-1", "clock-2"]);
+  assert.deepEqual(before, ["clock-1", "ascii-title-in-between", "helpers-other-file-1", "clock-2"]);
 
   reset();
   register(2);
   await globalThis.__LINGXIA_TEST__.run();
   const after = reportJson(attachments).cases.map((item) => item.id);
   assert.deepEqual(after.filter((id) => id.startsWith("clock-")), ["clock-1", "clock-2"]);
-  assert.deepEqual(after.filter((id) => id.startsWith("other-file-")), ["other-file-1", "other-file-2", "other-file-3"]);
+  assert.deepEqual(after.filter((id) => id.startsWith("helpers-other-file-")), ["helpers-other-file-1", "helpers-other-file-2", "helpers-other-file-3"]);
+});
+
+test("same-named files in two folders get distinct generated ids", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  registerApiLan("局域网");
+  registerFlowsLan("局域网");
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(reportJson(attachments).cases.map((item) => item.id), ["helpers-api-lan-1", "helpers-flows-lan-1"]);
+});
+
+test("a generated id that still collides runs under a file-qualified id, with a warning", async () => {
+  const world = createWorld();
+  const { attachments, events } = installFakeHost(world);
+  registerApiLan("局域网");
+  registerDashedLan("局域网");
+  await globalThis.__LINGXIA_TEST__.run();
+  const ids = reportJson(attachments).cases.map((item) => item.id);
+  assert.equal(ids[0], "helpers-api-lan-1");
+  assert.match(ids[1], /^helpers-api-lan-1-[0-9a-f]{6}$/);
+  const warning = events.find((event) => event.type === "diagnostic" && /is taken by/.test(event.message));
+  assert.ok(warning, "the collision is reported");
+  assert.match(warning.message, /helpers\/api\/lan\.mjs/);
+  assert.match(warning.message, /helpers\/api-lan\.mjs/);
 });
 
 test("grep filters by title or id and marks the report filtered", async () => {
