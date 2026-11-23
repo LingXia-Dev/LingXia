@@ -142,7 +142,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - `<video>` HLS at quality `auto` never fetches a rendition larger than the picture shows (HarmonyOS: the system player
-  chooses); `setQuality(label)` pins past it. HarmonyOS starts some streams slowly; no picture 15 s after play is `VIDEO_NETWORK`.
+  chooses); `setQuality(label)` pins past it. No picture 15 s after play fails as `VIDEO_NETWORK`.
 - Drive a GPU page's video from Logic with `page.video(name)` (the `page`
   `setup` received), by its `useVideo` name or `<video id>`:
   `play`, `pause`, `stop`, `seek(ms)`, `setQuality`, `setPlaybackRate`,
