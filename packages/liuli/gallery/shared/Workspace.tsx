@@ -1,12 +1,13 @@
 import { useLocal, useView } from '@lingxia/view';
 import { NavList, type NavListSection } from '@liulidesign/core/NavList';
-import { SplitView } from '@liulidesign/core/SplitView';
+import { ListDetail } from '@liulidesign/core/ListDetail';
 import { Content as Overview } from '../content/home';
 import { entries, galleryCategories, packageStatus, version } from './catalog.generated';
 import { contents } from './contents.generated';
 
-// The gallery in a wide window: every page in one sidebar, the chosen one beside it. It shows the
-// same content the phone pages do, so a page reads the same in both.
+// The gallery in a wide window: every page in one list, the chosen one beside it. It shows the
+// same content the phone pages do, so a page reads the same in both. On a phone the gallery's own
+// pages do this job, so this renders only on a wide screen.
 
 const overview = 'home';
 const sections: NavListSection[] = [
@@ -45,28 +46,22 @@ export function Workspace({ page, onSelect }: WorkspaceProps) {
       {/* Test probe: the workspace is the regular form; see GalleryPage. */}
       <view aria-hidden data-testid="form-regular" className="absolute start-0 top-0 size-px" />
       <view aria-hidden data-testid={`page-appearance-${env.theme}`} className="absolute start-0 top-0 size-px" />
-      <SplitView
-        sidebarLabel="Gallery"
-        contentLabel={title}
-        contentKey={current}
-        contentWidth="prose"
-        sidebar={
-          <>
-            <view className="gap-0.5 px-3 pt-1">
-              <view className="flex-row items-baseline gap-2">
-                <text className="text-title font-semibold tracking-tight text-text">Liuli</text>
-                <text className="text-body text-muted">琉璃</text>
-              </view>
-              <text className="text-footnote text-faint">{`${version} · ${packageStatus}`}</text>
+      <ListDetail value={current} onChange={next => next !== null && select(next)} listLabel="Gallery" contentWidth="prose" data-testid="gallery">
+        <ListDetail.List>
+          <view className="gap-0.5 px-3 pt-1">
+            <view className="flex-row items-baseline gap-2">
+              <text className="text-title font-semibold tracking-tight text-text">Liuli</text>
+              <text className="text-body text-muted">琉璃</text>
             </view>
-            <NavList label="Gallery pages" sections={sections} value={current} onChange={select} data-testid="gallery-nav" />
-          </>
-        }
-        data-testid="gallery"
-      >
-        <text role="heading" headingLevel={1} className="-mb-4 text-title font-semibold tracking-tight text-text" data-testid="gallery-title">{title}</text>
-        {Page === undefined ? <Overview onOpen={select} hasMasthead={false} /> : <Page onOpen={select} />}
-      </SplitView>
+            <text className="text-footnote text-faint">{`${version} · ${packageStatus}`}</text>
+          </view>
+          <NavList label="Gallery pages" sections={sections} value={current} onChange={select} data-testid="gallery-nav" />
+        </ListDetail.List>
+        <ListDetail.Detail title={title}>
+          <text role="heading" headingLevel={1} className="-mb-4 text-title font-semibold tracking-tight text-text" data-testid="gallery-title">{title}</text>
+          {Page === undefined ? <Overview onOpen={select} hasMasthead={false} /> : <Page onOpen={select} />}
+        </ListDetail.Detail>
+      </ListDetail>
     </page>
   );
 }
