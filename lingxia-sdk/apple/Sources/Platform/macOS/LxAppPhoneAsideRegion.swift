@@ -56,14 +56,16 @@ final class LxAppPhoneAsideRegion {
     private init() {
         panel.isHidden = true
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         panel.onLayout = { [weak self] in self?.layoutPanel() }
+        panel.onAppearance = { [weak self] in
+            self?.bindTabs()
+            self?.layoutPanel()
+        }
         content.wantsLayer = true
         content.layer?.masksToBounds = true
         panel.addSubview(content)
         panel.addSubview(strip)
         stripSeparator.wantsLayer = true
-        stripSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
         strip.addSubview(stripSeparator)
 
         tabs.orientation = .horizontal
@@ -212,6 +214,11 @@ final class LxAppPhoneAsideRegion {
     }
 
     private func layoutPanel() {
+        // Layer colours are fixed when set: take them in the appearance the Runner simulates now.
+        panel.effectiveAppearance.performAsCurrentDrawingAppearance {
+            panel.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            stripSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        }
         let bounds = panel.bounds
         let top = Self.statusInset()
         strip.frame = NSRect(x: 0, y: top, width: bounds.width, height: Self.stripHeight)
@@ -267,9 +274,11 @@ final class LxAppPhoneAsideRegion {
         tab.edgeInsets = NSEdgeInsets(top: 0, left: header ? 2 : 10, bottom: 0, right: 0)
         tab.wantsLayer = true
         tab.layer?.cornerRadius = 8
-        tab.layer?.backgroundColor = selected && !header
-            ? NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            : NSColor.clear.cgColor
+        panel.effectiveAppearance.performAsCurrentDrawingAppearance {
+            tab.layer?.backgroundColor = selected && !header
+                ? NSColor.labelColor.withAlphaComponent(0.06).cgColor
+                : NSColor.clear.cgColor
+        }
         if children[id]?.isURL == true {
             let globe = NSImageView(image: NSImage(systemSymbolName: "globe", accessibilityDescription: nil) ?? NSImage())
             globe.contentTintColor = .secondaryLabelColor
@@ -372,6 +381,12 @@ final class LxAppPhoneAsideRegion {
 /// Lays out top-down like the phone it stands for.
 private final class FlippedView: NSView {
     var onLayout: (() -> Void)?
+    var onAppearance: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearance?()
+    }
 
     override var isFlipped: Bool { true }
 
