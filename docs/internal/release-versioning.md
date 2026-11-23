@@ -36,7 +36,7 @@ its base runtime; patches may differ.
 
 Published internal `@lingxia/*` dependencies use `~M.m.P`, floored at the
 published patch. Scaffolds use `~M.m.0`, allowing packages ahead of or behind
-the base patch to resolve on the same minor line. The release scripts currently
+the base patch to resolve on the same minor line. The release scripts
 version all npm packages together; there is no `npm:<package>` component.
 
 ## `minRuntime` is a build target
@@ -119,8 +119,6 @@ used by `lingxia dev` for standalone lxapps.
 - `install.sh` / `install.ps1` install `lingxia-*` and `lxdev-*`.
 - CLI release targets are macOS arm64/x64 and Windows x64. Windows 11 Arm
   uses x64 emulation; installers and self-update select the x64 assets there.
-  Existing native Arm CLIs from 0.28.1 or earlier must be reinstalled with the
-  updated installer when a newer release no longer has Arm64 assets.
 - Runner assets are fetched into `~/.lingxia/runner/<version>` as needed.
 - The Windows Runner zip contains `lingxia-runner.exe` and `VERSION`.
   `lingxia dev` generates temporary host assets and passes them via `--asset-dir`.
