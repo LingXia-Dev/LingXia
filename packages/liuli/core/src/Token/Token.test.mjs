@@ -30,3 +30,13 @@ test('Labels: a hue\'s soft fill with a hidden dot in the hue; the label is stil
   assert.ok(token.children[0].props.accessibilityHidden);
   assert.equal(screen.getByTestId('label-bug-remove').props.accessibilityLabel, 'Remove bug');
 });
+
+test('StateDisabled: faded by colour, not opacity, remove button too', async () => {
+  const screen = await renderExample('Token/Token', 'StateDisabled');
+  const root = screen.queryAll(node => node.props.background === 'text/5')[0];
+  assert.ok(root, 'the pill fades its fill');
+  assert.equal(root.props.opacity, undefined);
+  assert.equal(root.props.color, 'text/40');
+  const remove = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'Remove Locked')[0];
+  assert.equal(remove.props.color, 'text/40');
+});

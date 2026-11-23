@@ -23,7 +23,8 @@ export const tokenRecipe = {
     /** A category: the hue's soft fill; selected still wins. */
     hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     selected: 'bg-accent-soft text-on-accent-soft',
-    disabled: 'opacity-40',
+    /** Faded by colour, not by opacity, so a disabled token costs no layer; hue and selection give way to it. */
+    disabled: 'bg-text/5 text-text/40',
   },
   icon: {
     size: { sm: 'size-3.5 shrink-0', md: 'size-4 shrink-0' } satisfies Record<TokenSize, string>,
@@ -31,6 +32,7 @@ export const tokenRecipe = {
   },
   dot: {
     base: 'size-2 shrink-0 rounded-full',
+    disabled: 'bg-text/25',
     hue: { 1: 'bg-hue-1', 2: 'bg-hue-2', 3: 'bg-hue-3', 4: 'bg-hue-4', 5: 'bg-hue-5', 6: 'bg-hue-6', 7: 'bg-hue-7', 8: 'bg-hue-8' } satisfies Record<Hue, string>,
   },
   label: {
@@ -43,7 +45,7 @@ export const tokenRecipe = {
     size: { sm: 'h-6 gap-1', md: 'h-8 gap-1.5' } satisfies Record<TokenSize, string>,
   },
   remove: {
-    base: 'items-center justify-center rounded-full text-muted hover:bg-text/10 hover:text-text active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus',
+    base: 'items-center justify-center rounded-full text-muted disabled:text-text/40 hover:bg-text/10 hover:text-text active:bg-text/16 focus-visible:ring-2 focus-visible:ring-focus',
     size: { sm: 'size-6', md: 'size-8' } satisfies Record<TokenSize, string>,
   },
   removeIcon: {

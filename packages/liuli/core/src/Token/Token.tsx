@@ -41,8 +41,8 @@ export type TokenProps = TokenRemove & {
 export function Token({ label, startIcon, hue, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId, ...attributes }: TokenProps) {
   const content = (
     <>
-      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
-      {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.hue[hue])} />}
+      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.size[size], hue !== undefined && !isDisabled && r.icon.hue[hue])} />}
+      {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, isDisabled ? r.dot.disabled : r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </>
   );
@@ -51,7 +51,7 @@ export function Token({ label, startIcon, hue, onClick, isSelected = false, size
       <Glyph name="close" weight={2.5} className={r.removeIcon.size[size]} />
     </button>
   );
-  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], hue !== undefined && r.root.hue[hue], isSelected && r.root.selected, isDisabled && r.root.disabled, className);
+  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], !isDisabled && hue !== undefined && r.root.hue[hue], !isDisabled && isSelected && r.root.selected, isDisabled && r.root.disabled, className);
   // A token that both opens and can be removed is two buttons side by side, never one inside the other.
   if (onClick !== undefined && onRemove === undefined) {
     return (
