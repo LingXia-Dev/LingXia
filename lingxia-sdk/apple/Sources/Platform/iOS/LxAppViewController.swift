@@ -39,8 +39,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var currentWebViewBottomConstraint: NSLayoutConstraint?
 
     internal var rootContainer: UIView!
-    /// The main's trailing edge; a docked side panel insets it.
-    private var rootTrailingConstraint: NSLayoutConstraint?
+    /// The main's right edge; a docked side panel insets it.
+    private var rootRightConstraint: NSLayoutConstraint?
     private(set) var asideRegion: LxAppAsideRegion?
     private var overflowHostView: UIView?
     private var overflowHostBottom: NSLayoutConstraint?
@@ -160,11 +160,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
         asideRegion?.layout()
     }
 
-    /// Makes room for a docked side panel at the trailing edge.
+    /// Makes room for a docked side panel at the right edge.
     func setAsideInset(_ inset: CGFloat) {
-        guard let constraint = rootTrailingConstraint, constraint.constant != -inset else { return }
+        guard let constraint = rootRightConstraint, constraint.constant != -inset else { return }
         constraint.constant = -inset
-        LxAppCapsuleButtons.setTrailingInset(inset)
+        // A right-to-left capsule sits on the left, clear of the panel.
+        let rtl = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        LxAppCapsuleButtons.setTrailingInset(rtl ? 0 : inset)
         view.setNeedsLayout()
     }
 
@@ -257,12 +259,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.clipsToBounds = false  // 🎬 Allow animation to extend beyond bounds
         view.addSubview(rootContainer)
 
-        let trailing = rootContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        rootTrailingConstraint = trailing
+        // The side panel docks on the right in either direction, so the main gives up its right edge.
+        let right = rootContainer.rightAnchor.constraint(equalTo: view.rightAnchor)
+        rootRightConstraint = right
         NSLayoutConstraint.activate([
             rootContainer.topAnchor.constraint(equalTo: view.topAnchor),
-            rootContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            trailing,
+            rootContainer.leftAnchor.constraint(equalTo: view.leftAnchor),
+            right,
             rootContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
