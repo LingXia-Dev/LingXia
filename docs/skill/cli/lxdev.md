@@ -72,7 +72,7 @@ The simulated device and display language (Runner sessions only).
   and contrast, which GPU pages read as `env`'s; macOS Runner only.
 - `set --preset phone|fold|trifold|pad|desktop [--posture outer|open|dual|tabletop]` — pick a
   device by form factor instead of `--id`; a posture the device lacks is an error. Folding
-  devices are macOS Runner only. `lxdev device …` is the same command.
+  devices are on the macOS and Windows Runners. `lxdev device …` is the same command.
 
 `--language` shadows the product's display language until the session ends and
 is not saved.
