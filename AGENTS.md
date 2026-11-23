@@ -24,6 +24,7 @@ recoverable from the code alone.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`crate-layout.md`](docs/internal/crate-layout.md) — crate layers, dependency rules, and which crate owns what. Read before adding a crate or moving code between crates.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
+- [`launch-screen.md`](docs/internal/launch-screen.md) — `splash:`, the OS launch frame, the first-frame cover, dismissal and the campaign hook. Read before changing the CLI splash generation or an SDK's splash overlay.
 - [`theme.md`](docs/internal/theme.md) — theme packs, role tiers, scale slots and their run-time resolution, `palette`/`scales` delivery. Read before changing `lingxia-theme`, the schema's `roles`/`scales`, or scale lowering.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
 - [`companion-protocol.md`](docs/internal/companion-protocol.md) — how scenario `function` rules and the Function half of mocks reach the dev session's companion: capabilities, `scenario.*` and `mock.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
