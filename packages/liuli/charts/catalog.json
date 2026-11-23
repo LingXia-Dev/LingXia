@@ -83,6 +83,12 @@
           "type": "BarChartLabels",
           "required": false,
           "description": "Category labels under the bars: `fit` writes as many as fit side by side, each under its bar; `all` every one, cut short where it is too long; `ends` the first and last.",
+          "values": [
+            "fit",
+            "all",
+            "ends",
+            "none"
+          ],
           "default": "'fit'"
         },
         {
@@ -90,6 +96,11 @@
           "type": "BarChartValueLabels",
           "required": false,
           "description": "How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value; `none` shows neither.",
+          "values": [
+            "none",
+            "auto",
+            "always"
+          ],
           "default": "'auto'"
         },
         {
@@ -97,6 +108,11 @@
           "type": "ChartLegendPosition",
           "required": false,
           "description": "Shown when there is more than one series.",
+          "values": [
+            "none",
+            "top",
+            "bottom"
+          ],
           "default": "'bottom'"
         },
         {
@@ -147,6 +163,12 @@
           "type": "ChartSize",
           "required": false,
           "description": "",
+          "values": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
           "default": "'md'"
         },
         {
@@ -555,6 +577,11 @@
           "type": "ChartLegendPosition",
           "required": false,
           "description": "",
+          "values": [
+            "none",
+            "top",
+            "bottom"
+          ],
           "default": "'bottom'"
         },
         {
@@ -562,6 +589,13 @@
           "type": "ChartPlotSize",
           "required": false,
           "description": "The plot's height: 64, 112, 176 or 240, or `fit` to take the height of the plot's own content. `xs` is for a tile or a row, with nothing but the marks.",
+          "values": [
+            "fit",
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
           "default": "'md'"
         },
         {
@@ -576,6 +610,13 @@
           "type": "ChartPlotShape",
           "required": false,
           "description": "What the plot is: the loading skeleton takes its outline and the empty state its mark, so a chart with nothing to draw still looks like itself.",
+          "values": [
+            "block",
+            "bars",
+            "line",
+            "ring",
+            "disc"
+          ],
           "default": "'block'"
         },
         {
@@ -647,6 +688,10 @@
             "type": "ChartLegendVariant",
             "required": false,
             "description": "`inline` wraps entries on a line; `list` gives each entry a row with its figures.",
+            "values": [
+              "inline",
+              "list"
+            ],
             "default": "'inline'"
           },
           {
@@ -654,6 +699,10 @@
             "type": "\"line\" | \"square\"",
             "required": false,
             "description": "`line` draws each swatch as a stroke with the entry's dash.",
+            "values": [
+              "square",
+              "line"
+            ],
             "default": "'square'"
           },
           {
@@ -673,6 +722,10 @@
             "type": "\"selected\" | \"shown\"",
             "required": false,
             "description": "What a pressed entry means to assistive tech: `selected` picks one, `shown` toggles a series.",
+            "values": [
+              "selected",
+              "shown"
+            ],
             "default": "'selected'"
           },
           {
@@ -1115,13 +1168,23 @@
           "name": "xLabels",
           "type": "LineChartLabels",
           "required": false,
-          "description": "Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size."
+          "description": "Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size.",
+          "values": [
+            "fit",
+            "ends",
+            "none"
+          ]
         },
         {
           "name": "legend",
           "type": "ChartLegendPosition",
           "required": false,
           "description": "Shown when there is more than one series.",
+          "values": [
+            "none",
+            "top",
+            "bottom"
+          ],
           "default": "'bottom'"
         },
         {
@@ -1172,6 +1235,12 @@
           "type": "ChartSize",
           "required": false,
           "description": "",
+          "values": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
           "default": "'md'"
         },
         {
@@ -1571,6 +1640,10 @@
           "type": "PieChartVariant",
           "required": false,
           "description": "`donut` has a hole for the total; `pie` is solid.",
+          "values": [
+            "donut",
+            "pie"
+          ],
           "default": "'donut'"
         },
         {
@@ -1597,6 +1670,11 @@
           "type": "ChartLegendPosition",
           "required": false,
           "description": "The legend lists each part with its amount and share.",
+          "values": [
+            "none",
+            "top",
+            "bottom"
+          ],
           "default": "'bottom'"
         },
         {
@@ -1622,6 +1700,12 @@
           "type": "ChartSize",
           "required": false,
           "description": "",
+          "values": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
           "default": "'md'"
         },
         {
@@ -1954,6 +2038,11 @@
           "type": "SparklineVariant",
           "required": false,
           "description": "`area` fills under the line; `bar` draws one bar per value.",
+          "values": [
+            "line",
+            "area",
+            "bar"
+          ],
           "default": "'line'"
         },
         {
@@ -1975,6 +2064,12 @@
           "type": "SparklineTone",
           "required": false,
           "description": "`series` is the first chart colour; `positive` and `negative` say the trend is good or bad.",
+          "values": [
+            "series",
+            "neutral",
+            "positive",
+            "negative"
+          ],
           "default": "'series'"
         },
         {
@@ -1994,6 +2089,11 @@
           "type": "SparklineSize",
           "required": false,
           "description": "The height: 24, 32 or 48. In a column the width fills the container; in a row give it one with `className` (`w-20`, `grow`).",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
           "default": "'md'"
         },
         {
@@ -2239,13 +2339,23 @@
           "type": "StatDirection",
           "required": false,
           "description": "Which way the figure moved; picks the arrow.",
+          "values": [
+            "up",
+            "down",
+            "flat"
+          ],
           "default": "'flat'"
         },
         {
           "name": "deltaTone",
           "type": "StatTone",
           "required": false,
-          "description": "Whether the change is good news. By default up is positive, down negative and flat neutral; set it when up is bad (errors, cost)."
+          "description": "Whether the change is good news. By default up is positive, down negative and flat neutral; set it when up is bad (errors, cost).",
+          "values": [
+            "neutral",
+            "positive",
+            "negative"
+          ]
         },
         {
           "name": "deltaLabel",
@@ -2270,6 +2380,10 @@
           "type": "StatSize",
           "required": false,
           "description": "The figure's size: title or display type.",
+          "values": [
+            "sm",
+            "md"
+          ],
           "default": "'md'"
         },
         {

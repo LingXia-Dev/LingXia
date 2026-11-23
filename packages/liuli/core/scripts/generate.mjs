@@ -49,7 +49,22 @@ function literalChoices(type) {
   return values.some(value => sizeOrder.includes(value)) ? values.sort((a, b) => rank(a) - rank(b)) : values;
 }
 
-/** The exported props type's properties: name, type, required, description, default. */
+/**
+ * A prop's allowed values when its type is a union of string or number literals, in the order the
+ * type declares them (the alias's declaration, or the prop's own written union); null otherwise.
+ */
+function declaredValues(type, declaration) {
+  const members = (type.isUnion() ? type.types : [type]).filter(member => !(member.flags & ts.TypeFlags.Undefined));
+  if (members.length < 2 || !members.every(member => member.isStringLiteral() || member.isNumberLiteral())) return null;
+  const written = type.aliasSymbol?.declarations?.find(ts.isTypeAliasDeclaration)?.type ?? declaration?.type;
+  const order = written && ts.isUnionTypeNode(written)
+    ? written.types.filter(ts.isLiteralTypeNode).map(node => (ts.isStringLiteral(node.literal) ? node.literal.text : Number(node.literal.getText())))
+    : [];
+  const values = members.map(member => member.value);
+  return order.length === values.length && values.every(value => order.includes(value)) ? order : values;
+}
+
+/** The exported props type's properties: name, type, required, description, default, and the allowed values of a literal union. */
 function props(name, typeName) {
   const component = typeName.replace(/Props$/, '');
   const file = program.getSourceFile(join(src, name, `${name}.tsx`));
@@ -61,6 +76,7 @@ function props(name, typeName) {
     const declaration = property.valueDeclaration ?? property.declarations?.[0];
     const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration ?? file);
     const literals = literalChoices(propertyType);
+    const values = declaredValues(propertyType, declaration);
     if (literals) choiceValues.set(`${typeName}.${property.name}`, literals);
     const tags = property.getJsDocTags(checker);
     const tagged = tags.find(tag => tag.name === 'default');
@@ -76,6 +92,7 @@ function props(name, typeName) {
       type: typeText(propertyType),
       required: !(property.flags & ts.SymbolFlags.Optional),
       description: ts.displayPartsToString(property.getDocumentationComment(checker)).replace(/\s+/g, ' ').trim(),
+      ...(values ? { values } : {}),
       ...(fallback !== undefined ? { default: fallback } : {}),
     };
   });
