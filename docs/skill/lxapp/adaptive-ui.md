@@ -1,89 +1,58 @@
 # Adaptive UI
 
-Change an lxapp's component tree by available size. Never infer a device from
-the user agent, `screen.width`, or a browser media query.
+Change a page's layout by the room it has. Never infer a device from the user agent,
+`screen.width`, or a media query.
 
 ## Size class
 
-```ts
-// View: useLxHost() / env. Logic: page.env.get() (no pixels).
-type SizeContext = {
-  canDock: boolean;                  // can `as: 'aside'` dock beside the main right now
-  sizeClass: 'compact' | 'regular';
-};
-```
-
-| Size class | Surface viewport width (logical px) |
+| `sizeClass` | Page width (logical px) |
 |---|---:|
 | `compact` | less than 600 |
 | `regular` | 600 and above |
 
-- The size class is the lxapp's own presentation, not the window: an lxapp in
-  a narrow region of a wide desktop is `compact`. It is one value per lxapp:
-  a page in its own window (`as: 'window'`) reads its lxapp's value, so size
-  that page from its own viewport.
-- `canDock` is whether the window has a dock region right now, so
-  `as: 'aside'` opens beside the main instead of as an overlay. It is not
-  where this lxapp is shown: nothing reports that; lay out by size. Read it,
+- Near 600 the class holds until the width is 24 px past it, so a width breakpoint
+  (`min-[600px]:`) and a `sizeClass` branch disagree there: choose one, `sizeClass`.
+- It is the lxapp's own room, not the window: an lxapp in a narrow region of a wide desktop is
+  `compact`. A page in its own window (`as: 'window'`) reads its lxapp's value; size that page
+  from its own viewport.
+- `regular` is room, not desktop: an unfolded fold, a tablet and a desktop workspace are all
+  `regular`. Do not branch on the device for layout, and do not add a third class.
+- `canDock` is whether the window can dock an `as: 'aside'` beside the main right now. Read it,
   never infer it from width.
-- `regular` is room, not desktop. Pair it with `formFactor`:
 
-| | mobile | desktop |
-|---|---|---|
-| `compact` | folded phone, narrow tablet split | narrow desktop window |
-| `regular` | unfolded fold, tablet | desktop workspace |
+## GPU View
 
-Do not add a third size class or View for folds or tablets; extra width on a
-mobile `regular` surface is a CSS two-pane.
-
-## Read it in the View
-
-A GPU View reads `env.sizeClass` and `env.canDock` (the render's `env`, or `useView().env`);
-a WebView page reads `useLxHost().sizeClass` and `.canDock` ([host facts](./webview/guide.md#host-facts)). Both are
-present before the first frame and change only when the class changes. A page
-that only picks a layout needs no Logic subscription. Size spacing and columns
-with CSS and container queries. Older hosts report `compact`, so keep
-`minRuntime` current.
-
-Logic reads `page.env.get()` (`{ sizeClass, canDock }`), and calls
-`page.env.watch(cb)` only when Logic itself acts on a change. `cb` runs at once,
-then when `sizeClass` or `canDock` changes (not on every resize); the watcher
-stops when the page unloads, and the returned function stops it earlier.
-
-## CSS or separate Views
-
-Use CSS when only spacing, columns, or alignment change. Use separate
-components when the interaction model changes (cards vs a data table, bottom
-bar vs toolbar). Keep the page entry stable and lazy-load one variant:
+One View adapts. Read `env.sizeClass` and `env.canDock` from the render's `env` (or
+`useView().env` in a component); they are there before the first frame, and a change re-renders
+in place, keeping `data` and `useLocal` state.
 
 ```tsx
-import { useLxHost } from '@lingxia/react';
-
-const CompactView = lazy(() => import('./views/compact-view'));
-const WorkspaceView = lazy(() => import('./views/workspace-view'));
-
-export default function PageView() {
-  const { sizeClass, formFactor } = useLxHost();
-  const View =
-    sizeClass === 'regular' && formFactor === 'desktop'
-      ? WorkspaceView
-      : CompactView;
-
-  // Each View reads its own data with useLxPage(); nothing is passed down.
+export function render({ data, env }: View) {
+  const regular = env.sizeClass === 'regular';
   return (
-    <Suspense fallback={<PageSkeleton />}>
-      <View />
-    </Suspense>
+    <page className="p-4">
+      <view className={regular ? 'grid grid-cols-[18rem_1fr] gap-6' : 'gap-4'}>
+        <OrderList orders={data.orders} />
+        {regular ? <OrderDetail order={data.selected} /> : null}
+      </view>
+    </page>
   );
 }
 ```
 
-- Workspace is the desktop interaction; a `regular` mobile surface keeps
-  CompactView.
-- Switching unmounts local UI state. Keep business state and drafts in Logic;
-  keep hover or an open popover in the View.
-- Size-based availability is a product rule, not authorization: Logic still
-  rejects unavailable actions.
+- Give both classes the same `data-testid`s, so one test covers both.
+- `env.pointer` (`fine` or `coarse`) decides hover and density, independently of size.
+- Size-based availability is a product rule, not authorization: Logic still rejects
+  unavailable actions.
+
+## Logic and WebView pages
+
+- Logic reads `page.env.get()` (`{ sizeClass, canDock }`) and calls `page.env.watch(cb)` only
+  when Logic itself acts on a change; `cb` runs at once, then on each class or `canDock` change,
+  and stops when the page unloads. Never forward the class to the View with `page.update`.
+- A WebView page reads `useLxHost().sizeClass` and `.canDock`
+  ([host facts](./webview/guide.md#host-facts)); size spacing and columns with CSS and container
+  queries. Older hosts report `compact`, so keep `minRuntime` current.
 
 ## Edge-to-edge windows
 
@@ -105,22 +74,20 @@ Other page-chrome variables: [Page chrome CSS](./webview/guide.md#page-chrome-cs
 Runner device changes report a new viewport. Switch in one test:
 
 ```ts
-test('switches Compact and Workspace views', async (t) => {
+test('lays out for compact and regular', async (t) => {
   const devices = await t.automation.device.list();
   const phone = devices.find((device) => device.group === 'phone')!;
   const desktop = devices.find((device) => device.group === 'desktop')!;
 
   await t.automation.device.set({ id: phone.id });
-  await expect(t.app.view.css('[data-view="compact"]')).toBeVisible();
+  await expect(t.app.view.testId('order-detail')).toHaveCount(0);
 
   await t.automation.device.set({ id: desktop.id });
-  await expect(t.app.view.css('[data-view="workspace"]')).toBeVisible();
+  await expect(t.app.view.testId('order-detail')).toBeVisible();
 });
 ```
 
-- Switching form factor re-serves the page; a tablet or fold frame is still
-  mobile, so expect CompactView there.
 - `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
   simulated scheme, `textScale` (0.5 to 3) and `contrast: "standard" | "high"` the
   system text size and contrast.
-- Assert the old View is gone and Logic-owned state survived.
+- Assert that Logic-owned state survived the switch.
