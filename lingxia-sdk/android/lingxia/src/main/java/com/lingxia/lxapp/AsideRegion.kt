@@ -85,6 +85,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         isFillViewport = true
         addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
+    /** A lone child's header: its name takes what the controls leave, so its ✕ stays in view. */
+    private val headerRow = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
     // The slot's controls, as on the desktop: one collapse (nothing closes) and, where the slot
     // can also dock, maximize.
     private val maximize = icon(R.drawable.icon_fullscreen_enter, R.string.lx_aside_maximize, size = CONTROL_DP) { toggleMaximized() }
@@ -93,6 +98,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(6f), 0, dp(6f), 0)
+        addView(headerRow, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         addView(tabScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         addView(maximize)
         addView(collapseButton)
@@ -140,6 +146,9 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
     fun dockedWidth(): Int = clampWidth((windowWidth() * ratio).toInt())
 
     private fun windowWidth() = host.width - host.paddingLeft - host.paddingRight
+
+    /** Whether the window leaves the divider any travel; a narrow one splits it fixed in half. */
+    private fun canResize(): Boolean = windowWidth() - 2 * dp(SIDE_MIN_DP) >= dp(MIN_TRAVEL_DP)
 
     private fun clampWidth(width: Int): Int {
         val window = windowWidth()
@@ -268,6 +277,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         }
         divider.lineColor = palette.separator
         divider.gripColor = palette.secondaryText
+        divider.draggable = canResize()
         divider.visibility = if (shown && !over) View.VISIBLE else View.GONE
 
         val title = slot?.let { (it.active ?: it.children.lastOrNull()) }?.let(::titleOf)
@@ -297,9 +307,12 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
     private fun bindTabs() {
         val palette = OverlayPalette.of(activity)
         tabs.removeAllViews()
+        headerRow.removeAllViews()
         val active = slot?.active
         val ids = slot?.children.orEmpty().filter(::hosts)
         val header = ids.size == 1
+        headerRow.visibility = if (header) View.VISIBLE else View.GONE
+        tabScroll.visibility = if (header) View.GONE else View.VISIBLE
         ids.forEach { id ->
             val selected = id == active
             val tab = LinearLayout(activity).apply {
@@ -320,10 +333,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
                 }, LinearLayout.LayoutParams(dp(16f), dp(16f)).apply { marginEnd = dp(6f) })
             }
             tab.addView(TextView(activity).apply {
+                if (header) layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 text = titleOf(id)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(if (header) 220f else 120f)
+                if (!header) maxWidth = dp(120f)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, if (header) 15f else 13f)
                 if (header || selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(if (selected) palette.title else palette.secondaryText)
@@ -332,6 +346,10 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
                 setColorFilter(palette.secondaryText)
                 alpha = if (selected) 1f else 0.65f
             })
+            if (header) {
+                headerRow.addView(tab, LinearLayout.LayoutParams(0, dp(TAB_DP), 1f))
+                return@forEach
+            }
             tabs.addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(TAB_DP)).apply {
                 marginEnd = dp(4f)
             })
@@ -407,6 +425,9 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             set(value) { field = value; invalidate() }
         var gripColor = Color.GRAY
             set(value) { field = value; invalidate() }
+        /** Without travel there is no grip, and touches fall through to the pages. */
+        var draggable = true
+            set(value) { field = value; invalidate() }
         private var dragging = false
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val doubleTap = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -419,6 +440,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         })
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!draggable) return false
             doubleTap.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -444,6 +466,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             val cx = width / 2f
             paint.color = lineColor
             canvas.drawRect(cx - density / 2, 0f, cx + density / 2, height.toFloat(), paint)
+            if (!draggable) return
             paint.color = gripColor
             paint.alpha = if (dragging) 200 else 110
             val w = dp(4f).toFloat()
@@ -542,6 +565,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         private const val SIDE_MIN_DP = 320f
         private const val DEFAULT_RATIO = 0.5f
         private const val SNAP_DP = 24f
+        private const val MIN_TRAVEL_DP = 48f
         private const val DIVIDER_HIT_DP = 24f
         private const val TONGUE_W_DP = 14f
         private const val TONGUE_H_DP = 64f
