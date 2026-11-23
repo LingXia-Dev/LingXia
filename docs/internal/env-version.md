@@ -5,8 +5,6 @@
 > [`docs/skill/app/project.md#environment`](../skill/app/project.md#environment).
 > Update signing and `minRuntime` live in [update-pipeline.md](update-pipeline.md).
 
-These used to share the same three names. They do not.
-
 | Axis | Values | Meaning |
 | --- | --- | --- |
 | Host **env** | `dev` \| `prod` | Build-time property of the host: server, app-link hosts, `.dev` suffix + badge, publish token, self-update feed. **No channel.** |
