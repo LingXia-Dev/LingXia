@@ -33,20 +33,6 @@ enum LxAppLayoutReconcileriOS {
     /// The last committed plan sequence applied per window.
     private static var lastSequenceByWindow: [String: UInt64] = [:]
 
-    /// Notification posted on every reconciled adaptive layout plan so iOS /
-    /// iPadOS / iPhone Duo shells switch between `compact` (`< 600 pt`) and
-    /// `regular` (`>= 600 pt` docked sidebar + multi-tab aside) purely by width.
-    static let layoutPlanDidUpdateNotification = Notification.Name("LxAppLayoutReconcileriOSPlanDidUpdate")
-
-    struct PlanHingeRect: Decodable {
-        let x: Double
-        let y: Double
-        let width: Double
-        let height: Double
-        let orientation: String
-        let posture: String
-    }
-
     struct PlanAsideSlot: Decodable {
         let kind: String
         let edge: String?
@@ -58,16 +44,7 @@ enum LxAppLayoutReconcileriOS {
         let maximized: Bool
     }
 
-    struct PlanUnifiedAsideSlot: Decodable {
-        let tabs: [String]
-        let activeTab: String?
-        let visible: Bool
-        let overlay: Bool
-        let collapsed: Bool
-        let maximized: Bool
-    }
-
-    struct LayoutPresentationPlan: Decodable {
+    private struct LayoutPresentationPlan: Decodable {
         let sequence: UInt64?
         let sizeClass: String
         let bottomOwner: String
@@ -77,23 +54,19 @@ enum LxAppLayoutReconcileriOS {
         let activeMainId: String?
         let asides: [PlanAside]
         let asideSlots: [PlanAsideSlot]?
-        let unifiedAsideSlot: PlanUnifiedAsideSlot?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
-        let hinge: PlanHingeRect?
     }
 
-    struct PlanAside: Decodable {
+    private struct PlanAside: Decodable {
         let id: String
         let edge: String?
         let preferredSize: Double?
     }
 
-    struct PlanFloat: Decodable {
+    private struct PlanFloat: Decodable {
         let id: String
     }
-
-    private(set) static var latestPlanByWindow: [String: LayoutPresentationPlan] = [:]
 
     static func reconcile(windowId: String, json: String) -> Bool {
         guard let data = json.data(using: .utf8),
@@ -109,7 +82,6 @@ enum LxAppLayoutReconcileriOS {
             lastSequenceByWindow[windowId] = sequence
         }
 
-        latestPlanByWindow[windowId] = plan
         let desiredIds = Set(plan.asides.map { $0.id }).union(plan.mains)
 
         for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredIds) {
@@ -117,12 +89,6 @@ enum LxAppLayoutReconcileriOS {
         }
         // The side panel follows the plan's `panel` slot; it closes the children the plan dropped.
         LxAppAsideRegion.current?.apply(plan: plan.asideSlots)
-
-        NotificationCenter.default.post(
-            name: layoutPlanDidUpdateNotification,
-            object: nil,
-            userInfo: ["windowId": windowId, "sizeClass": plan.sizeClass, "switcherForm": plan.switcherForm]
-        )
 
         return true
     }
