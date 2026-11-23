@@ -211,6 +211,8 @@ enum DevAction {
 enum SkillAction {
     /// Write the skill to ~/.agents/skills/lingxia (linked from
     /// ~/.claude/skills/lingxia for Claude Code). A copy you linked or edited is kept.
+    /// Inside a project, also install the skills your direct npm dependencies offer
+    /// (package.json `lingxia.skill`); `new` and `dev` do the same.
     Install {
         /// Replace the installed copy even if you linked, edited or copied it in yourself
         #[arg(long)]
@@ -571,6 +573,18 @@ the nearest members.")]
         /// Print the matching catalogue entries as JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// Find and read the UI parts your dependencies' catalogues declare
+    #[command(
+        after_long_help = "Searches the catalogues of the project's direct npm dependencies \
+that declare `lingxia.catalog` in their package.json.\n\n\
+Exit status: 0 found, 1 nothing matched, 2 no dependency declares a catalogue.\n\
+Data goes to stdout; messages go to stderr."
+    )]
+    Ui {
+        #[command(subcommand)]
+        action: commands::ui::UiAction,
     },
 
     /// The agent skill this CLI carries
@@ -994,6 +1008,8 @@ fn run() -> Result<()> {
         if !replaced {
             update::sync_installed_skill_automatically();
             pin::sync_project_skill_if_pinned();
+            // `dev` starts the developer's loop, so it installs what dependencies newly offer.
+            commands::package_skills::sync_for_run(matches!(cli.command, Commands::Dev { .. }));
         }
         // Templates come from git, so this only reads state and hands any
         // fetching to a detached worker.
@@ -1037,6 +1053,7 @@ fn run() -> Result<()> {
         Commands::Skill {
             action: SkillAction::Install { force },
         } => commands::skill::install(&std::env::current_dir()?, force)?,
+        Commands::Ui { action } => commands::ui::execute(action)?,
         Commands::Template { action } => match action {
             TemplateAction::Add { source } => {
                 commands::template_provider::execute_add(&source)?;

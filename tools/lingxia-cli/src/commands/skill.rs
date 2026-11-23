@@ -377,9 +377,9 @@ fn skills_root_exists(dest: &Path) -> bool {
     dest.parent().is_some_and(Path::is_dir)
 }
 
-/// `lingxia skill install`: write the skill where the agent looks for it. It is
-/// a user-level install and never edits the project the shell is in; a stale
-/// pointer block in the nearest `AGENTS.md` is reported with its replacement.
+/// `lingxia skill install`: write the skill where the agent looks for it, at user level; a
+/// stale pointer block in the nearest `AGENTS.md` is reported with its replacement. Inside a
+/// project it also installs the skills its direct npm dependencies offer.
 pub fn install(cwd: &Path, force: bool) -> Result<()> {
     let dest = user_destination()?;
     println!(
@@ -388,6 +388,9 @@ pub fn install(cwd: &Path, force: bool) -> Result<()> {
     );
     if let Some(suggestion) = stale_pointer(cwd, &dest) {
         println!("{suggestion}");
+    }
+    if let Some(root) = super::project_upgrade::find_project_root_from(cwd) {
+        super::package_skills::report(super::package_skills::sync_package_skills(&root, true));
     }
     Ok(())
 }
@@ -425,7 +428,9 @@ pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
         "{}",
         outcome(&dest, sync_for_home(&home_dir()?, true, false)?)
     );
-    write_agents_pointer(project_dir, &dest)
+    write_agents_pointer(project_dir, &dest)?;
+    super::package_skills::sync_unless_ci(project_dir, true);
+    Ok(())
 }
 
 /// One line saying what an install did to the copy at `dest`.
@@ -553,6 +558,7 @@ pub fn sync_project_skill(project_root: &Path, source_skill: &Path, setup: bool)
     ignore_in_git(
         project_root,
         &[".agents/skills/lingxia/", ".claude/skills/lingxia"],
+        "# The pinned LingXia skill (lingxia.lock)",
     )?;
     Ok(written)
 }
@@ -570,7 +576,7 @@ fn collect_disk_files(root: &Path, dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>
     Ok(())
 }
 
-fn ignore_in_git(project_root: &Path, entries: &[&str]) -> Result<()> {
+pub(crate) fn ignore_in_git(project_root: &Path, entries: &[&str], header: &str) -> Result<()> {
     let path = project_root.join(".gitignore");
     let existing = fs::read_to_string(&path).unwrap_or_default();
     let missing: Vec<&str> = entries
@@ -585,7 +591,8 @@ fn ignore_in_git(project_root: &Path, entries: &[&str]) -> Result<()> {
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
     }
-    text.push_str("# The pinned LingXia skill (lingxia.lock)\n");
+    text.push_str(header);
+    text.push('\n');
     for entry in missing {
         text.push_str(entry);
         text.push('\n');

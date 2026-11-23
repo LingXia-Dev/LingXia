@@ -214,12 +214,23 @@ lingxia doctor --project   # build window vs this project's pins
 Look up the Logic API instead of reading `logic.d.ts`: `lingxia api lx.network.download`
 (signature, options, errors), `lingxia api lx.network` (its members), a type name, or words.
 
+## `lingxia ui`
+
+Look up a UI part before composing one: `lingxia ui search date range` lists parts by what the
+user sees (name, import, summary); `lingxia ui info Button` prints its import, props with their
+allowed values, and its doc. It reads the catalogues of the project's direct npm dependencies
+(`lingxia.catalog` in their package.json). Exit 1 means nothing matched, 2 that no dependency
+declares a catalogue; `--json` for tools.
+
 ## `lingxia skill install`
 
 Writes the skill to `~/.agents/skills/lingxia/`; with Claude Code installed,
-`~/.claude/skills/lingxia/` links to it. It never edits the current project:
-a stale `AGENTS.md` pointer is reported with its replacement block (only
-`lingxia new` writes the pointer). `lingxia new` and `lingxia upgrade` do
+`~/.claude/skills/lingxia/` links to it. A stale `AGENTS.md` pointer is
+reported with its replacement block (only `lingxia new` writes the pointer).
+Inside a project it also installs the skills its direct npm dependencies offer
+(`lingxia.skill`, such as Liuli's) into `.agents/skills/<name>/`, kept out of
+git; `lingxia new` and `lingxia dev` do the same, other commands refresh copies
+already there, and nothing is written when `CI` is set. `lingxia new` and `lingxia upgrade` do
 this themselves; afterwards every `lingxia` command keeps an existing copy in
 step. A machine without `~/.agents/skills` (CI) is never written to.
 A copy you linked, copied in by hand, or edited is kept and reported;
