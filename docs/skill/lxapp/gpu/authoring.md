@@ -7,7 +7,7 @@ A page whose View (`index.tsx`, Logic stays in `index.ts`) exports a named `rend
 one that exports a default component is a WebView page. All pages of an lxapp must agree, or the
 build stops. Add `@lingxia/view` as a dependency.
 There is no DOM. The host owns navbar and tabbar. Build controls, rows, fields and sheets from
-Liuli (`@liulidesign/core`) before composing primitives; its own skill says how.
+Liuli (`@liulidesign/core`) before composing primitives: find the part in its `catalog.json`, read its `docs/<Name>.md`.
 
 ```tsx
 import { useLocal, useRequest } from '@lingxia/view';

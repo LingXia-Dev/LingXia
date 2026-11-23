@@ -114,7 +114,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
 | `@lingxia/view` | GPU View primitives' types, hooks and helpers | lxapp View (GPU) | `useLocal`, `useAction`, `useRequest`, `useStream`, `List`, `t`; tests: `@lingxia/view/testing` |
-| `@liulidesign/core` | Liuli: accessible GPU components (buttons, fields, rows, sheets, icons) | lxapp View (GPU) | `import { Button } from '@liulidesign/core/Button'`; the project's `liuli` skill says how to find one |
+| `@liulidesign/core` | Liuli: accessible GPU components (buttons, fields, rows, sheets, icons) | lxapp View (GPU) | `import { Button } from '@liulidesign/core/Button'`; find a part in the package's `catalog.json`, then read its `docs/<Name>.md` |
 | `@liulidesign/charts` | Liuli charts and stats | lxapp View (GPU) | `import { LineChart } from '@liulidesign/charts/LineChart'` |
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
