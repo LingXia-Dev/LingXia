@@ -1,17 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { defaultEnv, textOf } from '@lingxia/view/testing';
+import { laidOut, renderExample, renderPage } from '../testing/harness.mjs';
 
-const drawing = screen => JSON.parse(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].props.vectorSource);
+// The plot's drawings: the fills under the lines, the lines, and the dots over them; the marker is absolute.
+const drawings = screen => screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1 && node.props.position !== 'absolute');
+const lineVector = screen => drawings(screen).find(node => node.parent.props.position !== 'absolute');
+const drawing = screen => ({ ...JSON.parse((lineVector(screen) ?? drawings(screen)[0]).props.vectorSource), paths: drawings(screen).flatMap(node => JSON.parse(node.props.vectorSource).paths) });
 const points = d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(match => [Number(match[1]), Number(match[2])]);
 const unread = node => (node ? Boolean(node.props.accessibilityHidden) || unread(node.parent) : false);
 const reading = (screen, label) => screen.queryAll(node => node.props.role === 'list' && node.props.accessibilityLabel === label)[0];
 
 test('Weight: the line fits its data edge to edge, the latest value is dotted, and the drawing is hidden', async () => {
-  const screen = await renderExample('LineChart/LineChart', 'Weight');
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Weight'));
   assert.equal(screen.getByTestId('weight').props.accessibilityLabel, 'Weight by week');
-  const vector = screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0];
+  const vector = lineVector(screen);
   assert.equal(vector.props.accessibilityHidden, 1);
   assert.equal(vector.props.widthPercent, 100, 'a vector keeps its own 24 pt until sized');
   const { paths, fit } = drawing(screen);
@@ -22,7 +25,7 @@ test('Weight: the line fits its data edge to edge, the latest value is dotted, a
   assert.deepEqual([points(line.d)[0][0], points(line.d).at(-1)[0]], [0, 100]);
   assert.equal(line.stroke, 'chart-1');
   assert.equal(line.vectorEffect, 'non-scaling-stroke');
-  assert.equal(line.strokeDasharray, undefined);
+  assert.deepEqual([line.pathLength, line.strokeDasharray, line.strokeDashoffset], [1, [1], 0], 'laid out, the line is drawn whole');
   assert.equal(end.d, 'M100 100h0.01');
   assert.ok(end.strokeWidth > line.strokeWidth);
 });
@@ -50,21 +53,26 @@ test('Weight: the summary, then every row as a list item with its formatted valu
   assert.ok(unread(screen.getByText('24 Nov')));
 });
 
-const ticks = column => column.children.filter(node => node.props.height === 0);
-const shares = column => column.children.filter(node => node.props.height !== 0).map(node => node.props.grow ?? 0);
+/** A column's movers: boxes as tall as the plot, each moved down to its tick. */
+const movers = column => column.children.find(node => node.props.position === 'relative')?.children ?? [];
+const ticks = column => movers(column).map(mover => mover.children[0]);
+/** How far down each mover is, as a percentage of the plot's height, to two places. */
+const down = node => Math.round(Number.parseFloat(JSON.parse(node.props.transform).translate[1]) * 100) / 100;
+const levels = column => movers(column).map(down);
 
 test('Weight: the scale is round numbers at the start edge, each level with a hairline across the plot; the latest value sits at the line\'s end', async () => {
   const screen = await renderExample('LineChart/LineChart', 'Weight');
-  const frame = screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent;
+  const frame = lineVector(screen).parent.parent;
   const [scale, plot, end] = frame.children;
   assert.deepEqual(ticks(scale).map(textOf), ['72.5 kg', '72.0 kg', '71.5 kg', '71.0 kg', ''], 'half a kilo apart; the foot is 70.5 kg, which the end figure says on the same line');
-  assert.deepEqual(shares(scale), [0, 4, 4, 4, 4, 0], 'each label stands at its value\'s share of the range, counted in quarter steps');
-  assert.ok(unread(scale.children[1]), 'the same numbers are in the summary and the list');
+  assert.deepEqual(levels(scale), [0, 25, 50, 75, 100], 'each label stands at its value\'s share of the range');
+  assert.ok(unread(ticks(scale)[0]), 'the same numbers are in the summary and the list');
+  assert.deepEqual(scale.children[0].children.map(textOf), ['72.5 kg', '72.0 kg', '71.5 kg', '71.0 kg', ''], 'an unseen copy, in the flow, gives the column its width');
   const labels = ticks(scale).map(tick => tick.children[0]);
   assert.deepEqual(labels.map(label => [label.props.fontSize, label.props.color, label.props.fontVariantNumeric]), Array(5).fill([13, 'text-muted', 'tabular-nums']));
   assert.ok(labels.every(label => JSON.parse(label.props.transform).translate[1] === '-50%'), 'each label is centred on its line');
   const grid = plot.children.find(node => node.props.position === 'absolute' && ticks(node).length === 5);
-  assert.deepEqual(shares(grid), shares(scale), 'the hairlines stand where the labels do');
+  assert.deepEqual(levels(grid), levels(scale), 'the hairlines stand where the labels do');
   assert.deepEqual(ticks(grid).map(tick => [tick.children[0].props.height, tick.children[0].props.background]), [...Array(4).fill([1, 'text/8']), [1, 'text/12']], 'quiet lines, a firmer one under the values');
   // Scale, hairlines and end figure share the drawing's 4 pt inset, so a label is level with its line and its values.
   assert.deepEqual([scale, grid, end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(3).fill([4, 4]));
@@ -73,9 +81,10 @@ test('Weight: the scale is round numbers at the start edge, each level with a ha
   assert.deepEqual(reach(), [-1.37, -2.38, 102.74, 104.76], 'until the plot is measured: 300 pt wide, and 176 pt high at this size');
   screen.layout(plot, { width: 208, height: 176 });
   assert.deepEqual(reach(), [-2, -2.38, 104, 104.76], '4 of 200 pt is 2 of 100');
-  assert.deepEqual(end.children.map(part => part.props.grow ?? textOf(part)), [1000, '70.5 kg', 0], 'all of the range above the latest value, none below');
-  assert.equal(end.children[1].props.height, 0);
-  assert.equal(JSON.parse(end.children[1].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');
+  const [mover] = end.children;
+  assert.deepEqual([mover.props.grow, down(mover), textOf(mover)], [1, 100, '70.5 kg'], 'the plot\'s height, moved all the way down: the latest value is the foot');
+  assert.equal(mover.children[0].props.height, 0);
+  assert.equal(JSON.parse(mover.children[0].children[0].props.transform).translate[1], '-50%', 'the figure is centred on the value\'s height');
   const ghosts = screen.getByText('6 Oct').parent.parent.parent.children.filter(node => node.props.height === 0);
   assert.deepEqual(ghosts.map(textOf), ['72.5 kg72.0 kg71.5 kg71.0 kg', '70.5 kg'], 'unseen copies of the scale and the end figure inset the category labels as much');
 });
@@ -86,13 +95,13 @@ test('the scale fits the data: an area from zero stops just past its highest val
     const rows = [4120, 3980, 4460, 4710, 5240, 6130, 5380].map((v, index) => ({ t: 'd' + index, v }));
     export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Chart" hasArea xLabels="none" ${props} /></page>; }
   `;
-  const scaleOf = screen => screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].parent.parent.children[0];
+  const scaleOf = screen => lineVector(screen).parent.parent.children[0];
   const medium = scaleOf(await renderPage(page('')));
   assert.deepEqual(ticks(medium).map(textOf), ['6000', '4000', '2000', '0'], 'two thousand apart');
-  assert.deepEqual(shares(medium), [1, 4, 4, 4, 0], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
+  assert.deepEqual(levels(medium), [7.69, 38.46, 69.23, 100], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
   const small = scaleOf(await renderPage(page('size="sm"')));
   assert.deepEqual(ticks(small).map(textOf), ['5000', '0'], 'two ticks in 112 pt');
-  assert.deepEqual(shares(small), [1, 4, 0]);
+  assert.deepEqual(levels(small), [20, 100]);
 });
 
 test('hasScale off fits the data exactly; the smallest size is bare; several series get the scale but no end figure', async () => {
@@ -107,26 +116,27 @@ test('hasScale off fits the data exactly; the smallest size is bare; several ser
   assert.deepEqual(texts(bare), ['a', 'c']);
   assert.deepEqual(texts(await renderPage(page('y="v" size="xs" hasEndLabel'))).filter(text => /\d/.test(text)), ['5']);
   const two = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} hasEndLabel legend="none"'));
-  assert.deepEqual(texts(two).filter(text => /\d/.test(text)), ['40', '30', '20', '10', '40', '30', '20', '10'], 'the scale and its unseen copy; no end figure for two lines');
+  assert.deepEqual(texts(two).filter(text => /\d/.test(text)), Array(3).fill(['40', '30', '20', '10']).flat(), 'the scale, its unseen copy for its own width and one for the category labels; no end figure for two lines');
   const apart = await renderPage(page('y="w" hasEndLabel'));
-  assert.deepEqual(texts(apart).filter(text => /\d/.test(text)), ['40', '35', '', '25', '20', '30', '40', '35', '', '25', '20', '30'].filter(Boolean), 'the tick the end figure stands on is left to the end figure');
+  const scale = ['40', '35', '', '25', '20'];
+  assert.deepEqual(texts(apart).filter(text => /\d/.test(text)), [...scale, ...scale, '30', ...scale, '30'].filter(Boolean), 'the tick the end figure stands on is left to the end figure');
 });
 
 test('Area: one series is filled down to the foot and measured from zero', async () => {
-  const screen = await renderExample('LineChart/LineChart', 'Area');
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Area'));
   const [fill, line] = drawing(screen).paths;
   assert.equal(fill.fill, 'chart-1/16');
   assert.match(fill.d, /L100 100L0 100Z$/);
   assert.doesNotMatch(line.d, /C/, 'daily counts are joined by straight segments');
   assert.ok(Math.max(...points(line.d).map(point => point[1])) < 75, 'the lowest day is well above zero');
-  assert.equal(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[0].props.paddingBottom, undefined, 'the fill reaches the rule');
+  assert.equal(lineVector(screen).props.paddingBottom, undefined, 'the fill reaches the rule');
 });
 
 test('Series: lines differ by dash as well as colour, and the legend repeats both and hides a series', async () => {
-  const screen = await renderExample('LineChart/LineChart', 'Series');
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Series'));
   const lines = () => drawing(screen).paths.filter(path => path.strokeWidth === 2);
   assert.deepEqual(lines().map(path => path.stroke), ['chart-1', 'chart-2', 'chart-3']);
-  assert.deepEqual(lines().map(path => path.strokeDasharray), [undefined, [6, 4], [2, 3]]);
+  assert.deepEqual(lines().map(path => path.strokeDasharray), [[1], [6, 4], [2, 3]], 'the solid line draws in; dashed lines keep their dashes');
   const swatch = key => JSON.parse(screen.getByTestId(`plans-legend-${key}`).children[0].props.vectorSource).paths[0];
   assert.deepEqual([swatch('team').stroke, swatch('team').strokeDasharray], ['chart-2', [6, 4]]);
   assert.equal(textOf(reading(screen, 'Accounts by plan and month').children[3]), 'Apr: Free 492, Team 171, Pro 88');
@@ -138,7 +148,7 @@ test('Series: lines differ by dash as well as colour, and the legend repeats bot
   assert.equal(screen.getByTestId('plans-legend-free').props.statePressed, 0);
 });
 
-const marker = screen => JSON.parse(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1)[1].props.vectorSource).paths;
+const marker = screen => JSON.parse(screen.queryAll(node => node.tag === 'vector' && node.props.position === 'absolute')[0].props.vectorSource).paths;
 const readout = screen => textOf(screen.queryAll(node => node.props.role === 'status')[0]);
 const plot = { width: 308, height: 112 };
 const touch = (screen, phase, x) => screen.pointer(screen.getByTestId('picked-plot'), { phase, x, y: 40, ...plot });
@@ -189,7 +199,7 @@ test('Selected: a mouse chooses as it moves and clears as it leaves; arrows and 
   assert.equal(readout(screen), 'JanFree410Team120Pro64');
   screen.pointer(scrubber(), { phase: 'leave', x: -5, y: 10, ...plot, pointer: 'mouse' });
   assert.equal(readout(screen), '', 'the line is kept, empty');
-  assert.equal(screen.queryAll(node => node.tag === 'vector' && node.props.grow === 1).length, 1, 'no marker');
+  assert.equal(screen.queryAll(node => node.tag === 'vector' && node.props.position === 'absolute').length, 0, 'no marker');
   const step = phase => screen.pointer(scrubber(), { phase, x: 0, y: 0, width: 0, height: 0, pointer: 'keyboard' });
   step('decrement');
   assert.equal(readout(screen), 'MayFree530Team204Pro97', 'with nothing chosen it rests on the latest row, so one step back is May');
@@ -295,8 +305,104 @@ test('a scale in the hundred thousands lays out with small numbers: no size take
     const rows = [98400, 91200, 104800, 109300, 118700, 112400, 121900, 117600, 126300, 134800, 141200].map((revenue, index) => ({ month: String(index + 1), revenue }));
     export function render() { return <page><LineChart rows={rows} x="month" y="revenue" label="Revenue by month" hasArea isSmooth data-testid="year" /></page>; }
   `);
+  const placed = screen.queryAll(node => /transform/.test(node.props.transition ?? '')).map(down);
+  assert.ok(placed.length > 4, 'the scale and the end figure are placed by a share of the plot');
+  assert.ok(placed.every(value => Number.isFinite(value) && value >= 0 && value <= 100), `shares of the plot, never past it: ${placed}`);
   const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined).map(node => node.props.grow);
-  assert.ok(grows.length > 4, 'the scale and the end figure are placed by flex shares');
-  assert.ok(grows.every(value => Number.isFinite(value) && value >= 0 && value <= 1000), `flex shares are small, whole and never negative: ${grows}`);
+  assert.ok(grows.every(value => value <= 1000), `flex shares are small: ${grows}`);
   assert.ok(JSON.stringify(screen.getByTestId('year')).includes('150000'), 'the scale tops out at a round 150000');
+});
+
+test('before the plot is laid out the line is hidden along its length; the fill waits in its own layer and fades in after it', async () => {
+  const screen = await renderExample('LineChart/LineChart', 'Area');
+  const [fill, line] = drawing(screen).paths;
+  assert.deepEqual([line.key, line.pathLength, line.strokeDasharray, line.strokeDashoffset, line.strokeLinecap], ['visits-line', 1, [1], 1, 'butt']);
+  const layer = () => drawings(screen).find(node => node.parent.props.position === 'absolute').parent;
+  assert.equal(fill.fill, 'chart-1/16', 'the fill keeps its colour; its layer is clear');
+  assert.equal(layer().props.opacity, 0);
+  laidOut(screen);
+  const [, after] = drawing(screen).paths;
+  assert.deepEqual([after.strokeDashoffset, after.strokeLinecap], [0, 'round']);
+  assert.equal(layer().props.opacity, undefined);
+  assert.match(layer().props.transition ?? '', /opacity/);
+  assert.match(lineVector(screen).props.transition ?? '', /"d"/, 'the line moves its paths');
+});
+
+test('a chart that comes back with the same rows shows whole from its first frame, without drawing in again', async () => {
+  const page = linked => `import { LineChart } from ${JSON.stringify(`${linked}/src/LineChart/LineChart`)};
+import { useLocal } from '@lingxia/view';
+const rows = [{ day: 'Mon', visits: 3 }, { day: 'Tue', visits: 5 }, { day: 'Wed', visits: 4 }];
+export function render() {
+  const on = useLocal('on', true);
+  return <page><button data-testid="toggle" onClick={() => on.set(!on.value)}><text>Toggle</text></button>{on.value && <LineChart label="Visits" rows={rows} x="day" y="visits" />}</page>;
+}
+`;
+  const screen = laidOut(await renderPage(page));
+  screen.press(screen.getByTestId('toggle'));
+  screen.press(screen.getByTestId('toggle'));
+  assert.equal(drawing(screen).paths[0].strokeDashoffset, 0, 'not laid out again yet, and still drawn');
+});
+
+/** A line chart whose rows change once, across a change of range: a test of what moves with the data. */
+const changing = props => linked => `import { LineChart } from ${JSON.stringify(`${linked}/src/LineChart/LineChart`)};
+import { useLocal } from '@lingxia/view';
+const data = [[{ d: 'a', v: 3 }, { d: 'b', v: 7 }, { d: 'c', v: 5 }], [{ d: 'a', v: 4 }, { d: 'b', v: 2 }, { d: 'c', v: 9 }]];
+export function render() {
+  const step = useLocal('step', 0);
+  return <page><button data-testid="next" onClick={() => step.set(1)}><text>Next</text></button><LineChart label="Visits" rows={data[step.value]} x="d" y="v" ${props} /></page>;
+}
+`;
+/** A transition's timing, whatever it moves. */
+const timing = node => { const { properties, ...rest } = JSON.parse(node.props.transition); return rest; };
+/** A mover's place, exactly, as a percentage of the plot's height. */
+const place = node => Number.parseFloat(JSON.parse(node.props.transform).translate[1]);
+const parts = screen => { const [scale, plot, end] = lineVector(screen).parent.parent.children; return { scale, plot, end }; };
+
+test('the end figure moves with the end of the line: the same start, end and timing, so level with it at every point of a change', async () => {
+  const screen = laidOut(await renderPage(changing('hasEndLabel')));
+  const read = () => [place(parts(screen).end.children[0]), points(drawing(screen).paths.find(path => path.key === 'v-line').d).at(-1)[1], textOf(parts(screen).end)];
+  const [figureBefore, pointBefore, textBefore] = read();
+  screen.press(screen.getByTestId('next'));
+  const [figureAfter, pointAfter, textAfter] = read();
+  assert.ok(Math.abs(figureBefore - pointBefore) < 0.01 && Math.abs(figureAfter - pointAfter) < 0.01, `${[figureBefore, pointBefore, figureAfter, pointAfter]}`);
+  assert.notEqual(figureAfter, figureBefore, 'the end moved');
+  assert.deepEqual([textBefore, textAfter], ['5', '9'], 'the figure says the new value at once; only its place travels');
+  assert.deepEqual(timing(parts(screen).end.children[0]), timing(lineVector(screen)), 'one duration, easing and delay');
+  const half = (from, to) => from + (to - from) / 2;
+  assert.ok(Math.abs(half(figureBefore, figureAfter) - half(pointBefore, pointAfter)) < 0.01, 'half-way through, the figure is level with the point');
+});
+
+test('a tick is keyed by its value: one that stays when the range changes keeps its key and slides, on the lines\' timing, to its new place', async () => {
+  const screen = laidOut(await renderPage(changing('')));
+  const ticksNow = () => movers(parts(screen).scale).map(mover => ({ key: mover.key, text: textOf(mover), at: place(mover) }));
+  const before = ticksNow();
+  screen.press(screen.getByTestId('next'));
+  const after = ticksNow();
+  assert.ok(after.every(tick => tick.key === `tick-${tick.text}`), `${after.map(tick => tick.key)}`);
+  const kept = after.filter(tick => before.some(old => old.key === tick.key));
+  assert.ok(kept.length > 0, 'at least one tick stays');
+  assert.ok(kept.some(tick => before.find(old => old.key === tick.key).at !== tick.at), 'and moves');
+  const grid = parts(screen).plot.children.find(node => node.props.position === 'absolute' && movers(node).length > 0);
+  assert.deepEqual(movers(grid).map(mover => [mover.key, place(mover)]), movers(parts(screen).scale).map(mover => [mover.key, place(mover)]), 'the hairlines move with their labels');
+  assert.deepEqual(timing(movers(grid)[0]), timing(lineVector(screen)));
+});
+
+test('the chosen row\'s marker is keyed by its row: another row replaces it at once, new data under the same row moves it with the line', async () => {
+  const page = chosen => `
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ d: 'a', v: 3 }, { d: 'b', v: 7 }, { d: 'c', v: 5 }];
+    export function render() { return <page><LineChart label="Visits" rows={rows} x="d" y="v" value="${chosen}" onChange={() => {}} /></page>; }
+  `;
+  const marker = screen => screen.queryAll(node => node.tag === 'vector' && node.props.position === 'absolute')[0];
+  const [b, c] = [await renderPage(page('b')), await renderPage(page('c'))];
+  assert.deepEqual(JSON.parse(marker(b).props.vectorSource).paths.map(path => path.key), ['rule-1', 'v-1']);
+  assert.deepEqual(JSON.parse(marker(c).props.vectorSource).paths.map(path => path.key), ['rule-2', 'v-2'], 'no key in common, so the renderer draws it at once');
+  assert.match(marker(b).props.transition ?? '', /"d"/);
+});
+
+test('with reduced motion nothing that follows the data moves: lines, figure, ticks and marker take their new place at once', async () => {
+  const screen = laidOut(await renderPage(changing('hasEndLabel value="b" onChange={() => {}}'), { env: defaultEnv({ reducedMotion: true }) }));
+  const moving = screen.queryAll(node => node.props.transition !== undefined && /transform|"d"/.test(node.props.transition));
+  assert.deepEqual(moving.map(node => node.tag), [], 'no transition of a place or a path');
+  assert.ok(place(parts(screen).end.children[0]) >= 0, 'each still has its place');
 });

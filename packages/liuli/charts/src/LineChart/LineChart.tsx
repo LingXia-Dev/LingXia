@@ -2,9 +2,9 @@ import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lin
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, shares, thin, type Point } from '../internal/geometry';
+import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
-import { remember } from '../internal/memo';
+import { laidOutOnce, remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
 
 export type LineChartLabels = 'fit' | 'ends' | 'none';
@@ -117,14 +117,15 @@ export function LineChart({
   const labels = data.length > 1 ? xLabels ?? (size === 'xs' ? 'none' : 'fit') : 'none';
   // The scale from the top down. A label that says what the end figure says, on the same line, is left to the end figure.
   const scale = scaled && [...scaled.ticks].reverse().map(value => ({ value, text: formatValue(value) === latest?.text ? '' : formatValue(value) }));
-  // Each tick's place: the plot above the first, between two, and under the last, as the scale counted them.
-  const gaps = scaled?.gaps ?? [];
-  // The end figure's place: the plot above its value and under it.
-  const [aboveLatest, underLatest] = latest ? shares(range[1] - latest.value, latest.value - range[0]) : [1, 1];
-  const rungs = (mark: (tick: { value: number; text: string }, index: number) => Child) => scale && scale.flatMap((tick, index) => [
-    <view key={`gap-${index}`} className={r.space.base} style={{ flexGrow: gaps[index] }} />,
-    <view key={`tick-${index}`} className={r.tick.base}>{mark(tick, index)}</view>,
-  ]).concat(<view key="foot" className={r.space.base} style={{ flexGrow: gaps[gaps.length - 1] }} />);
+  // A label's place: the value's height on the drawing's own scale, as a share of a box as tall as
+  // the plot. The box moves on the lines' timing, so a label stays level with what it names.
+  const level = (value: number): { translate: readonly [number, `${number}%`] } => ({ translate: [0, `${(scaleY(value, range) / box) * 100}%`] });
+  const rungs = (mark: (tick: { value: number; text: string }) => Child) => scale && (
+    <view className={r.track.base}>
+      {/* Keyed by value: a tick that stays when the range changes moves to its new place. */}
+      {scale.map(tick => <view key={`tick-${tick.value}`} className={cx(r.mover.base, r.mover.tick)} style={level(tick.value)}><view className={r.tick.base}>{mark(tick)}</view></view>)}
+    </view>
+  );
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
@@ -137,15 +138,15 @@ export function LineChart({
       const stroke = roleOf(series.color);
       const lines = runs(thin(columns[index]), range);
       const joined = lines.filter(points => points.length > 1);
-      if (isArea && joined.length) paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${stroke}/16` });
+      if (isArea && joined.length) paths.push({ key: `${series.field}-area`, d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${stroke}/16` });
       if (joined.length) paths.push({
-        d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
+        key: `${series.field}-line`, d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
         ...(series.dash.length ? { strokeDasharray: series.dash, strokeLinecap: 'butt' } : {}),
       });
       const alone = lines.filter(points => points.length === 1);
-      if (alone.length) paths.push({ d: alone.map(points => dot(points[0])).join(''), stroke, strokeWidth: strokeWidth * 2, ...round });
+      if (alone.length) paths.push({ key: `${series.field}-alone`, d: alone.map(points => dot(points[0])).join(''), stroke, strokeWidth: strokeWidth * 2, ...round });
       const latest = lines[lines.length - 1];
-      if (hasEndDot && latest) paths.push({ d: dot(latest[latest.length - 1]), stroke, strokeWidth: dotWidth, ...round });
+      if (hasEndDot && latest) paths.push({ key: `${series.field}-end`, d: dot(latest[latest.length - 1]), stroke, strokeWidth: dotWidth, ...round });
     });
     return paths;
   });
@@ -155,10 +156,11 @@ export function LineChart({
   if (picked) {
     const at = (chosen / Math.max(1, data.length - 1)) * box;
     const round = { fill: 'none', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' } as const;
-    marker.push({ d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
+    // Keyed by the row: another row is a new marker, drawn at once; new data under the same row moves it with the lines.
+    marker.push({ key: `rule-${chosen}`, d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
     for (const series of shown) {
       const value = numberOf(picked, series.field);
-      if (Number.isFinite(value)) marker.push({ d: dot([at, scaleY(value, range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
+      if (Number.isFinite(value)) marker.push({ key: `${series.field}-${chosen}`, d: dot([at, scaleY(value, range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
     }
   }
 
@@ -166,6 +168,18 @@ export function LineChart({
   // side that has one: a dot on the first, last, highest or lowest value is whole.
   const plot = useBox('plot');
   const frame = reach(plot.value?.width ?? 300, plot.value?.height ?? heights[size], edge, isArea ? 0 : edge);
+
+  // A line draws in along its length; a fill cannot follow it, so fills, and the dots that end the
+  // lines, wait in their own layers and fade in as the line arrives.
+  const drawn = laidOutOnce(data, `line:${label}`, plot.value !== null);
+  const under = paths.filter(path => path.key?.endsWith('-area'));
+  const lines = paths.filter(path => path.key?.endsWith('-line'));
+  const over = paths.filter(path => path.key?.endsWith('-alone') || path.key?.endsWith('-end'));
+  const layer = (list: VectorPath[], key: string) => list.length > 0 && (
+    <view key={key} aria-hidden className={cx(r.layer.base, !drawn && lines.length > 0 && r.layer.waiting)}>
+      <vector paths={list} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves)} />
+    </view>
+  );
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
@@ -246,6 +260,8 @@ export function LineChart({
       <view className={r.frame.base}>
         {scale && (
           <view aria-hidden className={cx(r.scale.base, r.inset.base, !isArea && r.inset.open)}>
+            {/* The labels, unseen, give the column its width: the moving ones are out of the flow. */}
+            <view className={r.ghost.base}>{scale.map(tick => <text key={`tick-${tick.value}`} className={r.scaleLabel.base}>{tick.text}</text>)}</view>
             {rungs(tick => <text className={cx(r.scaleLabel.base, r.scaleLabel.level)}>{tick.text}</text>)}
           </view>
         )}
@@ -254,8 +270,10 @@ export function LineChart({
             // A hairline on each tick; the one the values stand on is firmer.
             ? <view aria-hidden className={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)}>{rungs(tick => <view className={tick.value === range[0] ? r.rule.foot : r.rule.line} />)}</view>
             : <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />}
-          {paths.length > 0 && <vector aria-hidden paths={paths} viewBox={frame} className={r.drawing.base} />}
-          {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.over)} />}
+          {layer(under, 'under')}
+          {lines.length > 0 && <vector aria-hidden paths={drawIn(lines, drawn)} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves)} />}
+          {layer(over, 'over')}
+          {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
           {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}
           {scrub && (
             <view
@@ -277,13 +295,24 @@ export function LineChart({
           )}
         </view>
         {latest && (
-          <view aria-hidden className={cx(r.end.base, r.inset.base, !isArea && r.inset.open)}>
-            <view className={r.space.base} style={{ flexGrow: aboveLatest }} />
-            <view className={r.endAnchor.base}><text className={cx(r.endLabel.base, r.endLabel.level)}>{latest.text}</text></view>
-            <view className={r.space.base} style={{ flexGrow: underLatest }} />
+          // It arrives with the dot that ends the line, and moves with it.
+          <view aria-hidden className={cx(r.end.base, r.end.arrives, r.inset.base, !isArea && r.inset.open, !drawn && lines.length > 0 && r.layer.waiting)}>
+            <view className={cx(r.mover.base, r.mover.end)} style={level(latest.value)}>
+              <view className={r.endAnchor.base}><text className={cx(r.endLabel.base, r.endLabel.level)}>{latest.text}</text></view>
+            </view>
           </view>
         )}
       </view>
     </Chart>
   );
+}
+
+/**
+ * Before the first layout a solid line is hidden along its length, after it whole, so
+ * `transition-[d]` draws it in. A dashed line has its own dashes and appears whole.
+ */
+function drawIn(paths: readonly VectorPath[], drawn: boolean): VectorPath[] {
+  return paths.map(path => (path.strokeDasharray ? path : {
+    ...path, pathLength: 1, strokeDasharray: [1], strokeDashoffset: drawn ? 0 : 1, ...(drawn ? {} : { strokeLinecap: 'butt' as const }),
+  }));
 }

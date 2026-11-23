@@ -8,7 +8,7 @@ A number over time, as a line that fits its data or an area from zero, for up to
 import { LineChart } from '@liulidesign/charts/LineChart';
 ```
 
-LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour.
+LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.
 
 ## Examples
 
@@ -255,7 +255,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | A tooltip beside the chosen point. | nothing from the View | A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them. |
 | Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | The first and last category; `value` set by the app. |
 | A window to zoom and pan a long series. | pointer coordinates on an element (`onPointer`) | Pass the rows of the period to show. |
-| Lines that draw in and move between data. | animation of vector geometry | New data is drawn at once. |
 | Marker shapes per series. | a laid-out box's size, readable in render (`useBox`) | Dashes; a shape drawn in a stretched drawing would be distorted. |
 
 Related: Chart, BarChart, Sparkline.

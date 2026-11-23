@@ -9,7 +9,8 @@ export const doc: ComponentDoc = {
   description:
     'LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. ' +
     'A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. ' +
-    'Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour.',
+    'Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. ' +
+    'A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.',
   keywords: ['line chart', 'area chart', 'trend', 'time series', 'series', 'history', 'chart', 'graph'],
   propsType: 'LineChartProps',
   recipe: { map: 'lineChartRecipe', parts: 'lineChartParts' },
@@ -79,7 +80,6 @@ export const doc: ComponentDoc = {
     { missing: 'A tooltip beside the chosen point.', needs: 'nothing from the View', today: 'A rule and dots on the chosen row, and its values in the readout line above the plot, where a finger does not cover them.' },
     { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'The first and last category; `value` set by the app.' },
     { missing: 'A window to zoom and pan a long series.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'Pass the rows of the period to show.' },
-    { missing: 'Lines that draw in and move between data.', needs: 'animation of vector geometry', today: 'New data is drawn at once.' },
     { missing: 'Marker shapes per series.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'Dashes; a shape drawn in a stretched drawing would be distorted.' },
   ],
   related: ['Chart', 'BarChart', 'Sparkline'],

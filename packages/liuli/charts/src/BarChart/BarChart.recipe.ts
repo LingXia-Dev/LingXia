@@ -44,7 +44,7 @@ export const barChartRecipe = {
     down: { regular: 'bottom-0 -top-[3px] pb-[3px]', dense: 'bottom-0 -top-px pb-px' },
   },
   drawing: {
-    base: 'w-full grow object-fill',
+    base: 'w-full grow object-fill motion-safe:transition-[d] duration-slow ease-standard',
     full: 'opacity-85',
     dimmed: 'opacity-30',
   },
@@ -58,8 +58,13 @@ export const barChartRecipe = {
     base: 'grow basis-0 min-w-0 items-center rounded-[4px]',
     pressable: 'hover:bg-text/4 focus-visible:bg-text/7',
   },
-  space: {
-    base: 'basis-0',
+  /** A box as tall as the plot less the figure's line, moved down to the bar's free end on the bars' timing. */
+  mover: {
+    base: 'grow self-stretch items-center motion-safe:transition-transform duration-slow ease-standard',
+  },
+  /** The figure's line, kept clear at the foot so the mover is the plot's height. */
+  lane: {
+    base: 'shrink-0',
   },
   valueSlot: {
     base: 'shrink-0 items-center justify-center-safe',

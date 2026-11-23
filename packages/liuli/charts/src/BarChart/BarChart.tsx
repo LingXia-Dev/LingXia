@@ -4,7 +4,7 @@ import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf,
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, roundUp, shares } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
-import { remember } from '../internal/memo';
+import { laidOutOnce, remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
 
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
@@ -100,7 +100,7 @@ const at = (value: number) => String(Math.round(value * 100) / 100);
  * the plot hides the stroke at the zero line, so only the free end is round.
  */
 function barPaths(
-  rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number,
+  rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number, grown: boolean,
 ): BarPaths {
   const out: BarPaths = { up: [], upDimmed: [], down: [], downDimmed: [] };
   const slot = box / rows.length;
@@ -113,14 +113,16 @@ function barPaths(
     rows.forEach((row, index) => {
       const value = numberOf(row, each.field);
       if (!Number.isFinite(value) || value === 0) return;
+      // Before the first layout every bar stands at zero, so the bars grow to their values.
+      const reach = grown ? value : 0;
       const x0 = slot * index + (slot - inner) / 2 + column * (width + gap);
       const isDimmed = chosen >= 0 && chosen !== index;
-      if (value > 0) d[isDimmed ? 'upDimmed' : 'up'] += `M${at(x0)} ${box}V${at((1 - value / high) * box)}h${at(width)}V${box}Z`;
-      else d[isDimmed ? 'downDimmed' : 'down'] += `M${at(x0)} 0V${at((-value / depth) * box)}h${at(width)}V0Z`;
+      if (value > 0) d[isDimmed ? 'upDimmed' : 'up'] += `M${at(x0)} ${box}V${at((1 - reach / high) * box)}h${at(width)}V${box}Z`;
+      else d[isDimmed ? 'downDimmed' : 'down'] += `M${at(x0)} 0V${at((-reach / depth) * box)}h${at(width)}V0Z`;
     });
     const role = roleOf(each.color);
     for (const side of ['up', 'upDimmed', 'down', 'downDimmed'] as const)
-      if (d[side]) out[side].push({ d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
+      if (d[side]) out[side].push({ key: each.field, d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
   });
   return out;
 }
@@ -160,8 +162,10 @@ export function BarChart({
   // Narrow bars take the small corner: many bars, or the smallest plot, where a slot is a few points wide.
   const density = data.length >= denseFrom || size === 'xs' ? 'dense' : 'regular';
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
-  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density]),
-    () => barPaths(data, shown, high, depth, chosen, radius[density]));
+  // Until the plot is first laid out the bars stand at zero; a chart that comes back does not grow them again.
+  const grown = laidOutOnce(data, `bar:${label}`, plot.value !== null);
+  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown]),
+    () => barPaths(data, shown, high, depth, chosen, radius[density], grown));
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
@@ -194,12 +198,15 @@ export function BarChart({
     const key = keyOf(row, keyField ?? x, index);
     const name = `${textOf(row, x)}: ${reading(row)}`;
     const value = numberOf(row, shown[0]?.field ?? '');
-    // The figure's place: the plot above the bar's free end and under it.
-    const [over, under] = shares(high - value, depth + value);
+    // The figure's place: the bar's free end, as a share of a box as tall as the plot less the
+    // figure's line. The box moves on the bars' timing, so the figure rises and moves with its bar.
+    const end = grown ? value : 0;
+    const down = high + depth > 0 ? ((high - end) / (high + depth)) * 100 : 0;
     const figure = scale === 'each' && shown.length === 1 && Number.isFinite(value) && [
-      <view key="over" className={r.space.base} style={{ flexGrow: over }} />,
-      <view key="figure" aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text className={r.value.base}>{formatValue(value)}</text></view>,
-      <view key="under" className={r.space.base} style={{ flexGrow: under }} />,
+      <view key="mover" className={r.mover.base} style={{ translate: [0, `${down}%`] }}>
+        <view aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text className={r.value.base}>{formatValue(value)}</text></view>
+      </view>,
+      <view key="lane" className={r.lane.base} style={{ height: lane }} />,
     ];
     const slot = r.slot.base;
     const lanes = scale === 'each' && isSigned ? (value < 0 ? { paddingTop: lane } : { paddingBottom: lane }) : undefined;
