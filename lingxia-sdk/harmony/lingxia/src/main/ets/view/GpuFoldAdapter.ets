@@ -1,7 +1,5 @@
 import { display } from '@kit.ArkUI';
 
-export type AdaptiveSizeClass = 'compact' | 'regular';
-export type SwitcherForm = 'none' | 'rail' | 'sidebar';
 export type HingeOrientation = 'vertical' | 'horizontal';
 export type HingePosture = 'flat' | 'half-opened';
 
@@ -22,39 +20,6 @@ export interface HingeRect {
   height: number;
   orientation: HingeOrientation;
   posture: HingePosture;
-}
-
-export const COMPACT_MAX_VP = 600;
-export const HYSTERESIS_VP = 24;
-export const SIDEBAR_EXPANDED_VP = 220;
-export const SIDEBAR_RAIL_VP = 56;
-export const SIDEBAR_EXPAND_MIN_FREE_VP = SIDEBAR_EXPANDED_VP + COMPACT_MAX_VP;
-
-/**
- * Resolve unified size class (`compact` < 600 vp, `regular` >= 600 vp) with ±24 vp hysteresis.
- * Phones, foldables, tri-folds, tablets, and 2-in-1s share this single rule.
- */
-export function resolveSizeClass(previous: AdaptiveSizeClass | null, widthVp: number): AdaptiveSizeClass {
-  const raw: AdaptiveSizeClass = widthVp < COMPACT_MAX_VP ? 'compact' : 'regular';
-  if (previous === null || previous === raw) {
-    return raw;
-  }
-  return Math.abs(widthVp - COMPACT_MAX_VP) < HYSTERESIS_VP ? previous : raw;
-}
-
-/**
- * Resolve left sidebar form (`none` | `rail` | `sidebar`) in `regular` based on
- * free horizontal budget (`windowWidth - visibleAsideWidth >= 820 vp`).
- */
-export function resolveSwitcherForm(
-  sizeClass: AdaptiveSizeClass,
-  mainCount: number,
-  freeWidthVp: number,
-): SwitcherForm {
-  if (sizeClass !== 'regular' || mainCount <= 1) {
-    return 'none';
-  }
-  return freeWidthVp >= SIDEBAR_EXPAND_MIN_FREE_VP ? 'sidebar' : 'rail';
 }
 
 /**
