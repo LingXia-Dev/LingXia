@@ -476,6 +476,8 @@ impl RetainedLayout {
         let mut nodes = self.nodes.clone();
         let mut translations: Vec<[f32; 2]> = vec![[0.0; 2]; count];
         let mut flipped = HashMap::new();
+        let mut popover_caps = HashMap::new();
+        let mut popover_short = Vec::new();
         // The centre of each placed popover's anchor, for `anchor(center)` insets inside it.
         let mut anchor_centres: Vec<Option<[f32; 2]>> = vec![None; count];
         let mut clips = vec![[0.0f32; 4]; count];
@@ -626,18 +628,40 @@ impl RetainedLayout {
                     .unwrap_or_default();
                 natural[0] -= translation[0] + tx;
                 natural[1] -= translation[1] + ty;
-                let target_box = anchor_box(&nodes, &self.parents, target);
+                let target_box = anchor_box(&nodes, target);
                 anchor_centres[index] = Some([
                     target_box[0] + target_box[2] / 2.0,
                     target_box[1] + target_box[3] / 2.0,
                 ]);
-                let ([dx, dy], side) = crate::scene::anchor::place(
+                // Capped earlier, it scrolls: its content's height is what it wants.
+                let wanted = natural[3]
+                    + self.nodes[index]
+                        .scroll
+                        .as_ref()
+                        .map_or(0.0, |scroll| scroll.max_offset);
+                let crate::scene::anchor::Placement {
+                    shift: [dx, dy],
+                    side,
+                    cap,
+                } = crate::scene::anchor::place(
                     natural,
+                    wanted,
                     target_box,
                     self.unobscured,
                     *area,
                     *margin,
                 );
+                if let Some(cap) = cap.map(|room| self.peeking_cap(index, room)) {
+                    let identity = self.nodes[index].identity.to_string();
+                    if cap < crate::scene::anchor::MIN_ROOM {
+                        popover_short.push((
+                            identity.clone(),
+                            nodes[target].scroll_parent.clone(),
+                            crate::scene::anchor::room_rect(target_box, side),
+                        ));
+                    }
+                    popover_caps.insert(identity, cap);
+                }
                 if side != area.side {
                     flipped.insert(self.nodes[index].identity.to_string(), area.logical(side));
                 }
@@ -1576,6 +1600,8 @@ impl RetainedLayout {
             web_pictures: false,
             retained: Arc::clone(self),
             flipped,
+            popover_caps,
+            popover_short,
         })
     }
 }
@@ -1621,26 +1647,47 @@ fn last_transform(layers: &[Paint]) -> Affine {
         .unwrap_or(Affine::IDENTITY)
 }
 
-/// Depth-first paint order with siblings stably sorted by z-index, then CSS
-/// `order`; subtrees stay contiguous.
-/// A run inside a paragraph anchors by its own columns but the paragraph's lines, so a popover
-/// above or below it keeps clear of the text around it.
-fn anchor_box(nodes: &[NodeSnapshot], parents: &[Option<usize>], target: usize) -> [f32; 4] {
-    let run = nodes[target].bounds;
-    let mut block = target;
-    while !nodes[block].hit_rects.is_empty() {
-        match parents[block] {
-            Some(parent) => block = parent,
-            None => return run,
-        }
+impl RetainedLayout {
+    /// A popover capped to `room` ends halfway down a row, so the cut row shows the list goes
+    /// on; with no row edge to use, `room` itself.
+    fn peeking_cap(&self, popover: usize, room: f32) -> f32 {
+        let top = self.nodes[popover].bounds[1];
+        // Rows: its children no taller than half the room (a wrapper around them is not one).
+        let rows: Vec<(f32, f32)> = (popover + 1..self.nodes.len())
+            .filter(|&child| self.parents[child] == Some(popover))
+            .map(|child| {
+                let [_, y, _, h] = self.nodes[child].bounds;
+                (y - top, h)
+            })
+            .filter(|&(_, h)| h > 0.0 && h <= room / 2.0)
+            .collect();
+        let middle = |(y, h): (f32, f32)| y + h / 2.0;
+        let Some(cut) = rows.iter().position(|&(y, h)| y < room && room <= y + h) else {
+            return room;
+        };
+        let peek = if middle(rows[cut]) <= room {
+            Some(middle(rows[cut]))
+        } else {
+            cut.checked_sub(1).map(|before| middle(rows[before]))
+        };
+        // Never peek a list down to a sliver.
+        peek.filter(|peek| *peek >= crate::scene::anchor::MIN_ROOM.min(room))
+            .map_or(room, f32::floor)
     }
-    if block == target {
-        return run;
-    }
-    let paragraph = nodes[block].bounds;
-    [run[0], paragraph[1], run[2], paragraph[3]]
 }
 
+/// A run inside a paragraph anchors by its own lines: its first line piece's columns and the
+/// rows from its first line to its last, so a popover above or below never covers any of it.
+fn anchor_box(nodes: &[NodeSnapshot], target: usize) -> [f32; 4] {
+    let node = &nodes[target];
+    match node.hit_rects.first() {
+        Some(first) => [first[0], node.bounds[1], first[2], node.bounds[3]],
+        None => node.bounds,
+    }
+}
+
+/// Depth-first paint order with siblings stably sorted by z-index, then CSS
+/// `order`; subtrees stay contiguous.
 pub(crate) fn paint_order(parents: &[Option<usize>], z: &[(i32, i32, i32)]) -> Vec<usize> {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); parents.len()];
     let mut roots = Vec::new();

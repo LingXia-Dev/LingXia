@@ -35,8 +35,30 @@ export function render() {
 - **Beside the anchor.** `positionArea: 'inline-end'` (or `inline-start`) puts an anchored popover at the anchor's
   side, centred on it; add `span-block-end` or `span-block-start` to line up its top or bottom with the
   anchor's (a submenu). With no room it flips to the other side, and with room on neither it opens below
-  or above the anchor rather than over it.
+  or above the anchor rather than over it ([below](#where-an-anchored-popover-opens)).
 - Opening either never shows or hides the tab bar.
+
+## Where an anchored popover opens
+
+An anchored popover never covers its anchor. The space it measures is the surface less the bars and
+an open keyboard, 8 pt in from each edge.
+
+1. **Placement.** It opens on its `positionArea` side (below by default), 4 pt off the anchor, or its
+   margin on that side.
+2. **Flip.** If its content does not fit there, it takes the other side when that fits, and otherwise
+   the roomier side (the authored one on a tie).
+3. **Cap.** On a side too short for it, its height is capped to the room there and its content
+   scrolls inside it; a focused option or the editor's `aria-activedescendant` scrolls into view.
+   The cap ends halfway down a row, so the cut row shows the list goes on. A popover within a
+   point of fitting is never capped. If even the roomier side leaves less than about two rows
+   (96 pt), the page first scrolls the anchor to make that room.
+4. **Reveal.** When the anchor is a focused field and the keyboard opens, the page reveals the field
+   first, then places the popover in what is left; a suggestion list never hides the caret line.
+
+A popover anchored to a run inside `<text>` sits at the run: its first line's columns, the rows from
+its first line to its last, so it never covers any line of a run that wraps. The cap applies again
+whenever the page lays out; while the page scrolls under an open popover it follows the anchor and
+takes the same steps.
 
 ## Opening and closing
 

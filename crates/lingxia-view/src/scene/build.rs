@@ -268,7 +268,7 @@ impl Renderer {
             let control_bounds = content_clip.map(|clip| clip.bounds).unwrap_or(bounds);
             let visible_bounds = intersect(bounds, viewport);
             let scroll_parent = parents[index].and_then(|p| scroll_parents[p].clone());
-            let scroll = (matches!(record.tag, tag::SCROLL | tag::LIST)).then(|| {
+            let scroll = crate::layout::style::scrolls(record).then(|| {
                 let axis = if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                     ScrollAxis::Horizontal
                 } else {
@@ -398,7 +398,7 @@ impl Renderer {
                 };
                 let mut scroll = parents[index];
                 while let Some(ancestor) =
-                    scroll.filter(|a| !matches!(records[*a].tag, tag::SCROLL | tag::LIST))
+                    scroll.filter(|a| !crate::layout::style::scrolls(&records[*a]))
                 {
                     scroll = parents[ancestor];
                 }

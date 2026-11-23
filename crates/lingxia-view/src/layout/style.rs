@@ -31,8 +31,44 @@ pub(crate) fn cross_alignment(value: &str, safe: bool) -> AlignItems {
     }
 }
 
-fn scrolls(record: &Record) -> bool {
-    matches!(record.tag, tag::SCROLL | tag::LIST)
+/// A scroll container: a `<scroll>`, a `<list>`, or a popover capped to the room on its side.
+pub(crate) fn scrolls(record: &Record) -> bool {
+    matches!(record.tag, tag::SCROLL | tag::LIST) || popover_cap(record).is_some()
+}
+
+/// The height a popover is capped to, set by `cap_popovers`.
+pub(crate) fn popover_cap(record: &Record) -> Option<f32> {
+    (record.tag == tag::COLUMN && record.string(field::SCROLL_AXIS) == Some(CAPPED))
+        .then(|| record.number(field::MAX_HEIGHT))
+        .flatten()
+}
+
+/// The scroll axis marking a capped popover; authors cannot set it on a column.
+const CAPPED: &str = "vertical";
+
+/// Caps each popover `caps` names (by identity) to its height there and makes it scroll.
+pub(crate) fn cap_popovers(records: &mut [Record], caps: &std::collections::HashMap<String, f32>) {
+    if caps.is_empty() {
+        return;
+    }
+    let identities = crate::protocol::identities(records);
+    for (record, identity) in records.iter_mut().zip(identities) {
+        let Some(cap) = caps.get(&*identity) else {
+            continue;
+        };
+        if record.tag != tag::COLUMN || record.string(field::ANCHOR_TO).is_none() {
+            continue;
+        }
+        record
+            .fields
+            .retain(|(id, _)| !matches!(*id, field::MAX_HEIGHT | field::SCROLL_AXIS));
+        record
+            .fields
+            .push((field::MAX_HEIGHT, serde_json::Value::from(f64::from(*cap))));
+        record
+            .fields
+            .push((field::SCROLL_AXIS, serde_json::Value::from(CAPPED)));
+    }
 }
 
 /// `alignSafe` bits: the alignment properties a page made `safe` (`justify-center-safe`).
@@ -640,8 +676,7 @@ pub(crate) fn node_style(
         // for block flow, where stacked boxes never shrink: only scrolls and growing boxes do.
         flex_shrink: record.number(field::SHRINK).unwrap_or(
             if in_row
-                || ((matches!(record.tag, tag::SCROLL | tag::LIST)
-                    || record.number(field::GROW).unwrap_or(0.0) > 0.0)
+                || ((scrolls(record) || record.number(field::GROW).unwrap_or(0.0) > 0.0)
                     && dimension::<Dimension>(record, field::HEIGHT).is_none())
             {
                 1.0
@@ -678,14 +713,14 @@ pub(crate) fn node_style(
             Point {
                 x: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                     Overflow::Scroll
-                } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
+                } else if scrolls(record) {
                     Overflow::Hidden
                 } else {
                     Overflow::Visible
                 },
                 y: if record.string(field::SCROLL_AXIS) == Some("horizontal") {
                     Overflow::Hidden
-                } else if matches!(record.tag, tag::SCROLL | tag::LIST) {
+                } else if scrolls(record) {
                     Overflow::Scroll
                 } else {
                     Overflow::Visible
@@ -708,7 +743,7 @@ pub(crate) fn node_style(
                             + border_left
                             + border_right,
                     )
-                } else if matches!(record.tag, tag::SCROLL | tag::LIST)
+                } else if scrolls(record)
                     || (!in_row && record.number(field::GROW).unwrap_or(0.0) > 0.0)
                 {
                     // A scroll container's automatic minimum is zero; an item in a row keeps its
@@ -734,9 +769,7 @@ pub(crate) fn node_style(
                     ) || (record.tag == tag::SEARCH && !sized_control)
                     {
                         length(44.0)
-                    } else if matches!(record.tag, tag::SCROLL | tag::LIST)
-                        || record.number(field::GROW).unwrap_or(0.0) > 0.0
-                    {
+                    } else if scrolls(record) || record.number(field::GROW).unwrap_or(0.0) > 0.0 {
                         length(0.0)
                     } else if let Some(height) = replaced_size(record, field::HEIGHT) {
                         height

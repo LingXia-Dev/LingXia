@@ -9,6 +9,7 @@ mod images;
 mod invisible;
 mod list_end_resize;
 mod lowered;
+mod popover_room;
 mod side_style;
 #[cfg(feature = "gpu")]
 mod video;

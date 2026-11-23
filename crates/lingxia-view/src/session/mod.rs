@@ -103,6 +103,8 @@ pub struct ViewSession {
     /// The keyboard reveal of the focused field: a shrinking keyboard settles it back, down to
     /// where the page was, while the user has not scrolled since.
     keyboard_reveal: Option<KeyboardReveal>,
+    /// The `aria-activedescendant` last scrolled into view, so a move reveals once.
+    active_shown: Option<String>,
     /// The host's scroll input revision for the frame being prepared, when it has one.
     offsets_revision: Option<u64>,
     lists: crate::layout::list_layout::Lists,
@@ -380,6 +382,7 @@ impl ViewSession {
             revealed_offsets: HashMap::new(),
             revealed_revision: None,
             keyboard_reveal: None,
+            active_shown: None,
             offsets_revision: None,
             lists: HashMap::new(),
             images: HashMap::new(),

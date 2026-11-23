@@ -13,13 +13,24 @@ impl DisplayList {
         let Some(target) = self.nodes.iter().find(|node| node.identity == identity) else {
             return Ok(self);
         };
+        let (bounds, parent) = (target.bounds, target.scroll_parent.clone());
+        self.reveal_rect(identity, bounds, parent.as_deref(), margin, offsets)
+    }
+
+    /// Scrolls `rect` (logical, as composed) into view through the scroll ancestors from
+    /// `parent`; `identity` names it in the log.
+    pub(crate) fn reveal_rect(
+        self,
+        identity: &str,
+        rect: [f32; 4],
+        parent: Option<&str>,
+        margin: f32,
+        offsets: &mut HashMap<String, f32>,
+    ) -> Result<Self, String> {
         let mut chain = Vec::new();
-        let mut parent = target.scroll_parent.as_deref();
-        let mut starts = [target.bounds[0] - margin, target.bounds[1] - margin];
-        let mut ends = [
-            target.bounds[0] + target.bounds[2] + margin,
-            target.bounds[1] + target.bounds[3] + margin,
-        ];
+        let mut parent = parent;
+        let mut starts = [rect[0] - margin, rect[1] - margin];
+        let mut ends = [rect[0] + rect[2] + margin, rect[1] + rect[3] + margin];
         while let Some(id) = parent {
             let Some(owner) = self
                 .nodes

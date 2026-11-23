@@ -57,6 +57,8 @@ pub struct Renderer {
     pub(crate) intrinsic: HashMap<usize, [f32; 2]>,
     /// Popovers the last composition flipped off their authored side: `side-*:` follows them.
     pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,
+    /// Popovers the last composition capped to the room on their side, by identity.
+    pub(crate) popover_caps: HashMap<String, f32>,
 }
 
 #[cfg(test)]
@@ -104,6 +106,7 @@ impl Default for Renderer {
             control_radius: crate::protocol::scales::Scales::builtin().control_radius(),
             intrinsic: HashMap::new(),
             flipped: HashMap::new(),
+            popover_caps: HashMap::new(),
         }
     }
 }
@@ -318,6 +321,9 @@ impl Renderer {
             }
             if let Some(px) = em(field::MAX_HEIGHT) {
                 style.max_size.height = px;
+            }
+            if let Some(cap) = style::popover_cap(record) {
+                style.max_size.height = length(cap);
             }
             let ch = |id| record.number(id);
             if let Some(n) = ch(field::WIDTH_CH) {

@@ -550,11 +550,12 @@ impl ViewSession {
             metrics.compose_us += crate::session::metrics::micros(started);
             window_only = crate::layout::list_layout::scroll_windows(&display, &self.lists)?;
             // A scroll that flipped a popover restyles its `side-*:` paint, without the View.
-            let flipped = display.flipped != self.renderer.flipped
+            let flipped = (display.flipped != self.renderer.flipped
                 && self
                     .input_records
                     .as_deref()
-                    .is_some_and(crate::interaction::input_state::has_side_styles);
+                    .is_some_and(crate::interaction::input_state::has_side_styles))
+                || display.popover_caps != self.renderer.popover_caps;
             if flipped && window_only.is_none() {
                 native_input = true;
             }
@@ -622,6 +623,7 @@ impl ViewSession {
         let mut prepared_js = !native_input;
         let mut revealed = HashMap::new();
         let mut keyboard_reveal = self.keyboard_reveal.clone();
+        let mut active_shown = self.active_shown.clone();
         let candidate = (|| {
             let mut records = if native_input {
                 self.input_records.as_ref().unwrap().clone()
@@ -638,6 +640,8 @@ impl ViewSession {
             let mut inputs = self.inputs.clone();
             let mut uncontrolled = self.uncontrolled.clone();
             let mut lists = self.lists.clone();
+            let mut tried_caps = Vec::new();
+            let mut settled_caps = false;
             for _ in 0..8 {
                 animation.validate(&records)?;
                 inputs.reconcile(&records, &mut self.renderer)?;
@@ -660,6 +664,10 @@ impl ViewSession {
                 )?;
                 inputs.apply_styles(&mut render_records)?;
                 self.apply_pointer_styles(&mut render_records)?;
+                crate::layout::style::cap_popovers(
+                    &mut render_records,
+                    &self.renderer.popover_caps,
+                );
                 self.renderer.pressed.clone_from(&self.pressed);
                 self.renderer.focused.clone_from(&self.focused_control);
                 self.renderer.editing = inputs.focused().map(str::to_owned);
@@ -774,6 +782,76 @@ impl ViewSession {
                     // The focus lands in the frame after the keyboard's inset when the platform
                     // raises the keyboard first; that frame reveals the field.
                     keyboard_reveal = None;
+                }
+                // A popover newly capped to a sliver: the page scrolls its anchor to make room.
+                let short: Vec<_> = display
+                    .popover_short
+                    .iter()
+                    .filter(|(id, ..)| !self.renderer.popover_caps.contains_key(id))
+                    .cloned()
+                    .collect();
+                for (id, scroll, rect) in short {
+                    let before = offsets.clone();
+                    display =
+                        display.reveal_rect(&id, rect, scroll.as_deref(), 0.0, &mut offsets)?;
+                    for (scroll, to) in &offsets {
+                        if (to - before.get(scroll).copied().unwrap_or(0.0)).abs() > 0.01 {
+                            revealed.insert(scroll.clone(), *to);
+                        }
+                    }
+                }
+                // The field is revealed first; its popover is capped to what is left.
+                if display.popover_caps != self.renderer.popover_caps {
+                    if settled_caps {
+                        display.popover_caps = self.renderer.popover_caps.clone();
+                    } else if tried_caps.contains(&display.popover_caps) {
+                        // Caps that come round again settle capped, the safe side: inside the
+                        // room and scrollable. One more pass at most.
+                        settled_caps = true;
+                        let mut settled = self.renderer.popover_caps.clone();
+                        for (id, cap) in &display.popover_caps {
+                            settled
+                                .entry(id.clone())
+                                .and_modify(|kept| *kept = kept.min(*cap))
+                                .or_insert(*cap);
+                        }
+                        self.warn_unsettled_popover(&display, &settled);
+                        if settled != self.renderer.popover_caps {
+                            self.renderer.popover_caps = settled;
+                            continue;
+                        }
+                        display.popover_caps = self.renderer.popover_caps.clone();
+                    } else {
+                        tried_caps.push(std::mem::replace(
+                            &mut self.renderer.popover_caps,
+                            display.popover_caps.clone(),
+                        ));
+                        continue;
+                    }
+                }
+                // The option an editor's keys point at scrolls into view, once per move.
+                let active = inputs
+                    .focused()
+                    .and_then(|id| display.nodes.iter().find(|node| &*node.identity == id))
+                    .and_then(|node| node.active_descendant.clone());
+                if active != active_shown {
+                    let target = active.as_deref().and_then(|active| {
+                        display
+                            .nodes
+                            .iter()
+                            .find(|node| node.element_id.as_deref() == Some(active))
+                            .map(|node| node.identity.to_string())
+                    });
+                    if let Some(target) = target {
+                        let before = offsets.clone();
+                        display = display.reveal(&target, 0.0, &mut offsets)?;
+                        for (scroll, to) in &offsets {
+                            if (to - before.get(scroll).copied().unwrap_or(0.0)).abs() > 0.01 {
+                                revealed.insert(scroll.clone(), *to);
+                            }
+                        }
+                    }
+                    active_shown = active;
                 }
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
@@ -908,6 +986,7 @@ impl ViewSession {
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
                 self.keyboard_reveal = keyboard_reveal;
+                self.active_shown = active_shown;
                 if !revealed.is_empty() && self.offsets_revision.is_some() {
                     self.revealed_offsets.extend(revealed);
                     self.revealed_revision = self.offsets_revision;
@@ -1159,4 +1238,27 @@ fn applied_offsets(display: &DisplayList) -> HashMap<String, f32> {
         .filter_map(|node| node.scroll.as_ref())
         .map(|scroll| (scroll.id.clone(), scroll.offset))
         .collect()
+}
+
+impl ViewSession {
+    /// A dev build says once per page that a popover's height kept changing, naming it, so a
+    /// real oscillation is found rather than hidden under the settled cap.
+    fn warn_unsettled_popover(&mut self, display: &DisplayList, settled: &HashMap<String, f32>) {
+        if !self.loud || !self.budget_warned.insert("popoverHeight") {
+            return;
+        }
+        let named: Vec<String> = settled
+            .keys()
+            .filter_map(|id| display.nodes.iter().find(|node| &*node.identity == id))
+            .map(|node| match (&node.element_id, node.test_id.is_empty()) {
+                (Some(id), _) => format!("#{id}"),
+                (None, false) => format!("[data-testid=\"{}\"]", node.test_id),
+                (None, true) => format!("<{}>", node.tag),
+            })
+            .collect();
+        self.budget_warnings.push(format!(
+            "UI_POPOVER: the height of {} did not settle between capped and uncapped; it stays capped",
+            named.join(", ")
+        ));
+    }
 }

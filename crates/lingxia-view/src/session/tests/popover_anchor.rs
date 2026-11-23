@@ -86,10 +86,10 @@ fn two_popovers_naming_one_element_both_sit_against_it() {
 }
 
 #[test]
-fn a_hint_anchored_to_a_link_run_keeps_clear_of_its_paragraph() {
+fn a_hint_anchored_to_a_link_run_sits_at_the_run_not_the_paragraph() {
     let worker = ViewWorker::spawn("test-popover-anchor-run").unwrap();
     let platform = Platform::new(&[&worker]);
-    // A link mid-paragraph shows a hint; lines follow it below.
+    // A link mid-paragraph shows a hint; lines follow it below, and the hint sits under the link.
     let host = platform.host(
         &worker,
         &source("function render(){return h('page',{},h('view',{style:{height:40}}),h('text',{'data-testid':'para',style:{width:140}},'Some words run ahead of ',h('link',{interestFor:'hint','data-testid':'word'},'this'),' word and then keep going for a few more lines below it.'),h('view',{id:'hint',popover:'hint','data-testid':'hint',style:{width:60,height:20}}))}"),
@@ -114,8 +114,8 @@ fn a_hint_anchored_to_a_link_run_keeps_clear_of_its_paragraph() {
     );
     assert_eq!(
         hint[1],
-        para[1] + para[3] + 4.0,
-        "under the paragraph: {hint:?} {para:?}"
+        word[1] + word[3] + 4.0,
+        "under the link's own line, not the paragraph: {hint:?} {word:?} {para:?}"
     );
     assert!(
         hint[0] < word[0] + word[2] && word[0] < hint[0] + hint[2],

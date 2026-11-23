@@ -32,6 +32,12 @@ pub struct DisplayList {
     pub(crate) retained: Arc<RetainedLayout>,
     /// Anchored popovers this composition placed on another side than authored, by identity.
     pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,
+    /// Anchored popovers whose content wants more height than their side has: the height each
+    /// is capped to, by identity.
+    pub(crate) popover_caps: HashMap<String, f32>,
+    /// Capped popovers left less than `MIN_ROOM`: identity, the anchor's scroll, and the rect
+    /// (anchor plus room) the page reveals to give them that room.
+    pub(crate) popover_short: Vec<(String, Option<String>, [f32; 4])>,
 }
 
 /// An outermost animated subtree's commands, holding this frame's sampled values. A span

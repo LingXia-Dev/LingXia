@@ -83,21 +83,36 @@ impl Area {
     }
 }
 
+/// Where `place` put a popover.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Placement {
+    /// How far to move it from where it was laid out.
+    pub shift: [f32; 2],
+    pub side: Side,
+    /// The height it may take on that side, when its content wants more: it is capped to it and
+    /// scrolls inside.
+    pub cap: Option<f32>,
+}
+
 /// How far to move a popover laid out at `natural` so it sits on `area`'s side of `anchor`,
-/// flipping to the other side when only that fits, and kept inside `viewport`. Beside an anchor
-/// with room on neither side it goes below or above instead of covering the anchor.
+/// kept inside `viewport` and never over the anchor. It takes the authored side when its
+/// content (`wanted` tall) fits there, else the other side when it fits there, else the roomier
+/// side with its height capped to that side's room. Beside an anchor with room on neither side
+/// it goes below or above instead.
 ///
 /// `margin` (top, right, bottom, left) is the popover's own: the one facing the anchor on the
 /// authored side replaces the default gap, kept when the popover flips, and the ones along the
 /// anchor's edge move it off the edge it aligns to, as a margin box would.
 pub(crate) fn place(
     natural: [f32; 4],
+    wanted: f32,
     anchor: [f32; 4],
     viewport: [f32; 4],
     area: Area,
     margin: [f32; 4],
-) -> ([f32; 2], Side) {
+) -> Placement {
     let [_, _, width, height] = natural;
+    let wanted = wanted.max(height);
     let [m_top, m_right, m_bottom, m_left] = margin.map(|m| if m.is_finite() { m } else { 0.0 });
     let facing = match area.side {
         Side::Below => m_top,
@@ -115,6 +130,7 @@ pub(crate) fn place(
         Align::End => start + extent - size - after,
         Align::Center => start + (extent - size + before - after) / 2.0,
     };
+    let shift = |x: f32, y: f32| [x - natural[0], y - natural[1]];
     if matches!(area.side, Side::Left | Side::Right) {
         let after = anchor[0] + anchor[2] + gap;
         let before = anchor[0] - gap - width;
@@ -129,7 +145,13 @@ pub(crate) fn place(
             let y = along(anchor[1], anchor[3], height, m_top, m_bottom)
                 .min(bottom - height)
                 .max(top);
-            return ([x - natural[0], y - natural[1]], side);
+            let room = bottom - top;
+            let cap = (wanted > room + SLACK).then(|| room.max(0.0).floor());
+            return Placement {
+                shift: shift(x, y),
+                side,
+                cap,
+            };
         }
     }
     let above_first = area.side == Side::Above;
@@ -140,16 +162,48 @@ pub(crate) fn place(
     };
     let x = x.min(right - width).max(left);
     let below = anchor[1] + anchor[3] + gap;
-    let above = anchor[1] - gap - height;
-    let fits_below = below + height <= bottom;
-    let fits_above = above >= top;
-    let low = || below.min(bottom - height).max(top);
-    let (y, side) = match (above_first, fits_above, fits_below) {
-        (true, true, _) | (false, true, false) => (above, Side::Above),
-        (true, false, false) => (above.max(top), Side::Above),
-        _ => (low(), Side::Below),
+    let room_below = (bottom - below).max(0.0);
+    let room_above = (anchor[1] - gap - top).max(0.0);
+    let (fits_below, fits_above) = (wanted <= room_below + SLACK, wanted <= room_above + SLACK);
+    let go_above = match (fits_above, fits_below) {
+        (true, true) => above_first,
+        (true, false) => true,
+        (false, true) => false,
+        // Neither fits: the roomier side, the authored one on a tie.
+        (false, false) if above_first => room_above >= room_below,
+        (false, false) => room_above > room_below,
     };
-    ([x - natural[0], y - natural[1]], side)
+    let (room, fits) = if go_above {
+        (room_above, fits_above)
+    } else {
+        (room_below, fits_below)
+    };
+    let y = if go_above {
+        anchor[1] - gap - height
+    } else {
+        below
+    };
+    Placement {
+        shift: shift(x, y),
+        side: if go_above { Side::Above } else { Side::Below },
+        cap: (!fits).then(|| room.floor()),
+    }
+}
+
+/// What a fit tolerates, so rounding never makes a list that nearly fits scroll by a pixel.
+const SLACK: f32 = 1.0;
+
+/// Below this a capped popover is a sliver; the page scrolls its anchor to make this much room.
+pub(crate) const MIN_ROOM: f32 = 96.0;
+
+/// The anchor with `MIN_ROOM` (and the gap) beside it on `side`: what the page reveals to give
+/// a capped popover room for about two rows.
+pub(crate) fn room_rect(anchor: [f32; 4], side: Side) -> [f32; 4] {
+    let extra = GAP + MIN_ROOM + EDGE;
+    match side {
+        Side::Above => [anchor[0], anchor[1] - extra, anchor[2], anchor[3] + extra],
+        _ => [anchor[0], anchor[1], anchor[2], anchor[3] + extra],
+    }
 }
 
 /// The value of an inset that puts an edge on the anchor's centre line.
@@ -252,6 +306,7 @@ impl AnchorInset {
 
 #[cfg(test)]
 mod tests {
+    use super::Placement;
     use super::{Align, Area, LogicalSide, Side, place};
 
     fn place_at(
@@ -261,7 +316,7 @@ mod tests {
         area: Area,
         margin: [f32; 4],
     ) -> [f32; 2] {
-        place(natural, anchor, viewport, area, margin).0
+        place(natural, natural[3], anchor, viewport, area, margin).shift
     }
 
     const NONE: [f32; 4] = [0.0; 4];
@@ -302,16 +357,54 @@ mod tests {
             ),
             [112.0, 44.0]
         );
-        // Room on neither side: as low as fits, never off the top.
+    }
+
+    #[test]
+    fn with_room_on_neither_side_a_popover_takes_the_roomier_one_capped_and_never_covers_its_anchor()
+     {
+        let viewport = [0.0, 0.0, 400.0, 800.0];
+        let natural = [0.0, 0.0, 280.0, 700.0];
+        let at = |anchor: [f32; 4], area| place(natural, natural[3], anchor, viewport, area, NONE);
+        // 444 below, 288 above: under the anchor, capped to the 444.
+        let low = at([16.0, 300.0, 360.0, 44.0], Area::default());
         assert_eq!(
-            place_at(
-                [0.0, 0.0, 280.0, 700.0],
+            low,
+            Placement {
+                shift: [16.0, 348.0],
+                side: Side::Below,
+                cap: Some(444.0)
+            }
+        );
+        // 244 below, 488 above: over it, capped to the 488.
+        let high = at([16.0, 500.0, 360.0, 44.0], Area::default());
+        assert_eq!((high.side, high.cap), (Side::Above, Some(488.0)));
+        // Laid out at the cap, it is placed the same way and wants the same cap: no oscillation.
+        let capped = place(
+            [0.0, 0.0, 280.0, 488.0],
+            700.0,
+            [16.0, 500.0, 360.0, 44.0],
+            viewport,
+            Area::default(),
+            NONE,
+        );
+        assert_eq!(capped.side, Side::Above);
+        assert_eq!(capped.cap, Some(488.0));
+        assert_eq!(capped.shift[1] + 488.0, 496.0, "ends 4 px over the anchor");
+        // Asked for above with equal room: the authored side wins the tie.
+        let tie = at([16.0, 394.0, 360.0, 12.0], Area::parse(Some("top"), false));
+        assert_eq!(tie.side, Side::Above);
+        // When it fits on one side it is not capped.
+        assert_eq!(
+            place(
+                [0.0, 0.0, 280.0, 200.0],
+                200.0,
                 [16.0, 300.0, 360.0, 44.0],
                 viewport,
                 Area::default(),
                 NONE
-            ),
-            [16.0, 92.0]
+            )
+            .cap,
+            None
         );
     }
 
@@ -319,7 +412,8 @@ mod tests {
     fn placement_reports_the_side_it_ended_on_named_in_the_popover_direction() {
         let viewport = [0.0, 0.0, 400.0, 800.0];
         let natural = [0.0, 0.0, 120.0, 100.0];
-        let side = |anchor, area: Area| place(natural, anchor, viewport, area, NONE).1;
+        let side =
+            |anchor, area: Area| place(natural, natural[3], anchor, viewport, area, NONE).side;
         // Asked for above, no room there: it ends below.
         let top = Area::parse(Some("top"), false);
         assert_eq!(side([16.0, 20.0, 80.0, 30.0], top), Side::Below);
