@@ -1395,7 +1395,21 @@ pub struct LxAppRuntimeNavigationBarInfo {
     pub title: String,
     pub home_button: VisibilityPreference,
     pub home_button_visible: bool,
+    /// Back as the hosts are told it, and the stack depth it follows.
+    pub back: LxAppRuntimeBackInfo,
+    pub home: LxAppRuntimeHomeInfo,
     pub runtime_style: LxAppRuntimeNavigationBarStyleInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeBackInfo {
+    pub shown: bool,
+    pub depth: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeHomeInfo {
+    pub shown: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1804,6 +1818,13 @@ impl LxApp {
                 title: state.title(),
                 home_button: state.home_button,
                 home_button_visible: state.home_button_visible(),
+                back: LxAppRuntimeBackInfo {
+                    shown: state.show_back_button,
+                    depth: self.get_page_stack_size(),
+                },
+                home: LxAppRuntimeHomeInfo {
+                    shown: state.home_button_visible(),
+                },
                 runtime_style: LxAppRuntimeNavigationBarStyleInfo {
                     background_color: state
                         .runtime_style
@@ -3888,10 +3909,15 @@ impl LxApp {
             )
             .unwrap_or_else(|| path.to_string());
 
-        self.get_page(path)
+        let Some(page) = self
+            .get_page(path)
             .or_else(|| self.get_page(&resolved_path))
-            .and_then(|page| page.get_navbar_state())
-            .unwrap_or_default()
+        else {
+            return NavigationBarState::default();
+        };
+        let mut state = page.get_navbar_state().unwrap_or_default();
+        page.stack_chrome(self, &self.get_page_stack(), &mut state);
+        state
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
@@ -6372,6 +6398,90 @@ mod manifest_reload_tests {
         let tabbar = app.get_tabbar().expect("tabbar after text reload");
         assert_eq!(tabbar.items[1].text.as_deref(), Some("Settings2"));
         assert_eq!(tabbar.selected_index, 1);
+    }
+
+    #[test]
+    fn back_and_home_follow_the_stack_through_reloads_restarts_and_appearance() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.stack-chrome.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Stack",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "profile", "path": "pages/profile/index"},
+                {"name": "report", "path": "pages/report/index"}
+              ]
+            }"#,
+        );
+        for page in ["home", "profile", "report"] {
+            let dir = root.join("pages").join(page);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("index.json"),
+                r#"{"navigationBar":{"title":"Declared"}}"#,
+            )
+            .unwrap();
+        }
+        let app = dev_app(root, &appid);
+        // Opened alone at a page that is not the initial route: Home, no Back.
+        let profile = app.get_or_create_page("pages/profile/index");
+        app.push_to_page_stack(&profile).unwrap();
+        let alone = app.get_navbar_state("pages/profile/index");
+        assert!(!alone.show_back_button && alone.home_button_visible());
+        // Pushed over it: Back on the report, Home stays on the page beneath.
+        let report = app.get_or_create_page("pages/report/index");
+        app.push_to_page_stack(&report).unwrap();
+        report
+            .get_navbar_state_mut(|navbar| navbar.set_runtime_title(Some("Weekly report".into())));
+        let check = |step: &str| {
+            let top = app.get_navbar_state("pages/report/index");
+            let beneath = app.get_navbar_state("pages/profile/index");
+            assert!(top.show_back_button, "{step}: Back on the pushed page");
+            assert!(!top.home_button_visible(), "{step}: no Home over a page");
+            assert_eq!(top.title(), "Weekly report", "{step}: Logic's title stays");
+            assert!(
+                !beneath.show_back_button && beneath.home_button_visible(),
+                "{step}: the root keeps Home"
+            );
+            let info = app.runtime_info().navigation_bar.expect("bar");
+            assert!(info.back.shown && !info.home.shown, "{step}: {info:?}");
+            assert_eq!(info.back.depth, 2, "{step}");
+        };
+        check("pushed");
+        type Step = fn(&Arc<LxApp>);
+        let steps: [(&str, Step); 3] = [
+            ("config reload", |app| app.refresh_live_page_config()),
+            ("clean-cache restart", |app| {
+                let _ = crate::LxAppDelegate::on_lxapp_event(
+                    app,
+                    crate::LxAppUiEventType::CapsuleClick,
+                    "clean_cache_cold_restart".into(),
+                );
+            }),
+            ("appearance", |app| {
+                let _ = app.adopt_host_appearance();
+            }),
+        ];
+        for order in [[0, 1, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            for index in order {
+                let (name, step) = steps[index];
+                step(&app);
+                check(name);
+            }
+        }
+        // Popping back to the root: Home there, no Back.
+        app.pop_from_page_stack();
+        let root_page = app.get_navbar_state("pages/profile/index");
+        assert!(!root_page.show_back_button && root_page.home_button_visible());
     }
 
     #[test]

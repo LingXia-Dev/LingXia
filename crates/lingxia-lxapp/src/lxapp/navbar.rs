@@ -194,6 +194,8 @@ pub struct NavigationBarState {
 
     #[serde(skip)]
     pub show_navbar: bool,
+    /// Where the page sits in its stack decides these two: filled where the bar is read
+    /// ([`crate::LxApp::get_navbar_state`]), never stored, so rebuilding the state cannot lose them.
     #[serde(skip)]
     pub show_back_button: bool,
     #[serde(skip)]
@@ -271,14 +273,6 @@ impl NavigationBarState {
                 .or_else(|| theme_divider.map(theme_color))
                 .unwrap_or(defaults.divider_color),
         }
-    }
-
-    pub fn set_back_button_visibility(&mut self, show: bool) {
-        self.show_back_button = show;
-    }
-
-    pub fn set_home_button_visibility(&mut self, show: bool) {
-        self.navigation_home_button = show;
     }
 
     pub fn set_navbar_visibility(&mut self, show: bool) {
@@ -469,8 +463,10 @@ mod tests {
 
     #[test]
     fn hidden_home_button_cannot_be_forced_by_navigation() {
-        let mut state = NavigationBarState::default();
-        state.set_home_button_visibility(true);
+        let mut state = NavigationBarState {
+            navigation_home_button: true,
+            ..NavigationBarState::default()
+        };
         state.set_home_button_preference(VisibilityPreference::Hidden);
         assert!(!state.home_button_visible());
     }

@@ -1270,7 +1270,10 @@ impl PageInstance {
             }
         };
         if let Ok(mut state) = self.inner.state.lock() {
-            state.navbar_state = page_config.create_navbar_state();
+            // Declared parts follow the file; what Logic set stays until Logic sets it again.
+            let mut navbar = page_config.create_navbar_state();
+            navbar.restore_patchable_from(&state.navbar_state);
+            state.navbar_state = navbar;
             state.config_load_error = config_load_error;
             state.enable_pull_down_refresh = page_config.is_pull_down_refresh_enabled();
             state.orientation_override = page_config.get_orientation_override();
@@ -1840,22 +1843,23 @@ impl PageInstance {
             .map(|mut state| f(&mut state.navbar_state))
     }
 
-    /// Back and Home follow the stack this page just joined. A non-initial,
-    /// non-tab root offers Home; a deeper page offers Back. `open` lands here
-    /// without `navigate_to`, so both paths share this.
-    pub(crate) fn apply_stack_navigation_chrome(&self, lxapp: &LxApp) {
+    /// The bar's leading control from where this page sits in `stack` (instance ids, oldest
+    /// first): Back above another page; Home at the bottom unless it is a tab or the initial
+    /// route; neither off the stack or without a bar.
+    pub(crate) fn stack_chrome(
+        &self,
+        lxapp: &LxApp,
+        stack: &[String],
+        navbar: &mut NavigationBarState,
+    ) {
+        let index = stack.iter().position(|id| *id == self.instance_id_string());
         let path = self.path();
-        let stack_size = lxapp.get_page_stack_size();
-        let is_tabbar_page = lxapp
+        let root_offers_home = !lxapp
             .get_tabbar()
-            .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
-        let is_initial_route = path == lxapp.config().get_initial_route();
-        let show_home_button = stack_size <= 1 && !is_tabbar_page && !is_initial_route;
-        self.get_navbar_state_mut(|navbar| {
-            let allow_buttons = navbar.show_navbar;
-            navbar.set_back_button_visibility(stack_size > 1 && allow_buttons);
-            navbar.set_home_button_visibility(show_home_button && allow_buttons);
-        });
+            .is_some_and(|tabbar| tabbar.is_tabbar_page(&path))
+            && path != lxapp.config().get_initial_route();
+        navbar.show_back_button = navbar.show_navbar && index.is_some_and(|index| index > 0);
+        navbar.navigation_home_button = navbar.show_navbar && index == Some(0) && root_offers_home;
     }
 
     /// Get page orientation overrides from state
@@ -2678,9 +2682,6 @@ impl PageInstance {
         }
         pushed?;
 
-        // Set navbar state AFTER page creation to avoid being overwritten
-        target_page.apply_stack_navigation_chrome(lxapp);
-
         lxapp.sync_host_ui();
 
         // 5. Dispatch lifecycle events for current and target pages
@@ -2777,9 +2778,6 @@ impl PageInstance {
             // Forward navigation clears selected_index on detail pages, so
             // Back must restore selection as well as visibility.
             let _ = lxapp.with_tabbar_mut(|tabbar| restore_tabbar_after_back(tabbar, &path));
-
-            // Update NavBar back button visibility based on the new stack size
-            dest.apply_stack_navigation_chrome(&lxapp);
 
             (*lxapp.runtime).navigate(
                 self.appid(),
