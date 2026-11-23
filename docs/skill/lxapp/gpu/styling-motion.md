@@ -9,7 +9,7 @@
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
 - Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
   `border-line-strong` (editors, controls), `bg-accent-solid text-on-accent-solid` (pressed or switched controls; badges and labels keep `bg-accent text-on-accent`, `accent` text and rings), `bg-text/8`; plot series
-  `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
+  `chart-1`..`chart-8`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - Type, radius, spacing and motion are theme steps: `text-sm`, `rounded-lg`, `p-4`, `duration-fast|base|slow`,
   `ease-standard|enter|exit|spring` (not milliseconds). Liuli's names come from the same ramps:
   `text-caption|footnote|body|callout|title|display`, `rounded-checkbox|segment|control|container|dialog`, `*-control-sm|md|lg`.
@@ -27,11 +27,11 @@
 
 ## Classes
 
-- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
-  (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `placeholder:`, slider parts `track:`/`range:`/`secondary:`/`thumb:`
+- Supported variants: `dark:`, `rtl:`/`ltr:`, `regular:`, `motion-safe:`/`motion-reduce:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
+  (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `indeterminate:`, `placeholder:`, `backdrop:` (a dialog's scrim), slider parts `track:`/`range:`/`secondary:`/`thumb:`
   (a state goes first: `active:thumb:size-4`; the touch target stays the slider's box), switch parts `track:`/`thumb:`
-  (`checked:track:bg-success`, `track:w-11 track:h-6`),
-  `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
+  (`checked:track:bg-success`, `track:w-11 track:h-6`; `checked:` works only before a part),
+  `data-*`, `has-*`, `focus-within:`, `group-active:`. `space-*`/`divide-*` are utilities styling every child but the last. `*:` only places grid children; `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
   `transition-*`/`animate-*` animate paint and transforms only; gradients and `scale-0` jump. A box that is or
   holds an editor/scroll/slider may only translate (build error; on `starting:`/`exit:` a warning). `starting:`/`exit:` animate enter and removal; `transition-layout` animates position; `transition-[d]` morphs a `<vector>`'s paths, stroke width, dashes and solid colours between sources with the same commands (pair by `key`); draw a line in with `pathLength: 1`, `strokeDasharray: [1]`, `strokeDashoffset` 1 → 0.

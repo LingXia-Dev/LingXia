@@ -1,6 +1,6 @@
 # GPU View authoring
 
-The default View (Android, iOS, macOS, HarmonyOS). Styling, theme and motion:
+The default View (Android, iOS, macOS, HarmonyOS, Windows). Styling, theme and motion:
 [styling-motion.md](./styling-motion.md); tests: [testing.md](./testing.md).
 
 A page whose View (`index.tsx`, Logic stays in `index.ts`) exports a named `render` renders natively;
@@ -74,7 +74,7 @@ export function render({ data, actions }: View) {
 Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motion.md#drag-and-snap).
 
 - `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
-- No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
+- `onPointerEnter`/`onPointerLeave` on `view`/`button` follow a mouse. Beyond these, `drag` and `onContextMenu`, there are no swipe, pinch or long-press handlers and no drag-and-drop.
 - On phones a finger reaches a control smaller than 44 pt (Android 48 dp) within that size around it, never over
   another control; layout, `boundingBox()` and mouse input keep the real box. `touch-target-none` opts out.
 - `onContextMenu={e => …}` on `view`/`button`/`link`/`text`: long press, secondary click or `locator.performAction('contextmenu')`; `e = { x, y, pointer }` in page coordinates. The engine draws no menu.
@@ -86,7 +86,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
   runs take text paint only; links are accent + underline by default. `<link to={{ page: 'detail', params }}>`
   navigates without an action: `to` takes `lx.nav.go` targets or `{ back: n }`, type-checked against the page registry (`replace` swaps the current page); a link to the current page does nothing, and a refused target reports like a failed action. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
   long-press to select the nearest word and copy; there a long-press on a link selects, elsewhere it presses.
-- Outside `<text>`, `<link>` is a block link: a card of any content with `<button>`'s classes, role link; a button inside keeps its own press, Enter opens it, Space does not. Block links do not nest; every `<link>` needs `to` or `onClick` (`UI_LINK`).
+- Outside `<text>`, `<link>` is a block link: a card of any content with `<button>`'s classes, role link; a button inside keeps its own press, Enter opens it, Space does not. Block links do not nest; every `<link>` needs `to`, `onClick`, `popoverTarget` or `interestFor` (`UI_LINK`).
 - Semantics: `role="heading" headingLevel={2}`, `list`/`listitem`, `menu`/`menuitem`, `alert`/`status`
   (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
@@ -110,7 +110,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 - Leaving a page inside the app (push, tab switch, closing its surface) closes what a tap outside would (the select/date picker, light-dismiss popovers, menus, hints, an action sheet); dialogs and `manual` popovers stay. Going to the background closes nothing.
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
   stays across pages (a mini player), and it always sits above the page and its dialogs.
-- There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
+- `<webview src aria-label>` embeds a web document in the page; pass one `useWebView(name)` handle as `web` to each `<webview>` showing it (inline and in a `<dialog>`) to keep one live document. A browser of its own is `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,
   Home/End jump, a typed letter finds the next item; `expect(locator).toBeFocused()` checks focus.
@@ -129,7 +129,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
   picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
 - `<slider values={[lo, hi]} onChange thumbLabels={['From','To']} aria-label>` has two thumbs that cannot cross (no `bind`); `onChangeEnd` runs when a change is finished (the press lifts, or a key step), on a one-value slider too.
-- A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with no `value`/`bind` keeps its own state across re-renders and still calls `onChange(next)`; an unbound slider starts at `min`, a select at its placeholder, unless `defaultChecked`/`defaultValue` seeds it once; `checked:` and `has-checked:` follow the state either way.
+- A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with no `value`/`bind` keeps its own state across re-renders and still calls `onChange(next)`; an unbound slider starts at `min`, a select at its placeholder, unless `defaultChecked`/`defaultValue` seeds it once; `has-checked:` and a switch's `checked:track:`/`checked:thumb:` follow the state either way.
 - `<checkbox indeterminate>` is partly checked: a dash, announced as mixed, `indeterminate:` variant; a press calls `onChange(true)`. Automation reads `checked: "mixed"`.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
   (the last one submits).
