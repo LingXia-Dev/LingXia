@@ -282,6 +282,7 @@
       "isLxError"
     ],
     "@lingxia/types/page": [
+      "DateParts",
       "Declared",
       "JsonData",
       "JsonValue",
@@ -302,10 +303,16 @@
       "Store",
       "StoreOptions",
       "StorePersist",
+      "TimeZoneOptions",
       "UpdateRecipe",
+      "WallTime",
+      "Weekday",
+      "dateParts",
       "definePage",
       "defineStore",
       "derive",
+      "fromDateParts",
+      "isTimeZone",
       "type"
     ],
     "@lingxia/types/error": [
@@ -370,6 +377,7 @@
       "ConnectWifiOptions",
       "ConptyApi",
       "ConptyStatus",
+      "DateParts",
       "Declared",
       "DeclaredSurface",
       "DeepReadonly",
@@ -581,6 +589,7 @@
       "TerminalSettingsValue",
       "TerminalSettingsWarning",
       "TerminalThemeSettings",
+      "TimeZoneOptions",
       "ToastHandle",
       "ToastOptions",
       "TransferProgress",
@@ -604,15 +613,20 @@
       "VideoThumbnailOptions",
       "VideoThumbnailResult",
       "VisibilityPreference",
+      "WallTime",
+      "Weekday",
       "WifiApi",
       "WifiConnectedCallback",
       "WifiConnectedInfo",
       "WifiInfo",
       "WindowChrome",
+      "dateParts",
       "definePage",
       "defineStore",
       "derive",
+      "fromDateParts",
       "isLxError",
+      "isTimeZone",
       "lx",
       "type"
     ]
@@ -1033,6 +1047,50 @@
       "source": "src/error.ts:54"
     },
     {
+      "path": "dateParts",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "The wall time at `at` in `timeZone`.",
+      "description": "The wall time at `at` in `timeZone`.\n\n```ts\nconst late = dateParts(Date.now(), { timeZone: home }).minuteOfDay >= bedtime;\n```",
+      "signatures": [
+        {
+          "text": "dateParts(at: Date | number, options: TimeZoneOptions): DateParts",
+          "parameters": [
+            {
+              "name": "at",
+              "type": "Date | number",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "TimeZoneOptions",
+              "required": true
+            }
+          ],
+          "returns": "DateParts"
+        }
+      ],
+      "types": [
+        "DateParts",
+        "TimeZoneOptions",
+        "Weekday"
+      ],
+      "tags": {
+        "throws": [
+          {
+            "code": "E_INVALID_ARG",
+            "when": "`at` is not a valid time, or `timeZone` names no zone."
+          },
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "The engine has no zone-aware `Intl.DateTimeFormat`."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/time.ts:116"
+    },
+    {
       "path": "definePage",
       "kind": "function",
       "entry": "@lingxia/logic",
@@ -1098,7 +1156,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:319"
+      "source": "src/page.ts:321"
     },
     {
       "path": "defineStore",
@@ -1189,6 +1247,49 @@
       "source": "src/store.ts:403"
     },
     {
+      "path": "fromDateParts",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "The instant a wall time in `timeZone` names, in epoch ms.",
+      "description": "The instant a wall time in `timeZone` names, in epoch ms. Fields out of range roll over, so start\nof day, a week on and minutes past midnight are each one call. A time a DST change skips moves\nforward by the change; a time that occurs twice takes the earlier instant.\n\n```ts\nconst p = dateParts(now, { timeZone: home });\nfromDateParts({ ...p, hour: 0, minute: 0 }, { timeZone: home });                  // start of today\nfromDateParts({ ...p, day: p.day + 7, hour: 0, minute: 0 }, { timeZone: home });  // a week on, at midnight\nfromDateParts({ ...p, hour: 0, minute: 1290 }, { timeZone: home });                // 21:30 today\n```",
+      "signatures": [
+        {
+          "text": "fromDateParts(parts: WallTime, options: TimeZoneOptions): number",
+          "parameters": [
+            {
+              "name": "parts",
+              "type": "WallTime",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "TimeZoneOptions",
+              "required": true
+            }
+          ],
+          "returns": "number"
+        }
+      ],
+      "types": [
+        "TimeZoneOptions",
+        "WallTime"
+      ],
+      "tags": {
+        "throws": [
+          {
+            "code": "E_INVALID_ARG",
+            "when": "A field is not an integer, or `timeZone` names no zone."
+          },
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "The engine has no zone-aware `Intl.DateTimeFormat`."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/time.ts:137"
+    },
+    {
       "path": "isLxError",
       "kind": "function",
       "entry": "@lingxia/logic",
@@ -1214,6 +1315,37 @@
       "tags": {},
       "examples": [],
       "source": "src/error.ts:101"
+    },
+    {
+      "path": "isTimeZone",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "Whether `name` is a time zone `dateParts` and `fromDateParts` accept.",
+      "description": "Whether `name` is a time zone `dateParts` and `fromDateParts` accept. Check a zone from a server once, where it enters the app.",
+      "signatures": [
+        {
+          "text": "isTimeZone(name: string): boolean",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "returns": "boolean"
+        }
+      ],
+      "types": [],
+      "tags": {
+        "throws": [
+          {
+            "code": "E_NOT_SUPPORTED",
+            "when": "The engine has no zone-aware `Intl.DateTimeFormat`."
+          }
+        ]
+      },
+      "examples": [],
+      "source": "src/time.ts:156"
     },
     {
       "path": "lx.app",
@@ -6915,7 +7047,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:190"
+      "source": "src/page.ts:192"
     },
     {
       "path": "page.close",
@@ -6939,7 +7071,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:139"
+      "source": "src/page.ts:141"
     },
     {
       "path": "page.data",
@@ -6955,7 +7087,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:114"
+      "source": "src/page.ts:116"
     },
     {
       "path": "page.env",
@@ -6967,7 +7099,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:185"
+      "source": "src/page.ts:187"
     },
     {
       "path": "page.env.get",
@@ -7055,7 +7187,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:196"
+      "source": "src/page.ts:198"
     },
     {
       "path": "page.flush",
@@ -7073,7 +7205,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:127"
+      "source": "src/page.ts:129"
     },
     {
       "path": "page.name",
@@ -7086,7 +7218,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:131"
+      "source": "src/page.ts:133"
     },
     {
       "path": "page.navigationBar",
@@ -7098,7 +7230,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:156"
+      "source": "src/page.ts:158"
     },
     {
       "path": "page.navigationBar.update",
@@ -7126,7 +7258,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:158"
+      "source": "src/page.ts:160"
     },
     {
       "path": "page.opener",
@@ -7138,7 +7270,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:147"
+      "source": "src/page.ts:149"
     },
     {
       "path": "page.opener.onMessage",
@@ -7170,7 +7302,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:151"
+      "source": "src/page.ts:153"
     },
     {
       "path": "page.opener.send",
@@ -7196,7 +7328,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:149"
+      "source": "src/page.ts:151"
     },
     {
       "path": "page.orientation",
@@ -7208,7 +7340,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:174"
+      "source": "src/page.ts:176"
     },
     {
       "path": "page.orientation.lock",
@@ -7234,7 +7366,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:176"
+      "source": "src/page.ts:178"
     },
     {
       "path": "page.orientation.unlock",
@@ -7252,7 +7384,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:178"
+      "source": "src/page.ts:180"
     },
     {
       "path": "page.params",
@@ -7265,7 +7397,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:129"
+      "source": "src/page.ts:131"
     },
     {
       "path": "page.refresh",
@@ -7283,7 +7415,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:165"
+      "source": "src/page.ts:167"
     },
     {
       "path": "page.set",
@@ -7309,7 +7441,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:122"
+      "source": "src/page.ts:124"
     },
     {
       "path": "page.setResult",
@@ -7333,7 +7465,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:141"
+      "source": "src/page.ts:143"
     },
     {
       "path": "page.signal",
@@ -7346,7 +7478,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:133"
+      "source": "src/page.ts:135"
     },
     {
       "path": "page.surface",
@@ -7358,7 +7490,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:154"
+      "source": "src/page.ts:156"
     },
     {
       "path": "page.surface.alive",
@@ -7600,7 +7732,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:120"
+      "source": "src/page.ts:122"
     },
     {
       "path": "page.video",
@@ -7627,7 +7759,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:167"
+      "source": "src/page.ts:169"
     },
     {
       "path": "type",
@@ -7647,7 +7779,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:30"
+      "source": "src/page.ts:32"
     }
   ],
   "types": [
@@ -9400,11 +9532,82 @@
       "source": "src/generated/logic.ts:1363"
     },
     {
+      "name": "DateParts",
+      "summary": "A wall time in one time zone.",
+      "description": "A wall time in one time zone.",
+      "fields": [
+        {
+          "name": "year",
+          "type": "number",
+          "required": true,
+          "summary": "The full year, such as 2026.",
+          "description": "The full year, such as 2026."
+        },
+        {
+          "name": "month",
+          "type": "number",
+          "required": true,
+          "summary": "1–12, not `Date`'s 0–11.",
+          "description": "1–12, not `Date`'s 0–11."
+        },
+        {
+          "name": "day",
+          "type": "number",
+          "required": true,
+          "summary": "The day of the month, from 1.",
+          "description": "The day of the month, from 1."
+        },
+        {
+          "name": "hour",
+          "type": "number",
+          "required": true,
+          "summary": "0–23.",
+          "description": "0–23."
+        },
+        {
+          "name": "minute",
+          "type": "number",
+          "required": true,
+          "summary": "0–59.",
+          "description": "0–59."
+        },
+        {
+          "name": "second",
+          "type": "number",
+          "required": true,
+          "summary": "0–59.",
+          "description": "0–59."
+        },
+        {
+          "name": "dayOfWeek",
+          "type": "Weekday",
+          "required": true,
+          "summary": "1 = Monday … 7 = Sunday, as Temporal's `dayOfWeek`.",
+          "description": "1 = Monday … 7 = Sunday, as Temporal's `dayOfWeek`."
+        },
+        {
+          "name": "minuteOfDay",
+          "type": "number",
+          "required": true,
+          "summary": "`hour * 60 + minute`, 0–1439.",
+          "description": "`hour * 60 + minute`, 0–1439."
+        },
+        {
+          "name": "dayNumber",
+          "type": "number",
+          "required": true,
+          "summary": "Calendar days since 1970-01-01: equal for the same day, and two days' difference is the days between, whatever DST does.",
+          "description": "Calendar days since 1970-01-01: equal for the same day, and two days' difference is the days between, whatever DST does."
+        }
+      ],
+      "source": "src/time.ts:7"
+    },
+    {
       "name": "Declared",
       "summary": "A type a page declares: `params: type<{ id: string }>()`.",
       "description": "A type a page declares: `params: type<{ id: string }>()`. Nothing at run time.",
       "fields": [],
-      "source": "src/page.ts:25"
+      "source": "src/page.ts:27"
     },
     {
       "name": "DeclaredSurface",
@@ -10098,7 +10301,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:284"
+      "source": "src/page.ts:286"
     },
     {
       "name": "FsCopyOptions",
@@ -11534,7 +11737,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:259"
+      "source": "src/page.ts:261"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12349,7 +12552,7 @@
           "description": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns\n`stop()`. Paused while the page is hidden, and a run missed meanwhile happens when it shows\nagain. A throw or rejection is reported and the timer goes on. Stops when the page unloads."
         }
       ],
-      "source": "src/page.ts:112"
+      "source": "src/page.ts:114"
     },
     {
       "name": "PageChannel",
@@ -12378,7 +12581,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:244"
+      "source": "src/page.ts:246"
     },
     {
       "name": "PageDeclarations",
@@ -12421,7 +12624,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:262"
+      "source": "src/page.ts:264"
     },
     {
       "name": "PageDefinition",
@@ -12450,7 +12653,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:221"
+      "source": "src/page.ts:223"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -12486,7 +12689,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:227"
+      "source": "src/page.ts:229"
     },
     {
       "name": "PageEnvContext",
@@ -12524,7 +12727,7 @@
           "default": "'pause'"
         }
       ],
-      "source": "src/page.ts:200"
+      "source": "src/page.ts:202"
     },
     {
       "name": "PageHandle",
@@ -12605,7 +12808,7 @@
       "description": "Lifecycle hook names a page's `setup` may return.",
       "text": "\"onLoad\" | \"onShow\" | \"onReady\" | \"onHide\" | \"onUnload\" | \"onRefresh\"",
       "fields": [],
-      "source": "src/page.ts:35"
+      "source": "src/page.ts:37"
     },
     {
       "name": "PageLike",
@@ -12634,7 +12837,7 @@
           "description": "Assign whole keys, as `page.set` does."
         }
       ],
-      "source": "src/page.ts:101"
+      "source": "src/page.ts:103"
     },
     {
       "name": "PageLoadOptions",
@@ -12829,7 +13032,7 @@
           "description": "The page's whole View-callable surface. Actions are called with `this` undefined."
         }
       ],
-      "source": "src/page.ts:49"
+      "source": "src/page.ts:51"
     },
     {
       "name": "PageSurface",
@@ -13023,7 +13226,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:255"
+      "source": "src/page.ts:257"
     },
     {
       "name": "PermissionName",
@@ -13869,7 +14072,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:257"
+      "source": "src/page.ts:259"
     },
     {
       "name": "RouteTarget",
@@ -14362,7 +14565,7 @@
           "description": "The params of the `lx.nav.go({ tab, params })` that showed this tab page, on that show only\n(also when it was already the current tab); absent on every other show."
         }
       ],
-      "source": "src/page.ts:40"
+      "source": "src/page.ts:42"
     },
     {
       "name": "SignalOptions",
@@ -15832,6 +16035,21 @@
       "source": "src/generated/logic.ts:3163"
     },
     {
+      "name": "TimeZoneOptions",
+      "summary": "The zone to compute in.",
+      "description": "The zone to compute in.",
+      "fields": [
+        {
+          "name": "timeZone",
+          "type": "string",
+          "required": true,
+          "summary": "An IANA zone name such as `'Europe/Berlin'`, or `'UTC'`.",
+          "description": "An IANA zone name such as `'Europe/Berlin'`, or `'UTC'`. Check one from a server with `isTimeZone` where it enters the app."
+        }
+      ],
+      "source": "src/time.ts:45"
+    },
+    {
       "name": "ToastHandle",
       "summary": "The toast `lx.ui.toast` returned.",
       "description": "The toast `lx.ui.toast` returned.",
@@ -16329,7 +16547,7 @@
       "description": "A recipe changes the draft in place. What it returns is ignored, so\n`d => d.list.push(x)` is fine; a promise, or a new object shaped like the\ndata, is refused.",
       "text": "(draft: Data) => R & RecipeReturn<R, Data>",
       "fields": [],
-      "source": "src/page.ts:83"
+      "source": "src/page.ts:85"
     },
     {
       "name": "UploadOptions",
@@ -16641,7 +16859,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:209"
+      "source": "src/page.ts:211"
     },
     {
       "name": "VisibilityPreference",
@@ -16650,6 +16868,64 @@
       "text": "\"auto\" | \"hidden\"",
       "fields": [],
       "source": "src/generated/logic.ts:3505"
+    },
+    {
+      "name": "WallTime",
+      "summary": "The wall time `fromDateParts` reads; a field out of range rolls over (`day: d + 1` is tomorrow).",
+      "description": "The wall time `fromDateParts` reads; a field out of range rolls over (`day: d + 1` is tomorrow).",
+      "fields": [
+        {
+          "name": "year",
+          "type": "number",
+          "required": true,
+          "summary": "The full year.",
+          "description": "The full year."
+        },
+        {
+          "name": "month",
+          "type": "number",
+          "required": true,
+          "summary": "1–12; 13 is January of the next year.",
+          "description": "1–12; 13 is January of the next year."
+        },
+        {
+          "name": "day",
+          "type": "number",
+          "required": true,
+          "summary": "The day of the month; 0 is the last day of the month before.",
+          "description": "The day of the month; 0 is the last day of the month before."
+        },
+        {
+          "name": "hour",
+          "type": "number | undefined",
+          "required": false,
+          "summary": "Defaults to 0.",
+          "description": "Defaults to 0."
+        },
+        {
+          "name": "minute",
+          "type": "number | undefined",
+          "required": false,
+          "summary": "Defaults to 0; 1290 is 21:30.",
+          "description": "Defaults to 0; 1290 is 21:30."
+        },
+        {
+          "name": "second",
+          "type": "number | undefined",
+          "required": false,
+          "summary": "Defaults to 0.",
+          "description": "Defaults to 0."
+        }
+      ],
+      "source": "src/time.ts:29"
+    },
+    {
+      "name": "Weekday",
+      "summary": "A day of the week, 1 = Monday … 7 = Sunday, as Temporal and ISO 8601; `Date.getDay()` counts 0 = Sunday.",
+      "description": "A day of the week, 1 = Monday … 7 = Sunday, as Temporal and ISO 8601; `Date.getDay()` counts 0 = Sunday.",
+      "text": "1 | 2 | 6 | 3 | 4 | 5 | 7",
+      "fields": [],
+      "source": "src/time.ts:4"
     },
     {
       "name": "WifiApi",
@@ -16861,7 +17137,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:292"
+      "source": "src/page.ts:294"
     },
     {
       "name": "definePage(definition)",
@@ -16883,7 +17159,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:327"
+      "source": "src/page.ts:329"
     },
     {
       "name": "lx.clipboard.read()",

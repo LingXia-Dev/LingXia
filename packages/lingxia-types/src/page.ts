@@ -17,6 +17,8 @@ import type {
 
 export type { JsonData } from './generated/logic.js';
 export { defineStore, derive } from './store.js';
+export { dateParts, fromDateParts, isTimeZone } from './time.js';
+export type { DateParts, TimeZoneOptions, WallTime, Weekday } from './time.js';
 export type { PersistedStore, PersistedStoreOptions, PersistResult, Store, StoreOptions, StorePersist } from './store.js';
 
 declare const typeTag: unique symbol;
