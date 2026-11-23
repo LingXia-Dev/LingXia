@@ -58,8 +58,8 @@ creation and sealed before that session's Logic starts.
 derives `ControlApp` from `home_app_id()` rather than from whatever session
 happens to be in `lxapps`. This matters because the home session *is* removed
 from that map — by LRU eviction, by uninstall, and by the 30-minute delayed
-destroy — and reading the class off the map rebuilt the product's own home as
-a guest, with no way back short of a process restart. `ControlSurface` is not
+destroy — and reading the class off the map would rebuild the product's own
+home as a guest, with no way back short of a process restart. `ControlSurface` is not
 an identity (a host-bundled lxapp is a surface only while the Control app keeps
 one open), so it stays inherited from the live session.
 
@@ -154,9 +154,9 @@ and releases:
 
 - Inbound delivery to a delegate. The delegate is the whole bridge and Logic
   runtime, and it may post back synchronously — on Harmony it does, so holding
-  the lock deadlocked the ArkWeb callback thread on every document's first
-  frame. Holding it also serialized all four message workers behind one
-  WebView's dispatch and blocked navigation callbacks on every platform.
+  the lock would deadlock the ArkWeb callback thread on every document's first
+  frame. Holding it would also serialize all four message workers behind one
+  WebView's dispatch and block navigation callbacks on every platform.
 - Enqueueing. `enqueue_web_message` samples the binding through the same
   registry lock, so wrapping it self-deadlocks. A per-document port instead
   goes through `enqueue_document_web_message`, which proves the generation in
@@ -171,7 +171,7 @@ Android's `postDocumentMessageNow`).
 
 The same rule applies to `HarmonyDocumentAuthority`: take one generation lock
 at a time. Ingress checks the authority, releases, then enqueues; nesting the
-two put ingress and outbound in opposite lock orders.
+two would put ingress and outbound in opposite lock orders.
 
 ## Attention routes
 
