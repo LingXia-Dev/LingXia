@@ -82,8 +82,8 @@ export function render({ data, actions }: View) {
       ) : (
         <Split
           compact="sheet"
-          bindOpen={notesOpen}
-          asideTitle="Live Notes"
+          bind={notesOpen}
+          asideLabel="Live notes"
           asideWidth={320}
           aside={
             <view className="p-4 gap-2">

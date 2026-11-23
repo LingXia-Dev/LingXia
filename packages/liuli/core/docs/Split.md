@@ -2,17 +2,17 @@
 
 # Split
 
-Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact. Status: preview.
+The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone. Status: preview.
 
 ```ts
 import { Split } from '@liulidesign/core/Split';
 ```
 
-Split pairs primary content (video, document, checkout items) with a companion `aside` pane (live chat, comments, inspector, summary). On flat regular screens (`>= 600 dp`) the companion docks at the inline end and snaps to any vertical fold hinge; when a foldable stands half-opened horizontally (`hinge.posture === "half-opened"`), primary automatically takes the upper leaf and `aside` takes the lower leaf. On compact screens (`< 600 dp`), `compact="stack"` places `aside` underneath while `compact="sheet"` turns it into a draggable `<BottomSheet>`.
+Split pairs the main content (a video, a document, a basket) with a companion `aside` (a live chat, comments, an inspector, a summary). On a wide screen the aside sits at the end, `asideWidth` wide, and at a fold that crosses the page it takes the end leaf. On a foldable stood half open like a laptop, the main content takes the upper half and the aside the lower. On a phone, `compact="stack"` puts the aside under the main content, and `compact="sheet"` puts it in a bottom sheet the page opens.
 
 ## Examples
 
-### Live stream with companion chat
+### A live stream and its chat
 
 ```tsx
 import { Split } from '@liulidesign/core/Split';
@@ -23,9 +23,10 @@ export function LiveStreamSplit() {
     <view className="h-[320px] overflow-hidden rounded-container border border-text/12">
       <Split
         asideWidth={240}
+        asideLabel="Live chat"
         aside={
           <view className="p-3 gap-2">
-            <text className="text-footnote font-semibold text-text">Live Chat</text>
+            <text className="text-footnote font-semibold text-text">Live chat</text>
             <text className="text-caption text-muted">Messages stay beside video on wide screens and below in compact or tabletop.</text>
           </view>
         }
@@ -40,7 +41,7 @@ export function LiveStreamSplit() {
 }
 ```
 
-### Document with comments sheet
+### A document and its comments
 
 ```tsx
 import { useLocal, useView } from '@lingxia/view';
@@ -56,8 +57,8 @@ export function DocumentSheetSplit() {
     <view className="h-[320px] overflow-hidden rounded-container border border-text/12">
       <Split
         compact="sheet"
-        bindOpen={commentsOpen}
-        asideTitle="Comments"
+        bind={commentsOpen}
+        asideLabel="Comments"
         asideWidth={240}
         aside={
           <view className="p-3 gap-2">
@@ -70,7 +71,7 @@ export function DocumentSheetSplit() {
           <text className="text-body font-semibold text-text">Architecture Spec</text>
           {isCompact && (
             <Button
-              label="Open Comments"
+              label="Comments"
               variant="secondary"
               width="content"
               onClick={() => commentsOpen.set(true)}
@@ -88,25 +89,25 @@ export function DocumentSheetSplit() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `children` | `Child` |  | Primary content (video, document, canvas). |
-| `aside` (required) | `Child` |  | Companion aside content (live chat, comments, inspector). |
-| `asideWidth` | `number` | `320` | Aside pane width in `regular` flat mode when no vertical hinge is present. |
-| `asideTitle` | `string` | `'Details'` | Accessible title for the aside sheet when `compact="sheet"`. |
-| `compact` | `SplitCompactMode` | `'stack'` | How `aside` presents on `compact` screens: vertical stack or draggable BottomSheet. |
-| `isOpen` | `boolean` | `false` | Controlled open state for `compact="sheet"`. |
-| `onOpenChange` | `((isOpen: boolean) => void)` |  | Called when the compact sheet opens or closes. |
-| `bindOpen` | `Local<boolean>` |  | Uncontrolled local open state cell for `compact="sheet"`. |
+| `compact` | `"sheet" \| "stack"` | `'stack'` | `stack` puts the aside under the main content; `sheet` puts it in a bottom sheet the page opens. |
+| `bind` | `Local<boolean>` |  | A View-local cell: whether the sheet is open. |
+| `isOpen` | `boolean` |  | Whether the sheet is open. |
+| `onOpenChange` | `((isOpen: boolean) => void)` |  | Runs with `false` when the sheet is dismissed. |
+| `children` | `Child` |  | The main content: a video, a document, a canvas. |
+| `aside` (required) | `Child` |  | The companion beside it: a live chat, comments, an inspector. |
+| `asideLabel` (required) | `string` |  | Names the aside pane, and its sheet on a phone: "Live chat", "Comments". |
+| `asideWidth` | `number` | `320` | The aside's width in pt beside the main content, when no fold crosses the page. |
 | `className` | `string` |  |  |
-| `data-testid` | `string` |  |  |
+| `data-testid` | `string` |  | On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`. |
 
 ## Anatomy
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| root | `<view>` | yes | Row in regular flat mode; column in compact or half-opened tabletop posture. |
-| primary | `<view>` | yes | The main content region; scoped by `<SizeClassScope>` to its own resolved column width. |
-| aside | `<view>` | yes | The companion pane (or the body of the compact `<BottomSheet>` when `compact="sheet"`). |
-| hingeGap | `<view>` | no | Decorative spacer matching a physical display crease so content never crosses the hinge. |
+| root | `<view>` | yes | Fills its page: a row on a wide screen, a column on a phone or a half-open fold. |
+| primary | `<view>` | yes | The main content; what is inside it sizes itself to the pane's own width, not the screen's. |
+| aside | `<view>` | yes | The companion, a group named by `asideLabel`; on a phone with `compact="sheet"`, the body of the sheet. |
+| hingeGap | `<view>` | no | An empty strip as wide as the fold's crease, so nothing is drawn across it. |
 
 ## What an app may override
 
@@ -120,8 +121,8 @@ export function DocumentSheetSplit() {
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
-- In `compact="sheet"` mode, `asideTitle` names the modal `<BottomSheet>` dialog and Escape or Back closes it.
-- Physical hinge spacers are marked `aria-hidden` so assistive navigation skips them.
+- The aside is a group named by `asideLabel`, so a screen reader can move to it; on a phone its sheet takes the same name, and Escape or Back closes it.
+- The strip over a fold's crease is hidden from assistive tech.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -130,9 +131,10 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Use `compact="stack"` when both panes must remain visible simultaneously on phones (such as live video above chat).
-- Do: Use `compact="sheet"` with `bindOpen` and a compact-only trigger button when the companion pane is secondary (such as document comments or filters).
-- Do: Let `<Split>` fill the page to its bottom edge and span its width: the seam is placed from those edges, so it meets the fold crease whatever sits above.
-- Don't: Check `env.platform` or fold posture manually in page code to rearrange video and chat; `<Split>` handles tabletop folds automatically.
+- Do: Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.
+- Do: Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).
+- Do: Name the aside with `asideLabel`: it names the pane and, on a phone, the sheet.
+- Do: Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.
+- Don't: Read the fold or the platform in page code to move the video and the chat; Split does that.
 
-Related: ListDetail, BottomSheet, SplitView.
+Related: ListDetail, BottomSheet, Drawer.

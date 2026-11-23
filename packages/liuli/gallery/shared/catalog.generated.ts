@@ -1172,7 +1172,7 @@ export const entries: GalleryEntry[] = [
     "name": "Split",
     "page": "split",
     "category": "content",
-    "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
+    "summary": "The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone",
     "keywords": [
       "split",
       "companion pane",

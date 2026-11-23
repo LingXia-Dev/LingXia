@@ -5,11 +5,11 @@ import { Lead, PageSection, Stage } from '../shared/Layout';
 export function Content() {
   return (
     <>
-      <Lead text={"Use Split for a primary canvas and its companion pane: beside each other on wide screens, upper and lower on tabletop folds, stacked or in a BottomSheet on phones."} bare>
+      <Lead text={"Use Split for the main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone."} bare>
         <LiveStreamSplit />
       </Lead>
       <PageSection title={"Variants"}>
-        <Stage caption={"Secondary aside presented as a BottomSheet on compact"} bare>
+        <Stage caption={"Comments in a sheet on a phone"} bare>
           <DocumentSheetSplit />
         </Stage>
       </PageSection>

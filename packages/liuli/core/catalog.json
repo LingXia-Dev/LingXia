@@ -16865,8 +16865,8 @@
       "category": "content",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
-      "description": "Split pairs primary content (video, document, checkout items) with a companion `aside` pane (live chat, comments, inspector, summary). On flat regular screens (`>= 600 dp`) the companion docks at the inline end and snaps to any vertical fold hinge; when a foldable stands half-opened horizontally (`hinge.posture === \"half-opened\"`), primary automatically takes the upper leaf and `aside` takes the lower leaf. On compact screens (`< 600 dp`), `compact=\"stack\"` places `aside` underneath while `compact=\"sheet\"` turns it into a draggable `<BottomSheet>`.",
+      "summary": "The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone",
+      "description": "Split pairs the main content (a video, a document, a basket) with a companion `aside` (a live chat, comments, an inspector, a summary). On a wide screen the aside sits at the end, `asideWidth` wide, and at a fold that crosses the page it takes the end leaf. On a foldable stood half open like a laptop, the main content takes the upper half and the aside the lower. On a phone, `compact=\"stack\"` puts the aside under the main content, and `compact=\"sheet\"` puts it in a bottom sheet the page opens.",
       "keywords": [
         "split",
         "companion pane",
@@ -16879,36 +16879,10 @@
       ],
       "props": [
         {
-          "name": "children",
-          "type": "Child",
-          "required": false,
-          "description": "Primary content (video, document, canvas)."
-        },
-        {
-          "name": "aside",
-          "type": "Child",
-          "required": true,
-          "description": "Companion aside content (live chat, comments, inspector)."
-        },
-        {
-          "name": "asideWidth",
-          "type": "number",
-          "required": false,
-          "description": "Aside pane width in `regular` flat mode when no vertical hinge is present.",
-          "default": "320"
-        },
-        {
-          "name": "asideTitle",
-          "type": "string",
-          "required": false,
-          "description": "Accessible title for the aside sheet when `compact=\"sheet\"`.",
-          "default": "'Details'"
-        },
-        {
           "name": "compact",
-          "type": "SplitCompactMode",
+          "type": "\"sheet\" | \"stack\"",
           "required": false,
-          "description": "How `aside` presents on `compact` screens: vertical stack or draggable BottomSheet.",
+          "description": "`stack` puts the aside under the main content; `sheet` puts it in a bottom sheet the page opens.",
           "values": [
             "stack",
             "sheet"
@@ -16916,23 +16890,47 @@
           "default": "'stack'"
         },
         {
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell: whether the sheet is open."
+        },
+        {
           "name": "isOpen",
           "type": "boolean",
           "required": false,
-          "description": "Controlled open state for `compact=\"sheet\"`.",
-          "default": "false"
+          "description": "Whether the sheet is open."
         },
         {
           "name": "onOpenChange",
           "type": "((isOpen: boolean) => void)",
           "required": false,
-          "description": "Called when the compact sheet opens or closes."
+          "description": "Runs with `false` when the sheet is dismissed."
         },
         {
-          "name": "bindOpen",
-          "type": "Local<boolean>",
+          "name": "children",
+          "type": "Child",
           "required": false,
-          "description": "Uncontrolled local open state cell for `compact=\"sheet\"`."
+          "description": "The main content: a video, a document, a canvas."
+        },
+        {
+          "name": "aside",
+          "type": "Child",
+          "required": true,
+          "description": "The companion beside it: a live chat, comments, an inspector."
+        },
+        {
+          "name": "asideLabel",
+          "type": "string",
+          "required": true,
+          "description": "Names the aside pane, and its sheet on a phone: \"Live chat\", \"Comments\"."
+        },
+        {
+          "name": "asideWidth",
+          "type": "number",
+          "required": false,
+          "description": "The aside's width in pt beside the main content, when no fold crosses the page.",
+          "default": "320"
         },
         {
           "name": "className",
@@ -16944,7 +16942,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": ""
+          "description": "On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`."
         }
       ],
       "otherProps": {},
@@ -16962,20 +16960,20 @@
         "keyboard": [],
         "contrast": [],
         "notes": [
-          "In `compact=\"sheet\"` mode, `asideTitle` names the modal `<BottomSheet>` dialog and Escape or Back closes it.",
-          "Physical hinge spacers are marked `aria-hidden` so assistive navigation skips them."
+          "The aside is a group named by `asideLabel`, so a screen reader can move to it; on a phone its sheet takes the same name, and Escape or Back closes it.",
+          "The strip over a fold's crease is hidden from assistive tech."
         ]
       },
       "examples": [
         {
           "name": "LiveStreamSplit",
-          "title": "Live stream with companion chat",
-          "source": "import { Split } from '@liulidesign/core/Split';\n\n/** Primary + companion split: side-by-side on regular, upper/lower leaves on half-opened tabletop folds, stacked on compact. */\nexport function LiveStreamSplit() {\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-footnote font-semibold text-text\">Live Chat</text>\n            <text className=\"text-caption text-muted\">Messages stay beside video on wide screens and below in compact or tabletop.</text>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow items-center justify-center bg-surface-sunken p-4\">\n          <text className=\"text-footnote font-semibold text-text\">Video Canvas</text>\n        </view>\n      </Split>\n    </view>\n  );\n}"
+          "title": "A live stream and its chat",
+          "source": "import { Split } from '@liulidesign/core/Split';\n\n/** Primary + companion split: side-by-side on regular, upper/lower leaves on half-opened tabletop folds, stacked on compact. */\nexport function LiveStreamSplit() {\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        asideWidth={240}\n        asideLabel=\"Live chat\"\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-footnote font-semibold text-text\">Live chat</text>\n            <text className=\"text-caption text-muted\">Messages stay beside video on wide screens and below in compact or tabletop.</text>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow items-center justify-center bg-surface-sunken p-4\">\n          <text className=\"text-footnote font-semibold text-text\">Video Canvas</text>\n        </view>\n      </Split>\n    </view>\n  );\n}"
         },
         {
           "name": "DocumentSheetSplit",
-          "title": "Document with comments sheet",
-          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Split } from '@liulidesign/core/Split';\n\n/** Document + comments sheet: docked aside on regular, draggable BottomSheet on compact. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bindOpen={commentsOpen}\n        asideTitle=\"Comments\"\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-caption text-muted\">Review notes and inline discussion.</text>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <view className=\"grow p-4 gap-3\">\n          <text className=\"text-body font-semibold text-text\">Architecture Spec</text>\n          {isCompact && (\n            <Button\n              label=\"Open Comments\"\n              variant=\"secondary\"\n              width=\"content\"\n              onClick={() => commentsOpen.set(true)}\n              data-testid=\"doc-open-comments\"\n            />\n          )}\n        </view>\n      </Split>\n    </view>\n  );\n}"
+          "title": "A document and its comments",
+          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Split } from '@liulidesign/core/Split';\n\n/** Document + comments sheet: docked aside on regular, draggable BottomSheet on compact. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bind={commentsOpen}\n        asideLabel=\"Comments\"\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-caption text-muted\">Review notes and inline discussion.</text>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <view className=\"grow p-4 gap-3\">\n          <text className=\"text-body font-semibold text-text\">Architecture Spec</text>\n          {isCompact && (\n            <Button\n              label=\"Comments\"\n              variant=\"secondary\"\n              width=\"content\"\n              onClick={() => commentsOpen.set(true)}\n              data-testid=\"doc-open-comments\"\n            />\n          )}\n        </view>\n      </Split>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -16996,20 +16994,20 @@
       "related": [
         "ListDetail",
         "BottomSheet",
-        "SplitView"
+        "Drawer"
       ],
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Primary and aside",
         "order": 18,
         "page": {
-          "lead": "Use Split for a primary canvas and its companion pane: beside each other on wide screens, upper and lower on tabletop folds, stacked or in a BottomSheet on phones.",
+          "lead": "Use Split for the main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone.",
           "stage": "bare",
           "hero": "LiveStreamSplit",
           "variants": [
             {
               "name": "DocumentSheetSplit",
-              "title": "Secondary aside presented as a BottomSheet on compact"
+              "title": "Comments in a sheet on a phone"
             }
           ]
         }

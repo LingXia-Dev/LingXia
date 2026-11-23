@@ -31,3 +31,12 @@ test('Split compact="sheet": hides inline aside and opens BottomSheet on trigger
   screen.press(screen.getByTestId('doc-open-comments'));
   assert.ok(screen.getByTestId('doc-split-sheet'));
 });
+
+test('The aside is a group named by asideLabel; on a phone its sheet takes the same name', async () => {
+  const wide = await renderExample('Split/Split', 'LiveStreamSplit', regularWide);
+  const aside = wide.getByTestId('live-split-aside');
+  assert.deepEqual([aside.props.role, aside.props.accessibilityLabel], ['group', 'Live chat']);
+  const screen = await renderExample('Split/Split', 'DocumentSheetSplit', compact);
+  screen.press(screen.getByTestId('doc-open-comments'));
+  assert.equal(screen.getByTestId('doc-split-sheet').props.accessibilityLabel, 'Comments');
+});
