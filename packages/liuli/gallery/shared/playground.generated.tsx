@@ -4471,6 +4471,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "dir",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "auto",
+          "ltr",
+          "rtl"
+        ]
+      },
+      {
         "name": "autoComplete",
         "required": false,
         "kind": "choice",

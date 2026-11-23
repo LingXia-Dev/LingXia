@@ -195,6 +195,26 @@ export function ShareLink() {
 }
 ```
 
+### On a right-to-left page: an address follows its own letters, an email and a phone number read left to right
+
+```tsx
+import { unused } from '../example';
+import { TextInput } from '@liulidesign/core/TextInput';
+
+/** On a right-to-left page each value keeps its own order: the address by its first letter, the email and phone number left to right, and a MAC address because the app says so. */
+export function RightToLeft() {
+  return (
+    <view dir="rtl" className="gap-4" data-testid="rtl-fields">
+      <TextInput value="2847 Fillmore St, San Francisco" onChange={unused} label="כתובת" data-testid="rtl-address" />
+      <TextInput value="רחוב הרצל 12, תל אביב" onChange={unused} label="כתובת למשלוח" data-testid="rtl-address-he" />
+      <TextInput value="dana@example.com" onChange={unused} label="דוא״ל" type="email" data-testid="rtl-email" />
+      <TextInput value="+1 (415) 555-0132" onChange={unused} label="טלפון" type="tel" data-testid="rtl-phone" />
+      <TextInput value="A4:C1:38:0F:22:9B" onChange={unused} label="כתובת MAC" dir="ltr" data-testid="rtl-mac" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -218,6 +238,7 @@ export function ShareLink() {
 | `placeholder` | `string` |  | A hint shown while empty; never a substitute for `label`. |
 | `type` | `"email" \| "number" \| "password" \| "search" \| "tel" \| "text"` | `'text'` | `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. `password` hides the text and adds a button that shows it. |
 | `inputMode` | `"decimal" \| "email" \| "numeric" \| "tel" \| "text"` |  |  |
+| `dir` | `"auto" \| "ltr" \| "rtl"` | `'ltr' for `email`, `number` and `tel`, or a numeric, tel or email `inputMode`; otherwise 'auto'` | The value's direction; the label and the box follow the page. `auto` takes the direction of the value's first letter, so an address or a name reads in its own order on a right-to-left page. |
 | `autoComplete` | `AutoComplete` |  |  |
 | `enterKeyHint` | `"done" \| "enter" \| "go" \| "next" \| "previous" \| "search" \| "send"` |  | The label of the keyboard's action key; `onSubmit` runs on it. |
 | `autoCapitalize` | `"characters" \| "none" \| "sentences" \| "words"` |  |  |
@@ -283,6 +304,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Check a value the person has finished typing in `onBlur`, not on every keystroke.
 - Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.
 - Do: To change what is typed as it is typed, such as upper-casing a code, control the field: `value={code.value} onChange={next => code.set(next.toUpperCase())}`.
+- Do: Set `dir="ltr"` on a field whose value is always left to right whatever its `type`, such as a serial number, a MAC or IP address, a host name or a port.
 - Don't: Leave out label because a placeholder is shown; use isLabelHidden when the label must not be drawn.
 - Don't: Use type="number" for codes, phone numbers or card numbers; use inputMode="numeric".
 

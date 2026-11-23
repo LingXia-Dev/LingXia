@@ -18910,6 +18910,18 @@
           ]
         },
         {
+          "name": "dir",
+          "type": "\"auto\" | \"ltr\" | \"rtl\"",
+          "required": false,
+          "description": "The value's direction; the label and the box follow the page. `auto` takes the direction of the value's first letter, so an address or a name reads in its own order on a right-to-left page.",
+          "values": [
+            "ltr",
+            "rtl",
+            "auto"
+          ],
+          "default": "'ltr' for `email`, `number` and `tel`, or a numeric, tel or email `inputMode`; otherwise 'auto'"
+        },
+        {
           "name": "autoComplete",
           "type": "AutoComplete",
           "required": false,
@@ -19184,6 +19196,11 @@
           "name": "ShareLink",
           "title": "A button inside the box, after the value",
           "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** A link to share: read-only, with a copy button inside the box. */\nexport function ShareLink() {\n  const copied = useLocal('copied', false);\n  return (\n    <TextInput\n      value=\"https://notes.example.com/s/q8Hk2\"\n      onChange={unused}\n      label=\"Link\"\n      description={copied.value ? 'Copied.' : 'Anyone with the link can read the note.'}\n      isReadOnly\n      endContent={<IconButton icon=\"copy\" label=\"Copy link\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy-link\" />}\n      data-testid=\"share-link\"\n    />\n  );\n}"
+        },
+        {
+          "name": "RightToLeft",
+          "title": "On a right-to-left page: an address follows its own letters, an email and a phone number read left to right",
+          "source": "import { unused } from '../example';\nimport { TextInput } from '@liulidesign/core/TextInput';\n\n/** On a right-to-left page each value keeps its own order: the address by its first letter, the email and phone number left to right, and a MAC address because the app says so. */\nexport function RightToLeft() {\n  return (\n    <view dir=\"rtl\" className=\"gap-4\" data-testid=\"rtl-fields\">\n      <TextInput value=\"2847 Fillmore St, San Francisco\" onChange={unused} label=\"כתובת\" data-testid=\"rtl-address\" />\n      <TextInput value=\"רחוב הרצל 12, תל אביב\" onChange={unused} label=\"כתובת למשלוח\" data-testid=\"rtl-address-he\" />\n      <TextInput value=\"dana@example.com\" onChange={unused} label=\"דוא״ל\" type=\"email\" data-testid=\"rtl-email\" />\n      <TextInput value=\"+1 (415) 555-0132\" onChange={unused} label=\"טלפון\" type=\"tel\" data-testid=\"rtl-phone\" />\n      <TextInput value=\"A4:C1:38:0F:22:9B\" onChange={unused} label=\"כתובת MAC\" dir=\"ltr\" data-testid=\"rtl-mac\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -19275,6 +19292,10 @@
             {
               "name": "ShareLink",
               "title": "A copy button inside the box"
+            },
+            {
+              "name": "RightToLeft",
+              "title": "On a right-to-left page: an address, an email and a phone number keep their own order"
             }
           ],
           "sizes": [

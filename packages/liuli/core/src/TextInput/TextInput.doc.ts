@@ -48,6 +48,7 @@ export const doc: ComponentDoc = {
       'Check a value the person has finished typing in `onBlur`, not on every keystroke.',
       'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `const ok = await actions.signIn(); if (!ok) password.focus();`.',
       'To change what is typed as it is typed, such as upper-casing a code, control the field: `value={code.value} onChange={next => code.set(next.toUpperCase())}`.',
+      'Set `dir="ltr"` on a field whose value is always left to right whatever its `type`, such as a serial number, a MAC or IP address, a host name or a port.',
     ],
     dont: [
       'Leave out label because a placeholder is shown; use isLabelHidden when the label must not be drawn.',
@@ -63,6 +64,7 @@ export const doc: ComponentDoc = {
     { name: 'ReadOnly', title: 'Read-only' },
     { name: 'SignIn', title: 'A password, shown on request, and focus back on it after a failed sign-in' },
     { name: 'ShareLink', title: 'A button inside the box, after the value' },
+    { name: 'RightToLeft', title: 'On a right-to-left page: an address follows its own letters, an email and a phone number read left to right' },
   ],
   gaps: [
     {
@@ -96,6 +98,7 @@ export const doc: ComponentDoc = {
         { name: 'Adornments', title: 'A currency sign, a web address start and a unit; the last field is marked optional' },
         { name: 'SignIn', title: 'Signing in: the password field shows its text on request' },
         { name: 'ShareLink', title: 'A copy button inside the box' },
+        { name: 'RightToLeft', title: 'On a right-to-left page: an address, an email and a phone number keep their own order' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [

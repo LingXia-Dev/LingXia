@@ -164,3 +164,16 @@ export function ShareLink() {
     />
   );
 }
+
+/** On a right-to-left page each value keeps its own order: the address by its first letter, the email and phone number left to right, and a MAC address because the app says so. */
+export function RightToLeft() {
+  return (
+    <view dir="rtl" className="gap-4" data-testid="rtl-fields">
+      <TextInput value="2847 Fillmore St, San Francisco" onChange={unused} label="כתובת" data-testid="rtl-address" />
+      <TextInput value="רחוב הרצל 12, תל אביב" onChange={unused} label="כתובת למשלוח" data-testid="rtl-address-he" />
+      <TextInput value="dana@example.com" onChange={unused} label="דוא״ל" type="email" data-testid="rtl-email" />
+      <TextInput value="+1 (415) 555-0132" onChange={unused} label="טלפון" type="tel" data-testid="rtl-phone" />
+      <TextInput value="A4:C1:38:0F:22:9B" onChange={unused} label="כתובת MAC" dir="ltr" data-testid="rtl-mac" />
+    </view>
+  );
+}
