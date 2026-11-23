@@ -2782,6 +2782,14 @@ fn handle_client_connection(
     }
 
     if method.as_str() == lingxia_control_protocol::methods::session::SHUTDOWN {
+        if let Some(by) = params
+            .as_ref()
+            .and_then(|params| params.get("takenOverBy"))
+            .and_then(serde_json::Value::as_str)
+        {
+            eprintln!();
+            eprintln!("Taken over by session {by}; stopping this one.");
+        }
         send_wire_message(&mut websocket, &DevSessionMessage::success(id, None))?;
         state.request_shutdown();
         let _ = websocket.close(None);

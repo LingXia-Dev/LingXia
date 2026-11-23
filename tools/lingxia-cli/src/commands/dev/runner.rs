@@ -145,6 +145,8 @@ pub(super) fn execute_runner_dev(
     }
     let platform_name = "runner";
     take_over_target_session(&session_root, platform_name)?;
+    let runner_slot = RunnerSlot::new(&session_root, broker_instance());
+    runner_slot.refuse_if_owned()?;
 
     println!();
     let mode = match &target {
@@ -215,13 +217,13 @@ pub(super) fn execute_runner_dev(
         println!("{}", "Step 2/2: Launching Runner...".bold());
         let mut runner = match (&runner_host, &target) {
             (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => {
-                launch_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
+                launch_runner_for_lxapp(path, &runner_slot, &ws_url, runner_env)?
             }
             (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
                 launch_windows_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
             }
             (LxAppRunnerHost::MacOs, RunnerDevTarget::Web(url)) => {
-                launch_runner_for_web(&session_root, url, &ws_url, options.headless, runner_env)?
+                launch_runner_for_web(&runner_slot, url, &ws_url, options.headless, runner_env)?
             }
             (LxAppRunnerHost::Windows, RunnerDevTarget::Web(url)) => launch_windows_runner_for_web(
                 &session_root,
@@ -325,7 +327,7 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
 
 fn launch_runner_for_lxapp(
     lxapp_path: &Path,
-    session_root: &Path,
+    slot: &RunnerSlot,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
@@ -337,10 +339,7 @@ fn launch_runner_for_lxapp(
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
 
-    // Replace only *this* project's prior Runner (a leftover from a crashed
-    // session); Runners started for other projects keep running in parallel.
-    let pid_file = runner_pid_file(session_root);
-    terminate_runner_from_pid_file(&pid_file);
+    let pid_file = slot.claim()?;
 
     let executable_path = app_path
         .join("Contents")
@@ -359,7 +358,7 @@ fn launch_runner_for_lxapp(
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
-    command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    command.env(RUNNER_INSTANCE_ENV, &slot.data_instance);
     // A `--background` session keeps the user's front app.
     if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
         command.env(LAUNCH_INACTIVE_ENV, "1");
@@ -405,7 +404,7 @@ fn launch_runner_for_lxapp(
 }
 
 fn launch_runner_for_web(
-    session_root: &Path,
+    slot: &RunnerSlot,
     url: &str,
     ws_url: &str,
     headless: bool,
@@ -415,8 +414,7 @@ fn launch_runner_for_web(
     crate::runner_cache::ensure_matching_runner()?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
-    let pid_file = runner_pid_file(session_root);
-    terminate_runner_from_pid_file(&pid_file);
+    let pid_file = slot.claim()?;
     let executable_path = app_path
         .join("Contents")
         .join("MacOS")
@@ -434,7 +432,7 @@ fn launch_runner_for_web(
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
-    command.env(RUNNER_INSTANCE_ENV, runner_instance_id(session_root));
+    command.env(RUNNER_INSTANCE_ENV, &slot.data_instance);
     // A `--background` session keeps the user's front app.
     if env::var_os(BACKGROUND_CHILD_ENV).is_some() {
         command.env(LAUNCH_INACTIVE_ENV, "1");
@@ -1022,6 +1020,7 @@ impl RunnerProcess {
                     Some(_) => {
                         if runner_process_running(pid_file) {
                             *seen_running = true;
+                            record_runner_start(pid_file);
                             Ok(None)
                         } else if *seen_running {
                             Ok(Some(RunnerExitStatus {
@@ -1041,6 +1040,7 @@ impl RunnerProcess {
                     // Child still running == Runner running (no hand-off yet).
                     None => {
                         *seen_running = true;
+                        record_runner_start(pid_file);
                         Ok(None)
                     }
                 }
@@ -1057,7 +1057,8 @@ impl RunnerProcess {
                 child, pid_file, ..
             } => {
                 let _ = terminate_child(child, "LingXia Runner");
-                terminate_runner_from_pid_file(pid_file);
+                // This session launched it, so a pid not yet recorded is still its Runner.
+                terminate_runner_from_pid_file(pid_file, true);
                 Ok(())
             }
             #[cfg(target_os = "windows")]
@@ -1306,10 +1307,138 @@ fn wait_for_runner_or_interrupt(
     }
 }
 
-/// This project's Runner pid-file. Each Runner writes its own pid here, so the
-/// CLI can act on exactly its own Runner and leave other projects' alone.
-fn runner_pid_file(project_root: &Path) -> PathBuf {
-    log_store::dev_dir(project_root).join("runner.pid")
+/// The broker instance this CLI registers under (`LINGXIA_RUNNER_INSTANCE`), file-safe.
+fn broker_instance() -> Option<String> {
+    env::var(RUNNER_INSTANCE_ENV)
+        .ok()
+        .map(|value| file_safe(value.trim()))
+        .filter(|value| !value.is_empty())
+}
+
+fn file_safe(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(64)
+        .collect()
+}
+
+/// One Runner per project and broker instance: its pid file, the session that launched it, and
+/// its data subtree. Sessions under other instances never touch each other's slot.
+struct RunnerSlot {
+    pid_file: PathBuf,
+    owner_file: PathBuf,
+    data_instance: String,
+}
+
+impl RunnerSlot {
+    fn new(project_root: &Path, instance: Option<String>) -> Self {
+        let dev_dir = log_store::dev_dir(project_root);
+        let stem = match &instance {
+            Some(instance) => format!("runner-{instance}"),
+            None => "runner".to_string(),
+        };
+        let project = runner_instance_id(project_root);
+        Self {
+            pid_file: dev_dir.join(format!("{stem}.pid")),
+            owner_file: dev_dir.join(format!("{stem}.owner")),
+            // The user's instance is kept, after the project id, so two projects under one
+            // instance still get separate data.
+            data_instance: match instance {
+                Some(instance) => format!("{project}-{instance}"),
+                None => project,
+            },
+        }
+    }
+
+    /// Refuses while another live `lingxia dev` owns this slot's Runner; never ends it. A live
+    /// Runner with no owner record was launched by a CLI that writes none, so it counts as owned.
+    fn refuse_if_owned(&self) -> Result<()> {
+        let Some(owner) = read_owner(&self.owner_file) else {
+            if let Some(pid) = read_runner_pid(&self.pid_file).filter(|pid| pid_alive(*pid)) {
+                return Err(anyhow!(
+                    "A Runner (pid {pid}) started by an older lingxia CLI is running this project.\n\
+                     Stop it from its session (`lingxia dev stop`, or quit the Runner), or start this \
+                     session beside it: `LINGXIA_RUNNER_INSTANCE=<name> lingxia dev …`. If no such \
+                     Runner is running, delete {}.",
+                    self.pid_file.display()
+                ));
+            }
+            return Ok(());
+        };
+        if owner.pid == std::process::id() || !owner_alive(&owner) {
+            return Ok(());
+        }
+        Err(anyhow!(
+            "Session {} (pid {}) is running this project's Runner.\n\
+             Stop it first (`lingxia dev stop`), or start this session beside it under its own \
+             instance: `LINGXIA_RUNNER_INSTANCE=<name> lingxia dev …` (`lxdev --instance <name>` reaches it).",
+            owner.label,
+            owner.pid
+        ))
+    }
+
+    /// Ends this slot's leftover Runner (its session is gone) and records this session as owner.
+    fn claim(&self) -> Result<PathBuf> {
+        self.refuse_if_owned()?;
+        terminate_runner_from_pid_file(&self.pid_file, false);
+        let owner = format!(
+            "{} {} {}",
+            std::process::id(),
+            process_start_time(std::process::id()).unwrap_or(0),
+            log_store::session_label()
+        );
+        if let Some(parent) = self.owner_file.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&self.owner_file, owner)
+            .with_context(|| format!("Failed to write {}", self.owner_file.display()))?;
+        Ok(self.pid_file.clone())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct RunnerOwner {
+    pid: u32,
+    started_at: u64,
+    label: String,
+}
+
+fn read_owner(owner_file: &Path) -> Option<RunnerOwner> {
+    parse_owner(&std::fs::read_to_string(owner_file).ok()?)
+}
+
+fn parse_owner(text: &str) -> Option<RunnerOwner> {
+    let mut parts = text.trim().splitn(3, ' ');
+    let pid = parts.next()?.parse().ok()?;
+    let started_at = parts.next()?.parse().ok()?;
+    let label = parts.next().unwrap_or("").to_string();
+    Some(RunnerOwner {
+        pid,
+        started_at,
+        label,
+    })
+}
+
+/// Same pid and same start time, so a reused pid does not count as the owner.
+fn owner_alive(owner: &RunnerOwner) -> bool {
+    process_start_time(owner.pid).is_some_and(|started| started == owner.started_at)
+}
+
+fn process_start_time(pid: u32) -> Option<u64> {
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    system
+        .process(pid)
+        .map(|process| process.start_time())
+        .filter(|t| *t > 0)
 }
 
 /// Stable, filesystem-safe id for a project, so its Runner reuses the same
@@ -1370,16 +1499,53 @@ fn runner_process_running(pid_file: &Path) -> bool {
     read_runner_pid(pid_file).map(pid_alive).unwrap_or(false)
 }
 
+/// Where the Runner's start time is kept beside `pid_file`, so a reused pid is not taken for it.
+fn runner_start_file(pid_file: &Path) -> PathBuf {
+    pid_file.with_extension("start")
+}
+
+/// Records the live Runner's start time once, the first time this session sees it.
+fn record_runner_start(pid_file: &Path) {
+    let start_file = runner_start_file(pid_file);
+    if start_file.exists() {
+        return;
+    }
+    if let Some(started) = read_runner_pid(pid_file)
+        .and_then(|pid| u32::try_from(pid).ok())
+        .and_then(process_start_time)
+    {
+        let _ = std::fs::write(start_file, started.to_string());
+    }
+}
+
+/// The pid in `pid_file` when it is still that Runner: its recorded start time matches, or,
+/// with no record, `trust_unrecorded` (the session that launched it).
+fn runner_pid_to_end(pid_file: &Path, trust_unrecorded: bool) -> Option<i32> {
+    let pid = read_runner_pid(pid_file).filter(|pid| pid_alive(*pid))?;
+    let recorded = std::fs::read_to_string(runner_start_file(pid_file))
+        .ok()
+        .and_then(|text| text.trim().parse::<u64>().ok());
+    let same = match recorded {
+        Some(recorded) => u32::try_from(pid)
+            .ok()
+            .and_then(process_start_time)
+            .is_some_and(|started| started == recorded),
+        None => trust_unrecorded,
+    };
+    same.then_some(pid)
+}
+
 /// Terminate the Runner recorded in `pid_file` (if any) and clear the file.
 /// Scoped to one project — never touches Runners started for other projects.
-fn terminate_runner_from_pid_file(pid_file: &Path) {
-    if let Some(_pid) = read_runner_pid(pid_file).filter(|pid| pid_alive(*pid)) {
+fn terminate_runner_from_pid_file(pid_file: &Path, trust_unrecorded: bool) {
+    if let Some(_pid) = runner_pid_to_end(pid_file, trust_unrecorded) {
         #[cfg(unix)]
         unsafe {
             libc::kill(_pid, libc::SIGTERM);
         }
     }
     let _ = std::fs::remove_file(pid_file);
+    let _ = std::fs::remove_file(runner_start_file(pid_file));
 }
 
 /// ` (release build)` for the Runner at `path`, read from the stamp beside it.
@@ -1456,14 +1622,137 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
-        lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
-        resolve_dev_target, windows_runner_launch_args, windows_runner_ui_json,
-        windows_web_runner_launch_args,
+        RunnerDevTarget, RunnerOwner, RunnerSlot, WindowsRunnerLxAppIdentity,
+        is_standalone_lxapp_project, lxapp_runner_build_args, owner_alive, parse_owner,
+        prepare_windows_runner_assets, prepare_windows_runner_web_assets, resolve_dev_target,
+        windows_runner_launch_args, windows_runner_ui_json, windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn runner_slots_are_per_project_and_instance() {
+        let project = tempdir().unwrap();
+        let default = RunnerSlot::new(project.path(), None);
+        let test = RunnerSlot::new(project.path(), Some("happ-test".into()));
+        assert_ne!(default.pid_file, test.pid_file);
+        assert_ne!(default.owner_file, test.owner_file);
+        assert_eq!(
+            test.data_instance,
+            format!("{}-happ-test", default.data_instance)
+        );
+        let other = tempdir().unwrap();
+        let other_test = RunnerSlot::new(other.path(), Some("happ-test".into()));
+        assert_ne!(test.pid_file, other_test.pid_file);
+        assert_ne!(test.data_instance, other_test.data_instance);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_live_owner_blocks_the_claim_and_keeps_its_runner() {
+        let project = tempdir().unwrap();
+        let slot = RunnerSlot::new(project.path(), None);
+        fs::create_dir_all(slot.pid_file.parent().unwrap()).unwrap();
+        // One live process stands in for both the other session and its Runner.
+        let mut other = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let started = super::process_start_time(other.id()).unwrap();
+        fs::write(
+            &slot.owner_file,
+            format!("{} {started} h-app-gpu", other.id()),
+        )
+        .unwrap();
+        fs::write(&slot.pid_file, other.id().to_string()).unwrap();
+        let err = slot.claim().unwrap_err().to_string();
+        assert!(err.contains("Session h-app-gpu"), "{err}");
+        assert!(err.contains("LINGXIA_RUNNER_INSTANCE"), "{err}");
+        assert!(slot.pid_file.exists());
+        assert!(
+            other.try_wait().unwrap().is_none(),
+            "the other session's Runner was ended"
+        );
+
+        // Once that session is gone its Runner is a leftover: the claim ends it and takes the slot.
+        fs::write(
+            &slot.owner_file,
+            format!("{} {} h-app-gpu", other.id(), started + 1),
+        )
+        .unwrap();
+        super::record_runner_start(&slot.pid_file);
+        assert_eq!(slot.claim().unwrap(), slot.pid_file);
+        assert!(
+            other.wait().unwrap().code().is_none(),
+            "the leftover Runner was not ended"
+        );
+        let owner = parse_owner(&fs::read_to_string(&slot.owner_file).unwrap()).unwrap();
+        assert_eq!(owner.pid, std::process::id());
+        assert!(owner_alive(&owner));
+    }
+
+    /// A live process under a pid the Runner once had: the claim must leave it alone.
+    #[cfg(unix)]
+    #[test]
+    fn a_reused_pid_is_not_taken_for_the_leftover_runner() {
+        let project = tempdir().unwrap();
+        let slot = RunnerSlot::new(project.path(), None);
+        fs::create_dir_all(slot.pid_file.parent().unwrap()).unwrap();
+        let mut stranger = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let started = super::process_start_time(stranger.id()).unwrap();
+        fs::write(&slot.owner_file, "1 1 gone-session").unwrap();
+        fs::write(&slot.pid_file, stranger.id().to_string()).unwrap();
+        fs::write(super::runner_start_file(&slot.pid_file), (started + 7).to_string()).unwrap();
+        slot.claim().unwrap();
+        assert!(
+            stranger.try_wait().unwrap().is_none(),
+            "a process that only shares the pid was ended"
+        );
+        assert!(!slot.pid_file.exists() && !super::runner_start_file(&slot.pid_file).exists());
+        let _ = stranger.kill();
+        let _ = stranger.wait();
+    }
+
+    /// An older CLI writes no owner record; its live Runner is owned, not a leftover.
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_without_an_owner_record_is_refused_not_ended() {
+        let project = tempdir().unwrap();
+        let slot = RunnerSlot::new(project.path(), None);
+        fs::create_dir_all(slot.pid_file.parent().unwrap()).unwrap();
+        let mut runner = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        fs::write(&slot.pid_file, runner.id().to_string()).unwrap();
+        let err = slot.claim().unwrap_err().to_string();
+        assert!(err.contains(&format!("pid {}", runner.id())), "{err}");
+        assert!(err.contains("older lingxia CLI"), "{err}");
+        assert!(runner.try_wait().unwrap().is_none(), "the older session's Runner was ended");
+        assert!(slot.pid_file.exists());
+        let _ = runner.kill();
+        let _ = runner.wait();
+
+        // Once it has exited the stale pid file is no obstacle.
+        slot.claim().unwrap();
+    }
+
+    #[test]
+    fn owner_records_parse() {
+        assert_eq!(
+            parse_owner("12 34 h-app test"),
+            Some(RunnerOwner {
+                pid: 12,
+                started_at: 34,
+                label: "h-app test".into()
+            })
+        );
+        assert_eq!(parse_owner("garbage"), None);
+    }
 
     #[test]
     fn standalone_lxapp_project_is_detected() {

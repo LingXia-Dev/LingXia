@@ -363,7 +363,7 @@ fn take_over_target_session(project_root: &Path, target: &str) -> Result<()> {
             "Taking over existing {target} dev session {} (pid {})...",
             info.session_id, info.pid
         );
-        if let Err(err) = log_store::request_shutdown(info) {
+        if let Err(err) = log_store::request_shutdown(info, Some(&log_store::session_label())) {
             eprintln!("Graceful stop failed ({err:#}); killing pid {}.", info.pid);
             terminate_session_owner(info)?;
         }
@@ -1126,7 +1126,7 @@ fn stop_session_info(session: &log_store::SessionInfo) -> Result<()> {
         "Stopping {} dev session {}...",
         session.target, session.session_id
     );
-    match log_store::request_shutdown(&session) {
+    match log_store::request_shutdown(&session, None) {
         Ok(()) => {
             if wait_for_pid_exit(sysinfo::Pid::from_u32(session.pid), Duration::from_secs(5)) {
                 println!(

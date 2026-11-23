@@ -142,6 +142,15 @@ pub fn set_session_name(name: Option<String>) {
     let _ = SESSION_NAME.set(name);
 }
 
+/// How another session names this one: its `--name`, else its pid.
+pub fn session_label() -> String {
+    SESSION_NAME
+        .get()
+        .cloned()
+        .flatten()
+        .unwrap_or_else(|| format!("pid {}", std::process::id()))
+}
+
 /// Register this dev session with the per-user broker. The returned guard
 /// keeps the registration alive (re-registering across broker restarts);
 /// dropping it — or process exit — removes the session.
@@ -494,7 +503,8 @@ pub fn find_live_for_target(project_root: &Path, target: &str) -> Result<Vec<Ses
         .collect())
 }
 
-pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
+/// `taken_over_by` names the session replacing it, which the stopped session prints.
+pub fn request_shutdown(info: &SessionInfo, taken_over_by: Option<&str>) -> Result<()> {
     let mut websocket = connect_devtools_ws(&info.ws_url, WS_COMMAND_TIMEOUT)
         .ok_or_else(|| anyhow!("Failed to connect dev websocket: {}", info.ws_url))?;
     send_wire_message(
@@ -513,7 +523,7 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
         &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
             method: methods::session::SHUTDOWN.to_string(),
-            params: None,
+            params: taken_over_by.map(|by| serde_json::json!({ "takenOverBy": by })),
         }),
     )?;
 

@@ -26,6 +26,13 @@ suffixed pipe on Windows): sessions of an export or second checkout register the
 replaces only that broker, and `lxdev` reaches them with the same variable or `--instance <name>`.
 Without it every build shares the default broker, and a different build replaces it.
 
+A macOS Runner session owns one slot per project and instance: `.lingxia/dev/runner[-<instance>].pid`, an
+`.owner` record (session pid and start time), and Runner data under `<project id>[-<instance>]`. A new
+session ends only a leftover Runner whose owner is gone; while the owner lives it refuses before building,
+naming that session. Takeover within one instance tells the old session who replaced it. Sessions of one
+project under different instances still share the source tree's build output (`dist`) and the rest of
+`.lingxia/`.
+
 Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a
 session id: they omit `--session` when not needed and otherwise use the name
 or target.
