@@ -936,7 +936,7 @@ rong::js_api! {
      * @platform Android, HarmonyOS phones and tablets: only a directory in lxapp storage, which opens the in-app chooser.
      */
     defaultPath?: string;
-    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 }"###;
 
@@ -994,7 +994,7 @@ rong::js_api! {
      * file picker. When omitted, the platform system file picker is used.
      */
     defaultPath?: string;
-    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 }"###;
 
@@ -1038,7 +1038,7 @@ rong::js_api! {
     types?: readonly ('image' | 'video')[];
     /** How the camera records when the person takes the camera route; unused for the library. */
     camera?: CameraOptions;
-    /** Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    /** Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 }"###;
 
@@ -1060,7 +1060,7 @@ rong::js_api! {
         type CaptureOptions = r###"CameraOptions & {
     /** A photo or a video. */
     type: 'image' | 'video';
-    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 }"###;
 
@@ -1787,7 +1787,7 @@ rong::js_api! {
     onlyFromCamera?: boolean;
     /** Symbologies to read; every one when absent. */
     formats?: readonly ('bar_code' | 'qr_code' | 'datamatrix' | 'pdf417')[];
-    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes. */
+    /** Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 }"###;
 

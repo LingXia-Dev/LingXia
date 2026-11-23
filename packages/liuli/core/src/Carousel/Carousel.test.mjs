@@ -43,3 +43,14 @@ test('Rail: cards of the given width with a gap, stopped on one by one; no previ
   assert.equal(screen.getByTestId('rail-previous').props.accessibilityLabel, 'Previous albums');
   assert.equal(screen.queryAll(node => node.testId === 'rail-dots').length, 0);
 });
+
+test('Welcome: a page held by the caller drives the snap, and a dot reports its page back', async () => {
+  const screen = await renderExample('Carousel/Carousel', 'Welcome');
+  const scroller = () => screen.queryAll(node => node.tag === 'scroll')[0];
+  assert.equal(scroller().props.snapIndex, 0);
+  screen.press(screen.getByTestId('next'));
+  assert.equal(scroller().props.snapIndex, 1, 'the caller\'s index reaches the scroll');
+  const dots = screen.getByTestId('welcome-dots');
+  screen.press(screen.queryAll(node => node.tag === 'button' && node.parent?.parent === dots || node.tag === 'button' && node.parent === dots)[2]);
+  assert.equal(scroller().props.snapIndex, 2, 'a dot goes through onIndexChange');
+});

@@ -868,6 +868,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
         self.inner.begin_reveal(surface_holds_frame);
     }
 
+    /// The host shows its snapshot of the page's last frame over the surface, which may hold
+    /// nothing (trimmed, recreated): the next frame shown at the current size reports
+    /// [`crate::platform::HostEvents::uncover`]. Asks for that frame.
+    pub fn cover(&self) {
+        self.inner.cover();
+    }
+
     /// The window was stopped or started (app backgrounded, screen locked); a pending
     /// reveal waits while it is stopped.
     pub fn window_visible(&self, visible: bool) {
@@ -2375,6 +2382,11 @@ impl<A: PlatformAdapter> Inner<A> {
             if !visible && main.visible {
                 // The page coming in builds first; this page's catch-up waits for its frame.
                 self.worker.hold();
+            }
+            // Its catch-up frame waits behind a hold kept for the page coming in, which is
+            // now this one.
+            if shown && main.in_flight.is_some_and(|flight| flight.background) {
+                self.worker.release();
             }
             main.visible = visible;
             (main.disposed, shown)

@@ -3108,6 +3108,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell holding the page, from 0, to read or set it from outside."
+        },
+        {
+          "name": "index",
+          "type": "number",
+          "required": false,
+          "description": "The page in view, from 0, held by the caller: in Logic state, or to open at a deep link."
+        },
+        {
+          "name": "onIndexChange",
+          "type": "((index: number) => void)",
+          "required": false,
+          "description": "Runs with the page a swipe, a dot or a button moves to."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -3120,10 +3138,11 @@
           "description": "The pages, one child each; every page is as wide as the carousel, or `itemWidth`."
         },
         {
-          "name": "bind",
-          "type": "Local<number>",
+          "name": "defaultIndex",
+          "type": "number",
           "required": false,
-          "description": "A View-local cell holding the page, from 0, to read or set it from outside."
+          "description": "The page it starts on when the carousel holds it.",
+          "default": "0"
         },
         {
           "name": "pageLabel",
@@ -3234,8 +3253,8 @@
         },
         {
           "name": "Welcome",
-          "title": "Pages moved by a button too",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Carousel } from '@liulidesign/core/Carousel';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Pages of content, with the page held outside so a button can move it. */\nexport function Welcome() {\n  const page = useLocal('step', 0);\n  const isLast = Math.round(page.value) === steps.length - 1;\n  return (\n    <view className=\"gap-3\">\n      <Carousel label=\"Welcome\" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid=\"welcome\">\n        {steps.map(([title, body]) => (\n          <view key={title} className=\"gap-1 bg-surface-sunken p-5 min-h-28\">\n            <text className=\"text-callout font-semibold text-text\">{title}</text>\n            <text className=\"text-footnote text-muted\">{body}</text>\n          </view>\n        ))}\n      </Carousel>\n      <Button label={isLast ? 'Get started' : 'Next'} variant=\"primary\" width=\"fill\" onClick={() => { if (!isLast) page.set(Math.round(page.value) + 1); }} data-testid=\"next\" />\n    </view>\n  );\n}"
+          "title": "Pages held by the caller, moved by a button too",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Carousel } from '@liulidesign/core/Carousel';\n\nconst steps = [\n  ['Write anywhere', 'Notes open in a tap and save as you type.'],\n  ['Find it again', 'Search reads every note, list and photo.'],\n  ['Share what you choose', 'Each note is private until you invite someone.'],\n] as const;\n\n/** Pages of content, with the page held by the caller (`index`, `onIndexChange`) so a button can move it. */\nexport function Welcome() {\n  const page = useLocal('step', 0);\n  const isLast = Math.round(page.value) === steps.length - 1;\n  return (\n    <view className=\"gap-3\">\n      <Carousel label=\"Welcome\" index={page.value} onIndexChange={next => page.set(next)} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid=\"welcome\">\n        {steps.map(([title, body]) => (\n          <view key={title} className=\"gap-1 bg-surface-sunken p-5 min-h-28\">\n            <text className=\"text-callout font-semibold text-text\">{title}</text>\n            <text className=\"text-footnote text-muted\">{body}</text>\n          </view>\n        ))}\n      </Carousel>\n      <Button label={isLast ? 'Get started' : 'Next'} variant=\"primary\" width=\"fill\" onClick={() => { if (!isLast) page.set(Math.round(page.value) + 1); }} data-testid=\"next\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Looping",
@@ -10987,6 +11006,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell holding which picture is in view, from 0. Set it before opening to start there."
+        },
+        {
+          "name": "index",
+          "type": "number",
+          "required": false,
+          "description": "The picture in view, from 0, held by the caller: in Logic state, or to open at the one pressed."
+        },
+        {
+          "name": "onIndexChange",
+          "type": "((index: number) => void)",
+          "required": false,
+          "description": "Runs with the picture a swipe or a dot moves to."
+        },
+        {
           "name": "isOpen",
           "type": "boolean",
           "required": true,
@@ -11011,10 +11048,11 @@
           "description": ""
         },
         {
-          "name": "bind",
-          "type": "Local<number>",
+          "name": "defaultIndex",
+          "type": "number",
           "required": false,
-          "description": "A View-local cell holding which picture is in view, from 0. Set it before opening to start there."
+          "description": "The picture it opens on when the lightbox holds it.",
+          "default": "0"
         },
         {
           "name": "closeLabel",
@@ -11090,7 +11128,7 @@
         {
           "name": "FromGrid",
           "title": "Opened from a grid of thumbnails",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photos = [\n  { src: photo(1), alt: 'The bay at sunrise', caption: 'The bay at sunrise, from the terrace' },\n  { src: photo(2), alt: 'Fields behind the house', caption: 'Fields behind the house' },\n  { src: photo(3), alt: 'Dusk over the ridge', caption: 'Dusk over the ridge' },\n  { src: photo(4), alt: 'Morning fog in the valley' },\n] as const;\n\n/** A grid of thumbnails: pressing one opens the pictures at that one. */\nexport function FromGrid() {\n  const open = useLocal('open', false);\n  const page = useLocal('page', 0);\n  return (\n    <view className=\"gap-2\">\n      <view className=\"grid grid-cols-4 gap-2\">\n        {photos.map((each, index) => (\n          <Thumbnail key={each.alt} src={each.src} alt={each.alt} size=\"fill\" onClick={() => { page.set(index); open.set(true); }} data-testid={`open-${index}`} />\n        ))}\n      </view>\n      <Lightbox\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Photos of the house\"\n        images={photos}\n        bind={page}\n        data-testid=\"viewer\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\nimport { Lightbox } from '@liulidesign/core/Lightbox';\n\nconst photos = [\n  { src: photo(1), alt: 'The bay at sunrise', caption: 'The bay at sunrise, from the terrace' },\n  { src: photo(2), alt: 'Fields behind the house', caption: 'Fields behind the house' },\n  { src: photo(3), alt: 'Dusk over the ridge', caption: 'Dusk over the ridge' },\n  { src: photo(4), alt: 'Morning fog in the valley' },\n] as const;\n\n/** A grid of thumbnails: pressing one opens the pictures at that one; the page holds which is in view. */\nexport function FromGrid() {\n  const open = useLocal('open', false);\n  const page = useLocal('page', 0);\n  return (\n    <view className=\"gap-2\">\n      <view className=\"grid grid-cols-4 gap-2\">\n        {photos.map((each, index) => (\n          <Thumbnail key={each.alt} src={each.src} alt={each.alt} size=\"fill\" onClick={() => { page.set(index); open.set(true); }} data-testid={`open-${index}`} />\n        ))}\n      </view>\n      <Lightbox\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Photos of the house\"\n        images={photos}\n        index={page.value}\n        onIndexChange={next => page.set(next)}\n        data-testid=\"viewer\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Single",

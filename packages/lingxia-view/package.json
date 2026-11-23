@@ -28,5 +28,8 @@
     "postcss": "^8.5.31",
     "tailwindcss": "4.3.3",
     "typescript": "^5.7.2"
+  },
+  "lingxia": {
+    "messages": "./messages/en.json"
   }
 }

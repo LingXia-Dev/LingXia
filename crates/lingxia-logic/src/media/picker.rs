@@ -188,9 +188,15 @@ async fn abortable_pick(
     let lxapp = LxApp::from_ctx(ctx)?;
     let owned = ctx.clone();
     let work = async move { run_pick(&owned, source, mode, max_count, camera).await };
-    crate::pick::abortable(ctx, signal, work, move |late| {
-        crate::pick::discard_files(&lxapp, late.into_iter().flatten())
-    })
+    let owner = crate::ui::owner_end(&lxapp);
+    crate::pick::abortable(
+        ctx,
+        signal,
+        owner,
+        work,
+        || None,
+        move |late| crate::pick::discard_files(&lxapp, late.into_iter().flatten()),
+    )
     .await
 }
 

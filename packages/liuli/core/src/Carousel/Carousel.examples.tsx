@@ -29,13 +29,13 @@ const steps = [
   ['Share what you choose', 'Each note is private until you invite someone.'],
 ] as const;
 
-/** Pages of content, with the page held outside so a button can move it. */
+/** Pages of content, with the page held by the caller (`index`, `onIndexChange`) so a button can move it. */
 export function Welcome() {
   const page = useLocal('step', 0);
   const isLast = Math.round(page.value) === steps.length - 1;
   return (
     <view className="gap-3">
-      <Carousel label="Welcome" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid="welcome">
+      <Carousel label="Welcome" index={page.value} onIndexChange={next => page.set(next)} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid="welcome">
         {steps.map(([title, body]) => (
           <view key={title} className="gap-1 bg-surface-sunken p-5 min-h-28">
             <text className="text-callout font-semibold text-text">{title}</text>

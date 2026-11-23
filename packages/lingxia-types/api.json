@@ -8866,7 +8866,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:1139"
@@ -13360,7 +13360,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:2153"
@@ -13395,7 +13395,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:2176"
@@ -13432,7 +13432,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:2195"
@@ -13494,7 +13494,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:2230"
@@ -17743,7 +17743,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped.",
-          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. Pass `page.signal` to end it when the page closes."
+          "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:1139"

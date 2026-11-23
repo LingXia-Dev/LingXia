@@ -32,50 +32,79 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_pick_property(ctx)
 }
 
-/// Run a system picker until it answers or `signal` aborts. An abort rejects `E_ABORT` at once;
-/// the picker stays until the person closes it, and what it returns then is dropped, with the
-/// copies it made in the app's temp area deleted. An already-aborted signal rejects first.
+/// Run a system picker until it answers, `signal` aborts, or its page (`owner`) unloads. An abort
+/// rejects `E_ABORT` at once; the page unloading settles it as `canceled()`, as the person closing
+/// it would. Either way the picker stays until the person closes it, and what it returns then is
+/// dropped, with the copies it made in the app's temp area deleted. An already-aborted signal
+/// rejects first.
 pub(crate) async fn abortable<T: 'static>(
     ctx: &JSContext,
     signal: Option<JSObject>,
+    owner: Option<crate::ui::OwnerEnd>,
     work: impl std::future::Future<Output = JSResult<T>> + 'static,
+    canceled: impl FnOnce() -> T,
     discard: impl FnOnce(T) + 'static,
 ) -> JSResult<T> {
     use futures::future::{Either, select};
-    let Some(signal) = signal else {
-        return work.await;
-    };
-    crate::task_object::validate_abort_signal(Some(&signal))?;
-    if signal.get::<_, bool>("aborted")? {
-        return Err(crate::task_object::abort_error());
-    }
-    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let tx = std::cell::RefCell::new(Some(tx));
-    let on_abort = rong::JSFunc::new(ctx, move || {
-        if let Some(tx) = tx.borrow_mut().take() {
-            let _ = tx.send(());
+    let mut listener = None;
+    let mut aborted = None;
+    if let Some(signal) = signal {
+        crate::task_object::validate_abort_signal(Some(&signal))?;
+        if signal.get::<_, bool>("aborted")? {
+            return Err(crate::task_object::abort_error());
         }
-    })?;
-    let options = JSObject::new(ctx);
-    options.set("once", true)?;
-    let add: rong::JSFunc = signal.get("addEventListener")?;
-    add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let tx = std::cell::RefCell::new(Some(tx));
+        let on_abort = rong::JSFunc::new(ctx, move || {
+            if let Some(tx) = tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        })?;
+        let options = JSObject::new(ctx);
+        options.set("once", true)?;
+        let add: rong::JSFunc = signal.get("addEventListener")?;
+        add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+        listener = Some((signal, on_abort));
+        aborted = Some(rx);
+    }
+    if aborted.is_none() && owner.is_none() {
+        return work.await;
+    }
+    let abort = Box::pin(async move {
+        match aborted {
+            Some(rx) => {
+                let _ = rx.await;
+            }
+            None => std::future::pending().await,
+        }
+    });
+    let unloaded = Box::pin(async move {
+        match owner {
+            Some(end) => end.await,
+            None => std::future::pending().await,
+        }
+    });
     let running = rong::spawn_local(work);
-    let outcome = match select(running, rx).await {
+    let outcome = match select(running, select(abort, unloaded)).await {
         Either::Left((done, _)) => {
             done.unwrap_or_else(|error| Err(js_internal_error(format!("pick failed: {error}"))))
         }
-        Either::Right((_, running)) => {
+        Either::Right((ended, running)) => {
             drop(rong::spawn_local(async move {
                 if let Ok(Ok(late)) = running.await {
                     discard(late);
                 }
             }));
-            Err(crate::task_object::abort_error())
+            match ended {
+                Either::Left(_) => Err(crate::task_object::abort_error()),
+                Either::Right(_) => Ok(canceled()),
+            }
         }
     };
-    let remove: rong::JSFunc = signal.get("removeEventListener")?;
-    let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    if let Some((signal, on_abort)) = listener {
+        let remove: rong::JSFunc = signal.get("removeEventListener")?;
+        let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    }
     outcome
 }
 
@@ -363,7 +392,14 @@ mod tests {
             *seen.borrow_mut() = true;
             Ok(1)
         };
-        let result = on_local(abortable(&ctx, Some(signal(&ctx, true)), work, |_| {}));
+        let result = on_local(abortable(
+            &ctx,
+            Some(signal(&ctx, true)),
+            None,
+            work,
+            || 0,
+            |_| {},
+        ));
         assert!(result.unwrap_err().is_code(rong::error::E_ABORT));
         assert!(!*opened.borrow());
     }
@@ -377,9 +413,14 @@ mod tests {
         let into = dropped.clone();
         let work = async move { Ok(answered.await.unwrap()) };
         on_local(async {
-            let call = abortable(&ctx, Some(signal(&ctx, false)), work, move |late| {
-                into.borrow_mut().push(late)
-            });
+            let call = abortable(
+                &ctx,
+                Some(signal(&ctx, false)),
+                None,
+                work,
+                || 0,
+                move |late| into.borrow_mut().push(late),
+            );
             let (result, ()) = futures::join!(call, async {
                 tokio::time::sleep(Duration::from_millis(20)).await;
                 let _: rong::JSValue = ctx
@@ -401,6 +442,38 @@ mod tests {
             .eval(Source::from_bytes("signal.listeners.length"))
             .unwrap();
         assert_eq!(listeners, 0);
+    }
+
+    #[test]
+    fn its_page_unloading_settles_the_pick_as_canceled_and_drops_the_later_answer() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let (answer, answered) = tokio::sync::oneshot::channel::<u32>();
+        let (unload, unloaded) = tokio::sync::oneshot::channel::<()>();
+        let owner: crate::ui::OwnerEnd = Box::pin(async move {
+            let _ = unloaded.await;
+        });
+        let dropped = Rc::new(RefCell::new(Vec::new()));
+        let into = dropped.clone();
+        let work = async move { Ok(answered.await.unwrap()) };
+        on_local(async {
+            let call = abortable(
+                &ctx,
+                None,
+                Some(owner),
+                work,
+                || 0,
+                move |late| into.borrow_mut().push(late),
+            );
+            let (result, ()) = futures::join!(call, async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                unload.send(()).unwrap();
+            });
+            assert_eq!(result.unwrap(), 0, "settles as canceled, not E_ABORT");
+            answer.send(7).unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        });
+        assert_eq!(*dropped.borrow(), vec![7]);
     }
 
     #[test]

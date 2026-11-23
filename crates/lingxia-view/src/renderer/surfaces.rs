@@ -259,13 +259,26 @@ pub fn suspend(id: u64) {
 /// A hidden page kept on screen-ready terms: its render targets go, its surface and last frame
 /// stay.
 pub fn trim(id: u64) {
+    trim_with(id, false);
+}
+
+/// [`trim`] for a host that covers the surface with its snapshot of the last frame.
+pub fn trim_covered(id: u64) {
+    trim_with(id, true);
+}
+
+fn trim_with(id: u64, covered: bool) {
     let _binding = gpu_binding();
     let _layers = super::gpu::LayerTransaction::begin();
     let mut context = None;
     if let Ok(Some(presenter)) = presenter(id)
         && let Ok(mut presenter) = lock(&presenter)
     {
-        presenter.trim();
+        if covered {
+            presenter.trim_covered();
+        } else {
+            presenter.trim();
+        }
         context = Some(presenter.context());
     }
     if let Some(context) = context {

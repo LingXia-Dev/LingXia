@@ -26,7 +26,7 @@ const photos = [
   { src: photo(4), alt: 'Morning fog in the valley' },
 ] as const;
 
-/** A grid of thumbnails: pressing one opens the pictures at that one. */
+/** A grid of thumbnails: pressing one opens the pictures at that one; the page holds which is in view. */
 export function FromGrid() {
   const open = useLocal('open', false);
   const page = useLocal('page', 0);
@@ -42,7 +42,8 @@ export function FromGrid() {
         onOpenChange={next => open.set(next)}
         label="Photos of the house"
         images={photos}
-        bind={page}
+        index={page.value}
+        onIndexChange={next => page.set(next)}
         data-testid="viewer"
       />
     </view>
@@ -75,11 +76,14 @@ export function Single() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<number>` |  | A View-local cell holding which picture is in view, from 0. Set it before opening to start there. |
+| `index` | `number` |  | The picture in view, from 0, held by the caller: in Logic state, or to open at the one pressed. |
+| `onIndexChange` | `((index: number) => void)` |  | Runs with the picture a swipe or a dot moves to. |
 | `isOpen` (required) | `boolean` |  | Whether it is shown. A closed lightbox renders nothing. |
 | `onOpenChange` (required) | `(isOpen: boolean) => void` |  | Called with `false` on a close request: Escape, back, the close button. |
 | `label` (required) | `string` |  | The lightbox's accessible name: "Photos of the house". |
 | `images` (required) | `readonly LightboxImage[]` |  |  |
-| `bind` | `Local<number>` |  | A View-local cell holding which picture is in view, from 0. Set it before opening to start there. |
+| `defaultIndex` | `number` | `0` | The picture it opens on when the lightbox holds it. |
 | `closeLabel` | `string` |  | The close button's name: "Close". Defaults to "Close" in the page's language. |
 | `pageLabel` | `((page: number, count: number) => string)` |  | Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. Defaults to "2 of 5" in the page's language. |
 | `data-testid` | `string` |  |  |

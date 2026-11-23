@@ -421,7 +421,10 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - Logic: `lx.app.t('cart.items', { count })` for toasts, dialogs and action sheets.
 - WebView (React): `const t = useText()` from `@lingxia/react`; `t` from `@lingxia/bridge` elsewhere.
 - The View's own words (picker Cancel/Done, dialog OK) are `@view.*` keys; a catalogue that names
-  one, e.g. `"@view.done"`, overrides it in that language only.
+  one, e.g. `"@view.done"`, overrides it in that language only. The build checks an override against
+  the installed package: an unknown key or a changed argument name stops it.
+- A package with words of its own ships its source catalogue and names it in its `package.json`:
+  `"lingxia": { "messages": "./messages/en.json" }`; every key starts with its `@namespace.`.
 - A dev session also builds `en-XA`: the source accented, ~40% longer and bracketed, to find
   clipped or untranslated text. Pick it with `lx.host.displayLanguage.set('en-XA')` from
   the Control app (`lxdev lxapp eval`); it never ships.

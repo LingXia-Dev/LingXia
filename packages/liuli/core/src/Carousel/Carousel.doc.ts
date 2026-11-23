@@ -53,7 +53,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Photos', title: 'Photos, with the dots over them' },
-    { name: 'Welcome', title: 'Pages moved by a button too' },
+    { name: 'Welcome', title: 'Pages held by the caller, moved by a button too' },
     { name: 'Looping', title: 'Buttons over the edges, going round' },
     { name: 'Rail', title: 'A rail of cards' },
   ],

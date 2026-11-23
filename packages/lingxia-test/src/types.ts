@@ -1114,8 +1114,12 @@ export interface TestMetrics extends PageFramePacing {
   framesTotal: number;
   /** Nodes the presented frame laid out; `null` before the first frame. */
   nodes: number | null;
-  /** `windowCovered`: other windows cover the page's window, which then parks animations and video (desktop only). */
-  reveal: { count: number; deadlines: number; watchdogs: number; windowCovered: boolean; lastReveal: { reason: string; atMs: number } | null };
+  /**
+   * `windowCovered`: other windows cover the page's window, which then parks animations and video (desktop only).
+   * `covers`: returns shown under the host's snapshot of the page's last frame until a frame at the current size reached the screen;
+   * `snapshotShown`: one is up now; `lastCoverMs`: how long the last one stayed.
+   */
+  reveal: { count: number; deadlines: number; watchdogs: number; windowCovered: boolean; covers: number; snapshotShown: boolean; lastCoverMs: number | null; lastReveal: { reason: string; atMs: number } | null };
   /** Frames dropped since the page loaded for finishing past the View budget. */
   budget: { overruns: number };
   /** The presented frame's composition work; `null` when it drew without composition. */

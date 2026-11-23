@@ -10,7 +10,7 @@ const photos = [
   { src: photo(4), alt: 'Morning fog in the valley' },
 ] as const;
 
-/** A grid of thumbnails: pressing one opens the pictures at that one. */
+/** A grid of thumbnails: pressing one opens the pictures at that one; the page holds which is in view. */
 export function FromGrid() {
   const open = useLocal('open', false);
   const page = useLocal('page', 0);
@@ -26,7 +26,8 @@ export function FromGrid() {
         onOpenChange={next => open.set(next)}
         label="Photos of the house"
         images={photos}
-        bind={page}
+        index={page.value}
+        onIndexChange={next => page.set(next)}
         data-testid="viewer"
       />
     </view>

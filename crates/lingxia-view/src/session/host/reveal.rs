@@ -34,15 +34,24 @@ pub(super) struct Reveal {
     watchdogs: u64,
     /// Why and when (since the platform clock's origin) the page was last revealed.
     last: Option<(&'static str, Duration)>,
+    /// Since when the host shows its snapshot of the last frame over the surface.
+    cover: Option<Duration>,
+    covers: u64,
+    /// How long the last cover stayed up.
+    cover_ms: Option<u64>,
 }
 
 impl Reveal {
-    /// `{deadlines, watchdogs, windowCovered, lastReveal: {reason, atMs}}`, times since `opened`.
+    /// `{deadlines, watchdogs, windowCovered, covers, snapshotShown, lastCoverMs, lastReveal:
+    /// {reason, atMs}}`, times since `opened`.
     pub(super) fn metrics(&self, opened: Duration) -> serde_json::Value {
         serde_json::json!({
             "deadlines": self.deadlines,
             "watchdogs": self.watchdogs,
             "windowCovered": self.window_covered,
+            "covers": self.covers,
+            "snapshotShown": self.cover.is_some(),
+            "lastCoverMs": self.cover_ms,
             "lastReveal": self.last.map(|(reason, at)| serde_json::json!({
                 "reason": reason,
                 "atMs": at.saturating_sub(opened).as_millis() as u64,
@@ -251,6 +260,39 @@ impl<A: PlatformAdapter> Inner<A> {
         if waiting {
             self.finish_reveal(false, "frame");
         }
+    }
+
+    /// The host shows its snapshot of the page's last frame over the surface, which may hold
+    /// nothing: the next frame shown at the current size takes its place.
+    pub(super) fn cover(self: &Arc<Self>) {
+        let at = self.adapter.now();
+        {
+            let mut main = self.main();
+            main.reveal.cover = Some(at);
+            main.reveal.covers += 1;
+        }
+        log::debug!(target: "lingxia_view", "cover");
+        self.schedule();
+    }
+
+    /// A frame of `width`×`height` reached the screen: a cover comes off if that is the
+    /// current size.
+    pub(super) fn uncover_by_frame(self: &Arc<Self>, width: u16, height: u16) {
+        let sized = self
+            .adapter
+            .environment()
+            .is_some_and(|environment| (environment.width, environment.height) == (width, height));
+        if !sized {
+            return;
+        }
+        let at = self.adapter.now();
+        let Some(since) = self.main().reveal.cover.take() else {
+            return;
+        };
+        let ms = at.saturating_sub(since).as_millis() as u64;
+        self.main().reveal.cover_ms = Some(ms);
+        log::debug!(target: "lingxia_view", "uncover {width}x{height} after {ms} ms");
+        self.adapter.uncover();
     }
 
     /// Recovery chrome is shown at once.

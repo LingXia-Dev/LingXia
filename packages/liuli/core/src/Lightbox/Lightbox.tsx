@@ -13,7 +13,23 @@ export interface LightboxImage {
   caption?: string;
 }
 
-export interface LightboxProps {
+/** Which picture is in view: a View-local cell, or a value with its change handler, or neither (the lightbox holds it). */
+export type LightboxIndex =
+  | {
+      /** A View-local cell holding which picture is in view, from 0. Set it before opening to start there. */
+      bind?: Local<number>;
+      index?: never;
+      onIndexChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The picture in view, from 0, held by the caller: in Logic state, or to open at the one pressed. */
+      index: number;
+      /** Runs with the picture a swipe or a dot moves to. */
+      onIndexChange: (index: number) => void;
+    };
+
+export type LightboxProps = LightboxIndex & {
   /** Whether it is shown. A closed lightbox renders nothing. */
   isOpen: boolean;
   /** Called with `false` on a close request: Escape, back, the close button. */
@@ -21,19 +37,22 @@ export interface LightboxProps {
   /** The lightbox's accessible name: "Photos of the house". */
   label: string;
   images: readonly LightboxImage[];
-  /** A View-local cell holding which picture is in view, from 0. Set it before opening to start there. */
-  bind?: Local<number>;
+  /** The picture it opens on when the lightbox holds it. @default 0 */
+  defaultIndex?: number;
   /** The close button's name: "Close". Defaults to "Close" in the page's language. */
   closeLabel?: string;
   /** Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. Defaults to "2 of 5" in the page's language. */
   pageLabel?: (page: number, count: number) => string;
   'data-testid'?: string;
-}
+};
 
 /** Pictures one at a time over the whole screen, shown whole. */
-export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel = liuliText('@liuli.close'), pageLabel = (page: number, count: number) => liuliText('@liuli.pictureOf', { page: page + 1, count }), 'data-testid': testId, ...attributes }: LightboxProps) {
-  const local = useLocal('page', 0);
-  const page = bind ?? local;
+export function Lightbox({ isOpen, onOpenChange, label, images, bind, index, onIndexChange, defaultIndex = 0, closeLabel = liuliText('@liuli.close'), pageLabel = (page: number, count: number) => liuliText('@liuli.pictureOf', { page: page + 1, count }), 'data-testid': testId, ...attributes }: LightboxProps) {
+  const local = useLocal('page', defaultIndex);
+  const cell = bind ?? local;
+  const page = onIndexChange !== undefined ? { value: index ?? 0 } : cell;
+  const follow = onIndexChange !== undefined ? { snapIndex: index ?? 0, onSnapChange: onIndexChange } : { bind: cell };
+  const dotsFollow = onIndexChange !== undefined ? { value: index ?? 0, onChange: onIndexChange } : { bind: cell };
   const at = Math.min(Math.max(0, Math.round(page.value)), Math.max(0, images.length - 1));
   const close = () => onOpenChange(false);
   return (
@@ -51,7 +70,7 @@ export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel
           <Glyph name="close" className={r.closeIcon.base} />
         </button>
       </view>
-      <scroll bind={page} className={r.scroll.base}>
+      <scroll {...follow} className={r.scroll.base}>
         <view role="list" aria-label={label} className={r.track.base}>
           {images.map((image, index) => (
             <view key={`image-${index}`} role="listitem" className={r.page.base}>
@@ -62,7 +81,7 @@ export function Lightbox({ isOpen, onOpenChange, label, images, bind, closeLabel
       </scroll>
       {images[at]?.caption !== undefined && <text className={r.caption.base}>{images[at].caption}</text>}
       {images.length > 1 && (
-        <PageControl label={label} count={images.length} bind={page} tone="on-media" pageLabel={index => pageLabel(index, images.length)} data-testid={testId && `${testId}-dots`} />
+        <PageControl label={label} count={images.length} {...dotsFollow} tone="on-media" pageLabel={index => pageLabel(index, images.length)} data-testid={testId && `${testId}-dots`} />
       )}
     </dialog>
   );
