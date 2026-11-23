@@ -77,6 +77,9 @@ if (basename(core) === 'core' && existsSync(galleryDir)) {
   }
 }
 
+// Props a person reads or hears: in a part's source they come from the catalogue or from the app, never a literal.
+const wordProps = new Set(['aria-label', 'aria-description', 'aria-roledescription', 'aria-valuetext', 'label', 'title', 'placeholder', 'alt', 'description', 'disabledMessage', 'closeLabel']);
+
 for (const path of files) {
   const text = readFileSync(path, 'utf8');
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : path.endsWith('.mjs') ? ts.ScriptKind.JS : ts.ScriptKind.TS);
@@ -116,11 +119,15 @@ for (const path of files) {
         const literal = ts.isStringLiteral(attribute.initializer) ? attribute.initializer : ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression && ts.isStringLiteral(attribute.initializer.expression) ? attribute.initializer.expression : undefined;
         if (literal && (((tag === 'Icon' || tag === 'Glyph') && prop === 'name') || iconProps.has(prop)) && !iconNames.has(literal.text))
           report(attribute, 'icon', `${literal.text} is not an icon name; see icons/icons.json`);
+        if (role === 'source' && literal && wordProps.has(prop) && /\p{L}/u.test(literal.text))
+          report(attribute, 'words', `${prop}="${literal.text}" is fixed English; name a @liuli.* word with liuliText so it follows the page's language`);
         if (prop !== 'className') continue;
         const value = ts.isJsxExpression(attribute.initializer) ? attribute.initializer.expression : attribute.initializer;
         checkClassName(value, role, report);
       }
     }
+    if (role === 'source' && ts.isJsxText(node) && /\p{L}/u.test(node.text))
+      report(node, 'words', `"${node.text.trim()}" is fixed English; name a @liuli.* word with liuliText so it follows the page's language`);
     if (role === 'recipe') checkRecipeLeaf(node, report);
     if (role === 'source' && (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) && /Props$/.test(node.name.text))
       checkProps(node, report);
