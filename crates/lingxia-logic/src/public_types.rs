@@ -60,9 +60,9 @@ rong::js_api! {
     onError?: (failure: UnhandledFailure) => void | Promise<void>;
 }"###;
 
-        /// A failure nothing handled, as `App.onError` receives it. The `action` and module-level
-        /// (`app` with `hook: null`) kinds fire only on an engine that reports unhandled rejections,
-        /// so their silence elsewhere does not mean there were none.
+        /// A failure nothing handled, as `App.onError` receives it. A rejected promise nothing
+        /// awaited (`app` with `hook: null`) is reported only on an engine that tracks rejections,
+        /// so its silence elsewhere does not mean there were none.
         type UnhandledFailure = r###"{
     /** What was thrown; a non-`Error` value is wrapped, the original in `cause`. */
     error: Error;
@@ -90,17 +90,12 @@ rong::js_api! {
     /** The action the handler called that failed, if that is where it came from. */
     action: string | null;
 } | {
-    /** An action called from Logic rejected and nothing caught it. */
-    kind: 'action';
-    /** The action's name. */
-    action: string;
-} | {
     /** A page hook or page timer threw or rejected. */
     kind: 'hook';
     /** `onLoad`, `onShow`, `onReady`, `onHide`, `onUnload`, `onRefresh`, `every` or `after`. */
     hook: string;
 } | {
-    /** An App hook, a store callback, or module code. */
+    /** An App hook, a store callback, module code, or a promise nothing awaited or caught. */
     kind: 'app';
     /** `onLaunch`, `onShow`, `onHide`, `onOpen`, `onScreenshot` or `store`; `null` when it cannot be placed. */
     hook: string | null;

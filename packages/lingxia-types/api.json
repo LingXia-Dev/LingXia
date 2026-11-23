@@ -1314,7 +1314,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3546"
+      "source": "src/generated/logic.ts:3541"
     },
     {
       "path": "lx.app.info.channel",
@@ -1329,7 +1329,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3552"
+      "source": "src/generated/logic.ts:3547"
     },
     {
       "path": "lx.app.info.name",
@@ -1342,7 +1342,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3548"
+      "source": "src/generated/logic.ts:3543"
     },
     {
       "path": "lx.app.info.role",
@@ -1355,7 +1355,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3558"
+      "source": "src/generated/logic.ts:3553"
     },
     {
       "path": "lx.app.info.version",
@@ -1368,7 +1368,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3550"
+      "source": "src/generated/logic.ts:3545"
     },
     {
       "path": "lx.app.language",
@@ -1469,7 +1469,7 @@
       "examples": [
         "lx.app.moreActions.replace([\n{ icon: 'public/feedback.svg', label: 'Feedback', onSelect: () => openFeedback() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4165"
+      "source": "src/generated/logic.ts:4160"
     },
     {
       "path": "lx.app.t",
@@ -1493,7 +1493,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4051"
+      "source": "src/generated/logic.ts:4046"
     },
     {
       "path": "lx.app.tabBar",
@@ -1547,7 +1547,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4404"
+      "source": "src/generated/logic.ts:4399"
     },
     {
       "path": "lx.app.update",
@@ -1577,7 +1577,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4061"
+      "source": "src/generated/logic.ts:4056"
     },
     {
       "path": "lx.app.update.onFailed",
@@ -1609,7 +1609,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4069"
+      "source": "src/generated/logic.ts:4064"
     },
     {
       "path": "lx.app.update.onReady",
@@ -1641,7 +1641,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4067"
+      "source": "src/generated/logic.ts:4062"
     },
     {
       "path": "lx.automation",
@@ -1706,7 +1706,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3783"
+      "source": "src/generated/logic.ts:3778"
     },
     {
       "path": "lx.clipboard.read",
@@ -1749,7 +1749,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3778"
+      "source": "src/generated/logic.ts:3773"
     },
     {
       "path": "lx.clipboard.readText",
@@ -1783,7 +1783,7 @@
       "examples": [
         "const read = await lx.clipboard.readText();\nif (read.status === 'ok' && read.text) paste(read.text);"
       ],
-      "source": "src/generated/logic.ts:3762"
+      "source": "src/generated/logic.ts:3757"
     },
     {
       "path": "lx.clipboard.types",
@@ -1810,7 +1810,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3793"
+      "source": "src/generated/logic.ts:3788"
     },
     {
       "path": "lx.clipboard.write",
@@ -1844,7 +1844,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3767"
+      "source": "src/generated/logic.ts:3762"
     },
     {
       "path": "lx.clipboard.writeText",
@@ -1875,7 +1875,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3750"
+      "source": "src/generated/logic.ts:3745"
     },
     {
       "path": "lx.device",
@@ -1922,7 +1922,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3805"
+      "source": "src/generated/logic.ts:3800"
     },
     {
       "path": "lx.device.info",
@@ -1947,7 +1947,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3564"
+      "source": "src/generated/logic.ts:3559"
     },
     {
       "path": "lx.device.info.marketName",
@@ -1960,7 +1960,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3568"
+      "source": "src/generated/logic.ts:3563"
     },
     {
       "path": "lx.device.info.model",
@@ -1973,7 +1973,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3566"
+      "source": "src/generated/logic.ts:3561"
     },
     {
       "path": "lx.device.info.osName",
@@ -1988,7 +1988,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3570"
+      "source": "src/generated/logic.ts:3565"
     },
     {
       "path": "lx.device.info.osVersion",
@@ -2001,7 +2001,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3572"
+      "source": "src/generated/logic.ts:3567"
     },
     {
       "path": "lx.device.location",
@@ -2052,7 +2052,7 @@
       "examples": [
         "const { latitude, longitude } = await lx.device.location();\nshowOnMap(latitude, longitude);"
       ],
-      "source": "src/generated/logic.ts:3829"
+      "source": "src/generated/logic.ts:3824"
     },
     {
       "path": "lx.device.onKeyDown",
@@ -2085,7 +2085,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3812"
+      "source": "src/generated/logic.ts:3807"
     },
     {
       "path": "lx.device.onKeyUp",
@@ -2118,7 +2118,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3814"
+      "source": "src/generated/logic.ts:3809"
     },
     {
       "path": "lx.device.orientation",
@@ -2150,7 +2150,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4195"
+      "source": "src/generated/logic.ts:4190"
     },
     {
       "path": "lx.device.orientation.watch",
@@ -2182,7 +2182,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4200"
+      "source": "src/generated/logic.ts:4195"
     },
     {
       "path": "lx.device.permission",
@@ -2237,7 +2237,7 @@
       "examples": [
         "if (await lx.device.permission.get('notifications') === 'prompt') showEnableButton();"
       ],
-      "source": "src/generated/logic.ts:4217"
+      "source": "src/generated/logic.ts:4212"
     },
     {
       "path": "lx.device.permission.request",
@@ -2284,7 +2284,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4228"
+      "source": "src/generated/logic.ts:4223"
     },
     {
       "path": "lx.device.screen",
@@ -2304,7 +2304,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3809"
+      "source": "src/generated/logic.ts:3804"
     },
     {
       "path": "lx.device.systemSettings",
@@ -2324,7 +2324,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3831"
+      "source": "src/generated/logic.ts:3826"
     },
     {
       "path": "lx.fs",
@@ -2382,7 +2382,7 @@
       "examples": [
         "await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });"
       ],
-      "source": "src/generated/logic.ts:3889"
+      "source": "src/generated/logic.ts:3884"
     },
     {
       "path": "lx.fs.exists",
@@ -2409,7 +2409,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3849"
+      "source": "src/generated/logic.ts:3844"
     },
     {
       "path": "lx.fs.file",
@@ -2438,7 +2438,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3844"
+      "source": "src/generated/logic.ts:3839"
     },
     {
       "path": "lx.fs.mkdir",
@@ -2482,7 +2482,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3868"
+      "source": "src/generated/logic.ts:3863"
     },
     {
       "path": "lx.fs.readDir",
@@ -2522,7 +2522,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3862"
+      "source": "src/generated/logic.ts:3857"
     },
     {
       "path": "lx.fs.remove",
@@ -2570,7 +2570,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3907"
+      "source": "src/generated/logic.ts:3902"
     },
     {
       "path": "lx.fs.rename",
@@ -2616,7 +2616,7 @@
       "examples": [
         "await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });"
       ],
-      "source": "src/generated/logic.ts:3900"
+      "source": "src/generated/logic.ts:3895"
     },
     {
       "path": "lx.fs.stat",
@@ -2660,7 +2660,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3856"
+      "source": "src/generated/logic.ts:3851"
     },
     {
       "path": "lx.fs.userCache",
@@ -2730,7 +2730,7 @@
       "examples": [
         "await lx.fs.write('notes/today.md', { data: '# Today' });"
       ],
-      "source": "src/generated/logic.ts:3878"
+      "source": "src/generated/logic.ts:3873"
     },
     {
       "path": "lx.host",
@@ -3404,7 +3404,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3936"
+      "source": "src/generated/logic.ts:3931"
     },
     {
       "path": "lx.host.info",
@@ -3431,7 +3431,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3603"
+      "source": "src/generated/logic.ts:3598"
     },
     {
       "path": "lx.host.info.productName",
@@ -3444,7 +3444,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3605"
+      "source": "src/generated/logic.ts:3600"
     },
     {
       "path": "lx.host.info.sdkVersion",
@@ -3457,7 +3457,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3609"
+      "source": "src/generated/logic.ts:3604"
     },
     {
       "path": "lx.host.info.version",
@@ -3470,7 +3470,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3607"
+      "source": "src/generated/logic.ts:3602"
     },
     {
       "path": "lx.host.notification",
@@ -3645,7 +3645,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3924"
+      "source": "src/generated/logic.ts:3919"
     },
     {
       "path": "lx.host.serviceEnv",
@@ -3678,7 +3678,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3944"
+      "source": "src/generated/logic.ts:3939"
     },
     {
       "path": "lx.host.serviceEnv.set",
@@ -3706,7 +3706,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3951"
+      "source": "src/generated/logic.ts:3946"
     },
     {
       "path": "lx.host.terminal",
@@ -4248,7 +4248,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4435"
+      "source": "src/generated/logic.ts:4430"
     },
     {
       "path": "lx.host.tray.onClick",
@@ -4289,7 +4289,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4424"
+      "source": "src/generated/logic.ts:4419"
     },
     {
       "path": "lx.host.tray.update",
@@ -4325,7 +4325,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4417"
+      "source": "src/generated/logic.ts:4412"
     },
     {
       "path": "lx.host.update",
@@ -4380,7 +4380,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3969"
+      "source": "src/generated/logic.ts:3964"
     },
     {
       "path": "lx.host.update.claim",
@@ -4398,7 +4398,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3976"
+      "source": "src/generated/logic.ts:3971"
     },
     {
       "path": "lx.media",
@@ -4459,7 +4459,7 @@
       "examples": [
         "const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });"
       ],
-      "source": "src/generated/logic.ts:4096"
+      "source": "src/generated/logic.ts:4091"
     },
     {
       "path": "lx.media.compressVideo",
@@ -4511,7 +4511,7 @@
       "examples": [
         "const task = lx.media.compressVideo(clip, { quality: 'medium' });\nfor await (const { fraction } of task) render(fraction);\nconst { path, size } = await task.result;"
       ],
-      "source": "src/generated/logic.ts:4148"
+      "source": "src/generated/logic.ts:4143"
     },
     {
       "path": "lx.media.imageInfo",
@@ -4554,7 +4554,7 @@
       "examples": [
         "const { width, height } = await lx.media.imageInfo('images/cover.png');"
       ],
-      "source": "src/generated/logic.ts:4085"
+      "source": "src/generated/logic.ts:4080"
     },
     {
       "path": "lx.media.preview",
@@ -4588,7 +4588,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4101"
+      "source": "src/generated/logic.ts:4096"
     },
     {
       "path": "lx.media.saveToLibrary",
@@ -4619,7 +4619,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4107"
+      "source": "src/generated/logic.ts:4102"
     },
     {
       "path": "lx.media.videoInfo",
@@ -4662,7 +4662,7 @@
       "examples": [
         "const { durationMs, size } = await lx.media.videoInfo(clip);"
       ],
-      "source": "src/generated/logic.ts:4122"
+      "source": "src/generated/logic.ts:4117"
     },
     {
       "path": "lx.media.videoThumbnail",
@@ -4711,7 +4711,7 @@
       "examples": [
         "const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });"
       ],
-      "source": "src/generated/logic.ts:4133"
+      "source": "src/generated/logic.ts:4128"
     },
     {
       "path": "lx.nav",
@@ -5183,7 +5183,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4185"
+      "source": "src/generated/logic.ts:4180"
     },
     {
       "path": "lx.network.wifi",
@@ -5244,7 +5244,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4490"
+      "source": "src/generated/logic.ts:4485"
     },
     {
       "path": "lx.network.wifi.current",
@@ -5275,7 +5275,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4503"
+      "source": "src/generated/logic.ts:4498"
     },
     {
       "path": "lx.network.wifi.list",
@@ -5317,7 +5317,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4497"
+      "source": "src/generated/logic.ts:4492"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -5350,7 +5350,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4505"
+      "source": "src/generated/logic.ts:4500"
     },
     {
       "path": "lx.openExternal",
@@ -5387,7 +5387,7 @@
       "examples": [
         "await lx.openExternal('mailto:help@example.com');"
       ],
-      "source": "src/generated/logic.ts:4036"
+      "source": "src/generated/logic.ts:4031"
     },
     {
       "path": "lx.openFile",
@@ -5431,7 +5431,7 @@
       "examples": [
         "await lx.openFile('lx://userdata/report.pdf');"
       ],
-      "source": "src/generated/logic.ts:4008"
+      "source": "src/generated/logic.ts:4003"
     },
     {
       "path": "lx.pick",
@@ -5496,7 +5496,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4291"
+      "source": "src/generated/logic.ts:4286"
     },
     {
       "path": "lx.pick.code",
@@ -5540,7 +5540,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4301"
+      "source": "src/generated/logic.ts:4296"
     },
     {
       "path": "lx.pick.directory",
@@ -5587,7 +5587,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4265"
+      "source": "src/generated/logic.ts:4260"
     },
     {
       "path": "lx.pick.file",
@@ -5635,7 +5635,7 @@
       "examples": [
         "const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });\nif (picked.status === 'ok') await attach(picked.file.path);"
       ],
-      "source": "src/generated/logic.ts:4246"
+      "source": "src/generated/logic.ts:4241"
     },
     {
       "path": "lx.pick.files",
@@ -5681,7 +5681,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4254"
+      "source": "src/generated/logic.ts:4249"
     },
     {
       "path": "lx.pick.media",
@@ -5735,7 +5735,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4279"
+      "source": "src/generated/logic.ts:4274"
     },
     {
       "path": "lx.share",
@@ -5779,7 +5779,7 @@
       "examples": [
         "const { outcome } = await lx.share({ title: 'LingXia', text: 'Try this app' });"
       ],
-      "source": "src/generated/logic.ts:4024"
+      "source": "src/generated/logic.ts:4019"
     },
     {
       "path": "lx.shell",
@@ -5809,7 +5809,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4314"
+      "source": "src/generated/logic.ts:4309"
     },
     {
       "path": "lx.shell.appDisplay",
@@ -5848,7 +5848,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3731"
+      "source": "src/generated/logic.ts:3726"
     },
     {
       "path": "lx.shell.appDisplay.update",
@@ -5885,7 +5885,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3739"
+      "source": "src/generated/logic.ts:3734"
     },
     {
       "path": "lx.shell.openBuiltin",
@@ -5925,7 +5925,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4312"
+      "source": "src/generated/logic.ts:4307"
     },
     {
       "path": "lx.shell.sidebarActions",
@@ -5968,7 +5968,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4348"
+      "source": "src/generated/logic.ts:4343"
     },
     {
       "path": "lx.shell.sidebarActions.replace",
@@ -6005,7 +6005,7 @@
       "examples": [
         "await lx.shell.sidebarActions.replace([\n{ id: 'new', placement: 'header', icon: 'public/plus.svg', label: 'New', onSelect: () => createDraft() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4335"
+      "source": "src/generated/logic.ts:4330"
     },
     {
       "path": "lx.shell.sidebarActions.update",
@@ -6047,7 +6047,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4343"
+      "source": "src/generated/logic.ts:4338"
     },
     {
       "path": "lx.storage",
@@ -6366,7 +6366,7 @@
       "examples": [
         "if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });"
       ],
-      "source": "src/generated/logic.ts:3993"
+      "source": "src/generated/logic.ts:3988"
     },
     {
       "path": "lx.surface",
@@ -6408,7 +6408,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4385"
+      "source": "src/generated/logic.ts:4380"
     },
     {
       "path": "lx.surface.declared",
@@ -6446,7 +6446,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4391"
+      "source": "src/generated/logic.ts:4386"
     },
     {
       "path": "lx.surface.get",
@@ -6480,7 +6480,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4379"
+      "source": "src/generated/logic.ts:4374"
     },
     {
       "path": "lx.surface.openApp",
@@ -6538,7 +6538,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4367"
+      "source": "src/generated/logic.ts:4362"
     },
     {
       "path": "lx.surface.openDeclared",
@@ -6596,7 +6596,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4377"
+      "source": "src/generated/logic.ts:4372"
     },
     {
       "path": "lx.surface.openPage",
@@ -6707,7 +6707,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4359"
+      "source": "src/generated/logic.ts:4354"
     },
     {
       "path": "lx.ui",
@@ -6763,7 +6763,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4450"
+      "source": "src/generated/logic.ts:4445"
     },
     {
       "path": "lx.ui.alert",
@@ -6804,7 +6804,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4457"
+      "source": "src/generated/logic.ts:4452"
     },
     {
       "path": "lx.ui.confirm",
@@ -6845,7 +6845,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4464"
+      "source": "src/generated/logic.ts:4459"
     },
     {
       "path": "lx.ui.toast",
@@ -6886,7 +6886,7 @@
       "examples": [
         "lx.ui.toast('Saved', { tone: 'success' });\nconst busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });\nbusy.dismiss();"
       ],
-      "source": "src/generated/logic.ts:4475"
+      "source": "src/generated/logic.ts:4470"
     },
     {
       "path": "page.after",
@@ -7974,7 +7974,7 @@
           "description": "Whether it set its own icon."
         }
       ],
-      "source": "src/generated/logic.ts:3536"
+      "source": "src/generated/logic.ts:3531"
     },
     {
       "name": "AppDisplayPatch",
@@ -8090,7 +8090,7 @@
           "description": "What this lxapp may call. `control`: the product's own lxapp, admitted to\nControl-only members. `control_surface`: a host-bundled settings lxapp the\nControl app opens, admitted only to its own members. `guest`: any other."
         }
       ],
-      "source": "src/generated/logic.ts:3544"
+      "source": "src/generated/logic.ts:3539"
     },
     {
       "name": "AppLanguageApi",
@@ -9646,7 +9646,7 @@
           "description": "Operating system version, e.g. `18.2`."
         }
       ],
-      "source": "src/generated/logic.ts:3562"
+      "source": "src/generated/logic.ts:3557"
     },
     {
       "name": "DeviceOrientation",
@@ -9676,7 +9676,7 @@
           "description": "What the entry is; a `symlink` is not followed."
         }
       ],
-      "source": "src/generated/logic.ts:3576"
+      "source": "src/generated/logic.ts:3571"
     },
     {
       "name": "DisplayLanguagePreference",
@@ -9918,7 +9918,7 @@
           "description": "Epoch milliseconds; absent where the file system does not record it."
         }
       ],
-      "source": "src/generated/logic.ts:3584"
+      "source": "src/generated/logic.ts:3579"
     },
     {
       "name": "FileSystemApi",
@@ -10670,7 +10670,7 @@
           "description": "The LingXia runtime version."
         }
       ],
-      "source": "src/generated/logic.ts:3601"
+      "source": "src/generated/logic.ts:3596"
     },
     {
       "name": "HostOs",
@@ -10721,7 +10721,7 @@
           "description": "Switching is allowed in this build."
         }
       ],
-      "source": "src/generated/logic.ts:3613"
+      "source": "src/generated/logic.ts:3608"
     },
     {
       "name": "HostServiceEnvSwitchResult",
@@ -10750,7 +10750,7 @@
           "description": "If present, the environment was saved; close and reopen the app manually."
         }
       ],
-      "source": "src/generated/logic.ts:3627"
+      "source": "src/generated/logic.ts:3622"
     },
     {
       "name": "HostTarget",
@@ -10832,7 +10832,7 @@
           "description": "A path the image can be read from."
         }
       ],
-      "source": "src/generated/logic.ts:3640"
+      "source": "src/generated/logic.ts:3635"
     },
     {
       "name": "InstalledTerminalFont",
@@ -11036,7 +11036,7 @@
           "description": "Horizontal accuracy in meters"
         }
       ],
-      "source": "src/generated/logic.ts:3652"
+      "source": "src/generated/logic.ts:3647"
     },
     {
       "name": "LxAppApi",
@@ -11262,7 +11262,7 @@
       "description": "Feature contracts generated from the runtime registry.",
       "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"automation\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
-      "source": "src/generated/logic.ts:4512"
+      "source": "src/generated/logic.ts:4507"
     },
     {
       "name": "LxFile",
@@ -11334,7 +11334,7 @@
           "description": "Read metadata for this managed path."
         }
       ],
-      "source": "src/generated/logic.ts:3702"
+      "source": "src/generated/logic.ts:3697"
     },
     {
       "name": "LxStorageValues",
@@ -13948,7 +13948,7 @@
           "description": "Physical pixels per logical pixel."
         }
       ],
-      "source": "src/generated/logic.ts:3670"
+      "source": "src/generated/logic.ts:3665"
     },
     {
       "name": "ShareFilesOptions",
@@ -15006,7 +15006,7 @@
           "description": "Wi-Fi is on."
         }
       ],
-      "source": "src/generated/logic.ts:3680"
+      "source": "src/generated/logic.ts:3675"
     },
     {
       "name": "TabBarApi",
@@ -16173,7 +16173,7 @@
     {
       "name": "UnhandledFailure",
       "summary": "A failure nothing handled, as `App.onError` receives it.",
-      "description": "A failure nothing handled, as `App.onError` receives it. The `action` and module-level\n(`app` with `hook: null`) kinds fire only on an engine that reports unhandled rejections,\nso their silence elsewhere does not mean there were none.",
+      "description": "A failure nothing handled, as `App.onError` receives it. A rejected promise nothing\nawaited (`app` with `hook: null`) is reported only on an engine that tracks rejections,\nso its silence elsewhere does not mean there were none.",
       "fields": [
         {
           "name": "error",
@@ -16268,7 +16268,7 @@
       "name": "UnhandledFailureSource",
       "summary": "Where an unhandled failure happened.",
       "description": "Where an unhandled failure happened.",
-      "text": "{ kind: 'view_handler'; prop: string; testId: string | null; action: string | null; } | { kind: 'action'; action: string; } | { kind: 'hook'; hook: string; } | { kind: 'app'; hook: string | null; }",
+      "text": "{ kind: 'view_handler'; prop: string; testId: string | null; action: string | null; } | { kind: 'hook'; hook: string; } | { kind: 'app'; hook: string | null; }",
       "fields": [],
       "source": "src/generated/logic.ts:3259"
     },
@@ -16299,7 +16299,7 @@
           "description": "What went wrong, for a log line."
         }
       ],
-      "source": "src/generated/logic.ts:3286"
+      "source": "src/generated/logic.ts:3281"
     },
     {
       "name": "UpdateReadyInfo",
@@ -16321,7 +16321,7 @@
           "description": "The channel it came from."
         }
       ],
-      "source": "src/generated/logic.ts:3292"
+      "source": "src/generated/logic.ts:3287"
     },
     {
       "name": "UpdateRecipe",
@@ -16337,7 +16337,7 @@
       "description": "Upload options. The file streams from disk, so the size ceiling is\nthe remote's, not memory.\n`bodyMode` picks the body shape, and with it which of the other\nfields apply:\n- `multipart` (default) wraps the file in a `multipart/form-data`\nenvelope beside the `fields` text fields — what an ordinary form\nendpoint parses. `field`, `fileName`, and `fields` describe that\nenvelope. `fields`, when present, must contain at least one entry.\n- `raw` sends the file bytes as the entire body. Presigned\nobject-storage URLs (S3, OSS, Azure Blob) need this: a multipart\nenvelope would be stored verbatim as the object's contents,\nboundary lines and all. `field`, `fields`, and `fileName` are\nthen rejected rather than silently dropped.",
       "text": "{ path: string; method?: 'POST' | 'PUT' | 'PATCH'; headers?: Record<string, string>; type?: string; signal?: AbortSignal; } & ({ bodyMode?: 'multipart'; field?: string; fields?: Record<string, string>; fileName?: string; } | { bodyMode: 'raw'; field?: never; fields?: never; fileName?: never; })",
       "fields": [],
-      "source": "src/generated/logic.ts:3327"
+      "source": "src/generated/logic.ts:3322"
     },
     {
       "name": "UploadResult",
@@ -16380,7 +16380,7 @@
           "description": "Parse `text` as JSON."
         }
       ],
-      "source": "src/generated/logic.ts:3379"
+      "source": "src/generated/logic.ts:3374"
     },
     {
       "name": "UploadTask",
@@ -16410,7 +16410,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3393"
+      "source": "src/generated/logic.ts:3388"
     },
     {
       "name": "UrlTarget",
@@ -16453,7 +16453,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:3396"
+      "source": "src/generated/logic.ts:3391"
     },
     {
       "name": "VideoCompressQuality",
@@ -16461,7 +16461,7 @@
       "description": "A preset size for `lx.media.compressVideo`.",
       "text": "\"high\" | \"low\" | \"medium\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3406"
+      "source": "src/generated/logic.ts:3401"
     },
     {
       "name": "VideoInfo",
@@ -16553,7 +16553,7 @@
           "description": "Resolved path used by runtime (typically `lx://...`)."
         }
       ],
-      "source": "src/generated/logic.ts:3414"
+      "source": "src/generated/logic.ts:3409"
     },
     {
       "name": "VideoThumbnailOptions",
@@ -16598,7 +16598,7 @@
           "default": "80"
         }
       ],
-      "source": "src/generated/logic.ts:3472"
+      "source": "src/generated/logic.ts:3467"
     },
     {
       "name": "VideoThumbnailResult",
@@ -16634,7 +16634,7 @@
           "description": "Output MIME type, usually `image/jpeg`."
         }
       ],
-      "source": "src/generated/logic.ts:3492"
+      "source": "src/generated/logic.ts:3487"
     },
     {
       "name": "ViewCallable",
@@ -16649,7 +16649,7 @@
       "description": "Whether a piece of page chrome shows: `auto` leaves it to the runtime, `hidden` hides it.",
       "text": "\"auto\" | \"hidden\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3510"
+      "source": "src/generated/logic.ts:3505"
     },
     {
       "name": "WifiApi",
@@ -16745,7 +16745,7 @@
       "description": "Receives each Wi-Fi connection change.",
       "text": "(info: WifiConnectedInfo) => void",
       "fields": [],
-      "source": "src/generated/logic.ts:3515"
+      "source": "src/generated/logic.ts:3510"
     },
     {
       "name": "WifiConnectedInfo",
@@ -16802,7 +16802,7 @@
           "description": "The platform's own word for the connection state, such as `connected`."
         }
       ],
-      "source": "src/generated/logic.ts:3518"
+      "source": "src/generated/logic.ts:3513"
     },
     {
       "name": "WifiInfo",
@@ -16845,7 +16845,7 @@
           "description": "Center frequency in MHz (if available)"
         }
       ],
-      "source": "src/generated/logic.ts:3688"
+      "source": "src/generated/logic.ts:3683"
     },
     {
       "name": "WindowChrome",
@@ -16853,7 +16853,7 @@
       "description": "Window decoration. `system` is the standard title bar. `full`\nextends the page to the window edge while keeping the system\nminimize, maximize, resize, and drag affordances — the runtime owns\na native drag strip across the top and publishes its height as\n`topInset` on the page-chrome snapshot, so a page that does nothing\nto opt in still cannot trap the user.",
       "text": "\"system\" | \"full\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3533"
+      "source": "src/generated/logic.ts:3528"
     },
     {
       "name": "WithFollowed",
@@ -17702,7 +17702,7 @@
           "description": "Aborting it cancels the upload, and the task's `result` rejects."
         }
       ],
-      "source": "src/generated/logic.ts:3327"
+      "source": "src/generated/logic.ts:3322"
     },
     {
       "name": "lx.pick.capture()",
