@@ -896,8 +896,8 @@ export interface LxAppEvalOptions extends LogicLxAppEvalOptions {
   captureCalls?: boolean;
 }
 
-/** Shell admission class. Content `page.env` / View `env` use `compact` | `regular`. */
-export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
+/** The window's size class, the same two classes content reads from `page.env` and the View's `env`. */
+export type SurfaceLayoutSizeClass = 'compact' | 'regular';
 export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
 export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';
 export type SurfaceLayoutEdge = 'left' | 'right' | 'top' | 'bottom';
