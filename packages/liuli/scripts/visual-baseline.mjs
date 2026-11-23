@@ -19,6 +19,11 @@
 //                       them, and an accept replaces them in the reference and keeps every other picture
 //   --except <a,b>      every gallery page but these, as if the rest were named with --pages
 //   --confirm <name>    with accept: the second capture to hold current against (default confirm)
+//   --changed <rev>     only the pages the changes since <rev> (or in <a>..<b>) reach through their imports
+//                       (scripts/reach.mjs); a change it cannot place, such as a theme or a token, names every page
+//   --differing         with capture: only the pages whose pictures in current differ from the reference, so
+//                       `capture --into confirm --differing` re-shoots what moved; with accept: a picture that
+//                       matches its reference counts as steady and keeps the reference
 //
 // The pictures stay out of git (gallery/.baseline); gallery/baseline.manifest.json, which is
 // committed, records what was accepted: each picture's size and hash, and the host that drew it.
@@ -29,6 +34,7 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { changedSince, pagesReaching } from './reach.mjs';
 import { deflateSync, inflateSync } from 'node:zlib';
 
 const liuli = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,8 +50,14 @@ const manifestPath = pack ? join(liuli, 'gallery', `baseline.${pack}.manifest.js
 const presets = option('presets')?.split(',') ?? ['iphone-15-pro', 'desktop-1280'];
 // `--except` names the pages left out, so every other page is named.
 const except = option('except')?.split(',');
-const named = option('pages')?.split(',')
+let named = option('pages')?.split(',')
   ?? (except && JSON.parse(readFileSync(join(gallery, 'lxapp.json'), 'utf8')).pages.map(page => page.name).filter(page => !except.includes(page)));
+if (option('changed')) {
+  const { pages, why } = pagesReaching(changedSince(option('changed')), gallery);
+  console.log(why ? `every page: ${why}` : `${pages.length} pages reached: ${pages.join(', ')}`);
+  named = why ? named : pages.filter(page => !named || named.includes(page));
+}
+const differingOnly = process.argv.includes('--differing');
 // A picture is `<page>-<theme>.png` under its preset.
 const ofNamed = name => !named || named.some(page => new RegExp(`/${page}-(light|dark)\\.png$`).test(name));
 // A pixel differs when any channel is further than this from the reference; a picture fails when
@@ -57,7 +69,24 @@ const lxdev = process.env.LXDEV ?? 'lxdev';
 const session = process.env.LXDEV_SESSION ?? 'macos';
 const run = (args, options = {}) => execFileSync(lxdev, ['--session', session, ...args], { cwd: gallery, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...options });
 
+// A picture of current that differs from its accepted reference past the gate's limits, or has none.
+function moved(name) {
+  const accepted = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')).pictures[name] : undefined;
+  const referencePath = join(root, 'reference', name);
+  if (!accepted || !existsSync(referencePath)) return true;
+  if (hash(join(root, 'current', name)) === accepted.sha256) return false;
+  return differing(decode(readFileSync(referencePath)), decode(readFileSync(join(root, 'current', name))), channelTolerance) > failShare;
+}
+
 function capture() {
+  if (differingOnly) {
+    if (into === 'current') throw Error('--differing re-shoots what current shows moved: give --into confirm');
+    const pages = [...new Set(pictures('current').filter(moved).map(name => /\/(.+)-(light|dark)\.png$/.exec(name)[1]))];
+    console.log(pages.length ? `${pages.length} pages moved: ${pages.join(', ')}` : 'nothing moved: no second capture needed');
+    rmSync(join(root, into), { recursive: true, force: true });
+    if (!pages.length) return;
+    named = pages;
+  }
   const appId = JSON.parse(readFileSync(join(gallery, 'lxapp.json'), 'utf8')).appId;
   const before = run(['runner', 'get']).trim();
   const [, previous] = /\(([\w-]+)\)/.exec(before) ?? [];
@@ -118,8 +147,11 @@ function accept() {
   // one, taken afterwards, has to agree with it within the gate's own limits.
   const confirm = option('confirm') ?? 'confirm';
   const again = new Set(pictures(confirm));
-  if (!again.size) throw Error(`no second capture: run \`capture --into ${confirm}\` and accept again`);
+  if (!again.size && !differingOnly) throw Error(`no second capture: run \`capture --into ${confirm}\` and accept again`);
+  // With `--differing` only what moved was shot again; a picture that matches its reference was steady when accepted.
+  const steady = new Set(differingOnly ? current.filter(name => !again.has(name) && !moved(name)) : []);
   const unsteady = current.filter(name => {
+    if (steady.has(name)) return false;
     if (!again.has(name)) return true;
     if (hash(join(root, into, name)) === hash(join(root, confirm, name))) return false;
     return differing(decode(readFileSync(join(root, into, name))), decode(readFileSync(join(root, confirm, name))), channelTolerance) > failShare;
@@ -130,15 +162,16 @@ function accept() {
     process.exit(1);
   }
   // Named pages replace their own pictures; every other accepted picture stays as it was.
-  const kept = named ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
-  if (!named) rmSync(join(root, 'reference'), { recursive: true, force: true });
-  for (const name of current) { mkdirSync(dirname(join(root, 'reference', name)), { recursive: true }); cpSync(join(root, into, name), join(root, 'reference', name)); }
-  const fresh = Object.fromEntries(current.map(name => {
+  const kept = named || steady.size ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
+  if (!kept) rmSync(join(root, 'reference'), { recursive: true, force: true });
+  const replaced = current.filter(name => !steady.has(name));
+  for (const name of replaced) { mkdirSync(dirname(join(root, 'reference', name)), { recursive: true }); cpSync(join(root, into, name), join(root, 'reference', name)); }
+  const fresh = Object.fromEntries(replaced.map(name => {
     const { width, height } = decode(readFileSync(join(root, 'reference', name)));
     return [name, { width, height, sha256: hash(join(root, 'reference', name)) }];
   }));
   // In the manifest's own order, so an accept of a few pages changes only their lines.
-  const pictureSet = kept ? { ...Object.fromEntries(Object.entries(kept.pictures).filter(([name]) => !ofNamed(name) || fresh[name]).map(([name, entry]) => [name, fresh[name] ?? entry])), ...fresh } : fresh;
+  const pictureSet = kept ? { ...Object.fromEntries(Object.entries(kept.pictures).filter(([name]) => !ofNamed(name) || fresh[name] || steady.has(name)).map(([name, entry]) => [name, fresh[name] ?? entry])), ...fresh } : fresh;
   const manifest = {
     accepted: new Date().toISOString().slice(0, 10),
     presets: kept?.presets ?? presets,
@@ -147,7 +180,7 @@ function accept() {
     pictures: pictureSet,
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`accepted ${current.length} pictures, each drawn the same in two captures`);
+  console.log(`accepted ${replaced.length} pictures, each drawn the same in two captures${steady.size ? `; ${steady.size} matched their reference and kept it` : ''}`);
 }
 
 function check() {
