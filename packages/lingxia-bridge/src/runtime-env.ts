@@ -53,8 +53,8 @@ function store(): DisplayLanguageStore {
   return window.__lxDisplayLanguage;
 }
 
-/** Primary subtags of languages written right to left, for engines without `Intl.Locale#getTextInfo`. */
-const RTL_LANGUAGES = new Set(['ar', 'ckb', 'dv', 'fa', 'he', 'ps', 'sd', 'ug', 'ur', 'yi']);
+/** Primary subtags of languages written right to left, for engines without `Intl.Locale#getTextInfo`; lingxia-i18n's `direction::LANGUAGES`. */
+const RTL_LANGUAGES = new Set(['ar', 'ckb', 'dv', 'fa', 'he', 'iw', 'ks', 'ps', 'sd', 'ug', 'ur', 'yi']);
 
 /** The writing direction of a BCP-47 tag. */
 export function textDirection(tag: string): 'ltr' | 'rtl' {

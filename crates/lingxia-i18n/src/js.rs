@@ -7,7 +7,9 @@
 //! - `f.p(value, offset, ordinal, cases)` calls the case for `=value`, else for the plural
 //!   category of `value - offset`, else `other`, passing it `value - offset` for `#`;
 //! - `f.s(value, cases)` calls `cases[value]`, else `cases.other`;
-//! - `f.tag(fn, contents)` hands a tag's joined contents to the caller's function.
+//! - `f.tag(fn, contents)` hands a tag's joined contents to the caller's function;
+//! - `f.i(value)` is a text argument as parts, in FSI…PDI when it needs isolating (`format::format`);
+//!   `f.n`, `f.d` and `f.t` isolate their own output in LRI…PDI.
 
 use crate::catalogue::Catalogue;
 use crate::message::{Arg, DateStyle, NumberStyle, Part, PluralCategory, Selector};
@@ -17,7 +19,31 @@ use std::fmt::Write;
 /// with the CLDR plural rules of `languages` (the catalogue's tags). Number and date shapes are plain
 /// until the runtime has `Intl`. `format::format` matches it.
 pub fn formatter(languages: &[&str]) -> String {
-    format!("{}{FORMATTER}", crate::plural::js(languages))
+    format!("{}{}{FORMATTER}", crate::plural::js(languages), direction())
+}
+
+/// `rightToLeft(tag)` and `RTL_TEXT`, from the same tables as `direction`.
+fn direction() -> String {
+    use crate::direction::{LANGUAGES, RANGES, SCRIPTS};
+    let set = |items: &[&str]| {
+        items
+            .iter()
+            .map(|item| format!("'{item}'"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let ranges: String = RANGES
+        .iter()
+        .map(|(from, to)| format!("\\u{{{from:X}}}-\\u{{{to:X}}}"))
+        .collect();
+    format!(
+        "\nconst RTL_LANGUAGES = new Set([{}]);\nconst RTL_SCRIPTS = new Set([{}]);\nconst RTL_TEXT = /[{ranges}]/u;\n\
+         function rightToLeft(tag) {{\n  const [language, ...rest] = tag.toLowerCase().split(/[-_]/);\n  \
+         const script = rest.find(part => part.length === 4);\n  \
+         return script ? RTL_SCRIPTS.has(script) : RTL_LANGUAGES.has(language);\n}}\n",
+        set(LANGUAGES),
+        set(SCRIPTS)
+    )
 }
 
 const FORMATTER: &str = r#"
@@ -32,6 +58,8 @@ function group(n, digits) {
 const pad = n => String(n).padStart(2, '0');
 
 export function formatter(tag) {
+  const rtl = rightToLeft(tag);
+  const isolate = (text, open) => (rtl || RTL_TEXT.test(text) ? `${open}${text}\u2069` : text);
   const language = tag.toLowerCase().split('-')[0];
   const zh = language === 'zh' || language === 'ja';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -50,9 +78,12 @@ export function formatter(tag) {
   };
   return {
     j: parts => (parts.every(part => typeof part === 'string' || typeof part === 'number') ? parts.join('') : parts),
-    n: (value, style) => (style === 'percent' ? `${group(value * 100, 0)}%` : group(value, style === 'integer' ? 0 : undefined)),
-    d: date,
-    t: time,
+    n: (value, style) => isolate(style === 'percent' ? `${group(value * 100, 0)}%` : group(value, style === 'integer' ? 0 : undefined), '\u2066'),
+    d: (value, style) => isolate(date(value, style), '\u2066'),
+    t: (value, style) => isolate(time(value, style), '\u2066'),
+    i: value => (value !== null && typeof value === 'object'
+      ? (rtl ? ['\u2068', value, '\u2069'] : [value])
+      : [isolate(value == null ? '' : String(value), '\u2068')]),
     p: (value, offset, isOrdinal, cases) => {
       const exact = cases[`=${value}`];
       if (exact) return exact(value - offset);
@@ -88,7 +119,7 @@ fn expression(part: &Part, pound: Option<&str>) -> String {
     match part {
         Part::Text(text) => string(text),
         Part::Pound => format!("f.n({}, \"\")", pound.unwrap_or("0")),
-        Part::Arg(Arg::Text(name)) => arg(name),
+        Part::Arg(Arg::Text(name)) => format!("...f.i({})", arg(name)),
         Part::Arg(Arg::Number { name, style }) => {
             let style = match style {
                 NumberStyle::Plain => "",
@@ -238,6 +269,76 @@ if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    /// The same messages through `format::format` and through a compiled module in Node.
+    #[test]
+    fn isolates_read_the_same_in_js_and_rust() {
+        let catalogue = Catalogue::parse(
+            r#"{ "a.price": { "defaultMessage": "{price}/חודש", "description": "d" },
+                 "a.hello": { "defaultMessage": "Hello, {name}! You have {n, number} new.", "description": "d" },
+                 "a.files": { "defaultMessage": "{n, plural, one {# ملف} other {# ملفات}}", "description": "d" },
+                 "a.pick": { "defaultMessage": "{kind, select, a {أ} other {ب}}", "description": "d" } }"#,
+            true,
+        )
+        .unwrap();
+        let cases = serde_json::json!([
+            ["a.price", "he", { "price": "$4" }],
+            ["a.hello", "en-US", { "name": "דוד", "n": 3 }],
+            ["a.hello", "en-US", { "name": "Ann", "n": 1234 }],
+            ["a.hello", "ar", { "name": "Ann", "n": 3 }],
+            ["a.files", "ar", { "n": 5 }],
+            ["a.pick", "ar", { "kind": "a" }],
+        ]);
+        let rust: Vec<String> = cases
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|case| {
+                let entry = &catalogue.entries[case[0].as_str().unwrap()];
+                crate::format::format(&entry.message, case[1].as_str().unwrap(), &case[2])
+            })
+            .collect();
+        let dir = std::env::temp_dir().join(format!("lingxia-i18n-bidi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("m.mjs"), module(&catalogue)).unwrap();
+        std::fs::write(dir.join("formatter.mjs"), formatter(&["ar", "en-US", "he"])).unwrap();
+        std::fs::write(
+            dir.join("check.mjs"),
+            format!(
+                "import m from './m.mjs';\nimport {{ formatter }} from './formatter.mjs';\n\
+                 const out = {cases}.map(([key, tag, args]) => {{ const text = m[key](args, formatter(tag)); \
+                 return Array.isArray(text) ? text.join('') : text; }});\n\
+                 // A node argument is isolated by the message's language; its text is the caller's.\n\
+                 const node = {{ node: true }};\n\
+                 const rich = m['a.price']({{ price: node }}, formatter('he'));\n\
+                 if (rich.length !== 4 || rich[0] !== '\\u2068' || rich[1] !== node || rich[2] !== '\\u2069') out.push('rich: ' + JSON.stringify(rich));\n\
+                 console.log(JSON.stringify(out));\n"
+            ),
+        )
+        .unwrap();
+        let output = match std::process::Command::new("node")
+            .arg(dir.join("check.mjs"))
+            .output()
+        {
+            Ok(output) => output,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    && std::env::var_os("CI").is_none() =>
+            {
+                eprintln!("skipping the JS isolate check: node is not on PATH");
+                return;
+            }
+            Err(error) => panic!("the JS isolate check needs Node.js: {error}"),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let js: Vec<String> = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(js, rust);
     }
 
     #[test]

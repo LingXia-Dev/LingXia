@@ -923,8 +923,9 @@ export function pageVisibility(value: unknown): PageVisibility | undefined {
 }
 
 /** Collapse every run of whitespace (newlines included) to one space and trim. */
+/** Collapses white space and drops the bidi isolates (U+2066–2069) a message puts around its arguments. */
 export function normalizeText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(/[\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
 }
 
 /** The accessible name: `aria-label` when set, else the visible text; a string matches whole. */

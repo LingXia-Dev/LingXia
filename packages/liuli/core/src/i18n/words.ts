@@ -5,10 +5,10 @@ const languages = {
 "en": {
   "@liuli.add": (a, f) => "Add",
   "@liuli.back": (a, f) => "Back",
-  "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["Today, "]), "other": () => f.j([]) }), a["weekdayName"], " ", a["day"], " ", a["monthName"], " ", a["year"]]),
+  "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["Today, "]), "other": () => f.j([]) }), ...f.i(a["weekdayName"]), " ", ...f.i(a["day"]), " ", ...f.i(a["monthName"]), " ", ...f.i(a["year"])]),
   "@liuli.calendar.nextMonth": (a, f) => "Next month",
   "@liuli.calendar.previousMonth": (a, f) => "Previous month",
-  "@liuli.calendar.title": (a, f) => f.j([a["monthName"], " ", a["year"]]),
+  "@liuli.calendar.title": (a, f) => f.j([...f.i(a["monthName"]), " ", ...f.i(a["year"])]),
   "@liuli.chooseFiles": (a, f) => f.j([f.s(a["multiple"], { "yes": () => f.j(["Choose files"]), "other": () => f.j(["Choose a file"]) })]),
   "@liuli.clear": (a, f) => "Clear",
   "@liuli.clearSearch": (a, f) => "Clear search",
@@ -20,17 +20,17 @@ const languages = {
   "@liuli.done": (a, f) => "Done",
   "@liuli.hidePassword": (a, f) => "Hide password",
   "@liuli.increase": (a, f) => "Increase",
-  "@liuli.itemOf": (a, f) => f.j([a["page"], " of ", a["count"]]),
+  "@liuli.itemOf": (a, f) => f.j([...f.i(a["page"]), " of ", ...f.i(a["count"])]),
   "@liuli.monthName": (a, f) => f.j([f.s(a["month"], { "jan": () => f.j(["January"]), "feb": () => f.j(["February"]), "mar": () => f.j(["March"]), "apr": () => f.j(["April"]), "may": () => f.j(["May"]), "jun": () => f.j(["June"]), "jul": () => f.j(["July"]), "aug": () => f.j(["August"]), "sep": () => f.j(["September"]), "oct": () => f.j(["October"]), "nov": () => f.j(["November"]), "dec": () => f.j(["December"]), "other": () => f.j([]) })]),
   "@liuli.next": (a, f) => "Next",
   "@liuli.nextPage": (a, f) => "Next page",
   "@liuli.noMatches": (a, f) => "No matches",
-  "@liuli.page": (a, f) => f.j(["Page ", a["page"]]),
-  "@liuli.pictureOf": (a, f) => f.j([a["page"], " of ", a["count"]]),
+  "@liuli.page": (a, f) => f.j(["Page ", ...f.i(a["page"])]),
+  "@liuli.pictureOf": (a, f) => f.j([...f.i(a["page"]), " of ", ...f.i(a["count"])]),
   "@liuli.previousPage": (a, f) => "Previous page",
   "@liuli.remove": (a, f) => "Remove",
-  "@liuli.removeItem": (a, f) => f.j(["Remove item ", a["number"]]),
-  "@liuli.removeNamed": (a, f) => f.j(["Remove ", a["name"]]),
+  "@liuli.removeItem": (a, f) => f.j(["Remove item ", ...f.i(a["number"])]),
+  "@liuli.removeNamed": (a, f) => f.j(["Remove ", ...f.i(a["name"])]),
   "@liuli.search": (a, f) => "Search",
   "@liuli.send": (a, f) => "Send",
   "@liuli.showPassword": (a, f) => "Show password",
@@ -38,18 +38,18 @@ const languages = {
   "@liuli.step.current": (a, f) => "Current step",
   "@liuli.step.done": (a, f) => "Done",
   "@liuli.step.upcoming": (a, f) => "Not started",
-  "@liuli.stepOf": (a, f) => f.j([a["step"], " of ", a["count"]]),
+  "@liuli.stepOf": (a, f) => f.j([...f.i(a["step"]), " of ", ...f.i(a["count"])]),
   "@liuli.stop": (a, f) => "Stop",
   "@liuli.time": (a, f) => "Time",
-  "@liuli.timestamp.date": (a, f) => f.j([a["day"], " ", a["monthName"]]),
-  "@liuli.timestamp.dateTime": (a, f) => f.j([a["date"], ", ", a["time"]]),
-  "@liuli.timestamp.dateWithYear": (a, f) => f.j([a["day"], " ", a["monthName"], " ", a["year"]]),
+  "@liuli.timestamp.date": (a, f) => f.j([...f.i(a["day"]), " ", ...f.i(a["monthName"])]),
+  "@liuli.timestamp.dateTime": (a, f) => f.j([...f.i(a["date"]), ", ", ...f.i(a["time"])]),
+  "@liuli.timestamp.dateWithYear": (a, f) => f.j([...f.i(a["day"]), " ", ...f.i(a["monthName"]), " ", ...f.i(a["year"])]),
   "@liuli.timestamp.hoursAgo": (a, f) => f.j([f.p(a["hours"], 0, false, { "one": (h) => f.j([f.n(h, ""), " hour ago"]), "other": (h) => f.j([f.n(h, ""), " hours ago"]) })]),
   "@liuli.timestamp.justNow": (a, f) => "Just now",
   "@liuli.timestamp.minutesAgo": (a, f) => f.j([f.p(a["minutes"], 0, false, { "one": (h) => f.j([f.n(h, ""), " minute ago"]), "other": (h) => f.j([f.n(h, ""), " minutes ago"]) })]),
-  "@liuli.timestamp.time12": (a, f) => f.j([a["hour"], ":", a["minute"], " ", f.s(a["period"], { "am": () => f.j(["AM"]), "other": () => f.j(["PM"]) })]),
+  "@liuli.timestamp.time12": (a, f) => f.j([...f.i(a["hour"]), ":", ...f.i(a["minute"]), " ", f.s(a["period"], { "am": () => f.j(["AM"]), "other": () => f.j(["PM"]) })]),
   "@liuli.timestamp.yesterday": (a, f) => "Yesterday",
-  "@liuli.uploadingNamed": (a, f) => f.j(["Uploading ", a["name"]]),
+  "@liuli.uploadingNamed": (a, f) => f.j(["Uploading ", ...f.i(a["name"])]),
   "@liuli.video.auto": (a, f) => "Auto",
   "@liuli.video.exitFullscreen": (a, f) => "Exit full screen",
   "@liuli.video.failed": (a, f) => "This video cannot play right now",
@@ -72,10 +72,10 @@ const languages = {
 "zh": {
   "@liuli.add": (a, f) => "添加",
   "@liuli.back": (a, f) => "上一步",
-  "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["今天，"]), "other": () => f.j([]) }), a["year"], "年", a["monthName"], a["day"], "日", a["weekdayName"]]),
+  "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["今天，"]), "other": () => f.j([]) }), ...f.i(a["year"]), "年", ...f.i(a["monthName"]), ...f.i(a["day"]), "日", ...f.i(a["weekdayName"])]),
   "@liuli.calendar.nextMonth": (a, f) => "下个月",
   "@liuli.calendar.previousMonth": (a, f) => "上个月",
-  "@liuli.calendar.title": (a, f) => f.j([a["year"], "年", a["monthName"]]),
+  "@liuli.calendar.title": (a, f) => f.j([...f.i(a["year"]), "年", ...f.i(a["monthName"])]),
   "@liuli.chooseFiles": (a, f) => f.j([f.s(a["multiple"], { "yes": () => f.j(["选择文件"]), "other": () => f.j(["选择文件"]) })]),
   "@liuli.clear": (a, f) => "清除",
   "@liuli.clearSearch": (a, f) => "清除搜索",
@@ -87,17 +87,17 @@ const languages = {
   "@liuli.done": (a, f) => "完成",
   "@liuli.hidePassword": (a, f) => "隐藏密码",
   "@liuli.increase": (a, f) => "增加",
-  "@liuli.itemOf": (a, f) => f.j(["第", a["page"], "项，共", a["count"], "项"]),
+  "@liuli.itemOf": (a, f) => f.j(["第", ...f.i(a["page"]), "项，共", ...f.i(a["count"]), "项"]),
   "@liuli.monthName": (a, f) => f.j([f.s(a["month"], { "jan": () => f.j(["1月"]), "feb": () => f.j(["2月"]), "mar": () => f.j(["3月"]), "apr": () => f.j(["4月"]), "may": () => f.j(["5月"]), "jun": () => f.j(["6月"]), "jul": () => f.j(["7月"]), "aug": () => f.j(["8月"]), "sep": () => f.j(["9月"]), "oct": () => f.j(["10月"]), "nov": () => f.j(["11月"]), "dec": () => f.j(["12月"]), "other": () => f.j([]) })]),
   "@liuli.next": (a, f) => "下一步",
   "@liuli.nextPage": (a, f) => "下一页",
   "@liuli.noMatches": (a, f) => "无匹配结果",
-  "@liuli.page": (a, f) => f.j(["第", a["page"], "页"]),
-  "@liuli.pictureOf": (a, f) => f.j(["第", a["page"], "张，共", a["count"], "张"]),
+  "@liuli.page": (a, f) => f.j(["第", ...f.i(a["page"]), "页"]),
+  "@liuli.pictureOf": (a, f) => f.j(["第", ...f.i(a["page"]), "张，共", ...f.i(a["count"]), "张"]),
   "@liuli.previousPage": (a, f) => "上一页",
   "@liuli.remove": (a, f) => "移除",
-  "@liuli.removeItem": (a, f) => f.j(["移除第", a["number"], "项"]),
-  "@liuli.removeNamed": (a, f) => f.j(["移除", a["name"]]),
+  "@liuli.removeItem": (a, f) => f.j(["移除第", ...f.i(a["number"]), "项"]),
+  "@liuli.removeNamed": (a, f) => f.j(["移除", ...f.i(a["name"])]),
   "@liuli.search": (a, f) => "搜索",
   "@liuli.send": (a, f) => "发送",
   "@liuli.showPassword": (a, f) => "显示密码",
@@ -105,18 +105,18 @@ const languages = {
   "@liuli.step.current": (a, f) => "当前步骤",
   "@liuli.step.done": (a, f) => "已完成",
   "@liuli.step.upcoming": (a, f) => "未开始",
-  "@liuli.stepOf": (a, f) => f.j(["第", a["step"], "步，共", a["count"], "步"]),
+  "@liuli.stepOf": (a, f) => f.j(["第", ...f.i(a["step"]), "步，共", ...f.i(a["count"]), "步"]),
   "@liuli.stop": (a, f) => "停止",
   "@liuli.time": (a, f) => "时间",
-  "@liuli.timestamp.date": (a, f) => f.j([a["monthName"], a["day"], "日"]),
-  "@liuli.timestamp.dateTime": (a, f) => f.j([a["date"], " ", a["time"]]),
-  "@liuli.timestamp.dateWithYear": (a, f) => f.j([a["year"], "年", a["monthName"], a["day"], "日"]),
+  "@liuli.timestamp.date": (a, f) => f.j([...f.i(a["monthName"]), ...f.i(a["day"]), "日"]),
+  "@liuli.timestamp.dateTime": (a, f) => f.j([...f.i(a["date"]), " ", ...f.i(a["time"])]),
+  "@liuli.timestamp.dateWithYear": (a, f) => f.j([...f.i(a["year"]), "年", ...f.i(a["monthName"]), ...f.i(a["day"]), "日"]),
   "@liuli.timestamp.hoursAgo": (a, f) => f.j([f.p(a["hours"], 0, false, { "other": (h) => f.j([f.n(h, ""), "小时前"]) })]),
   "@liuli.timestamp.justNow": (a, f) => "刚刚",
   "@liuli.timestamp.minutesAgo": (a, f) => f.j([f.p(a["minutes"], 0, false, { "other": (h) => f.j([f.n(h, ""), "分钟前"]) })]),
-  "@liuli.timestamp.time12": (a, f) => f.j([f.s(a["period"], { "am": () => f.j(["上午"]), "other": () => f.j(["下午"]) }), a["hour"], ":", a["minute"]]),
+  "@liuli.timestamp.time12": (a, f) => f.j([f.s(a["period"], { "am": () => f.j(["上午"]), "other": () => f.j(["下午"]) }), ...f.i(a["hour"]), ":", ...f.i(a["minute"])]),
   "@liuli.timestamp.yesterday": (a, f) => "昨天",
-  "@liuli.uploadingNamed": (a, f) => f.j(["正在上传", a["name"]]),
+  "@liuli.uploadingNamed": (a, f) => f.j(["正在上传", ...f.i(a["name"])]),
   "@liuli.video.auto": (a, f) => "自动",
   "@liuli.video.exitFullscreen": (a, f) => "退出全屏",
   "@liuli.video.failed": (a, f) => "此视频暂时无法播放",
@@ -159,6 +159,15 @@ function plural(tag, ordinal, value) {
   return rule === undefined || !Number.isFinite(value) ? 'other' : pluralRules[rule](operands(value));
 }
 
+const RTL_LANGUAGES = new Set(['ar', 'ckb', 'dv', 'fa', 'he', 'iw', 'ks', 'ps', 'sd', 'ug', 'ur', 'yi']);
+const RTL_SCRIPTS = new Set(['arab', 'hebr', 'thaa', 'syrc', 'nkoo', 'adlm', 'rohg', 'mand', 'samr']);
+const RTL_TEXT = /[\u{590}-\u{8FF}\u{FB1D}-\u{FDFF}\u{FE70}-\u{FEFF}\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+function rightToLeft(tag) {
+  const [language, ...rest] = tag.toLowerCase().split(/[-_]/);
+  const script = rest.find(part => part.length === 4);
+  return script ? RTL_SCRIPTS.has(script) : RTL_LANGUAGES.has(language);
+}
+
 
 function group(n, digits) {
   const fixed = digits === undefined ? String(Math.abs(n)) : Math.abs(n).toFixed(digits);
@@ -170,6 +179,8 @@ function group(n, digits) {
 const pad = n => String(n).padStart(2, '0');
 
 function formatter(tag) {
+  const rtl = rightToLeft(tag);
+  const isolate = (text, open) => (rtl || RTL_TEXT.test(text) ? `${open}${text}\u2069` : text);
   const language = tag.toLowerCase().split('-')[0];
   const zh = language === 'zh' || language === 'ja';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -188,9 +199,12 @@ function formatter(tag) {
   };
   return {
     j: parts => (parts.every(part => typeof part === 'string' || typeof part === 'number') ? parts.join('') : parts),
-    n: (value, style) => (style === 'percent' ? `${group(value * 100, 0)}%` : group(value, style === 'integer' ? 0 : undefined)),
-    d: date,
-    t: time,
+    n: (value, style) => isolate(style === 'percent' ? `${group(value * 100, 0)}%` : group(value, style === 'integer' ? 0 : undefined), '\u2066'),
+    d: (value, style) => isolate(date(value, style), '\u2066'),
+    t: (value, style) => isolate(time(value, style), '\u2066'),
+    i: value => (value !== null && typeof value === 'object'
+      ? (rtl ? ['\u2068', value, '\u2069'] : [value])
+      : [isolate(value == null ? '' : String(value), '\u2068')]),
     p: (value, offset, isOrdinal, cases) => {
       const exact = cases[`=${value}`];
       if (exact) return exact(value - offset);

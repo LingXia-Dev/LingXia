@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isEqual } from "../dist/equal.js";
+import { normalizeText } from "../dist/locator.js";
 
 test("a Set element answers for one element on the other side", () => {
   assert.equal(isEqual(new Set([{ a: 1 }, { a: 1 }]), new Set([{ a: 1 }, { a: 2 }])), false);
@@ -78,4 +79,8 @@ test("expect.objectContaining matches the keys it names, at any depth, and says 
   assert.throws(() => expect([toast]).toContainEqual(expect.objectContaining({ title: "Other" })),
     (error) => error instanceof AssertionError && /Expected: ObjectContaining \{"title": "Other"\}/.test(error.message));
   assert.throws(() => expect("Saved").not.toContainEqual("x"), /received value must be an array/);
+});
+
+test("text and accessible names compare without the bidi isolates around a message's arguments", () => {
+  assert.equal(normalizeText("Hello, \u2068דוד\u2069!  You have \u20663\u2069 new."), "Hello, דוד! You have 3 new.");
 });

@@ -37,7 +37,7 @@ lxdev test tests/pages/notes.test.ts
   5 s (`{ timeout }` per call); a test has 30 s (`test(title, { timeout },
   body)`). Await every action: a body that returns while one still runs fails,
   and so does one whose `fetch` call does not settle soon after it returns.
-- Text matchers compare whitespace-normalised text.
+- Text matchers and accessible names compare whitespace-normalised text without bidi isolates (U+2066–2069).
 - Import `test` by that name and call it directly — `test(…)`, `test.skip(…)`.
   The bundle refuses an alias (`const s = cond ? test.skip : test`), a
   rename, or a re-export, because `FILE:LINE`, `lxdev test list` and `Rerun:`

@@ -2,6 +2,7 @@
 //! `defaultMessage` is an ICU MessageFormat 1 message, and the checks a translation must pass.
 
 pub mod catalogue;
+pub mod direction;
 pub mod dts;
 pub mod format;
 pub mod js;

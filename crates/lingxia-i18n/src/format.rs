@@ -1,11 +1,14 @@
 //! A message formatted in Rust, for text a host or Logic shows natively (toasts, dialogs).
-//! Tags keep only their contents. Plural rules, number, date and time shapes match the JS formatter the
-//! build emits (`js::formatter`), so a key reads the same on a page and in a toast.
+//! Tags keep only their contents. Plural rules, number, date and time shapes and bidi isolates match
+//! the JS formatter the build emits (`js::formatter`), so a key reads the same on a page and in a toast.
 
+use crate::direction::{FSI, LRI, isolate, right_to_left};
 use crate::message::{Arg, DateStyle, Message, NumberStyle, Part, PluralCategory, Selector};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use serde_json::Value;
 
+/// An argument is isolated when `tag` writes right to left or its text has a right-to-left letter:
+/// text in FSI…PDI, a number, date, time or `#` in LRI…PDI.
 pub fn format(message: &Message, tag: &str, args: &Value) -> String {
     let mut out = String::new();
     write(&message.parts, tag, args, None, &mut out);
@@ -13,23 +16,25 @@ pub fn format(message: &Message, tag: &str, args: &Value) -> String {
 }
 
 fn write(parts: &[Part], tag: &str, args: &Value, pound: Option<f64>, out: &mut String) {
+    let rtl = right_to_left(tag);
+    let numeric = |text: String| isolate(text, LRI, rtl);
     for part in parts {
         match part {
             Part::Text(text) => out.push_str(text),
-            Part::Pound => out.push_str(&number(pound.unwrap_or(0.0), NumberStyle::Plain)),
-            Part::Arg(Arg::Text(name)) => out.push_str(&plain(&args[name])),
-            Part::Arg(Arg::Number { name, style }) => out.push_str(
-                &args[name]
+            Part::Pound => out.push_str(&numeric(number(pound.unwrap_or(0.0), NumberStyle::Plain))),
+            Part::Arg(Arg::Text(name)) => out.push_str(&isolate(plain(&args[name]), FSI, rtl)),
+            Part::Arg(Arg::Number { name, style }) => out.push_str(&numeric(
+                args[name]
                     .as_f64()
                     .map_or_else(|| plain(&args[name]), |n| number(n, *style)),
-            ),
-            Part::Arg(Arg::Date { name, style }) => out.push_str(
-                &instant(&args[name])
+            )),
+            Part::Arg(Arg::Date { name, style }) => out.push_str(&numeric(
+                instant(&args[name])
                     .map_or_else(|| plain(&args[name]), |at| date(&at, tag, *style)),
-            ),
-            Part::Arg(Arg::Time { name, style }) => out.push_str(
-                &instant(&args[name]).map_or_else(|| plain(&args[name]), |at| time(&at, *style)),
-            ),
+            )),
+            Part::Arg(Arg::Time { name, style }) => out.push_str(&numeric(
+                instant(&args[name]).map_or_else(|| plain(&args[name]), |at| time(&at, *style)),
+            )),
             Part::Plural {
                 name,
                 ordinal,
@@ -198,6 +203,31 @@ mod tests {
             .map(|n| format(&place, "en", &json!({ "n": n })))
             .collect();
         assert_eq!(places, ["1st", "2nd", "3rd", "11th", "22nd"]);
+    }
+
+    #[test]
+    fn arguments_are_isolated_in_a_right_to_left_message_or_when_they_hold_one() {
+        let price = crate::parse("{price}/חודש").unwrap();
+        assert_eq!(
+            format(&price, "he", &json!({ "price": "$4" })),
+            "\u{2068}$4\u{2069}/חודש"
+        );
+        let hello = crate::parse("Hello, {name}! You have {n, number} new.").unwrap();
+        assert_eq!(
+            format(&hello, "en-US", &json!({ "name": "דוד", "n": 3 })),
+            "Hello, \u{2068}דוד\u{2069}! You have 3 new."
+        );
+        assert_eq!(
+            format(&hello, "en-US", &json!({ "name": "Ann", "n": 3 })),
+            "Hello, Ann! You have 3 new."
+        );
+        let count = crate::parse("{n, plural, one {# ملف} other {# ملفات}}").unwrap();
+        assert_eq!(
+            format(&count, "ar", &json!({ "n": 5 })),
+            "\u{2066}5\u{2069} ملفات"
+        );
+        let pick = crate::parse("{kind, select, a {أ} other {ب}}").unwrap();
+        assert_eq!(format(&pick, "ar", &json!({ "kind": "a" })), "أ");
     }
 
     #[test]
