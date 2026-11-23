@@ -750,10 +750,11 @@ internal object LxAppSurface {
         }
     }
 
+    /** The top surface that Back closes; a side panel's tabs collapse with the panel instead. */
     @JvmStatic
     fun closeTopUser(): Boolean {
         val entry = synchronized(stateLock) {
-            entries.values.lastOrNull { it.overlay.visibility == View.VISIBLE }
+            entries.values.lastOrNull { !it.inAside && it.overlay.visibility == View.VISIBLE }
         } ?: return false
         return close(entry.id, entry.appId, "user")
     }

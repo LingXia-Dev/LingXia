@@ -1794,7 +1794,9 @@ async fn open_url_spec(
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
             let _ = parse_size(spec, SurfaceKind::Overlay)?;
-            if lxapp.aside_browser_is_compact() {
+            // Android's side panel covers the main when it cannot dock, so a URL aside
+            // stays an aside there; hosts without one fall back to the aside browser.
+            if cfg!(not(target_os = "android")) && lxapp.aside_browser_is_compact() {
                 return open_url_in_browser(&ctx, &lxapp, trimmed_url, true);
             }
             let url = validate_url_target(&lxapp, trimmed_url)?;
