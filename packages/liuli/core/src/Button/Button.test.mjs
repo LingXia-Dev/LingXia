@@ -166,3 +166,10 @@ test('tonal: a soft ink fill with no edge or shadow, firmer pressed; disabled ke
   `);
   assert.equal(disabled.getByTestId('off').props.background, 'text/6');
 });
+
+test('ToPage: with to the button is one block link, named by its label, that a press opens', async () => {
+  const link = (await renderExample('Button/Button', 'ToPage')).getByTestId('to-settings');
+  assert.equal(link.tag, 'link-box');
+  assert.equal(link.props.accessibilityLabel, 'Open settings');
+  assert.equal(typeof link.props.onClick, 'number');
+});

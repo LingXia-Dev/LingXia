@@ -40,6 +40,22 @@ export function Navigation() {
 }
 ```
 
+### Rows that go to a page
+
+```tsx
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+/** Rows that go to a page: each row is one link. A press or Enter opens it; Space does not. */
+export function Links() {
+  return (
+    <ItemList label="Inputs" data-testid="links">
+      <Item label="TextInput" description="One line of text" hasChevron to={{ page: 'text-input' }} data-testid="link-text-input" />
+      <Item label="DateInput" description="A day, typed or picked" hasChevron to={{ page: 'date-input' }} data-testid="link-date-input" />
+    </ItemList>
+  );
+}
+```
+
 ### Rows that choose one
 
 ```tsx
@@ -446,6 +462,7 @@ export function Compact() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `onClick` | `(() => void)` |  | Makes the whole row one button. Its `endContent` is then drawn only, never pressed. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 | `hasChevron` | `boolean` | `false` | A chevron at the end, for a row that opens another page. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
@@ -552,7 +569,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
-- Do: Give a row one control of its own with `endAction`, named for the row ("Remove Emily's iPad"); such a row rarely wants a chevron. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
+- Do: Give a row one control of its own with `endAction`, named for the row ("Remove Emily's iPad"); such a row rarely wants a chevron. It takes `onClick`, or `to` for a page of its own. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
 - Do: Set `dir` on a value whose direction differs from the page's, such as a Latin "2 h" in a Hebrew row; a row does not isolate it.
 - Do: Keep the label short and put detail in `description`. For several facts pass one `<text>` per fact in a fragment, so a fact wraps within itself, 4 pt from the next; a screen reader still runs the facts together, with a space between.
 - Do: At large text, keep `endContent` to a short value or badge: it keeps its whole width and the label and description wrap beside it.

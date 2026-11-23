@@ -220,6 +220,16 @@ export function Destructive() {
   );
 }
 
+/** Rows that go to a page: each row is one link. A press or Enter opens it; Space does not. */
+export function Links() {
+  return (
+    <ItemList label="Inputs" data-testid="links">
+      <Item label="TextInput" description="One line of text" hasChevron to={{ page: 'text-input' }} data-testid="link-text-input" />
+      <Item label="DateInput" description="A day, typed or picked" hasChevron to={{ page: 'date-input' }} data-testid="link-date-input" />
+    </ItemList>
+  );
+}
+
 const members = [
   { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
   { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },

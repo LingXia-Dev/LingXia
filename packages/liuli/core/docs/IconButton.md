@@ -119,10 +119,11 @@ export function InRows() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled: read as its description while disabled; not drawn. |
 | `isLoading` | `boolean` | `false` | Shows a spinner in place of the icon and ignores presses. |
-| `onClick` | `(() => void)` |  |  |
-| `clickAction` | `(() => Promise<unknown>)` |  | An async action; the button shows loading until it settles. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
+| `onClick` | `(() => void)` |  | Runs on press, before `clickAction`. |
+| `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 
 ## Anatomy
 

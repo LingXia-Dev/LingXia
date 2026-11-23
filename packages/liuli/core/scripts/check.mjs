@@ -42,7 +42,8 @@ const replacedProps = new Set(['disabled', 'checked', 'open', 'onPress', 'onClos
 // A specimen that can be pressed answers visibly: no empty handler, and no button or link left
 // without one. `Said`, `Held` and `unused` in src/example.tsx are the ways to answer.
 const pressed = new Set(['Button', 'IconButton', 'Link']);
-const answering = new Set(['onClick', 'clickAction', 'isDisabled', 'isLoading']);
+// `to` answers by going to its page.
+const answering = new Set(['onClick', 'clickAction', 'to', 'isDisabled', 'isLoading']);
 // An overlay's trigger answers a press by opening it.
 const overlays = new Set(['Popover', 'HoverCard', 'Tooltip', 'DropdownMenu']);
 const fixtureOf = node => {

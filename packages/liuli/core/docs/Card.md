@@ -115,6 +115,30 @@ export function Choice() {
 }
 ```
 
+### A card that goes to a page
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { ToggleButton } from '@liulidesign/core/ToggleButton';
+import { ClickableCard } from '@liulidesign/core/Card';
+
+/** A card that goes to a page and holds its own Like button: the button takes its own press, the card's goes to the page. */
+export function ToPage() {
+  const liked = useLocal('liked', false);
+  return (
+    <ClickableCard label="Spring launch, 12 tasks" to={{ page: 'item' }} data-testid="to-page">
+      <view className="flex-row items-start gap-3">
+        <view className="flex-1 gap-1">
+          <text className="text-callout font-semibold text-text">Spring launch</text>
+          <text className="text-footnote text-muted">12 tasks, 3 due this week</text>
+        </view>
+        <ToggleButton label="Like" value={liked.value} onChange={next => liked.set(next)} size="sm" data-testid="to-page-like" />
+      </view>
+    </ClickableCard>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -139,6 +163,7 @@ export function Choice() {
 | `isDisabled` | `boolean` | `false` |  |
 | `onClick` | `(() => void) \| (() => void)` |  | Runs after the group's choice. |
 | `isSelected` | `boolean` | `false` | Marks the card as the chosen one among several; reported as selected. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 | `value` | `string` |  | Inside a `ClickableCardGroup`: what the group's value carries when this card is chosen. |
 
 ## ClickableCardGroup props

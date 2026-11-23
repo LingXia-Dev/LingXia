@@ -1,6 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held, Said, unused } from '../example';
 import { Button } from '../Button/Button';
+import { ToggleButton } from '../ToggleButton/ToggleButton';
 import { Card, ClickableCard, ClickableCardGroup, type CardProps } from './Card';
 
 export function Variants() {
@@ -129,4 +130,20 @@ export function playground() {
       <text key="body" className="text-footnote text-muted">Keep a copy on another device in case this one is lost.</text>,
     ],
   } satisfies Partial<CardProps>;
+}
+
+/** A card that goes to a page and holds its own Like button: the button takes its own press, the card's goes to the page. */
+export function ToPage() {
+  const liked = useLocal('liked', false);
+  return (
+    <ClickableCard label="Spring launch, 12 tasks" to={{ page: 'item' }} data-testid="to-page">
+      <view className="flex-row items-start gap-3">
+        <view className="flex-1 gap-1">
+          <text className="text-callout font-semibold text-text">Spring launch</text>
+          <text className="text-footnote text-muted">12 tasks, 3 due this week</text>
+        </view>
+        <ToggleButton label="Like" value={liked.value} onChange={next => liked.set(next)} size="sm" data-testid="to-page-like" />
+      </view>
+    </ClickableCard>
+  );
 }

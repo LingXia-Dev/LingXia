@@ -1831,6 +1831,18 @@
           "default": "false"
         },
         {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Merged last, so its classes win over the recipe's."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
           "name": "onClick",
           "type": "(() => void)",
           "required": false,
@@ -1843,16 +1855,10 @@
           "description": "An async action, such as a Logic action. The button shows loading until it settles."
         },
         {
-          "name": "className",
-          "type": "string",
+          "name": "to",
+          "type": "LinkTarget",
           "required": false,
-          "description": "Merged last, so its classes win over the recipe's."
-        },
-        {
-          "name": "data-testid",
-          "type": "string",
-          "required": false,
-          "description": ""
+          "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
         }
       ],
       "otherProps": {},
@@ -2005,6 +2011,11 @@
           "name": "Floating",
           "title": "Floating over a list",
           "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  ['Trip to the coast', 'Edited yesterday'],\n  ['Reading list', 'Edited on Monday'],\n  ['Ideas for the garden', 'Edited last week'],\n  ['Recipes to try', 'Edited on 2 November'],\n  ['Gift list', 'Edited on 28 October'],\n  ['Books of the year', 'Edited on 14 October'],\n] as const;\n\n/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */\nexport function Floating() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <scroll className=\"h-full\">\n            <view className=\"divide-y divide-text/8\">\n              {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}\n            </view>\n          </scroll>\n          <view className=\"absolute bottom-4 end-4\">\n            <Button label=\"New note\" variant=\"primary\" size=\"lg\" startIcon=\"add\" isFloating onClick={() => say('Created a note')} data-testid=\"floating\" />\n          </view>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "ToPage",
+          "title": "Going to a page",
+          "source": "import { Button } from '@liulidesign/core/Button';\n\n/** A button that goes to a page: a link drawn as a button, read as a link. */\nexport function ToPage() {\n  return <Button label=\"Open settings\" endIcon=\"chevron-end\" to={{ page: 'settings' }} data-testid=\"to-settings\" />;\n}"
         }
       ],
       "gaps": [
@@ -2100,6 +2111,10 @@
             {
               "name": "VariantLink",
               "title": "Link, a quiet way out beside a form"
+            },
+            {
+              "name": "ToPage",
+              "title": "Going to a page with `to`: a link drawn as a button"
             },
             {
               "name": "WithIcons",
@@ -2840,6 +2855,12 @@
             "default": "false"
           },
           {
+            "name": "to",
+            "type": "LinkTarget",
+            "required": false,
+            "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
+          },
+          {
             "name": "value",
             "type": "string",
             "required": false,
@@ -2966,6 +2987,11 @@
           "name": "Choice",
           "title": "Choosing one card of several",
           "source": "import { useLocal } from '@lingxia/view';\nimport { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';\n\nconst plans = [\n  { id: 'monthly', name: 'Monthly', price: '€4 a month' },\n  { id: 'yearly', name: 'Yearly', price: '€40 a year' },\n] as const;\n\n/** Choosing one of several: the cards are a radio group, and the chosen one is checked. */\nexport function Choice() {\n  const plan = useLocal<string | null>('plan', 'monthly');\n  return (\n    <ClickableCardGroup label=\"Plan\" bind={plan} className=\"flex-row\" data-testid=\"plans\">\n      {plans.map(item => (\n        <ClickableCard\n          key={item.id}\n          value={item.id}\n          label={item.name}\n          description={item.price}\n          className=\"grow basis-0\"\n          data-testid={`plan-${item.id}`}\n        >\n          <text className=\"text-callout font-semibold text-text\">{item.name}</text>\n          <text className=\"text-footnote text-muted\">{item.price}</text>\n        </ClickableCard>\n      ))}\n    </ClickableCardGroup>\n  );\n}"
+        },
+        {
+          "name": "ToPage",
+          "title": "A card that goes to a page",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\nimport { ClickableCard } from '@liulidesign/core/Card';\n\n/** A card that goes to a page and holds its own Like button: the button takes its own press, the card's goes to the page. */\nexport function ToPage() {\n  const liked = useLocal('liked', false);\n  return (\n    <ClickableCard label=\"Spring launch, 12 tasks\" to={{ page: 'item' }} data-testid=\"to-page\">\n      <view className=\"flex-row items-start gap-3\">\n        <view className=\"flex-1 gap-1\">\n          <text className=\"text-callout font-semibold text-text\">Spring launch</text>\n          <text className=\"text-footnote text-muted\">12 tasks, 3 due this week</text>\n        </view>\n        <ToggleButton label=\"Like\" value={liked.value} onChange={next => liked.set(next)} size=\"sm\" data-testid=\"to-page-like\" />\n      </view>\n    </ClickableCard>\n  );\n}"
         }
       ],
       "gaps": [
@@ -3031,6 +3057,10 @@
             {
               "name": "Floating",
               "title": "Floating, over a map or a picture"
+            },
+            {
+              "name": "ToPage",
+              "title": "Going to a page, with a Like button of its own"
             }
           ],
           "states": [
@@ -9707,18 +9737,6 @@
           "default": "false"
         },
         {
-          "name": "onClick",
-          "type": "(() => void)",
-          "required": false,
-          "description": ""
-        },
-        {
-          "name": "clickAction",
-          "type": "(() => Promise<unknown>)",
-          "required": false,
-          "description": "An async action; the button shows loading until it settles."
-        },
-        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -9729,6 +9747,24 @@
           "type": "string",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Runs on press, before `clickAction`."
+        },
+        {
+          "name": "clickAction",
+          "type": "(() => Promise<unknown>)",
+          "required": false,
+          "description": "An async action, such as a Logic action. The button shows loading until it settles."
+        },
+        {
+          "name": "to",
+          "type": "LinkTarget",
+          "required": false,
+          "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
         }
       ],
       "otherProps": {},
@@ -10191,6 +10227,12 @@
           "description": "Makes the whole row one button. Its `endContent` is then drawn only, never pressed."
         },
         {
+          "name": "to",
+          "type": "LinkTarget",
+          "required": false,
+          "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
+        },
+        {
           "name": "hasChevron",
           "type": "boolean",
           "required": false,
@@ -10559,6 +10601,11 @@
           "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** Rows that open a page, in a list: each is one button named by its title, read with its position. */\nexport function Navigation() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Notes\" data-testid=\"notes\">\n          {notes.map(note => (\n            <Item key={note.id} label={note.title} description={note.updated} hasChevron onClick={() => say(`Opened ${note.title}`)} data-testid={`note-${note.id}`} />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
+          "name": "Links",
+          "title": "Rows that go to a page",
+          "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\n/** Rows that go to a page: each row is one link. A press or Enter opens it; Space does not. */\nexport function Links() {\n  return (\n    <ItemList label=\"Inputs\" data-testid=\"links\">\n      <Item label=\"TextInput\" description=\"One line of text\" hasChevron to={{ page: 'text-input' }} data-testid=\"link-text-input\" />\n      <Item label=\"DateInput\" description=\"A day, typed or picked\" hasChevron to={{ page: 'date-input' }} data-testid=\"link-date-input\" />\n    </ItemList>\n  );\n}"
+        },
+        {
           "name": "Selection",
           "title": "Rows that choose one",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst mailboxes = [\n  { id: 'inbox', label: 'Inbox', count: '12' },\n  { id: 'drafts', label: 'Drafts', count: '3' },\n  { id: 'sent', label: 'Sent', count: '' },\n] as const;\nconst inbox = [\n  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },\n  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },\n  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },\n] as const;\n\n/** Rows that choose one of several, as a sidebar does: the chosen row is selected, the others are not. */\nexport function Selection() {\n  const open = useLocal<string>('open', 'inbox');\n  return (\n    <ItemList label=\"Mailboxes\" data-testid=\"mailboxes\">\n      {mailboxes.map(box => (\n        <Item\n          key={box.id}\n          label={box.label}\n          endContent={box.count ? <text className=\"text-footnote text-muted\">{box.count}</text> : undefined}\n          isSelected={open.value === box.id}\n          onClick={() => open.set(box.id)}\n          data-testid={`mailbox-${box.id}`}\n        />\n      ))}\n    </ItemList>\n  );\n}"
@@ -10718,6 +10765,10 @@
             {
               "name": "TitledLists",
               "title": "A list title on the card's edge, as a Section heading"
+            },
+            {
+              "name": "Links",
+              "title": "Rows that go to a page, each one link"
             },
             {
               "name": "Selection",

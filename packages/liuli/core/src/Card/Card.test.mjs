@@ -66,6 +66,17 @@ test('Floating: the raised surface under the raised shadow, with a fainter edge'
   assert.equal(JSON.parse(card.props.boxShadow)[1].blur, 24);
 });
 
+test('ToPage: the card is one block link, and the Like button inside it keeps its own press', async () => {
+  const screen = await renderExample('Card/Card', 'ToPage');
+  const card = screen.getByTestId('to-page');
+  assert.equal(card.tag, 'link-box');
+  assert.equal(card.props.accessibilityLabel, 'Spring launch, 12 tasks');
+  assert.equal(screen.getByTestId('to-page-like').tag, 'button');
+  screen.press(screen.getByTestId('to-page-like'));
+  assert.equal(screen.getByTestId('to-page-like').props.statePressed, 1, 'pressed, and drawn so');
+  assert.equal(screen.getByTestId('to-page').props.accessibilityLabel, 'Spring launch, 12 tasks', 'the card stayed');
+});
+
 test('Choice: a card is named by its plan and described by its price', async () => {
   const screen = await renderExample('Card/Card', 'Choice');
   const card = screen.queryAll(node => node.testId?.startsWith('plan-'))[0];

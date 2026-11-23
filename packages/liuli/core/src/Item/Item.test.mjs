@@ -185,6 +185,29 @@ test('a flush list has no border, corners or fill of its own; a list otherwise h
   assert.deepEqual(edge(screen.getByTestId('flush')), [undefined, undefined, undefined]);
 });
 
+test('Links: a row with to is one block link, named by its label and read with its description', async () => {
+  const screen = await renderExample('Item/Item', 'Links');
+  const row = screen.getByTestId('link-text-input');
+  assert.equal(row.tag, 'link-box');
+  assert.equal(row.props.accessibilityLabel, 'TextInput');
+  assert.equal(typeof row.props.onClick, 'number');
+  assert.equal(screen.getByTestId('link-date-input').tag, 'link-box');
+});
+
+test('endAction with to: the action is a link of its own; the row keeps its own press', async () => {
+  const screen = await renderPage(`
+    import { Item } from '@liulidesign/core/Item';
+    export function render() {
+      return <page><Item label="Emily's iPad" onClick={() => {}} data-testid="row"
+        endAction={{ label: "Emily's iPad details", icon: 'info', to: { page: 'device' }, 'data-testid': 'details' }} /></page>;
+    }
+  `);
+  const action = screen.getByTestId('details');
+  assert.equal(action.tag, 'link-box');
+  assert.equal(action.props.accessibilityLabel, "Emily's iPad details");
+  assert.equal(screen.getByTestId('row').tag, 'button');
+});
+
 test('Selection: a pressable row is named by its label and described by its end value, which is not read twice', async () => {
   const screen = await renderExample('Item/Item', 'Selection');
   const row = screen.queryAll(node => node.testId?.startsWith('mailbox-') && described(screen, node).length > 0)[0];

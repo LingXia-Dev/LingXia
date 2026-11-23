@@ -9,12 +9,17 @@ import { dataOf } from '../internal/data';
 import { IconButton } from '../IconButton/IconButton';
 import { holdsControl } from '../internal/trigger';
 import { warnOnce } from '../internal/warn';
+import type { Press } from '../internal/press';
 
-/** A row is pressable (`onClick`) or holds its own controls in `endContent`, never both; a pressable row may add one `endAction`. */
+/** What a pressable row does: an action, or a place to go. */
+export type ItemPress = Press<{
+  /** Makes the whole row one button. Its `endContent` is then drawn only, never pressed. */
+  onClick: () => void;
+}>;
+
+/** A row is pressable (`onClick` or `to`) or holds its own controls in `endContent`, never both; a pressable row may add one `endAction`. */
 export type ItemAction =
-  | {
-      /** Makes the whole row one button. Its `endContent` is then drawn only, never pressed. */
-      onClick: () => void;
+  | (ItemPress & {
       /** A chevron at the end, for a row that opens another page. @default false */
       hasChevron?: boolean;
       /** @default false */
@@ -26,8 +31,8 @@ export type ItemAction =
        * heavier label, read as selected. Pass `false` on the other rows so they read as not selected.
        */
       isSelected?: boolean;
-    }
-  | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never; isSelected?: never };
+    })
+  | { onClick?: never; to?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never; isSelected?: never };
 
 /** A row's kind: `destructive` for a row that deletes or ends something. */
 export type ItemVariant = 'default' | 'destructive';
@@ -39,7 +44,7 @@ export type ItemSwipeVariant = 'default' | 'accent' | 'destructive';
  * One button at the row's end, its own control beside the row's press: a remove × on a row that
  * opens its device. One, by its shape: more actions belong in `swipeActions` or a menu.
  */
-export type ItemEndAction = {
+export type ItemEndAction = Press<{ onClick: () => void }> & {
   /** The accessible name: what pressing it does, naming the row ("Remove Emily's iPad"). */
   label: string;
   icon: IconRef;
@@ -49,7 +54,6 @@ export type ItemEndAction = {
   isDisabled?: boolean;
   /** Why it is disabled: read as its description while disabled; not drawn. */
   disabledMessage?: string;
-  onClick: () => void;
   'data-testid'?: string;
 };
 
@@ -119,7 +123,7 @@ export function Item(props: ItemProps) {
   const besideId = `${baseId}-beside`;
   const isDisabled = props.isDisabled ?? false;
   const help = isDisabled && props.disabledMessage !== undefined ? props.disabledMessage : description;
-  const pressable = props.onClick !== undefined;
+  const pressable = props.onClick !== undefined || props.to !== undefined;
   if (pressable && (holdsControl(labelEnd) || holdsControl(endContent))) warnOnce(`Item "${typeof label === 'string' ? label : ''}": a control in labelEnd or endContent of a pressable row cannot be reached; use endAction for one button, or make the row not pressable`);
   const isSelected = props.isSelected ?? false;
   // labelEnd stays beside a name that fits whole, or that keeps at least half the line; a name left less is cut to a few letters, so labelEnd goes under it.
@@ -153,7 +157,7 @@ export function Item(props: ItemProps) {
           icon={endAction.icon}
           size="sm"
           edge="end"
-          onClick={endAction.onClick}
+          {...(endAction.to !== undefined ? { to: endAction.to } : { onClick: endAction.onClick })}
           isDisabled={endAction.isDisabled}
           disabledMessage={endAction.disabledMessage}
           data-testid={endAction['data-testid']}
@@ -164,7 +168,20 @@ export function Item(props: ItemProps) {
   );
   const root = cx(r.root.base, r.root.density[density]);
   const actions = swipeActions?.slice(0, maxSwipeActions) ?? [];
-  const row = !pressable ? <view data-testid={testId} {...dataOf(props)} className={cx(root, actions.length === 0 && className)}>{content}</view> : (
+  const pressedClasses = cx(root, r.root.pressable, isSelected ? r.root.selected : r.root.idle, actions.length === 0 && className);
+  const row = !pressable ? <view data-testid={testId} {...dataOf(props)} className={cx(root, actions.length === 0 && className)}>{content}</view> : props.to !== undefined ? (
+    <link
+      to={props.to}
+      aria-label={label}
+      aria-describedby={describedBy(labelEnd !== undefined && besideId, help !== undefined && descriptionId, endContent !== undefined && valueId)}
+      aria-selected={props.isSelected}
+      disabled={isDisabled}
+      data-testid={testId} {...dataOf(props)}
+      className={pressedClasses}
+    >
+      {content}
+    </link>
+  ) : (
     <button
       aria-label={label}
       aria-describedby={describedBy(labelEnd !== undefined && besideId, help !== undefined && descriptionId, endContent !== undefined && valueId)}
@@ -172,7 +189,7 @@ export function Item(props: ItemProps) {
       disabled={isDisabled}
       onClick={props.onClick}
       data-testid={testId} {...dataOf(props)}
-      className={cx(root, r.root.pressable, isSelected ? r.root.selected : r.root.idle, actions.length === 0 && className)}
+      className={pressedClasses}
     >
       {content}
     </button>

@@ -71,6 +71,7 @@ export const doc: ComponentDoc = {
     { name: 'AsyncAction', title: 'Waiting on a Logic action' },
     { name: 'DisabledWithReason', title: 'Disabled, with the reason' },
     { name: 'Floating', title: 'Floating over a list' },
+    { name: 'ToPage', title: 'Going to a page' },
   ],
   gaps: [
     {
@@ -103,6 +104,7 @@ export const doc: ComponentDoc = {
         { name: 'VariantTonal', title: "A quiet filled button for a card's own action" },
         { name: 'VariantDestructive', title: 'Destructive, for loss' },
         { name: 'VariantLink', title: 'Link, a quiet way out beside a form' },
+        { name: 'ToPage', title: 'Going to a page with `to`: a link drawn as a button' },
         { name: 'WithIcons', title: 'An icon before the label for the kind of action, after it for where it leads' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],

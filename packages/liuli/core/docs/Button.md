@@ -197,6 +197,17 @@ export function Floating() {
 }
 ```
 
+### Going to a page
+
+```tsx
+import { Button } from '@liulidesign/core/Button';
+
+/** A button that goes to a page: a link drawn as a button, read as a link. */
+export function ToPage() {
+  return <Button label="Open settings" endIcon="chevron-end" to={{ page: 'settings' }} data-testid="to-settings" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -214,10 +225,11 @@ export function Floating() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled: read as the button's description while disabled; not drawn. |
 | `isLoading` | `boolean` | `false` | Shows a spinner and ignores presses; the button stays focusable and reports busy. |
-| `onClick` | `(() => void)` |  | Runs on press, before `clickAction`. |
-| `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles. |
 | `className` | `string` |  | Merged last, so its classes win over the recipe's. |
 | `data-testid` | `string` |  |  |
+| `onClick` | `(() => void)` |  | Runs on press, before `clickAction`. |
+| `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 
 ## Anatomy
 

@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'Floating', title: 'Floating over a map' },
     { name: 'WithActions', title: 'A card with actions' },
     { name: 'Choice', title: 'Choosing one card of several' },
+    { name: 'ToPage', title: 'A card that goes to a page' },
   ],
   gaps: [
     {
@@ -79,6 +80,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Variants', title: 'Outlined, raised and sunken' },
         { name: 'Floating', title: 'Floating, over a map or a picture' },
+        { name: 'ToPage', title: 'Going to a page, with a Like button of its own' },
       ],
       states: [
         { name: 'StateUnselected', title: 'Clickable' },

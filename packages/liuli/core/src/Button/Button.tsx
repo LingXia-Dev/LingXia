@@ -1,9 +1,11 @@
-import { createContext, cx, useContext, useId, useLocal, type Child } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, type Child, type LinkTarget } from '@lingxia/view';
+import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { settleFlag } from '../internal/settle';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
+import { dataOf } from '../internal/data';
 import { buttonRecipe as r } from './Button.recipe';
 import { LayerContext } from '../internal/layer';
 import { SharedRowContext } from '../internal/footer';
@@ -13,7 +15,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 export type ButtonWidth = 'content' | 'fill';
 export type ButtonEdge = 'start' | 'end';
 
-export interface ButtonProps {
+export interface ButtonOwnProps {
   /** The visible text and the accessible name. Name the outcome: "Save changes", not "OK". */
   label: string;
   /**
@@ -44,14 +46,20 @@ export interface ButtonProps {
   disabledMessage?: string;
   /** Shows a spinner and ignores presses; the button stays focusable and reports busy. @default false */
   isLoading?: boolean;
-  /** Runs on press, before `clickAction`. */
-  onClick?: () => void;
-  /** An async action, such as a Logic action. The button shows loading until it settles. */
-  clickAction?: () => Promise<unknown>;
   /** Merged last, so its classes win over the recipe's. */
   className?: string;
   'data-testid'?: string;
 }
+
+/** What a press on a Button or IconButton does. */
+export interface ButtonActions {
+  /** Runs on press, before `clickAction`. */
+  onClick?: () => void;
+  /** An async action, such as a Logic action. The button shows loading until it settles. */
+  clickAction?: () => Promise<unknown>;
+}
+
+export type ButtonProps = ButtonOwnProps & Press<ButtonActions>;
 
 export interface ButtonGroupState {
   /** The buttons share edges and round only the group's two ends. */
@@ -81,6 +89,7 @@ export function Button({
   isLoading = false,
   onClick,
   clickAction,
+  to,
   className,
   'data-testid': testId, ...attributes
 }: ButtonProps) {
@@ -107,21 +116,12 @@ export function Button({
       settleFlag(pending, false);
     }
   };
-  return (
-    <button
-      {...identityOf(testId, attributes, trigger)}
-      aria-label={label}
-      aria-describedby={hasReason ? reasonId : trigger?.describedBy}
-      aria-busy={busy || undefined}
-      disabled={isDisabled}
-      popoverTarget={trigger?.popoverTarget}
-      interestFor={trigger?.interestFor}
-      onClick={press}
-      className={cx(
-        r.root.base, r.root.variant[variant], variant === 'secondary' && layer === 'overlay' && r.root.overlay, r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-        group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
-      )}
-    >
+  const classes = cx(
+    r.root.base, r.root.variant[variant], variant === 'secondary' && layer === 'overlay' && r.root.overlay, r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
+    group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
+  );
+  const content = (
+    <>
       {busy ? (
         <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
@@ -132,6 +132,29 @@ export function Button({
       {!isIconOnly && endIcon !== undefined && <Glyph name={endIcon} className={r.glyph.size[size]} />}
       {!isIconOnly && endContent !== undefined && <view aria-hidden className={r.icon.base}>{endContent}</view>}
       {hasReason && <text id={reasonId} aria-hidden className={r.reason.base}>{disabledMessage}</text>}
+    </>
+  );
+  if (to !== undefined) {
+    if (onClick !== undefined || clickAction !== undefined || trigger) throw Error(`Button "${label}": give to or an action, not both`);
+    return (
+      <link to={to} data-testid={testId} {...dataOf(attributes)} aria-label={label} aria-describedby={hasReason ? reasonId : undefined} disabled={isDisabled} className={classes}>
+        {content}
+      </link>
+    );
+  }
+  return (
+    <button
+      {...identityOf(testId, attributes, trigger)}
+      aria-label={label}
+      aria-describedby={hasReason ? reasonId : trigger?.describedBy}
+      aria-busy={busy || undefined}
+      disabled={isDisabled}
+      popoverTarget={trigger?.popoverTarget}
+      interestFor={trigger?.interestFor}
+      onClick={press}
+      className={classes}
+    >
+      {content}
     </button>
   );
 }

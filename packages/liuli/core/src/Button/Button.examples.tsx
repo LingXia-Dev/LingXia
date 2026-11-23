@@ -199,3 +199,8 @@ export function VariantTonal() {
     </Said>
   );
 }
+
+/** A button that goes to a page: a link drawn as a button, read as a link. */
+export function ToPage() {
+  return <Button label="Open settings" endIcon="chevron-end" to={{ page: 'settings' }} data-testid="to-settings" />;
+}

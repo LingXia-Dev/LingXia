@@ -1,10 +1,11 @@
 import { cx, useContext } from '@lingxia/view';
-import { Button, ButtonGroupContext, type ButtonSize, type ButtonVariant, type ButtonEdge } from '../Button/Button';
+import { Button, ButtonGroupContext, type ButtonActions, type ButtonSize, type ButtonVariant, type ButtonEdge } from '../Button/Button';
 import type { IconRef } from '../Icon/Icon';
+import type { Press } from '../internal/press';
 import { registerPressable } from '../internal/trigger';
 import { iconButtonRecipe as r } from './IconButton.recipe';
 
-export interface IconButtonProps {
+export interface IconButtonOwnProps {
   /** The accessible name: what pressing it does ("Delete note"). Not drawn, so it is never optional. */
   label: string;
   /** The icon, by name or as a definition. */
@@ -21,12 +22,11 @@ export interface IconButtonProps {
   disabledMessage?: string;
   /** Shows a spinner in place of the icon and ignores presses. @default false */
   isLoading?: boolean;
-  onClick?: () => void;
-  /** An async action; the button shows loading until it settles. */
-  clickAction?: () => Promise<unknown>;
   className?: string;
   'data-testid'?: string;
 }
+
+export type IconButtonProps = IconButtonOwnProps & Press<ButtonActions>;
 
 /** A button that shows only an icon, with a name every assistive technology reads. */
 export function IconButton({ label, icon, variant, size, className, ...rest }: IconButtonProps) {

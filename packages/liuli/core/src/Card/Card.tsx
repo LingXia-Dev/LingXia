@@ -1,6 +1,7 @@
 import { createContext, cx, useContext, useId, type Child, type Local } from '@lingxia/view';
 import { cardRecipe as r } from './Card.recipe';
 import { dataOf } from '../internal/data';
+import type { Press } from '../internal/press';
 
 export type CardVariant = 'outlined' | 'raised' | 'floating' | 'sunken';
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
@@ -40,27 +41,28 @@ export type ClickableCardProps = CardProps & {
   /** @default false */
   isDisabled?: boolean;
 } & (
-    | {
+    | (Press<{
         onClick: () => void;
         /** Marks the card as the chosen one among several; reported as selected. @default false */
         isSelected?: boolean;
-        value?: never;
-      }
+      }> & { value?: never })
     | {
         /** Inside a `ClickableCardGroup`: what the group's value carries when this card is chosen. */
         value: string;
         /** Runs after the group's choice. */
         onClick?: () => void;
         isSelected?: never;
+        to?: never;
       }
   );
 
-/** A card that is one button as a whole. It must not contain other controls. */
+/** A card that is one button as a whole, or one link with `to`. A button card must not contain other controls. */
 export function ClickableCard({
   children,
   label,
   description,
   onClick,
+  to,
   isSelected = false,
   isDisabled = false,
   value,
@@ -73,6 +75,10 @@ export function ClickableCard({
   const asRadio = group !== null && value !== undefined;
   const isChosen = asRadio ? group.chosen === value : isSelected;
   const descriptionId = `${useId()}-description`;
+  const classes = cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, className);
+  if (to !== undefined) {
+    return <link to={to} aria-label={label} aria-describedby={description !== undefined ? descriptionId : undefined} disabled={isDisabled} data-testid={testId} {...dataOf(attributes)} className={classes}>{children}{description !== undefined && <text id={descriptionId} aria-hidden className={r.description.base}>{description}</text>}</link>;
+  }
   return (
     <button
       role={asRadio ? 'radio' : undefined}
@@ -86,7 +92,7 @@ export function ClickableCard({
         onClick?.();
       }}
       data-testid={testId} {...dataOf(attributes)}
-      className={cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, className)}
+      className={classes}
     >
       {children}
       {description !== undefined && <text id={descriptionId} aria-hidden className={r.description.base}>{description}</text>}

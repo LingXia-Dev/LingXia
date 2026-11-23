@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { WithActions, Variants, Floating, StateUnselected, StateSelected, StateDisabled, Choice } from '../../core/src/Card/Card.examples';
+import { WithActions, Variants, Floating, ToPage, StateUnselected, StateSelected, StateDisabled, Choice } from '../../core/src/Card/Card.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Floating, over a map or a picture"} bare>
           <Floating />
+        </Stage>
+        <Stage caption={"Going to a page, with a Like button of its own"} bare>
+          <ToPage />
         </Stage>
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Hero, VariantsEveryday, VariantTonal, VariantDestructive, VariantLink, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction, Floating } from '../../core/src/Button/Button.examples';
+import { Hero, VariantsEveryday, VariantTonal, VariantDestructive, VariantLink, ToPage, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction, Floating } from '../../core/src/Button/Button.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -20,6 +20,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Link, a quiet way out beside a form"}>
           <VariantLink />
+        </Stage>
+        <Stage caption={"Going to a page with `to`: a link drawn as a button"}>
+          <ToPage />
         </Stage>
         <Stage caption={"An icon before the label for the kind of action, after it for where it leads"}>
           <WithIcons />
