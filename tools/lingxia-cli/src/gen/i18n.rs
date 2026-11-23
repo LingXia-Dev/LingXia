@@ -936,11 +936,8 @@ fn generate_liuli_words(dir: &Path, out: &Path) -> Result<()> {
              const languages = {{\n{}}};\n{}\n\
              export default {{ source: {PACKAGE_SOURCE:?}, languages, formatter }};\n",
             language_objects(&languages),
-            lingxia_i18n::js::FORMATTER.trim_start().replacen(
-                "export function formatter",
-                "function formatter",
-                1
-            )
+            lingxia_i18n::js::formatter(&languages.keys().map(String::as_str).collect::<Vec<_>>())
+                .replacen("export function formatter", "function formatter", 1)
         ),
     )
 }

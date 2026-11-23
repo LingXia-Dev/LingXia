@@ -1,6 +1,6 @@
 //! A message formatted in Rust, for text a host or Logic shows natively (toasts, dialogs).
 //! Tags keep only their contents. Plural rules, number, date and time shapes match the JS formatter the
-//! build emits (`js::FORMATTER`), so a key reads the same on a page and in a toast.
+//! build emits (`js::formatter`), so a key reads the same on a page and in a toast.
 
 use crate::message::{Arg, DateStyle, Message, NumberStyle, Part, PluralCategory, Selector};
 use chrono::{DateTime, Datelike, Local, Timelike};
@@ -8,12 +8,11 @@ use serde_json::Value;
 
 pub fn format(message: &Message, tag: &str, args: &Value) -> String {
     let mut out = String::new();
-    let language = tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
-    write(&message.parts, &language, args, None, &mut out);
+    write(&message.parts, tag, args, None, &mut out);
     out
 }
 
-fn write(parts: &[Part], language: &str, args: &Value, pound: Option<f64>, out: &mut String) {
+fn write(parts: &[Part], tag: &str, args: &Value, pound: Option<f64>, out: &mut String) {
     for part in parts {
         match part {
             Part::Text(text) => out.push_str(text),
@@ -26,7 +25,7 @@ fn write(parts: &[Part], language: &str, args: &Value, pound: Option<f64>, out: 
             ),
             Part::Arg(Arg::Date { name, style }) => out.push_str(
                 &instant(&args[name])
-                    .map_or_else(|| plain(&args[name]), |at| date(&at, language, *style)),
+                    .map_or_else(|| plain(&args[name]), |at| date(&at, tag, *style)),
             ),
             Part::Arg(Arg::Time { name, style }) => out.push_str(
                 &instant(&args[name]).map_or_else(|| plain(&args[name]), |at| time(&at, *style)),
@@ -42,11 +41,7 @@ fn write(parts: &[Part], language: &str, args: &Value, pound: Option<f64>, out: 
                 let exact = cases.iter().find(|(selector, _)| {
                     matches!(selector, Selector::Exact(n) if f64::from(*n) == value)
                 });
-                let category = if *ordinal {
-                    ordinal_category(language, shifted)
-                } else {
-                    cardinal_category(language, shifted)
-                };
+                let category = crate::plural::category(tag, *ordinal, shifted);
                 let case = exact
                     .or_else(|| {
                         cases
@@ -59,7 +54,7 @@ fn write(parts: &[Part], language: &str, args: &Value, pound: Option<f64>, out: 
                             .find(|(s, _)| *s == Selector::Category(PluralCategory::Other))
                     });
                 if let Some((_, parts)) = case {
-                    write(parts, language, args, Some(shifted), out);
+                    write(parts, tag, args, Some(shifted), out);
                 }
             }
             Part::Select { name, cases } => {
@@ -69,10 +64,10 @@ fn write(parts: &[Part], language: &str, args: &Value, pound: Option<f64>, out: 
                     .find(|(key, _)| *key == value)
                     .or_else(|| cases.iter().find(|(key, _)| key == "other"));
                 if let Some((_, parts)) = case {
-                    write(parts, language, args, pound, out);
+                    write(parts, tag, args, pound, out);
                 }
             }
-            Part::Tag { children, .. } => write(children, language, args, pound, out),
+            Part::Tag { children, .. } => write(children, tag, args, pound, out),
         }
     }
 }
@@ -116,8 +111,9 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-/// The JS formatter's date shapes (`js::FORMATTER`), so a toast and a page agree.
-fn date(at: &DateTime<Local>, language: &str, style: DateStyle) -> String {
+/// The JS formatter's date shapes (`js::formatter`), so a toast and a page agree.
+fn date(at: &DateTime<Local>, tag: &str, style: DateStyle) -> String {
+    let language = tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
     let (y, m, d) = (at.year(), at.month(), at.day());
     if language == "zh" || language == "ja" {
         return match style {
@@ -138,26 +134,6 @@ fn time(at: &DateTime<Local>, style: DateStyle) -> String {
     match style {
         DateStyle::Short => clock,
         _ => format!("{clock}:{:02}", at.second()),
-    }
-}
-
-fn cardinal_category(language: &str, n: f64) -> PluralCategory {
-    match language {
-        "en" if n == 1.0 => PluralCategory::One,
-        _ => PluralCategory::Other,
-    }
-}
-
-fn ordinal_category(language: &str, n: f64) -> PluralCategory {
-    if language != "en" || n.fract() != 0.0 {
-        return PluralCategory::Other;
-    }
-    let n = n.abs() as u64;
-    match (n % 10, n % 100) {
-        (1, h) if h != 11 => PluralCategory::One,
-        (2, h) if h != 12 => PluralCategory::Two,
-        (3, h) if h != 13 => PluralCategory::Few,
-        _ => PluralCategory::Other,
     }
 }
 

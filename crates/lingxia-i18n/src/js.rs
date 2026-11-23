@@ -13,24 +13,14 @@ use crate::catalogue::Catalogue;
 use crate::message::{Arg, DateStyle, NumberStyle, Part, PluralCategory, Selector};
 use std::fmt::Write;
 
-/// `formatter(tag)`: the `f` each compiled message is called with, as the compiled index exports it.
-/// Until the host formatter serves pages, plural rules and number shapes cover the languages the
-/// SDK ships; any other language takes `other` and plain grouping. `format::format` matches it.
-pub const FORMATTER: &str = r#"const cardinal = {
-  en: n => (n === 1 ? 'one' : 'other'),
-  zh: () => 'other',
-  ja: () => 'other',
-  ko: () => 'other',
-};
-const ordinal = {
-  en: n => {
-    const ten = n % 10, hundred = n % 100;
-    if (ten === 1 && hundred !== 11) return 'one';
-    if (ten === 2 && hundred !== 12) return 'two';
-    if (ten === 3 && hundred !== 13) return 'few';
-    return 'other';
-  },
-};
+/// `formatter(tag)`: the `f` each compiled message is called with, as the compiled index exports it,
+/// with the CLDR plural rules of `languages` (the catalogue's tags). Number and date shapes are plain
+/// until the runtime has `Intl`. `format::format` matches it.
+pub fn formatter(languages: &[&str]) -> String {
+    format!("{}{FORMATTER}", crate::plural::js(languages))
+}
+
+const FORMATTER: &str = r#"
 
 function group(n, digits) {
   const fixed = digits === undefined ? String(Math.abs(n)) : Math.abs(n).toFixed(digits);
@@ -66,8 +56,7 @@ export function formatter(tag) {
     p: (value, offset, isOrdinal, cases) => {
       const exact = cases[`=${value}`];
       if (exact) return exact(value - offset);
-      const rule = (isOrdinal ? ordinal : cardinal)[language];
-      return (cases[rule ? rule(value - offset) : 'other'] ?? cases.other)(value - offset);
+      return (cases[plural(tag, isOrdinal, value - offset)] ?? cases.other)(value - offset);
     },
     s: (value, cases) => (cases[value] ?? cases.other)(),
     tag: (fn, contents) => (typeof fn === 'function' ? fn(contents) : contents),
@@ -179,6 +168,77 @@ fn string(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs a compiled catalogue and `formatter` in Node, the path a bundle takes: an Arabic message
+    /// with all six categories, and `f.p` over the shared plural table.
+    #[test]
+    fn a_compiled_catalogue_picks_cldr_plural_cases_in_js() {
+        let catalogue = Catalogue::parse(
+            r#"{ "a.count": { "defaultMessage": "{n, plural, zero {zero} one {one} two {two} few {few} many {many} other {other}}", "description": "d" } }"#,
+            true,
+        )
+        .unwrap();
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/plural-cases.json")).unwrap();
+        let mut languages: Vec<&str> = cases["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|case| case["language"].as_str().unwrap())
+            .collect();
+        languages.sort_unstable();
+        languages.dedup();
+        let dir = std::env::temp_dir().join(format!("lingxia-i18n-plural-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ar.mjs"), module(&catalogue)).unwrap();
+        std::fs::write(dir.join("formatter.mjs"), formatter(&languages)).unwrap();
+        std::fs::write(dir.join("cases.json"), cases.to_string()).unwrap();
+        std::fs::write(
+            dir.join("check.mjs"),
+            r#"import ar from './ar.mjs';
+import { formatter } from './formatter.mjs';
+import fs from 'node:fs';
+const failures = [];
+const cases0 = () => Object.fromEntries(['zero', 'one', 'two', 'few', 'many', 'other'].map((c) => [c, () => c]));
+const arabic = [[0, 'zero'], [1, 'one'], [2, 'two'], [3, 'few'], [11, 'many'], [100, 'other']];
+for (const [n, want] of arabic) {
+  const got = ar['a.count']({ n }, formatter('ar'));
+  if (got !== want) failures.push(`ar message n=${n}: ${got}, want ${want}`);
+}
+// A tag with a region reads its language's rules: en-US is en, ar-EG is ar.
+if (ar['a.count']({ n: 3 }, formatter('ar-EG')) !== 'few') failures.push('ar-EG reads ar');
+if (formatter('en-US').p(2, 0, true, cases0()) !== 'two') failures.push('en-US ordinal reads en');
+const cases = Object.fromEntries(['zero', 'one', 'two', 'few', 'many', 'other'].map((c) => [c, () => c]));
+for (const c of JSON.parse(fs.readFileSync(new URL('./cases.json', import.meta.url))).cases) {
+  const got = formatter(c.language).p(c.value, 0, c.type === 'ordinal', cases);
+  if (got !== c.category) failures.push(`${c.language} ${c.type} ${c.value}: ${got}, want ${c.category}`);
+}
+if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
+"#,
+        )
+        .unwrap();
+        let output = match std::process::Command::new("node")
+            .arg(dir.join("check.mjs"))
+            .output()
+        {
+            Ok(output) => output,
+            // CI always has Node; a bare local checkout may not.
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    && std::env::var_os("CI").is_none() =>
+            {
+                eprintln!("skipping the JS plural check: node is not on PATH");
+                return;
+            }
+            Err(error) => panic!("the JS plural check needs Node.js: {error}"),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     #[test]
     fn a_plural_hands_its_case_the_number_less_the_offset() {

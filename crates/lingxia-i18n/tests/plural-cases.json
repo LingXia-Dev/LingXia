@@ -1,0 +1,1697 @@
+{
+ "cldr": "48.0.0",
+ "cases": [
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "many"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "cardinal",
+   "value": 1.1,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 2,
+   "category": "two"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 5,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 21,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 31,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 41,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 51,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 61,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 71,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 81,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 101,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 1001,
+   "category": "one"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 2,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 3,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 4,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 22,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 23,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 24,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 32,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 33,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 34,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 42,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 43,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 44,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 52,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 53,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 54,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 62,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 102,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 1002,
+   "category": "few"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 0,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 5,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 6,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 7,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 100,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "many"
+  },
+  {
+   "language": "ru",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 0,
+   "category": "zero"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 2,
+   "category": "two"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 3,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 4,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 5,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 103,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 104,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 105,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1003,
+   "category": "few"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 11,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 12,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 13,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 111,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1011,
+   "category": "many"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 101,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 102,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 200,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 201,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 202,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 300,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 301,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 302,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 400,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 401,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 402,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 500,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 501,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 502,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 600,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 0.1,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 1.1,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "cardinal",
+   "value": 10.1,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 0,
+   "category": "one"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "many"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 0,
+   "category": "one"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "many"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "cardinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "de",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "es",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "he",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ru",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ar",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "zh",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 21,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 31,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 41,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 51,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 61,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 71,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 81,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 101,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1001,
+   "category": "one"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 2,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 22,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 32,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 42,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 52,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 62,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 72,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 82,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 102,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1002,
+   "category": "two"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 3,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 23,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 33,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 43,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 53,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 63,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 73,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 83,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 103,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1003,
+   "category": "few"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 5,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 6,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "en",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 1,
+   "category": "one"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 3,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 4,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "fr",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "pt",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ja",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 0,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 1,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 2,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 100,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 1000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 10000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 100000,
+   "category": "other"
+  },
+  {
+   "language": "ko",
+   "type": "ordinal",
+   "value": 1000000,
+   "category": "other"
+  }
+ ]
+}

@@ -76,7 +76,8 @@ export const languages = {{ {} }};
         serde_json::to_string(&source)?,
         entries.join(", ")
     ));
-    index.push_str(lingxia_i18n::js::FORMATTER);
+    let tags: Vec<&str> = catalogues.iter().map(|(tag, _)| tag.as_str()).collect();
+    index.push_str(&lingxia_i18n::js::formatter(&tags));
     std::fs::write(generated.join("index.js"), index)?;
     Ok(())
 }

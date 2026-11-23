@@ -6,6 +6,7 @@ pub mod dts;
 pub mod format;
 pub mod js;
 pub mod message;
+pub mod plural;
 pub mod pseudo;
 
 pub use catalogue::{Catalogue, Entry, Problem, check, valid_key};

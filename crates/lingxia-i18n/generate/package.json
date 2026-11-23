@@ -1,0 +1,9 @@
+{
+  "name": "lingxia-i18n-generate",
+  "private": true,
+  "type": "module",
+  "description": "Generates lingxia-i18n's CLDR plural rules: npm ci && node plurals.mjs",
+  "devDependencies": {
+    "cldr-core": "48.0.0"
+  }
+}

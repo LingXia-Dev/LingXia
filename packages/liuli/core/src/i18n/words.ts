@@ -137,21 +137,28 @@ const languages = {
   "@liuli.weekdayName": (a, f) => f.j([f.s(a["weekday"], { "sun": () => f.j(["星期日"]), "mon": () => f.j(["星期一"]), "tue": () => f.j(["星期二"]), "wed": () => f.j(["星期三"]), "thu": () => f.j(["星期四"]), "fri": () => f.j(["星期五"]), "sat": () => f.j(["星期六"]), "other": () => f.j([]) })]),
 },
 };
-const cardinal = {
-  en: n => (n === 1 ? 'one' : 'other'),
-  zh: () => 'other',
-  ja: () => 'other',
-  ko: () => 'other',
-};
-const ordinal = {
-  en: n => {
-    const ten = n % 10, hundred = n % 100;
-    if (ten === 1 && hundred !== 11) return 'one';
-    if (ten === 2 && hundred !== 12) return 'two';
-    if (ten === 3 && hundred !== 13) return 'few';
-    return 'other';
-  },
-};
+const pluralRules = [o => { if (o.i === 1 && o.v === 0) return 'one'; return 'other'; },
+  o => { if (o.n % 10 === 1 && o.n % 100 !== 11) return 'one'; if (o.n % 10 === 2 && o.n % 100 !== 12) return 'two'; if (o.n % 10 === 3 && o.n % 100 !== 13) return 'few'; return 'other'; },
+  o => { return 'other'; }];
+const cardinalRules = { "en": 0, "zh": 2 };
+const ordinalRules = { "en": 1, "zh": 2 };
+function operands(value) {
+  const n = Math.abs(value);
+  let text = String(n);
+  // Only the fraction is read: a huge number has none, a tiny one is written out (old WebViews: no ?? or BigInt).
+  if (text.indexOf('e') >= 0) text = n >= 1 ? '0' : n.toFixed(20).replace(/0+$/, '');
+  const fraction = text.split('.')[1] || '';
+  const trimmed = fraction.replace(/0+$/, '');
+  return { n, i: Math.trunc(n), v: fraction.length, w: trimmed.length, f: Number(fraction.slice(0, 18) || 0), t: Number(trimmed.slice(0, 18) || 0), e: 0 };
+}
+function plural(tag, ordinal, value) {
+  const rules = ordinal ? ordinalRules : cardinalRules;
+  // The whole tag if it has its own rules (pt-PT), else its language (en-US reads en).
+  let rule = rules[tag];
+  if (rule === undefined) rule = rules[tag.split(/[-_]/)[0].toLowerCase()];
+  return rule === undefined || !Number.isFinite(value) ? 'other' : pluralRules[rule](operands(value));
+}
+
 
 function group(n, digits) {
   const fixed = digits === undefined ? String(Math.abs(n)) : Math.abs(n).toFixed(digits);
@@ -187,8 +194,7 @@ function formatter(tag) {
     p: (value, offset, isOrdinal, cases) => {
       const exact = cases[`=${value}`];
       if (exact) return exact(value - offset);
-      const rule = (isOrdinal ? ordinal : cardinal)[language];
-      return (cases[rule ? rule(value - offset) : 'other'] ?? cases.other)(value - offset);
+      return (cases[plural(tag, isOrdinal, value - offset)] ?? cases.other)(value - offset);
     },
     s: (value, cases) => (cases[value] ?? cases.other)(),
     tag: (fn, contents) => (typeof fn === 'function' ? fn(contents) : contents),
