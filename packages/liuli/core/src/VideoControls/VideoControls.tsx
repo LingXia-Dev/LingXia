@@ -274,7 +274,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
 
   return (
     // Full screen keeps every control clear of the notch and the home indicator.
-    <view className={cx(isFull ? r.edges.base : r.root.overlay, className)} style={isFull ? edgeStyle(env?.safeArea) : undefined} data-testid={testId}>
+    <view className={cx(isFull ? r.edges.base : r.root.overlay, className)} style={isFull ? edgeStyle(env?.safeArea) : undefined} data-testid={testId} {...data}>
       <button
         data-testid={id('surface')}
         aria-hidden

@@ -12,7 +12,7 @@ export interface TooltipProps {
   content: string;
   /** Which side of the trigger the hint opens on. @default 'top' */
   placement?: TooltipPlacement;
-  /** On a wrapped trigger; the hint gets `<testid>-content`. */
+  /** On the trigger: the wrapper, or a Button or Link child without a test id of its own. The hint gets `<testid>-content`. */
   'data-testid'?: string;
 }
 

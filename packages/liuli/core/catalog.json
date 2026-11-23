@@ -7658,7 +7658,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On a wrapped trigger; the menu gets `<testid>-menu`."
+          "description": "On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`."
         }
       ],
       "otherProps": {
@@ -13860,7 +13860,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the panel, as `<testid>-panel`, and on a wrapped trigger."
+          "description": "On the trigger (the wrapper, or a Button or Link child without a test id of its own), and on the panel as `<testid>-panel`."
         }
       ],
       "otherProps": {},
@@ -21056,7 +21056,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On a wrapped trigger; the hint gets `<testid>-content`."
+          "description": "On the trigger: the wrapper, or a Button or Link child without a test id of its own. The hint gets `<testid>-content`."
         }
       ],
       "otherProps": {},

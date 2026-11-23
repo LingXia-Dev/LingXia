@@ -1,8 +1,7 @@
 import { cx, useContext } from '@lingxia/view';
 import { LayerContext } from '../internal/layer';
 import { toggleButtonRecipe as r } from './ToggleButton.recipe';
-import { registerPressable, useTrigger } from '../internal/trigger';
-import { dataOf } from '../internal/data';
+import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 
 export type ToggleButtonSize = 'sm' | 'md' | 'lg';
 
@@ -34,7 +33,7 @@ export function ToggleButton({ label, value: isPressed, onChange: onPressedChang
       interestFor={trigger?.interestFor}
       data-state={isPressed ? 'on' : 'off'}
       disabled={isDisabled}
-      data-testid={testId} {...dataOf(attributes)}
+      {...identityOf(testId, attributes, trigger)}
       onClick={() => onPressedChange(!isPressed)}
       className={cx(r.root.base, isPressed ? r.root.on : cx(r.root.off, layer === 'overlay' && r.root.overlay), r.root.size[size], className)}
     >

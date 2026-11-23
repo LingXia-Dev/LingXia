@@ -26,7 +26,7 @@ export interface PopoverProps {
   onOpenChange?: (isOpen: boolean) => void;
   /** Classes for the panel. */
   panelClassName?: string;
-  /** On the panel, as `<testid>-panel`, and on a wrapped trigger. */
+  /** On the trigger (the wrapper, or a Button or Link child without a test id of its own), and on the panel as `<testid>-panel`. */
   'data-testid'?: string;
 }
 

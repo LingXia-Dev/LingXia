@@ -7,6 +7,8 @@ export interface TriggerWiring {
   popoverTarget?: string;
   interestFor?: string;
   describedBy?: string;
+  /** The overlay's test id and `data-*`, for a pressable trigger that has no test id of its own. */
+  identity?: Record<string, unknown>;
 }
 
 const TriggerContext = createContext<TriggerWiring | null>(null);
@@ -22,6 +24,15 @@ export function holdsControl(children: Child): boolean {
   return childrenToArray(children).some(child => typeof child === 'object' && child !== null && (pressables.has(elementType(child)) || elementType(child) === 'button'));
 }
 
+/**
+ * A pressable's test id and `data-*`: its own, else, as an overlay's trigger, the overlay's, so
+ * `<Tooltip data-testid="help">` around a Button still finds the Button.
+ */
+export function identityOf(testId: string | undefined, attributes: object, trigger: TriggerWiring | null): Record<string, unknown> {
+  if (testId !== undefined || trigger?.identity === undefined) return { 'data-testid': testId, ...dataOf(attributes) };
+  return { ...trigger.identity, ...dataOf(attributes) };
+}
+
 /** For a pressable: the wiring of the overlay it opens, if it is one's trigger. */
 export function useTrigger() {
   return useContext(TriggerContext);
@@ -35,7 +46,9 @@ export function Trigger({ children, wiring, className, 'data-testid': testId, ..
   const nodes = childrenToArray(children);
   if (nodes.length !== 1) throw Error('UI_PROP: an overlay takes one element as its trigger');
   const [child] = nodes;
-  if (typeof child === 'object' && pressables.has(elementType(child))) return <TriggerContext.Provider value={wiring}>{child}</TriggerContext.Provider>;
+  if (typeof child === 'object' && pressables.has(elementType(child))) {
+    return <TriggerContext.Provider value={{ ...wiring, identity: { 'data-testid': testId, ...dataOf(attributes) } }}>{child}</TriggerContext.Provider>;
+  }
   return (
     <button
       popoverTarget={wiring.popoverTarget}

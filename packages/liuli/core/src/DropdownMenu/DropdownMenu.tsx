@@ -34,7 +34,7 @@ export interface DropdownMenuProps {
   alignment?: DropdownMenuAlignment;
   /** Classes for the menu panel. */
   menuClassName?: string;
-  /** On a wrapped trigger; the menu gets `<testid>-menu`. */
+  /** On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. */
   'data-testid'?: string;
 }
 

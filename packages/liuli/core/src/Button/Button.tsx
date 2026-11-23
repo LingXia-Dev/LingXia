@@ -3,10 +3,9 @@ import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { settleFlag } from '../internal/settle';
-import { registerPressable, useTrigger } from '../internal/trigger';
+import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 import { buttonRecipe as r } from './Button.recipe';
 import { LayerContext } from '../internal/layer';
-import { dataOf } from '../internal/data';
 import { SharedRowContext } from '../internal/footer';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'link' | 'destructive';
@@ -110,7 +109,7 @@ export function Button({
   };
   return (
     <button
-      data-testid={testId} {...dataOf(attributes)}
+      {...identityOf(testId, attributes, trigger)}
       aria-label={label}
       aria-describedby={hasReason ? reasonId : trigger?.describedBy}
       aria-busy={busy || undefined}

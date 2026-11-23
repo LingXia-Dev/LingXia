@@ -88,7 +88,7 @@ export function InSentence() {
 | `children` (required) | `Child` |  | The trigger, usually an IconButton; any other element is wrapped in a plain button. |
 | `content` (required) | `string` |  | The hint: the trigger's own name in words, a few at most. It never says what the trigger's label lacks. |
 | `placement` | `TooltipPlacement` | `'top'` | Which side of the trigger the hint opens on. |
-| `data-testid` | `string` |  | On a wrapped trigger; the hint gets `<testid>-content`. |
+| `data-testid` | `string` |  | On the trigger: the wrapper, or a Button or Link child without a test id of its own. The hint gets `<testid>-content`. |
 
 ## Anatomy
 

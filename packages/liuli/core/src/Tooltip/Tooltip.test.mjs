@@ -48,3 +48,20 @@ test('OnWords: words that carry a hint are underlined, dotted; a Button or a Lin
   const toolbar = await renderExample('Tooltip/Tooltip', 'Toolbar');
   assert.equal(toolbar.queryAll(node => node.tag === 'button' && node.props.textDecorationStyle === 'dotted').length, 0);
 });
+
+test('a Button trigger without a test id of its own takes the tooltip\'s, with its data-*; its own wins', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { Tooltip } from '@liulidesign/core/Tooltip';
+    export function render() {
+      return <page>
+        <Tooltip content="Saves a copy" data-testid="help" data-kind="hint"><Button label="Save" onClick={() => {}} /></Tooltip>
+        <Tooltip content="Prints it" data-testid="print-help"><Button label="Print" onClick={() => {}} data-testid="print" /></Tooltip>
+      </page>;
+    }
+  `);
+  const save = screen.getByTestId('help');
+  assert.deepEqual([save.tag, save.props.accessibilityLabel, JSON.parse(save.props.dataAttributes).kind], ['button', 'Save', 'hint']);
+  assert.equal(screen.getByTestId('print').props.accessibilityLabel, 'Print');
+  assert.equal(screen.queryAll(node => node.testId === 'print-help').length, 0);
+});

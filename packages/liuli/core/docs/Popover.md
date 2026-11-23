@@ -126,7 +126,7 @@ export function InSentence() {
 | `isOpen` | `boolean` |  | Controls whether it is open; leave it out to let the trigger own it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
 | `panelClassName` | `string` |  | Classes for the panel. |
-| `data-testid` | `string` |  | On the panel, as `<testid>-panel`, and on a wrapped trigger. |
+| `data-testid` | `string` |  | On the trigger (the wrapper, or a Button or Link child without a test id of its own), and on the panel as `<testid>-panel`. |
 
 ## Anatomy
 

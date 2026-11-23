@@ -9,16 +9,15 @@ const core = fileURLToPath(new URL('..', import.meta.url));
 // Overlays draw nothing while closed, so they are rendered open.
 const opened = ['BottomSheet', 'CommandPalette', 'Dialog', 'Drawer', 'DropdownMenu', 'Lightbox', 'Popover', 'Tooltip'];
 // Entries that still put no test id on screen, each with why. Keep it short.
-const unseen = {
-  // With a Button as its trigger, the Button keeps its own test id and these props reach no element: open in the audit.
-  DropdownMenu: 'trigger is a pressable child',
-  Popover: 'trigger is a pressable child',
-  Tooltip: 'trigger is a pressable child',
-};
-// Components with no playground entry, given here directly where that is cheap.
+const unseen = {};
+// Components with no playground entry, given here directly.
 const direct = {
   Link: `import { Link } from ${JSON.stringify(`${core}Link/Link`)};\nconst subject = (props: any) => <Link label="Terms" onClick={() => {}} {...props} />;`,
   SplitView: `import { SplitView } from ${JSON.stringify(`${core}SplitView/SplitView`)};\nconst subject = (props: any) => <SplitView sidebarLabel="Mailboxes" sidebar={<text>Inbox</text>} {...props}><text>Message</text></SplitView>;`,
+  Tour: `import { Tour } from ${JSON.stringify(`${core}Tour/Tour`)};\nconst subject = (props: any) => <view><view data-testid="target"><text>New</text></view><Tour steps={[{ target: 'target', targetLabel: 'The New button', title: 'New', text: 'Starts a note.' }]} value={0} onChange={() => {}} {...props} /></view>;`,
+  VideoControls: `import { useVideo } from '@lingxia/view';\nimport { VideoControls } from ${JSON.stringify(`${core}VideoControls/VideoControls`)};\nconst subject = (props: any) => { const player = useVideo('probe'); return <view><video player={player} src="clip.mp4" aria-label="Clip" /><VideoControls player={player} {...props} /></view>; };`,
+  VideoPlayer: `import { useVideo } from '@lingxia/view';\nimport { VideoPlayer } from ${JSON.stringify(`${core}VideoPlayer/VideoPlayer`)};\nconst subject = (props: any) => <VideoPlayer player={useVideo('probe')} label="Clip" src="clip.mp4" {...props} />;`,
+  WebView: `import { WebView } from ${JSON.stringify(`${core}WebView/WebView`)};\nconst subject = (props: any) => <WebView src="public/web/map.html" label="Map" {...props} />;`,
 };
 
 /** What the page puts on screen: for each node whose test id is exactly `probe-<name>`, whether it carries the probe too. */

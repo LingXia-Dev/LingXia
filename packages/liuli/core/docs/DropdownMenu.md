@@ -356,7 +356,7 @@ export function InSentence() {
 | `placement` | `DropdownMenuPlacement` | `'bottom'` | Which side of the trigger the menu opens on. |
 | `alignment` | `DropdownMenuAlignment` | `'start'` | Which edge of the trigger the menu lines up with. |
 | `menuClassName` | `string` |  | Classes for the menu panel. |
-| `data-testid` | `string` |  | On a wrapped trigger; the menu gets `<testid>-menu`. |
+| `data-testid` | `string` |  | On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. |
 
 ## DropdownMenuItemData props
 
