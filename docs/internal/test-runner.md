@@ -39,7 +39,7 @@ received artifacts. Keep the following invariants when changing these layers:
   driver methods. JS deadlines stop waiting, not arbitrary external side effects.
 - `schema_version: 1` results retain the six case statuses, source identity,
   assertions, steps, attachments, attempts, and structured error fields through
-  the host adapter. Legacy three-status results remain readable. Validate counts
+  the host adapter. Results with only three case statuses remain readable. Validate counts
   by status before grading; partial results never pass.
 - Persist events before consuming them. Missing final reports, terminal timeout,
   cancellation and connection loss need client-side partial reports. A JUnit run
@@ -67,9 +67,9 @@ received artifacts. Keep the following invariants when changing these layers:
   test's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
   forbidOnly, platform, secretArgs) separately. The host exposes `control` on
   `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
-  reads those keys from `args`, as older lxdev sent them. Reports put controls
-  in `meta.run`. A new lxdev against a host that drops `control` loses its
-  filters; the two ship together.
+  reads those keys from `args`, as an lxdev without `control` sends them.
+  Reports put controls in `meta.run`. An lxdev that sends `control` to a host
+  that drops it loses its filters; the two ship together.
 - `t.skip()` throws the internal `SkipSignal`; from `beforeEach` or the body it
   grades `skipped` (also under `test.fail`) and skips failure forensics. During
   cleanup (`t.defer`, `afterEach`) it rejects, and the case fails in the
@@ -110,11 +110,10 @@ received artifacts. Keep the following invariants when changing these layers:
   `visible` as rendered — non-empty box, not `display:none`,
   `visibility:hidden` or `opacity:0` — independent of scroll, and
   `inViewport` as rendered and intersecting `window.inner*` (the one
-  camelCase field of that otherwise 0.18-shaped snake_case record; it was
-  `in_viewport` before 0.19, which the fixture still reads). Before this
-  split `visible` was viewport-aware; `@lingxia/test` treats a missing
-  `inViewport` (older runtime) as `visible`. The Browser driver's own query
-  script still reports the viewport-aware `visible`. Native input paths keep
+  camelCase field of that otherwise snake_case record; the fixture also reads
+  `in_viewport`). `@lingxia/test` treats a missing `inViewport` (a runtime
+  that does not report it) as `visible`. The Browser driver's own query
+  script reports a viewport-aware `visible`. Native input paths keep
   their own viewport + hit-test refusal, which is actionability, not
   visibility.
 - `force` on click/fill: the locator skips stability and the actionability
@@ -162,7 +161,7 @@ received artifacts. Keep the following invariants when changing these layers:
   The race only stops waiting: a native call that blocks the JS thread cannot
   be preempted from JS, and an abandoned call may still complete in the app.
 - Transient page errors (`isTransientPageError`: code `E_PAGE_NOT_ACTIVE` or
-  `E_PAGE_NOT_READY`; for hosts that predate the codes, the messages of
+  `E_PAGE_NOT_READY`; for hosts that send no code, the messages of
   `is_transient_page_error` in `lingxia-automation/src/page.rs`: `page is not
   active:`, `page WebView is not ready`, `WebView not ready`, `no current page`,
   WebView2 `0x8007139F`) are retried by locator actions and `waitFor` until the
@@ -263,7 +262,7 @@ Development machine: lxdev receives progress, results, and artifacts
   `target@dir-name`, `target@path`) for printed hints. `SessionInfo.name` /
   `.build` are optional fields. `SessionInfo.extra` (`serde(flatten)`) keeps
   fields a build does not know, so a broker passes newer fields through; a
-  broker built before `extra` still drops them, which is why a session with a
+  broker without `extra` drops them, which is why a session with a
   `--name` verifies its registration (below).
 - Runner identity: every install writes `runner-build.json` beside the app —
   `{version, commit, protocol}` from `install-local-runner.sh`/`.ps1`,
@@ -310,7 +309,7 @@ Development machine: lxdev receives progress, results, and artifacts
   emitted, `meta.budget.exhausted_after` records N of `planned`, and the
   report is partial. A test cut off by the host deadline instead ends the run
   `timeout`; lxdev then derives N/M from the streamed cases
-  (`budget_exhaustion`). An older runtime ignores the budget controls and
+  (`budget_exhaustion`). A runtime without budget controls ignores them and
   runs to the host ceiling.
 - Display (macOS): each run declares user activity
   (`IOPMAssertionDeclareUserActivity`, as `caffeinate -u` does), which wakes a
@@ -361,8 +360,8 @@ Development machine: lxdev receives progress, results, and artifacts
   its registration frame (source-mapped) is in its file's ranges; a test
   registered from a file that is not a key is dropped.
 - `lxdev test list` bundles with `Purpose::List`: the bundle calls the framework's
-  `list()` instead of `run()`, and throws when there is none, so an older
-  `@lingxia/test` fails rather than running the suite. `list()` selects as
+  `list()` instead of `run()`, and throws when there is none, so a
+  `@lingxia/test` without `list()` fails rather than running the suite. `list()` selects as
   `run()` does, then returns a zero-case report with `listed`. lxdev writes
   no run directory and leaves `latest`. The modules load, so their top-level
   code runs; only test bodies and hooks do not. It goes through the same
@@ -407,8 +406,8 @@ Development machine: lxdev receives progress, results, and artifacts
   at runtime: `network` needs a run scope, `ready` is refused without
   `HostAutomationAuthority`. `captureCalls`/`LxAppEvalTrace` are `@internal`
   report plumbing; `TestApp.eval` omits that overload because the fixture
-  always strips the envelope. The Logic declaration stays global, not opt-in,
-  so existing Logic that calls `lx.automation()` keeps type-checking.
+  always strips the envelope. The Logic declaration is global, not opt-in,
+  so app Logic that calls `lx.automation()` type-checks.
 - Privileges for Logic callers are the sealed session grants (`Automation`,
   `AutomationHost`), bounded by the app's allowed privilege classes;
   devtools hosts grant only those. `desktop` and `terminal` are gated by the
@@ -417,8 +416,7 @@ Development machine: lxdev receives progress, results, and artifacts
 - The host-tier getters on the root (`lxapps`, `browser`, `shell`, `device`,
   `desktop`, `terminal`) check `host` on property read and throw, so enumerating
   or logging the root throws in a session without it; the drivers' methods
-  recheck on every call. Making the getters lazy (like `LxAppDriver.network`)
-  is a Rust change in `lingxia-automation`. The fixture hides it:
+  recheck on every call. The fixture hides this:
   `t.automation.browser/desktop/terminal` are `lazyDriver` proxies
   (`fixture.ts`) that resolve the getter chain on each call, so the read
   never throws and the call rejects; a proxy is not a thenable (`then` reads
@@ -577,7 +575,7 @@ Development machine: lxdev receives progress, results, and artifacts
 - Route handlers are validated in Rust (`parse_handler_value`), mirroring the
   exclusive `NetworkRouteHandler` union: fulfill keys, `abort`, `continue`
   (optionally with `patchJson`), and `hang` never mix. `abort` accepts only kinds the wrapper reproduces faithfully
-  (`AbortKind`, today `failed`); add a kind only with a matching emulation.
+  (`AbortKind`: `failed`); add a kind only with a matching emulation.
   Binary `body` is read from the handler object before its JSON view, which
   would turn a `Uint8Array` into an index map. `delay` (at most 30 s) is a
   `setTimeout` in the Logic wrapper that the request's `AbortSignal` cancels.
@@ -667,8 +665,8 @@ Development machine: lxdev receives progress, results, and artifacts
   opt-in per kind: until the test queues a modal (action sheet) answer, the
   hook answers `DialogDecision::Draw(id)`, Logic presents the dialog and
   reports its close (`modal_closed` / `action_sheet_closed`), which becomes
-  the record's `answer` (`drawn: true`); existing tests that tap the drawn
-  modal keep working. After the first queued answer of that kind the hook
+  the record's `answer` (`drawn: true`), so a test that taps the drawn
+  modal works. After the first queued answer of that kind the hook
   answers from the queue, and one with no answer left refuses and resolves
   `unanswered()`, failing the test at once. Logic reaches the watch through
   `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
@@ -755,7 +753,7 @@ Development machine: lxdev receives progress, results, and artifacts
   app-cache hint (after `use`, a 4 s wait on a TTY; in `status`, whenever
   nothing reached it). `--watch` polls the file every 300 ms and reinstalls
   on a content change (`watch()`, testable with a fake `Session`). `list`
-  needs no session. `lxdev test` no longer consults the dev scenario.
+  needs no session. `lxdev test` does not consult the dev scenario.
 - The companion side of `function` rules and of the Function half of mocks
   (dev server relay, owner lifecycle, runtime upstream) and its wire
   contract: [companion-protocol.md](companion-protocol.md).
@@ -825,7 +823,7 @@ Development machine: lxdev receives progress, results, and artifacts
   `<root>/mocks/` from a module outside it, in every build; the Vite config
   template carries the same check (`lingxia-mocks-guard`).
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
-  strings that older clients parse, so messages never change; `code_for` /
+  strings that clients without codes parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
   `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_PAGE_FAILED`, `E_ELEMENT_NOT_FOUND`,
   `E_ELEMENT_NOT_INTERACTABLE`, `E_AUTOMATION_TIMEOUT`, `E_EVAL_SCRIPT`,
@@ -850,7 +848,7 @@ Development machine: lxdev receives progress, results, and artifacts
   that run meanwhile gets error `runtime_reconnecting`; lxdev treats it as a
   pause, journals `runtime_disconnected`/`runtime_reconnected` events
   (`source: "lxdev"`), and a reconnect restores the run as active. After the
-  grace a desktop session ends as before.
+  grace the session ends.
 - Results root: `TestOptions::results_root` is `--output-root`, else
   `test_preset::results_root(cwd)` — `test.outputDir` or `test-results`
   joined to the directory of `lxdev.json` — else `./test-results`. A run
@@ -883,11 +881,10 @@ Development machine: lxdev receives progress, results, and artifacts
   foreground `lingxia dev`) and replaces any mismatched
   broker: an idle one is asked to `shutdown`; a busy one is terminated by the
   pid `info` reported (its sessions' `register_session` threads reconnect a
-  second later and re-register); one older than `info` is found by a process
-  scan (`<lingxia*> dev-broker`, same user). The current build is spawned
-  right after, before those sessions come back, and must answer `info` as
-  this build. A busy stale broker used to be only reported, and an older one
-  dropped `name` from the record. If replacing fails, `--name` makes it an
+  second later and re-register); one that does not answer `info` is found by
+  a process scan (`<lingxia*> dev-broker`, same user). The current build is
+  spawned right after, before those sessions come back, and must answer
+  `info` as this build. If replacing fails, `--name` makes it an
   error; after registering, `verify_registered_name` lists the broker and
   fails the session if its record lacks the name.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
@@ -1000,7 +997,7 @@ redaction live in `capture.rs`.
   a stop, since the recording may have started before its acknowledgement
   failed; the run goes on. `lxdev network capture stop FILE [FILE]` writes
   the captured requests, as HAR 1.2 to a `.har` path and as the request JSON
-  to any other (at most one of each; `--har FILE` is a hidden deprecated alias).
+  to any other (at most one of each; `--har FILE` is a hidden alias).
   It does not write a scenario. Placeholders are created before `RECORD_STOP`
   and renamed after writing; on a write failure it prints the JSON to stdout
   and fails.
@@ -1051,8 +1048,8 @@ test: no test writes into its storage and app code has no test branch.
   `initialize_paths` reads it once per `LxApp` instance and resolves
   `storage.redb`, `userdata`, `usercache` and `temp` under the profile's
   `live/` root; the bundle, fingermark and every shared store (`lxapp-index.redb`,
-  downloads, settings) are unchanged. Page WebViews are already ephemeral
-  (`AppPage`); `BrowserTab` tabs still share the Runner's store.
+  downloads, settings) are unchanged. Page WebViews are ephemeral
+  (`AppPage`); `BrowserTab` tabs share the Runner's store.
 - Every switch is close → change → reopen (`with_app_closed`, serialized by
   one lock): retire the instance, wait for its `logic_contexts` to reach 0 so
   no redb handle is open, run the change, reopen with the captured open mode,
@@ -1130,20 +1127,19 @@ test: no test writes into its storage and app code has no test branch.
   instead of failing, so the next rebuild's reload brings a home app whose
   setup failed back. `prepare_lxapp_open` lets the home app itself open while
   it is not live.
-- Not isolated in v1: downloads and `downloads.redb`, other lxapps opened in
-  the run, and browser-profile WebViews. Mobile hosts share the Rust path but
-  are not yet validated (transfer limits, `test-profiles` writability).
+- Not isolated: downloads and `downloads.redb`, other lxapps opened in
+  the run, and browser-profile WebViews. Mobile hosts share the Rust path.
 
 ## Logic context lifetime
 
 A profile switch, a dev reload and a restart each replace the app's Logic
-context on a pooled worker VM, hundreds of times in a long run. Two things
-kept every retired context alive on JavaScriptCore, and with it the app's
-whole heap:
+context on a pooled worker VM, hundreds of times in a long run. A retired
+context that stays alive keeps the app's whole heap with it. Two things can
+keep one alive on JavaScriptCore:
 
 - A rong JS value held by native code is a GC root and retains its global
-  context. `PageSvc` held itself (`this`) and its page's functions that way.
-  The object now lives in `PageObject`, a cell shared by every clone;
+  context. `PageSvc` keeps its own object (`this`) and its page's functions
+  in `PageObject`, a cell shared by every clone;
   `PageSvc::release_js` empties it and clears the JS object's own copy
   (functions, emitter), pending callbacks and channels. It runs when a
   terminated page has no lifecycle event left (`TerminatePage`), when the
@@ -1154,10 +1150,9 @@ whole heap:
   their context only once finalized, which takes a full collection that also
   sweeps. JavaScriptCore schedules that on the VM thread's run loop, and Rong
   workers run none, so on Apple platforms a retired context waits for a
-  collection that allocation alone brings late. The fix belongs in Rong (a
-  worker idle hook that lets JSC's own timers run; public CoreFoundation
-  only). LingXia no longer forces a collection: it used a private JSC
-  function, and no Apple private API may ship in any build.
+  collection that allocation alone brings late. LingXia does not force a
+  collection: that needs a private JSC function, and no Apple private API
+  may ship in any build.
 - Keep new native-held JS values releasable, or reachable only from JS.
   `a_retired_logic_context_is_released` checks that every Rust owner of a
   retired context lets go.
@@ -1170,9 +1165,8 @@ Host side:
   `+1` `WKUserScript`s and scheme-handler `NSHTTPURLResponse`s are released.
 - The Runner's DevTools console (`DevToolsLogger`) keeps at most 2000 entries,
   and a new simulator window — one per app open — replays them in one edit.
-  It used to replay the whole session's log line by line, scrolling after
-  each, on the main thread at every reopen, which made each profile rollback
-  slower than the last.
+  Replaying line by line, scrolling after each, on the main thread at every
+  reopen, would make each profile rollback slower than the last.
 
 ## Automation run lifetime
 
@@ -1186,8 +1180,8 @@ Host side:
   guards it.
 - `destroy_webview_if_matches` also drops the WebView's event normalizer
   (only while the tag's normalizer is still that native view's). Tags carry
-  the app session, so a normalizer left behind was never reused and one piled
-  up per page per reopen.
+  the app session, so a normalizer left behind would never be reused and one
+  would pile up per page per reopen.
 
 ### Soak check
 
@@ -1209,23 +1203,6 @@ Growth per run should level off rather than add up; RSS alone understates
 it once macOS compresses pages. `heap <pid> | grep
 JSGlobalObjectInspectorController` counts live JS global objects (one per
 context).
-
-Showcase `--preset macos` (203 tests), macOS x86_64, Runner footprint after
-each run (2026-09):
-
-| build | run 1 | run 2 | run 3 | idle 3 min later |
-|---|---|---|---|---|
-| before (private forced collection of retired Logic contexts) | 1786 MB | 3445 MB | 3947 MB | — |
-| now (no private API) | 1634 MB | 3137 MB | 3881 MB | 3904 MB |
-| now + worker run-loop pump (prototype) | 1384 MB | 2115 MB | 1460 MB | 1110 MB |
-
-Live JS global objects stay at 3–5 in every build, so retired contexts are
-not what grows: it is garbage in the live heaps (almost all of it "WebKit
-malloc", JSC's 16 KB blocks). JavaScriptCore's full collections and sweeping
-run from the VM thread's run loop, which Rong workers do not run; allocation
-alone mostly triggers young-generation collections. The prototype, which
-runs the worker's run loop every 50 ms, lets them run; the fix belongs in
-Rong's workers.
 
 ## Test clock
 
@@ -1399,7 +1376,7 @@ the same cases the Rust parsers reject.
 - Android injects with `Instrumentation.sendPointerSync` into the app's own
   window (`delivered: window`); only if that is refused does it dispatch
   through the activity (`view`). A held finger keeps the screen origin of its
-  down: re-reading it per segment made a pull chase the page it moves.
+  down: re-reading it per segment would make a pull chase the page it moves.
   Edge back is `E_UNSUPPORTED`: injected input never reaches the System UI
   gesture monitor.
 - macOS posts queued mouse events stamped with `systemUptime` (AppKit and
@@ -1433,7 +1410,7 @@ the same cases the Rust parsers reject.
   records the running case (`keyguard.jsonl`, `lockTainted` in the summary):
   a failure under a lock is not a product result.
 
-## Review boundary changes
+## Scenario, page and deadline boundaries
 
 - Product scenarios belong to `t.scenario`, one per test/run across apps. Its
   `use(definition, { app?, variant? })` chooses the HTTP app; Function rules
