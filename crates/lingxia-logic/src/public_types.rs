@@ -2327,7 +2327,7 @@ true
      * of the window, not where this lxapp is presented.
      */
     readonly canDock: boolean;
-    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
+    /** `compact` below 600 logical pixels of the page's width, `regular` from 600. */
     readonly sizeClass: 'compact' | 'regular';
 }"###;
 

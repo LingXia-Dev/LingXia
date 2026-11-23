@@ -375,7 +375,7 @@ mod tests {
         }
         let policy = Policy::default(); // main_min 360, aside_min 240
 
-        // Wide expanded (1200): main 360 + 2×240 = 840 ≤ 1200 → both right
+        // Wide regular (1200): main 360 + 2×240 = 840 ≤ 1200 → both right
         // slots fit.
         let wide = next.aside_slots_admitted(SizeClass::Regular, 1200.0, &policy);
         assert_eq!(wide.iter().filter(|s| s.visible).count(), 2);

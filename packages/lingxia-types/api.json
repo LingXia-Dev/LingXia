@@ -12504,8 +12504,8 @@
           "name": "sizeClass",
           "type": "\"compact\" | \"regular\"",
           "required": true,
-          "summary": "compact (<600) / regular (≥600).",
-          "description": "compact (<600) / regular (≥600). Shell medium/expanded are not distinct here."
+          "summary": "`compact` below 600 logical pixels of the page's width, `regular` from 600.",
+          "description": "`compact` below 600 logical pixels of the page's width, `regular` from 600."
         }
       ],
       "source": "src/generated/logic.ts:2057"

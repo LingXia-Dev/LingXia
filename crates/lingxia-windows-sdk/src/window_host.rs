@@ -9441,8 +9441,8 @@ fn handle_chrome_right_up(hwnd: HWND, point: (i32, i32)) -> bool {
 }
 
 /// The host window's client width in logical (DIP) units - the value the
-/// adaptive surface graph's size class expects (thresholds are DIP: Compact
-/// `<600`, Medium `600..=840`, Expanded `>840`).
+/// adaptive surface graph's size class expects (DIP: Compact `<600`, Regular
+/// `>=600`; the sidebar expands from 820).
 #[cfg(feature = "shell-chrome")]
 fn window_logical_client_width(hwnd: HWND) -> f64 {
     let mut client = RECT::default();
