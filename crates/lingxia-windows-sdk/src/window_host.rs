@@ -3583,6 +3583,9 @@ unsafe extern "system" fn navigation_bar_overlay_proc(
 /// The bar is opaque: paint it, then make every pixel solid.
 #[cfg(feature = "shell-chrome")]
 fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
+    let radii = navigation_bar_overlay_entry(hwnd)
+        .map(|(host, rect)| overlay_screen_corner_radii(host, rect))
+        .unwrap_or([0; 4]);
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
         return;
@@ -3618,9 +3621,10 @@ fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             let _ = windows::Win32::Graphics::Gdi::GdiFlush();
             let pixels =
                 std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
-            for pixel in pixels {
+            for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
+            clip_overlay_corners(pixels, width, height, radii);
             let size = SIZE {
                 cx: width,
                 cy: height,
@@ -3652,6 +3656,72 @@ fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             let _ = DeleteDC(dc);
         }
         let _ = ReleaseDC(None, screen);
+    }
+}
+
+/// Radii where an overlay at `rect` (in `owner` client pixels) meets a corner
+/// of the simulated screen: the frame's rounding never reaches an overlay
+/// window, so it has to cut those corners itself.
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn overlay_screen_corner_radii(owner: HWND, rect: RECT) -> [i32; 4] {
+    (|| {
+        let (radius, _) = crate::device_frame::device_frame_screen_clip_style(hwnd_handle(owner))?;
+        let mut client = RECT::default();
+        unsafe { WindowsAndMessaging::GetClientRect(owner, &mut client) }.ok()?;
+        Some(device_frame_surface_corner_radii(
+            client_rect_to_screen(owner, rect)?,
+            client_rect_to_screen(owner, client)?,
+            radius,
+        ))
+    })()
+    .unwrap_or([0; 4])
+}
+
+#[cfg(all(feature = "shell-chrome", not(feature = "device-frame")))]
+fn overlay_screen_corner_radii(_owner: HWND, _rect: RECT) -> [i32; 4] {
+    [0; 4]
+}
+
+/// Makes premultiplied pixels outside each rounded corner (top-left,
+/// top-right, bottom-right, bottom-left) transparent, anti-aliased.
+#[cfg(feature = "shell-chrome")]
+fn clip_overlay_corners(pixels: &mut [u32], width: i32, height: i32, radii: [i32; 4]) {
+    for (corner, radius) in radii.into_iter().enumerate() {
+        let radius = radius.min(width / 2).min(height / 2);
+        if radius <= 0 {
+            continue;
+        }
+        let r = radius as f32;
+        let left = matches!(corner, 0 | 3);
+        let top = corner < 2;
+        let center_x = if left { r } else { width as f32 - r };
+        let center_y = if top { r } else { height as f32 - r };
+        let xs = if left {
+            0..radius
+        } else {
+            width - radius..width
+        };
+        let ys = if top {
+            0..radius
+        } else {
+            height - radius..height
+        };
+        for y in ys {
+            for x in xs.clone() {
+                let distance = ((x as f32 + 0.5 - center_x).powi(2)
+                    + (y as f32 + 0.5 - center_y).powi(2))
+                .sqrt();
+                let coverage = (r - distance + 0.5).clamp(0.0, 1.0);
+                if coverage >= 1.0 {
+                    continue;
+                }
+                let index = (y * width + x) as usize;
+                let pixel = pixels[index];
+                let scale =
+                    |shift: u32| (((pixel >> shift) & 0xff) as f32 * coverage).round() as u32;
+                pixels[index] = (scale(24) << 24) | (scale(16) << 16) | (scale(8) << 8) | scale(0);
+            }
+        }
     }
 }
 
@@ -12943,6 +13013,19 @@ mod tests {
             per_corner_region_row_span(393, 532, radii, 300),
             Some((0, 393))
         );
+    }
+
+    #[test]
+    #[cfg(feature = "shell-chrome")]
+    fn a_landscape_navigation_bar_cuts_only_the_screen_corner_it_meets() {
+        let (width, height) = (40, 20);
+        let mut pixels = vec![0xff3b_82f6_u32; (width * height) as usize];
+        super::clip_overlay_corners(&mut pixels, width, height, [0, 10, 0, 0]);
+        let at = |x: i32, y: i32| pixels[(y * width + x) as usize];
+        assert_eq!(at(width - 1, 0) >> 24, 0);
+        assert_eq!(at(0, 0), 0xff3b_82f6);
+        assert_eq!(at(width - 1, height - 1), 0xff3b_82f6);
+        assert_eq!(at(width - 11, 0), 0xff3b_82f6);
     }
 
     #[test]
