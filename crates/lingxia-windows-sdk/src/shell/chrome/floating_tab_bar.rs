@@ -27,8 +27,10 @@ pub(super) fn floating_tab_bar_fill() -> u32 {
     shell_palette().panel_background
 }
 
-/// Translucency the overlay applies to the pill, 0–255.
-pub(crate) const FLOATING_TAB_BAR_ALPHA: u32 = 240;
+/// Translucency the overlay applies to the pill, 0–255. An immersive bar lets
+/// more of the page through, but never so much that labels lose their plate.
+const FLOATING_TAB_BAR_ALPHA: u32 = 240;
+const FLOATING_TAB_BAR_IMMERSIVE_ALPHA: u32 = 217;
 
 /// The pill inside the strip it keeps clear: at the leading edge, a margin up
 /// from the bottom.
@@ -106,20 +108,17 @@ pub(crate) fn floating_tabbar_overlay_rect(
     compute_chrome_rects(client, layout).touch_tab_bar
 }
 
-/// Paints the floating bar into a `width × height` overlay surface; false when
-/// the layout has none.
+/// Paints the floating bar into a `width × height` overlay surface and returns
+/// the alpha to apply to it; `None` when the layout has none.
 pub(crate) fn paint_floating_tabbar_overlay(
     hdc: HDC,
     layout: &WindowsWindowLayout,
     width: i32,
     height: i32,
-) -> bool {
-    let Some(tabbar) = shell_layout(layout)
+) -> Option<u32> {
+    let tabbar = shell_layout(layout)
         .and_then(|layout| layout.touch_tab_bar.as_ref())
-        .filter(|tabbar| tabbar.visible && tabbar.floating)
-    else {
-        return false;
-    };
+        .filter(|tabbar| tabbar.visible && tabbar.floating)?;
     draw_floating_tab_bar(
         hdc,
         RECT {
@@ -130,7 +129,11 @@ pub(crate) fn paint_floating_tabbar_overlay(
         },
         tabbar,
     );
-    true
+    Some(if tabbar.background_transparent {
+        FLOATING_TAB_BAR_IMMERSIVE_ALPHA
+    } else {
+        FLOATING_TAB_BAR_ALPHA
+    })
 }
 
 #[cfg(test)]

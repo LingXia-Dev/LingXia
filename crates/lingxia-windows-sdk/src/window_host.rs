@@ -4031,15 +4031,16 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             pixel_count * std::mem::size_of::<u32>(),
         );
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        let floating = crate::shell::paint_floating_tabbar_overlay(dc, layout, width, height);
-        if floating {
+        let floating_alpha = crate::shell::paint_floating_tabbar_overlay(dc, layout, width, height);
+        let floating = floating_alpha.is_some();
+        if let Some(alpha) = floating_alpha {
             let _ = windows::Win32::Graphics::Gdi::GdiFlush();
             for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
             let radius = height / 2;
             clip_overlay_corners(pixels, width, height, [radius; 4], None);
-            let alpha = crate::shell::FLOATING_TAB_BAR_ALPHA as f32 / 255.0;
+            let alpha = alpha as f32 / 255.0;
             for pixel in pixels.iter_mut() {
                 *pixel = scale_premultiplied(*pixel, alpha);
             }

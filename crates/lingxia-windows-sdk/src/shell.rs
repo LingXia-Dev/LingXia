@@ -82,9 +82,6 @@ pub use chrome::begin_address_edit;
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{ChromeItem, chrome_items};
 pub(crate) use chrome::{
-    FLOATING_TAB_BAR_ALPHA, floating_tabbar_overlay_rect, paint_floating_tabbar_overlay,
-};
-pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
     paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
     phone_tab_switcher_hit, phone_tab_switcher_layout,
@@ -109,6 +106,7 @@ pub(crate) use chrome::{
 pub(crate) use chrome::{
     collapsed_aside_handle_hit, drag_ghost_colors, main_aside_drop_rect, sidebar_resize_edge,
 };
+pub(crate) use chrome::{floating_tabbar_overlay_rect, paint_floating_tabbar_overlay};
 pub(crate) use runtime::{
     aside_tab_drag_label, aside_tab_promotable, cancel_sidebar_drag, demote_lxapp_main,
     promote_aside_tab, set_sidebar_drag_width, sidebar_main_drag_label, sidebar_main_drag_source,

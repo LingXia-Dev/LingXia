@@ -6,6 +6,7 @@ import com.lingxia.lxapp.chrome.NavigationBarState
 import com.lingxia.lxapp.chrome.NavigationBar
 import com.lingxia.lxapp.chrome.TabBarState
 import com.lingxia.lxapp.chrome.TabBar
+import com.lingxia.lxapp.chrome.TabBarShape
 import com.lingxia.lxapp.chrome.TabBarInsets
 import com.lingxia.lxapp.chrome.TabBarOverflowSheet
 import com.lingxia.lxapp.chrome.CapsuleButton
@@ -153,6 +154,8 @@ class LxAppActivity : AppCompatActivity() {
         /** How long lifting a forced orientation waits for the window to turn back. */
         private const val ORIENTATION_RETURN_TIMEOUT_MS = 1500L
         private const val RETIRED_GPU_CONTAINER = "retired_gpu_container"
+        /** Most tabs a floating bar holds: five 60 dp cells clear a fold's crease. */
+        private const val FLOATING_TAB_BAR_MAX_ITEMS = 5
 
         /**
          * Update TabBar UI for a specific appId
@@ -327,6 +330,10 @@ class LxAppActivity : AppCompatActivity() {
     private lateinit var webViewContainer: FrameLayout
     internal var pullToRefreshHelper: PullToRefreshHelper? = null
     private var tabBar: TabBar? = null
+    /** The tab bar as the lxapp declares it, before [adaptTabBar] fits it to the window. */
+    private var declaredTabBar: TabBarState? = null
+    /** One neutral status band over the main and a tab column; see [layoutBesideTabColumn]. */
+    private var statusBand: View? = null
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
     private var presenterReady = false
@@ -496,7 +503,7 @@ class LxAppActivity : AppCompatActivity() {
         if (chrome != null) {
             syncNavigationBarToTabBar(tabBar?.visibility == View.VISIBLE)
             val controller = WindowCompat.getInsetsController(window, window.decorView)
-            if (controller.isAppearanceLightStatusBars != !chrome.dark) controller.isAppearanceLightStatusBars = !chrome.dark
+            applyStatusBarGlyphs(null)
             if (controller.isAppearanceLightNavigationBars != !chrome.dark) controller.isAppearanceLightNavigationBars = !chrome.dark
         }
     }
@@ -680,6 +687,11 @@ class LxAppActivity : AppCompatActivity() {
         }
         setContentView(rootContainer)
         observeGpuChromeInsets()
+        rootContainer.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                rootContainer.post { refitTabBarShape() }
+            }
+        }
 
         // Cover the home cold start until its page first renders (or times out).
         SplashOverlay.attachIfNeeded(this, appId)
@@ -733,7 +745,8 @@ class LxAppActivity : AppCompatActivity() {
             // nav. A hidden bar must not take this path — the reserved band
             // would be empty host chrome. The WebView still stays out of the
             // gesture / navigation zone via [updateLayoutMargins].
-            val hostOwnsBottom = !isTabBarTransparent && tabBar?.visibility == View.VISIBLE
+            val hostOwnsBottom = !isTabBarTransparent && tabBar?.visibility == View.VISIBLE &&
+                tabBar?.shape != TabBarShape.FLOATING
 
             // Keep host chrome anchored while resizing only the WebView around the IME.
             // Applying the IME inset to rootContainer also lifts the TabBar, unlike the
@@ -1114,10 +1127,10 @@ class LxAppActivity : AppCompatActivity() {
         rootContainer.addView(webViewContainer)
     }
 
-    private fun setupTabBar(config: TabBarState?, preserveGpuFrame: Boolean = true) {
+    private fun setupTabBar(declared: TabBarState?, preserveGpuFrame: Boolean = true) {
         val page = currentWebView as? GpuPage
         if (preserveGpuFrame && page != null && gpuTransitionCover == null &&
-            (config?.visible == true) != (tabBar?.visibility == View.VISIBLE)) {
+            (declared?.visible == true) != (tabBar?.visibility == View.VISIBLE)) {
             val version = gpuTransitionVersion
             // Runtime chrome events precede navigation. Cover the old geometry
             // before changing it; navigation will own the cover if it follows.
@@ -1143,12 +1156,15 @@ class LxAppActivity : AppCompatActivity() {
                         }
                     }
                 }
-                setupTabBar(config, false)
+                setupTabBar(declared, false)
                 // A navigation that followed the chrome change has already paused this page.
                 if (currentWebView === page) page.resume()
             })
             return
         }
+        declaredTabBar = declared
+        val shape = declared?.let { touchTabBarShape(it) } ?: TabBarShape.STRIP
+        val config = declared?.let { adaptTabBar(it, shape) }
         if (config == null) {
             tabBar?.let { bar ->
                 (bar.parent as? ViewGroup)?.removeView(bar)
@@ -1171,7 +1187,7 @@ class LxAppActivity : AppCompatActivity() {
         if (tabBar == null) {
             tabBar = TabBar(this).apply {
                 gpuChrome?.let { setTheme(TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine)) }
-                setConfig(config)
+                setConfig(config, shape)
                 setOnTabSelectedListener { index, path ->
                     // Use new UI event API
                     dispatchTabClick(index)
@@ -1202,13 +1218,102 @@ class LxAppActivity : AppCompatActivity() {
                 rootContainer.addView(tabBar)
             }
         } else {
-            tabBar?.setConfig(config)
+            tabBar?.setConfig(config, shape)
             tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) }
             // Config changed; re-apply for whatever is on screen right now.
             syncNavigationBarToTabBar(visible = tabBar?.visibility == View.VISIBLE)
         }
 
         updateLayoutMargins()
+    }
+
+    /**
+     * A large screen's tabs (short side regular) leave the phone's strip: a pill floating at the
+     * bottom-left while the window is clearly portrait (at least 6:5), else a column at the
+     * right edge (Apple's iPhone Duo bar placement) — also for more tabs than the pill holds.
+     */
+    private fun touchTabBarShape(config: TabBarState): TabBarShape {
+        val width = rootContainer.width
+        val height = rootContainer.height
+        if (width <= 0 || height <= 0 || config.position != TabBarState.Position.BOTTOM) return TabBarShape.STRIP
+        // A phone keeps its strip even on its side: only a large screen (an open foldable, a
+        // tablet; Android's sw600dp) moves the tabs. The smallest width holds through rotation.
+        if (resources.configuration.smallestScreenWidthDp < com.lingxia.view.GpuFoldAdapter.COMPACT_MAX_DP) {
+            return TabBarShape.STRIP
+        }
+        return if (height * 5 >= width * 6 && config.list.size <= FLOATING_TAB_BAR_MAX_ITEMS)
+            TabBarShape.FLOATING else TabBarShape.COLUMN
+    }
+
+    /** The declared bar refitted to [shape]; every item gets a cell, so nothing folds into "more". */
+    private fun adaptTabBar(config: TabBarState, shape: TabBarShape): TabBarState = when (shape) {
+        TabBarShape.STRIP -> config
+        TabBarShape.FLOATING -> config.copy(dimension = TabBar.FLOATING_STRIP_DP, overflowStartIndex = -1)
+        // A column takes its own width, so an immersive bar's see-through background has nothing to show.
+        TabBarShape.COLUMN -> config.copy(
+            position = TabBarState.Position.RIGHT,
+            dimension = TabBar.COLUMN_WIDTH_DP,
+            overflowStartIndex = -1,
+            backgroundColor = if (config.isBackgroundTransparent()) gpuChrome?.bar ?: Color.WHITE
+                else config.backgroundColor,
+        )
+    }
+
+    /** Refits the bar when the window crosses a shape boundary (rotation, fold, resize). */
+    private fun refitTabBarShape() {
+        val declared = declaredTabBar ?: return
+        val bar = tabBar ?: return
+        if (touchTabBarShape(declared) == bar.shape) return
+        setupTabBar(declared, false)
+        showTabBar(bar.visibility == View.VISIBLE)
+        rootContainer.requestApplyInsets()
+    }
+
+    private fun tabColumnWidth(): Int {
+        val bar = tabBar ?: return 0
+        if (bar.shape != TabBarShape.COLUMN || bar.visibility != View.VISIBLE || isMediaFullscreen) return 0
+        return bar.layoutParams?.width ?: 0
+    }
+
+    /**
+     * Beside a tab column the navigation bar and capsule span the main only, and the status
+     * bar is one band in the column's colour: a real status bar has a single tint, and its
+     * icons sit over the column.
+     */
+    private fun layoutBesideTabColumn() {
+        val column = tabColumnWidth()
+        navigationBar?.let { nav ->
+            (nav.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                if (lp.rightMargin != column) {
+                    lp.rightMargin = column
+                    nav.layoutParams = lp
+                }
+            }
+        }
+        layoutCapsuleButton()
+        if (column == 0) {
+            val band = statusBand?.takeIf { it.visibility == View.VISIBLE } ?: return
+            band.visibility = View.GONE
+            applyStatusBarGlyphs(NativeApi.getNavigationBarState(appId, currentWebView?.getCurrentPath() ?: ""))
+        } else {
+            val band = statusBand ?: View(this).also {
+                statusBand = it
+                rootContainer.addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0))
+            }
+            val height = getStatusBarHeight(this)
+            (band.layoutParams as FrameLayout.LayoutParams).let { lp ->
+                if (lp.height != height) {
+                    lp.height = height
+                    band.layoutParams = lp
+                }
+            }
+            band.setBackgroundColor(tabBar?.config?.backgroundColor ?: Color.WHITE)
+            if (band.visibility != View.VISIBLE) {
+                band.visibility = View.VISIBLE
+                rootContainer.bringChildToFront(band)
+            }
+            applyStatusBarGlyphs(null)
+        }
     }
 
     private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarState) {
@@ -1238,6 +1343,7 @@ class LxAppActivity : AppCompatActivity() {
                 gravity = Gravity.BOTTOM
                 applyHorizontalTabBarInsets(tabBar, this, tabBarSizePx, isTabBarTransparent)
             }
+            if (tabBar.shape == TabBarShape.FLOATING) applyFloatingTabBarInsets(tabBar, this, tabBarSizePx)
             tabBar.layoutParams = this
         } ?: run {
             // Create new LayoutParams with correct initial dimensions
@@ -1258,8 +1364,20 @@ class LxAppActivity : AppCompatActivity() {
                     applyHorizontalTabBarInsets(tabBar, this, tabBarSizePx, isTabBarTransparent)
                 }
             }
+            if (tabBar.shape == TabBarShape.FLOATING) applyFloatingTabBarInsets(tabBar, newLayoutParams, tabBarSizePx)
             tabBar.layoutParams = newLayoutParams
         }
+    }
+
+    /**
+     * A floating bar's strip reaches the screen's bottom edge; the pill sits above the
+     * navigation bar or gesture zone. The strip itself is see-through, so the page or the
+     * canvas shows around the pill.
+     */
+    private fun applyFloatingTabBarInsets(tabBar: TabBar, params: FrameLayout.LayoutParams, tabBarSizePx: Int) {
+        params.height = tabBarSizePx + systemBottomInset
+        params.bottomMargin = 0
+        tabBar.setPadding(0, 0, 0, systemBottomInset)
     }
 
     private fun applyHorizontalTabBarInsets(
@@ -1292,6 +1410,7 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) {
             navigationBar?.visibility = View.GONE
             tabBar?.visibility = View.GONE
+            statusBand?.visibility = View.GONE
             FrameLayout.LayoutParams(webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
                 topMargin = 0
                 bottomMargin = 0
@@ -1323,6 +1442,7 @@ class LxAppActivity : AppCompatActivity() {
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
         if (container != null) ownChrome[container] = chrome
+        layoutBesideTabColumn()
         layoutKeptPages()
         pullToRefreshHelper?.restorePageOffset()
     }
@@ -1688,7 +1808,7 @@ class LxAppActivity : AppCompatActivity() {
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
                 topMargin = capsuleTopMarginPx
-                rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
+                rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + tabColumnWidth()
             }
             setOnMenuClickListener {
                 CapsuleMenuBottomSheet.show(this@LxAppActivity, appId)
@@ -1709,7 +1829,7 @@ class LxAppActivity : AppCompatActivity() {
         val lp = capsule.layoutParams as? FrameLayout.LayoutParams ?: return
         val density = resources.displayMetrics.density
         val top = LxAppTheme.Metrics.calculateCapsuleTopMargin(getStatusBarHeight(this), density)
-        val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
+        val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + tabColumnWidth()
         if (lp.topMargin != top || lp.rightMargin != trailing) {
             lp.topMargin = top
             lp.rightMargin = trailing
@@ -2221,6 +2341,7 @@ class LxAppActivity : AppCompatActivity() {
         // Keep tabs interactive so a newer selection can supersede this transition.
         gpuTransitionCover?.let { rootContainer.bringChildToFront(it) }
         tabBar?.let { rootContainer.bringChildToFront(it) }
+        statusBand?.let { rootContainer.bringChildToFront(it) }
         rootContainer.findViewWithTag<View>("capsule_button")?.let { rootContainer.bringChildToFront(it) }
     }
 
@@ -2283,8 +2404,12 @@ class LxAppActivity : AppCompatActivity() {
         val background = config.backgroundColor
         val isTransparent = background == Color.TRANSPARENT ||
                             (background?.let { Color.alpha(it) < 255 } == true)
-        val actual: Int = when (config.position) {
-            TabBarState.Position.BOTTOM -> background
+        if (tabBar?.shape == TabBarShape.FLOATING) {
+            updateNavigationBarTransparency(this, isTabBarTransparent = true)
+            return
+        }
+        val actual: Int = when {
+            config.position == TabBarState.Position.BOTTOM || tabBar?.shape == TabBarShape.COLUMN -> background
             else -> 0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
         }
         updateNavigationBarTransparency(this, isTransparent, actual)
@@ -2389,6 +2514,7 @@ class LxAppActivity : AppCompatActivity() {
         if (shouldRestoreOverlayOrder) {
             navigationBar?.let { rootContainer.bringChildToFront(it) }
             tabBar?.let { rootContainer.bringChildToFront(it) }
+            statusBand?.let { rootContainer.bringChildToFront(it) }
             rootContainer.findViewWithTag<View>("capsule_button")?.let { rootContainer.bringChildToFront(it) }
             shouldRestoreOverlayOrder = false
         }
@@ -2789,7 +2915,9 @@ class LxAppActivity : AppCompatActivity() {
 
     /** Keep status bar glyphs legible against native chrome or custom content. */
     private fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
-        val lightGlyphs = gpuChrome?.dark ?: if (navbarState?.showNavbar == true) {
+        val band = statusBand?.takeIf { it.visibility == View.VISIBLE }
+        val bandColor = (band?.background as? android.graphics.drawable.ColorDrawable)?.color
+        val lightGlyphs = bandColor?.let { NavigationBar.ColorUtils.isColorDark(it) } ?: gpuChrome?.dark ?: if (navbarState?.showNavbar == true) {
             !NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarForegroundColor)
         } else {
             (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -3421,6 +3549,8 @@ class LxAppActivity : AppCompatActivity() {
             })
         }
         rootContainer.post { reportSurfaceWidthIfNeeded() }
+        // A display-size change keeps the window's pixels but not its dp width.
+        rootContainer.post { refitTabBarShape() }
         dispatchUiOrientationChangeIfNeeded()
     }
 

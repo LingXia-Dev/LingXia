@@ -47,9 +47,7 @@ pub(crate) use aside_panel::aside_tab_drag_source;
 use aside_panel::*;
 pub(super) use drawing::*;
 use floating_tab_bar::*;
-pub(crate) use floating_tab_bar::{
-    FLOATING_TAB_BAR_ALPHA, floating_tabbar_overlay_rect, paint_floating_tabbar_overlay,
-};
+pub(crate) use floating_tab_bar::{floating_tabbar_overlay_rect, paint_floating_tabbar_overlay};
 pub use layout::*;
 use native_panel::*;
 pub(crate) use notice::paint_shell_notice;

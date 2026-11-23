@@ -74,6 +74,13 @@ internal data class TabBarState(
     }
 }
 
+/**
+ * How the bar stands. A touch host in regular width floats it as a pill at the
+ * bottom-left of a clearly portrait screen, and otherwise stands it in a column
+ * at the right edge; everywhere else it is the phone's full-width strip.
+ */
+internal enum class TabBarShape { STRIP, FLOATING, COLUMN }
+
 internal data class TabBarItem(
     // Index in lxapp.json, which selection and clicks key on. Only the items
     // this host shows are sent, so this is not the item's position in the list.
@@ -125,6 +132,18 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         // icon, standing in for the selected artwork it does not have.
         private const val ACTIVE_INDICATOR_SIZE_DP = 36
         private const val ACTIVE_INDICATOR_ALPHA = 0x33
+
+        const val FLOATING_CELL_DP = 60
+        const val FLOATING_PADDING_DP = 6
+        const val FLOATING_MARGIN_DP = 12
+        /** The strip a floating bar keeps clear: its pill and margins. */
+        const val FLOATING_STRIP_DP = FLOATING_CELL_DP + 2 * FLOATING_MARGIN_DP
+        const val FLOATING_ALPHA = 240
+        /** An immersive bar lets more of the page through, never so much that labels lose their plate. */
+        const val FLOATING_IMMERSIVE_ALPHA = 217
+        const val COLUMN_WIDTH_DP = 80
+        private const val COLUMN_CELL_PITCH_DP = 64
+        private const val COLUMN_BOTTOM_DP = 24
     }
 
     /** One rendered strip slot: a declared tab, or the overflow affordance. */
@@ -134,6 +153,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     internal var config = TabBarState()
+    internal var shape = TabBarShape.STRIP
+        private set
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
     /** Parallel to [tabViews]: what each rendered slot stands for. */
@@ -190,12 +211,15 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         updateItemsContainerLayoutOnly(currentConfig)
         itemsContainer?.apply {
             val isVerticalTabBar = currentConfig.position.value == TabBarState.POSITION_LEFT || currentConfig.position.value == TabBarState.POSITION_RIGHT
-            val backgroundColor = when {
-                currentConfig.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
-                isVerticalTabBar -> VERTICAL_TABBAR_BACKGROUND_COLOR
-                else -> currentConfig.backgroundColor
+            when (shape) {
+                TabBarShape.FLOATING -> background = floatingPill(currentConfig)
+                TabBarShape.COLUMN -> setBackgroundColor(Color.TRANSPARENT)
+                TabBarShape.STRIP -> setBackgroundColor(when {
+                    currentConfig.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
+                    isVerticalTabBar -> VERTICAL_TABBAR_BACKGROUND_COLOR
+                    else -> currentConfig.backgroundColor
+                })
             }
-            setBackgroundColor(backgroundColor)
         }
     }
 
@@ -232,7 +256,42 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             } else { // itemsContainer is horizontal (TabBar is BOTTOM)
                 Gravity.CENTER
             }
+            setPadding(0, 0, 0, 0)
+            val density = resources.displayMetrics.density
+            when (shape) {
+                TabBarShape.FLOATING -> {
+                    layoutParams = LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        (FLOATING_CELL_DP * density).toInt(),
+                    ).apply { marginStart = (FLOATING_MARGIN_DP * density).toInt() }
+                    val pad = (FLOATING_PADDING_DP * density).toInt()
+                    setPadding(pad, 0, pad, 0)
+                }
+                // Cells sit low, where the hand holding the screen reaches them.
+                TabBarShape.COLUMN -> {
+                    layoutParams = LayoutParams(
+                        (tabBarDimension * density).toInt(),
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                    setPadding(0, 0, 0, (COLUMN_BOTTOM_DP * density).toInt())
+                }
+                TabBarShape.STRIP -> {}
+            }
         }
+        gravity = if (shape == TabBarShape.FLOATING) Gravity.CENTER_VERTICAL or Gravity.START
+            else Gravity.TOP or Gravity.START
+    }
+
+    /** A rounded, slightly see-through plate: the page shows faintly around the tabs. */
+    private fun floatingPill(state: TabBarState): Drawable = GradientDrawable().apply {
+        val density = resources.displayMetrics.density
+        cornerRadius = FLOATING_CELL_DP * density / 2f
+        val immersive = state.isBackgroundTransparent()
+        val fill = if (immersive) theme?.background ?: Color.WHITE else state.backgroundColor
+        val alpha = if (immersive) FLOATING_IMMERSIVE_ALPHA else FLOATING_ALPHA
+        setColor((fill and 0x00FFFFFF) or (alpha shl 24))
+        if (state.borderStyle != 0) setStroke(maxOf(1, density.toInt()), state.borderStyle)
     }
 
     private fun performLayoutForPosition() {
@@ -240,6 +299,10 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
         val isBackgroundTransparent = config.isBackgroundTransparent()
 
+        if (shape == TabBarShape.FLOATING) {
+            addView(itemsContainer)
+            return
+        }
         when (config.position.value) {
             TabBarState.POSITION_BOTTOM -> {
                 if (!isBackgroundTransparent) {
@@ -270,7 +333,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 orientation = HORIZONTAL
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
-                        setBackgroundColor(VERTICAL_BORDER_COLOR)
+                        setBackgroundColor(if (shape == TabBarShape.COLUMN) config.borderStyle else VERTICAL_BORDER_COLOR)
                         layoutParams = LayoutParams(
                             (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt(),
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -298,13 +361,14 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         rawConfig?.let { setConfig(it.copy(selectedIndex = config.selectedIndex)) }
     }
 
-    fun setConfig(newConfig: TabBarState) {
+    fun setConfig(newConfig: TabBarState, newShape: TabBarShape = shape) {
         if (!isValidConfig(newConfig)) {
             Log.w(TAG, "Invalid TabBar config provided")
             return
         }
 
         rawConfig = newConfig
+        shape = newShape
         config = theme?.let { t ->
             newConfig.copy(
                 backgroundColor = if (newConfig.isBackgroundTransparent()) newConfig.backgroundColor else t.background,
@@ -317,13 +381,16 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         val isBackgroundTransparent = config.isBackgroundTransparent()
 
         val tabBarBackgroundColor = when {
+            shape == TabBarShape.FLOATING -> Color.TRANSPARENT
+            shape == TabBarShape.COLUMN -> config.backgroundColor
             config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
             config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
             else -> config.backgroundColor
         }
 
         setBackgroundColor(tabBarBackgroundColor)
-        elevation = if (isBackgroundTransparent) 0f else 8f * resources.displayMetrics.density
+        elevation = if (isBackgroundTransparent || shape != TabBarShape.STRIP) 0f
+            else 8f * resources.displayMetrics.density
 
         updateItemsContainerLayout(this.config)
         performLayoutForPosition()
@@ -480,7 +547,15 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             val padH = ((if (isVertical) 6 else 0) * resources.displayMetrics.density).toInt()
             val padV = (4 * resources.displayMetrics.density).toInt()
 
-            layoutParams = if (isVertical) {
+            val density = resources.displayMetrics.density
+            layoutParams = if (shape == TabBarShape.FLOATING) {
+                LayoutParams((FLOATING_CELL_DP * density).toInt(), ViewGroup.LayoutParams.MATCH_PARENT)
+            } else if (shape == TabBarShape.COLUMN) {
+                val margin = ((COLUMN_CELL_PITCH_DP - FLOATING_CELL_DP) / 2 * density).toInt()
+                LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (FLOATING_CELL_DP * density).toInt()).apply {
+                    setMargins(margin, margin, margin, margin)
+                }
+            } else if (isVertical) {
                 LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     0,

@@ -335,8 +335,12 @@ crammed in the moment the window becomes `regular`.
 
 A touch host is a phone, foldable, or tablet, real or simulated by a Runner
 device frame (the frame owns the window controls). A simulated desktop is a
-desktop. In `regular`, a touch host departs from the desktop sidebar as below;
-in `compact` it uses §5 unchanged.
+desktop. A touch host whose smallest width (its short side) is at least
+`600 dp` — an open foldable or a tablet — departs from the desktop sidebar as
+below in `regular`. A phone keeps §5 unchanged in both holds, though on its
+side its width is `regular`: the screen is too small for a column beside it.
+The smallest width does not change with rotation, so a shape never flips
+because the device turned.
 
 **Touch tab bar.** The presented main lxapp's tabs never sit in the sidebar.
 They form the touch tab bar, in one of two shapes:
@@ -346,15 +350,17 @@ They form the touch tab bar, in one of two shapes:
   leading bottom corner, `12 dp` in from its left and bottom edges, where the
   phone's bar was. Five cells clear a fold's crease even beside the app rail.
   The page keeps clear of the strip the bar stands in (an immersive page runs
-  under it); the strip takes the page background. The pill is slightly
-  translucent.
+  under it); the strip takes the page background. The pill is translucent,
+  more so when the bar is declared immersive, but always a plate: labels
+  never sit straight on the page.
 - *Tab column* otherwise, or for more than five tabs: an `80 dp` column at the
   screen's right edge, its cells low in the column where a holding hand
   reaches them. This follows Apple's iPhone Duo bar placement; a near-square
   open foldable is held like a book, by its sides, so it takes the column too.
   The column keeps its edge in right-to-left languages; with a docked aside it
   moves to the main's left edge, so the main's tabs stay on the main's outer
-  side.
+  side. The column is opaque: the page does not run under it, so an immersive
+  bar takes the navigation-bar color.
 
 Either shape shows only on a tab page of the presented main, as the phone's bar
 does, and is outside the `820 dp` budget.
@@ -1261,7 +1267,7 @@ As of 2026-11 (adaptive layout):
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
 | Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony runtime halves implemented; iOS device-verified, Android/Harmony pending; campaign download channel and Windows not implemented |
-| Touch tab bar, app rail, and status band (§3.4) | Windows Runner landed and screenshot-verified on Mate X5 (open/tabletop), iPhone Duo (both holds, with an aside), and iPad; the Runner simulates no soft keyboard, so hiding on it is unverified; Android/iOS/HarmonyOS hosts pending |
+| Touch tab bar, app rail, and status band (§3.4) | Windows Runner landed and screenshot-verified on Mate X5 (open/tabletop), iPhone Duo (both holds, with an aside), and iPad; the Runner simulates no soft keyboard, so hiding on it is unverified, and it still gives a phone on its side the column (it reads width, not smallest width). Android tab bar and status band landed and device-verified on a phone (strip in both holds) and a `sw600dp` tablet (both holds, another lxapp opened and closed); Android has no app rail, and its asides open full screen, so the column's move beside a docked aside does not arise there. iOS/HarmonyOS hosts pending |
 | Naming migration (Appendix C ledger) | Pending — `DockedBrowser` and `open_panel_lxapp` word roots still present |
 
 ## Appendix B: Pending visual decisions
