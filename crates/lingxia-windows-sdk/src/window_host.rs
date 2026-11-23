@@ -30,7 +30,8 @@ use std::time::Instant;
 
 use lingxia_webview::platform::windows::{
     ParentRetirement, ParkOutcome, WindowsWebViewHandler, WindowsWebViewNativeView,
-    WindowsWebViewNativeViewHost, find_webview_handler, set_webview_native_view_host,
+    WindowsWebViewNativeViewHost, find_webview_handler, is_webview_ui_thread,
+    run_on_webview_ui_thread, set_webview_native_view_host,
 };
 use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{WebTag, WebViewError};
@@ -10759,11 +10760,6 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if let Some(webtag_key) = webtag_key {
                     cleanup_window_state(&webtag_key, hwnd);
                 }
-                if is_top_level_window(hwnd) && !has_live_top_level_host_window_except(hwnd) {
-                    unsafe {
-                        WindowsAndMessaging::PostQuitMessage(0);
-                    }
-                }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_IME_STARTCOMPOSITION
@@ -10852,6 +10848,18 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
         }
+    }
+
+    // Host windows live on the thread that owns every WebView controller, so
+    // host layout never waits on another UI thread.
+    if !is_webview_ui_thread() {
+        let webtag = webtag.clone();
+        return run_on_webview_ui_thread(move || create_webview_parent_window(&webtag))
+            .unwrap_or_else(|| {
+                Err(WebViewError::WebView(
+                    "WebView UI thread dropped host window creation".to_string(),
+                ))
+            });
     }
 
     // No CS_HREDRAW/CS_VREDRAW: they invalidate the whole window on every
@@ -11637,20 +11645,6 @@ fn has_visible_top_level_host_window_except(excluded: HWND) -> bool {
     })
 }
 
-fn has_live_top_level_host_window_except(excluded: HWND) -> bool {
-    let Some(handles) = WEBTAG_WINDOWS.get().and_then(|handles| handles.lock().ok()) else {
-        return false;
-    };
-    let mut seen = HashSet::new();
-    handles.values().copied().any(|handle| {
-        if handle == hwnd_handle(excluded) || !seen.insert(handle) {
-            return false;
-        }
-        let hwnd = hwnd_from_handle(handle);
-        unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() && is_top_level_window(hwnd) }
-    })
-}
-
 fn registered_host_keeps_message_loop(
     excluded: isize,
     candidate: isize,
@@ -11769,8 +11763,8 @@ pub(crate) fn webtag_is_visible(webtag_key: &str) -> bool {
 }
 
 fn park_foreign_webview_controllers(host: HWND) -> StdResult<ParentRetirement> {
-    // Snapshot before marshaling to controller threads. Never hold a registry
-    // lock across those calls, and include panels as well as parked group mains.
+    // Snapshot before parking controllers. Never hold a registry lock across
+    // those calls, and include panels as well as parked group mains.
     let children = webview_runtime::list_webviews();
     let mut retirement = ParentRetirement::Ready;
     for tag in children {
@@ -11781,8 +11775,8 @@ fn park_foreign_webview_controllers(host: HWND) -> StdResult<ParentRetirement> {
         if native == host || !handler.has_parent_window(hwnd_handle(host)) {
             continue;
         }
-        // The physical parent is checked on the controller's UI thread;
-        // presentation may have moved it since this snapshot was captured.
+        // The physical parent is rechecked when the park runs; presentation
+        // may have moved it since this snapshot was captured.
         match handler.park_from_parent(hwnd_handle(host), hwnd_handle(native))? {
             ParkOutcome::Parked => {
                 if let Some(windows) = WEBTAG_WINDOWS.get()
