@@ -765,18 +765,34 @@ it as `env.insets`. One rule on every page and platform:
   page above both bars and hides them from assistive tech and chrome
   automation. Popovers stay below. Tab bar visibility is never changed.
 - Adaptive canvas contract (`view.env`):
+  - `viewport`: the page's own region, not the window. Beside a docked side
+    panel it is the main pane. The View receives every change.
   - `sizeClass`: `'compact' | 'regular'` (`< 600 dp` vs `≥ 600 dp`, `±24 dp`
-    hysteresis), scoped to the nearest `<SizeClassScope>` when nested inside
-    `<ListDetail>` or `<Split>`.
-  - `insets` and `safeArea`: logical edges `{ top, bottom, inlineStart, inlineEnd }`
-    (alongside legacy `left`/`right` during migration).
+    hysteresis), computed from the page's own viewport, so a narrow aside in a
+    `regular` window reads `compact`. Crossing the 820 dp sidebar budget never
+    changes it. `<ListDetail>` and `<Split>` scope it, and `regular:` classes,
+    for a subtree through `<SizeClassScope>`; nothing else does.
+  - `canDock`: true while the window's size class is `regular`; false
+    otherwise and before the host has reported a layout. It says nothing about
+    where the page is shown; the page is not told its role or edge.
+  - `insets` and `safeArea`: both the physical edges `{ top, right, bottom, left }`
+    and the logical `inlineStart`/`inlineEnd`, which follow the text direction.
   - `hinge`: `{ x, y, width, height, orientation: 'vertical' | 'horizontal', posture: 'flat' | 'half-opened' } | null`
-    in page-local logical coordinates.
+    in page-local logical coordinates, clipped to each page; `null` where the
+    hinge does not cross the page. A `half-opened` posture reaches the page
+    as is: the host does not crop the page to one half.
   - `platform`: `'apple' | 'android' | 'harmony' | 'windows' | 'web'` (shortcut
     glyphs only; never for layout branching).
-  - Declarative `<page title headerActions>` owns the page navigation bar;
-    direct `<page>` children may pass `bleed` (`boolean | 'top' | 'bottom' | 'horizontal'`)
-    to extend to the physical screen edge beneath bars and cutouts.
+- Logic's `page.env` carries only `sizeClass` and `canDock`.
+  `page.env.watch` fires only when one of them flips, never on a resize.
+- Declarative `<page title>` owns the page navigation bar title; direct
+  `<page>` children may pass `bleed` (`boolean | 'top' | 'bottom' | 'horizontal'`)
+  to extend to the physical screen edge beneath bars and cutouts.
+- `useBackHandler(enabled, onBack)`: while enabled, Back calls `onBack` and
+  the page stays. The most recently mounted enabled handler takes the press.
+  Home is never intercepted.
+- A page with no `pageOrientation` does not lock the orientation; the host's
+  declared orientation applies.
 
 ---
 
@@ -833,6 +849,18 @@ mobile tabbar over the simulated WebView MUST publish the same geometry the
 real mobile host would expose.
 
 This common contract keeps View code independent from the host projection.
+
+### 9.5 Touch-host chrome in `regular`
+
+On a touch host in `regular`, four pieces of host chrome change a page's
+insets or region:
+
+- **Status band**, while a side column is visible: the page starts below
+  it, and an immersive page does not bleed under it.
+- **Floating tab bar**: the page keeps clear of the strip the bar stands in;
+  an immersive page runs under it.
+- **Tab column**: opaque; it narrows the page rather than covering it.
+- **Docked side panel**: it narrows the main page.
 
 ---
 
