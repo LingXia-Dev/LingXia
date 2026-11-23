@@ -104,6 +104,158 @@ export function Values() {
 }
 ```
 
+### A status beside the name
+
+```tsx
+import { Said } from '../example';
+import { Avatar } from '@liulidesign/core/Avatar';
+import { Badge } from '@liulidesign/core/Badge';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const members = [
+  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
+  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
+] as const;
+
+/** A status beside the name: the name gives way first, and the badge is read after it. */
+export function WithStatus() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Family members" data-testid="members">
+          {members.map(member => (
+            <Item
+              key={member.id}
+              label={member.name}
+              labelEnd={member.tone === 'success' ? <Badge tone="success" size="sm" label={member.status} /> : <Badge size="sm" label={member.status} />}
+              description={member.note}
+              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}
+              hasChevron
+              onClick={() => say(`Opened ${member.name}`)}
+              data-testid={`member-${member.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+```
+
+### A row with a remove button of its own
+
+```tsx
+import { Said } from '../example';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const devices = [
+  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
+  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+] as const;
+
+/** A row that opens its device, with a remove button of its own at the end. */
+export function WithRemove() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Emily's devices" data-testid="devices">
+          {devices.map(device => (
+            <Item
+              key={device.id}
+              label={device.name}
+              description={device.note}
+              startIcon="phone"
+              onClick={() => say(`Opened ${device.name}`)}
+              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}
+              data-testid={`device-${device.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+```
+
+### An action that ends something at once, in danger
+
+```tsx
+import { Said } from '../example';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+/** Downloads under way: stopping one ends it at once, with nothing to confirm, so the action is in danger. */
+export function WithStop() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Downloads" data-testid="downloads">
+          <Item label="Coast, November.mov" description="1.2 of 3.4 GB" startIcon="download" endAction={{ label: 'Stop downloading Coast, November.mov', icon: 'close', variant: 'destructive', onClick: () => say('Stopped Coast, November.mov'), 'data-testid': 'download-coast-stop' }} />
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+```
+
+### Rows on a right-to-left page
+
+```tsx
+import { unused } from '../example';
+import { Avatar } from '@liulidesign/core/Avatar';
+import { Badge } from '@liulidesign/core/Badge';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+/** Rows on a right-to-left page: the avatar starts the row, the status follows the name, and the action ends it on the left. */
+export function RightToLeft() {
+  return (
+    <view dir="rtl" data-testid="rtl-family">
+      <ItemList label="בני משפחה">
+        <Item label="דוד" labelEnd={<Badge tone="success" size="sm" label="אינטרנט פעיל" />} description="נותרו כשעתיים היום" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+        <Item label="האייפד של אמילי" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />
+        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="ללא בקרה" />} description="בקרת הורים כבויה · 3 מכשירים" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
+      </ItemList>
+    </view>
+  );
+}
+```
+
+### Lists under headings
+
+```tsx
+import { unused } from '../example';
+import { Avatar } from '@liulidesign/core/Avatar';
+import { Section } from '@liulidesign/core/Section';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const members = [
+  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
+  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
+] as const;
+const devices = [
+  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
+  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+] as const;
+
+/** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */
+export function TitledLists() {
+  return (
+    <view className="gap-6" data-testid="titled-lists">
+      <Section title="Family members" headingLevel={4}>
+        <ItemList label="Family members">
+          <Item label="David" description="4 devices" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+        </ItemList>
+      </Section>
+      <ItemList title="Other devices" description="Controls only work while devices are on your home Wi-Fi.">
+        <Item label="Not assigned" description="2 devices aren't anyone's" startIcon="info" hasChevron onClick={unused} />
+        <Item label="Shared or guest" description="No one's controls apply" hasChevron onClick={unused} />
+      </ItemList>
+    </view>
+  );
+}
+```
+
 ### A control at the end
 
 ```tsx
@@ -267,6 +419,8 @@ export function Compact() {
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `startIcon` | `IconRef` |  | An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. |
+| `labelEnd` | `Child` |  | On the label's line, after it: a status Badge beside a name. The name truncates first; this is never squeezed. On a pressable row its text is read after the name, before the second line. |
+| `endAction` | `ItemEndAction` |  | One icon button after `endContent`, a control of its own: pressing it never presses the row, and it is reached on its own by keyboard and screen reader. |
 | `endContent` | `Child` |  | After the text: a value, a badge, or, on a row without `onClick`, a control such as a Button. On a pressable row its text is read after the second line, as the row's description. |
 | `density` | `ItemDensity` |  | The row's height and padding. By default the ItemList's, else `comfortable`. |
 | `swipeActions` | `readonly ItemSwipeAction[]` |  | Up to three actions behind the row's end, shown by dragging the row toward its start. A screen reader offers them as the row's actions; with a keyboard the arrow keys open the row. |
@@ -361,6 +515,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
+- Do: Give a row one control of its own with `endAction`, named for the row ("Remove Emily's iPad"); such a row rarely wants a chevron. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
+- Do: Set `dir` on a value whose direction differs from the page's, such as a Latin "2 h" in a Hebrew row; a row does not isolate it.
 - Do: Keep the label short and put detail in `description`.
 - Do: At large text, keep `endContent` to a short value or badge: it keeps its whole width and the label and description wrap beside it.
 - Do: Group rows in an ItemList, so the rows are divided and read with their position.

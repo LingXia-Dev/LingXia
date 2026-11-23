@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Navigation, Selection, Values, WithControl, Destructive, Swipe, Compact, StatePressable, StateSelected, StateDisabled, Disabled } from '../../core/src/Item/Item.examples';
+import { Navigation, WithStatus, WithRemove, WithStop, RightToLeft, TitledLists, Selection, Values, WithControl, Destructive, Swipe, Compact, StatePressable, StateSelected, StateDisabled, Disabled } from '../../core/src/Item/Item.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,21 @@ export function Content() {
         <Navigation />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"A status beside the name"} bare>
+          <WithStatus />
+        </Stage>
+        <Stage caption={"A row with a remove button of its own"} bare>
+          <WithRemove />
+        </Stage>
+        <Stage caption={"An action that ends something at once, in danger"} bare>
+          <WithStop />
+        </Stage>
+        <Stage caption={"Right to left: the row mirrors, the action ends it on the left"} bare>
+          <RightToLeft />
+        </Stage>
+        <Stage caption={"A list title on the card's edge, as a Section heading"} bare>
+          <TitledLists />
+        </Stage>
         <Stage caption={"Choosing one, the chosen row selected"} bare>
           <Selection />
         </Stage>

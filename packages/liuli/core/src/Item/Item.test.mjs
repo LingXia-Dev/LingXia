@@ -205,3 +205,73 @@ test('the second line comes first, then the end value; a value alone is the whol
   assert.deepEqual(described(screen, screen.getByTestId('fixed')), ['Kept for these devices', '1 device']);
   assert.deepEqual(described(screen, screen.getByTestId('value-only')), ['1 device'], 'a value alone: "Fixed addresses, 1 device"');
 });
+
+test('WithStatus: the badge sits on the name\'s line, never shrinks, and is read after the name, before the second line', async () => {
+  const screen = await renderExample('Item/Item', 'WithStatus');
+  const row = screen.getByTestId('member-alexandra');
+  assert.equal(row.props.accessibilityLabel, 'Alexandra-Charlotte Montgomery', 'the name alone');
+  assert.deepEqual(described(screen, row), ['No controls', 'Parental controls are off · 3 devices']);
+  const name = screen.getByText('Alexandra-Charlotte Montgomery');
+  assert.equal(name.parent.props.flexDirection, 'row');
+  assert.deepEqual([name.props.whiteSpace, name.props.textOverflow, name.props.shrink], ['nowrap', 'ellipsis', 1], 'the name truncates');
+  const beside = name.parent.children[1];
+  assert.equal(beside.props.shrink, 0, 'the badge is never squeezed');
+  assert.equal(beside.props.accessibilityHidden, 1, 'read once, as the description');
+});
+
+test('on a row that is not pressable the badge is read where it stands, after the name', async () => {
+  const screen = await renderPage(`
+    import { Item, ItemList } from '@liulidesign/core/Item';
+    import { Badge } from '@liulidesign/core/Badge';
+    export function render() {
+      return <page><ItemList label="Plan"><Item label="Fibre 500" labelEnd={<Badge label="Current" />} description="Renews 3 May" data-testid="plan" /></ItemList></page>;
+    }
+  `);
+  const row = screen.getByTestId('plan');
+  assert.equal(row.props.ariaDescribedBy, undefined);
+  assert.equal(screen.getByText('Current').props.accessibilityHidden, undefined);
+});
+
+test('WithRemove: the end action is its own button, never the row: its own name, not hidden, not read as the row\'s description', async () => {
+  const screen = await renderExample('Item/Item', 'WithRemove');
+  const row = screen.getByTestId('device-ipad');
+  const remove = screen.getByTestId('device-ipad-remove');
+  assert.equal(remove.tag, 'button');
+  assert.equal(remove.props.accessibilityLabel, "Remove Emily's iPad");
+  assert.equal(remove.props.accessibilityHidden, undefined);
+  assert.equal(row.props.accessibilityLabel, "Emily's iPad");
+  assert.deepEqual(described(screen, row), ['Online · 2 h today'], 'the action is not part of the row\'s description');
+  assert.notEqual(remove.props.onClick, row.props.onClick, 'two handlers: pressing the action is not pressing the row');
+  screen.press(remove);
+  assert.ok(screen.getByText("Removed Emily's iPad"));
+  assert.equal(screen.queryAll(node => node.props.text === "Opened Emily's iPad").length, 0);
+});
+
+test('WithRemove: the action keeps 32 pt inside the row, reaches the touch minimum around it, and sits at the inline end, neutral', async () => {
+  const screen = await renderExample('Item/Item', 'WithRemove');
+  const remove = screen.getByTestId('device-ipad-remove');
+  assert.deepEqual([remove.props.width, remove.props.height], [32, 32], 'the host grows the touch target to 44, not the row');
+  assert.equal(remove.props.color, 'text-muted');
+  const row = screen.getByTestId('device-ipad');
+  const parts = row.children;
+  assert.equal(parts.at(-1), remove, 'last in the row, so at the inline end in either direction');
+});
+
+test('WithStop: an action that ends something at once is in danger', async () => {
+  const screen = await renderExample('Item/Item', 'WithStop');
+  assert.equal(screen.getByTestId('download-coast-stop').props.color, 'danger');
+});
+
+test('TitledLists: a list title and its note sit on the card\'s edge, with no inset of their own', async () => {
+  const screen = await renderExample('Item/Item', 'TitledLists');
+  const title = screen.getByText('Other devices');
+  const note = screen.getByText('Controls only work while devices are on your home Wi-Fi.');
+  for (const node of [title, note]) assert.equal(node.props.paddingStart ?? node.props.paddingLeft ?? node.props.paddingHorizontal ?? 0, 0);
+});
+
+test('RightToLeft: the rows take the page direction; the action keeps its own name', async () => {
+  const screen = await renderExample('Item/Item', 'RightToLeft');
+  assert.equal(screen.getByTestId('rtl-family').props.direction, 'rtl');
+  const action = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'הסרת האייפד של אמילי')[0];
+  assert.ok(action, 'the end action is its own button');
+});

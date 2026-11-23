@@ -17,6 +17,11 @@ export function registerPressable(component: unknown) {
   pressables.add(component);
 }
 
+/** Whether any top-level node of `children` is a control: a Liuli pressable or a plain button. */
+export function holdsControl(children: Child): boolean {
+  return childrenToArray(children).some(child => typeof child === 'object' && child !== null && (pressables.has(elementType(child)) || elementType(child) === 'button'));
+}
+
 /** For a pressable: the wiring of the overlay it opens, if it is one's trigger. */
 export function useTrigger() {
   return useContext(TriggerContext);

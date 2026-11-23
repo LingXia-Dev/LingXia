@@ -10118,6 +10118,18 @@
           "description": "An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read."
         },
         {
+          "name": "labelEnd",
+          "type": "Child",
+          "required": false,
+          "description": "On the label's line, after it: a status Badge beside a name. The name truncates first; this is never squeezed. On a pressable row its text is read after the name, before the second line."
+        },
+        {
+          "name": "endAction",
+          "type": "ItemEndAction",
+          "required": false,
+          "description": "One icon button after `endContent`, a control of its own: pressing it never presses the row, and it is reached on its own by keyboard and screen reader."
+        },
+        {
           "name": "endContent",
           "type": "Child",
           "required": false,
@@ -10258,9 +10270,12 @@
         "iconTile": "view",
         "start": "view",
         "text": "view",
+        "labelLine": "view",
         "label": "text",
+        "labelEnd": "view",
         "description": "text",
         "end": "view",
+        "endAction": "button",
         "chevron": "vector",
         "swipe": "view",
         "slide": "view",
@@ -10414,6 +10429,31 @@
           "source": "import { Item, ItemList } from '@liulidesign/core/Item';\n\nconst folder = [{ d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinejoin: 'round' }] as const;\n\n/** A value at the end of a read-only row, and an icon at the start. */\nexport function Values() {\n  return (\n    <ItemList label=\"About\">\n      <Item\n        label=\"Version\"\n        endContent={<text className=\"text-footnote text-muted\">2.4.1</text>}\n        data-testid=\"version\"\n      />\n      <Item\n        label=\"Storage\"\n        description=\"Photos and documents\"\n        startContent={<vector aria-hidden paths={folder} viewBox={[0, 0, 24, 24]} className=\"size-5\" />}\n        endContent={<text className=\"text-footnote text-muted\">7.2 GB</text>}\n      />\n    </ItemList>\n  );\n}"
         },
         {
+          "name": "WithStatus",
+          "title": "A status beside the name",
+          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },\n  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },\n] as const;\n\n/** A status beside the name: the name gives way first, and the badge is read after it. */\nexport function WithStatus() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Family members\" data-testid=\"members\">\n          {members.map(member => (\n            <Item\n              key={member.id}\n              label={member.name}\n              labelEnd={member.tone === 'success' ? <Badge tone=\"success\" size=\"sm\" label={member.status} /> : <Badge size=\"sm\" label={member.status} />}\n              description={member.note}\n              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${member.name}`)}\n              data-testid={`member-${member.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "WithRemove",
+          "title": "A row with a remove button of its own",
+          "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst devices = [\n  { id: 'ipad', name: \"Emily's iPad\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Emily's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** A row that opens its device, with a remove button of its own at the end. */\nexport function WithRemove() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Emily's devices\" data-testid=\"devices\">\n          {devices.map(device => (\n            <Item\n              key={device.id}\n              label={device.name}\n              description={device.note}\n              startIcon=\"phone\"\n              onClick={() => say(`Opened ${device.name}`)}\n              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}\n              data-testid={`device-${device.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "WithStop",
+          "title": "An action that ends something at once, in danger",
+          "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\n/** Downloads under way: stopping one ends it at once, with nothing to confirm, so the action is in danger. */\nexport function WithStop() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Downloads\" data-testid=\"downloads\">\n          <Item label=\"Coast, November.mov\" description=\"1.2 of 3.4 GB\" startIcon=\"download\" endAction={{ label: 'Stop downloading Coast, November.mov', icon: 'close', variant: 'destructive', onClick: () => say('Stopped Coast, November.mov'), 'data-testid': 'download-coast-stop' }} />\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "RightToLeft",
+          "title": "Rows on a right-to-left page",
+          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\n/** Rows on a right-to-left page: the avatar starts the row, the status follows the name, and the action ends it on the left. */\nexport function RightToLeft() {\n  return (\n    <view dir=\"rtl\" data-testid=\"rtl-family\">\n      <ItemList label=\"בני משפחה\">\n        <Item label=\"דוד\" labelEnd={<Badge tone=\"success\" size=\"sm\" label=\"אינטרנט פעיל\" />} description=\"נותרו כשעתיים היום\" startContent={<Avatar name=\"David\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        <Item label=\"האייפד של אמילי\" description=\"מחובר\" startIcon=\"phone\" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />\n        <Item label=\"אלכסנדרה-שרלוט מונטגומרי\" labelEnd={<Badge size=\"sm\" label=\"ללא בקרה\" />} description=\"בקרת הורים כבויה · 3 מכשירים\" startContent={<Avatar name=\"Alexandra\" hue={5} isDecorative />} hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "TitledLists",
+          "title": "Lists under headings",
+          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Section } from '@liulidesign/core/Section';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },\n  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },\n] as const;\nconst devices = [\n  { id: 'ipad', name: \"Emily's iPad\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Emily's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */\nexport function TitledLists() {\n  return (\n    <view className=\"gap-6\" data-testid=\"titled-lists\">\n      <Section title=\"Family members\" headingLevel={4}>\n        <ItemList label=\"Family members\">\n          <Item label=\"David\" description=\"4 devices\" startContent={<Avatar name=\"David\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        </ItemList>\n      </Section>\n      <ItemList title=\"Other devices\" description=\"Controls only work while devices are on your home Wi-Fi.\">\n        <Item label=\"Not assigned\" description=\"2 devices aren't anyone's\" startIcon=\"info\" hasChevron onClick={unused} />\n        <Item label=\"Shared or guest\" description=\"No one's controls apply\" hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
+        },
+        {
           "name": "WithControl",
           "title": "A control at the end",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
@@ -10510,6 +10550,26 @@
           "lead": "Use an item for one row of a list: a setting, a message, a file.",
           "hero": "Navigation",
           "variants": [
+            {
+              "name": "WithStatus",
+              "title": "A status beside the name"
+            },
+            {
+              "name": "WithRemove",
+              "title": "A row with a remove button of its own"
+            },
+            {
+              "name": "WithStop",
+              "title": "An action that ends something at once, in danger"
+            },
+            {
+              "name": "RightToLeft",
+              "title": "Right to left: the row mirrors, the action ends it on the left"
+            },
+            {
+              "name": "TitledLists",
+              "title": "A list title on the card's edge, as a Section heading"
+            },
             {
               "name": "Selection",
               "title": "Choosing one, the chosen row selected"

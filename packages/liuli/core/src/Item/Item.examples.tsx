@@ -1,6 +1,9 @@
 import { useLocal } from '@lingxia/view';
 import { Said, unused } from '../example';
+import { Avatar } from '../Avatar/Avatar';
+import { Badge } from '../Badge/Badge';
 import { Button } from '../Button/Button';
+import { Section } from '../Section/Section';
 import { Item, ItemList } from './Item';
 
 const notes = [
@@ -214,5 +217,106 @@ export function Destructive() {
         </view>
       )}
     </Said>
+  );
+}
+
+const members = [
+  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
+  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
+] as const;
+
+/** A status beside the name: the name gives way first, and the badge is read after it. */
+export function WithStatus() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Family members" data-testid="members">
+          {members.map(member => (
+            <Item
+              key={member.id}
+              label={member.name}
+              labelEnd={member.tone === 'success' ? <Badge tone="success" size="sm" label={member.status} /> : <Badge size="sm" label={member.status} />}
+              description={member.note}
+              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}
+              hasChevron
+              onClick={() => say(`Opened ${member.name}`)}
+              data-testid={`member-${member.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+
+const devices = [
+  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
+  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+] as const;
+
+/** Downloads under way: stopping one ends it at once, with nothing to confirm, so the action is in danger. */
+export function WithStop() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Downloads" data-testid="downloads">
+          <Item label="Coast, November.mov" description="1.2 of 3.4 GB" startIcon="download" endAction={{ label: 'Stop downloading Coast, November.mov', icon: 'close', variant: 'destructive', onClick: () => say('Stopped Coast, November.mov'), 'data-testid': 'download-coast-stop' }} />
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+
+/** A row that opens its device, with a remove button of its own at the end. */
+export function WithRemove() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="Emily's devices" data-testid="devices">
+          {devices.map(device => (
+            <Item
+              key={device.id}
+              label={device.name}
+              description={device.note}
+              startIcon="phone"
+              onClick={() => say(`Opened ${device.name}`)}
+              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}
+              data-testid={`device-${device.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+
+/** Rows on a right-to-left page: the avatar starts the row, the status follows the name, and the action ends it on the left. */
+export function RightToLeft() {
+  return (
+    <view dir="rtl" data-testid="rtl-family">
+      <ItemList label="בני משפחה">
+        <Item label="דוד" labelEnd={<Badge tone="success" size="sm" label="אינטרנט פעיל" />} description="נותרו כשעתיים היום" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+        <Item label="האייפד של אמילי" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />
+        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="ללא בקרה" />} description="בקרת הורים כבויה · 3 מכשירים" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
+      </ItemList>
+    </view>
+  );
+}
+
+/** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */
+export function TitledLists() {
+  return (
+    <view className="gap-6" data-testid="titled-lists">
+      <Section title="Family members" headingLevel={4}>
+        <ItemList label="Family members">
+          <Item label="David" description="4 devices" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+        </ItemList>
+      </Section>
+      <ItemList title="Other devices" description="Controls only work while devices are on your home Wi-Fi.">
+        <Item label="Not assigned" description="2 devices aren't anyone's" startIcon="info" hasChevron onClick={unused} />
+        <Item label="Shared or guest" description="No one's controls apply" hasChevron onClick={unused} />
+      </ItemList>
+    </view>
   );
 }

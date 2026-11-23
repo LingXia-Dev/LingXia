@@ -11,9 +11,12 @@ export const itemParts = {
   iconTile: 'view',
   start: 'view',
   text: 'view',
+  labelLine: 'view',
   label: 'text',
+  labelEnd: 'view',
   description: 'text',
   end: 'view',
+  endAction: 'button',
   chevron: 'vector',
   swipe: 'view',
   slide: 'view',
@@ -29,10 +32,10 @@ export const itemRecipe = {
     base: 'self-stretch gap-1.5',
   },
   title: {
-    base: 'px-4 text-footnote font-medium text-muted',
+    base: 'text-footnote font-semibold text-muted',
   },
   note: {
-    base: 'px-4 text-footnote text-muted',
+    base: 'text-footnote text-muted',
   },
   list: {
     base: 'divide-y divide-text/8',
@@ -71,12 +74,28 @@ export const itemRecipe = {
       danger: 'text-danger',
     } satisfies Record<ItemTone, string>,
     selected: 'font-medium',
+    /** Beside `labelEnd` the name keeps one line and truncates; the content after it stays whole. */
+    beside: 'shrink min-w-0 truncate break-normal',
+    /** On its own line the name takes the line's width, so it still truncates there. */
+    stacked: 'self-stretch',
+  },
+  labelLine: {
+    base: 'flex-row items-center gap-2 min-w-0',
+    /** The name kept whole enough to read: labelEnd on its own line under it. */
+    stacked: 'flex-col items-start gap-0.5',
+  },
+  labelEnd: {
+    base: 'shrink-0 flex-row items-center gap-1',
   },
   description: {
-    base: 'text-footnote text-muted break-words',
+    base: 'text-footnote text-muted break-words whitespace-pre-line',
   },
   end: {
     base: 'shrink-0 flex-row items-center gap-2 text-muted',
+  },
+  endAction: {
+    base: 'shrink-0',
+    variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<'default' | 'destructive', string>,
   },
   swipe: {
     base: 'relative self-stretch overflow-hidden',
