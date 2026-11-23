@@ -402,6 +402,15 @@ import WebKit
         }
     }
 
+    /// The side panel over the phone screen.
+    @MainActor
+    public enum PhoneAside {
+        /// The device's status bar height on the screen; the panel's strip starts below it.
+        public static func setStatusInset(_ inset: @escaping @MainActor () -> CGFloat) {
+            LxAppPhoneAsideRegion.statusInset = inset
+        }
+    }
+
     /// One viewport per lxapp reaches the core: the presenting host's.
     @MainActor
     public enum SurfaceViewport {

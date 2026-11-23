@@ -200,6 +200,16 @@ enum LxAppLayoutReconciler {
                 LxAppSurface.dismissFullScreen(id: id)
             }
             presentFloats(plan.floats.map { $0.id })
+            let panel = plan.asideSlots?.first { $0.kind == "panel" }
+            LxAppPhoneAsideRegion.shared.apply(panel.map {
+                LxAppPhoneAsideRegion.Slot(
+                    children: $0.children,
+                    active: $0.activeChild,
+                    visible: $0.visible,
+                    collapsed: $0.collapsed == true,
+                    maximized: $0.maximized == true
+                )
+            })
             return true
         }
 

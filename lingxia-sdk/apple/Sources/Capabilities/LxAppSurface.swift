@@ -110,6 +110,8 @@ enum LxAppSurface {
         /// surface). Owns the browser tab + chrome; close() tears it down so the
         /// underlying Rust browser tab is destroyed with the aside.
         let dockedBrowser: DockedBrowser?
+        /// A child of the Runner phone's side panel, which shows and hides it.
+        let inAside: Bool
 
         init(
             id: String,
@@ -126,7 +128,8 @@ enum LxAppSurface {
             isFloat: Bool = false,
             isFullScreen: Bool = false,
             dockedBrowser: DockedBrowser? = nil,
-            browserTabId: String? = nil
+            browserTabId: String? = nil,
+            inAside: Bool = false
         ) {
             self.id = id
             self.appId = appId
@@ -143,6 +146,7 @@ enum LxAppSurface {
             self.isFloat = isFloat
             self.isFullScreen = isFullScreen
             self.dockedBrowser = dockedBrowser
+            self.inAside = inAside
         }
     }
 
@@ -379,10 +383,26 @@ enum LxAppSurface {
             return true
         }
 
+        // Runner iPhone shape: a URL aside joins the side panel over the device screen, as
+        // on a real iPhone.
+        if LxAppActiveHost.activeShell == nil,
+           role == roleAside,
+           case .url(let urlString) = content,
+           let screen = phoneDeviceScreenView() {
+            return presentInPhoneAside(
+                id: id,
+                appId: appId,
+                sessionId: sessionId,
+                urlString: urlString,
+                screen: screen,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback
+            )
+        }
+
         // Runner iPhone shape (controller host, no shell): a phone has no
         // side-by-side room, so a page aside/window drills in full-screen over the
-        // device screen, mirroring a real iOS phone. URL asides degrade to the
-        // in-app browser upstream, so only pages reach here; desktop is untouched.
+        // device screen, mirroring a real iOS phone.
         if LxAppActiveHost.activeShell == nil,
            case .page(let pageInstanceId, let path) = content,
            kind == kindWindow || (kind == kindPopup && role == roleAside),
@@ -731,6 +751,83 @@ enum LxAppSurface {
         return true
     }
 
+    private static func presentInPhoneAside(
+        id: String,
+        appId: String,
+        sessionId: UInt64,
+        urlString: String,
+        screen: NSView,
+        ephemeralWebData: Bool,
+        urlCallback: Bool
+    ) -> Bool {
+        guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+            LXLog.error("invalid web surface url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
+            return false
+        }
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        let delegate = WindowDelegate(id: id, appId: appId)
+        if let opened = openStandaloneBrowserTab(appId, sessionId, url.absoluteString, ephemeralWebData, urlCallback) {
+            let tabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !tabId.isEmpty else { return false }
+            entries[id] = Entry(
+                id: id,
+                appId: appId,
+                pageInstanceId: "",
+                hostView: nil,
+                webView: nil,
+                navigationDelegate: nil,
+                window: nil,
+                parentWindow: nil,
+                delegate: delegate,
+                browserTabId: tabId,
+                inAside: true
+            )
+            attachManagedBrowserTab(id: id, tabId: tabId, to: container, attempt: 0)
+        } else {
+            let webView = WKWebView(
+                frame: container.bounds,
+                configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
+            let navigation = WebNavigationDelegate(initialURL: url, allowsCrossOrigin: true, urlCallback: urlCallback)
+            webView.navigationDelegate = navigation
+            if urlCallback { webView.uiDelegate = navigation }
+            prepareRunnerWebSurface(webView)
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(webView)
+            pinToEdges(webView, in: container)
+            loadWebSurfaceURL(url, in: webView)
+            entries[id] = Entry(
+                id: id,
+                appId: appId,
+                pageInstanceId: "",
+                hostView: nil,
+                webView: webView,
+                navigationDelegate: navigation,
+                window: nil,
+                parentWindow: nil,
+                delegate: delegate,
+                inAside: true
+            )
+        }
+        let host = url.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 }
+        LxAppPhoneAsideRegion.shared.adopt(
+            id: id,
+            appId: appId,
+            view: container,
+            on: screen,
+            isURL: true,
+            title: {
+                if let title = entries[id]?.webView?.title, !title.isEmpty, !title.hasPrefix("http") {
+                    return title
+                }
+                return host ?? id
+            },
+            close: { _ = close(id: id, appId: appId, reason: "user") }
+        )
+        return true
+    }
+
     /// A drill-in back chevron pinned top-left, the phone affordance to dismiss a
     /// full-screen surface and return to the page beneath it.
     private static func addBackAffordance(to content: NSView, id: String, appId: String) {
@@ -1068,6 +1165,9 @@ enum LxAppSurface {
         }
 
         entry.hostView?.unmount(reason: closeReason(reason))
+        if entry.inAside {
+            LxAppPhoneAsideRegion.shared.release(id: id)
+        }
         if let tabId = entry.browserTabId {
             entry.webView?.removeFromSuperview()
             _ = browserTabClose(tabId)
@@ -1148,6 +1248,8 @@ enum LxAppSurface {
             LXLog.error("show: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
+        // A side panel child shows with its slot.
+        if entry.inAside { return true }
         if entry.dockedPosition != nil {
             LxAppActiveHost.activeShell?.showPanel(id: id)
             if let webView = entry.hostView?.webView {
@@ -1186,6 +1288,7 @@ enum LxAppSurface {
             LXLog.error("hide: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
+        if entry.inAside { return true }
         if entry.dockedPosition != nil {
             LxAppActiveHost.activeShell?.hidePanel(id: id)
             if let webView = entry.hostView?.webView {
@@ -1378,14 +1481,19 @@ enum LxAppSurface {
     /// phone full-screen surface covers the ENTIRE device frame (under the status /
     /// nav bars), not just the inset render view. Falls back to the render view.
     private static func phoneDeviceScreenContext() -> SurfaceContext? {
+        contextFrame(for: phoneDeviceScreenView() ?? hostAnchorView)
+    }
+
+    /// The Runner phone's rounded screen, the nearest masked ancestor of the lxapp's view.
+    private static func phoneDeviceScreenView() -> NSView? {
         var view: NSView? = hostAnchorView
         while let current = view {
             if let layer = current.layer, layer.masksToBounds, layer.cornerRadius > 0 {
-                return contextFrame(for: current)
+                return current
             }
             view = current.superview
         }
-        return contextFrame(for: hostAnchorView)
+        return nil
     }
 
     /// How far a bottom sheet may reach in the phone Runner: down to the device

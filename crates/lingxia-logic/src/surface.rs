@@ -1794,14 +1794,7 @@ async fn open_url_spec(
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
             let _ = parse_size(spec, SurfaceKind::Overlay)?;
-            // Mobile side panels cover the main when they cannot dock, so a URL aside stays
-            // an aside there; hosts without one fall back to the aside browser.
-            if cfg!(not(any(
-                target_os = "android",
-                target_os = "ios",
-                target_env = "ohos"
-            ))) && lxapp.aside_browser_is_compact()
-            {
+            if compact_aside_opens_browser(&lxapp) {
                 return open_url_in_browser(&ctx, &lxapp, trimmed_url, true);
             }
             let url = validate_url_target(&lxapp, trimmed_url)?;
@@ -2559,6 +2552,22 @@ fn simulating_handheld_device() -> bool {
         lxapp::device::device_get(),
         Ok(state) if state.group == "phone" || state.group == "tablet"
     )
+}
+
+/// Whether a URL aside opens in the compact aside browser rather than the side panel. Mobile
+/// side panels, and the macOS Runner's phone, cover the main where they cannot dock.
+fn compact_aside_opens_browser(lxapp: &LxApp) -> bool {
+    #[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
+    {
+        let _ = lxapp;
+        false
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+    {
+        let simulated_phone = cfg!(target_os = "macos")
+            && matches!(lxapp::device::device_get(), Ok(state) if state.group == "phone");
+        !simulated_phone && lxapp.aside_browser_is_compact()
+    }
 }
 
 /// Whether a docked aside region exists right now. Live: a desktop window
