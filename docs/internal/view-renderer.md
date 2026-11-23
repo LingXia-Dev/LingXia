@@ -160,6 +160,9 @@ compile and clears it after the first GPU frame presents. An adapter a dead
 process left on record, or a known-crashing driver, is never used again; Android
 falls back to GLES, then to the CPU renderer. Platforms supply only the store.
 `env.renderer.fallback` is `"driver"` while a blocked adapter is in effect.
+On Android the GPU path needs WebGL2 downlevel limits and 4096 px textures; pipelines bind
+at most 5 sampled textures, 1 sampler and 1 uniform per stage, in 4 bind groups, with no
+storage buffers or compute. A device below that renders on the CPU.
 Lock order is presenter registry → context → renderer registry → scene
 renderer. Never call host code while holding these locks.
 
@@ -266,19 +269,6 @@ fragment tree over the semantic projection. UIA may call from any thread: provid
 only the window and a node id and reach the page with a message sent to its thread.
 
 New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
-
-## Capability matrix
-
-| Capability | Android | iOS | macOS | HarmonyOS | Windows |
-| --- | --- | --- | --- | --- | --- |
-| GPU page adapter | yes | no | no | no | yes |
-| Bounded JS jobs | yes | no (JSC) | no (JSC) | no (ArkJS) | yes |
-| CPU raster (tests, previews) | yes | yes | yes | yes | yes |
-| System text scaling | yes | — | — | — | — |
-| Accessibility projection | yes | — | — | — | yes (UI Automation) |
-| Hover state styles | no (reports a coarse pointer) | — | — | — | yes |
-| GPU driver crash sentinel | yes (Maleoon Vulkan → GLES) | — | — | — | — |
-| GPU device limits | WebGL2 downlevel + 4096 px textures (pipelines bind ≤5 sampled textures, 1 sampler and 1 uniform per stage, 4 bind groups; no storage buffers or compute), else CPU | — | — | — | — |
 
 ## Verification
 
