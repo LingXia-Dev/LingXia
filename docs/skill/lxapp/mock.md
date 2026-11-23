@@ -57,9 +57,10 @@ export default {
   `match` or `bodyBase64`: code handles those. `req` is
   `{ method, url: URL, headers, text(), json() }`; `ctx.fetch` is the
   original `fetch`, so a handler can proxy without being intercepted again.
-- **Reload.** A dev session follows `mocks/` live: saves anywhere under it,
-  a `mocks/` created after the start, and deleting it (the app then has no
-  mocks) — no restart.
+- **Reload.** A dev session follows `mocks/` live, without rebuilding or
+  restarting: saves anywhere under it, a `mocks/` created after the start,
+  and deleting it (the app then has no mocks). An invalid save keeps the last
+  valid handlers.
 - **State.** Module state lives until a save under `mocks/`,
   `lxdev mock reset`, an app restart, or the next test. `lxdev mock` counts
   handler hits since the last load, save, reset or test, and says since when.
@@ -69,8 +70,6 @@ export default {
   A call the selection sends to mocks with no matching key fails the same
   way: `no mock handler for GET https://…/x; add 'GET **/x' to mocks/index.ts,
   or run: lxdev mock none 'GET **/x'`. Nothing falls through to real.
-- **Hot reload.** Saving under `mocks/` reloads the handlers without
-  rebuilding or restarting the app; an invalid save keeps the last valid ones.
 - **Never shipped.** Any build fails when product code imports `mocks/`:
   `pages/home/index.ts imports from mocks/ (mocks/fixtures.ts)`.
 - Add `"mocks/**/*.ts"` to `tsconfig.logic.json` (`lingxia new` does).

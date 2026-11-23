@@ -81,7 +81,7 @@ type LxMediaSwiperItem =
 
 Handlers get the payload: `onChange` / `onTransitionEnd` →
 `{ index, previousIndex, item, source }`; `onTap` / `onVideoEnded` →
-`{ index, item }`; `onEndReached` at the last item; `onError` → `{ code }`.
+`{ index, item }`; `onEndReached` at the last item; `onError` → `{ index, code, message }`.
 The ref (`LxMediaSwiperRef`) has `next()`,
 `previous()` and `goToIndex(index)`.
 
