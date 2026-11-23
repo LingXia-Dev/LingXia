@@ -253,12 +253,30 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
             "position": request.position,
         });
 
-        let _: () = lxapp
-            .call_view_with("ui.showToast", &params)
-            .await
-            .map_err(|e| js_internal_error(format!("WebView toast failed: {}", e)))?;
-
-        Ok(())
+        // The toast belongs to the app, not the page drawing it: a page that leaves (a toast
+        // then `lx.nav.back()`) hands it to the page that takes its place.
+        on_current_page(
+            || {
+                lxapp
+                    .current_page()
+                    .ok()
+                    .map(|page| page.instance_id_string())
+            },
+            |id| {
+                let lxapp = lxapp.clone();
+                let params = params.clone();
+                async move {
+                    let page = lxapp.current_page()?;
+                    if page.instance_id_string() != id {
+                        return Err(lxapp::LxAppError::WebView("the page changed".into()));
+                    }
+                    page.call_view_with::<_, ()>("ui.showToast", &params).await
+                }
+            },
+            || tokio::time::sleep(std::time::Duration::from_millis(20)),
+        )
+        .await
+        .map_err(|e| js_internal_error(format!("Page toast failed: {}", e)))
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -270,6 +288,53 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
             .map_err(|e| js_error_from_platform_error(&e))?;
 
         Ok(())
+    }
+}
+
+/// Runs `call` on the current page; when it fails and the page is then replaced within about a
+/// second, runs it once more on each page that takes its place (at most three). A failure on a
+/// page that stays current is the answer.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows", test)),
+    allow(dead_code)
+)]
+async fn on_current_page<E, C, F, S, W>(
+    current: C,
+    call: impl Fn(String) -> F,
+    wait: S,
+) -> Result<(), E>
+where
+    E: From<lxapp::LxAppError>,
+    C: Fn() -> Option<String>,
+    F: std::future::Future<Output = Result<(), E>>,
+    S: Fn() -> W,
+    W: std::future::Future<Output = ()>,
+{
+    const WAIT_STEPS: usize = 50;
+    let no_page = || E::from(lxapp::LxAppError::WebView("No current page".into()));
+    let mut page = current().ok_or_else(no_page)?;
+    let mut hops = 0;
+    loop {
+        let error = match call(page.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        if hops == 3 {
+            return Err(error);
+        }
+        let mut next = None;
+        for _ in 0..WAIT_STEPS {
+            match current() {
+                Some(id) if id != page => {
+                    next = Some(id);
+                    break;
+                }
+                _ => wait().await,
+            }
+        }
+        let Some(next) = next else { return Err(error) };
+        page = next;
+        hops += 1;
     }
 }
 
@@ -316,5 +381,63 @@ rong::js_api! {
             ts_params = "message: string, options?: ToastOptions",
             ts_return = "ToastHandle"
         ) = show_toast;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::on_current_page;
+    use lxapp::LxAppError;
+    use std::cell::RefCell;
+
+    fn revoked() -> LxAppError {
+        LxAppError::WebView("Document session revoked".into())
+    }
+
+    /// Runs the helper over a page stack that moves to the next page after `moves_after` reads.
+    fn run(
+        pages: &[&str],
+        moves_after: usize,
+        fails_on: &[&str],
+    ) -> (Result<(), LxAppError>, Vec<String>) {
+        let reads = RefCell::new(0usize);
+        let calls = RefCell::new(Vec::new());
+        let current = || {
+            let n = *reads.borrow();
+            *reads.borrow_mut() += 1;
+            pages
+                .get((n / moves_after.max(1)).min(pages.len().saturating_sub(1)))
+                .map(|p| p.to_string())
+        };
+        let result = futures::executor::block_on(on_current_page(
+            current,
+            |id: String| {
+                calls.borrow_mut().push(id.clone());
+                let fail = fails_on.contains(&id.as_str());
+                async move { if fail { Err(revoked()) } else { Ok(()) } }
+            },
+            || async {},
+        ));
+        (result, calls.into_inner())
+    }
+
+    #[test]
+    fn a_toast_on_a_page_that_leaves_shows_on_the_page_that_takes_its_place() {
+        let (result, calls) = run(&["detail", "list"], 3, &["detail"]);
+        assert!(result.is_ok());
+        assert_eq!(calls, ["detail", "list"]);
+    }
+
+    #[test]
+    fn a_failure_on_a_page_that_stays_is_the_answer() {
+        let (result, calls) = run(&["detail"], 1, &["detail"]);
+        assert!(result.is_err());
+        assert_eq!(calls, ["detail"]);
+    }
+
+    #[test]
+    fn a_page_that_shows_it_is_called_once_and_no_page_is_an_error() {
+        assert_eq!(run(&["home"], 1, &[]).1, ["home"]);
+        assert!(run(&[], 1, &[]).0.is_err());
     }
 }
