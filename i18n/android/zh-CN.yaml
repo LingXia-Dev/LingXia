@@ -20,9 +20,3 @@ update:
   # 后台静默下载完成后的“可安装”提示；仅在用户确认后才拉起系统安装器。
   ready_message: "新版本已下载完成，现在安装？"
   ready_title: "更新已就绪"
-
-# 侧边面板外观（AsideRegion）：标签菜单、标签栏按钮、收起后的把手。
-aside:
-  collapse: "收起侧边面板"
-  maximize: "最大化"
-  restore: "还原"

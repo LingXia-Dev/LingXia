@@ -170,8 +170,11 @@ text_menu:
   undo: "Undo"
   redo: "Redo"
 
-# Side panel: moving an lxapp between it and the main area, and the collapsed slot's handle.
+# Side panel: its strip controls, moving an lxapp between it and the main, and the collapsed tongue.
 aside:
+  collapse: "Collapse Side Panel"
+  maximize: "Maximize"
+  restore: "Restore"
   open_in_main: "Open in Main Area"
   open_in_side: "Open in Side Panel"
   show_content: "Show {name}"
