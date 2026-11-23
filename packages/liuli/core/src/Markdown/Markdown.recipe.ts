@@ -69,7 +69,7 @@ export const markdownRecipe = {
     base: 'opacity-0',
   },
   task: {
-    base: 'shrink-0 items-center justify-center rounded-[4px] border-2',
+    base: 'shrink-0 items-center justify-center rounded-checkbox border-2',
     // In the item's type, so the mark grows with the text, capped by the View at 1.5×.
     size: { sm: 'text-footnote size-[1.23em]', md: 'text-body size-[1.07em]' } satisfies Record<MarkdownSize, string>,
     open: 'border-line-strong',

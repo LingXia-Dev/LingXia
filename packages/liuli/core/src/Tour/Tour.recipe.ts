@@ -20,10 +20,10 @@ export const tourRecipe = {
   /**
    * A square turned on its corner, half out of the callout's edge facing the target, on the target's
    * centre line even when the callout is pushed in from a screen edge; large enough to read against a filled target.
-   * Hidden until the callout lands on its side.
+   * Its tip is rounded in step with the callout's corners. Hidden until the callout lands on its side.
    */
   caret: {
-    base: 'absolute size-4 rotate-45 rounded-[2px] bg-text opacity-0',
+    base: 'absolute size-4 rotate-45 rounded-[calc(var(--radius-container)/7)] bg-text opacity-0',
     side: {
       bottom: '-top-2 start-[anchor(center)] -ms-2 side-bottom:opacity-100',
       top: '-bottom-2 start-[anchor(center)] -ms-2 side-top:opacity-100',

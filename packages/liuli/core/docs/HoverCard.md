@@ -104,7 +104,7 @@ export function InSentence() {
 
 - No class props: it takes its look from its props, the tokens and the roles below.
 - The recipe, `hoverCardRecipe` from `@liulidesign/core/HoverCard/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-raised`, `--radius-container`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-raised`, `--radius-container`, `--radius-checkbox`.
 - Colour roles it paints with, set by the theme pack: `focus`, `surface-overlay`, `text`.
 
 ## Accessibility

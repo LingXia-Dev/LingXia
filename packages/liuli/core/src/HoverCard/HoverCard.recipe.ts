@@ -8,7 +8,8 @@ export const hoverCardParts = {
 /** The card is Popover\'s panel, a little narrower; a wrapped trigger keeps its words' own look. */
 export const hoverCardRecipe = {
   trigger: {
-    base: 'self-start rounded-[4px] focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    // The ring around a few words takes the smallest corner role.
+    base: 'self-start rounded-checkbox focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   card: {
     base: 'w-64 p-4 gap-2 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',

@@ -9275,7 +9275,8 @@
         "classProps": [],
         "tokens": [
           "--shadow-raised",
-          "--radius-container"
+          "--radius-container",
+          "--radius-checkbox"
         ],
         "roles": [
           "focus",
@@ -11815,7 +11816,8 @@
           "--text-body",
           "--text-callout",
           "--text-title",
-          "--radius-control"
+          "--radius-control",
+          "--radius-checkbox"
         ],
         "roles": [
           "accent",
