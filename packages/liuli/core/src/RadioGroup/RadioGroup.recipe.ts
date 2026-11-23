@@ -10,7 +10,9 @@ export const radioGroupParts = {
   circle: 'view',
   dot: 'view',
   text: 'view',
+  top: 'view',
   label: 'text',
+  end: 'view',
   description: 'text',
 } as const;
 
@@ -64,8 +66,19 @@ export const radioGroupRecipe = {
   text: {
     base: 'grow shrink min-w-0 gap-0.5',
   },
+  /** The label's line with `endContent` at its end. */
+  top: {
+    base: 'flex-row items-start gap-3',
+  },
+  /** At the end of the label's first line; it never gives way, the label wraps instead. */
+  end: {
+    base: 'shrink-0 flex-row items-center gap-2 text-muted',
+    disabled: 'text-faint',
+  },
   label: {
     base: 'text-text',
+    /** Beside `endContent`: the label takes the line and wraps. */
+    beside: 'grow shrink min-w-0',
     disabled: 'text-faint',
     variant: { list: '', card: 'font-medium' } satisfies Record<RadioGroupVariant, string>,
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,

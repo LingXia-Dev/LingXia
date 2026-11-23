@@ -14814,7 +14814,9 @@
         "circle": "view",
         "dot": "view",
         "text": "view",
+        "top": "view",
         "label": "text",
+        "end": "view",
         "description": "text"
       },
       "accessibility": {
@@ -14897,7 +14899,7 @@
         {
           "name": "Plans",
           "title": "Cards",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\nconst plans = [\n  { value: 'free', label: 'Free', description: 'Up to 3 notebooks, on one device' },\n  { value: 'plus', label: 'Plus · €4 a month', description: 'Unlimited notebooks, sync across devices' },\n  { value: 'team', label: 'Team · €8 a person', description: 'Shared notebooks, admin controls' },\n];\n\n/** Each option a card: the whole card chooses it. */\nexport function Plans() {\n  const plan = useLocal<string | null>('plan', 'plus');\n  return <RadioGroup bind={plan} label=\"Plan\" items={plans} variant=\"card\" data-testid=\"plan\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { RadioGroup } from '@liulidesign/core/RadioGroup';\n\n/** Each option a card: the whole card chooses it. Its price sits at the end of the name's line. */\nexport function Plans() {\n  const plan = useLocal<string | null>('plan', 'plus');\n  const price = (text: string) => <text className=\"text-body\">{text}</text>;\n  const plans = [\n    { value: 'free', label: 'Free', description: 'Up to 3 notebooks, on one device', endContent: price('€0') },\n    { value: 'plus', label: 'Plus', description: 'Unlimited notebooks, sync across devices', endContent: price('€4 a month') },\n    { value: 'team', label: 'Team', description: 'Shared notebooks, admin controls', endContent: price('€8 a person') },\n  ];\n  return <RadioGroup bind={plan} label=\"Plan\" items={plans} variant=\"card\" data-testid=\"plan\" />;\n}"
         },
         {
           "name": "Plain",

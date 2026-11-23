@@ -69,3 +69,15 @@ test('StateDisabled: the chosen circle is a neutral fill with a muted dot, not a
   assert.deepEqual([circle.props.background, circle.children[0].props.background], ['text/20', 'text-muted']);
   assert.equal(chosen.props.opacity, undefined, 'the row is not faded');
 });
+
+test('Plans: a price at the end of the name\'s line, read after the name, before the second line', async () => {
+  const screen = await renderExample('RadioGroup/RadioGroup', 'Plans');
+  const plus = screen.getByTestId('plan-plus');
+  assert.equal(plus.props.accessibilityLabel, 'Plus');
+  assert.deepEqual(described(screen, plus), ['€4 a month', 'Unlimited notebooks, sync across devices']);
+  const price = screen.queryAll(node => node.tag === 'text' && node.text === '€4 a month')[0];
+  const end = price.parent;
+  assert.equal(end.props.shrink, 0, 'the price never gives way');
+  assert.equal(end.parent.children[0].text, 'Plus', 'it shares the label\'s line');
+  assert.equal(end.parent.props.flexDirection, 'row');
+});

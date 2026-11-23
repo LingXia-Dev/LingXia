@@ -37,15 +37,15 @@ export function Delivery() {
 import { useLocal } from '@lingxia/view';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 
-const plans = [
-  { value: 'free', label: 'Free', description: 'Up to 3 notebooks, on one device' },
-  { value: 'plus', label: 'Plus · €4 a month', description: 'Unlimited notebooks, sync across devices' },
-  { value: 'team', label: 'Team · €8 a person', description: 'Shared notebooks, admin controls' },
-];
-
-/** Each option a card: the whole card chooses it. */
+/** Each option a card: the whole card chooses it. Its price sits at the end of the name's line. */
 export function Plans() {
   const plan = useLocal<string | null>('plan', 'plus');
+  const price = (text: string) => <text className="text-body">{text}</text>;
+  const plans = [
+    { value: 'free', label: 'Free', description: 'Up to 3 notebooks, on one device', endContent: price('€0') },
+    { value: 'plus', label: 'Plus', description: 'Unlimited notebooks, sync across devices', endContent: price('€4 a month') },
+    { value: 'team', label: 'Team', description: 'Shared notebooks, admin controls', endContent: price('€8 a person') },
+  ];
   return <RadioGroup bind={plan} label="Plan" items={plans} variant="card" data-testid="plan" />;
 }
 ```
@@ -201,6 +201,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: At large text, expect the circle to keep its size, centred on the label's first line as that line grows; the label wraps, the mark is never squeezed.
 - Do: Choose a sensible default when one exists; leave the group empty only when the person must decide.
 - Do: Use cards when each option needs a second line: plans, delivery, shipping speed.
+- Do: Put a value that compares the options, such as a price, in `endContent`, at the end of the label's line; keep the label to the option's name.
 - Don't: Use radios for more than about six options; use a Select.
 - Don't: Use radios for a choice that takes effect at once in a toolbar; use Tabs in the segmented variant.
 

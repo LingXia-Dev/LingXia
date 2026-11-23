@@ -1,8 +1,9 @@
-import { cx, useId, type Local } from '@lingxia/view';
+import { cx, useId, type Child, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { radioGroupRecipe as r } from './RadioGroup.recipe';
 import { dataOf } from '../internal/data';
+import { describedBy } from '../internal/describedBy';
 
 export type RadioGroupVariant = 'list' | 'card';
 
@@ -13,6 +14,8 @@ export interface RadioOption {
   label: string;
   /** A second line, read as the option's description. */
   description?: string;
+  /** Drawn at the end of the label's line, such as a plan's price; never shrinks, and is read after the label. */
+  endContent?: Child;
   /** @default false */
   isDisabled?: boolean;
 }
@@ -55,6 +58,9 @@ export function RadioGroup(props: RadioGroupProps) {
   const size = useControlSize(ownSize);
   const id = useId();
   const chosen = props.bind ? props.bind.value : props.value;
+  const label = (option: RadioOption, off: boolean) => (
+    <text aria-hidden className={cx(r.label.base, option.endContent !== undefined && r.label.beside, r.label.variant[variant], r.label.size[size], off && r.label.disabled)}>{option.label}</text>
+  );
   const choose = (value: string) => {
     if (value === chosen) return;
     if (props.bind) props.bind.set(value);
@@ -76,6 +82,7 @@ export function RadioGroup(props: RadioGroupProps) {
             const isChecked = option.value === chosen;
             const off = isDisabled || option.isDisabled === true;
             const helpId = `${id}-${option.value}-help`;
+            const endId = `${id}-${option.value}-end`;
             return (
               <button
                 key={option.value}
@@ -83,7 +90,7 @@ export function RadioGroup(props: RadioGroupProps) {
                 aria-checked={isChecked}
                 data-state={isChecked ? 'checked' : 'unchecked'}
                 aria-label={option.label}
-                aria-describedby={option.description !== undefined ? helpId : undefined}
+                aria-describedby={describedBy(option.endContent !== undefined && endId, option.description !== undefined && helpId)}
                 disabled={off}
                 data-testid={testId && `${testId}-${option.value}`}
                 onClick={() => choose(option.value)}
@@ -96,7 +103,12 @@ export function RadioGroup(props: RadioGroupProps) {
                   </view>
                 </view>
                 <view className={r.text.base}>
-                  <text aria-hidden className={cx(r.label.base, r.label.variant[variant], r.label.size[size], off && r.label.disabled)}>{option.label}</text>
+                  {option.endContent === undefined ? label(option, off) : (
+                    <view className={r.top.base}>
+                      {label(option, off)}
+                      <view id={endId} aria-hidden className={cx(r.end.base, off && r.end.disabled)}>{option.endContent}</view>
+                    </view>
+                  )}
                   {option.description !== undefined && <text id={helpId} className={r.description.base}>{option.description}</text>}
                 </view>
               </button>
