@@ -58,7 +58,6 @@ export * from './Select/Select';
 export * from './Skeleton/Skeleton';
 export * from './Slider/Slider';
 export * from './Split/Split';
-export * from './SplitView/SplitView';
 export * from './StatusDot/StatusDot';
 export * from './Stepper/Stepper';
 export * from './Switch/Switch';

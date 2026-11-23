@@ -59,10 +59,10 @@ export const doc: ComponentDoc = {
   gaps: [],
   limits: [
     'It does not follow the finger; it opens and closes as a whole.',
-    'It is always modal: a panel that stays open beside the page is SplitView.',
+    'It is always modal: a panel that stays open beside the page is the aside of a Split.',
   ],
   playground: { props: { isOpen: false, label: 'Filters' }, fixture: true, opener: 'Show filters' },
-  related: ['Dialog', 'BottomSheet', 'SplitView'],
+  related: ['Dialog', 'BottomSheet', 'Split'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'A side panel',

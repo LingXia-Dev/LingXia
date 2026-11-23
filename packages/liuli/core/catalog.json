@@ -7545,7 +7545,7 @@
       "gaps": [],
       "limits": [
         "It does not follow the finger; it opens and closes as a whole.",
-        "It is always modal: a panel that stays open beside the page is SplitView."
+        "It is always modal: a panel that stays open beside the page is the aside of a Split."
       ],
       "playground": {
         "props": {
@@ -7579,7 +7579,7 @@
       "related": [
         "Dialog",
         "BottomSheet",
-        "SplitView"
+        "Split"
       ],
       "gallery": {
         "specimen": "Specimen",
@@ -17010,191 +17010,6 @@
               "title": "Comments in a sheet on a phone"
             }
           ]
-        }
-      }
-    },
-    {
-      "name": "SplitView",
-      "import": "@liulidesign/core/SplitView",
-      "exports": [
-        "SplitView"
-      ],
-      "category": "content",
-      "status": "preview",
-      "since": "2026-11-14",
-      "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
-      "description": "SplitView lays out a workspace: a fixed-width sidebar, usually a NavList, and the content it chooses beside it. Both sit on the canvas, parted by a hairline, and each pane scrolls on its own. The content is capped, so lines stay readable, and starts a fixed gutter from the sidebar: it reads from the sidebar outward, and a wider window adds room on the far side. In the compact size class there is no room for two panes, so it shows one: the sidebar, then the content `pane` asks for, under a back button that leads to the sidebar again.",
-      "keywords": [
-        "split view",
-        "sidebar layout",
-        "master detail",
-        "two pane",
-        "workspace",
-        "navigation split",
-        "app shell"
-      ],
-      "props": [
-        {
-          "name": "sidebar",
-          "type": "Child",
-          "required": true,
-          "description": "The sidebar's content, usually a NavList; it scrolls on its own."
-        },
-        {
-          "name": "children",
-          "type": "Child",
-          "required": true,
-          "description": "The content beside it; it scrolls on its own."
-        },
-        {
-          "name": "contentActions",
-          "type": "Child",
-          "required": false,
-          "description": "Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view."
-        },
-        {
-          "name": "sidebarLabel",
-          "type": "string",
-          "required": true,
-          "description": "Names the sidebar for assistive tech: what it lists, \"Mailboxes\", \"Components\"."
-        },
-        {
-          "name": "contentLabel",
-          "type": "string",
-          "required": true,
-          "description": "Names the content: the open page's title."
-        },
-        {
-          "name": "pane",
-          "type": "SplitViewPane",
-          "required": false,
-          "description": "On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it.",
-          "values": [
-            "content",
-            "sidebar"
-          ],
-          "default": "'sidebar'"
-        },
-        {
-          "name": "onBack",
-          "type": "(() => void)",
-          "required": false,
-          "description": "On a compact screen: the back button over the content was pressed; show the sidebar."
-        },
-        {
-          "name": "backLabel",
-          "type": "string",
-          "required": false,
-          "description": "The back button's label: where it leads.",
-          "default": "`sidebarLabel`"
-        },
-        {
-          "name": "sidebarWidth",
-          "type": "number",
-          "required": false,
-          "description": "The sidebar's width in px, beside the content.",
-          "default": "264"
-        },
-        {
-          "name": "contentKey",
-          "type": "string",
-          "required": false,
-          "description": "Names what the content shows; a new key starts the content pane at its top, as opening a page does."
-        },
-        {
-          "name": "contentWidth",
-          "type": "SplitViewContentWidth",
-          "required": false,
-          "description": "How wide the content may grow; past it the surplus falls on the far side.",
-          "values": [
-            "full",
-            "prose",
-            "wide"
-          ],
-          "default": "'wide'"
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": ""
-        },
-        {
-          "name": "data-testid",
-          "type": "string",
-          "required": false,
-          "description": "On the root; the panes get `<testid>-sidebar` and `<testid>-content`."
-        }
-      ],
-      "otherProps": {},
-      "parts": {
-        "root": "view",
-        "sidebar": "view",
-        "content": "view",
-        "pane": "view",
-        "back": "view",
-        "scroll": "scroll",
-        "sidebarInner": "view",
-        "contentInner": "view",
-        "actions": "view"
-      },
-      "accessibility": {
-        "pattern": null,
-        "name": null,
-        "description": [],
-        "states": [],
-        "keyboard": [],
-        "contrast": [],
-        "notes": [
-          "Each pane is a group named by its label, so a screen reader can move between them; the content's name should follow the open page.",
-          "Tab moves from the sidebar into the content in reading order.",
-          "The hairline is decoration; the panes are told apart by their names, not by the line."
-        ]
-      },
-      "examples": [
-        {
-          "name": "Workspace",
-          "title": "A mail workspace",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { SplitView, type SplitViewPane } from '@liulidesign/core/SplitView';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace: the sidebar chooses a place, the content shows it at once; on a phone the place opens over the list, with a way back. */\nexport function Workspace() {\n  const current = useLocal<string>('current', 'inbox');\n  const pane = useLocal<SplitViewPane>('pane', 'sidebar');\n  const title = titles[current.value] ?? '';\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <SplitView\n        sidebarLabel=\"Mail\"\n        contentLabel={title}\n        pane={pane.value}\n        onBack={() => pane.set('sidebar')}\n        sidebarWidth={200}\n        contentKey={current.value}\n        sidebar={<NavList label=\"Mailboxes\" sections={sections} value={current.value} onChange={next => { current.set(next); pane.set('content'); }} data-testid=\"workspace-nav\" />}\n        data-testid=\"workspace\"\n      >\n        <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n        <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the sidebar the content keeps a gutter from it; on a phone it takes the screen.</text>\n      </SplitView>\n    </view>\n  );\n}"
-        }
-      ],
-      "gaps": [
-        {
-          "missing": "The system back gesture leading from the content to the sidebar on a compact screen",
-          "needs": "A back request from the host",
-          "today": "The back button leads back"
-        },
-        {
-          "missing": "Dragging the hairline to resize the sidebar",
-          "needs": "Pointer coordinates on an element (`onPointer`)",
-          "today": "A fixed `sidebarWidth`"
-        }
-      ],
-      "theming": {
-        "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": ""
-          }
-        ],
-        "tokens": [],
-        "roles": [
-          "canvas",
-          "text"
-        ]
-      },
-      "related": [
-        "NavList"
-      ],
-      "gallery": {
-        "specimen": "Specimen",
-        "tagline": "Sidebar and content",
-        "order": 5,
-        "page": {
-          "lead": "Use a split view for a workspace with a sidebar: both panes on a wide window, one at a time on a phone.",
-          "stage": "bare",
-          "hero": "Workspace"
         }
       }
     },

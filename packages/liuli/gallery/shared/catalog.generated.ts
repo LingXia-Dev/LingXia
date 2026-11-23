@@ -975,21 +975,6 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
-    "name": "SplitView",
-    "page": "split-view",
-    "category": "content",
-    "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
-    "keywords": [
-      "split view",
-      "sidebar layout",
-      "master detail",
-      "two pane",
-      "workspace",
-      "navigation split",
-      "app shell"
-    ]
-  },
-  {
     "name": "Icon",
     "page": "icon",
     "category": "content",
@@ -1502,7 +1487,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 19
+    "count": 18
   },
   {
     "id": "charts",

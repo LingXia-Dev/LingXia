@@ -148,6 +148,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 ## Limits
 
 - It does not follow the finger; it opens and closes as a whole.
-- It is always modal: a panel that stays open beside the page is SplitView.
+- It is always modal: a panel that stays open beside the page is the aside of a Split.
 
-Related: Dialog, BottomSheet, SplitView.
+Related: Dialog, BottomSheet, Split.

@@ -85,7 +85,6 @@
     { "name": "item", "path": "pages/item/index" },
     { "name": "details", "path": "pages/details/index" },
     { "name": "avatar", "path": "pages/avatar/index" },
-    { "name": "split-view", "path": "pages/split-view/index" },
     { "name": "icon", "path": "pages/icon/index" },
     { "name": "table", "path": "pages/table/index" },
     { "name": "markdown", "path": "pages/markdown/index" },

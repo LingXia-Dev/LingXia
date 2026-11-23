@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-81 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+80 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -110,7 +110,6 @@ that directory.
 | `@liulidesign/core/Item` | Item, ItemList | One row of a list: a label, a second line, and content at either end |
 | `@liulidesign/core/Details` | Details, DetailsGroup | A summary row that shows and hides the content under it |
 | `@liulidesign/core/Avatar` | Avatar, AvatarGroup | A person or team as a circle: their picture, or their initials |
-| `@liulidesign/core/SplitView` | SplitView | A sidebar beside its content, each scrolling on its own; one pane at a time on a phone |
 | `@liulidesign/core/Icon` | iconPaths, useIcon, Icon, IconSetProvider | An icon by what it means, from a set an app or theme can replace |
 | `@liulidesign/core/Table` | Table | Records in rows and fields in columns, under headings that stay in view |
 | `@liulidesign/core/Markdown` | Markdown | Markdown text drawn as Liuli type: a message, a note, a help page |
