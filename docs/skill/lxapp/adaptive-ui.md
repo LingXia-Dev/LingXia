@@ -12,11 +12,13 @@ Change a page's layout by the room it has. Never infer a device from the user ag
 
 - Near 600 the class holds until the width is 24 px past it, so a width breakpoint
   (`min-[600px]:`) and a `sizeClass` branch disagree there: choose one, `sizeClass`.
-- It is the lxapp's own room, not the window: an lxapp in a narrow region of a wide desktop is
-  `compact`. A page in its own window (`as: 'window'`) reads its lxapp's value; size that page
-  from its own viewport.
+- It comes from the page's own viewport, not the window: a page in a narrow region of a wide
+  window is `compact`, and the shell's sidebar never changes it. A page in its own window
+  (`as: 'window'`) reads its lxapp's value; size that page from `env.viewport`.
 - `regular` is room, not desktop: an unfolded fold, a tablet and a desktop workspace are all
   `regular`. Do not branch on the device for layout, and do not add a third class.
+- A page that declares no `pageOrientation` follows the host's orientation. A phone turned
+  sideways is `regular` yet keeps the phone's bottom tab bar.
 - `canDock` is whether the window can dock an `as: 'aside'` beside the main right now. Read it,
   never infer it from width.
 
@@ -24,7 +26,7 @@ Change a page's layout by the room it has. Never infer a device from the user ag
 
 One View adapts. Read `env.sizeClass` and `env.canDock` from the render's `env` (or
 `useView().env` in a component); they are there before the first frame, and a change re-renders
-in place, keeping `data` and `useLocal` state.
+in place, keeping `data` and `useLocal` state. `env.viewport` follows every resize.
 
 ```tsx
 export function render({ data, env }: View) {
@@ -55,8 +57,8 @@ export function render({ data, env }: View) {
 - Columns and visibility by class: `grid-cols-1 regular:grid-cols-2`, `regular:hidden`.
   `regular:` follows the nearest `<SizeClassScope value>`, then `env.sizeClass`; the panes of
   `<ListDetail>` and `<Split>` set it, so a card inside a 360 px pane stays single-column.
-- `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first; on
-  the home app's first page it is the only thing that does (a leave guard there lets Back background the app).
+- `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first. On
+  the home app's first page only it holds Back; a leave guard alone there lets Back background the app.
 
 ```tsx
 <ListDetail value={data.selectedId} onChange={actions.selectOrder} listLabel={t('orders')}>
@@ -79,18 +81,19 @@ export function render({ data, env }: View) {
   clear of host chrome: never pad a header by `env.insets`.
 - `env.insets` and `env.safeArea` also carry `inlineStart` and `inlineEnd`, which follow the
   page's direction.
-- `env.hinge` is a fold's crease in page coordinates (`x`, `y`, `width`, `height`,
-  `orientation`, `posture: 'flat' | 'half-opened'`), or `null`. `<ListDetail>` and `<Split>`
+- `env.hinge` is a fold's crease in page-local coordinates, clipped to the page (`x`, `y`,
+  `width`, `height`, `orientation`, `posture: 'flat' | 'half-opened'`); `null` when it does not
+  cross the page. `<ListDetail>` and `<Split>`
   already keep their seam on it; read it only for a layout of your own.
 
 ## Logic and WebView pages
 
 - Logic reads `page.env.get()` (`{ sizeClass, canDock }`) and calls `page.env.watch(cb)` only
-  when Logic itself acts on a change; `cb` runs at once, then on each class or `canDock` change,
-  and stops when the page unloads. Never forward the class to the View with `page.update`.
+  when Logic itself acts on a change; `cb` runs at once, then only when the class or `canDock`
+  flips (never on a plain resize), and stops when the page unloads. Never forward the class to the View with `page.update`.
 - A WebView page reads `useLxHost().sizeClass` and `.canDock`
   ([host facts](./webview/guide.md#host-facts)); size spacing and columns with CSS and container
-  queries. Older hosts report `compact`, so keep `minRuntime` current.
+  queries. Until the host reports, it reads `compact` and `canDock: false`.
 
 ## Edge-to-edge windows
 
