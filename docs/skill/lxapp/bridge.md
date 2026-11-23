@@ -8,7 +8,7 @@ model itself is in [Lxapp pages](./guide.md).
 | Primitive | Direction | Transport | Use for |
 |---|---|---|---|
 | **State** (`page.update`) | Logic → View | Diff, batched | Durable page state that outlives a stream or channel: lists, flags, final results |
-| **Stream** (`yield` / `stream.send`) | Logic → View | Payload as sent, immediate, ordered | One View-started operation with incremental output: tokens, progress |
+| **Stream** (`yield`) | Logic → View | Payload as sent, immediate, ordered | One View-started operation with incremental output: tokens, progress |
 | **Channel** (`ch.send`) | both | Payload as sent, immediate | Long-lived sessions: live sync, collaboration |
 
 Never push per-chunk or per-event data with `page.update`. Logic subscribes to
@@ -95,7 +95,8 @@ const chat = useLxStream<typeof actions.onSend, { text: string }>(actions.onSend
 ```
 
 Without `reduce`, `data` is the latest chunk. A thrown generator ends the
-stream with `chat.error`; `chat.cancel()` settles it with `BRIDGE_CANCELED`.
+stream with `chat.error`; `chat.cancel()` stops it with `streaming` false and
+no `error`.
 
 ## Channel
 

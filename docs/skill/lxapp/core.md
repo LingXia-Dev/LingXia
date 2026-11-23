@@ -44,7 +44,7 @@ Keep that in `tsconfig.logic.json`; the View has its own config, and the root
   `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.clipboard`,
   `lx.storage`, `lx.surface`, `lx.shell`.
 - Page-addressed calls live on `page`, not on `lx`: its data, params, signal,
-  result and channel ([Page API](./guide.md)).
+  result, opener and navigation bar ([Page API](./guide.md)).
 
 ## Subscriptions and cancellation
 
@@ -132,6 +132,6 @@ does not say why, `e.reason` does (`'hostUpgradeRequired'`, `'stackFull'`, …):
 
 ## Logic and native APIs
 
-`lx.*` belongs to Logic. `#[lingxia::native]` routes are called from the View
-through `@lingxia/native`; a `lingxia::js` extension adds `lx.<namespace>.*` to
-Logic. Both: [Native development](../native/development.md).
+`lx.*` belongs to Logic. `#[lingxia::native]` routes are called from a WebView
+View through `@lingxia/native`; a `lingxia::js` extension adds `lx.<namespace>.*` to
+Logic, which is how a GPU View reaches Rust. Both: [Native development](../native/development.md).

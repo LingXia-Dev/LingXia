@@ -24,7 +24,7 @@ my-lxapp/
 │   └── home/
 │       ├── index.tsx   # View  — GPU View (`export function render`); React default export or index.html in a WebView
 │       ├── index.ts    # Logic — runs in native JS runtime
-│       └── index.json  # Page config (navigation bar, style)
+│       └── index.json  # Page config, optional (navigation bar, style)
 ├── public/
 └── shared/
 ```
@@ -37,7 +37,7 @@ my-lxapp/
 - `minRuntime` — the lowest host SDK line (major.minor; patch is ignored)
   that may open the package; `lingxia new` writes it and `lingxia upgrade`
   raises it. The CLI builds only for lines from its supported floor up to
-  its own, and names the CLI to use otherwise. An older host refuses the
+  its own, and names the CLI to use otherwise. A host below that line refuses the
   package with `reason: 'hostUpgradeRequired'`; ask the user to update the host app.
 - `lxapp.config.ts` — build config (view tooling, aliases, `staticDirs`).
 
@@ -56,11 +56,11 @@ export default {
 
 ### Build
 
-- `lingxia build` builds into `dist/`; `lingxia build --release --package`
+- `lingxia build` builds into `dist/`; `lingxia package` builds a release and
   produces the publish archive.
-- A View reaching for `lx.*`, or calling an action its page never defined,
-  fails the build. Other findings are warnings: the artifact is written, the
-  code is still wrong.
+- Type errors and View authoring problems (a View reaching for `lx.*`, calling
+  an action its page never defined) fail the build. Performance, control and
+  style findings are warnings: the artifact is written, the code is still wrong.
 
 ## Logic — `definePage`
 
@@ -112,7 +112,7 @@ export default definePage({
 | `params`, `name` | This instance's params, its page name. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
 | `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
-| `opener`, `surface` | The page that pushed this one, or this page's surface; absent otherwise. |
+| `opener`, `surface` | The page that opened this one, or this page's surface; absent otherwise. |
 
 ### Lifecycle
 
@@ -319,10 +319,10 @@ host `surfaces`.
 - Style keys are optional. Mobile uses them as declared (no OS dark mode by
   itself); desktop draws the sidebar from the host `theme` and ignores
   `backgroundColor`. `lx.app.tabBar.update()` cannot change style.
-- A phone shows the first four items plus **More**; order items by use.
-  Desktop lists all in the sidebar.
-- `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
-  Indices stay as declared, and each host needs at least two items.
+- With more than five items a phone shows the first four plus **More**; order
+  items by use. A tablet shows all; desktop lists all in the sidebar.
+- `"showOn": ["mobile"]` or `["desktop"]` limits an item to mobile or desktop hosts.
+  Each host needs at least two items.
 - `text` is a string, or a catalogue key `{ "message": "tab.home" }` — see
   [text in several languages](#text-in-several-languages).
 
@@ -457,8 +457,8 @@ transaction: `null` resets a field, omitted fields stay, an invalid patch
 applies nothing.
 
 ```ts
-await lx.app.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
-await lx.app.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
+await lx.app.tabBar.update({ items: { profile: { label: 'Me', badge: '3' } } });
+await lx.app.tabBar.update({ items: { profile: { label: null, badge: null } } });
 await lx.app.tabBar.update({ visibility: 'hidden' });   // or 'auto'
 await page.navigationBar.update({ title: 'Account' });
 await page.navigationBar.update({ style: null, homeButton: 'auto' });

@@ -44,6 +44,8 @@ page instance. They advance independently.
 - **`page.signal` aborts before `onUnload`.**
 - **`onRefresh` holds the indicator until it settles.** A pull and
   `page.refresh()` both run it; return the fetch's promise. There is no stop call.
+  Both need `"enablePullDownRefresh": true` in the page's `index.json`;
+  without it `page.refresh()` throws (`reason: 'refreshNotEnabled'`).
 
 ## App hooks
 
@@ -62,7 +64,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
   Navigation below). Reopening it while docked brings it back in place; route
-  from the `page` / `query` in App `onShow`.
+  from the `path` / `query` in App `onShow`.
 - **Moving between aside and main does not restart.** Dragging an aside's tab
   onto the sidebar, clicking its Pin, or `lx.surface.openApp(id, { as })` naming
   the other role moves the live lxapp: no `onLaunch`, page stack and state
@@ -83,11 +85,11 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 ## Cold open
 
 1. The previous main, if any: `App.onHide` (`switch_away`).
-2. `App.onLaunch(options)`.
+2. `App.onLaunch()`.
 3. `App.onShow` (`open`).
 4. Landing page: `onLoad(query)` → `onShow` → `onReady`.
 
-Steps 2–4 are not awaited across each other. Other tab pages may be preloaded
+Step 4's `onLoad` waits for `onLaunch` to settle; step 3 does not. Other tab pages may be preloaded
 but get no hook until first selected.
 
 ## Navigation

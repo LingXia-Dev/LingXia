@@ -124,9 +124,9 @@ const response = await task.result; // { status, ok, headers, text, json() }
 ## Picking files
 
 `lx.pick.files()` / `media()` resolve `{ status: 'ok', files: PickedFile[] }`,
-`file()` / `capture()` resolve `{ status: 'ok', file }`, all or `{ status: 'canceled' }`;
-`pick.directory()` resolves `{ directory: { path, name } }` and
-`pick.code()` resolves `{ value, format }`. Each `PickedFile` is
+`file()` / `capture()` resolve `{ status: 'ok', file }`, `directory()`
+`{ status: 'ok', directory: { path, name } }` and `code()`
+`{ status: 'ok', value, format }`, each or `{ status: 'canceled' }`. Each `PickedFile` is
 `{ path, name, size, type }` on every platform: `name` always has an
 extension and `type` is the MIME type derived from it, never the platform's.
 Branch on `type`, not on `path`, which may be a `content://` or native path.
@@ -179,6 +179,8 @@ Limits come from host [`storage`](../app/project.md#storage):
 | `cacheMaxSizeMB` | 2048 | per LxApp usercache | disable usercache size enforcement |
 | `dataMaxSizeMB` | 4096 | per LxApp userdata | disable userdata size limit |
 | `appStorageMaxSizeMB` | 16384 | total userdata + usercache budget | disable app-wide storage limit |
+
+A write over a cap rejects `E_INVALID_ARG` with `detail` naming the cap.
 
 - **Temp** is removed with its session (stale sessions at open, the current one
   at destroy) and oldest-first under the cap; the OS may also clear it.
