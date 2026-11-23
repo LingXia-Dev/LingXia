@@ -1589,7 +1589,9 @@ enum LxAppSurface {
         var webView: WKWebView?
         let navigationDelegate: WKNavigationDelegate?
         let browserTabId: String?
-        let window: UIWindow
+        /// Nil for a side panel child, which the region shows and hides.
+        let window: UIWindow?
+        let inAside: Bool
 
         init(
             id: String,
@@ -1601,7 +1603,8 @@ enum LxAppSurface {
             webView: WKWebView?,
             navigationDelegate: WKNavigationDelegate?,
             browserTabId: String? = nil,
-            window: UIWindow
+            window: UIWindow?,
+            inAside: Bool = false
         ) {
             self.id = id
             self.appId = appId
@@ -1613,6 +1616,7 @@ enum LxAppSurface {
             self.navigationDelegate = navigationDelegate
             self.browserTabId = browserTabId
             self.window = window
+            self.inAside = inAside
         }
     }
 
@@ -1882,8 +1886,22 @@ enum LxAppSurface {
         }
 
         if entries[id] != nil {
-            entries[id]?.window.makeKeyAndVisible()
+            entries[id]?.window?.makeKeyAndVisible()
             return true
+        }
+
+        // A URL aside becomes a child of the side panel, which docks or covers the main by
+        // the window's size.
+        if role == roleAside, case .url(let urlString) = content, let region = LxAppAsideRegion.current {
+            return presentInAside(
+                region: region,
+                id: id,
+                appId: appId,
+                sessionId: sessionId,
+                urlString: urlString,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback
+            )
         }
 
         // An aside (or an aside the core promoted to a main) covers the whole
@@ -1966,49 +1984,20 @@ enum LxAppSurface {
             }
 
         case .url(let urlString):
-            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
-                LXLog.error("invalid web surface url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
-                return false
-            }
             pageInstanceId = ""
             hostView = nil
-            if let opened = openStandaloneBrowserTab(
-                appId,
-                sessionId,
-                url.absoluteString,
-                ephemeralWebData,
-                urlCallback
-            ) {
-                let tabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !tabId.isEmpty else { return false }
-                browserTabId = tabId
-                webView = nil
-                navigationDelegate = nil
-            } else {
-                browserTabId = nil
-                let wkWebView = WKWebView(
-                    frame: controller.contentView.bounds,
-                    configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
-                let delegate = WebNavigationDelegate(
-                    initialURL: url,
-                    allowsCrossOrigin: true,
-                    urlCallback: urlCallback)
-                wkWebView.navigationDelegate = delegate
-                if urlCallback { wkWebView.uiDelegate = delegate }
-                wkWebView.translatesAutoresizingMaskIntoConstraints = false
-                wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
-                wkWebView.isOpaque = false
-                wkWebView.backgroundColor = .clear
-                wkWebView.scrollView.backgroundColor = .clear
-                if #available(iOS 15.0, *) {
-                    wkWebView.underPageBackgroundColor = .clear
-                }
-                controller.contentView.addSubview(wkWebView)
-                pinToEdges(wkWebView, in: controller.contentView)
-                loadWebSurfaceURL(url, in: wkWebView)
-                webView = wkWebView
-                navigationDelegate = delegate
-            }
+            guard let opened = makeURLContent(
+                id: id,
+                appId: appId,
+                sessionId: sessionId,
+                urlString: urlString,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback,
+                in: controller.contentView
+            ) else { return false }
+            browserTabId = opened.browserTabId
+            webView = opened.webView
+            navigationDelegate = opened.delegate
         }
 
         entries[id] = Entry(
@@ -2030,6 +2019,109 @@ enum LxAppSurface {
         return true
     }
 
+    /// A URL surface's content in [container]: a managed browser tab when the host has one
+    /// (attached once its webview exists), else a plain webview.
+    private static func makeURLContent(
+        id: String,
+        appId: String,
+        sessionId: UInt64,
+        urlString: String,
+        ephemeralWebData: Bool,
+        urlCallback: Bool,
+        in container: UIView
+    ) -> (browserTabId: String?, webView: WKWebView?, delegate: WKNavigationDelegate?)? {
+        guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+            LXLog.error("invalid web surface url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
+            return nil
+        }
+        if let opened = openStandaloneBrowserTab(
+            appId,
+            sessionId,
+            url.absoluteString,
+            ephemeralWebData,
+            urlCallback
+        ) {
+            let tabId = opened.toString().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !tabId.isEmpty else { return nil }
+            return (tabId, nil, nil)
+        }
+        let wkWebView = WKWebView(
+            frame: container.bounds,
+            configuration: webSurfaceConfiguration(ephemeral: ephemeralWebData))
+        let delegate = WebNavigationDelegate(
+            initialURL: url,
+            allowsCrossOrigin: true,
+            urlCallback: urlCallback)
+        wkWebView.navigationDelegate = delegate
+        if urlCallback { wkWebView.uiDelegate = delegate }
+        wkWebView.translatesAutoresizingMaskIntoConstraints = false
+        wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
+        wkWebView.isOpaque = false
+        wkWebView.backgroundColor = .clear
+        wkWebView.scrollView.backgroundColor = .clear
+        if #available(iOS 15.0, *) {
+            wkWebView.underPageBackgroundColor = .clear
+        }
+        container.addSubview(wkWebView)
+        pinToEdges(wkWebView, in: container)
+        loadWebSurfaceURL(url, in: wkWebView)
+        return (nil, wkWebView, delegate)
+    }
+
+    private static func presentInAside(
+        region: LxAppAsideRegion,
+        id: String,
+        appId: String,
+        sessionId: UInt64,
+        urlString: String,
+        ephemeralWebData: Bool,
+        urlCallback: Bool
+    ) -> Bool {
+        let container = UIView()
+        container.backgroundColor = .systemBackground
+        guard let opened = makeURLContent(
+            id: id,
+            appId: appId,
+            sessionId: sessionId,
+            urlString: urlString,
+            ephemeralWebData: ephemeralWebData,
+            urlCallback: urlCallback,
+            in: container
+        ) else { return false }
+        entries[id] = Entry(
+            id: id,
+            appId: appId,
+            pageInstanceId: "",
+            isFullScreenSurface: false,
+            isFloat: false,
+            hostView: nil,
+            webView: opened.webView,
+            navigationDelegate: opened.delegate,
+            browserTabId: opened.browserTabId,
+            window: nil,
+            inAside: true
+        )
+        if let tabId = opened.browserTabId {
+            attachManagedBrowserTab(id: id, tabId: tabId, to: container, attempt: 0)
+        }
+        let host = URL(string: urlString)?.host.map {
+            $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0
+        }
+        region.adopt(
+            id: id,
+            view: container,
+            isURL: true,
+            title: {
+                if let title = entries[id]?.webView?.title, !title.isEmpty, !title.hasPrefix("http") {
+                    return title
+                }
+                return host ?? id
+            },
+            close: { _ = close(id: id, appId: appId, reason: "user") }
+        )
+        return true
+    }
+
     /// Surfaces presented full-screen (asides, and asides the core promoted to a
     /// main) that are currently on-screen. The layout reconciler reads this to
     /// dismiss any full-screen surface the core dropped from the plan — mirroring
@@ -2037,7 +2129,7 @@ enum LxAppSurface {
     static func presentedFullScreenIds() -> Set<String> {
         Set(
             entries.values
-                .filter { $0.isFullScreenSurface && !$0.isFloat && !$0.window.isHidden }
+                .filter { $0.isFullScreenSurface && !$0.isFloat && $0.window?.isHidden == false }
                 .map { $0.id }
         )
     }
@@ -2093,8 +2185,12 @@ enum LxAppSurface {
             entry.webView?.stopLoading()
             entry.webView?.navigationDelegate = nil
         }
-        entry.window.rootViewController = nil
-        entry.window.isHidden = true
+        if entry.inAside {
+            entry.webView?.removeFromSuperview()
+            LxAppAsideRegion.current?.release(id: id)
+        }
+        entry.window?.rootViewController = nil
+        entry.window?.isHidden = true
         _ = onSurfaceClosed(appId, id, closeReason(reason))
         return true
     }
@@ -2108,9 +2204,11 @@ enum LxAppSurface {
         // on no-op show/hide so this is currently unreachable from JS callers,
         // but guard here so future SDK-internal callers don't double-fire the
         // page lifecycle.
-        if !entry.window.isHidden { return true }
-        entry.window.isHidden = false
-        entry.window.makeKeyAndVisible()
+        // A side panel child shows with its slot.
+        guard let window = entry.window else { return true }
+        if !window.isHidden { return true }
+        window.isHidden = false
+        window.makeKeyAndVisible()
         // Wake any native overlay components on this page (video player,
         // media swiper, ...) — their views were hidden and playback paused
         // when hide() ran; this routes the active lifecycle so they re-show
@@ -2131,13 +2229,14 @@ enum LxAppSurface {
             LXLog.error("hide: surface not found id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
-        if entry.window.isHidden { return true }
+        guard let window = entry.window else { return true }
+        if window.isHidden { return true }
         // isHidden=true keeps the rootViewController/page mount alive so a
         // subsequent show() restores the same state instead of remounting.
         // We still fire onHide so JS can pause timers / save state, and route
         // an inactive page lifecycle to NativeBridge so video / swiper / etc.
         // overlay components pause and hide their views.
-        entry.window.isHidden = true
+        window.isHidden = true
         if let webView = entry.hostView?.webView {
             NativeBridge.notifyPageInactive(for: webView)
         }

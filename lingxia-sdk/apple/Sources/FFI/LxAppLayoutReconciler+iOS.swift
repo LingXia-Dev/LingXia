@@ -4,14 +4,15 @@ import OSLog
 #if os(iOS)
 import UIKit
 
-/// Adaptive Surface Layout — iOS full-screen aside reconciler.
+/// Adaptive Surface Layout — iOS aside reconciler.
 ///
 /// The shared Rust core owns the surface graph and, after every mutation,
-/// re-derives a `LayoutPresentationPlan` and hands it here. A phone has no
-/// side-by-side dock: an aside presents full-screen, the same way the primary
-/// lxapp page is shown. The plan keeps desired asides in `plan.asides` even
-/// under compact full-screen presentation so this reconciler can dismiss
-/// surfaces removed from the graph without treating `windowId` as an app id.
+/// re-derives a `LayoutPresentationPlan` and hands it here. The plan's `panel`
+/// slot drives `LxAppAsideRegion`, which docks its children beside the main
+/// on a regular-width window and covers the main otherwise. Other asides still
+/// present full-screen, the same way the primary lxapp page is shown; the plan
+/// keeps them in `plan.asides` so this reconciler can dismiss surfaces removed
+/// from the graph without treating `windowId` as an app id.
 ///
 /// The contract mirrors the macOS reconciler's desired-set vs presented-set:
 ///
@@ -114,6 +115,8 @@ enum LxAppLayoutReconcileriOS {
         for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredIds) {
             LxAppSurface.dismissFullScreen(id: id)
         }
+        // The side panel follows the plan's `panel` slot; it closes the children the plan dropped.
+        LxAppAsideRegion.current?.apply(plan: plan.asideSlots)
 
         NotificationCenter.default.post(
             name: layoutPlanDidUpdateNotification,
