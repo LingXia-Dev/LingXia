@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'A menu for one thing, asked for on the thing',
   description:
     'ContextMenu wraps a row, a card or a picture and opens a menu of actions for it when the user asks: a finger held on it, a secondary click, the Menu key. ' +
-    'From a finger the menu docks to the bottom edge with the thing\'s name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu\'s. ' +
+    'From a finger the menu docks to the bottom edge with the thing\'s name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu\'s, composed in `menu` or given as data in `items`. ' +
     'Nothing shows that the menu is there, so every action in it must also be reachable another way.',
   keywords: ['context menu', 'long press', 'right click', 'secondary click', 'actions', 'menu'],
   propsType: 'ContextMenuProps',
@@ -50,7 +50,7 @@ export const doc: ComponentDoc = {
       'Wrap something that already uses a long press, such as selectable text.',
     ],
   },
-  examples: [{ name: 'Rows', title: 'A menu on each row' }],
+  examples: [{ name: 'Rows', title: 'A menu on each row' }, { name: 'Data', title: 'The rows as data' }],
   gaps: [],
   limits: [
     'It holds no submenu: a menu item that opens another menu closes the first.',
@@ -65,6 +65,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a context menu as a shortcut to the actions for one thing.',
       hero: 'Rows',
+      variants: [{ name: 'Data', title: 'The rows given as data, with a submenu' }],
     },
   },
 };

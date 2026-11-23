@@ -5,6 +5,7 @@ import { Glyph } from '../internal/Glyph';
 import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
 import { dataOf } from '../internal/data';
+import { warnOnce } from '../internal/warn';
 
 export type DropdownMenuItemVariant = 'default' | 'destructive';
 export type DropdownMenuPlacement = 'bottom' | 'top';
@@ -13,8 +14,10 @@ export type DropdownMenuAlignment = 'start' | 'center' | 'end';
 export interface DropdownMenuProps {
   /** The trigger: a Button or an IconButton, or any element, which is then wrapped in a plain button. */
   children: Child;
-  /** `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. */
-  menu: Child;
+  /** `DropdownMenuItem`s, dividers, groups and checkable items, in order. Give this or `items`, not both. */
+  menu?: Child;
+  /** The rows as data: actions, dividers, groups and submenus. Checkable items are composed in `menu`. */
+  items?: readonly DropdownMenuEntry[];
   /** The menu's accessible name. */
   label: string;
   /** The items' height; match the trigger's size. @default 'md' */
@@ -89,6 +92,33 @@ export interface DropdownMenuRadioItemProps {
   'data-testid'?: string;
 }
 
+/** One action, or a submenu when it has `items`, in a menu given as data. */
+export interface DropdownMenuItemData {
+  /** The row's own name: keys it, so it keeps its focus when the list reorders or grows; unique within its list. @default its place in the list */
+  id?: string;
+  /** The row's text and its accessible name. */
+  label: string;
+  /** A second line, read as the row's description. Not on a submenu. */
+  description?: string;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  icon?: IconRef;
+  /** Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. */
+  onClick?: () => void;
+  /** Makes the row a submenu of these actions, one level deep. */
+  items?: readonly DropdownMenuItemData[];
+  /** @default false */
+  isDisabled?: boolean;
+  /** `destructive` draws the icon in the danger role. Not on a submenu. @default 'default' */
+  variant?: DropdownMenuItemVariant;
+  'data-testid'?: string;
+}
+
+/** A row of a menu given as data: an action or a submenu, a divider, or actions under a heading. */
+export type DropdownMenuEntry =
+  | DropdownMenuItemData
+  | { type: 'divider' }
+  | { type: 'group'; label: string; items: readonly DropdownMenuItemData[] };
+
 // `span-inline-end` spans from the trigger's start edge toward the inline end, so the menu's start
 // edge lines up with the trigger's; logical, so it mirrors in RTL.
 const areas = {
@@ -119,6 +149,7 @@ const RadioGroup = createContext<DropdownMenuRadioGroupProps | null>(null);
 export function DropdownMenu({
   children,
   menu,
+  items,
   label,
   size = 'md',
   isOpen,
@@ -131,6 +162,7 @@ export function DropdownMenu({
   const id = useId();
   const drilled = useLocal<string | null>('drilled', null);
   const isCompact = useView().env.sizeClass === 'compact';
+  const rows = menuRows('DropdownMenu', menu, items);
   return (
     <>
       <Trigger wiring={{ popoverTarget: id }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
@@ -150,11 +182,62 @@ export function DropdownMenu({
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
           <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact }}>
-            <view className={r.items.base}>{menu}</view>
+            <view className={r.items.base}>{rows}</view>
           </Drill.Provider>
         </view>
       </MenuSize.Provider>
     </>
+  );
+}
+
+/** A holder's rows from its `menu` or its `items`; exactly one must be given. Shared with ContextMenu, not public: a const, so the catalogue does not list it. */
+export const menuRows = (owner: string, menu: Child | undefined, items: readonly DropdownMenuEntry[] | undefined): Child => {
+  if ((menu === undefined) === (items === undefined)) throw Error(`${owner}: give either menu or items`);
+  if (items === undefined) return menu;
+  const keys = keysOf(owner, items);
+  return items.map((entry, index) => entryRow(owner, entry, keys[index]));
+};
+
+/** Each row's key: its `id`, or its place. A repeated id is told about and the repeat falls back to its place, so it never takes the first's focus. */
+function keysOf(owner: string, entries: readonly DropdownMenuEntry[]): string[] {
+  const seen = new Set<string>();
+  return entries.map((entry, index) => {
+    const id = 'type' in entry ? undefined : entry.id;
+    if (id === undefined) return `#${index}`;
+    if (seen.has(id)) {
+      warnOnce(`${owner}: two rows have the id "${id}"; an id names one row`);
+      return `#${index}`;
+    }
+    seen.add(id);
+    return id;
+  });
+}
+
+function rowsOf(owner: string, items: readonly DropdownMenuItemData[]): Child[] {
+  const keys = keysOf(owner, items);
+  return items.map((item, index) => itemRow(owner, item, keys[index]));
+}
+
+function entryRow(owner: string, entry: DropdownMenuEntry, key: string): Child {
+  if ('type' in entry) {
+    if (entry.type === 'divider') return <DropdownMenuDivider key={key} />;
+    return <DropdownMenuGroup key={key} label={entry.label}>{rowsOf(owner, entry.items)}</DropdownMenuGroup>;
+  }
+  return itemRow(owner, entry, key);
+}
+
+function itemRow(owner: string, item: DropdownMenuItemData, key: string): Child {
+  if (item.items !== undefined) {
+    return (
+      <DropdownMenuSubmenu key={key} label={item.label} icon={item.icon} isDisabled={item.isDisabled} data-testid={item['data-testid']}>
+        {rowsOf(owner, item.items)}
+      </DropdownMenuSubmenu>
+    );
+  }
+  if (item.onClick === undefined) throw Error(`${owner}: "${item.label}" needs onClick or items`);
+  return (
+    <DropdownMenuItem key={key} label={item.label} description={item.description} icon={item.icon} onClick={item.onClick}
+      isDisabled={item.isDisabled} variant={item.variant} data-testid={item['data-testid']} />
   );
 }
 

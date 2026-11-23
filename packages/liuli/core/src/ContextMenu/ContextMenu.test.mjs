@@ -44,3 +44,13 @@ test('Rows: the scrim closes the docked menu and runs nothing; from a mouse the 
   assert.equal(menu.props.position, 'absolute');
   assert.notEqual(screen.getByTestId('note-reading-menu-backdrop').props.background, 'scrim');
 });
+
+test('Data: rows given as data open on the ask, with a submenu, and run their action', async () => {
+  const screen = await renderExample('ContextMenu/ContextMenu', 'Data');
+  await ask(screen, 'photo-dunes', 'mouse');
+  const labels = screen.queryAll(node => node.props.role === 'menuitem').map(node => node.props.accessibilityLabel);
+  assert.deepEqual(labels.slice(0, 3), ['Add to album', 'Share', 'Delete']);
+  screen.press(screen.getByTestId('photo-delete'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(status(screen), 'Deleted Dunes at noon');
+});

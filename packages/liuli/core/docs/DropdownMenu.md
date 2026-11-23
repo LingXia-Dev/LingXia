@@ -8,7 +8,7 @@ A short menu of actions that opens from its trigger. Status: preview.
 import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider } from '@liulidesign/core/DropdownMenu';
 ```
 
-DropdownMenu groups a few related actions behind one trigger: sort options, a "more" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.
+DropdownMenu groups a few related actions behind one trigger: sort options, a "more" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open. `items` takes the same rows as data instead of `menu`: actions, `{ type: 'divider' }`, `{ type: 'group', label, items }`, and an action with `items` of its own as a submenu; checkable items are composed in `menu`.
 
 ## Examples
 
@@ -267,6 +267,53 @@ export function Submenu() {
 }
 ```
 
+### The rows as data
+
+```tsx
+import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+import { Said, unused } from '../example';
+import { Button } from '@liulidesign/core/Button';
+
+/** The rows as data: actions, a submenu, a group under a heading and a destructive action after a divider. */
+export function Data() {
+  return (
+    <Said>
+      {say => (
+        <DropdownMenu
+          label="Note actions"
+          items={[
+            { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },
+            { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },
+            {
+              label: 'Move to',
+              icon: 'folder',
+              items: [
+                { label: 'Inbox', onClick: () => say('Moved to Inbox'), 'data-testid': 'data-inbox' },
+                { label: 'Archive', onClick: () => say('Moved to Archive') },
+              ],
+              'data-testid': 'data-move',
+            },
+            { type: 'divider' },
+            {
+              type: 'group',
+              label: 'Share',
+              items: [
+                { label: 'Copy link', icon: 'link', onClick: () => say('Copied the link') },
+                { label: 'Invite someone', icon: 'share', description: 'They can edit it', onClick: unused, isDisabled: true },
+              ],
+            },
+            { type: 'divider' },
+            { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => say('Chose Delete'), 'data-testid': 'data-delete' },
+          ]}
+        >
+          <Button label="Actions" endIcon="chevron-down" data-testid="data" />
+        </DropdownMenu>
+      )}
+    </Said>
+  );
+}
+```
+
 ### On a link in a sentence
 
 ```tsx
@@ -300,7 +347,8 @@ export function InSentence() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` (required) | `Child` |  | The trigger: a Button or an IconButton, or any element, which is then wrapped in a plain button. |
-| `menu` (required) | `Child` |  | `DropdownMenuItem`s and `DropdownMenuDivider`s, in order. |
+| `menu` | `Child` |  | `DropdownMenuItem`s, dividers, groups and checkable items, in order. Give this or `items`, not both. |
+| `items` | `readonly DropdownMenuEntry[]` |  | The rows as data: actions, dividers, groups and submenus. Checkable items are composed in `menu`. |
 | `label` (required) | `string` |  | The menu's accessible name. |
 | `size` | `ButtonSize` | `'md'` | The items' height; match the trigger's size. |
 | `isOpen` | `boolean` |  | Controls whether the menu is open; leave it out to let the trigger own it. Opened from code, the menu is placed by its classes, not under the trigger. |
@@ -309,6 +357,20 @@ export function InSentence() {
 | `alignment` | `DropdownMenuAlignment` | `'start'` | Which edge of the trigger the menu lines up with. |
 | `menuClassName` | `string` |  | Classes for the menu panel. |
 | `data-testid` | `string` |  | On a wrapped trigger; the menu gets `<testid>-menu`. |
+
+## DropdownMenuItemData props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `id` | `string` | `its place in the list` | The row's own name: keys it, so it keeps its focus when the list reorders or grows; unique within its list. |
+| `label` (required) | `string` |  | The row's text and its accessible name. |
+| `description` | `string` |  | A second line, read as the row's description. Not on a submenu. |
+| `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
+| `onClick` | `(() => void)` |  | Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. |
+| `items` | `readonly DropdownMenuItemData[]` |  | Makes the row a submenu of these actions, one level deep. |
+| `isDisabled` | `boolean` | `false` |  |
+| `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` draws the icon in the danger role. Not on a submenu. |
+| `data-testid` | `string` |  |  |
 
 ## DropdownMenuItem props
 

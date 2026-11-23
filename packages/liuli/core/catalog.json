@@ -5405,7 +5405,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "A menu for one thing, asked for on the thing",
-      "description": "ContextMenu wraps a row, a card or a picture and opens a menu of actions for it when the user asks: a finger held on it, a secondary click, the Menu key. From a finger the menu docks to the bottom edge with the thing's name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu's. Nothing shows that the menu is there, so every action in it must also be reachable another way.",
+      "description": "ContextMenu wraps a row, a card or a picture and opens a menu of actions for it when the user asks: a finger held on it, a secondary click, the Menu key. From a finger the menu docks to the bottom edge with the thing's name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu's, composed in `menu` or given as data in `items`. Nothing shows that the menu is there, so every action in it must also be reachable another way.",
       "keywords": [
         "context menu",
         "long press",
@@ -5430,8 +5430,14 @@
         {
           "name": "menu",
           "type": "Child",
-          "required": true,
-          "description": "`DropdownMenuItem`s, dividers and groups, in order. The same actions must be reachable another way."
+          "required": false,
+          "description": "`DropdownMenuItem`s, dividers and groups, in order. Give this or `items`, not both. The same actions must be reachable another way."
+        },
+        {
+          "name": "items",
+          "type": "readonly DropdownMenuEntry[]",
+          "required": false,
+          "description": "The rows as data, as DropdownMenu's `items` takes them."
         },
         {
           "name": "isDisabled",
@@ -5514,6 +5520,11 @@
           "name": "Rows",
           "title": "A menu on each row",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ContextMenu } from '@liulidesign/core/ContextMenu';\n\nconst notes = [\n  ['coast', 'Trip to the coast', 'Edited yesterday'],\n  ['reading', 'Reading list', 'Edited on Monday'],\n  ['garden', 'Ideas for the garden', 'Edited last week'],\n] as const;\n\n/** Rows with a menu each: hold a row, or click it with the secondary button. The row itself still opens. */\nexport function Rows() {\n  const last = useLocal('last', '');\n  return (\n    <view className=\"gap-2\">\n      <ItemList label=\"Notes\">\n        {notes.map(([id, title, edited]) => (\n          <ContextMenu\n            key={id}\n            label={title}\n            data-testid={`note-${id}`}\n            menu={\n              <>\n                <DropdownMenuItem label=\"Pin to top\" onClick={() => last.set(`Pinned ${title}`)} data-testid={`pin-${id}`} />\n                <DropdownMenuItem label=\"Share\" onClick={() => last.set(`Shared ${title}`)} />\n                <DropdownMenuDivider />\n                <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => last.set(`Deleted ${title}`)} />\n              </>\n            }\n          >\n            <Item label={title} description={edited} hasChevron onClick={() => last.set(`Opened ${title}`)} />\n          </ContextMenu>\n        ))}\n      </ItemList>\n      {last.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{last.value}</text>}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Data",
+          "title": "The rows as data",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ContextMenu } from '@liulidesign/core/ContextMenu';\n\n/** The same menu, its rows given as data. */\nexport function Data() {\n  const last = useLocal('last', '');\n  return (\n    <view className=\"gap-2\">\n      <ItemList label=\"Photos\">\n        <ContextMenu\n          label=\"Dunes at noon\"\n          data-testid=\"photo-dunes\"\n          items={[\n            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },\n            { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },\n            { type: 'divider' },\n            { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },\n          ]}\n        >\n          <Item label=\"Dunes at noon\" description=\"Taken in May\" hasChevron onClick={() => last.set('Opened Dunes at noon')} />\n        </ContextMenu>\n      </ItemList>\n      {last.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{last.value}</text>}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -5560,7 +5571,13 @@
         "order": 9,
         "page": {
           "lead": "Use a context menu as a shortcut to the actions for one thing.",
-          "hero": "Rows"
+          "hero": "Rows",
+          "variants": [
+            {
+              "name": "Data",
+              "title": "The rows given as data, with a submenu"
+            }
+          ]
         }
       }
     },
@@ -7539,7 +7556,7 @@
       "status": "preview",
       "since": "2026-11-12",
       "summary": "A short menu of actions that opens from its trigger",
-      "description": "DropdownMenu groups a few related actions behind one trigger: sort options, a \"more\" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open.",
+      "description": "DropdownMenu groups a few related actions behind one trigger: sort options, a \"more\" menu on a row, account actions. Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one choice; both keep the menu open. `items` takes the same rows as data instead of `menu`: actions, `{ type: 'divider' }`, `{ type: 'group', label, items }`, and an action with `items` of its own as a submenu; checkable items are composed in `menu`.",
       "keywords": [
         "dropdown",
         "menu",
@@ -7560,8 +7577,14 @@
         {
           "name": "menu",
           "type": "Child",
-          "required": true,
-          "description": "`DropdownMenuItem`s and `DropdownMenuDivider`s, in order."
+          "required": false,
+          "description": "`DropdownMenuItem`s, dividers, groups and checkable items, in order. Give this or `items`, not both."
+        },
+        {
+          "name": "items",
+          "type": "readonly DropdownMenuEntry[]",
+          "required": false,
+          "description": "The rows as data: actions, dividers, groups and submenus. Checkable items are composed in `menu`."
         },
         {
           "name": "label",
@@ -7630,6 +7653,69 @@
         }
       ],
       "otherProps": {
+        "DropdownMenuItemData": [
+          {
+            "name": "id",
+            "type": "string",
+            "required": false,
+            "description": "The row's own name: keys it, so it keeps its focus when the list reorders or grows; unique within its list.",
+            "default": "its place in the list"
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The row's text and its accessible name."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A second line, read as the row's description. Not on a submenu."
+          },
+          {
+            "name": "icon",
+            "type": "IconRef",
+            "required": false,
+            "description": "An icon by name from the set, or a definition, before the label; hidden from assistive tech."
+          },
+          {
+            "name": "onClick",
+            "type": "(() => void)",
+            "required": false,
+            "description": "Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu."
+          },
+          {
+            "name": "items",
+            "type": "readonly DropdownMenuItemData[]",
+            "required": false,
+            "description": "Makes the row a submenu of these actions, one level deep."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "",
+            "default": "false"
+          },
+          {
+            "name": "variant",
+            "type": "DropdownMenuItemVariant",
+            "required": false,
+            "description": "`destructive` draws the icon in the danger role. Not on a submenu.",
+            "values": [
+              "destructive",
+              "default"
+            ],
+            "default": "'default'"
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ],
         "DropdownMenuItem": [
           {
             "name": "label",
@@ -7916,6 +8002,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A submenu for a few choices under one name; it opens at the item's side. */\nexport function Submenu() {\n  const moved = useLocal('moved', 'Notes');\n  return (\n    <Said>\n      {say => (\n        <view className=\"items-start gap-2\">\n          <DropdownMenu label=\"Note\" menu={<>\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuSubmenu label=\"Move to\" data-testid=\"move\">\n              {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (\n                <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />\n              ))}\n            </DropdownMenuSubmenu>\n            <DropdownMenuDivider />\n            <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => say('Chose Delete')} />\n          </>}>\n            <Button label=\"Note\" endIcon=\"chevron-down\" data-testid=\"note-menu\" />\n          </DropdownMenu>\n          <text role=\"status\" className=\"text-footnote text-muted\">{`In ${moved.value}`}</text>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
+          "name": "Data",
+          "title": "The rows as data",
+          "source": "import { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The rows as data: actions, a submenu, a group under a heading and a destructive action after a divider. */\nexport function Data() {\n  return (\n    <Said>\n      {say => (\n        <DropdownMenu\n          label=\"Note actions\"\n          items={[\n            { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },\n            { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },\n            {\n              label: 'Move to',\n              icon: 'folder',\n              items: [\n                { label: 'Inbox', onClick: () => say('Moved to Inbox'), 'data-testid': 'data-inbox' },\n                { label: 'Archive', onClick: () => say('Moved to Archive') },\n              ],\n              'data-testid': 'data-move',\n            },\n            { type: 'divider' },\n            {\n              type: 'group',\n              label: 'Share',\n              items: [\n                { label: 'Copy link', icon: 'link', onClick: () => say('Copied the link') },\n                { label: 'Invite someone', icon: 'share', description: 'They can edit it', onClick: unused, isDisabled: true },\n              ],\n            },\n            { type: 'divider' },\n            { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => say('Chose Delete'), 'data-testid': 'data-delete' },\n          ]}\n        >\n          <Button label=\"Actions\" endIcon=\"chevron-down\" data-testid=\"data\" />\n        </DropdownMenu>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
           "name": "InSentence",
           "title": "On a link in a sentence",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Link } from '@liulidesign/core/Link';\n\n/** On a link in a sentence: the choice is made where it is read. */\nexport function InSentence() {\n  const order = useLocal('sentence-order', 'newest');\n  return (\n    <text className=\"text-body text-text\" data-testid=\"sentence\">\n      Showing notes,{' '}\n      <DropdownMenu\n        label=\"Order\"\n        menu={<>\n          <DropdownMenuItem label=\"Newest first\" onClick={() => order.set('newest')} />\n          <DropdownMenuItem label=\"Oldest first\" onClick={() => order.set('oldest')} />\n        </>}\n      >\n        <Link label={`${order.value} first`} data-testid=\"order-link\" />\n      </DropdownMenu>\n      .\n    </text>\n  );\n}"
@@ -8003,6 +8094,10 @@
             {
               "name": "Submenu",
               "title": "A submenu at the side of its item, one level deep"
+            },
+            {
+              "name": "Data",
+              "title": "The same rows given as data: a submenu, a group and a divider"
             }
           ],
           "sizes": [

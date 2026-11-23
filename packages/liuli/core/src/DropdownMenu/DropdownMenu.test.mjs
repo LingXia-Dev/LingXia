@@ -222,3 +222,53 @@ test('InSentence: the link stays in its sentence and wires the overlay', async (
   assert.equal(screen.queryAll(node => node.tag === 'text' && node.children?.includes(link)).length, 1, 'inside the sentence');
   assert.ok(link.props.interestFor || link.props.stateExpanded === 0, 'wired to its overlay');
 });
+
+test('Data: rows given as data draw as the composed ones: a submenu, a named group, dividers and a destructive action', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Data');
+  screen.press(screen.getByTestId('data'));
+  const top = menus(screen)[0];
+  assert.equal(top.props.accessibilityLabel, 'Note actions');
+  const labels = screen.queryAll(node => node.props.role === 'menuitem').map(node => node.props.accessibilityLabel);
+  assert.deepEqual(labels.slice(0, 6), ['Rename', 'Duplicate', 'Move to', 'Copy link', 'Invite someone', 'Delete']);
+  const group = screen.queryAll(node => node.props.role === 'group' && node.props.accessibilityLabel === 'Share');
+  assert.equal(group.length, 1, 'the group is named by its label');
+  const invite = screen.queryAll(node => node.props.role === 'menuitem' && node.props.accessibilityLabel === 'Invite someone')[0];
+  assert.equal(invite.props.onClick, undefined, 'a disabled row takes no press');
+  screen.press(screen.getByTestId('data-delete'));
+  assert.equal(menus(screen).length, 0, 'choosing closes the menu');
+});
+
+test('Data: a row with items opens them as its submenu, and choosing there runs the action', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Data');
+  screen.press(screen.getByTestId('data'));
+  screen.press(screen.getByTestId('data-move'));
+  assert.ok(screen.getByTestId('data-move-menu'));
+  screen.press(screen.getByTestId('data-inbox'));
+  assert.ok(screen.getByText('Moved to Inbox'));
+});
+
+test('items: rows key by their place, so two rows may share a label; two rows with one id are told about', async () => {
+  const warned = [];
+  const warn = console.warn;
+  console.warn = message => warned.push(message);
+  try {
+    const screen = await renderPage(`
+      import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+      import { Button } from '@liulidesign/core/Button';
+      export function render() {
+        return <page><DropdownMenu label="Devices" items={[
+          { type: 'group', label: 'iPad', items: [{ label: 'Remove', onClick: () => {} }] },
+          { type: 'group', label: 'Phone', items: [{ label: 'Remove', onClick: () => {} }] },
+          { label: 'Rename', id: 'same', onClick: () => {} },
+          { label: 'Move', id: 'same', onClick: () => {} },
+        ]}><Button label="Devices" data-testid="m" /></DropdownMenu></page>;
+      }
+    `);
+    screen.press(screen.getByTestId('m'));
+    const labels = screen.queryAll(node => node.props.role === 'menuitem').map(node => node.props.accessibilityLabel);
+    assert.deepEqual(labels, ['Remove', 'Remove', 'Rename', 'Move']);
+    assert.ok(warned.some(message => message.includes('two rows have the id "same"')), warned.join('\n'));
+  } finally {
+    console.warn = warn;
+  }
+});

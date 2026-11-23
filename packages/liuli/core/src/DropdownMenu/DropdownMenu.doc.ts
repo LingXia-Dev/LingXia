@@ -10,10 +10,11 @@ export const doc: ComponentDoc = {
     'DropdownMenu groups a few related actions behind one trigger: sort options, a "more" menu on a row, account actions. ' +
     'Its children are the trigger, a Button or IconButton; `menu` holds DropdownMenuItems and DropdownMenuDividers, and choosing an item runs its onClick and closes the menu. ' +
     'DropdownMenuCheckboxItem turns an option on or off, and DropdownMenuRadioItems in a DropdownMenuRadioGroup check one ' +
-    'choice; both keep the menu open.',
+    'choice; both keep the menu open. ' +
+    '`items` takes the same rows as data instead of `menu`: actions, `{ type: \'divider\' }`, `{ type: \'group\', label, items }`, and an action with `items` of its own as a submenu; checkable items are composed in `menu`.',
   keywords: ['dropdown', 'menu', 'more', 'overflow', 'kebab', 'actions', 'popover', 'context'],
   propsType: 'DropdownMenuProps',
-  otherPropsTypes: ['DropdownMenuItemProps', 'DropdownMenuCheckboxItemProps', 'DropdownMenuRadioGroupProps', 'DropdownMenuRadioItemProps'],
+  otherPropsTypes: ['DropdownMenuItemData', 'DropdownMenuItemProps', 'DropdownMenuCheckboxItemProps', 'DropdownMenuRadioGroupProps', 'DropdownMenuRadioItemProps'],
   recipe: { map: 'dropdownMenuRecipe', parts: 'dropdownMenuParts' },
   anatomy: [
     { part: 'menu', required: true, description: 'A popover with the menu role, anchored to the trigger, in the top layer.' },
@@ -75,6 +76,7 @@ export const doc: ComponentDoc = {
     { name: 'StateMixed', title: 'An item for a set, partly on' },
     { name: 'Grouped', title: 'Groups under headings' },
     { name: 'Submenu', title: 'A submenu' },
+    { name: 'Data', title: 'The rows as data' },
     { name: 'InSentence', title: 'On a link in a sentence' },
   ],
   gaps: [
@@ -109,6 +111,7 @@ export const doc: ComponentDoc = {
         { name: 'Checkable', title: 'Checkbox and radio items' },
         { name: 'Grouped', title: 'Named groups, for a menu with more than one kind of item' },
         { name: 'Submenu', title: 'A submenu at the side of its item, one level deep' },
+        { name: 'Data', title: 'The same rows given as data: a submenu, a group and a divider' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large triggers' }],
       states: [

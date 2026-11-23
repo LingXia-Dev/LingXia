@@ -258,6 +258,45 @@ export function Submenu() {
   );
 }
 
+
+/** The rows as data: actions, a submenu, a group under a heading and a destructive action after a divider. */
+export function Data() {
+  return (
+    <Said>
+      {say => (
+        <DropdownMenu
+          label="Note actions"
+          items={[
+            { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },
+            { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },
+            {
+              label: 'Move to',
+              icon: 'folder',
+              items: [
+                { label: 'Inbox', onClick: () => say('Moved to Inbox'), 'data-testid': 'data-inbox' },
+                { label: 'Archive', onClick: () => say('Moved to Archive') },
+              ],
+              'data-testid': 'data-move',
+            },
+            { type: 'divider' },
+            {
+              type: 'group',
+              label: 'Share',
+              items: [
+                { label: 'Copy link', icon: 'link', onClick: () => say('Copied the link') },
+                { label: 'Invite someone', icon: 'share', description: 'They can edit it', onClick: unused, isDisabled: true },
+              ],
+            },
+            { type: 'divider' },
+            { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => say('Chose Delete'), 'data-testid': 'data-delete' },
+          ]}
+        >
+          <Button label="Actions" endIcon="chevron-down" data-testid="data" />
+        </DropdownMenu>
+      )}
+    </Said>
+  );
+}
 /** On a link in a sentence: the choice is made where it is read. */
 export function InSentence() {
   const order = useLocal('sentence-order', 'newest');

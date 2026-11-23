@@ -8,7 +8,7 @@ A menu for one thing, asked for on the thing. Status: preview.
 import { ContextMenu } from '@liulidesign/core/ContextMenu';
 ```
 
-ContextMenu wraps a row, a card or a picture and opens a menu of actions for it when the user asks: a finger held on it, a secondary click, the Menu key. From a finger the menu docks to the bottom edge with the thing's name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu's. Nothing shows that the menu is there, so every action in it must also be reachable another way.
+ContextMenu wraps a row, a card or a picture and opens a menu of actions for it when the user asks: a finger held on it, a secondary click, the Menu key. From a finger the menu docks to the bottom edge with the thing's name over it; from a mouse or the keyboard it opens at the point. Its items are DropdownMenu's, composed in `menu` or given as data in `items`. Nothing shows that the menu is there, so every action in it must also be reachable another way.
 
 ## Examples
 
@@ -56,13 +56,46 @@ export function Rows() {
 }
 ```
 
+### The rows as data
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Item, ItemList } from '@liulidesign/core/Item';
+import { ContextMenu } from '@liulidesign/core/ContextMenu';
+
+/** The same menu, its rows given as data. */
+export function Data() {
+  const last = useLocal('last', '');
+  return (
+    <view className="gap-2">
+      <ItemList label="Photos">
+        <ContextMenu
+          label="Dunes at noon"
+          data-testid="photo-dunes"
+          items={[
+            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
+            { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },
+            { type: 'divider' },
+            { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },
+          ]}
+        >
+          <Item label="Dunes at noon" description="Taken in May" hasChevron onClick={() => last.set('Opened Dunes at noon')} />
+        </ContextMenu>
+      </ItemList>
+      {last.value !== '' && <text role="status" className="text-footnote text-muted">{last.value}</text>}
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | Names the menu for assistive tech, and heads it when it docks: "Trip to the coast". |
 | `children` (required) | `Child` |  | What the menu is for: a row, a card, a picture. A long press or a secondary click on it asks for the menu. |
-| `menu` (required) | `Child` |  | `DropdownMenuItem`s, dividers and groups, in order. The same actions must be reachable another way. |
+| `menu` | `Child` |  | `DropdownMenuItem`s, dividers and groups, in order. Give this or `items`, not both. The same actions must be reachable another way. |
+| `items` | `readonly DropdownMenuEntry[]` |  | The rows as data, as DropdownMenu's `items` takes them. |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  | Classes for the wrapper around `children`. |
 | `data-testid` | `string` |  | On the wrapper; the menu gets `<testid>-menu`. |

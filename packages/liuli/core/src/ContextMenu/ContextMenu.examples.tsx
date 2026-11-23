@@ -39,6 +39,30 @@ export function Rows() {
   );
 }
 
+/** The same menu, its rows given as data. */
+export function Data() {
+  const last = useLocal('last', '');
+  return (
+    <view className="gap-2">
+      <ItemList label="Photos">
+        <ContextMenu
+          label="Dunes at noon"
+          data-testid="photo-dunes"
+          items={[
+            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
+            { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },
+            { type: 'divider' },
+            { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },
+          ]}
+        >
+          <Item label="Dunes at noon" description="Taken in May" hasChevron onClick={() => last.set('Opened Dunes at noon')} />
+        </ContextMenu>
+      </ItemList>
+      {last.value !== '' && <text role="status" className="text-footnote text-muted">{last.value}</text>}
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return (

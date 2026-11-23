@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, More, Value, Checkable, Grouped, Submenu, Sizes, StateEnabled, StateDisabled, StateMixed, InList, InSentence } from '../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Basic, More, Value, Checkable, Grouped, Submenu, Data, Sizes, StateEnabled, StateDisabled, StateMixed, InList, InSentence } from '../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -23,6 +23,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A submenu at the side of its item, one level deep"}>
           <Submenu />
+        </Stage>
+        <Stage caption={"The same rows given as data: a submenu, a group and a divider"}>
+          <Data />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>
