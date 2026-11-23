@@ -58,8 +58,7 @@ const tabbed: Promise<void> = lx.nav.go({ tab: "home" });
 const otherApp: Promise<void> = lx.nav.go({ app: "lingxia-chat", params: { room: "a" } });
 // @ts-expect-error a target names one destination
 lx.nav.go({ page: "detail", tab: "home" });
-// @ts-expect-error a tab takes no params
-lx.nav.go({ tab: "home", params: {} });
+const tabbedWithParams: Promise<void> = lx.nav.go({ tab: "home", params: { item: "7" } });
 // @ts-expect-error only a page replaces the current one
 lx.nav.go({ tab: "home" }, { replace: true });
 // @ts-expect-error reset starts at a page or a tab
@@ -117,6 +116,7 @@ export type GeneratedQualityGate = [
   typeof pushed,
   typeof replaced,
   typeof tabbed,
+  typeof tabbedWithParams,
   typeof otherApp,
   typeof appDownloadResult,
   typeof downloadsResult,

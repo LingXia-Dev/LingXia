@@ -121,7 +121,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | Hook | When it fires |
 | --- | --- |
 | `onLoad(options)` | Entering the page, with its query: each value keeps the JSON type it was passed with (`{ count: 3 }` arrives as `3`); validate what arrives from outside (an app link): it is usually strings. Non-string values are limited to 8 KB. |
-| `onShow()` | Becoming visible, on entry and every return. |
+| `onShow({ params? })` | Becoming visible, on entry and every return. `params` only on the show a `go({ tab, params })` caused. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
 | `onUnload()` | Left the stack (`lx.nav.back`, a replace, a tab switch that drops it, `lx.nav.reset`). |
@@ -333,7 +333,7 @@ Items are keyed by tab page name; `icon: null` restores the declared icon, `badg
 ### Navigating
 
 `lx.nav` takes a target naming one destination: `{ page, params? }`,
-`{ tab }`, `{ app, page?, params? }` or `{ url }`. Names come from
+`{ tab, params? }`, `{ app, page?, params? }` or `{ url }`. Names come from
 `lxapp.json`; `params` is checked against what the page declares.
 
 ```ts
@@ -348,7 +348,8 @@ await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' });
 await lx.nav.leaveApp();                     // back to the lxapp that opened this one
 ```
 
-A tab page cannot replace another page. `{ url }` opens the in-app browser and
+A tab's `params` reach its `onShow` for that switch only, also when it is already the current
+tab; read handoff data there (a tab not created yet also loads with them). A tab page cannot replace another page. `{ url }` opens the in-app browser and
 does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
 `lx.surface.openPage('detail', { as: 'float', params })` returns the same

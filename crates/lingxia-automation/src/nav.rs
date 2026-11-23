@@ -1,5 +1,5 @@
 //! `NavDriver` — page-stack navigation + runtime reads for one selected lxapp.
-//! `go` / `reset` take an `lx.nav` target (`{ page, params? }` or `{ tab }`);
+//! `go` / `reset` take an `lx.nav` target (`{ page, params? }` or `{ tab, params? }`);
 //! reads are `current` / `stack`; `back` pops; `press` is the user's navigation bar button. Semantics come from the shared `lxapp::automation`
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.
 //!
@@ -159,7 +159,7 @@ impl JSNavDriver {
         let wait = ready_wait(ctx, wait_until, timeout_ms)?;
         let (name, kind) = match (target.page, target.tab) {
             (Some(page), None) => (page, kind),
-            (None, Some(tab)) if target.params.is_none() => (
+            (None, Some(tab)) => (
                 tab,
                 if kind == NavigationType::Launch {
                     kind
@@ -167,8 +167,11 @@ impl JSNavDriver {
                     NavigationType::SwitchTab
                 },
             ),
-            (None, Some(_)) => return Err(auto_err("a { tab } target takes no params")),
-            _ => return Err(auto_err("a target is { page, params? } or { tab }")),
+            _ => {
+                return Err(auto_err(
+                    "a target is { page, params? } or { tab, params? }",
+                ));
+            }
         };
         let query = target.params.as_ref().map(js_object_to_json).transpose()?;
         let (page, name) = auto::navigate(&app, &name, query.as_ref(), kind, false)

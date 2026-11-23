@@ -34,12 +34,21 @@ export type PageHookName = 'onLoad' | 'onShow' | 'onReady' | 'onHide' | 'onUnloa
 
 type Hook = () => void | Promise<void>;
 
+/** What `onShow` receives. */
+export interface ShowOptions<Params> {
+  /**
+   * The params of the `lx.nav.go({ tab, params })` that showed this tab page, on that show only
+   * (also when it was already the current tab); absent on every other show.
+   */
+  readonly params?: Params;
+}
+
 /** What `setup` returns: lifecycle hooks under their names, and `actions`. */
 export interface PageSetup<Params, Actions> {
   /** Runs once with the params the page was opened with. */
   onLoad?: (params: Params) => void | Promise<void>;
   /** Runs each time the page comes on screen. */
-  onShow?: Hook;
+  onShow?: (options: ShowOptions<Params>) => void | Promise<void>;
   /** Runs once, after the View first rendered. */
   onReady?: Hook;
   /** Runs each time the page leaves the screen but stays alive. */

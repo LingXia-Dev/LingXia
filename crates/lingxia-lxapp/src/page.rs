@@ -298,6 +298,8 @@ pub struct PageState {
     orientation_lock: Option<OrientationConfig>,
     // Query parameters
     pub(crate) query: serde_json::Value,
+    /// The params of the tab switch that showed this page; its next `onShow` takes them, once.
+    handoff: Option<serde_json::Value>,
 }
 
 impl PageState {
@@ -550,6 +552,7 @@ impl PageInstance {
             max_text_scale: page_config.max_text_scale,
             dev_hold_first_state: page_config.dev_hold_first_state,
             query: serde_json::json!({}),
+            handoff: None,
         }
     }
 
@@ -1501,16 +1504,25 @@ impl PageInstance {
             && (!state.requires_bridge_ready || state.bridge_ready)
             && !matches!(state.render_status, PageRenderStatus::Unstarted)
         {
-            let query = serde_json::to_string(&state.query).ok();
+            // A tab created by a switch with params loads with them too.
+            let query = serde_json::to_string(state.handoff.as_ref().unwrap_or(&state.query)).ok();
             events_to_fire.push((PageLifecycleEvent::OnLoad, query));
             state.entry = EntryPhase::Loaded;
         }
 
         // Weixin ordering for the first visible load is Load -> Show -> Ready.
         if state.entry == EntryPhase::Loaded && state.visibility == Visibility::ShowOwed {
-            events_to_fire.push((PageLifecycleEvent::OnShow, None));
+            events_to_fire.push((PageLifecycleEvent::OnShow, Self::show_options(state)));
             state.visibility = Visibility::Shown;
             state.event = Some(PageLifecycleEvent::OnShow);
+        }
+
+        // A switch with params to the tab already on screen shows it again, with them.
+        if state.entry == EntryPhase::Loaded
+            && state.visibility == Visibility::Shown
+            && state.handoff.is_some()
+        {
+            events_to_fire.push((PageLifecycleEvent::OnShow, Self::show_options(state)));
         }
 
         // `onReady` is the first-paint hook of a visible entry. A document
@@ -1526,6 +1538,24 @@ impl PageInstance {
         }
     }
 
+    /// `onShow`'s argument; taking the handoff is what keeps it to one show.
+    fn show_options(state: &mut PageState) -> Option<String> {
+        state
+            .handoff
+            .take()
+            .map(|params| serde_json::json!({ "params": params }).to_string())
+    }
+
+    /// A tab switch: its params are this page's handoff, never its entry query, so no later
+    /// `onLoad` or `onShow` sees them again. A switch without params clears one still owed.
+    fn arm_handoff(state: &mut PageState) {
+        let query = std::mem::replace(&mut state.query, serde_json::json!({}));
+        state.handoff = query
+            .as_object()
+            .is_some_and(|params| !params.is_empty())
+            .then_some(query);
+    }
+
     fn collect_hidden_or_unloaded_lifecycle_event(
         state: &mut PageState,
         event: PageLifecycleEvent,
@@ -1537,6 +1567,9 @@ impl PageInstance {
         ));
 
         state.visibility = Visibility::Hidden;
+        if event == PageLifecycleEvent::OnUnload {
+            state.handoff = None;
+        }
         if event == PageLifecycleEvent::OnUnload && state.entry == EntryPhase::LoadOwed {
             // Cancel an entry that never got its `onLoad`. One already
             // delivered stays delivered: the PageInstance can be reused after
@@ -1787,39 +1820,42 @@ impl PageInstance {
         // in case the JS code calls back into Rust and needs to access page state.
         {
             let mut state = self.inner.state.lock().unwrap();
-
-            // OnPullDownRefresh is a simple event that fires immediately without state tracking
-            if event == PageLifecycleEvent::OnPullDownRefresh {
-                events_to_fire.push((event, None));
-            }
-            // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
-            else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
-                if event == PageLifecycleEvent::OnUnload {
-                    state.orientation_lock = None;
-                }
-                Self::collect_hidden_or_unloaded_lifecycle_event(
-                    &mut state,
-                    event,
-                    &mut events_to_fire,
-                );
-            } else {
-                // This logic handles the Load -> Show -> Ready cascade.
-
-                // Update raw status based on the incoming event.
-                if event == PageLifecycleEvent::OnShow && state.visibility != Visibility::Shown {
-                    state.visibility = Visibility::ShowOwed;
-                }
-
-                if event == PageLifecycleEvent::OnLoad {
-                    Self::request_on_load(&mut state);
-                }
-
-                Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
-            }
+            Self::collect_lifecycle_events(&mut state, event, &mut events_to_fire);
         }
 
         //  Fire the collected events outside of the lock to prevent deadlocks.
         self.fire_lifecycle_events(events_to_fire);
+    }
+
+    fn collect_lifecycle_events(
+        state: &mut PageState,
+        event: PageLifecycleEvent,
+        events_to_fire: &mut Vec<(PageLifecycleEvent, Option<String>)>,
+    ) {
+        // OnPullDownRefresh is a simple event that fires immediately without state tracking
+        if event == PageLifecycleEvent::OnPullDownRefresh {
+            events_to_fire.push((event, None));
+        }
+        // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
+        else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
+            if event == PageLifecycleEvent::OnUnload {
+                state.orientation_lock = None;
+            }
+            Self::collect_hidden_or_unloaded_lifecycle_event(state, event, events_to_fire);
+        } else {
+            // This logic handles the Load -> Show -> Ready cascade.
+
+            // Update raw status based on the incoming event.
+            if event == PageLifecycleEvent::OnShow && state.visibility != Visibility::Shown {
+                state.visibility = Visibility::ShowOwed;
+            }
+
+            if event == PageLifecycleEvent::OnLoad {
+                Self::request_on_load(state);
+            }
+
+            Self::collect_ready_lifecycle_events(state, events_to_fire);
+        }
     }
 
     /// Get navbar state (read-only)
@@ -2661,6 +2697,11 @@ impl PageInstance {
         let target_page = target_page.ok_or_else(|| {
             LxAppError::InvalidParameter(format!("no page resolved for '{target_url}'"))
         })?;
+        let already_shown =
+            nav_type == NavigationType::SwitchTab && target_page.inner.id == self.inner.id;
+        if is_tab_switch && let Ok(mut state) = target_page.inner.state.lock() {
+            Self::arm_handoff(&mut state);
+        }
 
         // 3. Handle UI state based on navigation type (TabBar, NavBar)
         if is_tab_switch
@@ -2705,7 +2746,7 @@ impl PageInstance {
                     && !lxapp
                         .get_tabbar()
                         .is_some_and(|tabbar| tabbar.is_tabbar_page(&self.path()));
-                if !unloaded_by_tab_switch {
+                if !unloaded_by_tab_switch && !already_shown {
                     self.leave_view();
                     self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
                 }
@@ -2717,6 +2758,8 @@ impl PageInstance {
         // platform container, the same way navigateBack reveals a page.
         if nav_type != NavigationType::SwitchTab || target_page.switch_tab_owes_on_load() {
             target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+        } else if already_shown {
+            target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
         }
 
         // 6. Perform the native navigation
@@ -3160,6 +3203,7 @@ mod tests {
             max_text_scale: None,
             dev_hold_first_state: false,
             query: serde_json::json!({}),
+            handoff: None,
         }
     }
 
@@ -3366,6 +3410,170 @@ mod tests {
         assert!(restore_tabbar_after_back(&mut tabbar, "pages/api/index"));
         assert!(tabbar.is_visible_on("pages/api/index"));
         assert_eq!(tabbar.get_selected_index(), 1);
+    }
+
+    fn step(
+        state: &mut PageState,
+        event: PageLifecycleEvent,
+    ) -> Vec<(PageLifecycleEvent, Option<String>)> {
+        let mut events = Vec::new();
+        PageInstance::collect_lifecycle_events(state, event, &mut events);
+        events
+    }
+
+    /// What each `onShow` among `events` was given.
+    fn shows(events: &[(PageLifecycleEvent, Option<String>)]) -> Vec<Option<String>> {
+        events
+            .iter()
+            .filter(|(event, _)| *event == PageLifecycleEvent::OnShow)
+            .map(|(_, args)| args.clone())
+            .collect()
+    }
+
+    /// A tab switch, as navigation resolves it: the URL's params become the query, then the handoff.
+    fn switch_tab(state: &mut PageState, params: Option<serde_json::Value>) {
+        state.query = params.unwrap_or_else(|| serde_json::json!({}));
+        PageInstance::arm_handoff(state);
+    }
+
+    fn handed(params: &str) -> Vec<Option<String>> {
+        vec![Some(format!("{{\"params\":{params}}}"))]
+    }
+
+    /// A tab that is not created yet, and one created and hidden behind another tab.
+    fn tabs() -> [(&'static str, PageState); 2] {
+        let mut fresh = test_page_state();
+        fresh.bridge_ready = true;
+        fresh.render_status = PageRenderStatus::Finished;
+        let mut warm = test_page_state();
+        warm.entry = EntryPhase::Loaded;
+        warm.bridge_ready = true;
+        warm.ready_dispatched = true;
+        warm.render_status = PageRenderStatus::Finished;
+        warm.event = Some(PageLifecycleEvent::OnHide);
+        [("not created", fresh), ("created", warm)]
+    }
+
+    /// Switch with params and show the tab, as `go({ tab, params })` does.
+    fn switch_and_show(state: &mut PageState, label: &str) {
+        switch_tab(state, Some(serde_json::json!({ "item": "7" })));
+        let mut events = Vec::new();
+        if PageInstance::switch_tab_should_request_on_load(state.entry) {
+            events.extend(step(state, PageLifecycleEvent::OnLoad));
+            assert_eq!(
+                events,
+                vec![(
+                    PageLifecycleEvent::OnLoad,
+                    Some(r#"{"item":"7"}"#.to_string())
+                )],
+                "{label}: a tab the switch creates loads with its params"
+            );
+        }
+        events.extend(step(state, PageLifecycleEvent::OnShow));
+        assert_eq!(shows(&events), handed(r#"{"item":"7"}"#), "{label}");
+    }
+
+    #[test]
+    fn tab_params_reach_one_show_and_not_the_show_after_a_page_above_closes() {
+        for (label, mut state) in tabs() {
+            switch_and_show(&mut state, label);
+            // A page pushed above hides the tab; closing it shows the tab again (the container
+            // and the windowed runtime may both report it).
+            step(&mut state, PageLifecycleEvent::OnHide);
+            let mut events = step(&mut state, PageLifecycleEvent::OnShow);
+            events.extend(step(&mut state, PageLifecycleEvent::OnShow));
+            assert_eq!(shows(&events), vec![None], "{label}");
+        }
+    }
+
+    #[test]
+    fn tab_params_are_not_replayed_when_the_app_returns_to_the_foreground() {
+        for (label, mut state) in tabs() {
+            switch_and_show(&mut state, label);
+            for _ in 0..2 {
+                assert!(shows(&step(&mut state, PageLifecycleEvent::OnHide)).is_empty());
+                assert_eq!(
+                    shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+                    vec![None],
+                    "{label}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reselecting_a_tab_without_params_shows_it_without_params() {
+        for (label, mut state) in tabs() {
+            switch_and_show(&mut state, label);
+            // Away to another tab and back, without params.
+            step(&mut state, PageLifecycleEvent::OnHide);
+            switch_tab(&mut state, None);
+            assert_eq!(
+                shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+                vec![None],
+                "{label}"
+            );
+            // Again while it is the current tab: nothing to show.
+            switch_tab(&mut state, None);
+            assert!(
+                step(&mut state, PageLifecycleEvent::OnShow).is_empty(),
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_switch_with_params_hands_them_over_only_on_the_switch_it_was_made_by() {
+        // Params owed to a tab that is not on screen yet: a later switch without params withdraws them.
+        for (label, mut state) in tabs() {
+            switch_tab(&mut state, Some(serde_json::json!({ "item": "7" })));
+            switch_tab(&mut state, None);
+            if PageInstance::switch_tab_should_request_on_load(state.entry) {
+                assert_eq!(
+                    step(&mut state, PageLifecycleEvent::OnLoad),
+                    vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
+                );
+            }
+            assert_eq!(
+                shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+                vec![None],
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn switching_to_the_current_tab_with_params_shows_it_again_with_them() {
+        for (label, mut state) in tabs() {
+            switch_and_show(&mut state, label);
+            switch_tab(&mut state, Some(serde_json::json!({ "item": "8" })));
+            let events = step(&mut state, PageLifecycleEvent::OnShow);
+            assert_eq!(
+                events.len(),
+                1,
+                "{label}: only onShow, no onLoad or onReady"
+            );
+            assert_eq!(shows(&events), handed(r#"{"item":"8"}"#), "{label}");
+            assert!(
+                step(&mut state, PageLifecycleEvent::OnShow).is_empty(),
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_document_does_not_load_a_tab_with_params_it_already_had() {
+        let [(_, mut state), _] = tabs();
+        switch_and_show(&mut state, "not created");
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+        state.bridge_ready = true;
+        state.render_status = PageRenderStatus::Finished;
+        let events = step(&mut state, PageLifecycleEvent::OnLoad);
+        assert_eq!(
+            events[0],
+            (PageLifecycleEvent::OnLoad, Some("{}".to_string()))
+        );
+        assert_eq!(shows(&events), vec![None]);
     }
 
     #[test]

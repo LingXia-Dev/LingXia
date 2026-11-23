@@ -153,6 +153,21 @@ export type PageTarget<N = ConfiguredPageName> = {
         params: NavParams<N>;
     });
 
+/** A navigation target that switches to one of this lxapp's tabs. */
+export type TabTarget<N = TabName> = {
+    /** A tab root of this lxapp. */
+    tab: N;
+    page?: never;
+    app?: never;
+    url?: never;
+    /** Handed to the tab page's `onShow` for this switch only; a tab not created yet also loads with them. */
+    params?: TabParams<N>;
+};
+
+/** A tab page's params; a tab whose page declares a required one cannot be switched to with them. */
+export type TabParams<N> = {} extends NavParams<N> ? NavParams<N>
+    : { 'LingXia type error': `tab '${N & string}' declares a required param; a tab's params must all be optional` };
+
 /**
  * A page's handle, returned at once by `lx.nav.go` and `lx.surface.openPage`.
  * It is not a promise: await `.opened` to wait for the page.
@@ -282,11 +297,13 @@ declare global {
       replace: true;
     }): Promise<void>;
     /**
-     * Switch tabs, open another lxapp, or open a URL in the in-app browser.
-     * A `{ tab }` takes no params.
+     * Switch tabs. `params` reach the tab page's `onShow` for this switch only, also when it is
+     * the current tab; a tab not created yet also loads with them.
      * @throws {E_NOT_FOUND} An undeclared tab.
      */
-    go(target: TabTarget | AppTarget | UrlTarget): Promise<void>;
+    go<T extends TabName>(target: TabTarget<T>): Promise<void>;
+    /** Open another lxapp, or open a URL in the in-app browser. */
+    go(target: AppTarget | UrlTarget): Promise<void>;
     /**
      * Pop `n` pages, stopping at the root. Resolves once the revealed page is ready.
      * @param [n=1] How many pages to pop.
@@ -298,7 +315,7 @@ declare global {
      * @throws {E_INVALID_ARG} A target that is neither `{ page }` nor `{ tab }`.
      * @throws {E_NOT_FOUND} A page or tab the app does not declare.
      */
-    reset<N extends ConfiguredPageName>(target: PageTarget<N> | TabTarget): Promise<void>;
+    reset<N extends ConfiguredPageName, T extends TabName>(target: PageTarget<N> | TabTarget<T>): Promise<void>;
     /**
      * Back to the lxapp that opened this one.
      * @throws {E_INTERNAL} There is no lxapp to go back to, or it could not be shown.

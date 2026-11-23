@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { definePage, LxError, type PageLike } from "@lingxia/logic";
+import { definePage, LxError, type, type PageLike } from "@lingxia/logic";
 import { createLxMock, mount, setLx, type LxMockOverrides } from "@lingxia/logic/testing";
 import { lxNow } from "./fixtures/lx-now.mjs";
 import attachPage from "./fixtures/attach-page.ts";
@@ -191,6 +191,29 @@ test("page.set assigns whole keys, leaves the others, and refuses inside page.up
     assert.throws(() => mounted.actions.nested(), /page\.set cannot be called inside page\.update/);
     assert.throws(() => mounted.actions.notAnObject(), /page\.set takes an object/);
     assert.equal(mounted.data.n, 2);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("onShow gets a tab switch's params on that show only", async () => {
+  const shown: unknown[] = [];
+  const tabPage = definePage({
+    params: type<{ item?: string }>(),
+    data: {},
+    setup: () => ({
+      onShow(options) {
+        const item: string | undefined = options.params?.item;
+        shown.push(item === undefined ? options : item);
+      },
+    }),
+  });
+  const mounted = await mount(tabPage, { lx: createLxMock() });
+  try {
+    await mounted.show({ params: { item: "7" } });
+    await mounted.show();
+    assert.deepEqual(shown, [{}, "7", {}]);
+    assert.equal(Object.isFrozen(shown[0]), true);
   } finally {
     await mounted.unmount();
   }

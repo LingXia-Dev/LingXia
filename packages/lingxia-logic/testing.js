@@ -183,7 +183,7 @@ export async function mount(definition, options = {}) {
       scope.__LX_CREATE_PAGE__(path, path, instanceId, false, JSON.stringify({ name, params })),
     );
     await hook("onLoad", params);
-    await hook("onShow");
+    await hook("onShow", {});
     await hook("onReady");
   } catch (error) {
     release();
@@ -201,7 +201,7 @@ export async function mount(definition, options = {}) {
     },
     actions,
     page: svc.page,
-    show: () => hook("onShow"),
+    show: (options = {}) => hook("onShow", options),
     hide: () => hook("onHide"),
     async unmount() {
       if (unmounted) return;

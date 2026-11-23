@@ -504,6 +504,13 @@
       params = options || {};
       return userOnLoad ? userOnLoad(params) : undefined;
     };
+    const userOnShow = config.onShow;
+    if (userOnShow) {
+      config.onShow = function (options) {
+        const handed = options && options.params !== undefined ? { params: options.params } : {};
+        return userOnShow(Object.freeze(handed));
+      };
+    }
     const actions = (returned && returned.actions) || {};
     if (typeof actions !== "object") {
       throw new TypeError("definePage: actions must be an object of functions");

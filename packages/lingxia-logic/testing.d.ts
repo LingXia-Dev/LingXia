@@ -45,8 +45,8 @@ export interface MountedPage<D extends PageDefinition> {
   readonly actions: ActionsOf<D>;
   /** The object `setup` received. */
   readonly page: ApiOf<D>;
-  /** Run `onShow`. */
-  show(): Promise<void>;
+  /** Run `onShow`; `{ params }` is a tab switch with params, as `lx.nav.go({ tab, params })` hands them over. */
+  show(options?: { params?: ParamsOf<D> }): Promise<void>;
   /** Run `onHide`. */
   hide(): Promise<void>;
   /**

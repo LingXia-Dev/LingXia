@@ -3,10 +3,14 @@ import type { HostTarget, Lx, PageTarget, TabTarget } from "../src/index.js";
 declare const lx: Lx;
 declare const page: PageTarget;
 declare const tab: TabTarget;
+declare const withParams: TabTarget<"home">;
 
-// A page or tab target written for `lx.nav.go` is a notification target as is.
-const asHost: HostTarget[] = [page, tab];
+// A page target, and a tab target without params, written for `lx.nav.go` are notification targets as is.
+const asHost: HostTarget[] = [page, { tab: tab.tab }];
 void asHost;
+// @ts-expect-error a tab's params are for `lx.nav` only
+const tabWithParams: HostTarget = withParams;
+void tabWithParams;
 void lx.host.notification.show({ title: "t", target: { activate: true } });
 void lx.host.notification.show({ title: "t", target: { route: "orders.detail", params: { id: "7" } } });
 void lx.host.notification.show({ title: "t", target: { appLink: "https://x.test/o/7" } });

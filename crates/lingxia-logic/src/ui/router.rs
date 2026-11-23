@@ -39,7 +39,10 @@ enum NavTarget {
         name: String,
         params: Option<JSObject>,
     },
-    Tab(String),
+    Tab {
+        name: String,
+        params: Option<JSObject>,
+    },
     App(NavigateToAppOptions),
     Url(String),
 }
@@ -115,18 +118,20 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
             params: input.params,
         });
     }
+    if let Some(name) = input.tab {
+        return Ok(NavTarget::Tab {
+            name: non_empty("tab", name)?,
+            params: input.params,
+        });
+    }
     if input.params.is_some() {
-        return Err(invalid("params apply to a { page } or { app } target"));
+        return Err(invalid(
+            "params apply to a { page }, { tab } or { app } target",
+        ));
     }
-    match (input.tab, input.url) {
-        (Some(name), _) => Ok(NavTarget::Tab(non_empty("tab", name)?)),
-        (_, Some(url)) => {
-            let url = crate::url::text_of(&url)
-                .ok_or_else(|| invalid("url must be a string or a URL"))?;
-            Ok(NavTarget::Url(non_empty("url", url)?))
-        }
-        _ => unreachable!("exactly one key is named"),
-    }
+    let url = input.url.expect("exactly one key is named");
+    let url = crate::url::text_of(&url).ok_or_else(|| invalid("url must be a string or a URL"))?;
+    Ok(NavTarget::Url(non_empty("url", url)?))
 }
 
 fn page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> Result<String, LxAppError> {
@@ -215,8 +220,8 @@ pub(crate) fn is_tab_name(lxapp: &LxApp, name: &str) -> bool {
     page_url(lxapp, name, None).is_ok_and(|url| is_tabbar_page_url(lxapp, &url))
 }
 
-fn tab_url(lxapp: &LxApp, name: &str) -> JSResult<String> {
-    let url = page_url(lxapp, name, None).map_err(|e| js_error_from_lxapp_error(&e))?;
+fn tab_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<String> {
+    let url = page_url(lxapp, name, params).map_err(|e| js_error_from_lxapp_error(&e))?;
     ensure_page_exists_js(lxapp, &url)?;
     if !is_tabbar_page_url(lxapp, &url) {
         return Err(js_invalid(format!(
@@ -389,9 +394,9 @@ async fn replace(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSR
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
-async fn switch_tab(ctx: &JSContext, name: String) -> JSResult<()> {
+async fn switch_tab(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
-    let target_url = tab_url(&lxapp, &name)?;
+    let target_url = tab_url(&lxapp, &name, params.as_ref())?;
     let page_svc = lxapp.get_or_create_page_in_ctx(ctx, &target_url).await?;
     let _ = page_svc.clear_opener();
     navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
@@ -417,9 +422,9 @@ fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult
                 async move { replace(&task_ctx, name, params).await },
             )?
         }
-        NavTarget::Tab(name) => {
-            Promise::from_future(&ctx, None, async move { switch_tab(&task_ctx, name).await })?
-        }
+        NavTarget::Tab { name, params } => Promise::from_future(&ctx, None, async move {
+            switch_tab(&task_ctx, name, params).await
+        })?,
         NavTarget::App(options) => Promise::from_future(&ctx, None, async move {
             navigator::navigate_to_app(task_ctx, options).await
         })?,
@@ -469,7 +474,7 @@ async fn reset(ctx: JSContext, target: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url = match nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))? {
         NavTarget::Page { name, params } => configured_page_url(&lxapp, &name, params.as_ref())?,
-        NavTarget::Tab(name) => tab_url(&lxapp, &name)?,
+        NavTarget::Tab { name, params } => tab_url(&lxapp, &name, params.as_ref())?,
         NavTarget::App(_) | NavTarget::Url(_) => {
             return Err(js_invalid("reset takes a { page } or { tab } target"));
         }

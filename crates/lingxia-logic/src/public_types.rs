@@ -167,7 +167,7 @@ rong::js_api! {
         /// `{ appLink }`. One destination per target; a mix is a parameter error.
         /// An lxapp already open, such as docked as an aside, comes back where it
         /// is, and `page` and `params` reach its App `onShow` (`reason: 'switch_back'`).
-        type HostTarget = r###"PageTarget | TabTarget | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget"###;
+        type HostTarget = r###"PageTarget | (TabTarget & { params?: never }) | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget"###;
 
         /// A target that only brings the product forward.
         type ActivateTarget = r###"{
@@ -1408,16 +1408,6 @@ rong::js_api! {
 
         /// A tab root of this lxapp.
         type TabName = r###"keyof LxAppPages extends never ? string : keyof LxAppTabs & string"###;
-
-        /// A navigation target that switches to one of this lxapp's tabs.
-        type TabTarget = r###"{
-    /** A tab root of this lxapp. */
-    tab: TabName;
-    page?: never;
-    app?: never;
-    url?: never;
-    params?: never;
-}"###;
 
         /// Another lxapp, optionally at one of its pages.
         type AppTarget = r###"{
