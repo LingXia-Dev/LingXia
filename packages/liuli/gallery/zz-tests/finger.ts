@@ -12,20 +12,10 @@ export async function tap(view: TestView, at: [number, number]): Promise<void> {
   await pause(400);
 }
 
-/** Scroll until `target` sits well inside the viewport; its box there. */
+/** Scroll `target` into view through the semantics, with no pointer; its box there. */
 export async function reveal(view: TestView, target: Locator): Promise<Box> {
-  for (let step = 0; step < 8; step++) {
-    const box = await target.boundingBox();
-    const vp = await view.viewport();
-    if (box.y >= vp.top + 80 && box.y + box.height <= vp.top + vp.height - 80) return box;
-    // A real finger drag: `view.scroll` is the WebView DOM's, not a GPU page's.
-    const limit = vp.height * 0.6;
-    const dy = Math.max(-limit, Math.min(limit, box.y - (vp.top + vp.height / 3)));
-    const x = vp.left + vp.width / 2;
-    const y = vp.top + vp.height / 2;
-    await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 400, hold: 150 });
-    await view.settled();
-  }
+  await target.scrollIntoView();
+  await view.settled();
   return target.boundingBox();
 }
 
