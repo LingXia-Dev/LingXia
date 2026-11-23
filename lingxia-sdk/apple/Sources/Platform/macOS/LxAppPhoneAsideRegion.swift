@@ -190,7 +190,11 @@ final class LxAppPhoneAsideRegion {
         let shown = showing
         panel.isHidden = !shown
         if shown {
-            panel.frame = bounds
+            // Below the status bar, which the Runner draws on the screen as a phone shows it over everything.
+            let top = Self.statusInset()
+            panel.frame = NSRect(
+                x: 0, y: screen.isFlipped ? top : 0, width: bounds.width,
+                height: max(0, bounds.height - top))
             panel.autoresizingMask = [.width, .height]
             // Above whatever the runner laid over the page since.
             screen.addSubview(panel, positioned: .above, relativeTo: nil)
@@ -220,13 +224,12 @@ final class LxAppPhoneAsideRegion {
             stripSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
         }
         let bounds = panel.bounds
-        let top = Self.statusInset()
-        strip.frame = NSRect(x: 0, y: top, width: bounds.width, height: Self.stripHeight)
+        strip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Self.stripHeight)
         stripSeparator.frame = NSRect(x: 0, y: Self.stripHeight - 1, width: bounds.width, height: 1)
         row.frame = strip.bounds
         content.frame = NSRect(
-            x: 0, y: top + Self.stripHeight, width: bounds.width,
-            height: max(0, bounds.height - top - Self.stripHeight))
+            x: 0, y: Self.stripHeight, width: bounds.width,
+            height: max(0, bounds.height - Self.stripHeight))
     }
 
     // MARK: - Strip

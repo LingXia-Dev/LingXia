@@ -89,6 +89,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
 
         setupLayout()
         setupNotificationObservers()
+        // The phone's side panel starts below the status bar, whatever renders the page.
+        LingxiaRunnerSPI.PhoneAside.setStatusInset {
+            SimulatorWindowController.Layout.systemStatusBarHeight
+        }
         loadWebViewContent()
     }
 
