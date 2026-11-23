@@ -3,9 +3,8 @@
 > Delegate contract: navigation and observable state are delivered as typed
 > events (`NavigationEvent`, `WebViewStateChange`) through the per-WebView
 > event normalizer in `crates/lingxia-webview/src/events/` — correlated ids,
-> exactly-once terminals, coalesced state, flattened FIFO delivery. The
-> legacy per-callback surface (`on_page_started`/`on_page_finished`/…) is
-> gone. See the rustdoc on `WebViewDelegate` for the full invariants.
+> exactly-once terminals, coalesced state, flattened FIFO delivery. See the
+> rustdoc on `WebViewDelegate` for the full invariants.
 
 > The normalizer's registry lock is process-wide and not reentrant, so which
 > of its two document-binding checks you use is a correctness question, not a
@@ -91,14 +90,14 @@ with an old SurfaceView covering the newly selected page.
 `SplashOverlay` gates the bootstrap and home activities' first draw until the
 home lxapp reports `onHomeFirstReady`, even when no `splash:` resources exist.
 Without resources, retain the activity theme's starting window; do not mark a
-launch face or apply the branded splash minimum duration. Android 5 uses the
-legacy starting window, while Android 12+ uses the system splash. Suppress the
+launch face or apply the branded splash minimum duration. Android 5 to 11 use
+the theme's starting window; Android 12+ uses the system splash. Suppress the
 bootstrap-to-home activity animation while either launch protection is active.
 
 Every draw gate must release at its timeout even if the page schedules no more
 frames, and remove its listener/timer when its view detaches. Warm launches and
 non-home activities must not acquire this cold-start gate. Configured covers
-and campaigns retain their existing presentation and timing.
+and campaigns keep their own presentation and timing.
 
 ## WebView Profiles
 
@@ -172,17 +171,13 @@ window is judged by the same rule in the new-window handler and then loaded in
 place, because a load the host starts itself does not reach the navigation
 handler on Android. Subframes and subresources are not judged.
 
-The only caller today is the test-only `embeddedDocumentProbe.*` route family
+Two callers open embedded documents: the GPU View `<webview>` element
+(`crates/lingxia/src/gpu_page/webviews.rs`), and the test-only
+`embeddedDocumentProbe.*` route family
 (`lingxia-lxapp/src/host/embedded_document_probe.rs`): compiled only with the
 `automation` feature, refused outside a dev session, audience
-`AppSessionOnly`, scoped to the calling page's View.
-
-Embedded-profile limits today:
-- Harmony returns script-evaluation results through `LingXiaProxy`, so an
-  embedded document's evaluations cannot return a value there.
-- Harmony routes new windows in ArkTS (`openNewWindowExternally`) for every
-  profile; the creator's new-window handler is not consulted.
-- Data is ephemeral everywhere; a per-lxapp partition is not implemented.
+`AppSessionOnly`, scoped to the calling page's View. Embedded data is
+ephemeral on every platform.
 
 > **The core layer does not route to a host by itself.** There is no built-in
 > `lx`/`data`/`blob` allowlist and no `openURL` forwarding inside
@@ -297,11 +292,10 @@ The owner is recorded in `PageInstanceRuntimeRecord` and used by
 | --- | --- |
 | `Window` | Standard full page (main LxApp window, or a surface window) |
 | `Overlay` | Surface overlay |
-| `Panel` | Defined but currently **unused** — see note |
+| `Panel` | An lxapp opened in panel mode on Windows (`LxAppOpenMode::Panel`) |
 
-> **`Panel` is not reachable from surfaces today.** `SurfaceKind` only has
-> `Window` and `Overlay`, and `open_surface()` maps `Window→Window`,
-> `Overlay→Overlay`. No code path produces `Panel`; treat it as reserved.
+> **Surfaces never produce `Panel`.** `SurfaceKind` has only `Window` and
+> `Overlay`, and `open_surface()` maps `Window→Window`, `Overlay→Overlay`.
 
 ### Surface pages: close destroys, hide preserves
 
@@ -457,8 +451,8 @@ path. Entry points:
 - `get_or_create_page()` — reuses the existing page at a path if present
   (updating its query), otherwise creates one and registers it in **both** maps,
   then runs LRU eviction if needed.
-- `create_page_instance()` — creates with an explicit owner, presentation kind,
-  and optional dispose TTL. A `PageOwner::Page` produces an isolated instance.
+- `create_page_instance()` — creates with an explicit owner and presentation
+  kind. A `PageOwner::Page` produces an isolated instance.
 
 Creation:
 
@@ -487,8 +481,7 @@ Surfaces are secondary presentation targets (overlays, windows) opened via
    - **Page target** (`PageSurfaceTarget::Page`): calls `create_page_instance()`
      with `PageOwner::Page(current_page_instance_id)` and a `PresentationKind`
      derived from `SurfaceKind`. Creates an **isolated** instance — a full
-     `AppPage` WebView with complete page lifecycle — with a 30-second
-     dispose TTL.
+     `AppPage` WebView with complete page lifecycle.
    - **URL target** (`PageSurfaceTarget::Url`): no Rust WebView. The URL is
      passed as `SurfaceContent::Url { url }` to the platform's
      `SurfacePresenter::present_surface()`, which owns the view. URL surfaces are
@@ -727,7 +720,7 @@ Desktop hosts only. Compact hosts keep native page containers bound to their
 WebViews, so the policy is a no-op there.
 
 Desktop preload is the landing / selected tab only (`TabBar::preload_page_paths`).
-Compact hosts still warm strip slots.
+Compact hosts warm strip slots.
 
 ## Page Lifecycle Events vs WebView Callbacks
 
@@ -819,8 +812,9 @@ Callbacks:
 - `didFinishNavigation` / `didFail*` → `NativeSignal::NavigationFinished`
   (success / failure / cancellation; cancellation is control flow).
 - `decidePolicyForNavigationAction`: the creator's navigation handler runs first
-  (both profiles); strict carries an additional (currently inert) top-level
-  `https://` interception behind it.
+  (both profiles); strict carries an additional top-level `https://`
+  interception behind it, inert for lxapp pages because the handler cancels
+  https first.
 
 Presentation:
 - `show_lxapp` / `navigate` hand Swift the page's webtag. `LxApp.openLxApp` and
@@ -998,7 +992,7 @@ still executes; the later `OnLoad` flush then finds the reset already claimed.
 Automation evals (`ServiceMessage::Eval`, behind `LxApp::eval_logic`) run off
 the pump the same way: an eval awaiting a View round trip (a page method that
 calls `setData` then `flush()`) needs the pump to deliver the View's answer,
-and one awaited on the pump used to hold every later message until its caller
+and one awaited on the pump would hold every later message until its caller
 timed out, leaving the context wedged for the next spec.
 `an_awaiting_eval_leaves_the_message_pump_free` covers it.
 
@@ -1023,8 +1017,7 @@ removes the instances outright. `switchTab` keeps the tab pages it leaves warm
 When the page count exceeds `tabbar_items + PAGE_STACK_MAX` (`PAGE_STACK_MAX = 10`),
 `evict_inactive_pages_if_needed()` removes the single oldest page (by
 `last_active_time`, excluding the current page and tabbar pages). Eviction is a
-**lighter** path than disposal: it terminates `PageSvc`, cancels the dispose
-timer, cancels view calls, removes the instance from `pages`/`pages_by_id`/
+**lighter** path than disposal: it terminates `PageSvc`, cancels view calls, removes the instance from `pages`/`pages_by_id`/
 `page_instance_runtime`, captures and detaches its WebView, then calls
 `destroy_webview_if_matches` — but it does **not** dispatch `onHide`/`onUnload`
 or run the surface cascades.
@@ -1058,7 +1051,7 @@ its termination message.
 
 1. Set status `Closing` (suppresses `TerminatePage` from `PageInstance` drops).
 2. `clear_transient_files()`.
-3. `cancel_all_page_instance_dispose_timers()`.
+3. `cancel_all_page_resets()`.
 4. `close_all_surfaces(AppClosed)`.
 5. Clear key-event state.
 6. Hide the runtime window (unless `skip_hide`).
@@ -1069,8 +1062,8 @@ its termination message.
 11. Clear the page stack.
 12. Terminate the app service.
 
-> Note the order: surfaces are closed and timers cancelled **before** the window
-> is hidden.
+> Note the order: surfaces are closed and pending page resets cancelled
+> **before** the window is hidden.
 
 ### Surface teardown
 
@@ -1115,8 +1108,8 @@ name is still in the binary. What that rules out, and what replaces it:
 - Transparent pages on macOS: AppKit's `WKWebView` has no public switch for
   its own background, so WebKit's white base background shows wherever a page
   paints nothing, whatever the layer and `underPageBackgroundColor` say. Every
-  macOS caller configures its WebViews opaque, so nothing on macOS changes; a
-  future transparent macOS surface has to paint its own backdrop.
+  macOS caller configures its WebViews opaque; a transparent macOS surface has
+  to paint its own backdrop.
 - Native components on iOS: the SDK's `LingXiaTouchRoutingWebView` (created
   from Rust by class name, like the macOS context-menu subclass) routes a
   touch to a registered native view before WebKit's content view claims it,
@@ -1193,7 +1186,7 @@ sequenceDiagram
 
   JS->>LxApp: lx.surface.open({ kind, path, ... })
   LxApp->>PI: create_isolated_page_instance()
-  PI->>Core: WebViewBuilder::strict(tag).create()
+  PI->>Core: WebViewBuilder::app_page(tag).create()
   LxApp->>Platform: present_surface(request)
   Platform-->>LxApp: surface presented
   JS->>PI: prepare_isolated_page_svc → create PageSvc + mark_page_svc_ready
