@@ -277,6 +277,8 @@ struct CollapsedAsideHandle {
     let title: String
     /// An lxapp whose window graph owns the slot, for the restore call.
     let graphAppId: String
+    /// The slot's children; the tongue shows it from two.
+    var count: Int = 1
 }
 
 /// The tongue a collapsed aside leaves at its edge: a slim shape flush with
@@ -293,12 +295,26 @@ final class CollapsedAsideHandleView: NSView {
     /// Hit area; the tongue is drawn `tongueWidth` wide at the outer edge.
     static let width: CGFloat = 16
     static let height: CGFloat = 72
+    /// Wider while it carries a count, so the digits fit inside the shape.
+    static let countedWidth: CGFloat = 20
     private static let tongueWidth: CGFloat = 12
+    private static let countedTongueWidth: CGFloat = 16
     private static let tongueHeight: CGFloat = 56
     private static let slope: CGFloat = 8
     private static let hoverReach: CGFloat = 2
 
-    var handle: CollapsedAsideHandle { didSet { applyLabel() } }
+    var handle: CollapsedAsideHandle {
+        didSet {
+            applyLabel()
+            widthConstraint?.constant = Self.hitWidth(for: handle)
+            needsDisplay = true
+        }
+    }
+    var widthConstraint: NSLayoutConstraint?
+
+    static func hitWidth(for handle: CollapsedAsideHandle) -> CGFloat {
+        handle.count > 1 ? countedWidth : width
+    }
     var onRestore: ((CollapsedAsideHandle) -> Void)?
     private var hovering = false { didSet { animateReach() } }
     private var pressing = false { didSet { needsDisplay = true } }
@@ -340,7 +356,8 @@ final class CollapsedAsideHandleView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let width = Self.tongueWidth + Self.hoverReach * reach
+        let counted = handle.count > 1
+        let width = (counted ? Self.countedTongueWidth : Self.tongueWidth) + Self.hoverReach * reach
         let slope = min(Self.slope, Self.tongueHeight / 2)
         let top = (bounds.height - Self.tongueHeight) / 2
         let bottom = top + Self.tongueHeight
@@ -365,6 +382,15 @@ final class CollapsedAsideHandleView: NSView {
         let alpha: CGFloat = pressing ? 0.5 : (hovering ? 0.38 : 0.22)
         LxAppHostTheme.mutedForeground.withAlphaComponent(alpha).setFill()
         path.fill()
+        guard counted else { return }
+        let label = handle.count > 9 ? "9+" : String(handle.count)
+        let text = NSAttributedString(string: label, attributes: [
+            .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: LxAppHostTheme.mutedForeground,
+        ])
+        let size = text.size()
+        let centerX = handle.position == .left ? bounds.minX + width / 2 : bounds.maxX - width / 2
+        text.draw(at: NSPoint(x: centerX - size.width / 2, y: bounds.midY - size.height / 2))
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -815,8 +841,10 @@ class WorkspaceManager: NSObject {
             let view = CollapsedAsideHandleView(handle: handle)
             view.onRestore = onRestore
             parent.addSubview(view, positioned: .above, relativeTo: nil)
+            let width = view.widthAnchor.constraint(equalToConstant: CollapsedAsideHandleView.hitWidth(for: handle))
+            view.widthConstraint = width
             var constraints = [
-                view.widthAnchor.constraint(equalToConstant: CollapsedAsideHandleView.width),
+                width,
                 view.heightAnchor.constraint(equalToConstant: CollapsedAsideHandleView.height),
                 view.centerYAnchor.constraint(equalTo: parent.centerYAnchor),
             ]

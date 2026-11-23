@@ -610,7 +610,8 @@ enum LxAppLayoutReconciler {
             }
             let graphAppId = self.graphAppId(shell: shell, fallback: child ?? "")
             return CollapsedAsideHandle(
-                kind: slot.kind, position: position, title: title, graphAppId: graphAppId)
+                kind: slot.kind, position: position, title: title, graphAppId: graphAppId,
+                count: slot.children.count)
         }
         workspace.setCollapsedAsideHandles(handles) { handle in
             _ = restoreAsideSlot(handle.graphAppId, handle.kind)
