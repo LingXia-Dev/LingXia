@@ -6,7 +6,7 @@ use crate::i18n::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
-    FileDialogFilter, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
+    FileDialogFilter, FileDialogResult, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
 };
 use lxapp::LxApp;
 use rong::{
@@ -483,10 +483,18 @@ async fn run_file_picker(
             .map_err(|e| js_error_from_platform_error(&e))
     };
     let temp_dir = lxapp.temp_dir.clone();
-    let result = crate::pick::abortable(ctx, opts.signal, work, move |late| {
-        let paths = late.entries.into_iter().map(|entry| entry.path.into());
-        crate::pick::remove_copies(&temp_dir, paths);
-    })
+    let owner = crate::ui::owner_end(&lxapp);
+    let result = crate::pick::abortable(
+        ctx,
+        opts.signal,
+        owner,
+        work,
+        FileDialogResult::canceled,
+        move |late| {
+            let paths = late.entries.into_iter().map(|entry| entry.path.into());
+            crate::pick::remove_copies(&temp_dir, paths);
+        },
+    )
     .await?;
 
     if result.canceled {
@@ -555,7 +563,16 @@ async fn pick_directory(
             .await
             .map_err(|e| js_error_from_platform_error(&e))
     };
-    let result = crate::pick::abortable(&ctx, opts.signal.clone(), work, |_| {}).await?;
+    let owner = crate::ui::owner_end(&lxapp);
+    let result = crate::pick::abortable(
+        &ctx,
+        opts.signal.clone(),
+        owner,
+        work,
+        FileDialogResult::canceled,
+        |_| {},
+    )
+    .await?;
 
     if result.canceled {
         return canceled(&ctx);

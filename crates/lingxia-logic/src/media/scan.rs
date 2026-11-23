@@ -51,7 +51,16 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
 
     let app = lxapp.clone();
     let work = async move { Ok(lingxia_service::media::scan_code(&*app.runtime, request).await) };
-    let scanned = crate::pick::abortable(&ctx, opts.signal.clone(), work, |_| {}).await?;
+    let owner = crate::ui::owner_end(&lxapp);
+    let scanned = crate::pick::abortable(
+        &ctx,
+        opts.signal.clone(),
+        owner,
+        work,
+        || Err(PlatformError::BusinessError(USER_DISMISSED)),
+        |_| {},
+    )
+    .await?;
     let data = match scanned {
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the scanner";

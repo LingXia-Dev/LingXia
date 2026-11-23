@@ -25,11 +25,11 @@ const DISMISS_RETRY: Duration = Duration::from_millis(100);
 /// Dismiss attempts before an aborted dialog stops waiting for its call.
 const DISMISS_ATTEMPTS: u32 = 20;
 
-/// When the page a dialog shows on ends; `None` off any page.
-type OwnerEnd = std::pin::Pin<Box<dyn Future<Output = ()>>>;
+/// When the page a dialog or picker shows on ends; `None` off any page.
+pub(crate) type OwnerEnd = std::pin::Pin<Box<dyn Future<Output = ()>>>;
 
 /// The end of the current page's entry, which owns what it shows.
-fn owner_end(lxapp: &LxApp) -> Option<OwnerEnd> {
+pub(crate) fn owner_end(lxapp: &LxApp) -> Option<OwnerEnd> {
     lxapp
         .current_page()
         .ok()
