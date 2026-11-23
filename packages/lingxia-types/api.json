@@ -287,6 +287,7 @@
       "PageChannel",
       "PageDefinition",
       "PageHookName",
+      "PageLike",
       "PageSetup",
       "ParamsOf",
       "ResultOf",
@@ -464,6 +465,7 @@
       "PageEnvContext",
       "PageHandle",
       "PageHookName",
+      "PageLike",
       "PageLoadOptions",
       "PageMessagePort",
       "PagePlayer",
@@ -1041,7 +1043,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:246"
+      "source": "src/page.ts:263"
     },
     {
       "path": "isLxError",
@@ -6751,7 +6753,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:107"
+      "source": "src/page.ts:124"
     },
     {
       "path": "page.data",
@@ -6764,7 +6766,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:84"
+      "source": "src/page.ts:99"
     },
     {
       "path": "page.env",
@@ -6776,7 +6778,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:153"
+      "source": "src/page.ts:170"
     },
     {
       "path": "page.env.get",
@@ -6846,7 +6848,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:95"
+      "source": "src/page.ts:112"
     },
     {
       "path": "page.name",
@@ -6859,7 +6861,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:99"
+      "source": "src/page.ts:116"
     },
     {
       "path": "page.navigationBar",
@@ -6871,7 +6873,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:124"
+      "source": "src/page.ts:141"
     },
     {
       "path": "page.navigationBar.update",
@@ -6899,7 +6901,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:126"
+      "source": "src/page.ts:143"
     },
     {
       "path": "page.opener",
@@ -6911,7 +6913,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:115"
+      "source": "src/page.ts:132"
     },
     {
       "path": "page.opener.onMessage",
@@ -6943,7 +6945,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:119"
+      "source": "src/page.ts:136"
     },
     {
       "path": "page.opener.send",
@@ -6969,7 +6971,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:117"
+      "source": "src/page.ts:134"
     },
     {
       "path": "page.orientation",
@@ -6981,7 +6983,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:142"
+      "source": "src/page.ts:159"
     },
     {
       "path": "page.orientation.lock",
@@ -7007,7 +7009,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:144"
+      "source": "src/page.ts:161"
     },
     {
       "path": "page.orientation.unlock",
@@ -7025,7 +7027,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:146"
+      "source": "src/page.ts:163"
     },
     {
       "path": "page.params",
@@ -7038,7 +7040,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:97"
+      "source": "src/page.ts:114"
     },
     {
       "path": "page.refresh",
@@ -7056,7 +7058,33 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:133"
+      "source": "src/page.ts:150"
+    },
+    {
+      "path": "page.set",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "Assign these keys, as `update` would: `page.set({ loading: false })`.",
+      "description": "Assign these keys, as `update` would: `page.set({ loading: false })`. Same rules as `update`.",
+      "signatures": [
+        {
+          "text": "set(patch: Partial<Data> & JsonData<Partial<Data>>): void",
+          "parameters": [
+            {
+              "name": "patch",
+              "type": "Partial<Data> & JsonData<Partial<Data>>",
+              "required": true
+            }
+          ],
+          "returns": "void"
+        }
+      ],
+      "types": [
+        "JsonData"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/page.ts:107"
     },
     {
       "path": "page.setResult",
@@ -7080,7 +7108,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:109"
+      "source": "src/page.ts:126"
     },
     {
       "path": "page.signal",
@@ -7093,7 +7121,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:101"
+      "source": "src/page.ts:118"
     },
     {
       "path": "page.surface",
@@ -7105,7 +7133,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:122"
+      "source": "src/page.ts:139"
     },
     {
       "path": "page.surface.alive",
@@ -7347,7 +7375,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:90"
+      "source": "src/page.ts:105"
     },
     {
       "path": "page.video",
@@ -7374,7 +7402,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:135"
+      "source": "src/page.ts:152"
     },
     {
       "path": "type",
@@ -11259,7 +11287,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:207"
+      "source": "src/page.ts:224"
     },
     {
       "name": "MisspelledLifecycle",
@@ -11962,6 +11990,13 @@
           "description": "The one way to change data: `page.update(d => { d.n += 1; })`. `page.data`\nchanges at once; the View gets the changes once per turn. Throws inside\nanother `update`; ignored after the page unloads."
         },
         {
+          "name": "set",
+          "type": "(patch: Partial<Data> & JsonData<Partial<Data>>) => void",
+          "required": true,
+          "summary": "Assign these keys, as `update` would: `page.set({ loading: false })`.",
+          "description": "Assign these keys, as `update` would: `page.set({ loading: false })`. Same rules as `update`."
+        },
+        {
           "name": "flush",
           "type": "() => Promise<void>",
           "required": true,
@@ -12053,7 +12088,7 @@
           "description": "The size class this page lays out for. `watch` delivers it at once, then\nwhen `sizeClass` or `canDock` changes (not on every resize), and stops\nwhen the page unloads."
         }
       ],
-      "source": "src/page.ts:82"
+      "source": "src/page.ts:97"
     },
     {
       "name": "PageChannel",
@@ -12082,7 +12117,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:192"
+      "source": "src/page.ts:209"
     },
     {
       "name": "PageDeclarations",
@@ -12118,7 +12153,7 @@
           "description": "The initial data, JSON only."
         }
       ],
-      "source": "src/page.ts:210"
+      "source": "src/page.ts:227"
     },
     {
       "name": "PageDefinition",
@@ -12147,7 +12182,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:169"
+      "source": "src/page.ts:186"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -12183,7 +12218,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:175"
+      "source": "src/page.ts:192"
     },
     {
       "name": "PageEnvContext",
@@ -12287,6 +12322,35 @@
       "text": "\"onLoad\" | \"onShow\" | \"onReady\" | \"onHide\" | \"onUnload\" | \"onRefresh\"",
       "fields": [],
       "source": "src/page.ts:33"
+    },
+    {
+      "name": "PageLike",
+      "summary": "What a helper in `logic/` needs of a page to read and change its data: `PageApi` without the rest.",
+      "description": "What a helper in `logic/` needs of a page to read and change its data: `PageApi` without the rest.",
+      "fields": [
+        {
+          "name": "data",
+          "type": "Data extends string | number | bigint | boolean | symbol | null | undefined ? Data : Data extends Function ? Data : Data extends readonly unknown[] ? { readonly [K in keyof Data]: Data[K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K] : Data[K] extends Function ? Data[K] : Data[K] extends readonly unknown[] ? { readonly [K in keyof Data[K]]: Data[K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K] : Data[K][K] extends Function ? Data[K][K] : Data[K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K] extends object ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K]; } : Data[K] extends object ? { readonly [K in keyof Data[K]]: Data[K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K] : Data[K][K] extends Function ? Data[K][K] : Data[K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K] extends object ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K]; } : Data[K]; } : Data extends object ? { readonly [K in keyof Data]: Data[K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K] : Data[K] extends Function ? Data[K] : Data[K] extends readonly unknown[] ? { readonly [K in keyof Data[K]]: Data[K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K] : Data[K][K] extends Function ? Data[K][K] : Data[K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K] extends object ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K]; } : Data[K] extends object ? { readonly [K in keyof Data[K]]: Data[K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K] : Data[K][K] extends Function ? Data[K][K] : Data[K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K] extends object ? { readonly [K in keyof Data[K][K]]: Data[K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K] : Data[K][K][K] extends Function ? Data[K][K][K] : Data[K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K] extends object ? { readonly [K in keyof Data[K][K][K]]: Data[K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K] : Data[K][K][K][K] extends Function ? Data[K][K][K][K] : Data[K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K]]: Data[K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends Function ? Data[K][K][K][K][K] : Data[K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K]]: Data[K][K][K][K][K][K] extends string | number | bigint | boolean | symbol | null | undefined ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends Function ? Data[K][K][K][K][K][K] : Data[K][K][K][K][K][K] extends readonly unknown[] ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K] extends object ? { readonly [K in keyof Data[K][K][K][K][K][K]]: Data[K][K][K][K][K][K][K]; } : Data[K][K][K][K][K][K]; } : Data[K][K][K][K][K]; } : Data[K][K][K][K]; } : Data[K][K][K]; } : Data[K][K]; } : Data[K]; } : Data",
+          "required": true,
+          "summary": "The page's current data.",
+          "description": "The page's current data."
+        },
+        {
+          "name": "update",
+          "type": "<R>(recipe: (draft: Data) => R & (R extends PromiseLike<unknown> ? { 'LingXia type error': \"a recipe is synchronous; await first, then update\"; } : unknown)) => void",
+          "required": true,
+          "summary": "Change data through a draft, as `page.update` does; the recipe must be synchronous.",
+          "description": "Change data through a draft, as `page.update` does; the recipe must be synchronous."
+        },
+        {
+          "name": "set",
+          "type": "(patch: Partial<Data> & JsonData<Partial<Data>>) => void",
+          "required": true,
+          "summary": "Assign whole keys, as `page.set` does.",
+          "description": "Assign whole keys, as `page.set` does."
+        }
+      ],
+      "source": "src/page.ts:86"
     },
     {
       "name": "PageLoadOptions",
@@ -12675,7 +12739,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:203"
+      "source": "src/page.ts:220"
     },
     {
       "name": "PermissionName",
@@ -13389,7 +13453,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:205"
+      "source": "src/page.ts:222"
     },
     {
       "name": "RouteTarget",
@@ -15970,7 +16034,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:157"
+      "source": "src/page.ts:174"
     },
     {
       "name": "VisibilityPreference",
@@ -16204,7 +16268,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:253"
+      "source": "src/page.ts:270"
     },
     {
       "name": "lx.clipboard.read()",
