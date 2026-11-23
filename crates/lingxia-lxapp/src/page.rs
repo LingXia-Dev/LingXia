@@ -195,6 +195,9 @@ pub(crate) struct PageInstanceInner {
     // Async notification: bumped on every handle_loaded().
     loaded_tx: watch::Sender<u64>,
 
+    // Bumped each time an entry of this page ends with `onUnload`.
+    unloaded_tx: watch::Sender<u64>,
+
     // Canonical attempt-correlation fold over typed navigation events.
     navigation_progress: Arc<std::sync::Mutex<lingxia_webview::NavigationProgress>>,
 
@@ -591,6 +594,7 @@ impl PageInstance {
         let (ready_tx, ready_rx) = watch::channel(None);
         let (page_svc_ready_tx, page_svc_ready_rx) = watch::channel(false);
         let (loaded_tx, _) = watch::channel(0u64);
+        let (unloaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             reset_transition: Arc::new(std::sync::Mutex::new(())),
@@ -612,6 +616,7 @@ impl PageInstance {
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
+            unloaded_tx,
             discarded: AtomicBool::new(false),
             embedded_documents: Mutex::new(std::collections::HashMap::new()),
             gpu_module_fresh: AtomicBool::new(false),
@@ -650,6 +655,7 @@ impl PageInstance {
         let (ready_tx, ready_rx) = watch::channel(None);
         let (page_svc_ready_tx, page_svc_ready_rx) = watch::channel(false);
         let (loaded_tx, _) = watch::channel(0u64);
+        let (unloaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             reset_transition: Arc::new(std::sync::Mutex::new(())),
@@ -671,6 +677,7 @@ impl PageInstance {
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
+            unloaded_tx,
             discarded: AtomicBool::new(false),
             embedded_documents: Mutex::new(std::collections::HashMap::new()),
             gpu_module_fresh: AtomicBool::new(false),
@@ -1621,6 +1628,9 @@ impl PageInstance {
                 }
                 _ => {}
             }
+            if event == PageLifecycleEvent::OnUnload {
+                self.inner.unloaded_tx.send_modify(|v| *v = v.wrapping_add(1));
+            }
 
             if let Err(e) = lxapp.executor.call_page_service_event(
                 lxapp.clone(),
@@ -2213,6 +2223,15 @@ impl PageInstance {
         std::mem::drop(crate::executor::spawn(async move {
             page.handle_loaded_async().await;
         }));
+    }
+
+    /// Resolves when the current entry of this page ends (`onUnload`), or the
+    /// instance is dropped. What a page opened (a dialog, a sheet) ends with it.
+    pub fn unloaded(&self) -> impl Future<Output = ()> + Send + 'static {
+        let mut unloaded = self.inner.unloaded_tx.subscribe();
+        async move {
+            let _ = unloaded.changed().await;
+        }
     }
 
     /// Subscribe to page-loaded events.

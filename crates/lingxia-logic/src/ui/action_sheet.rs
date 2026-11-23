@@ -125,7 +125,8 @@ pub(crate) async fn action_sheet(
     signal: Option<JSObject>,
 ) -> Result<Option<usize>, RongJSError> {
     let work = hooked_action_sheet(lxapp, item_list, item_color);
-    super::dismissable(ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await
+    let owner = super::owner_end(lxapp);
+    super::dismissable(ctx, signal, owner, work, || super::dismiss_dialog(lxapp.clone())).await
 }
 
 async fn hooked_action_sheet(

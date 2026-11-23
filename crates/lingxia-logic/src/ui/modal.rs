@@ -121,7 +121,8 @@ async fn show_modal(
             DialogDecision::Refuse(message) => Err(js_service_unavailable_error(message)),
         }
     };
-    super::dismissable(&ctx, signal, work, || super::dismiss_dialog(lxapp.clone())).await
+    let owner = super::owner_end(&lxapp);
+    super::dismissable(&ctx, signal, owner, work, || super::dismiss_dialog(lxapp.clone())).await
 }
 
 /// A test run watching the app records the modal, or answers it instead

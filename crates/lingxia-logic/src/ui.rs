@@ -25,13 +25,26 @@ const DISMISS_RETRY: Duration = Duration::from_millis(100);
 /// Dismiss attempts before an aborted dialog stops waiting for its call.
 const DISMISS_ATTEMPTS: u32 = 20;
 
-/// Run a dialog until it settles or `signal` aborts. An abort dismisses it and
-/// rejects `E_ABORT`; dismissing repeats until the call settles, because the abort
-/// can land before the dialog is on screen. An already-aborted signal rejects
-/// before `work` starts; an abort after it settled does nothing.
+/// When the page a dialog shows on ends; `None` off any page.
+type OwnerEnd = std::pin::Pin<Box<dyn Future<Output = ()>>>;
+
+/// The end of the current page's entry, which owns what it shows.
+fn owner_end(lxapp: &LxApp) -> Option<OwnerEnd> {
+    lxapp
+        .current_page()
+        .ok()
+        .map(|page| Box::pin(page.unloaded()) as OwnerEnd)
+}
+
+/// Run a dialog until it settles, `signal` aborts, or its page unloads. An abort
+/// dismisses it and rejects `E_ABORT`; the page unloading dismisses it and the call
+/// settles as the person dismissing it would (`false`, `canceled`). Dismissing
+/// repeats until the call settles, because the end can land before the dialog is
+/// on screen. An already-aborted signal rejects before `work` starts.
 async fn dismissable<T, D, F>(
     ctx: &JSContext,
     signal: Option<JSObject>,
+    owner: Option<OwnerEnd>,
     work: impl Future<Output = JSResult<T>>,
     mut dismiss: D,
 ) -> JSResult<T>
@@ -40,48 +53,72 @@ where
     F: Future<Output = ()>,
 {
     use futures::future::{Either, select};
-    let Some(signal) = signal else {
-        return work.await;
-    };
-    crate::task_object::validate_abort_signal(Some(&signal))?;
-    if signal.get::<_, bool>("aborted")? {
-        return Err(crate::task_object::abort_error());
-    }
-    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let tx = Rc::new(RefCell::new(Some(tx)));
-    let on_abort = JSFunc::new(ctx, move || {
-        if let Some(tx) = tx.borrow_mut().take() {
-            let _ = tx.send(());
+    let mut listener = None;
+    let mut aborted = None;
+    if let Some(signal) = signal {
+        crate::task_object::validate_abort_signal(Some(&signal))?;
+        if signal.get::<_, bool>("aborted")? {
+            return Err(crate::task_object::abort_error());
         }
-    })?;
-    let options = JSObject::new(ctx);
-    options.set("once", true)?;
-    let add: JSFunc = signal.get("addEventListener")?;
-    add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let tx = Rc::new(RefCell::new(Some(tx)));
+        let on_abort = JSFunc::new(ctx, move || {
+            if let Some(tx) = tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        })?;
+        let options = JSObject::new(ctx);
+        options.set("once", true)?;
+        let add: JSFunc = signal.get("addEventListener")?;
+        add.call::<_, ()>(Some(signal.clone()), ("abort", on_abort.clone(), options))?;
+        listener = Some((signal, on_abort));
+        aborted = Some(rx);
+    }
+    let abort = async move {
+        match aborted {
+            Some(rx) => {
+                let _ = rx.await;
+            }
+            None => std::future::pending().await,
+        }
+    };
+    let unloaded = async move {
+        match owner {
+            Some(end) => end.await,
+            None => std::future::pending().await,
+        }
+    };
     let outcome = {
-        futures::pin_mut!(work);
-        match select(work.as_mut(), rx).await {
+        futures::pin_mut!(work, abort, unloaded);
+        match select(work.as_mut(), select(abort, unloaded)).await {
             Either::Left((done, _)) => done,
-            Either::Right(_) => {
-                let mut settled = false;
+            Either::Right((ended, _)) => {
+                let by_abort = matches!(ended, Either::Left(_));
+                let mut settled = None;
                 for _ in 0..DISMISS_ATTEMPTS {
                     dismiss().await;
                     let pause = tokio::time::sleep(DISMISS_RETRY);
                     futures::pin_mut!(pause);
-                    if let Either::Left(_) = select(work.as_mut(), pause).await {
-                        settled = true;
+                    if let Either::Left((done, _)) = select(work.as_mut(), pause).await {
+                        settled = Some(done);
                         break;
                     }
                 }
-                if !settled {
-                    log::warn!("an aborted dialog did not close; its call is abandoned");
+                match settled {
+                    Some(done) if !by_abort => done,
+                    Some(_) => Err(crate::task_object::abort_error()),
+                    None => {
+                        log::warn!("a dismissed dialog did not close; its call is abandoned");
+                        Err(crate::task_object::abort_error())
+                    }
                 }
-                Err(crate::task_object::abort_error())
             }
         }
     };
-    let remove: JSFunc = signal.get("removeEventListener")?;
-    let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    if let Some((signal, on_abort)) = listener {
+        let remove: JSFunc = signal.get("removeEventListener")?;
+        let _ = remove.call::<_, ()>(Some(signal), ("abort", on_abort));
+    }
     outcome
 }
 
@@ -262,6 +299,16 @@ mod dismiss_tests {
         feedback: &FakeFeedback,
         signal: JSObject,
     ) -> impl Future<Output = JSResult<bool>> {
+        owned_confirm(ctx, feedback, Some(signal), None)
+    }
+
+    /// `confirm`, optionally on a page whose end `owner` reports.
+    fn owned_confirm(
+        ctx: &JSContext,
+        feedback: &FakeFeedback,
+        signal: Option<JSObject>,
+        owner: Option<super::OwnerEnd>,
+    ) -> impl Future<Output = JSResult<bool>> {
         let shown = feedback.show_modal(options());
         let work = async move {
             match shown.await {
@@ -273,7 +320,7 @@ mod dismiss_tests {
         let host = feedback.clone();
         let ctx = ctx.clone();
         async move {
-            dismissable(&ctx, Some(signal), work, || {
+            dismissable(&ctx, signal, owner, work, || {
                 let host = host.clone();
                 async move {
                     let _ = host.dismiss_dialog();
@@ -311,6 +358,51 @@ mod dismiss_tests {
             .build()
             .unwrap()
             .block_on(work)
+    }
+
+    #[test]
+    fn its_page_unloading_closes_the_dialog_as_dismissed() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        let (unload, unloaded) = oneshot::channel::<()>();
+        let owner: super::OwnerEnd = Box::pin(async move {
+            let _ = unloaded.await;
+        });
+        let host = feedback.clone();
+        let result = run(async move {
+            let call = owned_confirm(&ctx, &feedback, None, Some(owner));
+            let close = async move {
+                while !host.on_screen() {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                unload.send(()).unwrap();
+            };
+            let (result, ()) = futures::join!(call, close);
+            (result, feedback.dismissed.load(Ordering::SeqCst))
+        });
+        assert!(!result.0.unwrap(), "settles as dismissed, not E_ABORT");
+        assert_eq!(result.1, 1);
+    }
+
+    #[test]
+    fn a_dialog_off_any_page_waits_for_its_answer() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let feedback = FakeFeedback::default();
+        let host = feedback.clone();
+        let result = run(async move {
+            let call = owned_confirm(&ctx, &feedback, None, None);
+            let answer = async move {
+                while !host.on_screen() {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                host.answer("{\"confirm\":true}");
+            };
+            let (result, ()) = futures::join!(call, answer);
+            result
+        });
+        assert!(result.unwrap());
     }
 
     #[test]

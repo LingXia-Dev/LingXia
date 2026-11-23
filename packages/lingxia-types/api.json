@@ -7675,7 +7675,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it closes the sheet, and the call rejects.",
-          "description": "Aborting it closes the sheet, and the call rejects. Pass `page.signal` to close it when the page closes."
+          "description": "Aborting it closes the sheet, and the call rejects. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:679"
@@ -7791,7 +7791,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it closes the dialog, and the call rejects.",
-          "description": "Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes."
+          "description": "Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:716"
@@ -9209,7 +9209,7 @@
           "type": "AbortSignal | undefined",
           "required": false,
           "summary": "Aborting it closes the dialog, and the call rejects.",
-          "description": "Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes."
+          "description": "Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it."
         }
       ],
       "source": "src/generated/logic.ts:1295"

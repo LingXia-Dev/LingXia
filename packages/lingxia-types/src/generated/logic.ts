@@ -686,7 +686,7 @@ export type ActionSheetOptions = {
     }[];
     /** `'danger'` draws the items as destructive. */
     tone?: 'default' | 'danger';
-    /** Aborting it closes the sheet, and the call rejects. Pass `page.signal` to close it when the page closes. */
+    /** Aborting it closes the sheet, and the call rejects. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 };
 
@@ -720,7 +720,7 @@ export type AlertOptions = {
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
-    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
+    /** Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 };
 
@@ -1303,7 +1303,7 @@ export type ConfirmOptions = {
     confirmText?: string;
     /** Label of the declining button. */
     cancelText?: string;
-    /** Aborting it closes the dialog, and the call rejects. Pass `page.signal` to close it when the page closes. */
+    /** Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
 };
 
