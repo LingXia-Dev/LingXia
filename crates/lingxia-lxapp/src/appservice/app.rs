@@ -108,6 +108,68 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let app_js = Source::from_bytes(include_str!("scripts/App.js"));
     ctx.eval::<()>(app_js)?;
+    #[cfg(feature = "rejection-tracking")]
+    track_unhandled_rejections(ctx)?;
 
     Ok(())
+}
+
+/// Report each promise rejection nothing handled to `App.onError`, as module-level: the engine's
+/// event names no page or action. An engine that cannot track them (system JavaScriptCore) is left as is.
+#[cfg(feature = "rejection-tracking")]
+macro_rules! rejection_tracking {
+    ($name:ident, $($engine:ident)::+) => {
+        fn $name(ctx: &$($engine)::+::JSContext) -> rong::JSResult<()> {
+            use $($engine)::+::{JSFunc, JSObject, JSValue, RejectionEvent};
+            if !ctx.supports_rejection_tracking().unhandled {
+                return Ok(());
+            }
+            ctx.set_rejection_tracker(rong::RejectionEvents::UNHANDLED, |ctx, event| {
+                let RejectionEvent::Unhandled { reason, .. } = event else {
+                    return Ok(());
+                };
+                let report: JSFunc = ctx.global().get("__LX_REPORT_FAILURE__")?;
+                let source = JSObject::new(ctx);
+                source.set("kind", "app")?;
+                source.set("hook", JSValue::null(ctx))?;
+                let failure = JSObject::new(ctx);
+                failure.set("error", reason)?;
+                failure.set("source", source)?;
+                report.call::<_, ()>(None, (failure, JSValue::null(ctx)))
+            })
+        }
+    };
+}
+#[cfg(feature = "rejection-tracking")]
+rejection_tracking!(track_unhandled_rejections, rong);
+
+#[cfg(all(test, feature = "rejection-tracking"))]
+mod rejection_tests {
+    use rong::{JSEngine, Source};
+
+    // QuickJS reports rejections on every host; the primary engine on macOS does not.
+    rejection_tracking!(track_on_quickjs, rong::quickjs);
+
+    #[test]
+    fn a_rejection_nothing_handles_reaches_app_on_error_as_module_level() {
+        let runtime = <rong::quickjs::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.seen = []; globalThis.__LX_REPORT_FAILURE__ = (raw, page) => \
+             seen.push([raw.error.message, raw.source.kind, raw.source.hook, page]);",
+        ))
+        .unwrap();
+        track_on_quickjs(&ctx).unwrap();
+        ctx.eval::<()>(Source::from_bytes(
+            "Promise.reject(new Error('lost')); \
+             Promise.reject(new Error('caught')).catch(() => {}); undefined",
+        ))
+        .unwrap();
+        runtime.run_pending_jobs();
+        runtime.run_pending_jobs();
+        let seen: String = ctx
+            .eval(Source::from_bytes("JSON.stringify(seen)"))
+            .unwrap();
+        assert_eq!(seen, r#"[["lost","app",null,null]]"#);
+    }
 }
