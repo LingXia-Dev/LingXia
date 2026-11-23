@@ -443,7 +443,8 @@ export interface PageUiFrame {
   imageCacheEntries: number;
   animationFrames: number;
   wakeups: number;
-  reveal: { deadlines: number; watchdogs: number; windowCovered?: boolean; lastReveal: { reason: string; atMs: number } | null };
+  /** `covers`: returns shown under the host's snapshot of the last frame; `snapshotShown`: one is up now; `lastCoverMs`: how long the last stayed. */
+  reveal: { deadlines: number; watchdogs: number; windowCovered?: boolean; covers?: number; snapshotShown?: boolean; lastCoverMs?: number | null; lastReveal: { reason: string; atMs: number } | null };
   /** Frames dropped since the page loaded for finishing past the View budget. */
   budget: { overruns: number };
   /** The frame-statistics HUD is drawn over the page. */

@@ -16,7 +16,7 @@ use image::ImageEncoder;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[path = "test_environment.rs"]
 mod test_environment;
@@ -49,6 +49,8 @@ struct Log {
     carets: Vec<bool>,
     /// `hold_surface` of each reveal.
     revealed: Vec<bool>,
+    /// Covers taken off by a frame, with the presents seen by then.
+    uncovered: Vec<usize>,
     copied: Vec<String>,
     /// Host chrome pushes, in order, with the frames presented before each.
     chrome: Vec<(usize, crate::platform::HostChrome)>,
@@ -392,6 +394,11 @@ impl HostEvents for Fake {
     }
     fn revealed(&self, hold_surface: bool) {
         self.main().revealed.push(hold_surface);
+    }
+    fn uncover(&self) {
+        let mut log = self.main();
+        let shown = log.shown.len();
+        log.uncovered.push(shown);
     }
     fn copy_text(&self, text: &str) {
         self.main().copied.push(text.into());
@@ -2160,6 +2167,77 @@ fn a_returning_page_with_a_stale_frame_is_shown_held_at_the_deadline_then_releas
         [true, false],
         "the current frame releases the surface"
     );
+}
+
+fn uncovered(host: &ViewHost<Fake>) -> Vec<usize> {
+    host.adapter().log.lock().unwrap().uncovered.clone()
+}
+
+fn shown(host: &ViewHost<Fake>) -> usize {
+    host.adapter().log.lock().unwrap().shown.len()
+}
+
+/// A kept page returns under the host's snapshot of its last frame; the snapshot comes off
+/// with the first frame shown after it, never before one.
+#[test]
+fn a_returning_page_keeps_its_cover_until_a_frame_is_shown() {
+    let worker = ViewWorker::spawn("test-cover").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    let before = shown(&host);
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    host.set_visible(true);
+    host.cover();
+    assert!(uncovered(&host).is_empty(), "no frame yet");
+    let reveal = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap()["reveal"]
+        .clone();
+    assert_eq!(reveal["covers"], 1);
+    assert_eq!(reveal["snapshotShown"], true);
+    platform.settle(&[&host]);
+    let after = uncovered(&host);
+    assert_eq!(after.len(), 1, "the cover comes off once");
+    assert!(
+        after[0] > before,
+        "only after a frame presented since the return"
+    );
+    let reveal = host
+        .automation_request(&serde_json::json!({"op": "frame"}))
+        .unwrap()["reveal"]
+        .clone();
+    assert_eq!(reveal["snapshotShown"], false);
+    assert!(reveal["lastCoverMs"].is_u64());
+}
+
+/// Frames completed while the window is stopped never reached the screen: the cover stays
+/// until one does, and a frame of a size the page no longer has does not take it off.
+#[test]
+fn a_cover_stays_through_held_frames_and_a_size_change() {
+    let worker = ViewWorker::spawn("test-cover-held").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    host.window_visible(false);
+    host.cover();
+    host.redraw();
+    platform.settle(&[&host]);
+    assert!(uncovered(&host).is_empty(), "held frames are not on screen");
+    host.window_visible(true);
+    platform.settle(&[&host]);
+    assert_eq!(uncovered(&host).len(), 1);
+
+    // The fake presents at the size it builds for, so a frame of the old size is one built
+    // just before the page was measured anew.
+    host.cover();
+    resize(&host, 180);
+    platform.settle(&[&host]);
+    assert_eq!(uncovered(&host).len(), 1, "built at 200 wide, shown at 180");
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(uncovered(&host).len(), 2, "a frame at the new size");
 }
 
 #[test]
@@ -7600,3 +7678,50 @@ fn one_tab_leaves_a_first_field_a_tap_focused() {
 
 #[path = "uncontrolled.rs"]
 mod uncontrolled;
+
+/// A tab page measured again just before it shows builds that frame as hidden work, behind the
+/// hold kept for the page coming in; shown, it is that page and must not wait out the hold.
+#[test]
+fn a_tab_measured_before_it_shows_again_does_not_wait_for_its_own_hold() {
+    let worker = ViewWorker::shared("test:tab-return-hold").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let home = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'H')}"),
+        false,
+    );
+    let api = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'A')}"),
+        false,
+    );
+    home.set_visible(true);
+    platform.settle(&[&home, &api]);
+    home.set_visible(false);
+    api.set_visible(true);
+    platform.settle(&[&home, &api]);
+
+    let start = Instant::now();
+    api.set_visible(false);
+    home.surface_changed();
+    home.set_visible(true);
+    home.cover();
+    // Not `settle`: its own background marker would wait out the hold.
+    while uncovered(&home).is_empty() && start.elapsed() < Duration::from_secs(2) {
+        while let Ok(task) = platform.tasks.try_recv() {
+            task();
+        }
+        for host in [&home, &api] {
+            if std::mem::take(&mut host.adapter().log.lock().unwrap().vsync) {
+                host.vsync();
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(uncovered(&home).len(), 1);
+    assert!(
+        start.elapsed() < Duration::from_millis(250),
+        "shown after {:?}",
+        start.elapsed()
+    );
+}

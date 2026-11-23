@@ -34,8 +34,11 @@ private final class GpuWebHandoffRule: NSObject, UIGestureRecognizerDelegate {
 
 final class GpuPageView: UIView {
     let token: Int64
-    /// The Metal presenter is bound to this view's layer while it is on screen.
+    /// The Metal presenter is bound to this view's layer while it is on screen or kept.
     private var attached = false
+    /// The last frame over the layer while the page is away, until it presents at its size.
+    private var cover: CALayer?
+    private var coverArmed = false
     /// Paused between requested frames.
     private var vsyncLink: CADisplayLink?
     private lazy var semantics = GpuAccessibility(view: self)
@@ -175,8 +178,33 @@ final class GpuPageView: UIView {
 
     @objc private func suspend() {
         guard attached else { return }
+        // Back from the background, the page shows this until its new surface presents.
+        if window != nil, cover == nil { cover = makeCover(over: metalView.layer) }
+        coverArmed = false
         attached = false
         gpuPageSuspend(token)
+    }
+
+    /// Left the window: keep the surface, trimmed, under a snapshot of the last frame. The
+    /// retention policy releases it if the page is not kept.
+    private func park() {
+        guard attached else { return }
+        if cover == nil { cover = makeCover(over: metalView.layer) }
+        coverArmed = false
+        gpuPageTrim(token)
+    }
+
+    /// Back on screen with a cover: the next frame at the current size takes its place.
+    private func armCover() {
+        guard cover != nil, !coverArmed, attached, window != nil else { return }
+        coverArmed = true
+        gpuPageCover(token)
+    }
+
+    func uncover() {
+        Self.dropCover(cover)
+        cover = nil
+        coverArmed = false
     }
 
     /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
@@ -184,6 +212,7 @@ final class GpuPageView: UIView {
     func releaseSurface() {
         guard window == nil, let layer = metalView.layer as? CAMetalLayer else { return }
         suspend()
+        uncover()
         layer.contents = nil
         layer.drawableSize = CGSize(width: 1, height: 1)
     }
@@ -207,6 +236,7 @@ final class GpuPageView: UIView {
         super.layoutSubviews()
         webContainer.frame = bounds
         metalView.frame = bounds
+        cover?.frame = metalView.layer.bounds
         report()
         if raised != nil, bounds.size != capturedSize { recaptureBars() }
     }
@@ -282,11 +312,12 @@ final class GpuPageView: UIView {
             let pending = vsyncLink.map { !$0.isPaused } ?? false
             vsyncLink?.invalidate()
             vsyncLink = nil
-            suspend()
+            park()
             if pending { gpuPageVsync(token) }
         }
         report()
         gpuPageSetVisible(token, window != nil && !isHidden)
+        armCover()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -561,6 +592,7 @@ final class GpuPageView: UIView {
                 UInt32((bounds.height * scale).rounded())
             )
         }
+        armCover()
     }
 
     /// Calls `gpuPageVsync` on the next display refresh.
@@ -931,6 +963,10 @@ public enum GpuPages {
 
     static func topLayer(token: Int64, modal: Bool) {
         MainActor.assumeIsolated { views[token]?.topLayer(modal) }
+    }
+
+    static func uncover(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.uncover() }
     }
 
     static func chromeSnapshot(token: Int64, generation: UInt64) {

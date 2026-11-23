@@ -230,6 +230,25 @@ page stays on screen, frozen, until the incoming one presents: at most 300 ms wh
 surface still holds a stale frame; a first visit or a recreated surface waits for its first
 frame (a 2 s watchdog, paused while the window is hidden, logs one that never does).
 
+Returning to a kept page shows its last frame at once, then the new one, never black or the
+bare canvas. Where the surface keeps that frame while hidden (Harmony's window, Android's
+retained layer) the surface itself shows it. Windows is the one exception: a page coming
+back is clipped to one pixel until it presents (up to 300 ms), and the page it replaces stays
+on screen meanwhile, since an owned child window is shown before its swap chain is known to
+hold this page's frame at the current geometry. Where the surface cannot keep the frame
+(an Apple page out of its window, Android after `TRIM_MEMORY`, any host whose surfaces go
+with screen-off or the background) the host view reads the last frame back before trimming
+or suspending and shows that snapshot over the surface until a frame presents at the
+current size. Apple trims a page leaving its window instead of suspending it: the surface
+stays, parked at 1×1, with scene and image caches; targets and depth go. A host showing a
+cover calls `ViewHost::cover`; the core asks for a frame and calls `HostEvents::uncover` on
+the first one that reaches the screen at the current size (a held frame does not). A page
+released by retention drops its cover. The reveal metrics carry `covers`, `snapshotShown`
+and `lastCoverMs`, and the `cover`, `present` and `uncover` debug lines are the
+presentation log: on a return, the cover never comes off before a frame at the current
+size is shown. Input during a cover reaches the kept scene, which has the cover's layout; a
+page that changed while hidden is hit at its new layout before the cover comes off.
+
 Windows runs each GPU page on its own UI thread, as a WebView2 page runs, with a parent
 window from the host's native-view host and a child content window inside it
 (`crates/lingxia-view-windows`). The page registers under its webtag as

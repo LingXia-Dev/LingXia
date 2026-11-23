@@ -1085,12 +1085,22 @@ impl Presenter {
     /// Hidden but kept: drop the render targets a redraw rebuilds. The surface keeps showing
     /// the last frame, and scene and image caches stay for the next one.
     pub fn trim(&mut self) {
+        // Only GLES holds a renderbuffer of the surface's size behind the window's.
+        self.trim_with(self.backend == "vello-gles" || PARK_EVERY_BACKEND.load(Ordering::Relaxed));
+    }
+
+    /// [`Self::trim`] for a host that covers the surface with its own snapshot of the last
+    /// frame: the surface parks on every backend, since nothing reads what it still shows.
+    pub fn trim_covered(&mut self) {
+        self.trim_with(true);
+    }
+
+    fn trim_with(&mut self, park: bool) {
         self.base = None;
         self.depth = None;
         if let Some(surface) = &mut self.surface {
             surface.drop_targets();
-            // Only GLES holds a renderbuffer of the surface's size behind the window's.
-            if (self.backend == "vello-gles" || PARK_EVERY_BACKEND.load(Ordering::Relaxed))
+            if park
                 && let Ok(context) = self.context.lock()
                 && let Err(error) = context.park_surface(surface)
             {

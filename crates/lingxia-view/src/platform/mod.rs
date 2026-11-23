@@ -153,6 +153,11 @@ pub trait HostEvents {
     fn revealed(&self, hold_surface: bool) {
         let _ = hold_surface;
     }
+    /// After [`ViewHost::cover`], a frame reached the screen at the current size: drop the
+    /// host's snapshot.
+    ///
+    /// [`ViewHost::cover`]: crate::session::host::ViewHost::cover
+    fn uncover(&self) {}
     /// Put `text` on the system clipboard (an accessibility Copy).
     fn copy_text(&self, text: &str) {
         let _ = text;

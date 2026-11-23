@@ -81,6 +81,15 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageSuspend")]
         fn gpu_page_suspend(token: i64);
 
+        // Hidden but kept: drop what a redraw rebuilds; the layer keeps its surface, parked.
+        #[swift_bridge(swift_name = "gpuPageTrim")]
+        fn gpu_page_trim(token: i64);
+
+        // The view shows its snapshot of the last frame over the layer: the next frame
+        // presented at its size calls `GpuPages.uncover`.
+        #[swift_bridge(swift_name = "gpuPageCover")]
+        fn gpu_page_cover(token: i64);
+
         // The newest frame for a host screenshot: width and height as
         // little-endian u32, then RGBA rows; empty when no frame is held.
         #[swift_bridge(swift_name = "gpuPageReadback")]
@@ -368,6 +377,8 @@ mod bridge {
         fn gpu_pages_text_menu(token: i64, menu: &str);
         #[swift_bridge(swift_name = "GpuPages.haptic")]
         fn gpu_pages_haptic(token: i64);
+        #[swift_bridge(swift_name = "GpuPages.uncover")]
+        fn gpu_pages_uncover(token: i64);
         #[swift_bridge(swift_name = "GpuPages.topLayer")]
         fn gpu_pages_top_layer(token: i64, modal: bool);
         // A presented frame draws the bar snapshots up to `generation`; 0 when none.
@@ -469,6 +480,15 @@ fn gpu_page_attach(token: i64, view: usize, width: u32, height: u32) {
 fn gpu_page_suspend(token: i64) {
     log::debug!(target: "lingxia_view", "suspend token={token}");
     with_page(token, |page| page.suspend());
+}
+
+fn gpu_page_trim(token: i64) {
+    log::debug!(target: "lingxia_view", "trim token={token}");
+    with_page(token, |page| page.trim());
+}
+
+fn gpu_page_cover(token: i64) {
+    with_page(token, |page| page.cover());
 }
 
 fn gpu_page_set_visible(token: i64, visible: bool) {
@@ -1055,6 +1075,9 @@ mod live {
         fn top_layer(&self, token: i64, modal: bool) {
             super::bridge::gpu_pages_top_layer(token, modal);
         }
+        fn uncover(&self, token: i64) {
+            super::bridge::gpu_pages_uncover(token);
+        }
         fn chrome_snapshot(&self, token: i64, generation: u64) {
             super::bridge::gpu_pages_chrome_snapshot(token, generation);
         }
@@ -1303,7 +1326,8 @@ mod live {
             on_page(self.token, |page| page.host().page_left());
             Ok(())
         }
-        // A hidden Apple page is already suspended; only giving up its layer is left to do.
+        // A hidden Apple page is already trimmed under its cover; only giving up the layer and
+        // the cover is left to do.
         fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
             if !retained {
                 let token = self.token;

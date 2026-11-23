@@ -827,7 +827,8 @@ pub async fn page_tree(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Valu
 /// A GPU page's presentation counters: `{ renderer, page, commit, firstPresentAt,
 /// lastPresentAt, frames, workerQueueUs, evalMs, imageCacheBytes,
 /// imageCacheEntries, animationFrames, wakeups, reveal: { deadlines, watchdogs, windowCovered,
-/// lastReveal }, hud, pacing }`, `pacing` over the last `window_ms`. A WebView page has none.
+/// covers, snapshotShown, lastCoverMs, lastReveal }, hud, pacing }`, `pacing` over the last
+/// `window_ms`. A WebView page has none.
 pub async fn page_frame(
     app: &Arc<LxApp>,
     page_name: Option<&str>,

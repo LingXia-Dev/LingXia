@@ -49,6 +49,8 @@ pub(super) struct Flight {
     pub(super) ahead: bool,
     /// The input sequence it ran.
     pub(super) input: u64,
+    /// Dispatched while the page was hidden, behind a navigation hold.
+    pub(super) background: bool,
 }
 
 /// What frame statistics need to know about a frame beyond its timing.
@@ -285,6 +287,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 id: main.next_flight,
                 ahead,
                 input: main.input_seq,
+                background,
             };
             main.in_flight = Some(flight);
             (request, background, flight)
@@ -1201,6 +1204,9 @@ impl<A: PlatformAdapter> Inner<A> {
             self.worker.release();
         }
         self.adapter.presented(&snapshot, &timing);
+        if !timing.held {
+            self.uncover_by_frame(snapshot.width, snapshot.height);
+        }
         self.sync_webviews_on_present(&snapshot);
         self.revealed_by_frame();
         self.update_text_menu();

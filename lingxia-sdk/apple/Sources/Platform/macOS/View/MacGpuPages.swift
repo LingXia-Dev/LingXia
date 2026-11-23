@@ -9,8 +9,11 @@ import CLingXiaRustAPI
 @MainActor
 final class GpuPageView: NSView {
     let token: Int64
-    /// The Metal presenter is bound to this view's layer for the current window.
+    /// The Metal presenter is bound to this view's layer for the current window, or kept.
     private var attached = false
+    /// The last frame over the layer while the page is away, until it presents at its size.
+    private var cover: CALayer?
+    private var coverArmed = false
     private lazy var semantics = MacGpuAccessibility(view: self)
     lazy var ime = GpuIme(host: self)
     var inputReplies: [UInt64: (GpuFrameInputReply?) -> Void] = [:]
@@ -140,6 +143,7 @@ final class GpuPageView: NSView {
         applyViewport()
         webContainer.frame = bounds
         metalView.frame = bounds
+        if let cover, let surface = metalView.layer { cover.frame = surface.bounds }
         layoutRecovery()
         report()
     }
@@ -191,9 +195,12 @@ final class GpuPageView: NSView {
         }
         vsyncLink = nil
         if pending, !requestVsync() { gpuPageVsync(token) }
+        // Left the window: keep the surface, trimmed, under a snapshot of the last frame. The
+        // retention policy releases it if the page is not kept.
         if window == nil, attached {
-            attached = false
-            gpuPageSuspend(token)
+            coverWithLastFrame()
+            coverArmed = false
+            gpuPageTrim(token)
         }
         if let window {
             let center = NotificationCenter.default
@@ -210,7 +217,26 @@ final class GpuPageView: NSView {
         report()
         gpuPageSetVisible(token, window != nil && !isHiddenOrHasHiddenAncestor)
         visibilityChanged()
+        armCover()
         takeKeysIfUnclaimed()
+    }
+
+    private func coverWithLastFrame() {
+        guard cover == nil, let surface = metalView.layer else { return }
+        cover = makeCover(over: surface)
+    }
+
+    /// Back on screen with a cover: the next frame at the current size takes its place.
+    private func armCover() {
+        guard cover != nil, !coverArmed, attached, window != nil else { return }
+        coverArmed = true
+        gpuPageCover(token)
+    }
+
+    func uncover() {
+        Self.dropCover(cover)
+        cover = nil
+        coverArmed = false
     }
 
     /// Keys reach the page without a click when nothing else in the key window holds them: a
@@ -231,6 +257,7 @@ final class GpuPageView: NSView {
             attached = false
             gpuPageSuspend(token)
         }
+        uncover()
         layer.contents = nil
         layer.drawableSize = CGSize(width: 1, height: 1)
     }
@@ -250,6 +277,9 @@ final class GpuPageView: NSView {
         }
         gpuPageWindowVisible(token, visible)
         if !shown, attached {
+            // Shown again, the page shows this until its new surface presents.
+            coverWithLastFrame()
+            coverArmed = false
             attached = false
             gpuPageSuspend(token)
         } else if shown, !attached {
@@ -321,6 +351,7 @@ final class GpuPageView: NSView {
                 UInt32((bounds.height * live).rounded())
             )
         }
+        armCover()
     }
 
     /// Shows a frame `width` pixels wide across the layer, whichever space AppKit keeps the
@@ -364,24 +395,6 @@ final class GpuPageView: NSView {
         let presentIn = (link.targetTimestamp - CACurrentMediaTime()) * 1_000_000
         let interval = max(0, link.targetTimestamp - link.timestamp) * 1_000_000
         gpuPageVsyncAt(token, Int64(presentIn.rounded()), UInt64(interval.rounded()))
-    }
-
-    /// The last presented GPU frame, from Rust's readback.
-    func lastFrame() -> CGImage? {
-        let frame = gpuPageReadback(token)
-        let length = Int(frame.len())
-        guard length > 8 else { return nil }
-        let bytes = UnsafeRawBufferPointer(start: frame.as_ptr(), count: length)
-        let width = Int(bytes.loadUnaligned(fromByteOffset: 0, as: UInt32.self).littleEndian)
-        let height = Int(bytes.loadUnaligned(fromByteOffset: 4, as: UInt32.self).littleEndian)
-        guard width > 0, height > 0, length == 8 + width * height * 4,
-              let provider = CGDataProvider(data: Data(bytes[8...]) as CFData)
-        else { return nil }
-        return CGImage(
-            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-            bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
     // MARK: Mouse
@@ -705,6 +718,10 @@ public enum GpuPages {
     /// own box. A simulated phone lifts its page above its bars.
     static func topLayer(token: Int64, modal: Bool) {
         MainActor.assumeIsolated { views[token]?.topLayerChanged?(modal) }
+    }
+
+    static func uncover(token: Int64) {
+        MainActor.assumeIsolated { views[token]?.uncover() }
     }
 
     /// The desktop shell keeps its bars beside the page, never under its dialogs.

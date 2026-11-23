@@ -81,6 +81,10 @@ pub trait Shell: Send + Sync + 'static {
     fn chrome_snapshot(&self, token: i64, generation: u64) {
         let _ = (token, generation);
     }
+    /// After [`Page::cover`], a frame reached the screen at the view's size: drop the cover.
+    fn uncover(&self, token: i64) {
+        let _ = token;
+    }
     /// A full-screen video asks the window for its orientation, or gives it back (`None`).
     fn video_orientation(
         &self,
@@ -353,6 +357,21 @@ impl Page {
         let id = self.gpu();
         render::run_now(move || lingxia_view::renderer::surfaces::suspend(id));
         self.host.surface_lost();
+    }
+
+    /// Hidden but kept, under the host's snapshot of its last frame: the presenter keeps its
+    /// surface (parked) and caches, and drops what a redraw rebuilds.
+    #[cfg(feature = "gpu")]
+    pub fn trim(&self) {
+        let id = self.gpu();
+        if id != 0 {
+            render::run_now(move || lingxia_view::renderer::surfaces::trim_covered(id));
+        }
+    }
+
+    /// The view shows its snapshot of the last frame over the layer: see [`ViewHost::cover`].
+    pub fn cover(&self) {
+        self.host.cover();
     }
 
     #[cfg(feature = "gpu")]
