@@ -409,6 +409,8 @@ export class AsideRegionModel {
 @Component
 export struct AsideRegion {
   @StorageProp('lxAsideState') state: AsideState = emptyState();
+  /** The divider is its own layer above the panel's content, so its whole grip takes a drag. */
+  @Prop dividerOnly: boolean = false;
   private dividerDragging: boolean = false;
   private areaWidth: number = 0;
   private areaHeight: number = 0;
@@ -434,6 +436,9 @@ export struct AsideRegion {
   }
 
   aboutToAppear(): void {
+    if (this.dividerOnly) {
+      return;
+    }
     this.readSystemTop();
     PersistentStorage.persistProp(RATIO_KEY, DEFAULT_RATIO);
     AsideRegionModel.restoreRatio(AppStorage.get<number>(RATIO_KEY));
@@ -459,14 +464,17 @@ export struct AsideRegion {
 
   build() {
     Stack() {
-      if (this.state.shown) {
-        this.Panel()
-      }
-      if (this.state.shown && !this.state.overlay) {
-        this.Divider()
-      }
-      if (this.state.tongueShown) {
-        this.Tongue()
+      if (this.dividerOnly) {
+        if (this.state.shown && !this.state.overlay) {
+          this.Divider()
+        }
+      } else {
+        if (this.state.shown) {
+          this.Panel()
+        }
+        if (this.state.tongueShown) {
+          this.Tongue()
+        }
       }
     }
     .width('100%')
@@ -474,6 +482,9 @@ export struct AsideRegion {
     .alignContent(Alignment.TopStart)
     .hitTestBehavior(HitTestMode.Transparent)
     .onAreaChange((_: Area, area: Area) => {
+      if (this.dividerOnly) {
+        return;
+      }
       this.areaWidth = Number(area.width) || 0;
       this.areaHeight = Number(area.height) || 0;
       this.areaTop = Math.max(0, Math.round(Number(area.globalPosition?.y ?? 0)));

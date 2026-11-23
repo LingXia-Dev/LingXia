@@ -730,12 +730,17 @@ export struct LxAppNavigation {
       DatePickerManager()
         .zIndex(10003)
 
-      // The side panel's chrome; its children render in SurfaceManager above it.
+      // Surfaces and the side panel sit above the app containers and below toast and dialogs,
+      // so a toast or modal raised from a page in them shows over it. The panel's chrome is
+      // under its children, which render in SurfaceManager; the divider is above them.
       AsideRegion()
-        .zIndex(10004)
+        .zIndex(9000)
 
       SurfaceManager()
-        .zIndex(10004)
+        .zIndex(9001)
+
+      AsideRegion({ dividerOnly: true })
+        .zIndex(9002)
 
       // Integrated media preview overlay
       MediaPreviewOverlay()
