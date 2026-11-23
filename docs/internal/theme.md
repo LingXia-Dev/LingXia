@@ -62,7 +62,7 @@ Add a role only when a component needs a colour no existing role carries with a 
 or package cannot pin a step to a number. A length that is `step`, `n × step` or `n × step + constant`
 lowers to `[slot, times, plus]` (`plus` in points); same-step terms fold. Two steps, a step times or
 over a step, or `min`/`max` over steps fail with `UI_SCALE`. Literals (`p-[13px]`, inline numbers)
-stay numbers and do not follow the pack. Percentages lower as before (`widthPercent`).
+stay numbers and do not follow the pack. Percentages lower to `widthPercent`.
 
 **Decode.** Fields listed in `SCALED_FIELDS` accept a reference when the page sets `scaleRefs`. The
 reader checks the slot's family against the field (`UI_SCALE: paddingTop does not take radius.lg`)
@@ -88,7 +88,7 @@ Precedence (`session/host/environment.rs`): a value the platform's measured envi
 else the host theme (`Update::Theme { revision, pack }`, checked, then resolved); else the lxapp's
 pack seeded at session start. Older revisions are ignored.
 
-## Ownership today
+## Ownership
 
 The pack belongs to the lxapp. `theme/pack.json` is completed and checked by `lingxia build`;
 `gpu_page::Lease::new` registers it under the app session's worker (`set_app_pack`) before the first
