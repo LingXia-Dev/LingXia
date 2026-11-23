@@ -62,6 +62,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_PATCH` | native | An invalid state patch from Logic. |
 | `UI_PERF` | build | A build warning; the page still builds: literal rows above 50 outside `<List>`, an opacity or backdrop layer repeated per row, or a bundled image above 2048 px or 8 MiB. |
 | `UI_PLOT` | runtime, native | Invalid plot props. |
+| `UI_POPOVER` | native | A dev warning, once per page: an anchored popover's height kept changing between capped and uncapped; it stays capped and the warning names it. |
 | `UI_PROP` | build, runtime, native | A prop the element does not take, or an invalid value. |
 | `UI_RADIO` | runtime, native | Invalid radio options, value or label. |
 | `UI_RENDER` | runtime, native | A state change during render, or a recursive render. |

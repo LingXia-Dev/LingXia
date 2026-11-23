@@ -461,6 +461,7 @@ const errorNotes = {
   UI_GPU_LOST: 'The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen.',
   UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed.',
   UI_ACTION: 'An action call was malformed or its reply invalid.',
+  UI_POPOVER: 'A dev warning, once per page: an anchored popover\'s height kept changing between capped and uncapped; it stays capped and the warning names it.',
   UI_ANIMATION: 'An invalid or over-budget animation definition, or an inline `style.animation`.',
   UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
   UI_BRIDGE: 'The View-Logic connection failed or was replaced.',
