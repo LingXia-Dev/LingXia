@@ -284,6 +284,8 @@ jobs:
         # outside it is dead once installed.
         run: |
           node scripts/ci/check-skill-docs.mjs docs/skill
+          # Liuli's skill ships in its package: every name it backticks must exist there.
+          node scripts/ci/check-skill-docs.mjs packages/liuli/core/skill --package packages/liuli/core --package packages/liuli/charts
           # Every Logic API member the docs name exists; reads the checked-in catalogue only.
           node packages/lingxia-types/scripts/check-doc-refs.mjs
       - id: compute
