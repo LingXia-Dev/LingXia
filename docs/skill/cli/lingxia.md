@@ -143,8 +143,8 @@ Device, orientation, appearance, and display language of a running Runner:
 `build` can also sign and package per platform (iOS IPA, macOS DMG, Windows
 MSIX, Android APK or AAB), build only the native library, reuse native
 binaries, add native features or a provider crate, and pick Android ABIs or
-macOS arch. It generates the native client when `lxapp.config.ts` declares
-`native`, and enforces the [View/Logic boundary](../lxapp/guide.md#build).
+macOS arch. It generates the [native client](../native/development.md#generated-native-client)
+and enforces the [View/Logic boundary](../lxapp/guide.md#build).
 Signing setup: [Distribution](./distribution.md#app-signing).
 An lxapp with a root `tsconfig.json` is type-checked (`tsc -b`) and fails the build on errors;
 `--no-typecheck` skips it. `lingxia dev` prints type errors as you save, without holding the reload.

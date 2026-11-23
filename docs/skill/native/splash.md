@@ -2,6 +2,8 @@
 
 A campaign screen of your own, shown after the fixed launch face
 ([`splash`](../app/project.md#splash)), with a countdown the user can skip.
+Android, iOS, and HarmonyOS only: desktop hosts have no launch face, so
+`select_campaign` is not called there.
 
 ```rust
 impl lingxia::HostAddon for AppHostAddon {
@@ -40,8 +42,8 @@ impl lingxia::HostAddon for AppHostAddon {
 - **Acquisition prepares future launches.** Download in `lingxia::spawn` and
   save with `splash::store(key, bytes)`, which writes atomically. Keys are 1–128
   ASCII letters, digits, `-`, or `_`.
-- **`splash::retain([...])` is the cleanup**: unlisted keys are deleted. It and
-  `store` work from anywhere. The store is app data, so art survives offline.
+- **`splash::retain([...])` is the cleanup**: unlisted keys are deleted. It
+  works from any phase. The store is app data, so art survives offline.
 
 Ship packaged art as host [`assets`](../app/project.md#assets), not bytes in the
 native library. The background colour is fixed at build time.

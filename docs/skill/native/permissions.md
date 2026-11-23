@@ -76,7 +76,8 @@ impl lingxia::HostAddon for AppHostAddon {
 - Scope lookups to the host account or tenant; an app id is not a credential.
   Keep the registry independent of update checks.
 - Lookups time out after five seconds and must be safe to cancel. A failed
-  lookup (error, `404`, timeout) keeps the last grant, or the default.
+  lookup (error or timeout) keeps the last grant, or the default; `Ok(None)`
+  (no record) is the default.
 - The grant is fixed per instance. Recreate the instance to apply a change;
   native code that serves its own content can await
   `LxApp::wait_permissions_ready()` (it also completes on denial).
