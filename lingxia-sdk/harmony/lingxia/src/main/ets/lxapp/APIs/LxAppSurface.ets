@@ -11,7 +11,7 @@ import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
 import { SurfaceLayoutConfig, SurfacePosition } from './surface/SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
-import { AsideRegionModel, AsideSlotPlan, AsideState } from '../AsideRegion';
+import { AsideRegionModel, AsideSlotPlan, AsideState, asidePalette } from '../AsideRegion';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -1016,7 +1016,7 @@ export struct SurfaceManager {
       }
       .width(this.asideChildShown(surface) ? this.aside.panelWidth : 1)
       .height(this.asideChildShown(surface) ? Math.max(1, this.aside.height - this.aside.contentTop) : 1)
-      .backgroundColor(Color.White)
+      .backgroundColor(asidePalette(this.aside.dark).panel)
       .position({
         x: this.asideChildShown(surface) ? this.aside.panelX : -10000,
         y: this.asideChildShown(surface) ? this.aside.contentTop : -10000

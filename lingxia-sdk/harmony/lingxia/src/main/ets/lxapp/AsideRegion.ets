@@ -67,6 +67,34 @@ export interface AsideState {
   /** The app's accent, which the tongue takes. */
   accent: string;
   windowWidth: number;
+  /** The scheme of the lxapp on screen, which the panel's chrome takes. */
+  dark: boolean;
+}
+
+/** The panel's chrome colours in light and dark. */
+interface AsidePalette {
+  panel: ResourceColor;
+  line: string;
+  title: string;
+  muted: string;
+  chip: string;
+  grip: string;
+  tongue: string;
+  tongueEdge: string;
+}
+
+const LIGHT: AsidePalette = {
+  panel: Color.White, line: '#1F000000', title: '#E6000000', muted: '#99000000', chip: '#0F000000',
+  grip: '#59000000', tongue: '#FFFFFF', tongueEdge: 'rgba(0,0,0,0.14)'
+};
+
+const DARK: AsidePalette = {
+  panel: '#1C1C1E', line: '#2EFFFFFF', title: '#E6FFFFFF', muted: '#99FFFFFF', chip: '#1FFFFFFF',
+  grip: '#66FFFFFF', tongue: '#2C2C2E', tongueEdge: 'rgba(255,255,255,0.18)'
+};
+
+export function asidePalette(dark: boolean): AsidePalette {
+  return dark ? DARK : LIGHT;
 }
 
 function emptyState(): AsideState {
@@ -88,7 +116,8 @@ function emptyState(): AsideState {
     tongueCount: 0,
     tongueLabel: '',
     accent: DEFAULT_ACCENT,
-    windowWidth: 0
+    windowWidth: 0,
+    dark: false
   };
 }
 
@@ -118,6 +147,7 @@ export class AsideRegionModel {
   private static children: Map<string, AsideChild> = new Map();
   /** Children a plan has listed: one missing from a later plan was taken out of the slot. */
   private static placed: Set<string> = new Set();
+  private static dark: boolean = false;
   private static slot: AsideSlotPlan | null = null;
   private static width: number = 0;
   private static height: number = 0;
@@ -138,6 +168,15 @@ export class AsideRegionModel {
     AsideRegionModel.width = width;
     AsideRegionModel.height = height;
     AsideRegionModel.statusTop = statusTop;
+    AsideRegionModel.publish();
+  }
+
+  /** The lxapp on screen changed scheme. */
+  static setDark(dark: boolean): void {
+    if (AsideRegionModel.dark === dark) {
+      return;
+    }
+    AsideRegionModel.dark = dark;
     AsideRegionModel.publish();
   }
 
@@ -332,6 +371,7 @@ export class AsideRegionModel {
     const over = AsideRegionModel.isOverlay();
     state.windowWidth = width;
     state.height = height;
+    state.dark = AsideRegionModel.dark;
     state.shown = shown;
     state.overlay = over;
     state.stripTop = AsideRegionModel.statusTop;
@@ -465,13 +505,13 @@ export struct AsideRegion {
           .height('100%')
         }
         if (this.state.maximizeVisible) {
-          AsideGlyph({ kind: this.state.maximized ? 'restore' : 'maximize' })
+          AsideGlyph({ kind: this.state.maximized ? 'restore' : 'maximize', dark: this.state.dark })
             .width(CONTROL_VP)
             .height(CONTROL_VP)
             .accessibilityText(this.label(this.state.maximized ? 'lx_aside_restore' : 'lx_aside_maximize'))
             .onClick(() => AsideRegionModel.toggleMaximized())
         }
-        AsideGlyph({ kind: 'collapse' })
+        AsideGlyph({ kind: 'collapse', dark: this.state.dark })
           .width(CONTROL_VP)
           .height(CONTROL_VP)
           .accessibilityText(this.label('lx_aside_collapse'))
@@ -481,12 +521,12 @@ export struct AsideRegion {
       .height(STRIP_VP)
       .padding({ left: 8, right: 6 })
       .alignItems(VerticalAlign.Center)
-      .border({ width: { bottom: 0.5 }, color: { bottom: '#1F000000' } })
+      .border({ width: { bottom: 0.5 }, color: { bottom: asidePalette(this.state.dark).line } })
     }
     .width(this.state.panelWidth)
     .height('100%')
     .padding({ top: this.state.stripTop })
-    .backgroundColor(Color.White)
+    .backgroundColor(asidePalette(this.state.dark).panel)
     .position({ x: this.state.panelX, y: 0 })
     .shadow(this.state.overlay ? { radius: 24, color: '#2E000000', offsetX: 0, offsetY: 0 } : { radius: 0, color: Color.Transparent })
     .hitTestBehavior(HitTestMode.Block)
@@ -496,12 +536,12 @@ export struct AsideRegion {
   HeaderTab(tab: AsideTab) {
     Row({ space: 6 }) {
       if (tab.isUrl) {
-        AsideGlyph({ kind: 'globe' }).width(16).height(16)
+        AsideGlyph({ kind: 'globe', dark: this.state.dark }).width(16).height(16)
       }
       Text(tab.title)
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
-        .fontColor('#E6000000')
+        .fontColor(asidePalette(this.state.dark).title)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
@@ -516,12 +556,12 @@ export struct AsideRegion {
   TabChip(tab: AsideTab) {
     Row({ space: 6 }) {
       if (tab.isUrl) {
-        AsideGlyph({ kind: 'globe' }).width(15).height(15)
+        AsideGlyph({ kind: 'globe', dark: this.state.dark }).width(15).height(15)
       }
       Text(tab.title)
         .fontSize(13)
         .fontWeight(tab.id === this.state.active ? FontWeight.Medium : FontWeight.Normal)
-        .fontColor(tab.id === this.state.active ? '#E6000000' : '#99000000')
+        .fontColor(tab.id === this.state.active ? asidePalette(this.state.dark).title : asidePalette(this.state.dark).muted)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .constraintSize({ maxWidth: 120 })
@@ -530,7 +570,7 @@ export struct AsideRegion {
     .height(TAB_VP)
     .padding({ left: 10 })
     .borderRadius(8)
-    .backgroundColor(tab.id === this.state.active ? '#0F000000' : Color.Transparent)
+    .backgroundColor(tab.id === this.state.active ? asidePalette(this.state.dark).chip : Color.Transparent)
     .alignItems(VerticalAlign.Center)
     .onClick(() => {
       if (tab.id !== this.state.active) {
@@ -544,7 +584,7 @@ export struct AsideRegion {
     Image($rawfile('icons/icon_close_x.svg'))
       .width(12)
       .height(12)
-      .fillColor('#99000000')
+      .fillColor(asidePalette(this.state.dark).muted)
       .padding(8)
       .width(28)
       .height(28)
@@ -555,7 +595,7 @@ export struct AsideRegion {
 
   @Builder
   Divider() {
-    AsideDivider({ resizable: this.state.canResize })
+    AsideDivider({ resizable: this.state.canResize, dark: this.state.dark })
       .width(DIVIDER_HIT_VP)
       .height(Math.max(0, this.state.height - this.state.stripTop))
       .position({ x: this.state.panelX - DIVIDER_HIT_VP / 2, y: this.state.stripTop })
@@ -582,7 +622,7 @@ export struct AsideRegion {
 
   @Builder
   Tongue() {
-    AsideTongue({ count: this.state.tongueCount, accent: this.state.accent })
+    AsideTongue({ count: this.state.tongueCount, accent: this.state.accent, dark: this.state.dark })
       .width(this.state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP)
       .height(TONGUE_HIT_H_VP)
       .position({
@@ -602,6 +642,7 @@ export struct AsideRegion {
 @Component
 struct AsideGlyph {
   @Prop @Watch('redraw') kind: string = 'collapse';
+  @Prop @Watch('redraw') dark: boolean = false;
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
 
@@ -617,7 +658,7 @@ struct AsideGlyph {
       return;
     }
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = '#99000000';
+    ctx.strokeStyle = asidePalette(this.dark).muted;
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -677,19 +718,20 @@ struct AsideGlyph {
 @Component
 struct AsideDivider {
   @Prop resizable: boolean = true;
+  @Prop dark: boolean = false;
 
   build() {
     Stack() {
       Column()
         .width(0.5)
         .height('100%')
-        .backgroundColor('#1F000000')
+        .backgroundColor(asidePalette(this.dark).line)
       if (this.resizable) {
         Column()
           .width(4)
           .height(36)
           .borderRadius(2)
-          .backgroundColor('#59000000')
+          .backgroundColor(asidePalette(this.dark).grip)
       }
     }
     .width('100%')
@@ -705,6 +747,7 @@ struct AsideDivider {
 struct AsideTongue {
   @Prop @Watch('redraw') count: number = 0;
   @Prop @Watch('redraw') accent: string = DEFAULT_ACCENT;
+  @Prop @Watch('redraw') dark: boolean = false;
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
 
@@ -735,13 +778,13 @@ struct AsideTongue {
     ctx.shadowBlur = 4;
     ctx.shadowOffsetX = -1;
     ctx.shadowColor = 'rgba(0,0,0,0.16)';
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = asidePalette(this.dark).tongue;
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
     ctx.shadowColor = 'rgba(0,0,0,0)';
     ctx.lineWidth = 0.75;
-    ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+    ctx.strokeStyle = asidePalette(this.dark).tongueEdge;
     ctx.stroke();
 
     const cx = (inner + outer) / 2;

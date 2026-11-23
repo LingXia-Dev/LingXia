@@ -389,6 +389,7 @@ export struct LxAppContainer {
     const hostDark = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
     this.appearanceDark = LxAppContainer.appearanceByApp.get(this.appId) ?? hostDark;
     LxAppContainer.currentAppearanceDark = this.appearanceDark;
+    AsideRegionModel.setDark(this.appearanceDark);
 
     this.path = extractWebTag(this.targetWebTag)?.path ?? '';
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
@@ -742,6 +743,7 @@ export struct LxAppContainer {
     if (container) {
       container.appearanceDark = dark;
       LxAppContainer.currentAppearanceDark = dark;
+      AsideRegionModel.setDark(dark);
       container.pageConfig = getNavigationBarState(appId, container.path);
       container.navbarRefreshKey++;
       container.tabBarRefreshKey++;
