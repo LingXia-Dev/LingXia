@@ -35,7 +35,8 @@ These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`
 - `lx.host.badge.*` and `lx.host.tray.*`
-- `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache)); guests do not have the member
+- `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache))
+- `lx.host.serviceEnv.get()` / `set()`
 - `lx.host.update.*`, `lx.host.screenshot()`
   — the host app, not your bundle (that is `lx.app.update.onReady`)
 - `lx.host.autostart.*`

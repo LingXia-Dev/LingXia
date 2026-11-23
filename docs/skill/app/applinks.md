@@ -7,12 +7,8 @@ Logic decides what it means.
 
 Links arrive from OS App Links / Universal Links, browser handoff, push links,
 and local notifications posted with
-`lx.host.notification.show({ target: { appLink: url } })`. QR scans are
-the exception: `scanCode` auto-opens only the `/lxapp/` namespace; any other URL
-is just returned as the scan result. Scans also accept `/lxapp/open` on the
-current HTTPS `lingxiaServer` origin (same scheme, host, and effective port).
-This is an in-app trigger; it neither switches servers nor requires OS
-association files or a live webpage at that path.
+`lx.host.notification.show({ target: { appLink: url } })`. `lx.pick.code`
+never opens a link; it returns the scanned text.
 
 ## Product URLs
 
@@ -91,7 +87,7 @@ that env's hosts into `app.json` and the platform association files. The
 scaffold leaves App Links off. Each env has its own package id (`.dev` suffix
 on `dev`), so each host's `.well-known` file lists the matching id. The OS
 association is fixed at install; a prod build that switches its service env
-uses the new env's hosts for share URLs and in-app checks on the next launch.
+uses that env's hosts for share URLs and in-app checks on the next launch.
 
 Do not put a store URL in `appLinks.hosts`: those hosts open this app.
 
@@ -211,7 +207,7 @@ To land a link on a native screen, do not hand it to the SDK:
 | Platform | How |
 |---|---|
 | iOS | Drop `Lingxia.handleAppLink(url:)` from `.onOpenURL` |
-| macOS | Drop it from `application(_:continue:)` |
+| macOS | Drop it from `application(_:continue:)` and `application(_:open:)` |
 | Android | `Lingxia.quickStart(this, deliverAppLinks = false)` |
 | HarmonyOS | Override `deliverAppLinks()` in your ability to return `false` |
 

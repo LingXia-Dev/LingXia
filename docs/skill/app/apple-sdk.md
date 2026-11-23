@@ -20,6 +20,8 @@ CLI convention: [iOS Packet Tunnel extensions](../cli/lingxia.md#ios-packet-tunn
 import AppKit
 import lingxia
 
+Lingxia.runProductCommandIfInvoked()
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Lingxia.enableWebViewDebugging()
@@ -101,7 +103,7 @@ The contract is these symbols plus their request/event/id types:
 | `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
 | `LxAppController` | Sessions for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | Embeddable view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` for SwiftUI) |
-| `L10n` | SDK strings for host-owned native chrome: `string(_:)`, `string(_:_:)` |
+| `L10n` | SDK strings for host-owned native chrome: `L10n.AppMenu.*`, `L10n.Browser.*` |
 | `PermissionGate` | iOS: `Lingxia.setPermissionGate(_:)`; `beforePrompt` calls `prompt.proceed()` / `prompt.deny()` before each system permission prompt, `afterPrompt` gets the outcome |
 
 Do not touch `LxAppRuntime.shared`; both entry points wrap it.
@@ -111,15 +113,14 @@ Do not touch `LxAppRuntime.shared`; both entry points wrap it.
 - `runProductCommandIfInvoked()` must be the first call in a macOS product
   entrypoint: it runs `HostAddon::install_product_cli` before CLI parsing and
   returns without starting the runtime on a GUI launch.
-- Controller events `didOpen` / `didClose` carry the `LxAppSession`;
-  `.mountInHost(id:)` mounts it into the registered `LxAppHostView`.
+- Controller events `didOpen` / `didClose` carry the `LxAppSession`; an
+  interceptor returning `.mountInHost(id:)` mounts it into that `LxAppHostView`.
 - Host-view events (`didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`,
   `didFinishLoading`, `didFail`) come from the mounted WebView;
   `dispatch(.triggerCapsuleAction(...))` forwards a capsule action to the
   mounted session.
 - `Lingxia.displayLanguage` is the effective display language (saved setting,
-  else the locale passed to `initializeRuntime()`). `L10n.string` resolves
-  `en` / `zh-Hans` from it.
+  else the system locale). `L10n` strings follow it.
 - `PermissionGate` (iOS): App Review rejects an explanation screen with a way
   out before the system prompt, so explain with a single "Continue" that calls
   `proceed()`. `prompt.blocked` means the user denied it before and only

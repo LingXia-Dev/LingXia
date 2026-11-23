@@ -189,8 +189,8 @@ update:
 
 - `direct` downloads the LingXia feed and self-installs. `store` never
   self-installs: `lx.host.update.check()` reports the version, the built-in
-  prompt (at most once per 3 days per version) or `apply()` opens the store
-  listing, and `lx.supports('host.selfUpdate')` is false.
+  prompt (at most once per 3 days per version) or the result's `apply()` opens
+  the store listing, and `lx.supports('host.selfUpdate')` is false.
 - Store updates need no keys and reuse the existing `ios.store` / `macos.store`
   / `harmony.store` / `windows.store` identity. Publish the feed entry only
   after the listing is live.
@@ -235,7 +235,7 @@ service server. A prod build can switch
 service servers at runtime; package id, icon, and signed App Link entitlements
 stay with the build env. Read the build env with `lx.host.env` (JS) or
 `lingxia::app::env()` (Rust), and the running service env with
-`lx.host.serviceEnv.get()` (JS) or `lingxia::app::service_env()` (Rust).
+`lx.host.serviceEnv.get()` (JS, Control app) or `lingxia::app::service_env()` (Rust).
 
 ## `features`
 
@@ -312,8 +312,8 @@ A generated launch screen, held until the home page renders, then faded out.
 
 - `image` — PNG, full-screen aspect-fill; also the OS launch frame where the
   platform allows.
-- `background` — `#RRGGBB`, **required on Android** (and Harmony): the OS
-  splash shows only this colour, so use the art's ground colour.
+- `background` — `#RRGGBB`, **required**: the ground of the OS launch frame,
+  so use the art's ground colour.
 - `mark` — PNG centred by the OS frame when there is no `image`.
 - `minDuration` — ms from process start (default 600).
 - One face for every appearance; there is no dark variant.
@@ -382,7 +382,7 @@ Each entry starts with exactly one content key, which is also its identity:
 | `edge` | `left`\|`right`\|`top`\|`bottom` | Aside side; default `right`, terminal `bottom` (`top`/`bottom` only). |
 | `size` | object | Aside size hint, e.g. `{ width: 320 }`. |
 | `tray` | object | `{ icon?, label?, action?, exclusive?, size? }`; `action` is `toggle` or `activate`. |
-| `platforms` | string[] | Availability filter. Empty = all. |
+| `platforms` | string[] | Availability filter, a subset of `app.platforms`. Omitted = all; never empty. |
 
 ### Rules
 
@@ -429,7 +429,7 @@ runs once even with a URL/native main, without a hidden WebView. Icons follow
 tab-bar [`iconPath`](../lxapp/guide.md#icons); download remote art first.
 
 ```ts
-const { uri } = await lx.network.download(activeBrand.logoUrl).result;
+const { path } = await lx.network.download(activeBrand.logoUrl).result;
 await lx.shell.sidebarActions.replace([
   {
     id: 'agent',
@@ -441,7 +441,7 @@ await lx.shell.sidebarActions.replace([
   {
     id: 'brand',
     placement: 'footer',
-    icon: uri,
+    icon: path,
     label: 'Brand',
     value: activeBrand.shortName, // drawn beside the icon; footer only
     onSelect: () => void openBrandPanel(),
@@ -515,4 +515,4 @@ resources; use source files, not generated lxapp runtime assets.
 
 - Adding Settings or Downloads as surfaces — they are built-in browser pages.
 - Expecting hidden surfaces to destroy WebViews — hiding keeps state.
-- An older `lingxia` on `PATH` after a config schema change.
+- A `lingxia` on `PATH` that does not match the project's LingXia version.

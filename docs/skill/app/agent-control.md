@@ -22,7 +22,8 @@ capabilities:
 
 ## Enable and disable
 
-From `HostAddon::start_services`, call `local_control::install(enabled)` with
+From `HostAddon::start_services`, call
+`lingxia_control_runtime::local_control::install(enabled)` with
 the product preference. Use `set_enabled(bool)` for live changes and
 `is_enabled()` for the live state. LingXia exposes no agent-callable toggle.
 
