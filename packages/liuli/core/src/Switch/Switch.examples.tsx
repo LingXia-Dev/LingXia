@@ -25,6 +25,17 @@ export function InList() {
   );
 }
 
+/** In a row that names the setting already: the label is the switch's name, not drawn. */
+export function LabelHidden() {
+  const pinned = useLocal('pinned', false);
+  return (
+    <view className="flex-row items-center gap-3">
+      <text className="grow text-body text-text">Keep this chat at the top</text>
+      <Switch bind={pinned} label="Pin chat" isLabelHidden data-testid="pin" />
+    </view>
+  );
+}
+
 export function Sizes() {
   return (
     <view className="gap-3">

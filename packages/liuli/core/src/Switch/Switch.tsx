@@ -27,6 +27,8 @@ export type SwitchProps = SwitchBinding & {
   label: string;
   /** Help text under the label, read as the switch's description. */
   description?: string;
+  /** Keeps `label` as the name and draws only the track, for a switch whose row already says what it sets. Help text is not drawn either. @default false */
+  isLabelHidden?: boolean;
   /** @default false */
   isDisabled?: boolean;
   /** A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. @default false */
@@ -42,16 +44,16 @@ export type SwitchProps = SwitchBinding & {
 
 /** A setting that takes effect at once: on or off, label at the start, track at the end. */
 export function Switch(props: SwitchProps) {
-  const { label, description, isDisabled = false, isLoading = false, size = 'md', variant = 'standalone', className, 'data-testid': testId } = props;
+  const { label, description, isLabelHidden = false, isDisabled = false, isLoading = false, size = 'md', variant = 'standalone', className, 'data-testid': testId } = props;
   const helpId = `${useId()}-help`;
   const semantics = {
     'aria-label': label,
-    'aria-describedby': description !== undefined ? helpId : undefined,
+    'aria-describedby': description !== undefined && !isLabelHidden ? helpId : undefined,
     disabled: isDisabled || isLoading,
     'aria-busy': isLoading || undefined,
     'data-testid': testId, ...dataOf(props),
     'data-state': (props.bind ? props.bind.value : props.value) ? 'on' : 'off',
-    className: cx(r.control.base, r.control.size[size], r.control.variant[variant], isLoading && r.control.loading),
+    className: cx(r.control.base, r.control.size[size], r.control.variant[variant], isLoading && r.control.loading, isLabelHidden && r.control.bare),
   };
   const words = (
     <view className={r.text.base}>
@@ -59,7 +61,8 @@ export function Switch(props: SwitchProps) {
       {description !== undefined && <text id={helpId} className={r.description.base}>{description}</text>}
     </view>
   );
-  const content = isLoading ? (
+  const spinnerOnly = <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />;
+  const content = isLabelHidden ? (isLoading ? spinnerOnly : undefined) : isLoading ? (
     <view className={r.loading.base}>
       <view className={r.loading.words}>{words}</view>
       <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />

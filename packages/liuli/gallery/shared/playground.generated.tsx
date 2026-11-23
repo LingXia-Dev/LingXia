@@ -4018,6 +4018,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "isDisabled",
         "required": false,
         "kind": "boolean"

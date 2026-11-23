@@ -45,3 +45,12 @@ test('Applying: busy, takes no press, and shows a spinner beside the words', asy
   assert.deepEqual([control.props.stateBusy, control.props.enabled, control.props.checked], [1, 0, 1]);
   assert.equal(screen.queryAll(node => node.tag === 'vector').length, 1);
 });
+
+test('LabelHidden: named by its label, which is not drawn', async () => {
+  const screen = await renderExample('Switch/Switch', 'LabelHidden');
+  const control = screen.getByTestId('pin');
+  assert.equal(control.props.accessibilityLabel, 'Pin chat');
+  assert.equal(JSON.stringify(control.children ?? []).includes('Pin chat'), false);
+  screen.toggle(control, true);
+  assert.equal(screen.getByTestId('pin').props.checked, 1);
+});

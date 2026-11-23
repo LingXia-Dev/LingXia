@@ -22,6 +22,8 @@ export const switchRecipe = {
   },
   control: {
     base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent-solid thumb:rounded-full thumb:bg-knob thumb:border thumb:border-text/12 thumb:shadow-contact disabled:track:bg-text/12 disabled:checked:track:bg-text/20',
+    /** With the label hidden: the track alone, as wide as it is, with a spinner before it while loading. */
+    bare: 'self-start',
     /** Busy, not unavailable: the track keeps its colour while presses are held off. */
     loading: 'disabled:track:bg-line-strong/45 disabled:checked:track:bg-accent-solid',
     size: {

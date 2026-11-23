@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, InList, Applying, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
+import { Basic, InList, Applying, LabelHidden, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
         <Stage caption={"While the app applies the change"}>
           <Applying />
+        </Stage>
+        <Stage caption={"With its label hidden, in a row that names it"}>
+          <LabelHidden />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

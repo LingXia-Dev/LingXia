@@ -17161,6 +17161,13 @@
           "description": "Help text under the label, read as the switch's description."
         },
         {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps `label` as the name and draws only the track, for a switch whose row already says what it sets. Help text is not drawn either.",
+          "default": "false"
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -17305,6 +17312,11 @@
           "source": "import { Held } from '../example';\nimport { Switch } from '@liulidesign/core/Switch';\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Held value={true}>{(on, set) => <Switch value={on} onChange={set} label=\"Small, for dense rows\" size=\"sm\" />}</Held>\n      <Held value={true}>{(on, set) => <Switch value={on} onChange={set} label=\"Medium\" />}</Held>\n    </view>\n  );\n}"
         },
         {
+          "name": "LabelHidden",
+          "title": "With its label hidden, in a row that names it",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** In a row that names the setting already: the label is the switch's name, not drawn. */\nexport function LabelHidden() {\n  const pinned = useLocal('pinned', false);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <text className=\"grow text-body text-text\">Keep this chat at the top</text>\n      <Switch bind={pinned} label=\"Pin chat\" isLabelHidden data-testid=\"pin\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Applying",
           "title": "Waiting for the app to apply it",
           "source": "import { unused } from '../example';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** While the app applies a change that takes a moment, the switch waits and says so. */\nexport function Applying() {\n  return <Switch value onChange={unused} label=\"Back up over Wi-Fi\" description=\"Turning on: checking your storage.\" isLoading data-testid=\"applying\" />;\n}"
@@ -17367,6 +17379,10 @@
             {
               "name": "Applying",
               "title": "While the app applies the change"
+            },
+            {
+              "name": "LabelHidden",
+              "title": "With its label hidden, in a row that names it"
             }
           ],
           "sizes": [

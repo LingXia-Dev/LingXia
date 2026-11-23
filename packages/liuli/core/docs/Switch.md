@@ -65,6 +65,24 @@ export function Sizes() {
 }
 ```
 
+### With its label hidden, in a row that names it
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Switch } from '@liulidesign/core/Switch';
+
+/** In a row that names the setting already: the label is the switch's name, not drawn. */
+export function LabelHidden() {
+  const pinned = useLocal('pinned', false);
+  return (
+    <view className="flex-row items-center gap-3">
+      <text className="grow text-body text-text">Keep this chat at the top</text>
+      <Switch bind={pinned} label="Pin chat" isLabelHidden data-testid="pin" />
+    </view>
+  );
+}
+```
+
 ### Waiting for the app to apply it
 
 ```tsx
@@ -86,6 +104,7 @@ export function Applying() {
 | `onChange` | `((value: boolean) => void)` |  | Runs with the new value; the app passes it back as `value`. |
 | `label` (required) | `string` |  | The visible label and the switch's name. Say what is on, not the action: "Wi-Fi", "Sync over mobile data". |
 | `description` | `string` |  | Help text under the label, read as the switch's description. |
+| `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name and draws only the track, for a switch whose row already says what it sets. Help text is not drawn either. |
 | `isDisabled` | `boolean` | `false` |  |
 | `isLoading` | `boolean` | `false` | A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. |
 | `size` | `SwitchSize` | `'md'` | `sm` for dense rows. |

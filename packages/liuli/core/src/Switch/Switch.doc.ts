@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
     { name: 'Basic', title: 'With help text' },
     { name: 'InList', title: 'As list rows' },
     { name: 'Sizes', title: 'Small and medium' },
+    { name: 'LabelHidden', title: 'With its label hidden, in a row that names it' },
     { name: 'Applying', title: 'Waiting for the app to apply it' },
   ],
   gaps: [
@@ -77,6 +78,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'InList', title: 'As rows in a list, beside an Item' },
         { name: 'Applying', title: 'While the app applies the change' },
+        { name: 'LabelHidden', title: 'With its label hidden, in a row that names it' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small (36 by 20) for dense rows, medium (44 by 26) by default' }],
       states: [
