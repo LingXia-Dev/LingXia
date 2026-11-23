@@ -45,7 +45,7 @@ export const drawerRecipe = {
     base: 'text-body text-muted',
   },
   body: {
-    base: 'grow shrink min-h-0 gap-3',
+    base: 'grow shrink min-h-0 gap-3 -mx-5 px-5',
   },
   footer: {
     base: 'flex-row flex-wrap justify-end gap-2',

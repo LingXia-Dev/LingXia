@@ -49,7 +49,7 @@ export const bottomSheetRecipe = {
     base: '-mt-2 text-body text-muted',
   },
   body: {
-    base: 'shrink grow min-h-0 gap-3 overscroll-contain',
+    base: 'shrink grow min-h-0 gap-3 -mx-5 px-5 overscroll-contain',
   },
   footer: {
     base: 'flex-row flex-wrap justify-end gap-2',

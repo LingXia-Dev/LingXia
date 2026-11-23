@@ -6,7 +6,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { bottomSheetRecipe as r } from './BottomSheet.recipe';
 import { dataOf } from '../internal/data';
-import { Footer } from '../internal/footer';
+import { Footer, useBodyEdges } from '../internal/footer';
 
 /** `fit` is as tall as its content; `expandable` opens halfway and drags up to nearly full height. */
 export type BottomSheetDetents = 'fit' | 'expandable';
@@ -72,6 +72,7 @@ export function BottomSheet({
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
     warnOnce(`BottomSheet "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
   }
+  const bodyEdges = useBodyEdges();
   const descriptionId = `${useId()}-description`;
   const shape = points[detents];
   const detent = useLocal(`detent-${detents}`, shape.open);
@@ -106,7 +107,7 @@ export function BottomSheet({
         </view>
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
-      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>}
+      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, bodyEdges.className)} onScrollEdge={bodyEdges.onScrollEdge}>{children}</scroll></LayerContext.Provider>}
       {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );

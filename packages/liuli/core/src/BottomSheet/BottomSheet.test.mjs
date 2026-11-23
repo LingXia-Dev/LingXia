@@ -90,3 +90,39 @@ test('MoveTo: the header action sits between the title and the close button', as
   while (at.parent !== header) at = at.parent;
   assert.equal(header.children.indexOf(at), 1);
 });
+
+test('Comments: a hairline at the top while content is under the header, at the bottom while more is under the edge; the content does not move', async () => {
+  const screen = await renderExample('BottomSheet/BottomSheet', 'Comments');
+  screen.press(screen.getByTestId('comments-open'));
+  const body = () => screen.queryAll(node => node.tag === 'scroll' && node.props.onScrollEdge !== undefined)[0];
+  const lines = () => {
+    const { borderTopWidth: top, borderBottomWidth: bottom, marginTop, marginBottom, borderColor } = body().props;
+    if (top) assert.equal(marginTop, -top, 'the line takes back its point at the top');
+    if (bottom) assert.equal(marginBottom, -bottom, 'and at the bottom');
+    if (top || bottom) assert.equal(borderColor, 'text/12', 'the sheet border\'s strength, so it reads on a dark sheet');
+    return [top ? 'top' : '', bottom ? 'bottom' : ''].filter(Boolean);
+  };
+  assert.deepEqual(lines(), [], 'nothing before the body reports its edges, so a body that fits never flashes a line');
+  screen.fire(body(), 'onScrollEdge', JSON.stringify({ edge: 'start', at: true }));
+  assert.deepEqual(lines(), ['bottom'], 'a long body reports only its start: the end is unreached');
+  const at = (start, end) => {
+    screen.fire(body(), 'onScrollEdge', JSON.stringify({ edge: 'start', at: start }));
+    screen.fire(body(), 'onScrollEdge', JSON.stringify({ edge: 'end', at: end }));
+    return lines();
+  };
+  assert.deepEqual([at(true, true), at(true, false), at(false, true), at(false, false)], [[], ['bottom'], ['top'], ['top', 'bottom']]);
+});
+
+test('Comments: a sheet opened again starts its lines afresh, not where the last opening left them', { skip: 'waits for the View to report scroll edges after it resets an offset itself, as on mount' }, async () => {
+  const screen = await renderExample('BottomSheet/BottomSheet', 'Comments');
+  const body = () => screen.queryAll(node => node.tag === 'scroll' && node.props.onScrollEdge !== undefined)[0];
+  const edge = (name, at) => screen.fire(body(), 'onScrollEdge', JSON.stringify({ edge: name, at }));
+  const bottom = () => Boolean(body().props.borderBottomWidth);
+  screen.press(screen.getByTestId('comments-open'));
+  edge('start', true); edge('start', false); edge('end', true);
+  assert.equal(bottom(), false, 'scrolled to the end: nothing more under the footer');
+  screen.press(screen.getByTestId('comments-close'));
+  screen.press(screen.getByTestId('comments-open'));
+  edge('start', true);
+  assert.equal(bottom(), true, 'opened again at the top of a long body: the line over the footer is back');
+});

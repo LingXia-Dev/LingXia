@@ -18,7 +18,7 @@ export const doc: ComponentDoc = {
     { part: 'title', required: true, description: '`label` as a level-2 heading.' },
     { part: 'close', required: false, description: 'A close button, unless `hasCloseButton` is false; `closeLabel` names it.' },
     { part: 'description', required: false, description: 'Text under the title.' },
-    { part: 'body', required: false, description: '`children`, in a scroll that takes the height left.' },
+    { part: 'body', required: false, description: '`children`, in a scroll that takes the height left. A hairline shows at an edge while content is scrolled under it.' },
     { part: 'headerAction', required: false, description: '`headerAction`: one small control beside the title that acts on the whole panel, such as Refresh.' },
     { part: 'footer', required: false, description: '`actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow.' },
   ],

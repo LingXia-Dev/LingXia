@@ -78,7 +78,7 @@ export function Comments() {
         data-testid="comments"
       >
         {comments.map(([who, text], index) => (
-          <view key={`c${index}`} className="gap-0.5">
+          <view key={`c${index}`} className="gap-0.5" data-testid={`comment-${index}`}>
             <text className="text-footnote font-semibold text-text">{who}</text>
             <text className="text-body text-text">{text}</text>
           </view>
@@ -123,6 +123,53 @@ export function Required() {
 }
 ```
 
+### A form that scrolls between the title and the actions
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { TextInput } from '@liulidesign/core/TextInput';
+import { BottomSheet } from '@liulidesign/core/BottomSheet';
+
+/** A form taller than the sheet: the fields scroll between the title and the actions, which stay put. */
+export function Form() {
+  const open = useLocal('open', false);
+  const name = useLocal('name', 'Game server');
+  const external = useLocal('external', '25565');
+  const address = useLocal('address', '192.168.1.24');
+  const internal = useLocal('internal', '25565');
+  const note = useLocal('note', '');
+  const allowed = useLocal('allowed', '');
+  const protocol = useLocal('protocol', 'TCP');
+  return (
+    <view className="gap-3">
+      <Button label="New port rule" width="content" onClick={() => open.set(true)} data-testid="rule-open" />
+      <BottomSheet
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="New port rule"
+        hasCloseButton
+        actions={
+          <>
+            <Button label="Cancel" onClick={() => open.set(false)} data-testid="rule-cancel" />
+            <Button label="Save" variant="primary" onClick={() => open.set(false)} data-testid="rule-save" />
+          </>
+        }
+        data-testid="rule"
+      >
+        <TextInput bind={name} label="Name" data-testid="rule-name" />
+        <TextInput bind={protocol} label="Protocol" description="TCP, UDP or both." autoCapitalize="characters" data-testid="rule-protocol" />
+        <TextInput bind={external} label="External port" inputMode="numeric" data-testid="rule-external" />
+        <TextInput bind={address} label="Device address" inputMode="decimal" description="The device on your network that takes the traffic." data-testid="rule-address" />
+        <TextInput bind={internal} label="Device port" inputMode="numeric" data-testid="rule-internal" />
+        <TextInput bind={allowed} label="Allowed from" placeholder="Any address" isRequired={false} description="Leave empty to accept traffic from anywhere." data-testid="rule-allowed" />
+        <TextInput bind={note} label="Note" placeholder="What it is for" data-testid="rule-note" />
+      </BottomSheet>
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -150,7 +197,7 @@ export function Required() {
 | grabber | `<view>` | yes | The handle at the top edge; decoration, hidden from assistive tech. |
 | header | `<view>` | no | The title, and the close button with `hasCloseButton`. |
 | description | `<text>` | no | One or two sentences under the title, read as the description. |
-| body | `<scroll>` | no | `children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first. |
+| body | `<scroll>` | no | `children`, scrolling when the sheet reaches its height; a drag in it moves the sheet first. A hairline shows at an edge while content is scrolled under it. |
 | headerAction | `<view>` | no | `headerAction`: one small control beside the title that acts on the whole panel, such as Refresh. |
 | footer | `<view>` | no | `actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow. |
 

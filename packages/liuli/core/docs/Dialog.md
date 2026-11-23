@@ -184,7 +184,7 @@ export function Hero() {
 | title | `<text>` | yes | `label` as a level-2 heading, unless `isLabelHidden`. |
 | close | `<button>` | no | A close button: an alert has none unless you ask for one; any other dialog has one unless you turn it off. `closeLabel` names it. |
 | description | `<text>` | no | Text under the title. |
-| body | `<scroll>` | no | `children`, in a scroll that takes the remaining height. |
+| body | `<scroll>` | no | `children`, in a scroll that takes the remaining height. A hairline shows at an edge while content is scrolled under it. |
 | headerAction | `<view>` | no | `headerAction`: one small control beside the title that acts on the whole panel, such as Refresh. |
 | footer | `<view>` | no | `actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow. |
 

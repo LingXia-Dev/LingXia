@@ -56,7 +56,7 @@ export const dialogRecipe = {
     base: 'text-body text-muted',
   },
   body: {
-    base: 'shrink min-h-0 gap-3',
+    base: 'shrink min-h-0 gap-3 -mx-5 px-5',
     /** In a full dialog the body takes the height the header and footer leave. */
     full: 'grow',
   },

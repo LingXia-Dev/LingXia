@@ -5,7 +5,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { dialogRecipe as r } from './Dialog.recipe';
 import { dataOf } from '../internal/data';
-import { Footer } from '../internal/footer';
+import { Footer, useBodyEdges } from '../internal/footer';
 
 export type DialogSize = 'sm' | 'md' | 'lg' | 'full';
 export type DialogDismissOn = 'any' | 'closeRequest' | 'none';
@@ -79,6 +79,7 @@ export function Dialog({
   className,
   'data-testid': testId, ...attributes
 }: DialogProps) {
+  const bodyEdges = useBodyEdges();
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
@@ -118,7 +119,7 @@ export function Dialog({
         </view>
       )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
-      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full)}>{children}</scroll></LayerContext.Provider>}
+      {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full, bodyEdges.className)} onScrollEdge={bodyEdges.onScrollEdge}>{children}</scroll></LayerContext.Provider>}
       {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );

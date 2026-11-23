@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { MoveTo, Parts, Comments, Required } from '../../core/src/BottomSheet/BottomSheet.examples';
+import { MoveTo, Parts, Comments, Required, Form } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -19,6 +19,9 @@ export function Content() {
         </Stage>
         <Stage caption={"A question that must be answered"}>
           <Required />
+        </Stage>
+        <Stage caption={"A form taller than the sheet, its actions kept in view"}>
+          <Form />
         </Stage>
       </PageSection>
     </>

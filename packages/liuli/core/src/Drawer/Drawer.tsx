@@ -6,7 +6,7 @@ import { warnOnce } from '../internal/warn';
 import { LayerContext } from '../internal/layer';
 import { drawerRecipe as r } from './Drawer.recipe';
 import { dataOf } from '../internal/data';
-import { Footer } from '../internal/footer';
+import { Footer, useBodyEdges } from '../internal/footer';
 
 export type DrawerSide = 'end' | 'start';
 export type DrawerSize = 'sm' | 'md' | 'lg';
@@ -63,6 +63,7 @@ export function Drawer({
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
     warnOnce(`Drawer "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
   }
+  const bodyEdges = useBodyEdges();
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
   return (
@@ -85,7 +86,7 @@ export function Drawer({
         )}
       </view>
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
-      <LayerContext.Provider value="overlay"><scroll className={r.body.base}>{children}</scroll></LayerContext.Provider>
+      <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, bodyEdges.className)} onScrollEdge={bodyEdges.onScrollEdge}>{children}</scroll></LayerContext.Provider>
       {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
   );
