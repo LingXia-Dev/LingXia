@@ -10235,9 +10235,15 @@
         },
         {
           "name": "description",
-          "type": "string",
+          "type": "Child",
           "required": false,
-          "description": "A second line under the label; read as the row's description when it is pressable."
+          "description": "Under the label; read as the row's description when it is pressable. A string wraps; for several facts pass one `<text>` per fact in a fragment: each wraps within itself, 4 pt from the next."
+        },
+        {
+          "name": "descriptionLines",
+          "type": "number",
+          "required": false,
+          "description": "Cuts a string `description` to this many lines, ending in an ellipsis. A node's texts set their own."
         },
         {
           "name": "startContent",
@@ -10568,6 +10574,11 @@
           "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },\n  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },\n] as const;\n\n/** A status beside the name: the name gives way first, and the badge is read after it. */\nexport function WithStatus() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Family members\" data-testid=\"members\">\n          {members.map(member => (\n            <Item\n              key={member.id}\n              label={member.name}\n              labelEnd={member.tone === 'success' ? <Badge tone=\"success\" size=\"sm\" label={member.status} /> : <Badge size=\"sm\" label={member.status} />}\n              description={member.note}\n              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${member.name}`)}\n              data-testid={`member-${member.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
+          "name": "WithFacts",
+          "title": "Several facts under a name",
+          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst people = [\n  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },\n  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },\n] as const;\n\n/** Several facts under a name, one text each, so a fact wraps within itself. */\nexport function WithFacts() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"People\" data-testid=\"people\">\n          {people.map(person => (\n            <Item\n              key={person.id}\n              label={person.name}\n              description={<>{person.facts.map((fact, index) => <text key={`f${index}`}>{fact}</text>)}</>}\n              startContent={<Avatar name={person.name} hue={person.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${person.name}`)}\n              data-testid={`person-${person.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
           "name": "WithRemove",
           "title": "A row with a remove button of its own",
           "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst devices = [\n  { id: 'ipad', name: \"Emily's iPad\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Emily's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** A row that opens its device, with a remove button of its own at the end. */\nexport function WithRemove() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Emily's devices\" data-testid=\"devices\">\n          {devices.map(device => (\n            <Item\n              key={device.id}\n              label={device.name}\n              description={device.note}\n              startIcon=\"phone\"\n              onClick={() => say(`Opened ${device.name}`)}\n              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}\n              data-testid={`device-${device.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
@@ -10687,6 +10698,10 @@
             {
               "name": "WithStatus",
               "title": "A status beside the name"
+            },
+            {
+              "name": "WithFacts",
+              "title": "Several facts under a name, each wrapping within itself"
             },
             {
               "name": "WithRemove",

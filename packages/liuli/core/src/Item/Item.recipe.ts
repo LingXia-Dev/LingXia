@@ -89,6 +89,7 @@ export const itemRecipe = {
   },
   description: {
     base: 'text-footnote text-muted break-words whitespace-pre-line',
+    node: 'gap-1 text-footnote text-muted',
   },
   end: {
     base: 'shrink-0 flex-row items-center gap-2 text-muted',

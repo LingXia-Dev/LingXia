@@ -143,6 +143,42 @@ export function WithStatus() {
 }
 ```
 
+### Several facts under a name
+
+```tsx
+import { Said } from '../example';
+import { Avatar } from '@liulidesign/core/Avatar';
+import { Item, ItemList } from '@liulidesign/core/Item';
+
+const people = [
+  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },
+  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },
+] as const;
+
+/** Several facts under a name, one text each, so a fact wraps within itself. */
+export function WithFacts() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="People" data-testid="people">
+          {people.map(person => (
+            <Item
+              key={person.id}
+              label={person.name}
+              description={<>{person.facts.map((fact, index) => <text key={`f${index}`}>{fact}</text>)}</>}
+              startContent={<Avatar name={person.name} hue={person.hue} isDecorative />}
+              hasChevron
+              onClick={() => say(`Opened ${person.name}`)}
+              data-testid={`person-${person.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+```
+
 ### A row with a remove button of its own
 
 ```tsx
@@ -416,7 +452,8 @@ export function Compact() {
 | `isSelected` | `boolean` |  | The current choice among rows that select, such as a sidebar's open page: an accent wash and a heavier label, read as selected. Pass `false` on the other rows so they read as not selected. |
 | `label` (required) | `string` |  | The row's main text, and its accessible name when it is pressable. |
 | `variant` | `ItemVariant` | `'default'` | `destructive` draws the label in the danger role, for a row that deletes or ends something. |
-| `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
+| `description` | `Child` |  | Under the label; read as the row's description when it is pressable. A string wraps; for several facts pass one `<text>` per fact in a fragment: each wraps within itself, 4 pt from the next. |
+| `descriptionLines` | `number` |  | Cuts a string `description` to this many lines, ending in an ellipsis. A node's texts set their own. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `startIcon` | `IconRef` |  | An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. |
 | `labelEnd` | `Child` |  | On the label's line, after it: a status Badge beside a name. The name truncates first; this is never squeezed. On a pressable row its text is read after the name, before the second line. |
@@ -463,7 +500,7 @@ export function Compact() {
 | iconTile | `<view>` | no | `startIcon`: an icon by name in a 32 px tinted square; not read. |
 | start | `<view>` | no | `startContent`: an icon or avatar. |
 | label | `<text>` | yes | The main text; it wraps rather than truncating. |
-| description | `<text>` | no | `description`, or `disabledMessage` while disabled. |
+| description | `<text>` | no | `description`, or `disabledMessage` while disabled: a text, or a view around the facts given. |
 | end | `<view>` | no | `endContent`: a value, a badge, or a control on a plain row. |
 | chevron | `<vector>` | no | Shown with `hasChevron`; mirrors for right-to-left text. |
 | swipe | `<view>` | no | Around a row with `swipeActions`: it clips the row as it slides. |
@@ -517,7 +554,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
 - Do: Give a row one control of its own with `endAction`, named for the row ("Remove Emily's iPad"); such a row rarely wants a chevron. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
 - Do: Set `dir` on a value whose direction differs from the page's, such as a Latin "2 h" in a Hebrew row; a row does not isolate it.
-- Do: Keep the label short and put detail in `description`.
+- Do: Keep the label short and put detail in `description`. For several facts pass one `<text>` per fact in a fragment, so a fact wraps within itself, 4 pt from the next; a screen reader still runs the facts together, with a space between.
 - Do: At large text, keep `endContent` to a short value or badge: it keeps its whole width and the label and description wrap beside it.
 - Do: Group rows in an ItemList, so the rows are divided and read with their position.
 - Do: Keep swipe actions to the two or three a person repeats down a list, the destructive one last; offer the same actions on the page the row opens.
@@ -525,6 +562,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Mark the current choice with `isSelected` and pass `isSelected={false}` on the other rows of the same list.
 - Don't: Put a button or other control in `endContent` of a row with `onClick`; the View refuses a button inside a button.
 - Don't: Use a row for a single action; that is a Button.
+- Don't: Put more than three facts under one row; that is a page of its own, which the row opens.
+- Don't: Wrap the facts of a `description` in a view of your own; pass them as a fragment, since a wrapper of your own lays them out itself.
 - Don't: Repeat the end value in `description`; on a pressable row it is read after the second line, so it would be said twice.
 
 ## Not yet

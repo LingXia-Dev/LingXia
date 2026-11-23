@@ -2718,6 +2718,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "descriptionLines",
+        "required": false,
+        "kind": "number"
+      },
+      {
         "name": "startIcon",
         "required": false,
         "kind": "choice",

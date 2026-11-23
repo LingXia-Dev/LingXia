@@ -250,6 +250,34 @@ export function WithStatus() {
   );
 }
 
+const people = [
+  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },
+  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },
+] as const;
+
+/** Several facts under a name, one text each, so a fact wraps within itself. */
+export function WithFacts() {
+  return (
+    <Said>
+      {say => (
+        <ItemList label="People" data-testid="people">
+          {people.map(person => (
+            <Item
+              key={person.id}
+              label={person.name}
+              description={<>{person.facts.map((fact, index) => <text key={`f${index}`}>{fact}</text>)}</>}
+              startContent={<Avatar name={person.name} hue={person.hue} isDecorative />}
+              hasChevron
+              onClick={() => say(`Opened ${person.name}`)}
+              data-testid={`person-${person.id}`}
+            />
+          ))}
+        </ItemList>
+      )}
+    </Said>
+  );
+}
+
 const devices = [
   { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
   { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },

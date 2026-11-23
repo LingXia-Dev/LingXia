@@ -73,8 +73,13 @@ export type ItemProps = ItemAction & {
   label: string;
   /** `destructive` draws the label in the danger role, for a row that deletes or ends something. @default 'default' */
   variant?: ItemVariant;
-  /** A second line under the label; read as the row's description when it is pressable. */
-  description?: string;
+  /**
+   * Under the label; read as the row's description when it is pressable. A string wraps; for several facts pass
+   * one `<text>` per fact in a fragment: each wraps within itself, 4 pt from the next.
+   */
+  description?: string | Child;
+  /** Cuts a string `description` to this many lines, ending in an ellipsis. A node's texts set their own. */
+  descriptionLines?: number;
   /** Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. */
   startContent?: Child;
   /** An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. */
@@ -135,7 +140,9 @@ export function Item(props: ItemProps) {
             <view box={labelEndBox} id={pressable ? besideId : undefined} aria-hidden={pressable || undefined} className={r.labelEnd.base}>{labelEnd}</view>
           </view>
         )}
-        {help !== undefined && <text id={pressable ? descriptionId : undefined} className={r.description.base}>{help}</text>}
+        {help !== undefined && (typeof help === 'string'
+          ? <text id={pressable ? descriptionId : undefined} className={r.description.base} style={props.descriptionLines !== undefined ? { lineClamp: props.descriptionLines } : undefined}>{help}</text>
+          : <view id={pressable ? descriptionId : undefined} className={r.description.node}>{help}</view>)}
       </view>
       {endContent !== undefined && <view id={pressable ? valueId : undefined} aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
       {props.hasChevron && <Glyph name="chevron-end" className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}

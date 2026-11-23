@@ -275,3 +275,25 @@ test('RightToLeft: the rows take the page direction; the action keeps its own na
   const action = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'הסרת האייפד של אמילי')[0];
   assert.ok(action, 'the end action is its own button');
 });
+
+test('WithFacts: each fact is its own text, read in order as the row\'s description, after its name', async () => {
+  const screen = await renderExample('Item/Item', 'WithFacts');
+  const row = screen.getByTestId('person-marcus');
+  const [id] = row.props.ariaDescribedBy.split(' ');
+  const [node] = screen.queryAll(other => other.props.elementId === id);
+  const texts = [];
+  const walk = at => at.tag === 'text' ? texts.push(textOf(at)) : at.children?.forEach(walk);
+  walk(node);
+  assert.deepEqual(texts, ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday']);
+  assert.equal(row.props.ariaDescribedBy.split(' ').length, 1, 'the facts are the whole description');
+  assert.deepEqual([node.children.map(child => child.tag), node.props.gap], [['text', 'text', 'text', 'text'], 4], 'each fact its own text, 4 apart, so a wrapped line stays with its fact');
+});
+
+test('descriptionLines cuts a string description; a node is drawn as given', async () => {
+  const screen = await renderPage(`
+    import { Item } from '@liulidesign/core/Item';
+    export function render() { return <page><Item label="Note" description="A long line" descriptionLines={2} data-testid="cut" /></page>; }
+  `);
+  const [text] = screen.queryAll(node => node.tag === 'text' && textOf(node) === 'A long line');
+  assert.equal(text.props.textLines, 2);
+});

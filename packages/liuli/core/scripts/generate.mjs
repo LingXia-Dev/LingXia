@@ -179,6 +179,8 @@ function playgroundControl(entry, prop) {
   const base = { name: prop.name, required: prop.required };
   if (prop.type === 'boolean') return { ...base, kind: 'boolean' };
   if (prop.type === 'string') return { ...base, kind: 'text' };
+  // A node-or-string prop the doc starts from a string is played as text.
+  if (prop.type === 'Child' && typeof entry.playground?.props[prop.name] === 'string') return { ...base, kind: 'text' };
   if (prop.type === 'number') return { ...base, kind: 'number' };
   const options = choiceValues.get(`${propsTypes.get(entry.name)}.${prop.name}`);
   return options ? { ...base, kind: 'choice', options } : null;
