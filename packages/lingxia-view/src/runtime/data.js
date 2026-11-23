@@ -21,7 +21,8 @@ export function shared(value, previous, depth = 0) {
   if (previous === undefined || value === null || typeof value !== 'object') return immutable(value, depth);
   if (Array.isArray(value)) {
     const old = Array.isArray(previous) ? previous : [];
-    let same = old.length === value.length;
+    // An empty array over anything but an array is a change, not the old value.
+    let same = Array.isArray(previous) && old.length === value.length;
     const next = value.map((v, i) => { const item = shared(v, old[i], depth + 1); same &&= item === old[i]; return item; });
     return same ? previous : Object.freeze(next);
   }
