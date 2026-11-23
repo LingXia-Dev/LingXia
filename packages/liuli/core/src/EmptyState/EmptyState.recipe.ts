@@ -21,7 +21,7 @@ export const emptyStateRecipe = {
     size: { sm: 'text-body', md: 'text-callout' } satisfies Record<EmptyStateSize, string>,
   },
   description: {
-    base: 'text-muted',
+    base: 'text-muted whitespace-pre-line',
     size: { sm: 'text-footnote', md: 'text-body' } satisfies Record<EmptyStateSize, string>,
   },
   actions: {

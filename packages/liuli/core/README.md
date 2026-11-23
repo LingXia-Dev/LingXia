@@ -187,6 +187,7 @@ there is no switch at run time.
 - Keyboard focus follows the shape: a row (list item, menu item, underline tab, checkbox, radio or
   switch row) fills with a rounded wash; a box (select, text field, card, segment, thumb) takes a ring.
 - Liuli contains no copy: every visible or spoken string arrives as a prop.
+- A newline in a description or message breaks the line (help and error text, a Banner's or Toast's message, a Tooltip, a Tour step); a label or title stays on one line.
 - Controls look the same on every OS.
 - `data-testid` and any other `data-*` props (`data-state`, `data-current`) land on the same element; a test asserts it for every component. The View takes at most 16 `data-*` props per element, within a byte budget per page.
 

@@ -12,6 +12,6 @@ export const tooltipRecipe = {
     offset: { bottom: 'mt-1 motion-safe:starting:-translate-y-1', top: 'mb-1 motion-safe:starting:translate-y-1', end: 'ms-1 motion-safe:starting:-translate-x-1 rtl:motion-safe:starting:translate-x-1', start: 'me-1 motion-safe:starting:translate-x-1 rtl:motion-safe:starting:-translate-x-1' } satisfies Record<TooltipPlacement, string>,
   },
   text: {
-    base: 'text-footnote text-surface',
+    base: 'text-footnote text-surface whitespace-pre-line',
   },
 } as const;

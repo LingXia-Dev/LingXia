@@ -46,7 +46,7 @@ export const bottomSheetRecipe = {
     base: 'size-5',
   },
   description: {
-    base: '-mt-2 text-body text-muted',
+    base: '-mt-2 text-body text-muted whitespace-pre-line',
   },
   body: {
     base: 'shrink grow min-h-0 gap-3 -mx-5 px-5 overscroll-contain',

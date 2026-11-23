@@ -35,7 +35,7 @@ export const tourRecipe = {
     base: 'text-body font-semibold text-surface',
   },
   text: {
-    base: 'text-footnote text-surface',
+    base: 'text-footnote text-surface whitespace-pre-line',
   },
   footer: {
     base: 'flex-row items-center justify-between gap-3 pt-1',

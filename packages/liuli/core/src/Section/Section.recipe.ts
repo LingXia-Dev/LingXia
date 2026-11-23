@@ -23,7 +23,7 @@ export const sectionRecipe = {
     level: { 2: 'text-callout tracking-tight', 3: 'text-body', 4: 'text-footnote text-muted' } satisfies Record<2 | 3 | 4, string>,
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted whitespace-pre-line',
   },
   action: {
     base: 'shrink-0 flex-row items-center gap-2',

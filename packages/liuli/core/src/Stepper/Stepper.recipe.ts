@@ -67,6 +67,6 @@ export const stepperRecipe = {
     row: 'truncate',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted whitespace-pre-line',
   },
 } as const;

@@ -22,7 +22,7 @@ export const checkboxListRecipe = {
     disabled: 'text-faint',
   },
   description: {
-    base: 'w-0 min-w-full text-footnote text-muted',
+    base: 'w-0 min-w-full text-footnote text-muted whitespace-pre-line',
   },
   /** The box for all sits over a hairline, apart from the options it stands for. */
   all: {

@@ -62,6 +62,6 @@ export const sliderRecipe = {
     base: 'text-caption text-muted whitespace-nowrap tabular-nums',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted whitespace-pre-line',
   },
 } as const;

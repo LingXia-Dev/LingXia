@@ -40,7 +40,7 @@ export const detailsRecipe = {
     base: 'text-body font-medium text-text',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted whitespace-pre-line',
   },
   chevron: {
     base: 'size-5 shrink-0 text-muted transition-transform duration-base ease-standard',

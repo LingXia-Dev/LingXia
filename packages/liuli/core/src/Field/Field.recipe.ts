@@ -46,7 +46,7 @@ export const fieldRecipe = {
   },
   /** A sentence: it wraps at the field's width and never widens the field (`w-0 min-w-full`), so a field is as wide as its label and control. */
   description: {
-    base: 'w-0 min-w-full text-footnote text-muted',
+    base: 'w-0 min-w-full text-footnote text-muted whitespace-pre-line',
   },
   status: {
     empty: 'sr-only',
@@ -68,6 +68,6 @@ export const fieldRecipe = {
   },
   /** A word too long for a narrow column breaks inside, so the message never leaves its card. */
   statusText: {
-    base: 'grow basis-0 min-w-0 break-words text-footnote text-text',
+    base: 'grow basis-0 min-w-0 break-words text-footnote text-text whitespace-pre-line',
   },
 } as const;

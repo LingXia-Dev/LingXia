@@ -42,7 +42,7 @@ export const drawerRecipe = {
     base: 'size-5',
   },
   description: {
-    base: 'text-body text-muted',
+    base: 'text-body text-muted whitespace-pre-line',
   },
   body: {
     base: 'grow shrink min-h-0 gap-3 -mx-5 px-5',

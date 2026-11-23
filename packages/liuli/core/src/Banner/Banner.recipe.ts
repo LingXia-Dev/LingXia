@@ -38,7 +38,7 @@ export const bannerRecipe = {
     base: 'text-body font-semibold text-text',
   },
   message: {
-    base: 'text-footnote text-text',
+    base: 'text-footnote text-text whitespace-pre-line',
   },
   action: {
     /** The link's own padding moves out, so its text lines up with the message and the bottom

@@ -31,7 +31,7 @@ export const toastRecipe = {
     tone: { neutral: 'text-muted', info: 'text-info', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<ToastTone, string>,
   },
   message: {
-    base: 'grow shrink basis-0 min-w-0 py-1.5 text-body text-text',
+    base: 'grow shrink basis-0 min-w-0 py-1.5 text-body text-text whitespace-pre-line',
   },
   action: {
     base: 'shrink-0',

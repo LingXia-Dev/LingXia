@@ -53,6 +53,6 @@ export const switchRecipe = {
     disabled: 'text-faint',
   },
   description: {
-    base: 'text-footnote text-muted',
+    base: 'text-footnote text-muted whitespace-pre-line',
   },
 } as const;
