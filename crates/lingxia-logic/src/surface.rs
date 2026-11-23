@@ -2565,7 +2565,7 @@ fn compact_aside_opens_browser(lxapp: &LxApp) -> bool {
     #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
     {
         let simulated_phone = cfg!(target_os = "macos")
-            && matches!(lxapp::device::device_get(), Ok(state) if state.group == "phone");
+            && matches!(lxapp::device::device_get(), Ok(state) if matches!(state.group.as_str(), "phone" | "fold"));
         !simulated_phone && lxapp.aside_browser_is_compact()
     }
 }
