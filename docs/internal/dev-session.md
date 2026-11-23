@@ -59,12 +59,12 @@ actionable error.
 
 A dev host pulls a changed lxapp bundle as one zstd archive,
 `lxapp/<id>/bundle/<distHash>.tar.zst` (pages repeat the UI runtime, so 6.5 MB
-of pages travel as about 0.3 MB); a delta of up to 4 files (a hot swap) and an
-older server (404) go file by file, one connection each. Never on a UI thread: Android runs
+of pages travel as about 0.3 MB); a delta of up to 4 files (a hot swap) and a
+server that answers 404 go file by file, one connection each. Never on a UI thread: Android runs
 `prepare_dev_bundles` on a background thread before `lingxiaInit`, and init
-adopts that outcome without fetching again (a fetch there held the main thread
-past Android's 5 s input timeout, and the ANR dialog then took focus from
-every spec). A host without that call still syncs inside init, bounded to 10 s.
+adopts that outcome without fetching again (a fetch there can hold the main
+thread past Android's 5 s input timeout, and the ANR dialog then takes focus
+from every spec). A host without that call still syncs inside init, bounded to 10 s.
 An open waits at most 2 s for its app's sync; a slower one finishes in the
 background for later opens. Every sync has an overall deadline, not only a
 per-request timeout.
@@ -101,7 +101,7 @@ LingXia packages separately. Re-run the host build after editing a linked packag
   Logic context id. Desktop/handheld preset changes recreate Logic contexts;
   rotation and resizing keep the feature set.
 - Windows `desktop` input uses foreground-only `SendInput`; `--pid` needs
-  exactly one visible window, and true background input is not implemented.
+  exactly one visible window.
   Window screenshots are occlusion-independent, but separate native popups may
   need their own capture. Owner-drawn Win32 controls may expose no
   accessibility nodes.
