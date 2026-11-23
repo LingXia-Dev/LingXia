@@ -27,6 +27,7 @@ import { SurfaceCloseButton } from './SurfaceChrome';
 import { DevServiceMarkWindow } from '../../DevServiceMarkWindow';
 import { GpuPage } from '../../../view/GpuPage';
 import { GpuPageModel, GpuPages } from '../../../view/GpuPages';
+import { LxAppContainer } from '../../LxAppContainer';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FloatSurfaceWindow';
@@ -77,7 +78,8 @@ export class FloatSurfaceWindowManager {
 
   public static appearanceDarkForWebTag(webTag: string): boolean {
     const appId = extractWebTag(webTag)?.appId ?? '';
-    return FloatSurfaceWindowManager.appearanceByApp.get(appId) ?? false;
+    // No change pushed yet for this app: it draws in the scheme of the lxapp on screen.
+    return FloatSurfaceWindowManager.appearanceByApp.get(appId) ?? LxAppContainer.appearanceDarkNow();
   }
 
   public static addAppearanceHandler(handler: FloatSurfaceAppearanceHandler): void {
@@ -221,8 +223,9 @@ struct LingXiaFloatSurfacePage {
     }
   };
   private appearanceHandler = (appId: string, dark: boolean): void => {
-    const webTagAppId = extractWebTag(this.pageWebTag)?.appId ?? '';
-    if (webTagAppId === appId) this.appearanceDark = dark;
+    // A GPU page has no web view tag; its layout's tag names the app.
+    const webTag = this.pageWebTag.length > 0 ? this.pageWebTag : (this.layout?.webTag ?? '');
+    if ((extractWebTag(webTag)?.appId ?? '') === appId) this.appearanceDark = dark;
   };
 
   aboutToAppear() {
@@ -293,6 +296,7 @@ struct LingXiaFloatSurfacePage {
 
   /** Nothing is on screen under a float: its page shows from its first frame. */
   private showGpuPage(page: GpuPageModel): void {
+    this.appearanceDark = FloatSurfaceWindowManager.appearanceDarkForWebTag(page.webTag);
     this.gpuPage = page;
     GpuPages.reveal(page, () => {});
   }
