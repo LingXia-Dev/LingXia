@@ -102,7 +102,6 @@ final class RunnerSurfaceShellHost {
         activate()
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
         updateHingeOverlay(for: device)
-        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)
     }
 
@@ -132,7 +131,6 @@ final class RunnerSurfaceShellHost {
         configureWindow(for: newDevice, center: false)
         presentSurface()
         updateHingeOverlay(for: newDevice)
-        reportSurfaceMetricsWhenReady()
         DevToolsLogger.shared.log("Device -> \(newDevice.displayName) (\(newDevice.sizeDescription))", level: .debug)
     }
 
