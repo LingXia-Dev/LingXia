@@ -547,6 +547,7 @@ internal class LxAppPane(
      * A large screen's tabs (short side regular) leave the phone's strip: a pill floating at the
      * bottom-left while the window is clearly portrait (at least 6:5), else a column at the
      * right edge (Apple's iPhone Duo bar placement) — also for more tabs than the pill holds.
+     * A docked aside takes the right edge, and the column moves to the left one.
      */
     internal fun touchTabBarShape(config: TabBarState): TabBarShape {
         val width = root.width
@@ -567,7 +568,7 @@ internal class LxAppPane(
         TabBarShape.FLOATING -> config.copy(dimension = TabBar.FLOATING_STRIP_DP, overflowStartIndex = -1)
         // A column takes its own width, so an immersive bar's see-through background has nothing to show.
         TabBarShape.COLUMN -> config.copy(
-            position = TabBarState.Position.RIGHT,
+            position = columnPosition(),
             dimension = TabBar.COLUMN_WIDTH_DP,
             overflowStartIndex = -1,
             backgroundColor = if (config.isBackgroundTransparent()) gpuChrome?.bar ?: Color.WHITE
@@ -575,14 +576,22 @@ internal class LxAppPane(
         )
     }
 
-    /** Refits the bar when the window crosses a shape boundary (rotation, fold, resize). */
+    private fun columnPosition() =
+        if (activity.asideDocked()) TabBarState.Position.LEFT else TabBarState.Position.RIGHT
+
+    /**
+     * Refits the bar when the window crosses a shape boundary (rotation, fold, resize), or a
+     * column's edge changes with a docked aside.
+     */
     internal fun refitTabBarShape() {
         val declared = declaredTabBar ?: return
         val bar = tabBar ?: return
-        if (touchTabBarShape(declared) == bar.shape) return
+        val shape = touchTabBarShape(declared)
+        if (shape == bar.shape && (shape != TabBarShape.COLUMN || bar.config.position == columnPosition())) return
         setupTabBar(declared, false)
         showTabBar(bar.visibility == View.VISIBLE)
         root.requestApplyInsets()
+        if (isMain && activity.hasAsideRegion()) activity.aside.placeEar()
     }
 
     internal fun tabColumnWidth(): Int {
@@ -590,6 +599,12 @@ internal class LxAppPane(
         if (bar.shape != TabBarShape.COLUMN || bar.visibility != View.VISIBLE || activity.isMediaFullscreen) return 0
         return bar.layoutParams?.width ?: 0
     }
+
+    /** The column's width on the trailing edge; zero while it stands on the leading one. */
+    internal fun trailingColumnWidth(): Int =
+        if (tabBar?.config?.position == TabBarState.Position.LEFT) 0 else tabColumnWidth()
+
+    private fun leadingColumnWidth(): Int = tabColumnWidth() - trailingColumnWidth()
 
     /**
      * Beside a tab column the navigation bar and capsule span the main only, and the status
@@ -600,8 +615,11 @@ internal class LxAppPane(
         val column = tabColumnWidth()
         navigationBar?.let { nav ->
             (nav.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                if (lp.rightMargin != column) {
-                    lp.rightMargin = column
+                val left = leadingColumnWidth()
+                val right = trailingColumnWidth()
+                if (lp.leftMargin != left || lp.rightMargin != right) {
+                    lp.leftMargin = left
+                    lp.rightMargin = right
                     nav.layoutParams = lp
                 }
             }
@@ -1135,7 +1153,7 @@ internal class LxAppPane(
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
                 topMargin = capsuleTopMarginPx
-                rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + tabColumnWidth()
+                rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + trailingColumnWidth()
             }
             setOnMenuClickListener {
                 CapsuleMenuBottomSheet.show(activity, appId)
@@ -1156,7 +1174,7 @@ internal class LxAppPane(
         val lp = capsule.layoutParams as? FrameLayout.LayoutParams ?: return
         val density = activity.resources.displayMetrics.density
         val top = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusInset(), density)
-        val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + tabColumnWidth()
+        val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + trailingColumnWidth()
         if (lp.topMargin != top || lp.rightMargin != trailing) {
             lp.topMargin = top
             lp.rightMargin = trailing

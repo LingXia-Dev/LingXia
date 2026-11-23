@@ -1021,7 +1021,10 @@ class LxAppActivity : AppCompatActivity() {
                 mainPane.root.layoutParams = lp
             }
         }
-        if (mainPane.hasWebViewContainer) mainPane.updateLayoutMargins()
+        if (mainPane.hasWebViewContainer) {
+            mainPane.refitTabBarShape()
+            mainPane.updateLayoutMargins()
+        }
     }
 
     /**

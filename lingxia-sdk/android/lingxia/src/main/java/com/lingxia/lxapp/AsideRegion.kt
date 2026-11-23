@@ -286,18 +286,28 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         if (earShown) {
             ear.contentDescription = String.format(
                 Lingxia.localizedString(activity, R.string.lx_aside_show_content), title.orEmpty())
-            ear.color = palette.body
+            // The app's accent: the handle reads as the app's own control.
+            ear.color = activity.mainPane.tabBar?.config?.selectedColor ?: palette.title
             ear.fill = palette.surface
             ear.stroke = palette.separator
             ear.pressedFill = palette.secondaryFill
-            // Beside a tab column, not over it.
-            (ear.layoutParams as FrameLayout.LayoutParams).apply {
-                rightMargin = activity.mainPane.tabColumnWidth()
-                ear.layoutParams = this
-            }
+            ear.count = slot?.children?.count(::hosts) ?: 0
         }
         listOf(view, divider, ear).forEach { host.bringChildToFront(it) }
         activity.onAsideLayoutChanged()
+        placeEar()
+    }
+
+    /** Beside a tab column, not over it; the column can refit after the region lays out. */
+    fun placeEar() {
+        val lp = ear.layoutParams as FrameLayout.LayoutParams
+        val right = activity.mainPane.trailingColumnWidth()
+        val width = dp(if (ear.count > 1) TONGUE_HIT_W_COUNT_DP else TONGUE_HIT_W_DP)
+        if (lp.rightMargin != right || lp.width != width) {
+            lp.rightMargin = right
+            lp.width = width
+            ear.layoutParams = lp
+        }
     }
 
     /**
@@ -488,6 +498,14 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             set(value) { field = value; invalidate() }
         var pressedFill = Color.LTGRAY
             set(value) { field = value; invalidate() }
+        /** The slot's children; shown from two, where it tells the handle holds more than one. */
+        var count = 0
+            set(value) { field = value; invalidate() }
+        private val digits = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textSize = 11f * context.resources.displayMetrics.scaledDensity
+        }
         private var pressed = false
         private val corners = android.graphics.CornerPathEffect(density * 3f)
         private val chevron = Path()
@@ -500,6 +518,14 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             setLayerType(LAYER_TYPE_SOFTWARE, null)
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnClickListener { onRestore?.invoke() }
+        }
+
+        override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+            super.onLayout(changed, left, top, right, bottom)
+            // At the screen edge the system's back gesture would take the pull.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, width, height))
+            }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -522,7 +548,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             // The long side lies on the edge it came from; the slopes and the short side face
             // the main, which is where it pulls out to.
             val outer = width.toFloat()
-            val inner = outer - dp(TONGUE_W_DP)
+            val inner = outer - dp(if (count > 1) TONGUE_W_COUNT_DP else TONGUE_W_DP)
             val top = (height - dp(TONGUE_H_DP)) / 2f
             val bottom = top + dp(TONGUE_H_DP)
             val slope = dp(TONGUE_SLOPE_DP).toFloat()
@@ -544,7 +570,8 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             paint.pathEffect = null
 
             val cx = (inner + outer) / 2f
-            val cy = height / 2f
+            // With a count the chevron rises and the number sits under it.
+            val cy = height / 2f - if (count > 1) dp(7f) else 0
             val reach = dp(2.5f).toFloat()
             val half = dp(4f).toFloat()
             paint.strokeWidth = density * 1.6f
@@ -557,6 +584,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             chevron.lineTo(cx - reach, cy)
             chevron.lineTo(cx + reach, cy + half)
             canvas.drawPath(chevron, paint)
+            if (count > 1) {
+                digits.color = color
+                val label = if (count > 9) "9+" else count.toString()
+                canvas.drawText(label, cx, height / 2f + dp(11f), digits)
+            }
         }
     }
 
@@ -568,6 +600,8 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         private const val MIN_TRAVEL_DP = 48f
         private const val DIVIDER_HIT_DP = 24f
         private const val TONGUE_W_DP = 14f
+        private const val TONGUE_W_COUNT_DP = 18f
+        private const val TONGUE_HIT_W_COUNT_DP = 32f
         private const val TONGUE_H_DP = 64f
         private const val TONGUE_SLOPE_DP = 10f
         private const val CONTROL_DP = 36f
