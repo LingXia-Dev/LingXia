@@ -29,7 +29,7 @@ npm install @lingxia/logic@<lingxia-version>
 
 Keep that in `tsconfig.logic.json`; the View has its own config, and the root
 `tsconfig.json` references both. A GPU lxapp extends the CLI's bases instead
-([GPU View](./gpu.md)).
+([GPU View](./gpu/authoring.md#types-and-build)).
 
 ## Finding your way
 

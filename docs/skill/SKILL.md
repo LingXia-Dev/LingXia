@@ -70,10 +70,14 @@ lingxia dev stop
 **A successful build is not done.** Done means you watched the change work:
 
 1. Navigate to it (`lxdev lxapp nav go ...`) and use it
-   (`lxdev lxapp page click/type ...`). A new control gets clicked.
-2. Assert the effect: DOM via `lxdev lxapp page eval`, Logic state via
-   `lxdev lxapp eval`. Screenshot only visual changes.
+   (`lxdev lxapp page click '[data-testid="save"]'`, `page type`). A new control gets clicked.
+2. Assert the effect: the page's accessibility tree via `lxdev lxapp page tree` or
+   `page find ROLE --name NAME`, Logic state via `lxdev lxapp eval`. A WebView page also takes
+   `lxdev lxapp page eval` (DOM). Screenshot (`page screenshot`) only visual changes.
 3. Check `lxdev logs` for new errors.
+
+`lingxia check` lists type and authoring errors without building; a GPU View component is
+unit-tested in Node with `@lingxia/view/testing` ([GPU tests](./lxapp/gpu/testing.md)).
 
 On failure, fix and repeat. Report what you observed, not what the edit should
 do. Keep regressions as `lxdev test` cases: [Testing](./lxapp/testing.md).
@@ -85,9 +89,10 @@ and `lxdev test --last-failed` while fixing; run everything once before pushing.
 
 ```
 ┌─────────────────────┐                          ┌──────────────────────┐
-│ View (WebView)      │ ◄── page.update(…) ───── │ Logic (JS runtime)   │
-│ React / HTML        │                          │ definePage instance  │
-│ renders `data`      │ ──── actions.foo() ────► │ owns state + `lx.*`  │
+│ View                │ ◄── page.update(…) ───── │ Logic (JS runtime)   │
+│ GPU TSX (default),  │                          │ definePage instance  │
+│ or React/HTML in a  │ ──── actions.foo() ────► │ owns state + `lx.*`  │
+│ WebView             │                          │                      │
 └─────────────────────┘                          └──────────────────────┘
 ```
 
@@ -108,6 +113,9 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
+| `@lingxia/view` | GPU View primitives' types, hooks and helpers | lxapp View (GPU) | `useLocal`, `useAction`, `useRequest`, `useStream`, `List`, `t`; tests: `@lingxia/view/testing` |
+| `@liulidesign/core` | Liuli: accessible GPU components (buttons, fields, rows, sheets, icons) | lxapp View (GPU) | `import { Button } from '@liulidesign/core/Button'`; the project's `liuli` skill says how to find one |
+| `@liulidesign/charts` | Liuli charts and stats | lxapp View (GPU) | `import { LineChart } from '@liulidesign/charts/LineChart'` |
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
@@ -131,11 +139,14 @@ never add them to a project.
 | Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
-| Pages: `definePage`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
+| Pages: `definePage`, lifecycle, `App({})`, navigation, tab bar, page chrome, catalogues | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
-| Experimental native GPU Views: TSX, Tailwind subset, bindings, compatibility | [lxapp/gpu.md](./lxapp/gpu.md) |
+| GPU View: elements, layout, hooks, events, dialogs, inputs, accessibility, video | [lxapp/gpu/authoring.md](./lxapp/gpu/authoring.md) |
+| GPU View: Tailwind classes, theme roles, `theme/pack.json`, transitions, drag and snap | [lxapp/gpu/styling-motion.md](./lxapp/gpu/styling-motion.md) |
+| GPU View: tests in Node, checking the running page | [lxapp/gpu/testing.md](./lxapp/gpu/testing.md) |
 | Page state, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
-| Native components: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs. In WebView pages, use HTML `<video>` / `<audio>` | [lxapp/components.md](./lxapp/components.md) |
+| WebView pages: React/HTML hooks, host facts, leave guard, page chrome CSS | [lxapp/webview/guide.md](./lxapp/webview/guide.md) |
+| WebView native elements: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs, HTML `<video>` / `<audio>` | [lxapp/webview/native-elements.md](./lxapp/webview/native-elements.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, errors; look up a member with `lingxia api` | [lxapp/core.md](./lxapp/core.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
 | Files: `lx://` storage, `lx.network.download`, `lx.fs`, `lx.network.upload`, quotas | [lxapp/files.md](./lxapp/files.md) |
@@ -157,7 +168,7 @@ never add them to a project.
 
 | Job | Lives in | Surface |
 |---|---|---|
-| UI rendering, page state | lxapp `pages/index.{tsx,html}` | View |
+| UI rendering, page state | lxapp `pages/<name>/index.tsx` (or `.html`) | View |
 | Page lifecycle, state, actions (JS) | lxapp `pages/index.ts` | `definePage` Logic |
 | Cross-page business helpers callable as `lx.X(...)` | host Rust crate | `lingxia::js` extension (needs `standard` feature) |
 | Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route |
@@ -184,6 +195,7 @@ never add them to a project.
 | A save did not update the running lxapp | [dev-reload.md](./cli/dev-reload.md) |
 | `lxdev test` takes too long / runs unrelated tests | [testing.md → Running](./lxapp/testing.md#running) |
 | TS doesn't know `lx.foo()` / `definePage` | [Install typing](./lxapp/core.md#install-typing) |
-| `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [components.md](./lxapp/components.md) |
-| Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
+| A GPU build error (`UI_*`) | [GPU authoring](./lxapp/gpu/authoring.md), [styling](./lxapp/gpu/styling-motion.md) |
+| `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [native-elements.md](./lxapp/webview/native-elements.md) |
+| WebView handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/webview/native-elements.md#callback-shapes) |
 | `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

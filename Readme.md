@@ -32,7 +32,7 @@ An lxapp is a page-based mini-app with a strict split between:
 
 This keeps UI rendering separate from business work. View code renders; Logic code owns state and platform APIs; the bridge moves data and events between them.
 
-An experimental [GPU View](docs/skill/lxapp/gpu.md) path compiles TSX and a
+The default [GPU View](docs/skill/lxapp/gpu/authoring.md) path compiles TSX and a
 validated Tailwind subset to native rendering while retaining the same Logic
 bridge and host-owned navbar/tabbar.
 [The showcase](examples/lingxia-showcase/README.md) is built on it and documents
@@ -98,8 +98,9 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 |---|---|
 | Install CLI and create the first project | [docs/quick-start.md](docs/quick-start.md) |
 | Agent entrypoint and topic router | [docs/skill/SKILL.md](docs/skill/SKILL.md) |
-| Page authoring, `definePage`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
-| Native components such as `LxPicker`, `LxMediaSwiper` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
+| Page authoring, `definePage`, lifecycle, navigation | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
+| GPU View authoring | [docs/skill/lxapp/gpu/authoring.md](docs/skill/lxapp/gpu/authoring.md) |
+| WebView pages and native elements such as `LxPicker`, `LxMediaSwiper` | [docs/skill/lxapp/webview/guide.md](docs/skill/lxapp/webview/guide.md) |
 | Logic-side `lx.*` API surface | [docs/skill/lxapp/core.md](docs/skill/lxapp/core.md) |
 | Bridge mechanics: page state, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
 | Host project config and `lingxia.yaml` | [docs/skill/app/project.md](docs/skill/app/project.md) |

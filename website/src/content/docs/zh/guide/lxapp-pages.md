@@ -83,7 +83,7 @@ import { LxPicker } from '@lingxia/react'
 | `LxMediaSwiper` | 原始 DOM `CustomEvent` — `event.detail.index` |
 | `LxNavigator` | 原始 DOM `CustomEvent` |
 
-属性见生成的[组件参考](../../reference/components/)。Callback 约定见 LingXia skill 的 `lxapp/components.md`。
+属性见生成的[组件参考](../../reference/components/)。Callback 约定见 LingXia skill 的 `lxapp/webview/native-elements.md`。
 
 ## 适配 surface
 

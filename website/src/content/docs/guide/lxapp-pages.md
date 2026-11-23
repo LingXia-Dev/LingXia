@@ -83,7 +83,7 @@ Component callbacks are not uniform:
 | `LxMediaSwiper` | Raw DOM `CustomEvent` — `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` |
 
-Use the generated [Components reference](../../reference/components/) for attributes. Callback contracts live in the LingXia skill's `lxapp/components.md`.
+Use the generated [Components reference](../../reference/components/) for attributes. Callback contracts live in the LingXia skill's `lxapp/webview/native-elements.md`.
 
 ## Adapt to the surface
 

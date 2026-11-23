@@ -407,19 +407,7 @@ Pages mounted at once share one `lx`. `unmount()` aborts `page.signal` and runs 
 running leaks in the app, so unmount stops it and rejects naming where it started (stop it when `page.signal` aborts;
 `leakedTimers: 'allow'` opts out, rarely).
 
-A GPU View component is unit-tested in Node with `@lingxia/view/testing`: `render(page, view)`
-compiles a page and runs it on the real View runtime, with a phone `env` you can override. Query by
-test id, text or the props you wrote; every element event has a screen method (`press`, `type`,
-`toggle`, `select`, `slide`, `escape`, …). Roles, names and layout need a device: use `lxdev test`.
-Theme steps (`p-4`, `text-sm`) reach the wire as `[slot, times, plus]`; `points(props)` resolves them
-under the built-in pack to compare with numbers, and `render(page, view, { points: true })` does so for every node.
-
-```js
-import { render, textOf } from '@lingxia/view/testing';
-const screen = await render('tests/counter.page.tsx', { data: { label: 'Taps' } });
-screen.press(screen.getByTestId('inc'));   // fires onClick, re-renders
-assert.equal(textOf(screen.getByTestId('value')), 'Taps: 1');
-```
+A GPU View component is unit-tested in Node with `@lingxia/view/testing`: [GPU View tests](./gpu/testing.md#in-node).
 
 ```ts
 test.configure({ tags: ['routed'] });            // every test in this file

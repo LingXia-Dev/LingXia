@@ -1,4 +1,4 @@
-# Native components
+# WebView native elements
 
 Native-backed presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>` / `<textarea>`; there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
 
@@ -67,14 +67,6 @@ The wrapper props (`LxPickerProps`) are the contract. Column mode comes from
   onColumnChange={(value) => console.log('scrolling', value)}
 />
 ```
-
-## `page.video`
-
-Drive a GPU page's video from Logic with `page.video(name)` (the `page`
-`setup` received), by its `useVideo` name or `<video id>`:
-`play`, `pause`, `stop`, `seek(ms)`, `setQuality`, `setPlaybackRate`,
-`setMuted`, `setVolume`. Each returns a `Promise<void>` that rejects with a
-`VIDEO_*` code; fullscreen and `setStreamSource` reject `VIDEO_UNSUPPORTED`.
 
 ## `LxMediaSwiper`
 

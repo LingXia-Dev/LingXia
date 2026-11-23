@@ -17,7 +17,7 @@ page instance. They advance independently.
   export const session = { userId: '' };
   declare global { interface LxStorageSchema { userId: string } }
 
-  // app.ts
+  // lxapp.ts
   App({
     async onLaunch() {
       session.userId = (await lx.storage.get('userId')) ?? '';

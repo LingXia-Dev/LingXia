@@ -168,7 +168,9 @@ theme:
   ([product settings](../lxapp/core.md#product-settings)); an lxapp's own
   `appearance` overrides both. The embedded browser's chrome and built-in
   pages follow the product scheme too.
-- Lxapp pages do not inherit these colors; they follow `prefers-color-scheme`.
+- Lxapp pages do not inherit these colors. A GPU page uses its lxapp's palette
+  ([theme pack](../lxapp/gpu/styling-motion.md#theme-pack)), and the bars and window floor around it
+  take that palette, not these keys. A WebView page follows `prefers-color-scheme`.
 
 ## `update`
 

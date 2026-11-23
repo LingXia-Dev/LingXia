@@ -1,9 +1,13 @@
-# GPU Views (Android, iOS, macOS, HarmonyOS)
+# GPU View authoring
+
+The default View (Android, iOS, macOS, HarmonyOS). Styling, theme and motion:
+[styling-motion.md](./styling-motion.md); tests: [testing.md](./testing.md).
 
 A page whose View (`index.tsx`, Logic stays in `index.ts`) exports a named `render` renders natively;
 one that exports a default component is a WebView page. All pages of an lxapp must agree, or the
 build stops. Add `@lingxia/view` as a dependency.
-There is no DOM. The host owns navbar and tabbar.
+There is no DOM. The host owns navbar and tabbar. Build controls, rows, fields and sheets from
+Liuli (`@liulidesign/core`) before composing primitives; its own skill says how.
 
 ```tsx
 import { useLocal, useRequest } from '@lingxia/view';
@@ -20,8 +24,22 @@ export function render({ data, actions }: View) {
 }
 ```
 
-- `./$types` types `data` and `actions` from the page's Logic (`index.ts`); a page without Logic gets empty ones. `lingxia dev`/`build` write it under `.lingxia/types` (`lingxia gen types` on a fresh checkout or in CI).
+## Types and build
+
+- `./$types` types `data` and `actions` from the page's Logic (`index.ts`); a page without Logic gets empty ones. `lingxia dev`, `build` and `check` write it under `.lingxia/types` (run `lingxia check` on a fresh checkout or in CI).
 - `tsconfig.logic.json` / `tsconfig.view.json` extend the CLI's `./.lingxia/tsconfig.logic.json` / `.view.json`, the View referencing the Logic project. Type-check with `lingxia check` (or `tsc -b` at the project root); `tsc -p` alone cannot build the Logic types the View reads. `lingxia build` fails a `./$types` page whose View tsconfig skips the base.
+- In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
+  and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
+- `console.log`/`info`/`warn`/`error`/`debug` in View code go to the app log tagged with the page (`lxdev logs`); arguments join as text and a call never throws.
+- The build reports every problem with `file:line:col`, split into unknown
+  utilities, ones the renderer cannot draw, and ones the element ignores.
+- JSX evaluated at module scope fails the build (`UI_SCOPE`): build it inside the component, or make it a function.
+- `UI_COMPAT` means the installed host is older than the bundle: update it.
+- `UI_PERF` build warnings do not stop the build: use `<List>` past 50 literal rows, keep opacity and
+  backdrop off repeated rows, and ship bundled images at most 2048 px.
+
+## Layout
+
 - `<page>` is the root: it absorbs safe-area insets and the keyboard. `<view>` is the only layout container: a flex column; `flex-row`/`flex-col` set direction, `flex` alone means row, `grid` makes a grid; `gap`/`items`/`justify` work without `flex`. Overlap children with `grid *:col-start-1 *:row-start-1`.
   A last-child `<scroll>`/`<List>` runs on under the tab bar, its end padded clear; `<dialog>`s cover the bars.
   `fixed` insets and `vh`/`dvh` measure the page's safe box (inside system bars, above the keyboard);
@@ -30,40 +48,15 @@ export function render({ data, actions }: View) {
   Row items shrink to min-content as in CSS (`min-w-0` to truncate, `shrink-0` to pin). `<button>` is
   unstyled as after Tailwind's preflight: give it its fill, padding and radius.
   `w-`/`min-w-`/`max-w-[10ch]` measure the element's own `0`; with `tabular-nums` that is ten digits.
-- Style with complete Tailwind classes. `style` (CSS-named: `backgroundColor`, `marginTop`,
-  `gridTemplateColumns`) is only for values computed at render time; a `style` object of fixed values
-  warns `UI_STYLE_STATIC`. Unitless `lineHeight` is a multiplier. Each element accepts only styles it renders.
-- RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
-  display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
-- Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
-  `border-line-strong` (editors, controls), `bg-accent-solid text-on-accent-solid` (pressed or switched controls; badges and labels keep `bg-accent text-on-accent`, `accent` text and rings), `bg-text/8`; plot series
-  `chart-1`..`chart-5`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
-- `lingxia gen tokens` writes the theme pack's type, radius and spacing scales to `theme/tokens.css`.
-  It also writes the pack's `motion` block: use `duration-fast|base|slow` and `ease-standard|enter|exit|spring`, not milliseconds.
-  Liuli's names come from the same ramps: `text-caption|footnote|body|callout|title|display`, `rounded-checkbox|segment|control|container|dialog`, `*-control-sm|md|lg`.
-- `theme/pack.json` gives the lxapp its own palette; it may set only `accent` (`{"seed":"#…","derive":true}`),
-  or its surfaces, text and status colours too; every other role is derived from those. A palette the host pushes wins. `env.highContrast` picks the
-  pack's high-contrast palette; `shadow-*` layers use the `shadow` role.
-- Supported variants: `dark:`, `rtl:`/`ltr:`, `first:`/`last:`/`odd:`/`even:`/`only:`/`empty:`, `sm:`–`2xl:`, `focus:` (editors), `focus-visible:` (keyboard focus; replaces the ring), `active:`
-  (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `placeholder:`, slider parts `track:`/`range:`/`secondary:`/`thumb:`
-  (a state goes first: `active:thumb:size-4`; the touch target stays the slider's box), switch parts `track:`/`thumb:`
-  (`checked:track:bg-success`, `track:w-11 track:h-6`),
-  `space-*`/`divide-*`. `data-*`, `has-*`, `focus-within:`, `group-active:`. `*:`, `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
-- `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
-  `transition-*`/`animate-*` animate paint and transforms only; gradients and `scale-0` jump. A box that is or
-  holds an editor/scroll/slider may only translate (build error; on `starting:`/`exit:` a warning). `starting:`/`exit:` animate enter and removal; `transition-layout` animates position; `transition-[d]` morphs a `<vector>`'s paths, stroke width, dashes and solid colours between sources with the same commands (pair by `key`); draw a line in with `pathLength: 1`, `strokeDasharray: [1]`, `strokeDashoffset` 1 → 0.
-  `ease-spring`, `ease-spring-bouncy` or `ease-[spring(0.4)]` time a transition by a spring; `duration-*` stays the knob.
-- Utilities that would draw nothing (filters but `blur-*`, radial masks, text shadows, cursors, outlines) fail naming what to use.
-- In `lingxia dev`, saving View code of GPU pages swaps those pages in place, keeping `useLocal`, scroll
-  and focus; Logic or config edits rebuild and reopen. Dev builds' runtime errors name `file:line:col`.
-- `console.log`/`info`/`warn`/`error`/`debug` in View code go to the app log tagged with the page (`lxdev logs`); arguments join as text and a call never throws.
-- The build reports every problem with `file:line:col`, split into unknown
-  utilities, ones the renderer cannot draw, and ones the element ignores.
+- Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `page.env.watch` is for Logic that acts
+  on a size change itself, never to forward it with `page.update`.
+
+## State and handlers
+
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
 - No effects: a handler acts, also after an `await` — `if (!(await signIn.run(form)).ok) password.focus()` (or `.set`, `reveal`). Its closure keeps the old render's `data`, so let the action's result answer, not `data` read after the await.
 - A handler that throws or rejects fails the page in a `lingxia dev` build and under test; a shipped app logs it (`UI_HANDLER: onClick of <button data-testid=…> rejected: …`) and the page stays. A sync throw discards that turn's writes; an async handler's writes made before it failed stay. Prefer `useAction(...).run`, which answers `{ ok: false }`; bare `await actions.x()` rejects — handle it or it is reported.
 - `cell.focus()` focuses the editor bound (`bind`) to that cell; from a handler, never in render.
-- `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
 - `reveal(id)` (from `@lingxia/view`, in a handler) scrolls the element with that `id` into view inside its `<scroll>`s, after the render the handler causes; a `<List>` row uses the list's `anchor`.
 - `const box = useBox(name)` + `<view box={box}>` reads the element's laid-out content size: `box.value` is `{ width, height, minContentWidth, maxContentWidth }` in points (the last two: its content at its narrowest and on one line, to choose a layout that fits), `null` until the first layout and one render behind a change (`onLayout={size => …}` is the callback form; on `view`, `text`, `vector`, `plot`, `scroll`).
 - `useAction(actions.x)` gives `pending`, `error` and `run`, which never rejects and resolves `{ ok: true, value }` (`value` is `null` for an action that returns nothing) or `{ ok: false, error }`.
@@ -75,18 +68,20 @@ export function render({ data, actions }: View) {
 - A component taking a child as its trigger: `elementType(child)` tells what it is; `cloneElement(child, props)` adds props in its place (`className` joins; replacing a handler it has needs `{ override: ['onClick'] }`).
 - A component re-runs only when its props, the `useLocal` cells it reads or the environment change, so render must read
   nothing else; one that reads `Date`, `Math.random` or a module `let` re-runs every render.
-- Scroll snap: `snap-x`/`snap-y` on a `<scroll>` or `<List>`, `snap-start|center|end` on children; every snap is mandatory.
-  Pager: `<scroll bind={page} className="overflow-x-auto snap-x snap-always">`; a flick stops one page on, `bind` is the resting page, two-way.
-- `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the
-  finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
-  `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.
-  Needs `aria-label`: screen readers and arrow keys step it; tests read the point as `toHaveValue('1')`.
-  A same-axis scroll inside it scrolls only once it is fully open (lowest offset) and returns to its top before it closes.
+
+## Pointer and gestures
+
+Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motion.md#drag-and-snap).
+
+- `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
 - No other pointer, swipe, pinch or long-press handlers and no drag-and-drop.
 - On phones a finger reaches a control smaller than 44 pt (Android 48 dp) within that size around it, never over
   another control; layout, `boundingBox()` and mouse input keep the real box. `touch-target-none` opts out.
-- `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
-  `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
+- `onContextMenu={e => …}` on `view`/`button`/`link`/`text`: long press, secondary click or `locator.performAction('contextmenu')`; `e = { x, y, pointer }` in page coordinates. The engine draws no menu.
+- A press that misses every box goes to the nearest small control within the platform touch target (44 pt, 48 dp on Android); `locator.touchTarget()` reads that box.
+
+## Text, links and semantics
+
 - Rich text: `<text>Read <span className="font-bold">this</span> or <link onClick={go}>that</link></text>`;
   runs take text paint only; links are accent + underline by default. `<link to={{ page: 'detail', params }}>`
   navigates without an action: `to` takes `lx.nav.go` targets or `{ back: n }`, type-checked against the page registry (`replace` swaps the current page); a link to the current page does nothing, and a refused target reports like a failed action. `decoration-dotted`/`-dashed` and `decoration-<role>/<alpha>` style an underline or strike. `select-text` lets users
@@ -96,57 +91,60 @@ export function render({ data, actions }: View) {
   (announced), `aria-hidden` for decoration, `role="img" aria-label` on a drawn picture (avatar, rating) speaks only the label. A layout element with a role, or a scroll,
   groups its content for screen readers ("item 2 of 3"); plain wrappers collapse.
   `aria-pressed`, `aria-selected`, `aria-expanded`, `aria-busy` announce states (e.g. `aria-busy={req.pending}`).
+- `role="grid"` > `role="row"` > `role="gridcell"`: one Tab stop, arrows by row and column, Home/End to the row's ends; `onPage("previous" | "next")` on the grid takes PageUp/PageDown.
+- Buttons may contain text, icons and images; their text names them for
+  accessibility. Images need `alt` (`""` for decoration).
+- The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
+  a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
+- Text follows the system font size, up to 2× by default: lxapp.json `maxTextScale` (1 to 3) sets the cap and a
+  page's json may lower it; `env.textScale` reads the applied factor (1 at default) for a layout that must change
+  shape. Prefer `min-h-*` over fixed heights. Whitespace
+  collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.
+
+## Dialogs, popovers and overlays
+
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
   `mt-auto mb-0 w-full` makes a sheet). A panel docked to an edge (`mb-0 w-full`, `ms-0 h-full`) runs to the screen's
   edge and its padding grows by that side's inset: never add `env.insets` yourself. `<view id popover>` + `<button popoverTarget>` is a light-dismiss
   popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="dialog"` on a popover is a non-modal dialog (`aria-modal` makes it modal); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside; `backdrop:bg-scrim` dims the page under a light-dismiss popover, as a docked menu sheet does. A popover flips to the other side when it does not fit; `side-top:`/`side-bottom:`/`side-start:`/`side-end:` (paint only) style it and its contents by the side it ended on, so a caret inside it can face the anchor; an absolute caret with `start-[anchor(center)]` (or `top-[anchor(center)]`) sits on the anchor's centre line even when the popover is pushed in or aligned to an edge, kept off its rounded corners.
 - Leaving a page inside the app (push, tab switch, closing its surface) closes what a tap outside would (the select/date picker, light-dismiss popovers, menus, hints, an action sheet); dialogs and `manual` popovers stay. Going to the background closes nothing.
-- Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
-  screen readers get those as the row's actions; tests call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
   stays across pages (a mini player), and it always sits above the page and its dialogs.
 - There is no WebView inside a GPU page: HTML opens only through `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
-- Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `page.env.watch` is for Logic that acts
-  on a size change itself, never to forward it with `page.update`.
-- Sheet detents: `<dialog drag="y" dragSnapPoints={[0, '50%', '100%']} bind={detent}>`; resting wholly off screen calls `onClose`, the scrim fades with it.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,
   Home/End jump, a typed letter finds the next item; `expect(locator).toBeFocused()` checks focus.
+
+## Inputs
+
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
   `type="number"` with `min`/`max`/`step` clamps on blur/submit, keeping the typed text otherwise (`7.0` stays);
   typed and pasted text is filtered by keyboard: `inputMode="numeric"` keeps digits, `type="number"`/`inputMode="decimal"`
   also one `.` (a `,` becomes `.`) and a leading `-`; `type="date|time"` opens the
   View's own themed picker (popover with a mouse, sheet on touch) and reports ISO strings;
   a time field shows the user's 12/24-hour clock, and both size to fit any value, so drop `min-w-[…ch]` on them.
-- While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
-- `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - `<textarea rows={2} maxRows={6}/>` grows with its lines in that range, then scrolls.
 - `truncate` on an `<input>` ends its placeholder, and its value while unfocused, in an ellipsis; a focused editor scrolls.
 - `onFocus`/`onBlur` on `<input>` and `<textarea>` fire as the caret enters or leaves; a press on a button does not blur the editor. `readOnly` keeps focus and selection, takes no edits and raises no keyboard. `onKeyDown={{ ArrowDown: fn, Enter: fn, … }}` gives the page the listed keys (ArrowUp/Down, Enter, Escape, Home, End, PageUp/Down) while the caret stays; listed means consumed. `aria-activedescendant` on the editor names the option those keys point at; `role="combobox"` (input or button, with `aria-valuetext`) and `role="spinbutton"` (number input with `aria-valuenow`) are accepted, and `inputMode` `numeric`/`decimal` may sit beside `type="number"`.
 - `<select options={[{value,label,disabled?}]} bind={cell} placeholder aria-label/>` opens the View's own
   picker (popover with a mouse, sheet on touch); arrows change the choice; automation uses `locator.selectOption(valueOrLabel)`.
-- `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
-- `locator.blur()` takes keyboard focus from an editor that holds it (its `onBlur` runs); any other match is left alone.
-- `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
-- `role="grid"` > `role="row"` > `role="gridcell"`: one Tab stop, arrows by row and column, Home/End to the row's ends; `onPage("previous" | "next")` on the grid takes PageUp/PageDown.
-- `onContextMenu={e => …}` on `view`/`button`/`link`/`text`: long press, secondary click or `locator.performAction('contextmenu')`; `e = { x, y, pointer }` in page coordinates. The engine draws no menu.
 - `<slider values={[lo, hi]} onChange thumbLabels={['From','To']} aria-label>` has two thumbs that cannot cross (no `bind`); `onChangeEnd` runs when a change is finished (the press lifts, or a key step), on a one-value slider too.
 - A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with no `value`/`bind` keeps its own state across re-renders and still calls `onChange(next)`; an unbound slider starts at `min`, a select at its placeholder, unless `defaultChecked`/`defaultValue` seeds it once; `checked:` and `has-checked:` follow the state either way.
 - `<checkbox indeterminate>` is partly checked: a dash, announced as mixed, `indeterminate:` variant; a press calls `onChange(true)`. Automation reads `checked: "mixed"`.
-- A press that misses every box goes to the nearest small control within the platform touch target (44 pt, 48 dp on Android); `locator.touchTarget()` reads that box.
 - `enterKeyHint="next"|"previous"` moves focus to the adjacent enabled editor in reading order
   (the last one submits).
-- Buttons may contain text, icons and images; their text names them for
-  accessibility. Images need `alt` (`""` for decoration).
-- The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
-  a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
+
+## Images, vectors and video
+
+- `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
+  `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
+- While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
+- `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.
 - `<video>` HLS at quality `auto` never fetches a rendition larger than the picture shows (HarmonyOS: the system player
   chooses); `setQuality(label)` pins past it. HarmonyOS starts some streams slowly; no picture 15 s after play is `VIDEO_NETWORK`.
-- Text follows the system font size, up to 2× by default: lxapp.json `maxTextScale` (1 to 3) sets the cap and a
-  page's json may lower it; `env.textScale` reads the applied factor (1 at default) for a layout that must change
-  shape. Prefer `min-h-*` over fixed heights. Whitespace
-  collapses as in CSS: use `whitespace-pre-line`/`pre-wrap` for authored newlines.
-- `UI_COMPAT` means the installed host is older than the bundle: update it.
-- `UI_PERF` build warnings do not stop the build: use `<List>` past 50 literal rows, keep opacity and
-  backdrop off repeated rows, and ship bundled images at most 2048 px.
+- Drive a GPU page's video from Logic with `page.video(name)` (the `page`
+  `setup` received), by its `useVideo` name or `<video id>`:
+  `play`, `pause`, `stop`, `seek(ms)`, `setQuality`, `setPlaybackRate`,
+  `setMuted`, `setVolume`. Each returns a `Promise<void>` that rejects with a
+  `VIDEO_*` code; fullscreen and `setStreamSource` reject `VIDEO_UNSUPPORTED`.

@@ -38,7 +38,8 @@ mobile `regular` surface is a CSS two-pane.
 
 ## Read it in the View
 
-`useLxHost().sizeClass` and `.canDock` ([host facts](./guide.md#host-facts)) are
+A GPU View reads `env.sizeClass` and `env.canDock` (the render's `env`, or `useView().env`);
+a WebView page reads `useLxHost().sizeClass` and `.canDock` ([host facts](./webview/guide.md#host-facts)). Both are
 present before the first frame and change only when the class changes. A page
 that only picks a layout needs no Logic subscription. Size spacing and columns
 with CSS and container queries. Older hosts report `compact`, so keep
@@ -97,7 +98,7 @@ header {
 }
 ```
 
-Other page-chrome variables: [Page chrome CSS](./guide.md#page-chrome-css).
+Other page-chrome variables: [Page chrome CSS](./webview/guide.md#page-chrome-css).
 
 ## Test runtime switching
 
