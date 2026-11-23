@@ -87,7 +87,7 @@ test('callback failure stops its producer and catalog replacement invalidates ow
 test('invalid methods, duplicate resources and render mutations never issue requests', () => {
   const view = setup();
   for (const method of ['echo', 'host.ticks', 'missing']) {
-    assert.throws(() => prepare(() => { useStream('s', view.actions[method], { onData() {} }); return h('text'); }, view), /UI_STREAM/);
+    assert.throws(() => prepare(() => { useStream('s', view.actions[method], { onData() {} }); return h('text'); }, view), /UI_STREAM|UI_ACTION: `(host\.ticks|missing)` is not an action/);
     discard();
   }
   assert.throws(() => prepare(() => { useStream('s', view.actions.ticks, { onData() {} }).start(); return h('text'); }, view), /UI_RENDER/);

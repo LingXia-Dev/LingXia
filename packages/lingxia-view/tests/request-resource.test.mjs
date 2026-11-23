@@ -95,7 +95,7 @@ test('streams, duplicate names and render-time reload are rejected without issui
     () => { useRequest('r', view.actions.ticks); return h('text'); },
     () => { useRequest('r', view.actions.probe); useRequest('r', view.actions.probe); return h('text'); },
     () => { useRequest('r', view.actions.probe).reload(); return h('text'); },
-  ]) { assert.throws(() => prepare(render, view), /UI_REQUEST|UI_RENDER/); discard(); assert.deepEqual(frames(), []); }
+  ]) { assert.throws(() => prepare(render, view), /UI_REQUEST|UI_RENDER|UI_ACTION: `(host\.call|missing)` is not an action/); discard(); assert.deepEqual(frames(), []); }
 });
 
 test('reload keeps the previous value visible and marks it stale until the reply lands', async () => {

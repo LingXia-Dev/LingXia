@@ -103,3 +103,25 @@ test('quiet, a failed handler is logged with its site and the page carries on',a
     assert.ok(logged.startsWith('UI_HANDLER: onClick of <button data-testid="go"> threw: offline'),logged);
   } finally { setLoudFailures(true);reset(); }
 });
+
+test('an action the catalog does not hold names itself and the page; probes and symbols read as absent', async()=>{
+  const {setActionPage}=await import('../src/runtime/actions.js');
+  setActionPage('pages/home/index');
+  configureActions(catalog);
+  const {actions}=createView({},{});
+  assert.throws(()=>actions.holdPage({}),{message:'UI_ACTION: `holdPage` is not an action of pages/home/index: the build did not see it'});
+  assert.equal(actions.then,undefined);
+  assert.equal(actions[Symbol.iterator],undefined);
+  assert.equal(await Promise.resolve(actions),actions);
+  assert.equal(JSON.stringify(actions),'{}');
+  assert.equal('holdPage' in actions,false);
+  assert.deepEqual(Object.keys(actions),['increment']);
+});
+
+test('a read before the catalog arrives waits as undefined; the same read after it names the missing action', async()=>{
+  const {setActionPage,resetActions,currentActions}=await import('../src/runtime/actions.js');
+  resetActions();setActionPage('pages/home/index');
+  assert.equal(currentActions().actions.holdPage,undefined);
+  configureActions(catalog);
+  assert.throws(()=>currentActions().actions.holdPage,{message:'UI_ACTION: `holdPage` is not an action of pages/home/index: the build did not see it'});
+});

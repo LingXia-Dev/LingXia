@@ -2521,7 +2521,18 @@
   }
 
   // src/runtime/actions.js
-  var actions = Object.freeze(/* @__PURE__ */ Object.create(null));
+  var actionPage = "";
+  var probes = /* @__PURE__ */ new Set(["then", "toJSON", "constructor", "prototype", "__proto__", "toString", "valueOf", "inspect", "nodeType", "tagName", "$$typeof", "asymmetricMatch", "_isMockFunction", "@@__IMMUTABLE_ITERABLE__@@", "@@__IMMUTABLE_RECORD__@@"]);
+  var catalog = (built, arrived) => new Proxy(Object.freeze(built), {
+    get(target, key) {
+      if (!arrived || typeof key === "symbol" || has(target, key) || probes.has(key)) return target[key];
+      throw Error(`UI_ACTION: \`${key}\` is not an action of ${actionPage || "this page"}: the build did not see it`);
+    }
+  });
+  function setActionPage(page2) {
+    if (typeof page2 === "string") actionPage = page2;
+  }
+  var actions = catalog(/* @__PURE__ */ Object.create(null), false);
   var actionEpoch = 0;
   var nextRequest = 1;
   var requests = [];
@@ -2560,7 +2571,7 @@
   }
   function actionInfo(action) {
     const name = actionNames.get(action);
-    return name !== void 0 && actions[name] === action ? { name, mode: actionModes.get(action) } : void 0;
+    return name !== void 0 && has(actions, name) && actions[name] === action ? { name, mode: actionModes.get(action) } : void 0;
   }
   function cancelActions() {
     actionEpoch++;
@@ -2568,7 +2579,7 @@
     const pending3 = [...pendingActions.values()];
     pendingActions.clear();
     requests = [];
-    actions = Object.freeze(/* @__PURE__ */ Object.create(null));
+    actions = catalog(/* @__PURE__ */ Object.create(null), false);
     const oldChannels = [...activeChannels.values()];
     activeChannels.clear();
     channels = closedChannels;
@@ -2674,7 +2685,7 @@
       actionModes.set(built[name], modes[name]);
       actionNames.set(built[name], name);
     }
-    actions = Object.freeze(built);
+    actions = catalog(built, true);
     channels = Object.freeze({
       open(topic, params) {
         outsideRender("channel");
@@ -6807,7 +6818,8 @@
     const sheets2 = cancelSheets();
     return picker2 || popovers || sheets2;
   }
-  function publishHost(render2, catalog) {
+  function publishHost(render2, catalog2, page2) {
+    setActionPage(page2);
     Object.assign(globalThis, {
       __lingxiaRender: render2,
       __lingxiaDescribe: describe,
@@ -6865,7 +6877,7 @@
       __lingxiaSite: () => render.site || "",
       __lingxiaThrown: takeThrown
     });
-    if (catalog !== void 0) globalThis.__lingxiaActionCatalog = catalog;
+    if (catalog2 !== void 0) globalThis.__lingxiaActionCatalog = catalog2;
   }
 
   // <stdin>

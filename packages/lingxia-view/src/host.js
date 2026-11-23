@@ -2,7 +2,7 @@ import { releasePress } from './runtime/press.js';
 import { render as rendering, page } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext, envReads, envOf } from './runtime/hooks.js';
-import { configureActions, takeViewEvents, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
+import { configureActions, setActionPage, takeViewEvents, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
 import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay, cancelSheets } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity, hasPicker } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
@@ -38,7 +38,8 @@ function pageLeft() {
 }
 
 // The native session calls only these globals; module code stays unreachable from the host.
-export function publishHost(render, catalog) {
+export function publishHost(render, catalog, page) {
+  setActionPage(page);
   Object.assign(globalThis, {
     __lingxiaRender: render, __lingxiaDescribe: describe, __lingxiaPrepare: prepare,
     __lingxiaPrepareWindows: prepareWindows, __lingxiaTakeMovedAnchors: takeMovedAnchors, __lingxiaCommit: commit, __lingxiaDiscard: discard,

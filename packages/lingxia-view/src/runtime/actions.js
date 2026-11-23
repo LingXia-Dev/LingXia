@@ -9,7 +9,19 @@ import { snapActionSettled } from './snap.js';
 
 // Page actions, streams and channels share one bounded queue of plain messages that the
 // native session walks into typed Logic events; every reset invalidates what the old page issued.
-let actions = Object.freeze(Object.create(null)), actionEpoch = 0, nextRequest = 1;
+let actionPage = '';
+// Names tooling probes on any object (awaiting, JSON, inspectors, test matchers): unknown, not a failure.
+const probes = new Set(['then', 'toJSON', 'constructor', 'prototype', '__proto__', 'toString', 'valueOf', 'inspect', 'nodeType', 'tagName', '$$typeof', 'asymmetricMatch', '_isMockFunction', '@@__IMMUTABLE_ITERABLE__@@', '@@__IMMUTABLE_RECORD__@@']);
+/** A frozen catalog that names an action the build did not see; before the catalog arrives a read waits as undefined. */
+const catalog = (built, arrived) => new Proxy(Object.freeze(built), {
+  get(target, key) {
+    if (!arrived || typeof key === 'symbol' || has(target, key) || probes.has(key)) return target[key];
+    throw Error(`UI_ACTION: \`${key}\` is not an action of ${actionPage || 'this page'}: the build did not see it`);
+  },
+});
+/** The page the catalog belongs to, for the unknown-action message. */
+export function setActionPage(page) { if (typeof page === 'string') actionPage = page; }
+let actions = catalog(Object.create(null), false), actionEpoch = 0, nextRequest = 1;
 let requests = [], actionErrors = [];
 const pendingActions = new Map();
 const activeChannels = new Map();
@@ -38,14 +50,14 @@ export function currentActions() { return { actions, channels }; }
 /** The catalog name and mode of an action reference, if it belongs to the current catalog. */
 export function actionInfo(action) {
   const name = actionNames.get(action);
-  return name !== undefined && actions[name] === action ? { name, mode: actionModes.get(action) } : undefined;
+  return name !== undefined && has(actions, name) && actions[name] === action ? { name, mode: actionModes.get(action) } : undefined;
 }
 
 export function cancelActions() {
   actionEpoch++;
   leaveGuards.reset();
   const pending = [...pendingActions.values()];
-  pendingActions.clear(); requests = []; actions = Object.freeze(Object.create(null));
+  pendingActions.clear(); requests = []; actions = catalog(Object.create(null), false);
   const oldChannels = [...activeChannels.values()]; activeChannels.clear();
   channels = closedChannels;
   for (const { reject } of pending) reject(bridgeError('BRIDGE_CANCELED', 'Page reset'));
@@ -146,7 +158,7 @@ export function configureActions(metadata) {
     return promise;
   };
   for (const name of names) { actionModes.set(built[name], modes[name]); actionNames.set(built[name], name); }
-  actions = Object.freeze(built);
+  actions = catalog(built, true);
   channels = Object.freeze({
     open(topic, params) {
       outsideRender('channel');
