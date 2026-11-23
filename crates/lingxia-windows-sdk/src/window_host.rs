@@ -9500,8 +9500,8 @@ fn report_shell_surface_width(hwnd: HWND) {
     }
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_ok() {
-        crate::shell::update_surface_landscape(
-            client.right - client.left > client.bottom - client.top,
+        crate::shell::update_surface_portrait(
+            (client.bottom - client.top) * 5 >= (client.right - client.left) * 6,
         );
     }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));

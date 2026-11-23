@@ -875,12 +875,14 @@ fn resolved_shell_size_class(fallback: Option<&LxApp>) -> SizeClass {
 /// The window's last logical (DIP) content width, as f64 bits; 0 until the first `WM_SIZE`.
 static SHELL_LOGICAL_WIDTH: AtomicU64 = AtomicU64::new(0);
 
-/// The window is wider than tall: a touch host's tabs move to a side column.
-static SHELL_LANDSCAPE: AtomicBool = AtomicBool::new(false);
+/// The window is clearly taller than wide (at least 6:5): only then does a touch
+/// host float its tabs at the bottom. A near-square open foldable is held like a
+/// book, by its sides, so it takes the edge column as a landscape screen does.
+static SHELL_PORTRAIT: AtomicBool = AtomicBool::new(false);
 
-/// Records the window's orientation, re-laying the shell out when it flips.
-pub(crate) fn update_surface_landscape(landscape: bool) {
-    if SHELL_LANDSCAPE.swap(landscape, Ordering::AcqRel) != landscape
+/// Records the window's shape, re-laying the shell out when it flips.
+pub(crate) fn update_surface_portrait(portrait: bool) {
+    if SHELL_PORTRAIT.swap(portrait, Ordering::AcqRel) != portrait
         && let Some(appid) = shell_owner_appid()
     {
         sync_shell_layout(&appid);
@@ -2737,12 +2739,12 @@ fn build_tab_bars(
     let single_main = auxiliary_items.is_empty() && !show_auxiliary_add;
     let floating =
         desktop_sidebar && touch_host && size_class == SizeClass::Regular && !items.is_empty();
-    // Where vertical space is scarce, or past what the bar holds, the tabs
+    // Unless the screen is clearly portrait, or past what the bar holds, the tabs
     // stand in a column at the screen's edge (Apple's iPhone Duo bar
     // placement). It keeps that edge whatever the language, and yields it to
     // a docked aside by moving to the main's other side.
     let tab_column =
-        SHELL_LANDSCAPE.load(Ordering::Acquire) || items.len() > FLOATING_TAB_BAR_MAX_ITEMS;
+        !SHELL_PORTRAIT.load(Ordering::Acquire) || items.len() > FLOATING_TAB_BAR_MAX_ITEMS;
     let column_position = if docked_aside_present(switcher_app) {
         WindowsShellTabBarPosition::Left
     } else {

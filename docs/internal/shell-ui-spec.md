@@ -341,19 +341,20 @@ in `compact` it uses §5 unchanged.
 **Touch tab bar.** The presented main lxapp's tabs never sit in the sidebar.
 They form the touch tab bar, in one of two shapes:
 
-- *Floating tab bar*, while the screen is taller than wide: a pill of tab
-  cells (icon over label) at the main region's leading bottom corner, `12 dp`
-  in from its left and bottom edges. It stays where the phone's bar was, so
-  folding and unfolding does not move the tabs. Five cells clear a fold's
-  crease even beside the app rail. The page keeps clear of the strip the bar
-  stands in (an immersive page runs under it); the strip takes the page
-  background. The pill is slightly translucent.
-- *Tab column*, while the screen is wider than tall, or for more than five
-  tabs: an `80 dp` column at the screen's right edge, its cells low in the
-  column where a holding hand reaches them. This follows Apple's iPhone Duo
-  bar placement. The column keeps its edge in right-to-left languages; with a
-  docked aside it moves to the main's left edge, so the main's tabs stay on
-  the main's outer side.
+- *Floating tab bar*, while the screen is clearly portrait (height at least
+  1.2 × width): a pill of tab cells (icon over label) at the main region's
+  leading bottom corner, `12 dp` in from its left and bottom edges, where the
+  phone's bar was. Five cells clear a fold's crease even beside the app rail.
+  The page keeps clear of the strip the bar stands in (an immersive page runs
+  under it); the strip takes the page background. The pill is slightly
+  translucent.
+- *Tab column* otherwise, or for more than five tabs: an `80 dp` column at the
+  screen's right edge, its cells low in the column where a holding hand
+  reaches them. This follows Apple's iPhone Duo bar placement; a near-square
+  open foldable is held like a book, by its sides, so it takes the column too.
+  The column keeps its edge in right-to-left languages; with a docked aside it
+  moves to the main's left edge, so the main's tabs stay on the main's outer
+  side.
 
 Either shape shows only on a tab page of the presented main, as the phone's bar
 does, and is outside the `820 dp` budget.
