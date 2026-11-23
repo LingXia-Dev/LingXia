@@ -273,6 +273,29 @@ pub(super) fn reposition_hinge(content: HWND) {
     }
 }
 
+pub(super) fn repaint_hinge(content: HWND) {
+    let Some((hinge_hwnd, spec)) = frame_state(hwnd_handle(content), |state| {
+        (state.hinge, state.spec.clone())
+    })
+    .filter(|(hinge_hwnd, _)| *hinge_hwnd != 0) else {
+        return;
+    };
+    let Some(hinge_spec) = spec.hinge else {
+        return;
+    };
+    if !is_window_handle_valid(hinge_hwnd) {
+        return;
+    }
+    let (_, _, width, height) = hinge_band_rect(&spec, hinge_spec);
+    paint_hinge(
+        hwnd_from_handle(hinge_hwnd),
+        width,
+        height,
+        hinge_spec,
+        overlay_is_dark(),
+    );
+}
+
 pub(super) fn hide_hinge(content: HWND) {
     if let Some(hinge_hwnd) =
         frame_state(hwnd_handle(content), |state| state.hinge).filter(|h| *h != 0)

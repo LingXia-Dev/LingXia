@@ -66,7 +66,7 @@ use corner_mask::{
 };
 use cutout::{create_cutout_window, destroy_cutout, hide_cutout, reposition_cutout};
 use frame_window::create_frame_window;
-use hinge::{create_hinge_window, destroy_hinge, hide_hinge, reposition_hinge};
+use hinge::{create_hinge_window, destroy_hinge, hide_hinge, repaint_hinge, reposition_hinge};
 pub(super) use info_sheet::{DeviceFrameInfoSheet, InfoSheetBadge, SheetAction};
 use paint::paint_frame_window;
 use status_bar::{
@@ -894,6 +894,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         if capsule != 0 {
             reposition_capsule(content);
         }
+        repaint_hinge(content);
         info_sheet::restyle_info_sheets();
         return;
     }
