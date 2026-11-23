@@ -284,6 +284,96 @@ test("a derived Live recomputes from each source, notifies on a real change, and
   }
 });
 
+const tick = () => new Promise<void>(resolve => setTimeout(() => resolve(), 0));
+
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+test("a persisted store loads once, keeps initial when empty or failing, and a change before the load wins", async () => {
+  const empty = defineStore({ n: 0 }, { persist: { load: async () => undefined, save: async () => {} } });
+  assert.deepEqual(await empty.ready, { ok: true });
+  assert.deepEqual(empty.get(), { n: 0 });
+
+  const boom = new Error("disk");
+  let fail = true;
+  const failing = defineStore({ n: 0 }, {
+    persist: { load: async () => { if (fail) throw boom; return { n: 7 }; }, save: async () => {} },
+  });
+  assert.deepEqual(await failing.ready, { ok: false, error: boom });
+  assert.deepEqual(failing.get(), { n: 0 });
+  fail = false;
+  assert.deepEqual(await failing.reload(), { ok: true });
+  assert.deepEqual(failing.get(), { n: 7 });
+
+  const slow = deferred<{ n: number }>();
+  const saves: unknown[] = [];
+  const raced = defineStore({ n: 0 }, { persist: { load: () => slow.promise, save: async v => { saves.push(v); } } });
+  raced.set({ n: 1 });
+  slow.resolve({ n: 9 });
+  assert.deepEqual(await raced.ready, { ok: true });
+  assert.deepEqual(raced.get(), { n: 1 });
+  assert.deepEqual(saves, [{ n: 1 }], "a loaded value is never written back");
+});
+
+test("a persisted store saves one at a time with the newest value, and saved reports each finished save", async () => {
+  const first = deferred();
+  const saves: number[] = [];
+  const reports: unknown[] = [];
+  const boom = new Error("full");
+  let failNext = false;
+  const counter = defineStore(0, {
+    persist: {
+      load: async () => undefined,
+      save: async v => {
+        saves.push(v);
+        if (saves.length === 1) await first.promise;
+        if (failNext) throw boom;
+      },
+    },
+  });
+  await counter.ready;
+  counter.saved.watch(r => reports.push(r));
+  counter.set(1);                       // save(1) starts and waits
+  await tick();
+  counter.set(2);
+  counter.set(3);                       // marks dirty; 2 is never saved
+  assert.deepEqual(saves, [1]);
+  first.resolve();
+  await tick();
+  assert.deepEqual(saves, [1, 3]);
+  assert.deepEqual(reports, [{ ok: true }, { ok: true }, { ok: true }]);
+  failNext = true;
+  counter.set(4);
+  await tick();
+  assert.deepEqual(counter.saved.get(), { ok: false, error: boom });
+  assert.equal(counter.get(), 4, "the value holds whatever the save did");
+});
+
+test("persist: { key } reads and writes one lx.storage key", async () => {
+  const stored = new Map<string, unknown>([["theme", "dark"]]);
+  setLx(createLxMock({
+    storage: {
+      get: async (key: string) => stored.get(key),
+      set: async (key: string, value: unknown) => { stored.set(key, value); },
+    },
+  } as never));
+  try {
+    const theme = defineStore("light", { persist: { key: "theme" } });
+    assert.deepEqual(await theme.ready, { ok: true });
+    assert.equal(theme.get(), "dark");
+    theme.set("light");
+    await tick();
+    assert.equal(stored.get("theme"), "light");
+    assert.throws(() => (theme.update as (recipe: () => void) => void)(() => {}), /theme: store\.update needs an object/);
+  } finally {
+    setLx(undefined);
+  }
+});
+
 test("a store is one value for every page: an action's update reaches another page and a pick", async () => {
   const cart = defineStore({ items: [] as string[] }, { name: "cart" });
   const picks: number[] = [];

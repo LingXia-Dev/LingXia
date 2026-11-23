@@ -58,3 +58,28 @@ derive([count], (n: string) => n);
 // @ts-expect-error sources are Live values
 derive([1], (n) => n);
 void lang; void s1;
+
+// persist: a key, or the app's own load and save; ready, reload and saved only on a persisted store.
+import type { PersistResult, PersistedStore } from '../src/page.js';
+type Session = { access: string; serviceUrl: string } | null;
+const sessionStore = defineStore<Session>(null, {
+  persist: {
+    async load() { return { access: 'a', serviceUrl: 'u' }; },
+    async save(value) { const access: string | undefined = value?.access; void access; },
+  },
+});
+const persisted: PersistedStore<Session> = sessionStore;
+const readyResult: Promise<PersistResult> = sessionStore.ready;
+const lastSave: Live<PersistResult> = sessionStore.saved;
+const theme = defineStore('light' as 'light' | 'dark', { persist: { key: 'theme' } });
+theme.set('dark');
+void theme.reload();
+// @ts-expect-error a store without persist has no ready
+void cart.ready;
+// @ts-expect-error load resolves the store's value
+defineStore<Session>(null, {
+  persist: { async load() { return 1; }, async save() {} },
+});
+// @ts-expect-error persist is a key or load and save
+defineStore(0, { persist: { load: async () => 0 } });
+void persisted; void readyResult; void lastSave;

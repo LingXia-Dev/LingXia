@@ -160,6 +160,7 @@ export default definePage({
 | --- | --- | --- |
 | One entry (form input, timers, request handles) | `data`, or a `let` in `setup` | The page instance |
 | Every instance of the page (constants, caches) | Module scope | Until the lxapp restarts |
+| What several pages show (session, cart) | `defineStore`, read with `follow` | Until the lxapp restarts, or persisted |
 | Must survive restarts | `lx.storage` (JSON values; key types in `LxStorageSchema`; a plain file, readable by any same-user process on macOS and Windows, so no tokens) | Persistent |
 
 Never keep per-entry state in module scope.
@@ -206,10 +207,12 @@ The optional lxapp-wide singleton, in `lxapp.ts` at the lxapp root,
 created once at boot and shared by every page:
 
 ```ts
-// shared/session.ts — app state is a module the App and pages import
-export const session = { userId: '', theme: 'light' as 'light' | 'dark' };
-// Types every `lx.storage` key; without it each key holds any JSON value.
-declare global { interface LxStorageSchema { userId: string } }
+// shared/session.ts — app state is a store the App and pages import
+import { defineStore } from '@lingxia/logic';
+export const session = defineStore(
+  { userId: '', theme: 'light' as 'light' | 'dark' },
+  { persist: { key: 'session' } },  // or { load, save } for your own keys and migration
+);
 ```
 
 ```ts
@@ -219,8 +222,8 @@ import { session } from './shared/session';
 App({
   async onLaunch() {
     // Once per worker. An App Link goes to `onOpen`, not here.
-    const stored = await lx.storage.get('userId');
-    if (stored) session.userId = stored;
+    const loaded = await session.ready;  // { ok: true } or { ok: false, error }; never rejects
+    if (!loaded.ok) console.warn('session not restored', loaded.error);
   },
 
   onShow(args) {
@@ -243,17 +246,21 @@ App({
 import { session } from '../../shared/session';
 
 export default definePage({
-  data: { userId: '' },
-  setup: page => ({
-    onLoad() {
-      page.update(d => { d.userId = session.userId; });
-    },
-  }),
+  follow: { userId: session.pick(s => s.userId) },  // data.userId, read-only, current until unload
+  actions: {
+    signOut() { session.update(d => { d.userId = ''; }); },  // every following page updates
+  },
 });
 ```
 
-- There is no `getApp()` or `globalData`; `App({ globalData })` throws. Module
-  state is not reactive; push changes to a page with `page.update`.
+- `defineStore(initial, { name?, persist? })` holds one JSON value for every page: `set` replaces it,
+  `update` changes an object or array in place, `pick` and `derive([a, b], fn)` give read-only `Live`s.
+- `follow: { key: live }` puts a store, pick, derive or host `Live` in `data` from the first frame;
+  write it through its source, never `page.update`.
+- `persist` loads at definition and saves each change, one save at a time with the newest value;
+  a change made before the load wins, and `saved` reports the last save.
+- There is no `getApp()` or `globalData`; `App({ globalData })` throws. Plain module
+  state is not reactive; share what pages show through a store.
 - Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
   `Page.onLoad` waits for an `async onLaunch` to settle.
   Foregrounding: `App.onShow` → top page's `onShow`.
@@ -462,7 +469,7 @@ holds itself while it has unsaved changes with `useLeaveGuard` (GPU) or
 - Mutating `data` in the View, or keeping business state in `useState`/`ref`.
 - Touching the DOM from Logic; Logic has no DOM.
 - Expecting `_`-prefixed helpers or hooks to be actions.
-- Expecting changes to shared module state to re-render.
+- Expecting changes to plain module state to re-render; use a store and `follow`.
 - Pushing a tab page instead of `lx.nav.go({ tab })`.
 - A page subscription without `{ signal: page.signal }`.
 - Missing `@lingxia/logic`: see [Install typing](./core.md#install-typing).

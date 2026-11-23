@@ -3,6 +3,8 @@
 export let lx = globalThis.lx;
 export function setLx(value) {
   lx = value;
+  // A persisted store reaches lx.storage through the global, as in the Logic runtime.
+  globalThis.lx = value;
 }
 export * from "@lingxia/types/page";
 export * from "@lingxia/types/error";

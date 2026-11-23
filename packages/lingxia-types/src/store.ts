@@ -28,8 +28,82 @@ type JsonGuard<T> = [T] extends [JsonData<T>] ? [options?: StoreOptions] : [stor
 
 /** How a store is made. */
 export interface StoreOptions {
-  /** Names the store in errors and dev logs; defaults to the place it was defined. */
+  /** Names the store in errors and dev logs; defaults to `persist.key`, else the place it was defined. */
   name?: string;
+}
+
+/** A persisted store's last load or save. Never a rejection. */
+export type PersistResult =
+  | {
+      /** It worked, or there was nothing stored. */
+      ok: true;
+    }
+  | {
+      /** It failed; the value in memory is unchanged by it. */
+      ok: false;
+      /** What `load` or `save` threw. */
+      error: unknown;
+    };
+
+/**
+ * Where a store keeps its value: one `lx.storage` key, or the app's own `load` and `save`
+ * (layout, migration and old keys live in `load`). `load` resolving `undefined` means empty.
+ */
+export type StorePersist<T> =
+  | {
+      /** The `lx.storage` key holding the value. */
+      key: string;
+    }
+  | { load(): Promise<T | undefined>; save(value: DeepReadonly<T>): Promise<void> };
+
+/** How a persisted store is made. */
+export interface PersistedStoreOptions<T> extends StoreOptions {
+  /** Load once at definition, save after each change. */
+  persist: StorePersist<T>;
+}
+
+/** A store that loads its value at definition and saves each change. */
+export interface PersistedStore<T> extends Store<T> {
+  /**
+   * Settles when the first load does. Empty or failed keeps `initial`; a change made before it
+   * settles wins over the loaded value.
+   */
+  readonly ready: Promise<PersistResult>;
+  /** Load again, as `ready` did. */
+  reload(): Promise<PersistResult>;
+  /** The last finished save. Saves run one at a time, each with the newest value. */
+  readonly saved: Live<PersistResult>;
+}
+
+/** `defineStore`'s persisted options, or a missing-argument error when the value is not JSON data. */
+// NoInfer: `T` comes from `initial` alone, so `defineStore(0, { persist })` stays a number store.
+type PersistGuard<T> = [T] extends [JsonData<T>] ? [options: PersistedStoreOptions<NoInfer<T>>] : [store_value_must_be_JSON_data: never];
+
+type Persistence<T> = {
+  load(): Promise<T | undefined>;
+  save(value: DeepReadonly<T>): Promise<void>;
+};
+
+type StorageLx = { storage: { get(key: string): Promise<unknown>; set(key: string, value: unknown): Promise<void> } };
+
+function persistence<T>(persist: StorePersist<T>, label: string): Persistence<T> {
+  if (persist === null || typeof persist !== 'object') {
+    throw new TypeError(`${label}: persist is { key } or { load, save }`);
+  }
+  if ('key' in persist) {
+    if (typeof persist.key !== 'string' || persist.key === '') throw new TypeError(`${label}: persist.key is a storage key`);
+    const key = persist.key;
+    // Read at each call: a module store is defined before a test swaps `lx`.
+    const storage = () => (globalThis as { lx?: StorageLx }).lx!.storage;
+    return {
+      load: () => storage().get(key) as Promise<T | undefined>,
+      save: (value) => storage().set(key, value),
+    };
+  }
+  if (typeof persist.load !== 'function' || typeof persist.save !== 'function') {
+    throw new TypeError(`${label}: persist is { key } or { load, save }`);
+  }
+  return persist;
 }
 
 // Shared with the page runtime: a store write inside any recipe would run behind the recipe's back.
@@ -153,26 +227,90 @@ function definedAt(): string {
  * const count = cart.pick(c => c.items.length);
  * ```
  */
-export function defineStore<T>(initial: T, ...rest: JsonGuard<T>): Store<T> {
-  const options = rest[0] as StoreOptions | undefined;
+export function defineStore<T>(initial: T, ...rest: PersistGuard<T>): PersistedStore<T>;
+export function defineStore<T>(initial: T, ...rest: JsonGuard<T>): Store<T>;
+export function defineStore<T>(initial: T, ...rest: unknown[]): Store<T> | PersistedStore<T> {
+  const options = rest[0] as (StoreOptions & { persist?: StorePersist<T> }) | undefined;
   if (options !== undefined && (options === null || typeof options !== 'object')) {
-    throw new TypeError('defineStore takes (initial, { name? })');
+    throw new TypeError('defineStore takes (initial, { name?, persist? })');
   }
-  const label = options?.name ?? definedAt();
+  const persistKey = options?.persist && 'key' in options.persist ? options.persist.key : undefined;
+  const label = options?.name ?? persistKey ?? definedAt();
+  const adapter = options?.persist !== undefined ? persistence(options.persist, label) : undefined;
   let value = frozenJson(initial, `${label}: the initial value`) as DeepReadonly<T>;
   const watchers = new Watchers<DeepReadonly<T>>();
+  // Counts changes made here, so a load that finishes after one is dropped.
+  let changes = 0;
+  let loaded = adapter === undefined;
+  let warnedEarlyRead = false;
 
-  const replace = (next: DeepReadonly<T>) => {
+  const replace = (next: DeepReadonly<T>, fromLoad = false) => {
     if (deepEqual(next, value)) return;
     value = next;
+    if (!fromLoad) {
+      changes += 1;
+      scheduleSave();
+    }
     watchers.notify(value, label);
   };
+
+  // One save in flight at most; a change meanwhile marks it dirty and the next save takes the
+  // newest value, so an old save never lands after a newer one.
+  let saving = false;
+  let dirty = false;
+  let savedValue: PersistResult = { ok: true };
+  const savedWatchers = new Watchers<PersistResult>();
+  function scheduleSave() {
+    if (!adapter) return;
+    dirty = true;
+    if (!saving) {
+      saving = true;
+      void Promise.resolve().then(runSave);
+    }
+  }
+  function runSave() {
+    dirty = false;
+    const snapshot = value;
+    Promise.resolve()
+      .then(() => adapter!.save(snapshot))
+      .then(
+        (): PersistResult => ({ ok: true }),
+        (error: unknown): PersistResult => {
+          console.warn(`${label}: saving failed`, error);
+          return { ok: false, error };
+        },
+      )
+      .then((result) => {
+        savedValue = result;
+        savedWatchers.notify(result, label);
+        if (dirty) runSave();
+        else saving = false;
+      });
+  }
+  function load(): Promise<PersistResult> {
+    const before = changes;
+    return Promise.resolve()
+      .then(() => adapter!.load())
+      .then((stored): PersistResult => {
+        if (stored !== undefined && changes === before) {
+          replace(frozenJson(stored, `${label}: the loaded value`) as DeepReadonly<T>, true);
+        }
+        return { ok: true };
+      })
+      .then((result) => result, (error: unknown): PersistResult => ({ ok: false, error }));
+  }
   const refuseInRecipe = (method: string) => {
     if (inRecipe()) throw new Error(`${label}: store.${method} cannot be called inside a page.update or store.update recipe`);
   };
 
   const store: Store<T> = {
-    get: () => value,
+    get: () => {
+      if (!loaded && !warnedEarlyRead) {
+        warnedEarlyRead = true;
+        console.warn(`${label}: read before its first load settled; await ready, or follow it from a page`);
+      }
+      return value;
+    },
     watch: (callback, watchOptions) => watchers.add(() => value, callback, watchOptions),
     set(next) {
       refuseInRecipe('set');
@@ -226,7 +364,21 @@ export function defineStore<T>(initial: T, ...rest: JsonGuard<T>): Store<T> {
       };
     },
   };
-  return Object.freeze(store);
+  if (!adapter) return Object.freeze(store);
+  const ready = load().then((result) => {
+    loaded = true;
+    return result;
+  });
+  return Object.freeze({
+    ...store,
+    ready,
+    reload: load,
+    saved: Object.freeze({
+      get: () => savedValue,
+      watch: (callback: (result: PersistResult) => void, watchOptions?: SignalOptions) =>
+        savedWatchers.add(() => savedValue, callback, watchOptions),
+    }),
+  });
 }
 
 type LiveValues<Sources> = { [K in keyof Sources]: Sources[K] extends Live<infer V> ? V : never };
