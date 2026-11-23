@@ -11,7 +11,7 @@ const render = (view, env) => { const out = decode(prepare(view, { env })); comm
 test('a date picker opens on its editor, moves by keys and commits an ISO date', () => {
   reset();
   const view = () => h('view', {});
-  const env = { pointer: 'fine', firstWeekday: 2, language: 'en-GB' };
+  const env = { pointer: 'fine', firstWeekday: 1, language: 'en-GB' };
   assert.equal(open({ kind: 'text' }), false);
   assert.equal(open({ kind: 'date', value: '2026-10-29', min: '2026-10-05', max: '2026-11-20' }), true);
   let nodes = render(view, env);

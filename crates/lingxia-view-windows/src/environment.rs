@@ -38,11 +38,11 @@ pub(crate) fn hour_cycle() -> String {
     }
 }
 
-/// 1 = Sunday; Windows counts 0 = Monday.
+/// 1 = Monday to 7 = Sunday; Windows counts 0 = Monday.
 pub(crate) fn first_weekday() -> u8 {
     locale_info(LOCALE_IFIRSTDAYOFWEEK)
         .and_then(|day| day.trim().parse::<u8>().ok())
-        .map_or(1, |monday_based| (monday_based + 1) % 7 + 1)
+        .map_or(7, |monday_based| monday_based % 7 + 1)
 }
 
 /// "Show animations in Windows" is off.

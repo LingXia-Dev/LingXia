@@ -93,7 +93,7 @@ export function Empty() {
 | `min` | `string` |  |  |
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  |  |
-| `firstWeekday` | `CalendarWeekday` | `the user's first weekday` | The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Sunday to 7 is Saturday. |
+| `firstWeekday` | `Weekday` | `the user's first weekday` | The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Monday to 7 is Sunday. |
 | `hasCloseButton` | `boolean` | `true` | Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `className` | `string` |  |  |

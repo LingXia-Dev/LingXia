@@ -67,7 +67,7 @@ test('firstWeekday: the calendar it opens starts its week where a standalone Cal
   const screen = await renderPage(`
     import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
     export function render() {
-      return <page><DateRangeInput label="Term" value={{ start: null, end: null }} onChange={() => {}} format={day => day} today="2026-11-15" firstWeekday={2} data-testid="term" /></page>;
+      return <page><DateRangeInput label="Term" value={{ start: null, end: null }} onChange={() => {}} format={day => day} today="2026-11-15" firstWeekday={1} data-testid="term" /></page>;
     }
   `, fine);
   screen.press(screen.getByTestId('term'));

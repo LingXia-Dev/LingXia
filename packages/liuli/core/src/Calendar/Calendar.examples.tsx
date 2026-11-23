@@ -21,7 +21,7 @@ export function Stay() {
   );
 }
 
-const closed = (date: string) => calendarWeekday(date) % 6 === 0;
+const closed = (date: string) => calendarWeekday(date) >= 6;
 
 /** Days the app rules out stay in the grid, dimmed: here the weekends. */
 export function Weekdays() {
@@ -32,7 +32,7 @@ export function Weekdays() {
 /** A school timetable: its week runs Monday to Sunday wherever the user lives. */
 export function MondayFirst() {
   const day = useLocal<string | null>('day', '2026-11-16');
-  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid="timetable" />;
+  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={1} today={today} data-testid="timetable" />;
 }
 
 /** The home tile. */

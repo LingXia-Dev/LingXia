@@ -126,7 +126,7 @@ export function defaultEnv(overrides = {}) {
   return {
     theme: 'light', viewport, capsule: null, keyboard: { height: 0 }, pointer: 'coarse', os: 'node', platform: 'web',
     formFactor: 'phone', sizeClass: viewport.width < 600 ? 'compact' : 'regular', language: 'en-US',
-    reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 1,
+    reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 7,
     direction, canDock: false, hinge: null, ...overrides, insets, safeArea,
   };
 }

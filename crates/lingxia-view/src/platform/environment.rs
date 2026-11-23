@@ -39,7 +39,7 @@ pub struct DeviceFacts {
     pub text_scale: Option<Vec<[f32; 2]>>,
     /// The user's clock setting (`h12` or `h23`); `None` follows the display language.
     pub hour_cycle: Option<String>,
-    /// The user's first day of the week, 1 = Sunday to 7 = Saturday; `None` follows the display language.
+    /// The user's first day of the week, 1 = Monday to 7 = Sunday; `None` follows the display language.
     pub first_weekday: Option<u8>,
     /// Physical display hinge/crease intersecting the page canvas in local logical pixels, if any.
     pub hinge: Option<serde_json::Value>,
@@ -74,6 +74,11 @@ fn sanitize_hinge(hinge: Option<&serde_json::Value>) -> serde_json::Value {
 }
 
 impl DeviceFacts {
+    /// `first_weekday` from a platform that counts 1 = Sunday to 7 = Saturday (Android, Apple, HarmonyOS).
+    pub fn weekday_from_sunday_first(day: u64) -> Option<u8> {
+        (1..=7).contains(&day).then(|| ((day + 5) % 7 + 1) as u8)
+    }
+
     /// `None` until the surface has a size the wire can carry.
     pub fn environment(&self) -> Option<FrameEnvironment> {
         let width = u16::try_from(self.width).ok().filter(|w| *w > 0)?;
@@ -263,5 +268,16 @@ mod tests {
         let mut page = crate::ViewSession::new(&module).unwrap();
         page.set_environment(value).unwrap();
         assert_eq!(page.layout(414, 896, 2.0).unwrap().nodes[0].text, "ok");
+    }
+}
+
+#[cfg(test)]
+mod weekday_tests {
+    use super::DeviceFacts;
+
+    #[test]
+    fn a_sunday_first_platform_day_becomes_iso() {
+        let iso: Vec<_> = (0..=8).map(DeviceFacts::weekday_from_sunday_first).collect();
+        assert_eq!(iso, [None, Some(7), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None]);
     }
 }

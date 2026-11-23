@@ -55,15 +55,15 @@ pub(crate) fn hour_cycle(locale: &str) -> &'static str {
     }
 }
 
-/// The first day of the week for `locale`, 1 = Sunday to 7 = Saturday.
+/// The first day of the week for `locale`, 1 = Monday to 7 = Sunday.
 pub(crate) fn first_weekday(locale: &str) -> u8 {
     let region = region(locale);
     if SUNDAY.contains(&region.as_str()) {
-        1
-    } else if SATURDAY.contains(&region.as_str()) {
         7
+    } else if SATURDAY.contains(&region.as_str()) {
+        6
     } else {
-        2
+        1
     }
 }
 
@@ -72,16 +72,16 @@ mod tests {
     #[test]
     fn languages_follow_their_regions_week_and_clock() {
         for (locale, cycle, first) in [
-            ("en-US", "h12", 1),
-            ("en", "h12", 1),
-            ("en-GB", "h23", 2),
-            ("zh-Hans-CN", "h23", 2),
-            ("zh-Hant", "h12", 1),
-            ("ja", "h23", 1),
-            ("de-DE", "h23", 2),
-            ("ar-SA", "h12", 1),
-            ("ar-EG", "h12", 7),
-            ("fr", "h23", 2),
+            ("en-US", "h12", 7),
+            ("en", "h12", 7),
+            ("en-GB", "h23", 1),
+            ("zh-Hans-CN", "h23", 1),
+            ("zh-Hant", "h12", 7),
+            ("ja", "h23", 7),
+            ("de-DE", "h23", 1),
+            ("ar-SA", "h12", 7),
+            ("ar-EG", "h12", 6),
+            ("fr", "h23", 1),
         ] {
             assert_eq!(super::hour_cycle(locale), cycle, "{locale}");
             assert_eq!(super::first_weekday(locale), first, "{locale}");

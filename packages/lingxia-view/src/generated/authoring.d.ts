@@ -7,6 +7,8 @@ export type RunChild = TextChild | JSX.Element | readonly RunChild[];
 export type ComponentResult = JSX.Element | null | undefined | boolean;
 export type Component<P = {}> = (props: P) => ComponentResult;
 export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : never;
+/** A day of the week, 1 = Monday … 7 = Sunday, as Temporal and ISO 8601; `Date.getDay()` counts 0 = Sunday. */
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 /** Groups children without a box: `<>…</>`, or `<Fragment key>` to move a group together in a keyed list. */
 export declare function Fragment(props: { key?: string; children?: Child }): JSX.Element;
 export declare function childrenToArray(children: Child): readonly Exclude<Child, readonly Child[] | boolean | null | undefined>[];
@@ -486,8 +488,8 @@ export interface Env {
   readonly animatorDurationScale: number;
   /** 12- or 24-hour clock: the user's system setting, else the custom of the system language. */
   readonly hourCycle: "h12" | "h23";
-  /** The first day of the week, 1 = Sunday to 7 = Saturday: the user's system setting, else the custom of the system language. */
-  readonly firstWeekday: number;
+  /** The first day of the week, a `Weekday` (1 = Monday … 7 = Sunday): the user's system setting, else the custom of the system language. */
+  readonly firstWeekday: Weekday;
   /** Inline direction derived from `language`. */
   readonly direction: "ltr" | "rtl";
   /** Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it. */

@@ -171,11 +171,11 @@ function fromOrdinal(ordinal) {
 export const compare = (a, b) => (a.year - b.year) || (a.month - b.month) || (a.day - b.day);
 
 /**
- * Six weeks of cells for the month of `view`, starting on `firstWeekday` (1 = Sunday … 7 = Saturday):
+ * Six weeks of cells for the month of `view`, starting on `firstWeekday` (1 = Monday … 7 = Sunday):
  * `{date, inMonth}` each, so every month draws the same grid height.
  */
-export function monthGrid({ year, month }, firstWeekday = 1) {
-  const lead = (weekday(year, month, 1) - (firstWeekday - 1) + 7) % 7;
+export function monthGrid({ year, month }, firstWeekday = 7) {
+  const lead = (weekday(year, month, 1) - firstWeekday % 7 + 7) % 7;
   const start = addDays({ year, month, day: 1 }, -lead);
   return Array.from({ length: 42 }, (_, index) => {
     const date = addDays(start, index);
@@ -183,8 +183,8 @@ export function monthGrid({ year, month }, firstWeekday = 1) {
   });
 }
 
-/** Weekday indexes (0 = Sunday) in column order. */
-export const weekdayOrder = firstWeekday => Array.from({ length: 7 }, (_, index) => (firstWeekday - 1 + index) % 7);
+/** Weekday indexes (0 = Sunday) in column order, from `firstWeekday` (1 = Monday … 7 = Sunday). */
+export const weekdayOrder = firstWeekday => Array.from({ length: 7 }, (_, index) => (firstWeekday + index) % 7);
 
 /** The date a key moves `date` to, or null for a key the grid does not use. */
 export function moveDate(date, key, rtl = false) {

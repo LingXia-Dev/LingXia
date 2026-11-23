@@ -467,7 +467,11 @@ fn gpu_page_measured(
         text_scale: (!text_scale.is_empty())
             .then(|| text_scale.chunks_exact(2).map(|p| [p[0], p[1]]).collect()),
         hour_cycle: Some(hour_cycle.to_owned()),
-        first_weekday: Some(first_weekday),
+        // Calendar.firstWeekday counts 1 = Sunday.
+        first_weekday:
+            lingxia_view_apple::lingxia_view::platform::DeviceFacts::weekday_from_sunday_first(
+                first_weekday.into(),
+            ),
         hinge: current_simulated_hinge(token),
     };
     with_page(token, |page| page.measured(facts));
