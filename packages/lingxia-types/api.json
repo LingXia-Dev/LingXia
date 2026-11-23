@@ -287,6 +287,7 @@
       "PageApi",
       "PageChannel",
       "PageDefinition",
+      "PageEveryOptions",
       "PageHookName",
       "PageLike",
       "PageSetup",
@@ -473,6 +474,7 @@
       "PageChannel",
       "PageDefinition",
       "PageEnvContext",
+      "PageEveryOptions",
       "PageHandle",
       "PageHookName",
       "PageLike",
@@ -1052,6 +1054,7 @@
         "PageDeclarations",
         "PageDefinition",
         "PageEnvContext",
+        "PageEveryOptions",
         "PageHookName",
         "PageLoadOptions",
         "PagePlayer",
@@ -1064,7 +1067,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:299"
+      "source": "src/page.ts:319"
     },
     {
       "path": "defineStore",
@@ -6855,6 +6858,35 @@
       "source": "src/generated/logic.ts:4421"
     },
     {
+      "path": "page.after",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "Run `fn` once after `ms`, shown or not; returns `stop()`.",
+      "description": "Run `fn` once after `ms`, shown or not; returns `stop()`. Stops when the page unloads, and does\nnot start after. A throw or rejection is reported as an unhandled failure.",
+      "signatures": [
+        {
+          "text": "after(ms: number, fn: () => void | Promise<void>): () => void",
+          "parameters": [
+            {
+              "name": "ms",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "fn",
+              "type": "() => void | Promise<void>",
+              "required": true
+            }
+          ],
+          "returns": "() => void"
+        }
+      ],
+      "types": [],
+      "tags": {},
+      "examples": [],
+      "source": "src/page.ts:190"
+    },
+    {
       "path": "page.close",
       "kind": "function",
       "entry": "@lingxia/logic",
@@ -6957,6 +6989,42 @@
       "tags": {},
       "examples": [],
       "source": "src/generated/logic.ts:66"
+    },
+    {
+      "path": "page.every",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns `stop()`.",
+      "description": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns\n`stop()`. Paused while the page is hidden, and a run missed meanwhile happens when it shows\nagain. A throw or rejection is reported and the timer goes on. Stops when the page unloads.",
+      "signatures": [
+        {
+          "text": "every(ms: number, fn: () => void | Promise<void>, options?: PageEveryOptions): () => void",
+          "parameters": [
+            {
+              "name": "ms",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "fn",
+              "type": "() => void | Promise<void>",
+              "required": true
+            },
+            {
+              "name": "options",
+              "type": "PageEveryOptions",
+              "required": false
+            }
+          ],
+          "returns": "() => void"
+        }
+      ],
+      "types": [
+        "PageEveryOptions"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/page.ts:196"
     },
     {
       "path": "page.flush",
@@ -9992,7 +10060,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:264"
+      "source": "src/page.ts:284"
     },
     {
       "name": "FsCopyOptions",
@@ -11428,7 +11496,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:239"
+      "source": "src/page.ts:259"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12227,6 +12295,20 @@
           "required": true,
           "summary": "The size class this page lays out for.",
           "description": "The size class this page lays out for. `watch` delivers it at once, then\nwhen `sizeClass` or `canDock` changes (not on every resize), and stops\nwhen the page unloads."
+        },
+        {
+          "name": "after",
+          "type": "(ms: number, fn: () => void | Promise<void>) => () => void",
+          "required": true,
+          "summary": "Run `fn` once after `ms`, shown or not; returns `stop()`.",
+          "description": "Run `fn` once after `ms`, shown or not; returns `stop()`. Stops when the page unloads, and does\nnot start after. A throw or rejection is reported as an unhandled failure."
+        },
+        {
+          "name": "every",
+          "type": "(ms: number, fn: () => void | Promise<void>, options?: PageEveryOptions) => () => void",
+          "required": true,
+          "summary": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns `stop()`.",
+          "description": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns\n`stop()`. Paused while the page is hidden, and a run missed meanwhile happens when it shows\nagain. A throw or rejection is reported and the timer goes on. Stops when the page unloads."
         }
       ],
       "source": "src/page.ts:112"
@@ -12258,7 +12340,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:224"
+      "source": "src/page.ts:244"
     },
     {
       "name": "PageDeclarations",
@@ -12301,7 +12383,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:242"
+      "source": "src/page.ts:262"
     },
     {
       "name": "PageDefinition",
@@ -12330,7 +12412,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:201"
+      "source": "src/page.ts:221"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -12366,7 +12448,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:207"
+      "source": "src/page.ts:227"
     },
     {
       "name": "PageEnvContext",
@@ -12389,6 +12471,22 @@
         }
       ],
       "source": "src/generated/logic.ts:2051"
+    },
+    {
+      "name": "PageEveryOptions",
+      "summary": "How `page.every` behaves while the page is hidden.",
+      "description": "How `page.every` behaves while the page is hidden.",
+      "fields": [
+        {
+          "name": "whenHidden",
+          "type": "\"pause\" | \"run\" | undefined",
+          "required": false,
+          "summary": "`'run'` keeps it running behind another page or in the background; for the rare timer that must.",
+          "description": "`'run'` keeps it running behind another page or in the background; for the rare timer that must.",
+          "default": "'pause'"
+        }
+      ],
+      "source": "src/page.ts:200"
     },
     {
       "name": "PageHandle",
@@ -12887,7 +12985,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:235"
+      "source": "src/page.ts:255"
     },
     {
       "name": "PermissionName",
@@ -13733,7 +13831,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:237"
+      "source": "src/page.ts:257"
     },
     {
       "name": "RouteTarget",
@@ -16403,7 +16501,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:189"
+      "source": "src/page.ts:209"
     },
     {
       "name": "VisibilityPreference",
@@ -16623,7 +16721,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:272"
+      "source": "src/page.ts:292"
     },
     {
       "name": "definePage(definition)",
@@ -16645,7 +16743,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:307"
+      "source": "src/page.ts:327"
     },
     {
       "name": "lx.clipboard.read()",

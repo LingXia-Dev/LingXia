@@ -94,7 +94,7 @@ function leakError(path, leaked) {
   const what = [...count("timeout", "timeout"), ...count("interval", "interval")].join(" and ");
   const where = leaked.map(timer => `\n  ${timer.kind} started at ${timer.at}`).join("");
   return new Error(
-    `${path} left ${what} running at unmount; stop it when \`page.signal\` aborts.${where}`,
+    `${path} left ${what} running at unmount; use \`page.every\`/\`page.after\`, or stop it when \`page.signal\` aborts.${where}`,
   );
 }
 
@@ -113,6 +113,43 @@ function owned(token, value) {
 }
 
 let mounted = 0;
+
+// `page.after`/`page.every` run on this clock in `mount`; `advance` moves it and lets each run settle.
+function manualClock() {
+  let now = 0;
+  let next = 0;
+  const due = new Map();
+  const settle = () => new Promise((resolve) => realTimers.setTimeout(resolve, 0));
+  return {
+    setTimeout(fn, ms) {
+      const id = ++next;
+      due.set(id, { at: now + ms, fn });
+      return id;
+    },
+    clearTimeout(id) {
+      due.delete(id);
+    },
+    async advance(ms) {
+      if (typeof ms !== "number" || !(ms >= 0)) throw new TypeError("advance takes a number of ms");
+      // Work already under way (a run that just ended) schedules before the clock moves.
+      await settle();
+      const end = now + ms;
+      for (;;) {
+        let first;
+        for (const [id, timer] of due) {
+          if (timer.at <= end && (!first || timer.at < first[1].at)) first = [id, timer];
+        }
+        if (!first) break;
+        due.delete(first[0]);
+        now = first[1].at;
+        first[1].fn();
+        await settle();
+      }
+      now = end;
+      await settle();
+    },
+  };
+}
 
 export async function mount(definition, options = {}) {
   const { params = {}, lx = importedLx, name = "page", leakedTimers = "fail" } = options;
@@ -146,6 +183,8 @@ export async function mount(definition, options = {}) {
     env: () => ({ sizeClass: "compact", canDock: false }),
     envWatch: () => () => {},
   };
+  const clock = manualClock();
+  scope.__LX_PAGE_CLOCK__ = clock;
   new Function("scope", `with (scope) {\n${pageRuntime()}\n}`)(scope);
   scope.__lxCaptureTimers();
 
@@ -205,6 +244,7 @@ export async function mount(definition, options = {}) {
     actions,
     page: svc.page,
     show: (options = {}) => hook("onShow", options),
+    advance: (ms) => clock.advance(ms),
     hide: () => hook("onHide"),
     async unmount() {
       if (unmounted) return;

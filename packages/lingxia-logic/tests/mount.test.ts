@@ -374,6 +374,78 @@ test("persist: { key } reads and writes one lx.storage key", async () => {
   }
 });
 
+test("page.every waits for each run to end, pauses while hidden and runs a missed beat on show", async () => {
+  const runs: number[] = [];
+  let release: (() => void) | undefined;
+  const page = definePage({
+    setup: p => ({
+      onLoad() {
+        p.every(100, async () => {
+          runs.push(runs.length);
+          if (runs.length === 2) await new Promise<void>(resolve => { release = resolve; });
+        });
+      },
+    }),
+  });
+  const mounted = await mount(page, { lx: createLxMock() });
+  try {
+    await mounted.advance(100);
+    assert.deepEqual(runs, [0]);
+    await mounted.advance(100);
+    assert.deepEqual(runs, [0, 1]);
+    await mounted.advance(500);
+    assert.deepEqual(runs, [0, 1], "a slow run is never overlapped");
+    release!();
+    await mounted.advance(100);
+    assert.deepEqual(runs, [0, 1, 2], "the next wait starts when the run ends");
+    await mounted.hide();
+    await mounted.advance(1000);
+    assert.deepEqual(runs, [0, 1, 2], "paused while hidden");
+    await mounted.show();
+    await mounted.advance(0);
+    assert.deepEqual(runs, [0, 1, 2, 3], "the missed beat runs on show");
+    await mounted.advance(100);
+    assert.deepEqual(runs, [0, 1, 2, 3, 4]);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("page.after runs once, shown or not; whenHidden 'run' keeps every going; a failure is reported and the timer goes on; unload stops both", async () => {
+  const logged: unknown[][] = [];
+  const consoleError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  const seen: string[] = [];
+  let stopLate!: () => void;
+  let api!: PageLike<{}> & { after(ms: number, fn: () => void): () => void };
+  const page = definePage({
+    setup: p => {
+      api = p as never;
+      p.after(50, () => { seen.push("after"); });
+      stopLate = p.after(80, () => { seen.push("late"); });
+      p.every(100, () => { seen.push("tick"); throw new Error("flaky"); }, { whenHidden: "run" });
+      return {};
+    },
+  });
+  const mounted = await mount(page, { lx: createLxMock() });
+  await mounted.hide();
+  stopLate();
+  try {
+    await mounted.advance(250);
+  } finally {
+    console.error = consoleError;
+  }
+  assert.deepEqual(seen, ["after", "tick", "tick"]);
+  assert.equal(logged.length, 2);
+  assert.equal(/page\.every in 'page' failed/.test(String(logged[0][0])), true);
+  await mounted.unmount();
+  await mounted.advance(1000);
+  assert.deepEqual(seen, ["after", "tick", "tick"], "unload stops every timer");
+  api.after(10, () => { seen.push("after unload"); });
+  await mounted.advance(100);
+  assert.deepEqual(seen, ["after", "tick", "tick"], "a timer does not start after unload");
+});
+
 test("a store is one value for every page: an action's update reaches another page and a pick", async () => {
   const cart = defineStore({ items: [] as string[] }, { name: "cart" });
   const picks: number[] = [];

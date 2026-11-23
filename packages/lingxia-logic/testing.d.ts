@@ -50,6 +50,11 @@ export interface MountedPage<D extends PageDefinition> {
   /** Run `onHide`. */
   hide(): Promise<void>;
   /**
+   * Move the page's clock on by `ms`: each `page.after`/`page.every` due by then runs, in order,
+   * and settles before the next. `hide()` pauses `every`, `show()` resumes it.
+   */
+  advance(ms: number): Promise<void>;
+  /**
    * Abort `page.signal`, run `onUnload`, and put back the `lx` that was there before. A timer the
    * page started and left running leaks in the app, so it is stopped and `unmount` rejects naming
    * where it started. A second call does nothing.

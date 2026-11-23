@@ -257,3 +257,17 @@ definePage({
   // @ts-expect-error follow takes Live values
   follow: { plan: 'pro' },
 });
+
+// Page timers: stop() back, every's options typed.
+definePage({
+  setup(page) {
+    const stopAfter: () => void = page.after(500, () => {});
+    const stopEvery: () => void = page.every(1000, async () => {}, { whenHidden: 'run' });
+    // @ts-expect-error whenHidden is 'pause' or 'run'
+    page.every(1000, () => {}, { whenHidden: 'skip' });
+    // @ts-expect-error the delay comes first
+    page.after(() => {}, 500);
+    void stopAfter; void stopEvery;
+    return {};
+  },
+});

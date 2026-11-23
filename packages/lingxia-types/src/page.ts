@@ -183,6 +183,26 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
    * when the page unloads.
    */
   readonly env: Live<PageEnvContext>;
+  /**
+   * Run `fn` once after `ms`, shown or not; returns `stop()`. Stops when the page unloads, and does
+   * not start after. A throw or rejection is reported as an unhandled failure.
+   */
+  after(ms: number, fn: () => void | Promise<void>): () => void;
+  /**
+   * Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns
+   * `stop()`. Paused while the page is hidden, and a run missed meanwhile happens when it shows
+   * again. A throw or rejection is reported and the timer goes on. Stops when the page unloads.
+   */
+  every(ms: number, fn: () => void | Promise<void>, options?: PageEveryOptions): () => void;
+}
+
+/** How `page.every` behaves while the page is hidden. */
+export interface PageEveryOptions {
+  /**
+   * `'run'` keeps it running behind another page or in the background; for the rare timer that must.
+   * @default 'pause'
+   */
+  whenHidden?: 'pause' | 'run';
 }
 
 /** Page actions as the View calls them: each resolves to its result. */

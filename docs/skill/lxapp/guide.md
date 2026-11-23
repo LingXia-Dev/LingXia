@@ -191,6 +191,10 @@ export default definePage({
 
 Work started with `page.signal` needs no teardown; ignore its `AbortError`.
 
+Timers: `page.after(ms, fn)` and `page.every(ms, fn)` end with the page and return `stop()`. `every` waits
+`ms` after each run ends and pauses while the page is hidden (`{ whenHidden: 'run' }` keeps it going);
+plain `setTimeout` is for module work that outlives a page.
+
 ## Action shapes
 
 | Action shape | Use from View | Typical use |

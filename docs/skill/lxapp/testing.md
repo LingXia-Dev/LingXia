@@ -404,8 +404,9 @@ A page's Logic runs in Node with `mount(page, { params, lx })` and
 call `mounted.actions.x()` (as written: sync, async or a generator), read `mounted.data`; an `lx` member you did
 not give rejects `E_NOT_SUPPORTED`. A mock fails as the host does with `throw new LxError('denied', { code: 'E_PERMISSION_DENIED' })`.
 Pages mounted at once share one `lx`. `unmount()` aborts `page.signal` and runs `onUnload`; a timer the page left
-running leaks in the app, so unmount stops it and rejects naming where it started (stop it when `page.signal` aborts;
-`leakedTimers: 'allow'` opts out, rarely).
+running leaks in the app, so unmount stops it and rejects naming where it started (use `page.every`/`page.after`, or
+stop it when `page.signal` aborts; `leakedTimers: 'allow'` opts out, rarely). Page timers run on the mount's clock:
+`await mounted.advance(ms)` runs what is due; `hide()`/`show()` pause and resume `every`.
 
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: [GPU View tests](./gpu/testing.md#in-node).
 

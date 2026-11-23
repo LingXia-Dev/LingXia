@@ -371,6 +371,88 @@
       },
     });
 
+    // Page timers run on the page's clock: the runtime's timers, or a test's own through `mount`.
+    let shown = true;
+    const resumers = new Set();
+    function clock() {
+      return globalThis.__LX_PAGE_CLOCK__ || { setTimeout, clearTimeout };
+    }
+    function reportTimerFailure(hook, error) {
+      const report = globalThis.__LX_REPORT_FAILURE__;
+      if (typeof report === "function") report({ error, source: { kind: "hook", hook } }, page);
+      else console.error(`page.${hook} in '${page.name}' failed:`, error);
+    }
+    function runTimerFn(hook, fn) {
+      try {
+        return Promise.resolve(fn()).catch((error) => reportTimerFailure(hook, error));
+      } catch (error) {
+        reportTimerFailure(hook, error);
+        return Promise.resolve();
+      }
+    }
+    function timerDelay(method, ms, fn) {
+      if (typeof ms !== "number" || !(ms >= 0) || !Number.isFinite(ms)) {
+        throw new TypeError(`page.${method} takes a delay in ms: page.${method}(1000, () => { … })`);
+      }
+      if (typeof fn !== "function") throw new TypeError(`page.${method} takes a function: page.${method}(1000, () => { … })`);
+    }
+
+    const timers = Object.freeze({
+      after(ms, fn) {
+        timerDelay("after", ms, fn);
+        if (lifetime.signal.aborted) return () => {};
+        const id = clock().setTimeout(() => {
+          lifetime.signal.removeEventListener("abort", stop);
+          runTimerFn("after", fn);
+        }, ms);
+        function stop() {
+          clock().clearTimeout(id);
+          lifetime.signal.removeEventListener("abort", stop);
+        }
+        lifetime.signal.addEventListener("abort", stop, { once: true });
+        return stop;
+      },
+      every(ms, fn, options) {
+        timerDelay("every", ms, fn);
+        const whenHidden = options && options.whenHidden !== undefined ? options.whenHidden : "pause";
+        if (whenHidden !== "pause" && whenHidden !== "run") {
+          throw new TypeError("page.every: whenHidden is 'pause' or 'run'");
+        }
+        if (lifetime.signal.aborted) return () => {};
+        let id = null;
+        let stopped = false;
+        let missed = false;
+        const schedule = () => {
+          if (!stopped) id = clock().setTimeout(due, ms);
+        };
+        // Each run ends before the next wait starts, so a slow run never overlaps the next.
+        function due() {
+          id = null;
+          if (!shown && whenHidden === "pause") {
+            missed = true;
+            return;
+          }
+          runTimerFn("every", fn).then(schedule);
+        }
+        const resume = () => {
+          if (!missed || stopped) return;
+          missed = false;
+          due();
+        };
+        function stop() {
+          if (stopped) return;
+          stopped = true;
+          if (id !== null) clock().clearTimeout(id);
+          resumers.delete(resume);
+          lifetime.signal.removeEventListener("abort", stop);
+        }
+        resumers.add(resume);
+        lifetime.signal.addEventListener("abort", stop, { once: true });
+        schedule();
+        return stop;
+      },
+    });
+
     const page = Object.freeze({
       get data() {
         return svc ? svc.data : initial;
@@ -464,6 +546,8 @@
       },
       orientation,
       env,
+      after: timers.after,
+      every: timers.every,
     });
 
     // The first callback runs now, so the followed keys are in the first snapshot.
@@ -524,12 +608,18 @@
       return userOnLoad ? userOnLoad(params) : undefined;
     };
     const userOnShow = config.onShow;
-    if (userOnShow) {
-      config.onShow = function (options) {
-        const handed = options && options.params !== undefined ? { params: options.params } : {};
-        return userOnShow(Object.freeze(handed));
-      };
-    }
+    config.onShow = function (options) {
+      shown = true;
+      for (const resume of [...resumers]) resume();
+      if (!userOnShow) return undefined;
+      const handed = options && options.params !== undefined ? { params: options.params } : {};
+      return userOnShow(Object.freeze(handed));
+    };
+    const userOnHide = config.onHide;
+    config.onHide = function () {
+      shown = false;
+      return userOnHide ? userOnHide() : undefined;
+    };
     const actions = (returned && returned.actions) || {};
     if (typeof actions !== "object") {
       throw new TypeError("definePage: actions must be an object of functions");
