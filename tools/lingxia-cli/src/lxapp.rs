@@ -43,7 +43,8 @@ pub(crate) fn gpu_dev_inputs(
 ) -> Result<(std::path::PathBuf, serde_json::Value)> {
     let project = project::Project::discover(dir)?;
     let pages: Vec<&str> = pages.iter().map(String::as_str).collect();
-    let catalogs = view::gpu::catalogs(&project, &pages)?;
+    // Dev inputs serve a session, never a shipped bundle.
+    let catalogs = view::gpu::catalogs(&project, &pages, true)?;
     Ok((
         project.output_dir.clone(),
         serde_json::Value::Object(catalogs),

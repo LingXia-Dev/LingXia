@@ -1,3 +1,4 @@
+mod action_types;
 pub(crate) mod gpu;
 mod react;
 mod vite_assets;
@@ -673,9 +674,44 @@ fn is_use_lx_page_call(expression: &Expression<'_>) -> bool {
     identifier.name.as_str() == "useLxPage"
 }
 
-pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<PageAction>> {
+/// Each page's actions, by page path: read from its source when the source spells them out,
+/// else from the type checker, so a spread or a helper's return is seen as the View will call it.
+/// `cached` reuses answers whose module graph is unchanged; a release build reads afresh.
+pub(crate) fn page_actions(
+    project: &Project,
+    pages: &[&str],
+    cached: bool,
+) -> Result<HashMap<String, Vec<PageAction>>> {
+    let mut known = HashMap::new();
+    let mut composed = Vec::new();
+    for page in pages {
+        let logic = page_logic_path(project, page)?;
+        match read_page_actions(logic.as_deref())? {
+            ActionsRead::Known(actions) => {
+                known.insert((*page).to_string(), actions);
+            }
+            ActionsRead::Composed(expression) => composed.push(action_types::Composed {
+                page,
+                logic: logic.expect("composed actions come from a Logic file"),
+                expression,
+            }),
+        }
+    }
+    known.extend(action_types::actions(&project.root, &composed, cached)?);
+    Ok(known)
+}
+
+/// What the source alone says about a page's actions.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ActionsRead {
+    Known(Vec<PageAction>),
+    /// The source does not spell the actions out; carries the expression to name in errors.
+    Composed(String),
+}
+
+pub(crate) fn read_page_actions(logic_path: Option<&Path>) -> Result<ActionsRead> {
     let Some(logic_path) = logic_path else {
-        return Ok(Vec::new());
+        return Ok(ActionsRead::Known(Vec::new()));
     };
     let source = fs::read_to_string(logic_path)?;
     let source_type = SourceType::from_path(logic_path)
@@ -686,16 +722,22 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
         bail!("Failed to parse page logic {}", logic_path.display());
     }
     let function_bindings = collect_top_level_function_bindings(&parse_result.program);
-
-    Ok(define_page_actions(&parse_result.program, &function_bindings).unwrap_or_default())
+    Ok(
+        define_page_actions(&parse_result.program, &function_bindings, &source)
+            .unwrap_or_else(|| ActionsRead::Composed("export default".to_string())),
+    )
 }
 
 /// The actions of `export default definePage(…)`, read statically: the `actions` object, or
-/// what an `actions(page)` function returns, or the `actions` that `setup` returns.
+/// what an `actions(page)` function returns, or the `actions` that `setup` returns. `None`
+/// when the default export is not a `definePage({ … })` call the source spells out.
 fn define_page_actions<'a>(
     program: &'a oxc_ast::ast::Program<'a>,
     top_level: &HashMap<String, FunctionBinding>,
-) -> Option<Vec<PageAction>> {
+    source: &str,
+) -> Option<ActionsRead> {
+    use oxc_span::GetSpan;
+    let text = |span: oxc_span::Span| source[span.start as usize..span.end as usize].to_string();
     let mut default = program.body.iter().find_map(|statement| match statement {
         Statement::ExportDefaultDeclaration(export) => export.declaration.as_expression(),
         _ => None,
@@ -711,40 +753,50 @@ fn define_page_actions<'a>(
     else {
         return None;
     };
-    let mut actions = Vec::new();
-    let found = match (
+    let (found, written) = match (
         object_property(definition, "actions"),
         object_property(definition, "setup"),
     ) {
-        (Some(property), _) => object_of(&program.body, Some(&property.value))
-            .map(|object| (&[][..], object))
-            .or_else(|| returned_by(&property.value)),
-        (None, Some(setup)) => returned_by(&setup.value).and_then(|(statements, returned)| {
-            let property = object_property(returned, "actions")?;
-            object_of(statements, Some(&property.value)).map(|object| (statements, object))
-        }),
-        (None, None) => None,
+        (Some(property), _) => (
+            object_of(&program.body, Some(&property.value))
+                .map(|object| (&[][..], object))
+                .or_else(|| returned_by(&property.value)),
+            text(property.value.span()),
+        ),
+        (None, Some(setup)) => match returned_by(&setup.value) {
+            Some((statements, returned)) => match object_property(returned, "actions") {
+                None => return Some(ActionsRead::Known(Vec::new())),
+                Some(property) => (
+                    object_of(statements, Some(&property.value)).map(|object| (statements, object)),
+                    text(property.value.span()),
+                ),
+            },
+            None => (None, text(setup.value.span())),
+        },
+        (None, None) => return Some(ActionsRead::Known(Vec::new())),
     };
     let Some((statements, actions_object)) = found else {
-        return Some(actions);
+        return Some(ActionsRead::Composed(written));
     };
     let mut bindings = top_level.clone();
     bindings.extend(collect_function_bindings(statements));
+    let mut actions = Vec::new();
     for property in &actions_object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
-            continue;
+            return Some(ActionsRead::Composed(written));
         };
         let Some(name) = property_name(&property.key) else {
-            continue;
+            return Some(ActionsRead::Composed(written));
         };
-        if is_function_like_property(property, &bindings) {
-            actions.push(PageAction {
-                mode: infer_property_mode(property, &bindings),
-                name,
-            });
+        if !is_function_like_property(property, &bindings) {
+            return Some(ActionsRead::Composed(written));
         }
+        actions.push(PageAction {
+            mode: infer_property_mode(property, &bindings),
+            name,
+        });
     }
-    Some(actions)
+    Some(ActionsRead::Known(actions))
 }
 
 /// An object literal, or a variable in `statements` initialised with one.
@@ -1027,8 +1079,10 @@ mod tests {
         let temp = tempdir().unwrap();
         let logic_path = temp.path().join("index.ts");
         fs::write(&logic_path, source).unwrap();
-        extract_page_actions(Some(&logic_path))
-            .unwrap()
+        let ActionsRead::Known(actions) = read_page_actions(Some(&logic_path)).unwrap() else {
+            panic!("the source spells the actions out");
+        };
+        actions
             .into_iter()
             .map(|action| (action.name, action.mode))
             .collect()
@@ -1184,6 +1238,58 @@ mod tests {
         assert_eq!(object, vec![("open".to_string(), PageActionMode::Call)]);
     }
 
+    fn read(source: &str) -> ActionsRead {
+        let temp = tempdir().unwrap();
+        let logic_path = temp.path().join("index.ts");
+        fs::write(&logic_path, source).unwrap();
+        read_page_actions(Some(&logic_path)).unwrap()
+    }
+
+    #[test]
+    fn actions_the_source_does_not_spell_out_go_to_the_type_checker() {
+        for (source, expression) in [
+            (
+                "export default definePage({ actions: page => ({ ...shared(page), own() {} }) });",
+                "page => ({ ...shared(page), own() {} })",
+            ),
+            (
+                "export default definePage({ actions: sharedActions(page) });",
+                "sharedActions(page)",
+            ),
+            (
+                "export default definePage({ actions: { [key]() {} } });",
+                "{ [key]() {} }",
+            ),
+            (
+                "import { tick } from './tick';\nexport default definePage({ actions: { tick } });",
+                "{ tick }",
+            ),
+            (
+                "export default definePage({ setup: page => makeSetup(page) });",
+                "page => makeSetup(page)",
+            ),
+        ] {
+            assert_eq!(
+                read(source),
+                ActionsRead::Composed(expression.to_string()),
+                "{source}"
+            );
+        }
+        assert_eq!(
+            read("export default definePage({ actions: { ['ping']() {}, \"pong\"() {} } });"),
+            ActionsRead::Known(vec![
+                PageAction {
+                    name: "ping".into(),
+                    mode: PageActionMode::Call
+                },
+                PageAction {
+                    name: "pong".into(),
+                    mode: PageActionMode::Call
+                },
+            ])
+        );
+    }
+
     #[test]
     fn generator_actions_are_stream() {
         let actions = extract_action_modes(
@@ -1241,19 +1347,17 @@ mod tests {
     }
 
     #[test]
-    fn non_function_page_fields_are_not_extracted() {
-        let actions = extract_action_modes(
-            r#"
+    fn a_field_the_source_cannot_prove_a_function_goes_to_the_type_checker() {
+        let source = r#"
             const title = "demo";
-            const config = { enabled: true };
-
             export default definePage({
-              setup: () => ({ actions: { title, config, missingRef, doWork() {} } }),
+              setup: () => ({ actions: { title, doWork() {} } }),
             });
-            "#,
+            "#;
+        assert_eq!(
+            read(source),
+            ActionsRead::Composed("{ title, doWork() {} }".to_string())
         );
-
-        assert_eq!(actions, vec![("doWork".to_string(), PageActionMode::Call)]);
     }
 
     #[test]

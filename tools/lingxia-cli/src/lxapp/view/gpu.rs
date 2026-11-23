@@ -6,14 +6,13 @@ use std::process::{Command, Stdio};
 pub(crate) fn catalogs(
     project: &Project,
     pages: &[&str],
+    cached: bool,
 ) -> Result<serde_json::Map<String, serde_json::Value>> {
-    let mut catalogs = serde_json::Map::new();
-    for page in pages {
-        let logic = super::page_logic_path(project, page)?;
-        let actions = super::extract_page_actions(logic.as_deref())?;
-        catalogs.insert((*page).to_owned(), super::bridge_metadata(&actions));
-    }
-    Ok(catalogs)
+    let actions = super::page_actions(project, pages, cached)?;
+    Ok(pages
+        .iter()
+        .map(|page| ((*page).to_owned(), super::bridge_metadata(&actions[*page])))
+        .collect())
 }
 
 /// `dev` keeps a source map in each page module so runtime errors name the author's line.
@@ -37,7 +36,7 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
         std::fs::write(&output, serde_json::to_string(&pack)?)
             .with_context(|| format!("write {}", output.display()))?;
     }
-    let catalogs = catalogs(project, &pages)?;
+    let catalogs = catalogs(project, &pages, dev)?;
     let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
     let result = Command::new("node")
         .args(["--input-type=module", "--eval", script])

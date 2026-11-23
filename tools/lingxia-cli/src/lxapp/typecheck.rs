@@ -109,7 +109,7 @@ pub(crate) fn report(problems: &[String]) -> String {
     )
 }
 
-fn resolve_tsc(root: &Path) -> Result<PathBuf> {
+pub(crate) fn resolve_tsc(root: &Path) -> Result<PathBuf> {
     root.ancestors()
         .map(|dir| dir.join("node_modules/typescript/bin/tsc"))
         .find(|tsc| tsc.is_file())

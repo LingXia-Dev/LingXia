@@ -499,7 +499,13 @@ impl PageSvc {
         let Some(js_func) = self.get_js_func(method) else {
             return Err(RpcError::new(
                 BRIDGE_METHOD_NOT_FOUND,
-                Some(format!("Method not found: {}", method)),
+                Some(format!(
+                    "`{method}` is not an action of {}: the build did not see it",
+                    // Named as `lxapp.json` and `lx.nav.go` name it, not by its built file.
+                    std::path::Path::new(&self.page.path())
+                        .with_extension("")
+                        .to_string_lossy()
+                )),
             ));
         };
 

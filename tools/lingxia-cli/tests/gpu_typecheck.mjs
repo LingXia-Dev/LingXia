@@ -164,6 +164,58 @@ try {
   fs.rmSync(linked);
 }
 
+// Composed actions are read from their type: a spread and a helper's return build with every name
+// and kind; a name only known at run time is refused with the fix.
+function catalog() {
+  const found = [];
+  const walk = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.git', '.lingxia'].includes(entry.name)) continue;
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (file.endsWith('.js')) {
+        // A release bundle is minified: bare keys and template-literal strings, so read it as JS.
+        const match = fs.readFileSync(file, 'utf8').match(/"?__names"?:\[[^\]]*\],"?__modes"?:\{[^}]*\}/);
+        if (match) found.push(new Function(`return {${match[0]}}`)());
+      }
+    }
+  };
+  walk(app);
+  assert.equal(found.length, 1, `one built page catalog, found ${found.length}`);
+  return found[0];
+}
+const helper = path.join(app, 'pages/home/shared.ts');
+fs.writeFileSync(helper, `export function shared() {
+  return {
+    async *greet({ name }: { name: string }) { yield name; },
+    reset() {},
+  };
+}
+export const key: string = 'reset';
+`);
+const composed = [
+  ['spread', `import { definePage } from '@lingxia/logic';\nimport { shared } from './shared';\nexport default definePage({ data: { greetCount: 0 }, actions: () => ({ ...shared(), async own() { return 1; } }) });\n`,
+    { __names: ['greet', 'reset', 'own'], __modes: { greet: 'stream', reset: 'call', own: 'call' } }],
+  ['helper', `import { definePage } from '@lingxia/logic';\nimport { shared } from './shared';\nexport default definePage({ data: { greetCount: 0 }, actions: () => shared() });\n`,
+    { __names: ['greet', 'reset'], __modes: { greet: 'stream', reset: 'call' } }],
+];
+try {
+  for (const [name, text, expected] of composed) {
+    fs.writeFileSync(logic, text);
+    ok(cli, ['build', '--release'], app);
+    const built = catalog();
+    assert.deepEqual([...built.__names].sort(), [...expected.__names].sort(), name);
+    assert.deepEqual(built.__modes, expected.__modes, name);
+  }
+  fs.writeFileSync(logic, `import { definePage } from '@lingxia/logic';\nimport { key } from './shared';\nexport default definePage({ data: { greetCount: 0 }, actions: { [key]() {} } });\n`);
+  const refused = run(cli, ['build', '--release', '--no-typecheck'], app);
+  assert.notEqual(refused.status, 0, refused.output);
+  assert.match(refused.output, /pages\/home\/index: actions must be statically known: write them in the object, or type the helper's return/, refused.output);
+} finally {
+  fs.writeFileSync(logic, logicSource);
+  fs.rmSync(helper, { force: true });
+}
+
 for (const dir of lxapps) missingBase(path.resolve(dir));
 
 fs.rmSync(root, { recursive: true, force: true });

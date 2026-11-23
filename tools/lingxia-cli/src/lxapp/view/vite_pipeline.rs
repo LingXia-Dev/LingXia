@@ -3,7 +3,7 @@ use crate::lxapp::framework::{self, ProjectFramework};
 use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::Project;
 use crate::lxapp::view::{
-    ViewBuildReport, ViewProgress, bridge_metadata_script, extract_page_actions, page_logic_path,
+    ViewBuildReport, ViewProgress, bridge_metadata_script, page_actions, page_logic_path,
     page_title, validate_component_view_bindings,
 };
 use anyhow::{Context, Result, anyhow};
@@ -132,10 +132,11 @@ fn build_component_pages(
         progress.preparing_pages(total, project.framework);
     }
 
+    let all_actions = all_page_actions(project, options)?;
     for page_path in &project.pages {
         let page_title = page_title(project, page_path)?;
         let logic_path = page_logic_path(project, page_path)?;
-        let actions = extract_page_actions(logic_path.as_deref())?;
+        let actions = all_actions[page_path].clone();
         let usage_audit = validate_component_view_bindings(project, page_path, &actions)?;
         let unused_actions = if usage_audit.unused_reportable {
             actions
@@ -248,8 +249,9 @@ fn build_html_pages(
         progress.preparing_pages(total, project.framework);
     }
 
+    let all_actions = all_page_actions(project, options)?;
     for page_path in &project.pages {
-        let actions = extract_page_actions(page_logic_path(project, page_path)?.as_deref())?;
+        let actions = all_actions[page_path].clone();
         let page_id = sanitize_page_id(&strip_ext(page_path));
         let build_dir = build_root.join("pages").join(&page_id);
         fs::create_dir_all(&build_dir)?;
@@ -323,8 +325,9 @@ fn build_html_pages_legacy(
         progress.preparing_pages(total, project.framework);
     }
 
+    let all_actions = all_page_actions(project, options)?;
     for page_path in &project.pages {
-        let actions = extract_page_actions(page_logic_path(project, page_path)?.as_deref())?;
+        let actions = all_actions[page_path].clone();
         let page_id = sanitize_page_id(&strip_ext(page_path));
         let source_path = project.root.join(page_path);
         let html = fs::read_to_string(&source_path)
@@ -735,6 +738,14 @@ fn sanitize_page_id(value: &str) -> String {
             _ => '_',
         })
         .collect()
+}
+
+fn all_page_actions(
+    project: &Project,
+    options: &BuildOptions,
+) -> Result<std::collections::HashMap<String, Vec<crate::lxapp::framework::PageAction>>> {
+    let pages: Vec<&str> = project.pages.iter().map(String::as_str).collect();
+    page_actions(project, &pages, !options.release)
 }
 
 #[cfg(test)]
