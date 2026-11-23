@@ -33,6 +33,7 @@ use super::style::*;
 
 mod aside_panel;
 mod drawing;
+mod floating_tab_bar;
 mod icons;
 mod layout;
 mod native_panel;
@@ -45,6 +46,10 @@ mod top_bar;
 pub(crate) use aside_panel::aside_tab_drag_source;
 use aside_panel::*;
 pub(super) use drawing::*;
+use floating_tab_bar::*;
+pub(crate) use floating_tab_bar::{
+    FLOATING_TAB_BAR_ALPHA, floating_tabbar_overlay_rect, paint_floating_tabbar_overlay,
+};
 pub use layout::*;
 use native_panel::*;
 pub(crate) use notice::paint_shell_notice;
@@ -475,7 +480,10 @@ impl WindowsChromeRenderer for ShellChromeRenderer {
         shell_layout(layout).is_none_or(|layout| {
             layout.tab_bar.as_ref().is_some_and(|tabbar| {
                 tabbar.visible && matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
-            })
+            }) || layout
+                .touch_tab_bar
+                .as_ref()
+                .is_some_and(|tabbar| tabbar.visible && tabbar.floating)
         })
     }
 
@@ -847,7 +855,7 @@ pub(super) fn sidebar_hover_rect(
 
     if tabbar.tab_rail {
         return (0..tabbar.items.len())
-            .map(|slot| tab_rail_item_rect(tabbar_rect, slot))
+            .map(|slot| tab_rail_item_rect(tabbar_rect, slot, tabbar.items.len()))
             .find(|rect| rect_contains(rect, point));
     }
 
@@ -1303,6 +1311,9 @@ pub(super) struct ChromeRects {
     pub(super) tab_bar: Option<RECT>,
     /// Compact browser chrome, confined to the current content workspace.
     pub(super) phone_bar: Option<RECT>,
+    /// The strip a floating tab bar keeps clear, and the bar's pill inside it.
+    pub(super) touch_tab_strip: Option<RECT>,
+    pub(super) touch_tab_bar: Option<RECT>,
 }
 
 /// Desktop windows draw the floating workspace card under native caption
@@ -1387,6 +1398,45 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
             }
         });
 
+    // An immersive page runs under a floating bar's strip; any other keeps
+    // clear of it. A tab column always takes its own width.
+    let floating = layout
+        .touch_tab_bar
+        .as_ref()
+        .filter(|tabbar| tabbar.visible && !tabbar.items.is_empty())
+        .map(|tabbar| match tabbar.position {
+            WindowsShellTabBarPosition::Bottom => {
+                let strip = RECT {
+                    top: (content.bottom - tabbar.dimension).max(content.top),
+                    ..content
+                };
+                if !tabbar.background_transparent {
+                    content.bottom = strip.top;
+                }
+                (strip, floating_tab_bar_rect(strip, tabbar))
+            }
+            WindowsShellTabBarPosition::Left => {
+                let right = (content.left + tabbar.dimension).min(content.right);
+                let column = RECT {
+                    top: sidebar_top,
+                    right,
+                    ..content
+                };
+                content.left = right;
+                (column, column)
+            }
+            WindowsShellTabBarPosition::Right => {
+                let left = (content.right - tabbar.dimension).max(content.left);
+                let column = RECT {
+                    top: sidebar_top,
+                    left,
+                    ..content
+                };
+                content.right = left;
+                (column, column)
+            }
+        });
+
     let side_tabbar = tab_bar.is_some()
         && matches!(
             layout.tab_bar.as_ref().map(|tabbar| tabbar.position),
@@ -1453,6 +1503,8 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
         phone_bar,
+        touch_tab_strip: floating.map(|(strip, _)| strip),
+        touch_tab_bar: floating.map(|(_, bar)| bar),
     }
 }
 
@@ -2561,6 +2613,8 @@ pub(super) fn chrome_rects_for_state(
             // header band. Leaving the hidden main's navbar here overwrites the
             // aside tab strip and routes input back to the covered page.
             rects.navigation_bar = None;
+            rects.touch_tab_strip = None;
+            rects.touch_tab_bar = None;
             if layout
                 .tab_bar
                 .as_ref()
@@ -2657,6 +2711,23 @@ pub(super) fn draw_window_chrome(
         );
     }
     draw_content_cards(hdc, state, &rects, desktop_card);
+    if let (Some(tabbar), Some(column)) = (&layout.touch_tab_bar, rects.touch_tab_bar)
+        && tabbar.tab_rail
+    {
+        draw_sidebar_tab_bar(hdc, column, tabbar, None, 0, column.bottom);
+    }
+    // The strip under a floating bar is page floor, not bar.
+    if let (Some(tabbar), Some(strip)) = (&layout.touch_tab_bar, rects.touch_tab_strip)
+        && tabbar.floating
+        && !tabbar.background_transparent
+    {
+        fill_rect(
+            hdc,
+            strip,
+            tabbar_overflow::declared_page_background()
+                .unwrap_or(shell_palette().window_background),
+        );
+    }
     draw_shell_top_bar(hdc, &rects);
 
     // The address bar owns the top bar while a browser surface is
@@ -2757,6 +2828,27 @@ pub(super) fn chrome_hit_test(
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
+
+    if let (Some(tabbar), Some(bar)) = (&layout.touch_tab_bar, rects.touch_tab_bar)
+        && rect_contains(&bar, point)
+    {
+        let index = if tabbar.tab_rail {
+            (0..tabbar.items.len())
+                .find(|slot| {
+                    rect_contains(&tab_rail_item_rect(bar, *slot, tabbar.items.len()), point)
+                })
+                .and_then(|slot| tabbar.click_index_at_slot(slot))
+        } else {
+            floating_tab_index_at(bar, tabbar, point)
+        };
+        return Some(match index {
+            Some(index) => chrome_command(
+                command_id::TAB_BAR_CLICK,
+                json!({ "group": tabbar.group_id, "index": index }),
+            ),
+            None => WindowsChromeHit::Chrome,
+        });
+    }
 
     // Device-framed screens have no shell caption / app-menu (the simulator
     // toolbar owns them), so skip those hit regions entirely.
@@ -2987,8 +3079,10 @@ pub(super) fn sidebar_hit_test(
     {
         if tabbar.tab_rail {
             for slot in 0..tabbar.items.len() {
-                if rect_contains(&tab_rail_item_rect(tabbar_rect, slot), point)
-                    && let Some(index) = tabbar.click_index_at_slot(slot)
+                if rect_contains(
+                    &tab_rail_item_rect(tabbar_rect, slot, tabbar.items.len()),
+                    point,
+                ) && let Some(index) = tabbar.click_index_at_slot(slot)
                 {
                     return Some(chrome_command(
                         command_id::TAB_BAR_CLICK,
@@ -3305,6 +3399,20 @@ pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
             );
         }
     }
+    if let (Some(tabbar), Some(bar)) = (&layout.touch_tab_bar, rects.touch_tab_bar) {
+        for (slot, item) in tabbar.items.iter().enumerate() {
+            push(
+                &item.text,
+                "tabBar",
+                tabbar.selected_index == item.index as i32,
+                if tabbar.tab_rail {
+                    tab_rail_item_rect(bar, slot, tabbar.items.len())
+                } else {
+                    floating_tab_cell_rect(bar, slot)
+                },
+            );
+        }
+    }
     let (Some(tabbar), Some(tabbar_rect)) = (&layout.tab_bar, rects.tab_bar) else {
         return items;
     };
@@ -3317,7 +3425,7 @@ pub(crate) fn chrome_items(state: &WindowsChromeState) -> Vec<ChromeItem> {
                         &item.text,
                         "tabBar",
                         selected(item.index),
-                        tab_rail_item_rect(tabbar_rect, slot),
+                        tab_rail_item_rect(tabbar_rect, slot, tabbar.items.len()),
                     );
                 }
                 return items;
@@ -3779,6 +3887,7 @@ mod scroll_tests {
             icon_rail: false,
             rail_expand_disabled: false,
             tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -3886,7 +3995,8 @@ mod scroll_tests {
         let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
         assert_eq!(super::rect_width(&rail_rect), super::tab_rail_width());
 
-        let second = super::tab_rail_item_rect(rail_rect, 1);
+        let second =
+            super::tab_rail_item_rect(rail_rect, 1, layout.tab_bar.as_ref().unwrap().items.len());
         let center = (
             (second.left + second.right) / 2,
             (second.top + second.bottom) / 2,
@@ -3897,10 +4007,10 @@ mod scroll_tests {
                 if command.id == super::command_id::TAB_BAR_CLICK
                     && command.payload["index"] == 2
         ));
-        // Cells stack from the top, so the column below the last one is inert.
-        let below = (center.0, rail_rect.bottom - 4);
+        // Cells sit low, so the column above the first one is inert.
+        let above = (center.0, rail_rect.top + 4);
         assert!(matches!(
-            chrome_hit_test(&state, &layout, below),
+            chrome_hit_test(&state, &layout, above),
             Some(WindowsChromeHit::Chrome)
         ));
         assert!(super::sidebar_resize_edge(&state, (rail_rect.right, center.1)).is_none());
@@ -4741,6 +4851,7 @@ mod scroll_tests {
             icon_rail: true,
             rail_expand_disabled: false,
             tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -4817,6 +4928,7 @@ mod scroll_tests {
             icon_rail: false,
             rail_expand_disabled: false,
             tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -5260,6 +5372,7 @@ mod scroll_tests {
             icon_rail: false,
             rail_expand_disabled: false,
             tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -5326,6 +5439,7 @@ mod scroll_tests {
             icon_rail: false,
             rail_expand_disabled: false,
             tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

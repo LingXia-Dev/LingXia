@@ -138,10 +138,14 @@ pub(super) fn tab_rail_width() -> i32 {
     px(80)
 }
 
-/// Tab-rail cells stack from the top; a rail never stretches its items.
-pub(super) fn tab_rail_item_rect(rect: RECT, slot: usize) -> RECT {
+/// Tab-rail cells stack low in the column, where a hand holding the device
+/// reaches them; a rail never stretches its items.
+pub(super) fn tab_rail_item_rect(rect: RECT, slot: usize, count: usize) -> RECT {
     let height = px(60);
-    let top = rect.top + px(12) + slot as i32 * (height + px(4));
+    let pitch = height + px(4);
+    let block = count as i32 * pitch - px(4);
+    let first = (rect.bottom - px(24) - block).max(rect.top + px(12));
+    let top = first + slot as i32 * pitch;
     RECT {
         left: rect.left,
         top,
@@ -152,7 +156,7 @@ pub(super) fn tab_rail_item_rect(rect: RECT, slot: usize) -> RECT {
 
 fn draw_tab_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     for (slot, item) in tabbar.items.iter().enumerate() {
-        let cell = tab_rail_item_rect(rect, slot);
+        let cell = tab_rail_item_rect(rect, slot, tabbar.items.len());
         if cell.bottom > rect.bottom {
             break;
         }
@@ -169,8 +173,9 @@ fn draw_tab_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
     }
 }
 
-/// One icon-over-label tab cell, shared by the bottom bar and the tab rail.
-fn draw_tab_cell(
+/// One icon-over-label tab cell, shared by the bottom bar, the tab rail, and
+/// the floating bar.
+pub(super) fn draw_tab_cell(
     hdc: HDC,
     item_rect: RECT,
     item_top: i32,
@@ -294,7 +299,9 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
     };
     // An immersive bar paints no plate of its own, and a tab rail sits on the
     // sidebar, so both mix against the shell.
-    let behind = if tabbar.background_transparent || tabbar.tab_rail {
+    let behind = if tabbar.floating {
+        floating_tab_bar_fill()
+    } else if tabbar.background_transparent || tabbar.tab_rail {
         shell_palette().sidebar_background
     } else {
         tabbar.background_color

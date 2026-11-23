@@ -138,6 +138,8 @@ impl SidebarPeekLayout {
             navigation_bar: None,
             tab_bar: Some(body),
             phone_bar: None,
+            touch_tab_strip: None,
+            touch_tab_bar: None,
         }
     }
 
@@ -539,6 +541,7 @@ mod tests {
                 icon_rail: true,
                 rail_expand_disabled: false,
                 tab_rail: false,
+                floating: false,
                 items_api_hidden: false,
                 items_collapsed: false,
                 footer_action_height: 0,

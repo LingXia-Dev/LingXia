@@ -3624,7 +3624,7 @@ fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
-            clip_overlay_corners(pixels, width, height, radii, edge);
+            clip_overlay_corners(pixels, width, height, radii, Some(edge));
             let size = SIZE {
                 cx: width,
                 cy: height,
@@ -3707,11 +3707,18 @@ fn overlay_screen_corners(_owner: HWND, _rect: RECT) -> ([i32; 4], u32) {
 }
 
 /// Makes opaque pixels outside each rounded corner (top-left, top-right,
-/// bottom-right, bottom-left) transparent. The arc's edge pixels blend toward
-/// `edge` (`0xAARRGGBB`, the bezel) rather than toward transparency: what lies
-/// under the overlay there is lighter content, which would show as a fringe.
+/// bottom-right, bottom-left) transparent. With an `edge` (`0xAARRGGBB`, the
+/// bezel) the arc's edge pixels blend toward it rather than toward
+/// transparency: what lies under the overlay there is lighter content, which
+/// would show as a fringe.
 #[cfg(feature = "shell-chrome")]
-fn clip_overlay_corners(pixels: &mut [u32], width: i32, height: i32, radii: [i32; 4], edge: u32) {
+fn clip_overlay_corners(
+    pixels: &mut [u32],
+    width: i32,
+    height: i32,
+    radii: [i32; 4],
+    edge: Option<u32>,
+) {
     for (corner, radius) in radii.into_iter().enumerate() {
         let radius = radius.min(width).min(height);
         if radius <= 0 {
@@ -3747,15 +3754,26 @@ fn clip_overlay_corners(pixels: &mut [u32], width: i32, height: i32, radii: [i32
                     continue;
                 }
                 let pixel = pixels[index];
-                let mix = |shift: u32| {
-                    let ours = ((pixel >> shift) & 0xff) as f32;
-                    let theirs = ((edge >> shift) & 0xff) as f32;
-                    (ours * coverage + theirs * (1.0 - coverage)).round() as u32
+                pixels[index] = match edge {
+                    Some(edge) => {
+                        let mix = |shift: u32| {
+                            let ours = ((pixel >> shift) & 0xff) as f32;
+                            let theirs = ((edge >> shift) & 0xff) as f32;
+                            (ours * coverage + theirs * (1.0 - coverage)).round() as u32
+                        };
+                        0xff00_0000 | (mix(16) << 16) | (mix(8) << 8) | mix(0)
+                    }
+                    None => scale_premultiplied(pixel, coverage),
                 };
-                pixels[index] = 0xff00_0000 | (mix(16) << 16) | (mix(8) << 8) | mix(0);
             }
         }
     }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn scale_premultiplied(pixel: u32, factor: f32) -> u32 {
+    let scale = |shift: u32| (((pixel >> shift) & 0xff) as f32 * factor).round() as u32;
+    (scale(24) << 24) | (scale(16) << 16) | (scale(8) << 8) | scale(0)
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -3789,7 +3807,8 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
         }
         let layout = current_window_layout(webtag_key);
         // A page that spans the screen covers an opaque bar too, so that one draws over it.
-        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+        crate::shell::floating_tabbar_overlay_rect(client, &layout)
+            .or_else(|| crate::shell::transparent_tabbar_overlay_rect(client, &layout))
             .or_else(|| {
                 spans_screen(webtag_key)
                     .then(|| crate::shell::bottom_tabbar_rect(client, &layout))
@@ -4012,14 +4031,28 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             pixel_count * std::mem::size_of::<u32>(),
         );
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        let opaque = crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
+        let floating = crate::shell::paint_floating_tabbar_overlay(dc, layout, width, height);
+        if floating {
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            for pixel in pixels.iter_mut() {
+                *pixel |= 0xff00_0000;
+            }
+            let radius = height / 2;
+            clip_overlay_corners(pixels, width, height, [radius; 4], None);
+            let alpha = crate::shell::FLOATING_TAB_BAR_ALPHA as f32 / 255.0;
+            for pixel in pixels.iter_mut() {
+                *pixel = scale_premultiplied(*pixel, alpha);
+            }
+        }
+        let opaque =
+            !floating && crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
         if opaque {
             let _ = windows::Win32::Graphics::Gdi::GdiFlush();
             for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
         }
-        let text_runs = if opaque {
+        let text_runs = if opaque || floating {
             Vec::new()
         } else {
             crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height)
@@ -4038,7 +4071,7 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
                 true,
             );
         }
-        for pixel in pixels {
+        for pixel in pixels.iter_mut().filter(|_| !floating) {
             if (*pixel >> 24) == 0 && (*pixel & 0x00ff_ffff) != 0 {
                 let r = (*pixel >> 16) & 0xff;
                 let g = (*pixel >> 8) & 0xff;
@@ -9465,6 +9498,12 @@ fn report_shell_surface_width(hwnd: HWND) {
     if !is_window_visible(hwnd) {
         return;
     }
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_ok() {
+        crate::shell::update_surface_landscape(
+            client.right - client.left > client.bottom - client.top,
+        );
+    }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));
 }
 
@@ -13053,7 +13092,7 @@ mod tests {
     fn a_landscape_navigation_bar_cuts_only_the_screen_corner_it_meets() {
         let (width, height) = (40, 20);
         let mut pixels = vec![0xff3b_82f6_u32; (width * height) as usize];
-        super::clip_overlay_corners(&mut pixels, width, height, [0, 10, 0, 0], 0xff14_1414);
+        super::clip_overlay_corners(&mut pixels, width, height, [0, 10, 0, 0], Some(0xff14_1414));
         let at = |x: i32, y: i32| pixels[(y * width + x) as usize];
         assert_eq!(at(width - 1, 0) >> 24, 0);
         assert_eq!(at(0, 0), 0xff3b_82f6);

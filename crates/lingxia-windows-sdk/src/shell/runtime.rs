@@ -875,6 +875,18 @@ fn resolved_shell_size_class(fallback: Option<&LxApp>) -> SizeClass {
 /// The window's last logical (DIP) content width, as f64 bits; 0 until the first `WM_SIZE`.
 static SHELL_LOGICAL_WIDTH: AtomicU64 = AtomicU64::new(0);
 
+/// The window is wider than tall: a touch host's tabs move to a side column.
+static SHELL_LANDSCAPE: AtomicBool = AtomicBool::new(false);
+
+/// Records the window's orientation, re-laying the shell out when it flips.
+pub(crate) fn update_surface_landscape(landscape: bool) {
+    if SHELL_LANDSCAPE.swap(landscape, Ordering::AcqRel) != landscape
+        && let Some(appid) = shell_owner_appid()
+    {
+        sync_shell_layout(&appid);
+    }
+}
+
 fn resolved_shell_budget_requires_rail(fallback: Option<&LxApp>) -> bool {
     shell_owner_appid()
         .and_then(|appid| lxapp::try_get(&appid))
@@ -1841,8 +1853,7 @@ fn sync_app_shell_layout(appid: &str) {
         // color); a plain page keeps the chrome-colored strip with contrasting text.
         if is_active_content && let Some(window) = owner_window_handle(appid) {
             let navbar = app.get_navbar_state(&path);
-            let band =
-                layout.top_inset > 0 && layout.tab_bar.as_ref().is_some_and(status_band_beside);
+            let band = layout.top_inset > 0 && status_band_in(&layout);
             let immersive = !band && navbar.is_custom_navigation();
             let (foreground, background) = if band {
                 let sidebar = super::style::shell_palette().sidebar_background;
@@ -2063,9 +2074,11 @@ fn build_window_layout_with_visible_main(
     // Tab pages follow the visible main, not the shell owner. Owner-first
     // lookup kept drawing home's (possibly collapsed) group after a switch.
     let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref(), visible_main);
-    let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
+    let (tab_bar, touch_tab_bar) = build_tab_bars(tab_bar_app, &footer_actions);
+    let tab_bar = tab_bar.filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
+    let touch_tab_bar = touch_tab_bar.filter(|_| address_bar.is_none());
     // The rail has no header row, so header actions (Settings, Downloads)
     // lead its action stack instead of vanishing (macOS parity).
     if let Some(tabbar) = tab_bar.as_ref().filter(|tabbar| {
@@ -2096,12 +2109,14 @@ fn build_window_layout_with_visible_main(
         && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
     let immersive = address_bar.is_none()
         && app.get_navbar_state(path).is_custom_navigation()
-        && !tab_bar.as_ref().is_some_and(status_band_beside);
+        && !tab_bar.as_ref().is_some_and(status_band_beside)
+        && !touch_tab_bar.as_ref().is_some_and(status_band_beside);
     let top_inset = if immersive { 0 } else { status_bar_height };
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar,
+        touch_tab_bar,
         footer_actions,
         compact_browser_chrome,
         top_inset,
@@ -2113,6 +2128,14 @@ fn build_window_layout_with_visible_main(
 /// A visible side column under a simulated status bar: the status bar becomes
 /// one neutral band over the column and the content, instead of taking the
 /// content's navigation-bar color across the whole width.
+fn status_band_in(layout: &WindowsShellWindowLayout) -> bool {
+    layout.tab_bar.as_ref().is_some_and(status_band_beside)
+        || layout
+            .touch_tab_bar
+            .as_ref()
+            .is_some_and(status_band_beside)
+}
+
 fn status_band_beside(tabbar: &WindowsShellTabBarLayout) -> bool {
     tabbar.visible
         && !tabbar.collapsed
@@ -2213,6 +2236,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         icon_rail: ui_state.icon_rail,
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
         tab_rail: false,
+        floating: false,
         items_api_hidden: false,
         items_collapsed: false,
         footer_action_height: 0,
@@ -2489,8 +2513,41 @@ fn build_tab_bar_layout(
     app: &LxApp,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Option<WindowsShellTabBarLayout> {
+    build_tab_bars(app, footer_actions).0
+}
+
+/// Most tabs a floating bar holds: five 60 dp cells clear a fold's crease
+/// beside the app rail. Longer lists stand in the tab column.
+const FLOATING_TAB_BAR_MAX_ITEMS: usize = 5;
+
+/// Height of the strip a floating tab bar keeps clear: its pill and margins.
+const FLOATING_TAB_STRIP_MIN_HEIGHT: i32 = 84;
+
+/// Width of a touch host's tab column (Material's navigation rail).
+const TAB_COLUMN_WIDTH: i32 = 80;
+
+/// An aside docks beside the main, so the main's own edge is its far side.
+fn docked_aside_present(app: &LxApp) -> bool {
+    app.surface_derived_layout().is_some_and(|plan| {
+        plan.aside_slots.iter().any(|slot| {
+            slot.visible
+                && !slot.overlay
+                && !slot.collapsed
+                && !matches!(slot.edge, Some(Edge::Top | Edge::Bottom))
+        })
+    })
+}
+
+/// The shell's side or bottom bar, and the visible main's touch tab bar.
+fn build_tab_bars(
+    app: &LxApp,
+    footer_actions: &[WindowsShellFooterActionLayout],
+) -> (
+    Option<WindowsShellTabBarLayout>,
+    Option<WindowsShellTabBarLayout>,
+) {
     if lxapp::open_region(&app.appid) == Some(lxapp::LxAppOpenRegion::Aside) {
-        return None;
+        return (None, None);
     }
     let tabbar = app.get_tabbar();
     // The tab matching the page currently shown, if any. Standard mini-app
@@ -2611,7 +2668,7 @@ fn build_tab_bar_layout(
         show_auxiliary_add,
     );
     if !sidebar_has_content {
-        return None;
+        return (None, None);
     }
     // Last-resort chrome mark when the host has no launcher icon yet. Draw
     // time prefers `current_app_icon_path` so Downloads/Settings and About/Exit
@@ -2653,7 +2710,7 @@ fn build_tab_bar_layout(
         && current_tab_index.is_none()
         && items.is_empty()
     {
-        return None;
+        return (None, None);
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
@@ -2672,17 +2729,25 @@ fn build_tab_bar_layout(
         position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     );
-    // A touch host with one main has nothing to switch between: the column
-    // carries that app's tabs instead, outside the sidebar width budget.
+    // A touch host's tabs leave the sidebar: they float at the bottom, where
+    // the phone had them, and an app rail switches between several mains.
     let touch_host = owner_window
         .map(device_frame_owns_window_controls)
         .unwrap_or(false);
-    let tab_rail = desktop_sidebar
-        && touch_host
-        && size_class == SizeClass::Regular
-        && !items.is_empty()
-        && auxiliary_items.is_empty()
-        && !show_auxiliary_add;
+    let single_main = auxiliary_items.is_empty() && !show_auxiliary_add;
+    let floating =
+        desktop_sidebar && touch_host && size_class == SizeClass::Regular && !items.is_empty();
+    // Where vertical space is scarce, or past what the bar holds, the tabs
+    // stand in a column at the screen's edge (Apple's iPhone Duo bar
+    // placement). It keeps that edge whatever the language, and yields it to
+    // a docked aside by moving to the main's other side.
+    let tab_column =
+        SHELL_LANDSCAPE.load(Ordering::Acquire) || items.len() > FLOATING_TAB_BAR_MAX_ITEMS;
+    let column_position = if docked_aside_present(switcher_app) {
+        WindowsShellTabBarPosition::Left
+    } else {
+        WindowsShellTabBarPosition::Right
+    };
     // Desktop sidebar never takes tabBar.style.backgroundColor (mobile-only);
     // yaml `windowBackgroundColor` shows through. Color/selectedColor still
     // apply on light host when the app declared them.
@@ -2695,7 +2760,7 @@ fn build_tab_bar_layout(
         && tabbar.as_ref().is_some_and(|tabbar| {
             tabbar.visibility == lxapp::page_chrome::TabBarVisibilityPreference::Hidden
         });
-    Some(WindowsShellTabBarLayout {
+    let layout = WindowsShellTabBarLayout {
         // Mobile navigation may flip `is_visible` on detail pages. Desktop
         // sidebar chrome is stable; only an explicit API hide affects its
         // child rows, never the sidebar or the parent lxapp tab itself.
@@ -2736,13 +2801,14 @@ fn build_tab_bar_layout(
             .map(|item| item.closable)
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
-        collapsed: ui_state.collapsed && !tab_rail,
-        icon_rail: (ui_state.icon_rail || force_icon_rail) && !tab_rail,
+        collapsed: ui_state.collapsed && !floating,
+        icon_rail: ui_state.icon_rail || force_icon_rail || floating,
         rail_expand_disabled: size_class == SizeClass::Compact,
-        tab_rail,
+        tab_rail: false,
+        floating: false,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
-        footer_action_height: if desktop_sidebar && !tab_rail {
+        footer_action_height: if desktop_sidebar {
             super::chrome::panel_footer_action_height(dimension, footer_actions)
         } else {
             0
@@ -2788,7 +2854,54 @@ fn build_tab_bar_layout(
         auxiliary_items,
         show_auxiliary_add,
         header_actions,
-    })
+    };
+    if !floating {
+        return (Some(layout), None);
+    }
+    let palette = super::style::shell_palette();
+    let floating_bar = WindowsShellTabBarLayout {
+        // Shown where the phone shows its bar: on a tab page of the presented main.
+        visible: group_active && current_tab_index.is_some() && app.tabbar_visible_now(),
+        position: if tab_column {
+            column_position
+        } else {
+            WindowsShellTabBarPosition::Bottom
+        },
+        dimension: if tab_column {
+            crate::dpi::px(TAB_COLUMN_WIDTH)
+        } else {
+            frame_tab_bar
+                .map(|(band, growth)| band + growth)
+                .unwrap_or(0)
+                .max(crate::dpi::px(FLOATING_TAB_STRIP_MIN_HEIGHT))
+        },
+        item_offset: 0,
+        color: resolved_style
+            .map(|style| style.foreground_color.rgba() >> 8)
+            .unwrap_or(palette.text_muted),
+        selected_color: resolved_style
+            .map(|style| style.selected_foreground_color.rgba() >> 8)
+            .unwrap_or(palette.accent),
+        paint_items_background: false,
+        overflow_start_index: -1,
+        collapsed: false,
+        icon_rail: false,
+        tab_rail: tab_column,
+        floating: !tab_column,
+        items_api_hidden: false,
+        items_collapsed: false,
+        footer_action_height: 0,
+        auxiliary_items: Vec::new(),
+        show_auxiliary_add: false,
+        header_actions: Vec::new(),
+        ..layout.clone()
+    };
+    // The rail lists apps only: its own group's pages are already in the bar.
+    let rail = (!single_main).then(|| WindowsShellTabBarLayout {
+        items: Vec::new(),
+        ..layout
+    });
+    (rail, Some(floating_bar))
 }
 
 fn sidebar_content_available(

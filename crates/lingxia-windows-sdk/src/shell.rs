@@ -82,6 +82,9 @@ pub use chrome::begin_address_edit;
 pub(crate) use chrome::shell_chrome_dirty_rects;
 pub(crate) use chrome::{ChromeItem, chrome_items};
 pub(crate) use chrome::{
+    FLOATING_TAB_BAR_ALPHA, floating_tabbar_overlay_rect, paint_floating_tabbar_overlay,
+};
+pub(crate) use chrome::{
     PHONE_SWITCHER_SHEET_RADIUS, PhoneTabSwitcherHit, PhoneTabSwitcherLayout,
     paint_phone_tab_switcher, paint_shell_notice, phone_tab_click_command, phone_tab_close_command,
     phone_tab_switcher_hit, phone_tab_switcher_layout,
@@ -160,7 +163,8 @@ pub(crate) use runtime::open_declared_browser;
 pub(crate) use runtime::open_declared_terminal;
 pub(crate) use runtime::{
     configure_static_settings_source, open_home_app_with_target, open_self_browser,
-    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,
+    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_landscape,
+    update_surface_width,
 };
 pub(crate) use runtime::{restore_maximized_aside_from_keyboard, toggle_lxapp_aside_from_keyboard};
 
