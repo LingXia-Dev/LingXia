@@ -215,3 +215,45 @@ definePage({
     };
   },
 });
+
+// follow: each key shows a Live's value, read-only on the page.
+import { defineStore } from '../src/page.js';
+import type { Live } from '../src/index.js';
+const session = defineStore({ userId: '', plan: 'free' as 'free' | 'pro' });
+declare const language: Live<string>;
+const followsPage = definePage({
+  data: { count: 0 },
+  follow: { session, plan: session.pick(s => s.plan), language },
+  actions: page => ({
+    read(): 'free' | 'pro' {
+      const id: string = page.data.session.userId;
+      const lang: string = page.data.language;
+      void id; void lang;
+      page.update(d => { d.count += 1; });
+      // @ts-expect-error a followed key is not in the draft
+      page.update(d => { d.plan = 'pro'; });
+      // @ts-expect-error a followed key is not set on the page
+      page.set({ plan: 'pro' });
+      // @ts-expect-error a followed key is read-only
+      page.data.session.plan = 'pro';
+      return page.data.plan;
+    },
+  }),
+});
+// The View sees the followed keys as data.
+const viewPlan: 'free' | 'pro' = followsPage.data.plan;
+const viewCount: number = followsPage.data.count;
+void viewPlan; void viewCount;
+// A page may follow without data of its own.
+const followOnly = definePage({ follow: { language }, actions: {} });
+const followOnlyLanguage: string = followOnly.data.language;
+void followOnlyLanguage;
+definePage({
+  data: { plan: 'free' },
+  // @ts-expect-error a followed key cannot also be in data
+  follow: { plan: session.pick(s => s.plan) },
+});
+definePage({
+  // @ts-expect-error follow takes Live values
+  follow: { plan: 'pro' },
+});

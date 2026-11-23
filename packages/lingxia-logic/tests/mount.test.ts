@@ -219,6 +219,41 @@ test("onShow gets a tab switch's params on that show only", async () => {
   }
 });
 
+test("a followed store is in the first data, follows each change, refuses page writes and stops at unmount", async () => {
+  const session = defineStore({ userId: "u1", plan: "free" as "free" | "pro" }, { name: "session" });
+  const seen: string[] = [];
+  const page = definePage({
+    data: { n: 0 },
+    follow: { session, plan: session.pick(s => s.plan) },
+    setup: p => {
+      seen.push(p.data.plan);
+      return {
+        actions: {
+          upgrade() { session.update(d => { d.plan = "pro"; }); },
+          writePlan() { p.update(d => { (d as Record<string, unknown>).plan = "free"; }); },
+        },
+      };
+    },
+  });
+  const mounted = await mount(page, { lx: createLxMock() });
+  try {
+    assert.deepEqual(seen, ["free"]);
+    assert.deepEqual(mounted.data, { n: 0, session: { userId: "u1", plan: "free" }, plan: "free" });
+    mounted.actions.upgrade();
+    assert.equal(mounted.data.plan, "pro");
+    assert.equal(mounted.data.session.plan, "pro");
+    assert.throws(() => mounted.actions.writePlan(), /'plan' follows a Live; change its source/);
+  } finally {
+    await mounted.unmount();
+  }
+  session.set({ userId: "u2", plan: "free" });
+  assert.equal(mounted.data.plan, "pro");
+  await assert.rejects(
+    mount(definePage({ data: { plan: "x" }, follow: { plan: session.pick(s => s.plan) } } as never), { lx: createLxMock() }),
+    /'plan' is in both data and follow/,
+  );
+});
+
 test("a store is one value for every page: an action's update reaches another page and a pick", async () => {
   const cart = defineStore({ items: [] as string[] }, { name: "cart" });
   const picks: number[] = [];

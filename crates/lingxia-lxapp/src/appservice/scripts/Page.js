@@ -285,7 +285,7 @@
 
   const PAGE_BRAND = Symbol.for("lingxia.page");
   const PAGE_HOOKS = ["onLoad", "onShow", "onReady", "onHide", "onUnload", "onRefresh"];
-  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "setup", "actions", "opens"]);
+  const DEFINITION_KEYS = new Set(["params", "result", "messages", "data", "follow", "setup", "actions", "opens"]);
 
   // `definePage({ data, setup(page) { return { onLoad, actions } } })`, or
   // `definePage({ data, actions: page => ({ … }) })`. The hooks and actions
@@ -295,7 +295,7 @@
     const def = definition.config;
     for (const key of Object.keys(def)) {
       if (!DEFINITION_KEYS.has(key)) {
-        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data, and setup or actions`);
+        throw new TypeError(`definePage: unknown key '${key}'; a page declares params, result, messages, data, follow, and setup or actions`);
       }
     }
     if (def.setup !== undefined && typeof def.setup !== "function") {
@@ -305,6 +305,7 @@
       throw new TypeError("definePage: give setup or actions, not both; with setup, return actions from it");
     }
     assertPageData(def.data || {});
+    const followed = followEntries(def.follow, def.data || {});
     const identity = identityJson ? JSON.parse(identityJson) : {};
     const lifetime = new AbortController();
     let svc = null;
@@ -411,6 +412,11 @@
           }
         }
         const changes = draft.changes();
+        for (const [segments] of changes) {
+          if (followed.has(segments[0])) {
+            throw new TypeError(`page.update: '${segments[0]}' follows a Live; change its source (store.set or store.update) instead`);
+          }
+        }
         if (svc) {
           svc._applyChanges(changes);
         } else {
@@ -459,6 +465,15 @@
       orientation,
       env,
     });
+
+    // The first callback runs now, so the followed keys are in the first snapshot.
+    for (const [key, source] of followed) {
+      source.watch((value) => {
+        const copy = cloneJsonValue(value);
+        if (svc) svc._applyChanges([[[key], copy]]);
+        else initial[key] = copy;
+      }, { signal: lifetime.signal });
+    }
 
     const returned = def.setup ? def.setup(page)
       : { actions: typeof def.actions === "function" ? def.actions(page) : def.actions };
@@ -535,6 +550,24 @@
     // What a test's getPage(id) reaches the page-scoped members through.
     Object.defineProperty(svc, "page", { value: page, enumerable: false });
     return svc;
+  }
+
+  function followEntries(follow, data) {
+    if (follow === undefined) return new Map();
+    if (follow === null || typeof follow !== "object" || Array.isArray(follow)) {
+      throw new TypeError("definePage: follow is an object of data key to Live: follow: { plan: session.pick(s => s.plan) }");
+    }
+    const entries = new Map();
+    for (const [key, source] of Object.entries(follow)) {
+      if (!source || typeof source.get !== "function" || typeof source.watch !== "function") {
+        throw new TypeError(`definePage: follow.${key} is not a Live (a store, store.pick(…), or a host Live)`);
+      }
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        throw new TypeError(`definePage: '${key}' is in both data and follow`);
+      }
+      entries.set(key, source);
+    }
+    return entries;
   }
 
   // Registers a raw config; runtime tests drive PageSvc through it.

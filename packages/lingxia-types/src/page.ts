@@ -109,9 +109,9 @@ export interface PageLike<Data> {
 }
 
 /** One page instance, as `setup` and everything it returns see it. */
-export interface PageApi<Data, Params, Result, Messages = never> {
-  /** The current data. Readonly: change it with `update`. */
-  readonly data: DeepReadonly<Data>;
+export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
+  /** The current data, with the followed keys. Readonly: change it with `update`. */
+  readonly data: DeepReadonly<WithFollowed<Data, Follow>>;
   /**
    * The one way to change data: `page.update(d => { d.n += 1; })`. `page.data`
    * changes at once; the View gets the changes once per turn. Throws inside
@@ -239,7 +239,7 @@ export type ResultOf<P> = P extends { readonly __lxPage: { readonly result: infe
 export type MessagesOf<P> = P extends { readonly __lxPage: { readonly messages: infer T } } ? T : never;
 
 /** What every `definePage` form declares besides its behaviour. */
-interface PageDeclarations<Data, Params, Result, Messages> {
+interface PageDeclarations<Data, Params, Result, Messages, Follow> {
   /** What the page is opened with: `type<{ id: string }>()`. */
   params?: Declared<Params>;
   /** What the page closes with. */
@@ -248,7 +248,28 @@ interface PageDeclarations<Data, Params, Result, Messages> {
   messages?: Declared<Messages>;
   /** The initial data, JSON only. */
   data?: Data & JsonData<Data>;
+  /**
+   * Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first
+   * frame until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in
+   * `update` and `set`; change the source instead.
+   */
+  // NoInfer: without it, a page with no `data` infers its `Data` from `follow`'s keys.
+  follow?: Follow & FollowKeysFree<NoInfer<Data>, Follow>;
 }
+
+/** What `follow` takes: data key to `Live`. */
+type FollowMap = Record<string, Live<unknown>>;
+
+/** A followed key that is also in `data`, as a type error. */
+type FollowKeysFree<Data, Follow> = {
+  [K in keyof Follow & keyof Data]: { 'LingXia type error': 'a followed key cannot also be in data' };
+};
+
+/** The data keys a page's `follow` adds, each the value its `Live` holds. */
+type FollowedData<Follow> = { [K in keyof Follow]: Follow[K] extends Live<infer V> ? V : never };
+
+/** A page's data with its followed keys. */
+type WithFollowed<Data, Follow> = [keyof Follow] extends [never] ? Data : Data & FollowedData<Follow>;
 
 /**
  * Define a page. Declare what it takes and returns at the top, then its
@@ -282,12 +303,13 @@ export function definePage<
   Messages = never,
   Actions extends object = {},
   R = {},
->(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  Follow extends FollowMap = {},
+>(definition: PageDeclarations<Data, Params, Result, Messages, Follow> & {
   /** Runs once per instance, before `onLoad`, and returns its hooks and `actions`. */
-  setup?: (page: PageApi<Data, Params, Result, Messages>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
+  setup?: (page: PageApi<Data, Params, Result, Messages, Follow>) => PageSetup<Params, Actions> & R & ExactSetup<R> & SyncSetup<R>;
   /** Not with `setup`: `setup` returns the actions. */
   actions?: undefined;
-}): PageDefinition<Data, Actions, Params, Result, Messages>;
+}): PageDefinition<WithFollowed<Data, Follow>, Actions, Params, Result, Messages>;
 export function definePage<
   Data extends object = {},
   Params = PageLoadOptions,
@@ -295,12 +317,13 @@ export function definePage<
   Messages = never,
   Actions extends object = {},
   S = never,
->(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  Follow extends FollowMap = {},
+>(definition: PageDeclarations<Data, Params, Result, Messages, Follow> & {
   /** Builds the actions once per instance. */
-  actions: (page: PageApi<Data, Params, Result, Messages>) => Actions & ThisType<void> & SyncActions<Actions>;
+  actions: (page: PageApi<Data, Params, Result, Messages, Follow>) => Actions & ThisType<void> & SyncActions<Actions>;
   /** Not with `actions`. */
   setup?: S & OnlyOne<S>;
-}): PageDefinition<Data, Actions, Params, Result, Messages>;
+}): PageDefinition<WithFollowed<Data, Follow>, Actions, Params, Result, Messages>;
 export function definePage<
   Data extends object = {},
   Params = PageLoadOptions,
@@ -308,12 +331,13 @@ export function definePage<
   Messages = never,
   Actions extends object = {},
   S = never,
->(definition: PageDeclarations<Data, Params, Result, Messages> & {
+  Follow extends FollowMap = {},
+>(definition: PageDeclarations<Data, Params, Result, Messages, Follow> & {
   /** The actions as a plain object, when they need no `page`. */
   actions: Actions & ThisType<void> & ActionMap<Actions>;
   /** Not with `actions`. */
   setup?: S & OnlyOne<S>;
-}): PageDefinition<Data, Actions, Params, Result, Messages>;
+}): PageDefinition<WithFollowed<Data, Follow>, Actions, Params, Result, Messages>;
 export function definePage(definition: { setup?: unknown; actions?: unknown }): unknown {
   if (definition === null || typeof definition !== 'object') {
     throw new TypeError('definePage takes { params?, result?, messages?, data?, setup? or actions? }');
